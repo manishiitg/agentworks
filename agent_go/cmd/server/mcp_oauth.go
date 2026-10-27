@@ -162,6 +162,9 @@ func personSignInScopes(stored []string) bool {
 }
 
 func mcpOAuthPersonScopes(user *UserClaims) []string {
+	if sparkquillOnlyDeployment() {
+		return sparkquillOAuthScopesFor(user, sparkquillScopes)
+	}
 	if agentBridgeOnlyDeployment() {
 		return []string{"messages:read", "messages:send"}
 	}
@@ -172,6 +175,9 @@ func mcpOAuthPersonScopes(user *UserClaims) []string {
 // only for an admin or Code reviewer. Everyone else neither sees nor grants it
 // (the tools re-check the account on every call regardless).
 func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
+	if sparkquillOnlyDeployment() || hasSparkQuillScopes(scopes) {
+		return sparkquillOAuthScopesFor(user, scopes)
+	}
 	if agentBridgeOnlyDeployment() {
 		return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool { return scope != "messages:read" && scope != "messages:send" })
 	}
@@ -226,14 +232,15 @@ func sameMCPOAuthScopeSet(a, b []string) bool {
 func validMCPOAuthScopes(raw string) ([]string, bool) {
 	scopes := strings.Fields(raw)
 	if len(scopes) == 0 {
-		scopes = append([]string(nil), mcpOAuthDefaultScopes...)
+		scopes = append([]string(nil), mcpOAuthDefaults()...)
 	}
-	if len(scopes) > len(mcpOAuthScopes) {
+	supported := append(slices.Clone(mcpOAuthScopes), sparkquillScopes...)
+	if len(scopes) > len(supported) {
 		return nil, false
 	}
 	seen := map[string]bool{}
 	for _, scope := range scopes {
-		if !slices.Contains(mcpOAuthScopes, scope) || seen[scope] {
+		if !slices.Contains(supported, scope) || seen[scope] {
 			return nil, false
 		}
 		seen[scope] = true
@@ -342,6 +349,9 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 	var project *projectMCPConsent
 	projectIdentity := ""
 	consentScopes := mcpOAuthPersonScopes(claims)
+	if hasSparkQuillScopes(requestInfo.Scopes) {
+		consentScopes = sparkquillOAuthScopesFor(claims, requestInfo.Scopes)
+	}
 	if audience, bound := projectMCPAudienceForResource(requestInfo.Resource); bound {
 		target, err := api.projectMCPTarget(r.Context(), claims, audience)
 		if err != nil {
@@ -571,6 +581,9 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 	// they signed in, so a connection made earlier gets full access without reconnecting and loses it the moment a role is
 	// removed. Bound-agent connections (messaging only) and grants that name workflows keep the scopes they were given.
 	scopes := grant.Scopes
+	if hasSparkQuillScopes(scopes) {
+		return accesstokens.Token{OAuthClientID: grant.ClientID, ID: "oauth-" + grant.FamilyID, Name: "SparkQuill", UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: slices.Clone(scopes), ExpiresAt: grant.Expires}
+	}
 	if grant.BoundAgentID == "" && len(grant.WorkflowIDs) == 0 && personSignInScopes(grant.Scopes) {
 		scopes = mcpOAuthPersonScopes(&UserClaims{UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider})
 	}

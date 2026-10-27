@@ -209,38 +209,27 @@
 .handoff-message { display: flex; align-items: flex-start; gap: 7px; padding: 9px; border-radius: 10px; background: #eaf8ef; color: #23764b; font-size: var(--text-secondary); font-weight: 600; }
 .handoff-button { width: 100%; }
 
-/* ===== Parent operating shell: three-rail workspace ===== */
-/* Two columns now — the conversation list rail was removed (one unified parent
-   conversation), so it's just the chat + the workspace drawer. */
-/* Three columns, not two: center pane, the drag handle (auto — sized to its
-   own ~9px content), then the drawer. Matches .fl-child-body's own pattern —
-   this grid now has three grid-item children (section, resizer div, aside),
-   so the column count has to say so explicitly or the browser silently
-   misplaces the third. */
-.fl-shell { --rail-w: 0px; display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr) auto var(--parent-side-w, 592px); height: 100vh; height: 100dvh; background: var(--cream); transition: grid-template-columns .2s ease; }
+/* ===== Parent operating shell ===== */
+/* Explicit tracks keep the history rail, chat, shared divider and workspace
+   in place when either pane is collapsed. */
+.fl-shell { --rail-w: 0px; position: relative; display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr) auto var(--parent-side-w, 592px); height: 100vh; height: 100dvh; background: var(--cream); transition: grid-template-columns .2s ease; }
 .fl-shell[data-rail="open"] { --rail-w: 272px; }
 .fl-shell[data-drawer="closed"] { grid-template-columns: var(--rail-w) minmax(0, 1fr) 0 0; }
+.fl-shell[data-chat="closed"] { grid-template-columns: var(--rail-w) 0 0 minmax(0, 1fr); }
+.fl-shell[data-chat="closed"] > .fl-center, .fl-shell[data-drawer="closed"] > .fl-drawer { display: none; }
+.fl-shell > .fl-rail { grid-column: 1; grid-row: 1; }
+.fl-shell > .fl-center { grid-column: 2; grid-row: 1; }
+.fl-shell > .fl-drawer { grid-column: 4; grid-row: 1; }
 .fl-shell.is-resizing { transition: none; cursor: col-resize; user-select: none; }
 .fl-shell.is-resizing iframe { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .fl-shell { transition: none; } }
 
-/* Drag handle between the conversation and the workspace drawer — same visual
-   treatment as the child's own worksheet resizer (.fl-child-resizer), just a
-   separate element/class since it sits in a different layout (CSS grid here,
-   not the child's flex body). */
-.fl-parent-resizer { position: relative; width: 9px; margin: 0 -4px; z-index: 2; cursor: col-resize; touch-action: none; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; }
-.fl-parent-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: var(--line); transition: background .12s ease, width .12s ease; }
-.fl-parent-resizer:hover::before,
-.fl-parent-resizer:focus-visible::before,
-.fl-shell.is-resizing .fl-parent-resizer::before { width: 3px; background: var(--yellow); }
-.fl-parent-resizer:focus-visible { outline: none; }
-.fl-parent-resizer-grip { position: relative; width: 6px; height: 30px; border-radius: 999px; background: var(--yellow); box-shadow: 0 0 0 2px var(--surface-2), 0 1px 3px rgba(13, 35, 58, .25); opacity: 0; transition: opacity .12s ease; }
-.fl-parent-resizer:hover .fl-parent-resizer-grip,
-.fl-parent-resizer:focus-visible .fl-parent-resizer-grip,
-.fl-shell.is-resizing .fl-parent-resizer-grip { opacity: 1; }
-/* The handle stays at every width: it is the second grid item, so hiding it
-   (an earlier narrow-window rule) moved the drawer into the handle's `auto`
-   track and left the drawer's own track empty. */
+/* The platform divider supplies the drag grip; sizing uses the shared layout menu. */
+.fl-shell > .fl-parent-split-rail { display: block; grid-column: 3; grid-row: 1; }
+.fl-reopen-pane { position: absolute; top: 50%; z-index: 35; display: flex; align-items: center; gap: 6px; padding: 10px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--heading); cursor: pointer; }
+.fl-reopen-chat { left: var(--rail-w); }
+.fl-reopen-workspace { right: 0; }
+.fl-shell[data-preview-device="mobile"] :is(.fl-map-frame, .fl-viewer-frame) { max-width: 480px; align-self: center; }
 
 /* Left conversation/history rail */
 .fl-rail { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--navy); color: #cddaf0; font-family: var(--font-ui); }
@@ -452,9 +441,11 @@
 .fl-package-detail-head h2 { margin: 0 0 4px; color: var(--heading); font-size: 1.05rem; }
 .fl-package-detail-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .fl-package-detail .fl-package-note { margin: 0 0 14px; }
-.fl-package-goal { margin: 0 12px 10px; padding: 10px 12px; background: #f5faf6; border: 1px solid #cfe8d6; border-left: 3px solid #79bd8f; border-radius: 10px; color: #2f5b40; font-size: var(--text-caption); line-height: 1.55; }
-.fl-package-goal strong { color: #1f7a4d; }
-.fl-package-detail .fl-package-goal { margin: 0 0 14px; }
+.fl-activity-description { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--heading); font-size: var(--text-secondary); line-height: 1.6; }
+.fl-activity-description summary { width: fit-content; padding: 4px 0; color: var(--heading); cursor: pointer; font-weight: 600; }
+.fl-activity-description summary:focus-visible { outline: 2px solid var(--heading); outline-offset: 4px; border-radius: 3px; }
+.fl-activity-description h3 { margin: 0; color: var(--heading); font-size: inherit; font-weight: 600; }
+.fl-activity-description p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .fl-package-detail-items { display: flex; flex-direction: column; gap: 6px; }
 .fl-package-detail .fl-package-item { margin-left: 0; }
 /* Current assignment shown in the child's top bar — the activity name,
@@ -772,7 +763,7 @@ details[open] > .fl-tree-dir .fl-tree-icon.is-open { display: block; }
 .fl-act-sub { flex: 1; min-width: 0; color: #7a869a; font-size: var(--text-caption); }
 .fl-act-mode { flex: 0 0 auto; padding: 2px 9px; border-radius: 999px; background: #eef1f6; color: #5c6d88; font-size: 10.5px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
 .fl-act-mode.is-live { background: var(--navy); color: #fff; text-transform: none; letter-spacing: 0; }
-.fl-act .fl-package-note, .fl-act .fl-package-goal { margin: 0 14px 12px; }
+.fl-act .fl-package-note, .fl-act .fl-activity-description { margin: 0 14px 12px; }
 .fl-act .fl-file-item { margin: 0 14px 12px; width: auto; }
 .fl-viewer-frame { width: 100%; flex: 1; min-height: 260px; border: 1px solid #ece3d2; border-radius: 10px; background: var(--surface); }
 .fl-map-frame { width: 100%; height: 100%; min-height: 320px; border: 0; background: var(--surface); }
@@ -1076,11 +1067,7 @@ audio.fl-viewer-media { background: var(--surface); }
   .fl-child-resizer { display: none; }
 }
 
-/* No narrow-window override for .fl-shell: an earlier three-column layout
-   (rail | main | drawer) used to collapse here, and that rule outlived the
-   layout — on the current (chat | handle | drawer) grid it zeroed the chat and
-   let the drawer overflow the window. The drawer's width is already capped at
-   half the window (parentSideMax), which is the whole narrow-window story. */
+/* Small screens keep the conversation in one column and hide the desktop rail. */
 
 @media (max-width: 830px) {
   .learning-header { min-height: 74px; padding-inline: 20px; }
@@ -1089,7 +1076,8 @@ audio.fl-viewer-media { background: var(--surface); }
   .learning-stage { padding: 16px 20px 40px; }
   .learning-panel { margin-top: 35px; }
   .fl-shell, .fl-shell[data-rail], .fl-shell[data-drawer] { grid-template-columns: minmax(0, 1fr); }
-  .fl-rail, .fl-drawer { display: none; }
+  .fl-rail, .fl-drawer, .fl-shell > .fl-parent-split-rail, .fl-reopen-pane { display: none; }
+  .fl-shell > .fl-center, .fl-shell[data-chat="closed"] > .fl-center { display: flex; grid-column: 1; }
 }
 
 @media (max-width: 600px) {
@@ -1302,3 +1290,6 @@ audio.fl-viewer-media { background: var(--surface); }
 /* Model choices live in parent Settings for both learning roles. */
 .fl-settings-model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: 14px; }
 .fl-settings-models .model-reasoning-panel { left: auto; right: 0; }
+
+.fl-workspace-layout { display: flex; justify-content: flex-end; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+@media (max-width: 830px) { .fl-workspace-layout { display: none; } }

@@ -134,7 +134,7 @@ func externalRemoteListFiles(ctx context.Context, req wf.Request, p string) (wf.
 		if err := ctx.Err(); err != nil {
 			return wf.Result{}, err
 		}
-		if wf.Private(item.Path) {
+		if externalFilePathPrivate(ctx, externalIsCrewRoot(req.Root), item.Path) {
 			continue
 		}
 		if !guard.Allows(item.Path, false) && !(item.Type == "folder" && guard.AllowsTraversal(item.Path)) {

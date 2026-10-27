@@ -1,3 +1,9 @@
+import { WorkspaceSplitDivider } from '../../components/workspace/WorkspaceSplitDivider'
+import { DashboardLayoutControls } from '../../components/workflow/DashboardLayoutControls'
+import { useParentSplit } from './platform/useParentSplit'
+import { ActivityDescription } from './ActivityDescription'
+import { isSparkQuillPreviewPath } from './platform/mcpPreview'
+import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { SparkQuillSecretsPanel } from './SparkQuillSecretsPanel'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
@@ -189,39 +195,6 @@ function readChildSideWidth(): number {
 }
 function persistChildSideWidth(px: number) {
   try { localStorage.setItem(CHILD_SIDE_WIDTH_KEY, String(Math.round(px))) } catch { /* best-effort */ }
-}
-
-// Parent Mode's own drag-to-resize for the workspace drawer — same mechanism
-// as the child's worksheet, but capped at HALF the window rather than nearly
-// all of it: the drawer here is a reference panel beside the conversation
-// (Progress/Files), not the primary thing being read, so the chat
-// should never be squeezed to a sliver the way the child's worksheet is
-// allowed to claim most of the screen.
-const PARENT_SIDE_WIDTH_KEY = 'sparkquill.parent-side-width.v2' // v2: the default became half the window
-// 320 looked like a sane floor, but parentSideMax's own ceiling (half the
-// window) drops below it on anything narrower than ~640px — the two clamps
-// then collapse to the same point and the resizer can't move in either
-// direction, even though it visually still drags. Low enough to leave real
-// room at ordinary window widths, not just wide ones.
-const PARENT_SIDE_MIN = 200
-// Half the window: the conversation and the drawer start as equals (the
-// previous fixed 592px favoured the chat on wide screens and crushed it on
-// narrow ones).
-function parentSideDefault(): number {
-  const width = typeof window !== 'undefined' ? window.innerWidth : 1200
-  return Math.max(PARENT_SIDE_MIN, Math.floor(width / 2))
-}
-function parentSideMax(windowWidth: number): number {
-  return Math.max(PARENT_SIDE_MIN, Math.floor(windowWidth * 0.5))
-}
-function readParentSideWidth(): number {
-  try {
-    const n = Number(localStorage.getItem(PARENT_SIDE_WIDTH_KEY))
-    return Number.isFinite(n) && n >= PARENT_SIDE_MIN ? n : parentSideDefault()
-  } catch { return parentSideDefault() }
-}
-function persistParentSideWidth(px: number) {
-  try { localStorage.setItem(PARENT_SIDE_WIDTH_KEY, String(Math.round(px))) } catch { /* best-effort */ }
 }
 
 // Reading size for the worksheet. Applied as CSS `zoom` inside the viewer
@@ -1078,7 +1051,7 @@ export default function LearningApp() {
   const [goalPopoverOpen, setGoalPopoverOpen] = useState(false)
   const waOpen = useWhatsAppStore((s) => s.waOpen)
   const setWaOpen = useWhatsAppStore((s) => s.setWaOpen)
-  const [connectorSection, setConnectorSection] = useState<'whatsapp' | 'browser' | 'secrets'>('whatsapp')
+  const [connectorSection, setConnectorSection] = useState<'whatsapp' | 'browser' | 'secrets' | 'mcp'>('whatsapp')
   // WhatsApp pairing is offered only when the parent profile declares the
   // whatsapp capability in its product.yaml (the platform's connector then
   // routes the parent's own chat to Quill); without it the Connectors panel
@@ -1204,7 +1177,6 @@ export default function LearningApp() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [screen, setAllFiles, setTreeNodes, setWsFiles, wsRefreshKey])
-  const drawerOpen = true // right side always open
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const childIframeRef = useRef<HTMLIFrameElement>(null)
 
@@ -1281,41 +1253,7 @@ export default function LearningApp() {
     window.addEventListener('pointerup', end)
     window.addEventListener('pointercancel', end)
   }
-  // Parent Mode's own resizer — same pointer-tracking approach as the
-  // child's, clamped to parentSideMax's 50%-of-window ceiling instead.
-  const [parentSideWidthPref, setParentSideWidth] = useState(readParentSideWidth)
-  const parentSideWidth = Math.min(Math.max(parentSideWidthPref, PARENT_SIDE_MIN), parentSideMax(windowWidth))
-  const commitParentSideWidth = (px: number) => {
-    const next = Math.min(Math.max(px, PARENT_SIDE_MIN), parentSideMax(windowWidth))
-    setParentSideWidth(next)
-    persistParentSideWidth(next)
-  }
-  const parentBodyRef = useRef<HTMLDivElement>(null)
-  const [parentResizing, setParentResizing] = useState(false)
-  const startParentResize = (e: React.PointerEvent<HTMLDivElement>) => {
-    const body = parentBodyRef.current
-    if (!body) return
-    e.preventDefault()
-    ;(e.currentTarget as HTMLDivElement).focus({ preventScroll: true })
-    const right = body.getBoundingClientRect().right
-    const max = parentSideMax(windowWidth)
-    let last = parentSideWidth
-    setParentResizing(true)
-    const move = (ev: PointerEvent) => {
-      last = Math.min(Math.max(right - ev.clientX, PARENT_SIDE_MIN), max)
-      setParentSideWidth(last)
-    }
-    const end = () => {
-      setParentResizing(false)
-      persistParentSideWidth(last)
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', end)
-      window.removeEventListener('pointercancel', end)
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', end)
-    window.addEventListener('pointercancel', end)
-  }
+  const parentSplit = useParentSplit(screen === 'parent', chatsRailOpen, windowWidth)
   // "Wide" once past the midpoint between default and max, so the button's icon
   // always shows which way the next tap will move it.
   const childSideWide = childSideWidth > (childSideDefault() + childSideMax(windowWidth)) / 2
@@ -1468,6 +1406,15 @@ export default function LearningApp() {
   // activity view again instead of the raw file list — viewerPath simply
   // takes render priority over viewerActivityDir whenever both are set.
   const [viewerActivityDir, setViewerActivityDir] = useState<string | null>(null)
+  const pendingPreview = useRef(new URLSearchParams(window.location.search).get('file'))
+  useEffect(() => {
+    if (screen !== 'parent' || !pendingPreview.current) return
+    const file = pendingPreview.current
+    pendingPreview.current = null
+    if (!isSparkQuillPreviewPath(file)) return
+    setDrawerTab('files'); setViewerImageList([]); setViewerActivityDir(null); setViewerPath(file)
+  }, [screen, setDrawerTab, setViewerImageList, setViewerPath])
+
   const viewerContent = useSparkQuillWorkspaceStore((s) => s.viewerContent)
   const setViewerContent = useSparkQuillWorkspaceStore((s) => s.setViewerContent)
   const viewerScrollRef = useRef<Record<string, number>>({})
@@ -1492,8 +1439,7 @@ export default function LearningApp() {
   )
   const [viewerMeta, setViewerMeta] = useState<Record<string, unknown> | null>(null)
   const [metaOpen, setMetaOpen] = useState(false)
-  // Which activity's goal (the parent's own instructions for that activity)
-  // is currently revealed via its (i) button — collapsed by default.
+  // Which activity's contents are expanded in the parent preview or list.
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null)
   // Which folders in the "all files" tree the user has explicitly opened or
   // closed, keyed by path — survives the FileTree unmounting when a file is
@@ -2187,11 +2133,13 @@ export default function LearningApp() {
     return (
       <main className="learning-app" data-theme={theme}>
         <div
-          ref={parentBodyRef}
-          className={`fl-shell${parentResizing ? ' is-resizing' : ''}`}
+          ref={parentSplit.bodyRef}
+          className={`fl-shell${parentSplit.resizing ? ' is-resizing' : ''}`}
           data-rail={chatsRailOpen ? 'open' : 'closed'}
-          data-drawer={drawerOpen ? 'open' : 'closed'}
-          style={{ ['--parent-side-w' as string]: `${Math.round(parentSideWidth)}px` }}
+          data-drawer="open"
+          data-chat={parentSplit.chatOpen ? 'open' : 'closed'}
+          data-preview-device={parentSplit.device}
+          style={{ ['--parent-side-w' as string]: `${Math.round(parentSplit.workspaceWidth)}px` }}
         >
           <aside className="fl-rail" aria-label="Chats" aria-hidden={!chatsRailOpen}>
             <div className="fl-new-wrap">
@@ -2494,27 +2442,18 @@ export default function LearningApp() {
               />
             )}
           </section>
-          <div
-            className="fl-parent-resizer"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Drag to resize the workspace panel"
-            aria-valuenow={Math.round(parentSideWidth)}
-            aria-valuemin={PARENT_SIDE_MIN}
-            aria-valuemax={Math.round(parentSideMax(windowWidth))}
-            tabIndex={0}
-            onPointerDown={startParentResize}
-            onKeyDown={(e) => {
-              const step = e.shiftKey ? 80 : 24
-              if (e.key === 'ArrowLeft') { e.preventDefault(); commitParentSideWidth(parentSideWidth + step) }
-              else if (e.key === 'ArrowRight') { e.preventDefault(); commitParentSideWidth(parentSideWidth - step) }
-              else if (e.key === 'Home') { e.preventDefault(); commitParentSideWidth(parentSideDefault()) }
-            }}
-          >
-            <span className="fl-parent-resizer-grip" aria-hidden="true" />
-          </div>
+          {parentSplit.chatOpen && <WorkspaceSplitDivider
+            className="fl-parent-split-rail fl-platform-ui"
+            ratio={parentSplit.ratio}
+            onPointerDown={parentSplit.onPointerDown}
+            onStep={parentSplit.onStep}
+          />}
+          {!parentSplit.chatOpen && <button className="fl-reopen-pane fl-reopen-chat" type="button" aria-label="Show chat panel" onClick={() => parentSplit.setChatOpen(true)}><PanelLeftOpen size={17} /> Chat</button>}
 
           <aside className="fl-drawer" aria-label="Learning workspace">
+            <div className="fl-workspace-layout fl-platform-ui">
+              <DashboardLayoutControls width={100 * (1 - parentSplit.ratio)} onWidthChange={width => parentSplit.onStep(1 - width / 100 - parentSplit.ratio)} previewDevice={parentSplit.device} onPreviewDeviceChange={parentSplit.changeDevice} chatVisible={parentSplit.chatOpen} onToggleChat={() => parentSplit.setChatOpen(!parentSplit.chatOpen)} />
+            </div>
             {!((drawerTab === 'files' || drawerTab === 'allfiles' || drawerTab === 'uploaded') && viewerPath) && (
               <div className="fl-drawer-tabs" role="tablist" aria-label="Workspace views">
                 <button role="tab" aria-selected={drawerTab === 'progress'} className={drawerTab === 'progress' ? 'is-active' : ''} type="button" onClick={() => setDrawerTab('progress')}>Progress</button>
@@ -2752,7 +2691,6 @@ export default function LearningApp() {
                           )}
                         </div>
                       </div>
-                      {(act.items.length === 0 || expanded) && act.goal && <p className="fl-package-goal"><strong>Goal:</strong> {act.goal}</p>}
                       {expanded && act.items.length > 0 && (
                         <div className="fl-package-detail-items">
                           {act.items.map((item) => (
@@ -2771,6 +2709,7 @@ export default function LearningApp() {
                           ))}
                         </div>
                       )}
+                      {(act.items.length === 0 || expanded) && <ActivityDescription key={act.dir} description={act.goal} conversationOnly={act.items.length === 0} />}
                     </div>
                   </div>
                 )
@@ -2820,9 +2759,8 @@ export default function LearningApp() {
                       const expanded = expandedActivity === act.dir
                       const openable = act.items.length > 0
                       const isCurrent = childActivity?.dir === act.dir
-                      // Details show for an expanded activity, and always for an
-                      // adaptive one — it has no items to expand, so its goal
-                      // IS the activity.
+                      // Conversation-only practice needs its description even
+                      // without files to expand.
                       const showDetails = expanded || !openable
                       return (
                         <div key={act.dir} className={`fl-act${expanded ? ' is-expanded' : ''}${isCurrent ? ' is-current' : ''}`}>
@@ -2859,7 +2797,6 @@ export default function LearningApp() {
                               Give to {childName || 'child'}
                             </button>
                           </div>
-                          {showDetails && act.goal && <p className="fl-package-goal"><strong>Goal:</strong> {act.goal}</p>}
                           {expanded && act.items.map((item) => (
                             <div key={item.path} className="fl-file-item fl-package-item has-preview">
                               <ActivityItemPreview path={item.path} name={item.name} large={act.items.length === 1} refreshKey={mapRefreshKey} />
@@ -2874,6 +2811,7 @@ export default function LearningApp() {
                               </button>
                             </div>
                           ))}
+                          {showDetails && <ActivityDescription description={act.goal} conversationOnly={!openable} />}
                         </div>
                       )
                     })
@@ -3084,10 +3022,11 @@ export default function LearningApp() {
                       <button type="button" className={connectorSection === 'whatsapp' ? 'is-active' : ''} onClick={() => setConnectorSection('whatsapp')}>WhatsApp</button>
                     )}
                     <button type="button" className={connectorSection === 'secrets' ? 'is-active' : ''} onClick={() => setConnectorSection('secrets')}>Secrets</button>
+                    <button type="button" className={connectorSection === 'mcp' ? 'is-active' : ''} onClick={() => setConnectorSection('mcp')}>AI apps (MCP)</button>
                     <button type="button" className={connectorSection === 'browser' ? 'is-active' : ''} onClick={() => setConnectorSection('browser')}>Browser</button>
                   </nav>
                   <div className="fl-connectors-panel">
-                    {connectorSection === 'secrets' ? <SparkQuillSecretsPanel /> : connectorSection === 'whatsapp' ? (
+                    {connectorSection === 'mcp' ? <CliMcpSetupPanel target="sparkquill" /> : connectorSection === 'secrets' ? <SparkQuillSecretsPanel /> : connectorSection === 'whatsapp' ? (
                       <div className="fl-connector-card">
                         {(waStatus?.accounts?.length ?? 0) > 0 && (
                           <>
@@ -3246,6 +3185,10 @@ export default function LearningApp() {
                   <p className="fl-note">Connect your AI account, check its status, or install a provider on this computer.</p>
                   <button type="button" className="fl-ghost-btn" onClick={openProviders}>Manage providers and accounts</button>
                   <LearningModelSettings key={engine} engine={engine} childName={childName} onEngineChange={setEngine} />
+
+                  <p className="fl-drawer-label">AI apps (MCP)</p>
+                  <p className="fl-note">Connect ChatGPT, Claude, Codex or another AI app to your family’s SparkQuill learning content.</p>
+                  <button type="button" className="fl-ghost-btn" onClick={() => { setSettingsOpen(false); setConnectorSection('mcp'); setWaOpen(true) }}>Manage AI apps (MCP)</button>
 
                   <VoiceSettings status={voiceStatus} childName={childName} onRefresh={refreshVoiceStatus} />
 

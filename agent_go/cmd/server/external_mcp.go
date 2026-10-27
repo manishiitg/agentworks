@@ -116,7 +116,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	if api.externalMCPTaskHTTP(w, r) {
 		return
 	}
-	catalog, err := externalTools()
+	catalog, err := externalToolsForClaims(claims)
 	if err != nil {
 		externalError(w, http.StatusInternalServerError, "schema_error", err.Error())
 		return
@@ -205,7 +205,12 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	instructions = (productpolicy.Selection{}).Text(instructions)
 	index, fingerprint := externalMCPToolIndex(externalListedTools(claims, allowed))
-	mcpServer := server.NewMCPServer("AgentWorks", "1.0.0",
+	serviceName := "AgentWorks"
+	if sparkquillExternalConnection(claims) {
+		serviceName = "SparkQuill"
+		instructions = sparkquillMCPInstructions
+	}
+	mcpServer := server.NewMCPServer(serviceName, "1.0.0",
 		server.WithToolCapabilities(false),
 		server.WithResourceCapabilities(false, false),
 		server.WithElicitation(),
@@ -220,7 +225,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		mcpServer.AddTool(
-			mcp.NewToolWithRawSchema(name, externalMCPToolDescriptionFor(name, index), schema),
+			mcp.NewToolWithRawSchema(name, strings.ReplaceAll(externalMCPToolDescriptionFor(name, index), "AgentWorks", serviceName), schema),
 			func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return api.externalMCPCall(ctx, r, name, allowed, request), nil
 			},
@@ -376,7 +381,7 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 		return mcp.NewToolResultError("unknown_tool: refresh the tool catalog with get_api_spec and choose its current action tool")
 	}
 	if _, ok := byName[target]; !ok {
-		catalog, err := externalTools()
+		catalog, err := externalToolsForClaims(GetUserFromContext(r.Context()))
 		if err == nil {
 			for _, tool := range catalog {
 				if tool.Name == target {
@@ -569,7 +574,7 @@ func externalMCPErrorText(rec *externalMCPRecorder) string {
 // the menu instead of an old get_api_spec answer in its history. The
 // fingerprint changes whenever the names do.
 func externalMCPToolIndex(allowed []externalTool) (string, string) {
-	order := []string{"Goals", "Builder", "Flows", "Crews", "Dashboards", "Needs you", "Brain", "Vault", "Crew review", "Account", "Help"}
+	order := []string{"SparkQuill", "Goals", "Builder", "Flows", "Crews", "Dashboards", "Needs you", "Brain", "Vault", "Crew review", "Account", "Help"}
 	groups := map[string][]string{}
 	names := make([]string, 0, len(allowed))
 	for _, tool := range allowed {
@@ -577,6 +582,8 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 		names = append(names, name)
 		group := "Goals"
 		switch {
+		case tool.sparkquill:
+			group = "SparkQuill"
 		case strings.Contains(name, "dashboard") || name == "get_report_link":
 			group = "Dashboards"
 		case name == "needs_you" || strings.HasSuffix(name, "_needs_you"):

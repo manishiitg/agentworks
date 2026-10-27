@@ -26,8 +26,8 @@ Never write status fields into `backup.json`.
 1. **Check the token.** The HF token lives in this app's own secrets store, not a
    bare `hf auth login` session — call `list_secrets` and look for one named
    `HF_TOKEN`. If it's missing, tell the parent plainly: create a **Write**-access
-   token at https://huggingface.co/settings/tokens, then save it via `set_secret`
-   (name it exactly `HF_TOKEN`) or Settings → Secrets. Don't proceed without it.
+   token at https://huggingface.co/settings/tokens, then save it via `set_workflow_secret`
+   (name it exactly `HF_TOKEN`) or Connectors → Secrets. Don't proceed without it.
 
 2. **Read config.** `cat backup.json`. If missing, or `enabled` isn't true, or
    `repo_id` is empty, this needs setup.
@@ -64,4 +64,4 @@ Never write status fields into `backup.json`.
    own private Hugging Face repo — nobody else can see it unless they make it
    public themselves.
 
-8. **Then end the turn with `suggest_actions`** — "Tell the parent" above is not the last step.
+8. Offer `suggest_actions` only if there is a useful next decision for the parent, following the parent conversation guidance.
