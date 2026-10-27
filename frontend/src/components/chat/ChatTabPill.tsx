@@ -5,7 +5,7 @@ import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
 import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
-import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
+import { runtimeNeedsUserInput, runtimeTurnFailed } from '../../utils/runtimeActivity'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
@@ -34,12 +34,14 @@ export interface ChatTabPillProps {
 
 const ALLOW_MAKE_SCHEDULE_INTERACTIVE = false
 // The state reads at a glance on a tab you are not looking at (owner 2026-10-06):
-// a spinner while working, amber when it waits for you, green when it finished
-// since you last looked, grey when idle.
-type TabStatus = 'waiting' | 'busy' | 'completed' | 'ready'
+// a spinner while working, amber when it waits for you, red when the server says
+// the last turn failed, green when it finished since you last looked, grey when idle.
+// Needs you / Working / Failed use the same words as the agent menu and Home (PLAT-746-158).
+type TabStatus = 'waiting' | 'busy' | 'failed' | 'completed' | 'ready'
 const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
-  waiting: { cls: 'bg-[hsl(var(--warning))] animate-pulse', label: 'Needs your input' },
+  waiting: { cls: 'bg-[hsl(var(--warning))] animate-pulse', label: 'Needs you' },
   busy: { cls: 'bg-[hsl(var(--info))]', label: 'Working' },
+  failed: { cls: 'bg-destructive', label: 'Failed' },
   completed: { cls: 'bg-[hsl(var(--success))]', label: 'Completed — open to mark as seen' },
   ready: { cls: 'bg-muted-foreground/60', label: 'Ready' },
 }
@@ -71,6 +73,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     if (!tab.sessionId) return false
     return runtimeNeedsUserInput(state.activeSessionsCache.find(session => session.session_id === tab.sessionId))
   })
+  const failed = useChatStore(state => !!tab.sessionId && runtimeTurnFailed(state.activeSessionsCache.find(session => session.session_id === tab.sessionId)))
   // The same busy signal as the chat header: a stored completion ends the spinner at once.
   const running = useChatStore(state => {
     const stored = state.chatTabs[tab.tabId]
@@ -91,7 +94,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     ? 'waiting'
     : activityRunning
       ? 'busy'
-      : tab.hasUnreadCompletion && !isActive ? 'completed' : 'ready'
+      : failed ? 'failed' : tab.hasUnreadCompletion && !isActive ? 'completed' : 'ready'
   const [status, setStatus] = useState(rawStatus)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState(tab.name)

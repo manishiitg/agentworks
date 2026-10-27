@@ -14,14 +14,22 @@ import { compactOwnerChatName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
+import { runtimeTurnFailed } from '../../utils/runtimeActivity'
 
 function AgentMenuActivity({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
   const activity = useChatRuntimeActivity(tabId)
+  const failed = useChatStore(state => {
+    const sessionId = state.chatTabs[tabId]?.sessionId
+    return !!sessionId && runtimeTurnFailed(state.activeSessionsCache.find(session => session.session_id === sessionId))
+  })
   if (activity.state === 'waiting' || workspaceActivity === 'waiting') {
-    return <span role="img" aria-label="Needs your input" title="Needs your input" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" />
+    return <span role="img" aria-label="Needs you" title="Needs you" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" />
   }
   if (activity.state === 'running' || workspaceActivity === 'running') {
     return <Loader2 role="img" aria-label="Working" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
+  }
+  if (failed) {
+    return <span role="img" aria-label="Failed" title="Failed" className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
   }
   return null
 }

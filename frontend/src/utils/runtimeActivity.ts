@@ -37,6 +37,11 @@ export function runtimeHasBackgroundAgents(session?: Pick<ActiveSessionInfo, 'ru
   return session.has_running_background_agents === true || (session.running_background_agent_count ?? 0) > 0
 }
 
+/** The server's verdict that the last turn ended without a response; the next turn clears it. */
+export function runtimeTurnFailed(session?: Pick<ActiveSessionInfo, 'runtime_state'> | null): boolean {
+  return session?.runtime_state?.phase === 'failed'
+}
+
 export function runtimeNeedsUserInput(session?: Pick<ActiveSessionInfo, 'runtime_state' | 'needs_user_input'> | null): boolean {
   if (!session) return false
   return session.runtime_state?.waiting_for_user ?? session.needs_user_input === true

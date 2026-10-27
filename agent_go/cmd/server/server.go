@@ -8845,6 +8845,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// A turn whose every LLM attempt failed records that only as events and
+		// would otherwise read as completed. Use the scheduler's rule so chat tabs
+		// can show Failed from the server's own phase (PLAT-746-158).
+		if failure := scheduledTurnFailure(api.eventStore, sessionID, streamWaitStartedAt); failure != "" {
+			turnStatus = trackedExecutionStatusFailed
+			turnError = failure
+			log.Printf("[COMPLETION] Turn produced no response; marking session %s failed", sessionID)
+			api.updateSessionStatus(sessionID, "error")
+			tracer.EndTrace(traceID, map[string]interface{}{"status": "error"})
+			return
+		}
+
 		// Update active session status to completed
 		turnStatus = trackedExecutionStatusCompleted
 		turnError = ""

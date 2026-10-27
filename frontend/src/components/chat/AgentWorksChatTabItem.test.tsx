@@ -106,7 +106,7 @@ it("shows working, waiting and idle on an unfocused tab", async () => {
   expect(working?.tagName.toLowerCase()).toBe("svg");
 
   useChatStore.setState({ activeSessionsCache: [{ session_id: "s1", needs_user_input: true }] as never });
-  expect((await render({ isStreaming: true }))?.getAttribute("aria-label")).toBe("Needs your input");
+  expect((await render({ isStreaming: true }))?.getAttribute("aria-label")).toBe("Needs you");
   useChatStore.setState({ activeSessionsCache: [] });
 
   expect((await render({}))?.getAttribute("aria-label")).toBe("Ready");
@@ -182,7 +182,11 @@ it.each([undefined, 'agentworks', 'relays', 'work', 'mcp-gateway'] as (ProductSu
     expectSlot('Working')
     await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, needs_user_input: true }] as never }) })
     await render()
-    expectSlot('Needs your input')
+    expectSlot('Needs you')
+    // The server's failed phase (a turn with no response) shows Failed until the next turn.
+    await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, runtime_state: { phase: 'failed' } }] as never }) })
+    await render()
+    expectSlot('Failed')
     await act(async () => { useChatStore.setState({ activeSessionsCache: [] }) })
     await render({ hasUnreadCompletion: true })
     expectSlot('Completed — open to mark as seen')
@@ -213,9 +217,9 @@ it('announces a tab changing to working and waiting without repeating idle label
     expect(status.textContent).toBe('Reports: Working')
     await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, needs_user_input: true }] as never }) })
     await act(async () => { vi.advanceTimersByTime(1200) })
-    expect(status.textContent).toBe('Reports: Needs your input')
+    expect(status.textContent).toBe('Reports: Needs you')
     await act(async () => { vi.advanceTimersByTime(15_000) })
-    expect(status.textContent).toBe('Reports: Needs your input')
+    expect(status.textContent).toBe('Reports: Needs you')
   } finally {
     await act(async () => root.unmount())
     vi.useRealTimers()

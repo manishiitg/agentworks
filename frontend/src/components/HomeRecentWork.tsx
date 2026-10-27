@@ -56,7 +56,8 @@ export function HomeRecentWork() {
   const canSearch = rows.length > 20
   const filter = canSearch ? query.trim().toLocaleLowerCase() : ''
   useEffect(() => { if (!canSearch) setQuery('') }, [canSearch])
-  const visible = rows.filter(row => `${row.title} ${PRODUCT_SURFACE_LABELS[row.surface]}`.toLocaleLowerCase().includes(filter)).slice(0, filter ? 30 : 8)
+  // Work that needs you comes first; otherwise keep the recent order.
+  const visible = rows.filter(row => `${row.title} ${PRODUCT_SURFACE_LABELS[row.surface]}`.toLocaleLowerCase().includes(filter)).sort((a, b) => Number(b.waiting) - Number(a.waiting)).slice(0, filter ? 30 : 8)
   return <section aria-labelledby="home-recent-title" className="border-t border-border pt-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="home-recent-title" className="text-sm font-semibold">Recent work</h2>
       <div className="flex min-w-0 items-center gap-2">{canSearch && <label className="flex items-center gap-2"><Search aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><input aria-label="Search recent work" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find your work" className="h-8 min-w-0 w-40 bg-transparent text-xs outline-none focus:underline sm:w-48" /></label>}<button type="button" title="Refresh recent work" aria-label="Refresh recent work" onClick={() => setRevision(value => value + 1)} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"><RefreshCw aria-hidden="true" className="h-3.5 w-3.5" /></button></div>
