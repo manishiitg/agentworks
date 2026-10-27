@@ -62,6 +62,21 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 			write(files, "notes.txt", "person file")
 			// PLAT-856-383: old slot-created cache descendants can be unreadable.
 			write(resources, ".sandbox-cache/locked/login-placeholder", "cache retained")
+			write(resources, ".report-cache/status.json", "cache file retained")
+			lockedReport := filepath.Join(resources, ".report-cache/status.json")
+			if local {
+				// A FIFO in a tool cache must be classified before opening it can block.
+				if err := exec.Command("mkfifo", filepath.Join(resources, ".report-cache/pipe")).Run(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Chmod(lockedReport, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				_ = os.Chmod(lockedReport, 0600)
+				_ = os.Chmod(filepath.Join(docs, "_system/crew-data/stable-id/.report-cache/status.json"), 0600)
+			})
 			lockedCache := filepath.Join(resources, ".sandbox-cache/locked")
 			privateCache := filepath.Join(docs, "_system/crew-data/stable-id/.sandbox-cache/locked")
 			if err := os.Chmod(lockedCache, 0); err != nil {
@@ -100,7 +115,7 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			if count != 5 || backup == "" {
+			if count != 6 || backup == "" {
 				t.Fatalf("moved=%d backup=%s", count, backup)
 			}
 			roots, found, e := Lookup(docs, "Crew/example")
@@ -158,7 +173,7 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 						}
 					}
 				}
-				if omitted != 1 {
+				if omitted != 2 {
 					t.Fatalf("unreadable cache count=%d", omitted)
 				}
 			}

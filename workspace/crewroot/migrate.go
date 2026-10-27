@@ -31,6 +31,8 @@ func isPrivateCache(path string) bool {
 	return name == ".sandbox-cache" || name == ".report-cache"
 }
 
+var errUncopyablePrivateEntry = errors.New("non-regular filesystem entry cannot be backed up")
+
 func copyPrivateEntry(source, target string) error {
 	info, err := os.Lstat(source)
 	if err != nil {
@@ -57,6 +59,9 @@ func copyPrivateEntry(source, target string) error {
 			}
 		}
 	} else {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%w: %s", errUncopyablePrivateEntry, source)
+		}
 		in, err := os.Open(source)
 		if err != nil {
 			return err
@@ -315,11 +320,20 @@ func MigratePrivateState(docs string) (count int, backup string, err error) {
 	// Copy every affected record before moving any of them.
 	for i := range journal.Entries {
 		if journal.Entries[i].UnbackedCache {
-			fmt.Printf("[CREW_STATE_MIGRATION] unreadable cache will move unchanged without backup: %s\n", journal.Entries[i].Source)
+			fmt.Printf("[CREW_STATE_MIGRATION] cache cannot be copied; will move unchanged without backup: %s\n", journal.Entries[i].Source)
 			continue
 		}
 		journal.Entries[i].Saved = filepath.Join(backup, fmt.Sprintf("%06d", i))
 		if err = copyPrivateEntry(journal.Entries[i].Source, journal.Entries[i].Saved); err != nil {
+			if isPrivateCache(journal.Entries[i].Source) && (errors.Is(err, os.ErrPermission) || errors.Is(err, errUncopyablePrivateEntry)) {
+				// Listing/stat can succeed when opening a foreign-owned file
+				// cannot. Keep any partial copy, but never label it a backup.
+				journal.Entries[i].UnbackedCache = true
+				journal.Entries[i].Saved = ""
+				fmt.Printf("[CREW_STATE_MIGRATION] cache cannot be copied; will move unchanged without backup: %s\n", journal.Entries[i].Source)
+				err = nil
+				continue
+			}
 			return 0, backup, err
 		}
 	}

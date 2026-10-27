@@ -25,13 +25,24 @@ func checkMigrationSpace(docs, state string, entries []privateMove) error {
 			if err != nil {
 				return err
 			}
+			if !info.Mode().IsRegular() && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+				return fmt.Errorf("%w: %s", errUncopyablePrivateEntry, path)
+			}
 			bytes += 4096
 			if info.Mode().IsRegular() {
+				// stat/list permission does not imply file-read permission.
+				f, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				if err := f.Close(); err != nil {
+					return err
+				}
 				bytes += uint64(info.Size())
 			}
 			return nil
 		}); err != nil {
-			if isPrivateCache(entry.Source) && errors.Is(err, os.ErrPermission) {
+			if isPrivateCache(entry.Source) && (errors.Is(err, os.ErrPermission) || errors.Is(err, errUncopyablePrivateEntry)) {
 				// These are personal tool caches, not platform records. Move
 				// the intact tree by rename; all actual records must be backed up.
 				entries[i].UnbackedCache = true
