@@ -126,6 +126,18 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         self.assertEqual(sum('dev.meta.ai' in url for url in urls), 2)
         self.assertEqual(sum('cursor.com' in url for url in urls), 1)
 
+    def test_runtime_reuses_managed_sdks_without_a_global_npm_root(self):
+        self.assertEqual(self.run_installer().returncode, 0)
+        before = (self.root/'npm-calls').read_text()
+        installer = ROOT.parents[1]/'agent_go/internal/codingsdks/coding-sdks.cjs'
+        env = {**self.env, 'PATH': f'{self.prefix}/bin:{self.env["PATH"]}'}
+        for provider, variable in [('claude-code', 'CLAUDE_AGENT_SDK_PATH'), ('cursor-cli', 'CURSOR_SDK_PATH')]:
+            result = subprocess.run(['node', str(installer), '--prefix', str(self.root/'app-state'), '--provider', provider,
+                                     '--prefer-global', '--check-only'], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertTrue(json.loads(result.stdout)['entries'][variable].startswith(str(self.prefix/'lib/node_modules')))
+        self.assertEqual((self.root/'npm-calls').read_text(), before)
+
     def test_missing_sdk_export_repairs_that_sdk_before_native_default_launch(self):
         # PLAT-872-55/60: bundled CJS exports through default on import; a missing export still needs repair.
         self.assertEqual(self.run_installer().returncode, 0)

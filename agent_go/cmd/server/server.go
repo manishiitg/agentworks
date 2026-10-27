@@ -1711,7 +1711,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	defer stopCLIUpdates()
 	cliUpdatesEnabled := !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_ENABLED")), "false") && !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_DRY_RUN")), "true")
 	if root, err := cliupdate.DefaultRoot(); err == nil {
-		sdks, sdkErr := codingsdks.New(cliUpdateCtx, filepath.Join(filepath.Dir(root), "coding-sdks"), cliUpdatesEnabled, log.Printf)
+		sdks, sdkErr := codingsdks.New(cliUpdateCtx, filepath.Join(filepath.Dir(root), "coding-sdks"), cliUpdatesEnabled && localProductInstallation(), log.Printf)
 		if sdkErr != nil {
 			log.Printf("[CODING SDK] setup unavailable; update the app and try again")
 		} else {
