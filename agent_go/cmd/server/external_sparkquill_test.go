@@ -107,6 +107,23 @@ func sparkquillTestCall(t *testing.T, api *StreamingAPI, c *UserClaims, name str
 	api.handleExternalCall(w, adminRequest("POST", "/api/external/v1/call", string(data), c, nil))
 	return w
 }
+func TestSparkQuillSingleUserSignedInAccount(t *testing.T) {
+	f, c := newSparkQuillExternalFixture(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("DEFAULT_USER_ID", "default")
+	withMemoryUserDirectory(t, `{"users":[]}`)
+	c.Provider = "gateway"
+	if !sparkquillGrantAllowed(c, []string{"sparkquill:read"}) {
+		t.Fatal("signed-in account rejected because it differs from the anonymous default")
+	}
+	if w := sparkquillTestCall(t, f.api, c, "read_file", map[string]any{"path": "materials/lesson.md"}); w.Code != http.StatusOK {
+		t.Fatalf("signed-in account could not read its own material: %d", w.Code)
+	}
+	c.Scope = "bot_route"
+	if sparkquillGrantAllowed(c, []string{"sparkquill:read"}) {
+		t.Fatal("scoped identity obtained a family grant")
+	}
+}
 func TestSparkQuillExternalCatalogAndPlatformIsolation(t *testing.T) {
 	f, c := newSparkQuillExternalFixture(t)
 	srv := serveExternalMCP(t, f.api, c)

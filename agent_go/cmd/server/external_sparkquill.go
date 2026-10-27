@@ -60,8 +60,6 @@ func sparkquillMCPAllowed(c *UserClaims) bool {
 		if err != nil || d.byID(c.UserID) == nil || d.byID(c.UserID).Disabled {
 			return false
 		}
-	} else if c.UserID != GetDefaultUserID() {
-		return false
 	}
 	return c != nil && c.UserID != "" && c.Scope == "" && c.Provider != "bot_route" && productEnabled("sparkquill") && userAllowedProduct(c, "sparkquill") && !directoryUserIsDisabled(c)
 }
