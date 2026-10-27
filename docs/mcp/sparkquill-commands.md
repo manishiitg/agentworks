@@ -29,4 +29,3 @@ Add a topic or preferences after a command, for example
 picker also retains text around the slash. SparkQuill uses `renderCommandPrompt`
 to fill `{{context}}`, omits empty context labels for a bare command, and retains typed context. These are
 starting instructions; the agent chooses the creative structure and scope.
-
