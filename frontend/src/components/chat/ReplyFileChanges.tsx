@@ -5,11 +5,11 @@ import { useProjectMode } from '../../products/work/codeLocalFiles'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { isViewableBinaryFile, openWorkspaceFile } from '../../utils/openWorkspaceFile'
-import { DiffRenderer } from '../ui/DiffRenderer'
+import { FileDiffView } from '../workspace/FileDiffView'
 
 const FileViewer = lazy(() => import('../FileContentViewer').then(module => ({ default: module.FileContentViewerBody })))
 interface Change { path: string; status: string; added?: number; removed?: number; binary?: boolean }
-interface Comparison { changes: Change[]; snapshot: { status: string }; diff?: string; truncated?: boolean }
+interface Comparison { changes: Change[]; snapshot: { status: string } }
 const endpoint = '/api/workspace-snapshots'
 const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId })
 
@@ -58,7 +58,7 @@ function ScopedFileChanges({ reference, studio }: { reference: ReplyFileChangesR
 function SavedFile({ reference, change, view, close }: { reference: ReplyFileChangesRef; change: Change; view: 'preview' | 'diff'; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [side, setSide] = useState<'before' | 'after'>(change.status === 'D' ? 'before' : 'after')
-  const [content, setContent] = useState<{ text: string; bytes?: ArrayBuffer; truncated?: boolean } | null>(null)
+  const [content, setContent] = useState<{ text: string; bytes?: ArrayBuffer } | null>(null)
   const [error, setError] = useState('')
   const name = change.path.split('/').pop() || change.path
   const imageType = ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' } as Record<string, string>)[name.split('.').pop()?.toLowerCase() || '']
@@ -68,24 +68,20 @@ function SavedFile({ reference, change, view, close }: { reference: ReplyFileCha
     return () => { previouslyFocused?.focus() }
   }, [])
   useEffect(() => {
+    if (view === 'diff') return
     const controller = new AbortController()
     setContent(null); setError('')
-    const params = { ...paramsFor(reference), file: change.path, op: view === 'diff' ? 'snapshot_compare' : 'snapshot_file', side }
+    const params = { ...paramsFor(reference), file: change.path, op: 'snapshot_file', side }
     const load = async () => {
-      if (view === 'diff') {
-        const { data } = await api.get<Comparison>(endpoint, { params, signal: controller.signal })
-        if (!controller.signal.aborted) setContent({ text: data.diff || '', truncated: data.truncated })
-      } else {
-        const { data } = await api.get<ArrayBuffer>(endpoint, { params, responseType: 'arraybuffer', signal: controller.signal })
-        let text = ''
-        if (imageType) {
-          const bytes = new Uint8Array(data)
-          let binary = ''
-          for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192))
-          text = `data:${imageType};base64,${btoa(binary)}`
-        } else if (!change.binary && !isViewableBinaryFile(name)) text = new TextDecoder().decode(data)
-        if (!controller.signal.aborted) setContent({ text, bytes: data })
-      }
+      const { data } = await api.get<ArrayBuffer>(endpoint, { params, responseType: 'arraybuffer', signal: controller.signal })
+      let text = ''
+      if (imageType) {
+        const bytes = new Uint8Array(data)
+        let binary = ''
+        for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192))
+        text = `data:${imageType};base64,${btoa(binary)}`
+      } else if (!change.binary && !isViewableBinaryFile(name)) text = new TextDecoder().decode(data)
+      if (!controller.signal.aborted) setContent({ text, bytes: data })
     }
     void load().catch(() => { if (!controller.signal.aborted) setError('This saved version is unavailable or you no longer have access. You can open the current file instead.') })
     return () => controller.abort()
@@ -95,13 +91,13 @@ function SavedFile({ reference, change, view, close }: { reference: ReplyFileCha
     <dialog ref={dialog} onCancel={event => { event.preventDefault(); close() }} className="h-[85vh] w-[min(95vw,1100px)] max-w-none rounded-xl border border-border bg-background p-0 text-foreground backdrop:bg-black/50">
       <div className="flex h-full flex-col">
         <header className="flex flex-wrap items-center gap-3 border-b border-border p-3">
-          <h2 className="min-w-0 flex-1 break-all font-medium">{view === 'diff' ? 'Saved changes' : 'Saved version'} · {name}</h2>
+          <h2 className="min-w-0 flex-1 break-all font-medium">{view === 'diff' ? 'File comparison' : 'Saved version'} · {name}</h2>
           {view === 'preview' && <select aria-label="Saved version" value={side} onChange={event => setSide(event.target.value as 'before' | 'after')} className="rounded border border-border bg-background p-1"><option value="before" disabled={change.status === 'A'}>Before this reply</option><option value="after" disabled={change.status === 'D'}>After this reply</option></select>}
           <button type="button" className="text-xs underline" onClick={() => { void openWorkspaceFile(`${reference.workspacePath}/${change.path}`); close() }}>Open current file</button>
           <button type="button" onClick={close} className="rounded border border-border px-2 py-1">Close</button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto">
-          {error ? <p role="alert" className="p-4">{error}</p> : !content ? <p className="p-4">Loading saved version…</p> : view === 'diff' ? <><DiffRenderer content={content.text} maxHeightClassName="max-h-none" />{content.truncated && <p className="p-3 text-sm">This comparison is shortened.</p>}</> : unsupported ? <p className="p-4">Preview is not available for this file type.</p> : (
+          {view === 'diff' ? <FileDiffView workspacePath={reference.workspacePath} file={change.path} reply={reference} /> : error ? <p role="alert" className="p-4">{error}</p> : !content ? <p className="p-4">Loading saved version…</p> : unsupported ? <p className="p-4">Preview is not available for this file type.</p> : (
             <Suspense fallback={<p className="p-4">Loading preview…</p>}>
               <FileViewer source={{ selectedFile: { name, path: change.path }, fileContent: content.text, binaryFileData: content.bytes ?? null, loadingFileContent: false, showFileContent: true, setShowFileContent: show => { if (!show) close() }, openTabs: [], openFile: () => {}, closeFile: close, revealFolder: () => {} }} />
             </Suspense>

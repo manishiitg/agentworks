@@ -2,7 +2,10 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { GitChangesList } from './GitPanels'
+import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
+import { GitChangesList, GitFilePanel } from './GitPanels'
+import api from '../../services/api'
+import { FileDiffView } from './FileDiffView'
 import { FileGitContext } from './FileGitContext'
 import { createWorkspaceGitStore } from '../../stores/useWorkspaceGitStore'
 import { workspaceGitApi, type GitRepo } from '../../services/workspaceGit'
@@ -80,4 +83,41 @@ it('keeps folding usable when browser preference storage is unavailable', async 
   expect(header('docs').getAttribute('aria-expanded')).toBe('false')
   await act(async () => header('docs').click())
   expect(header('docs').getAttribute('aria-expanded')).toBe('true')
+})
+
+// PLAT-746-158 B3: a delayed saved comparison must not replace the current
+// Git view after changing scope. Nested repos use their own relative path.
+it('keeps reply and uncommitted scopes distinct and defaults Source Control to current changes', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  let finishSaved!: (value: unknown) => void
+  const saved = new Promise(resolve => { finishSaved = resolve })
+  const get = vi.spyOn(api, 'get').mockReturnValueOnce(saved as never).mockResolvedValue({ data: { diff: 'diff --git a/report.txt b/report.txt\n--- a/report.txt\n+++ b/report.txt\n@@ -1 +1 @@\n-before\n+historical reply' } } as never)
+  const currentDiff = 'diff --git a/report.txt b/report.txt\n--- a/report.txt\n+++ b/report.txt\n@@ -1 +1 @@\n-before\n+current working file'
+  const gitApi = { ...workspaceGitApi, status: vi.fn().mockResolvedValue([
+    { ...clean, root: 'app' }, { ...clean, root: 'app/deep' },
+  ]), diff: vi.fn().mockResolvedValue({ diff: currentDiff }), log: vi.fn().mockResolvedValue([]) }
+  const store = createWorkspaceGitStore(gitApi)
+  const host = document.createElement('div'); document.body.appendChild(host)
+  const root = createRoot(host)
+  cleanups.push(() => { act(() => root.unmount()); host.remove() })
+  const render = async (child: React.ReactNode) => act(async () => root.render(<ThemeProvider><FileGitContext.Provider value={{ store, api: gitApi, openFile: vi.fn(), readFile: vi.fn() }}>{child}</FileGitContext.Provider></ThemeProvider>))
+  await render(<FileDiffView workspacePath="Crew/example" file="app/deep/report.txt" reply={{ workspacePath: 'Crew/example', snapshotId: 'old-reply', sessionId: 'chat' }} />)
+  const picker = host.querySelector<HTMLSelectElement>('select[aria-label="Compare files"]')!
+  expect(picker.value).toBe('reply')
+  expect(get).toHaveBeenCalledTimes(1)
+  await act(async () => { picker.value = 'uncommitted'; picker.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(gitApi.diff).toHaveBeenCalledWith('Crew/example', 'app/deep', 'report.txt')
+  expect(host.textContent).toContain('current working file')
+  await act(async () => finishSaved({ data: { diff: 'late saved bytes' } }))
+  expect(host.textContent).not.toContain('late saved bytes')
+  expect(host.textContent).toContain('current working file')
+  await act(async () => { picker.value = 'reply'; picker.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(host.textContent).toContain('historical reply')
+  expect(get).toHaveBeenLastCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ snapshot_id: 'old-reply', file: 'app/deep/report.txt' }) }))
+  gitApi.diff.mockResolvedValue({ diff: '' })
+  await render(<GitFilePanel workspacePath="Crew/example" panel={{ kind: 'diff', repo: 'app/deep', file: 'new.txt' }} onClose={() => {}} />)
+  expect(host.textContent).toContain('Uncommitted')
+  expect(host.textContent).toContain('a new untracked file has no diff yet')
+  expect(host.querySelector('select[aria-label="Compare files"]')).toBeNull()
+  expect(get).toHaveBeenCalledTimes(2) // no guessed snapshot in Source Control
 })

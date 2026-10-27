@@ -1,3 +1,4 @@
+import { FileDiffView } from './FileDiffView'
 import { useFileGit, useFileGitStore } from './FileGitContext'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowLeft, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, FileText, Files, GitBranch, GitCommit, Loader2, Minus, Plus, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
@@ -427,10 +428,6 @@ export function GitFilePanel({ workspacePath, panel, onClose, onAsk }: { workspa
   useEffect(() => setCommit(null), [panel.kind, panel.repo, panel.file])
   const fullPath = gitFullPath(workspacePath, panel.repo, panel.file)
 
-  const diff = useAsync(
-    () => panel.kind === 'diff' ? git.api.diff(workspacePath, panel.repo, panel.file) : Promise.resolve(null),
-    [workspacePath, panel.kind, panel.repo, panel.file],
-  )
   const log = useAsync(
     () => panel.kind === 'history' ? git.api.log(workspacePath, panel.repo, panel.file) : Promise.resolve([] as GitCommitInfo[]),
     [workspacePath, panel.kind, panel.repo, panel.file],
@@ -458,10 +455,7 @@ export function GitFilePanel({ workspacePath, panel, onClose, onAsk }: { workspa
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {panel.kind === 'blame' && <GitBlamePanel workspacePath={workspacePath} repo={panel.repo} file={panel.file} onAsk={onAsk} />}
-        {panel.kind === 'diff' && (diff.loading
-          ? <Loading />
-          : diff.error ? <p className="p-4 text-sm text-destructive">{diff.error}</p>
-            : <DiffBody diff={diff.value?.diff ?? ''} truncated={diff.value?.truncated} empty="No changes against the last commit (a new untracked file has no diff yet)." />)}
+        {panel.kind === 'diff' && <FileDiffView key={fullPath} workspacePath={workspacePath} file={panel.file} repositoryFile={{ repo: panel.repo, file: panel.file }} />}
         {panel.kind === 'history' && (
           <div className="flex h-full min-h-0 flex-col">
             <div className="max-h-56 shrink-0 overflow-y-auto border-b border-border">
