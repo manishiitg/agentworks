@@ -20,7 +20,7 @@ type TmuxCommand struct {
 	ExplicitSocket bool
 	// Rest holds the arguments after the subcommand.
 	Rest []string
-	// Prefix holds the global flags before the subcommand.
+	// Prefix holds global flags and the launch setup commands before the subcommand.
 	Prefix []string
 }
 
@@ -46,6 +46,22 @@ func ParseTmux(args []string) TmuxCommand {
 		}
 		cmd.Prefix = append(cmd.Prefix, a)
 		i++
+	}
+	// PLAT-872-55: coding-agent launchers prepend server environment cleanup
+	// and history setup. Route their new-session and that setup to the same
+	// slot; treating set-option as the request ran the pane as the service.
+	setupEnd := i
+	for setupEnd+4 < len(args) && args[setupEnd+4] == ";" {
+		setup := args[setupEnd : setupEnd+4]
+		if !((setup[0] == "set-option" && setup[1] == "-g" && setup[2] == "history-limit") ||
+			(setup[0] == "set-environment" && setup[1] == "-g" && setup[2] == "-u")) {
+			break
+		}
+		setupEnd += 5
+	}
+	if setupEnd > i && setupEnd < len(args) && (args[setupEnd] == "new-session" || args[setupEnd] == "new") {
+		cmd.Prefix = append(cmd.Prefix, args[i:setupEnd]...)
+		i = setupEnd
 	}
 	if i < len(args) {
 		cmd.Subcommand = args[i]

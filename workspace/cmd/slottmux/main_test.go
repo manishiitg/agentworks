@@ -72,23 +72,26 @@ func newSessionArgs(cfg slots.ExecConfig, name, dir, script string) []string {
 // reach the same place they always did.
 func TestRunDecisionNeverReachesTmuxOnAMismatch(t *testing.T) {
 	cfg, docs := frontendEnv(t)
-	for _, tc := range cases(cfg, docs) {
-		t.Run(tc.name, func(t *testing.T) {
-			var passed, asSlotted bool
-			oldP, oldA, oldR := passthroughFn, asSlotFn, runAsSlotFn
-			t.Cleanup(func() { passthroughFn, asSlotFn, runAsSlotFn = oldP, oldA, oldR })
-			passthroughFn = func([]string) int { passed = true; return 0 }
-			asSlotFn = func(slots.ExecConfig, string, []string, []string, io.Writer, io.Writer) int {
-				asSlotted = true
-				return 0
-			}
-			runAsSlotFn = func(slots.ExecConfig, string, []string) int { return 0 }
-			code := run(newSessionArgs(cfg, "claude-test", tc.dir, tc.script))
-			if code != tc.wantExit || passed != tc.wantPass || asSlotted != tc.wantAsSlot {
-				t.Fatalf("exit=%d passthrough=%v asSlot=%v; want exit=%d passthrough=%v asSlot=%v", code, passed, asSlotted, tc.wantExit, tc.wantPass, tc.wantAsSlot)
-			}
-		})
+	for _, preamble := range [][]string{nil, {"set-environment", "-g", "-u", "SECRET_EXAMPLE", ";", "set-option", "-g", "history-limit", "50000", ";"}} {
+		for _, tc := range cases(cfg, docs) {
+			t.Run(tc.name, func(t *testing.T) {
+				var passed, asSlotted bool
+				oldP, oldA, oldR := passthroughFn, asSlotFn, runAsSlotFn
+				t.Cleanup(func() { passthroughFn, asSlotFn, runAsSlotFn = oldP, oldA, oldR })
+				passthroughFn = func([]string) int { passed = true; return 0 }
+				asSlotFn = func(slots.ExecConfig, string, []string, []string, io.Writer, io.Writer) int {
+					asSlotted = true
+					return 0
+				}
+				runAsSlotFn = func(slots.ExecConfig, string, []string) int { return 0 }
+				code := run(append(append([]string(nil), preamble...), newSessionArgs(cfg, "claude-test", tc.dir, tc.script)...))
+				if code != tc.wantExit || passed != tc.wantPass || asSlotted != tc.wantAsSlot {
+					t.Fatalf("exit=%d passthrough=%v asSlot=%v; want exit=%d passthrough=%v asSlot=%v", code, passed, asSlotted, tc.wantExit, tc.wantPass, tc.wantAsSlot)
+				}
+			})
+		}
 	}
+
 }
 
 // A refused Muse launch (the branch that logs and passes through) must also stop.
