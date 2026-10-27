@@ -33,12 +33,12 @@ export function VaultSlackBots() {
   {notice&&<p role="status" className="text-xs">{notice}</p>}
   {!data&&!error&&<p className="text-xs">Loading bots…</p>}
   {data?.bots.filter(item=>!item.shared).map(item=><div key={item.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border p-3 text-xs">
-   <div className="min-w-0 flex-1"><p className="break-all font-medium">{slackBotName(item)}</p><p className="mt-1 text-muted-foreground">{item.identity?.workspace ? `${item.identity.workspace} · ` : ''}{!item.configured?'Needs setup':item.enabled?'Saved':'Paused'} · Managed by {item.scope_label}</p></div>
+   <div className="min-w-0 flex-1"><p className="break-all font-medium">{slackBotName(item)}</p>{item.name !== 'Default' && item.name !== slackBotName(item) && <p className="mt-1 text-muted-foreground">Saved as {item.name}</p>}<p className="mt-1 text-muted-foreground">{item.identity?.workspace ? `${item.identity.workspace} · ` : ''}{!item.configured?'Needs setup':item.enabled?'Saved':'Paused'} · Managed by {item.scope_label}</p></div>
    {item.can_manage&&<><Button variant="outline" size="xs" disabled={busy} onClick={()=>edit(item)}>Change bot</Button><Button variant="ghost" size="xs" disabled={busy} onClick={()=>void act('test',item)}>Test</Button><Button variant="ghost" size="xs" disabled={busy} onClick={()=>void act('remove',item)}>Remove</Button></>}
   </div>)}
   {data&&!data.bots.some(item=>!item.shared)&&<p className="text-xs text-muted-foreground">No saved bot yet.{!data.scopes.length&&' Create a Crew or Goal first to manage its bot.'}</p>}
   {editing&&<form aria-label="Save Slack bot" className="space-y-3 rounded-md border border-border p-3 text-xs" onSubmit={event=>{event.preventDefault();void save()}}>
-   <label className="block">Bot name<Input aria-label="Bot name" value={name} onChange={event=>setName(event.target.value)}/></label>
+   <label className="block">Label in AgentWorks<Input aria-label="Bot label" value={name} onChange={event=>setName(event.target.value)}/></label>
    {editing==='new'&&<label className="flex flex-col gap-1.5">Managed by<select aria-label="Bot management scope" className="h-9 w-full rounded-md border border-border bg-background px-2" value={scope} onChange={event=>setScope(event.target.value)}><option value="" disabled>Choose a Crew or Goal you own</option>{data?.scopes.map(item=><option key={item.workspace_path} value={item.workspace_path}>{item.label}</option>)}</select><span className="text-muted-foreground">Its existing owners manage this bot. It can be selected by other items they manage.</span></label>}
    <SecretField label="Bot token" value={bot} onChange={setBot} placeholder={editing==='new'?'xoxb-…':'Leave blank to keep the saved token'}/>
    <SecretField label="App token" value={app} onChange={setApp} placeholder={editing==='new'?'xapp-…':'Leave blank to keep the saved token'}/>

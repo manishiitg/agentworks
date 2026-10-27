@@ -17,6 +17,7 @@ export default function SlackAccountsPanel({ workspacePath, noun = 'Crew', tabId
  const [busy, setBusy] = useState(false)
  const [error, setError] = useState('')
  const [notice, setNotice] = useState('')
+ const admin = useAuthStore(state => state.user?.is_admin === true)
  const multiUser = useAuthStore(state => state.isMultiUserMode)
  const refresh = useCallback(async () => {
   try {
@@ -57,7 +58,7 @@ export default function SlackAccountsPanel({ workspacePath, noun = 'Crew', tabId
     </div>
    })}
    {!!accounts.length && saved.can_connect && !accounts.some(account => account.mine) && saved.sign_in_ready !== false && <Button size="sm" variant="outline" disabled={busy} onClick={() => void act('connect')}>Connect my Slack</Button>}
-   {saved.sign_in_ready === false && <p className="text-xs text-muted-foreground">Slack sign-in isn’t set up {multiUser ? 'for this workspace' : 'on this device'}. An administrator can set it up below.</p>}
+   {saved.sign_in_ready === false && <p className="text-xs text-muted-foreground">Slack sign-in isn’t set up {multiUser ? 'for this workspace' : 'on this device'}. {admin ? 'Set it up below.' : 'Ask an administrator to set up Slack sign-in.'}</p>}
   </>}
   <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0"/>Only you can read or search your Slack. People using this {noun} can send messages as you through it.</p>
   <CompanySignInSetup provider="Slack" tabId={tabId}/>
