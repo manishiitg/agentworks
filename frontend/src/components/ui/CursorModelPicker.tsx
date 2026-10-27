@@ -59,7 +59,11 @@ export function CursorModelPicker({ models, selectedModelId, onSelect, className
         />
       </div>
       <div className="max-h-96 overflow-y-auto rounded-md border border-border">
-        {makers.length === 0 && <p className="px-3 py-4 text-center text-sm text-muted-foreground">No models match "{search}"</p>}
+        {makers.length === 0 && (
+          <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+            {search.trim() ? `No models match "${search}"` : 'Cursor listed no models for this account. Check the account in Providers, then refresh.'}
+          </p>
+        )}
         {makers.map(([maker, families]) => (
           <div key={maker}>
             <p className="bg-muted/30 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{maker}</p>
