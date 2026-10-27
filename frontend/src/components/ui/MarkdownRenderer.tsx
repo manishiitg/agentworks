@@ -1004,11 +1004,11 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     return processed
   }, [basePath, content, disablePathLinking])
 
-  const renderPre = useCallback(({ children }: { children?: React.ReactNode }) => {
+  const renderPre = useCallback(({ children, node }: { children?: React.ReactNode; node?: { position?: { start?: { offset?: number } } } }) => {
     const codeClass = React.isValidElement<{ className?: string }>(children) ? children.props.className ?? '' : ''
     const text = codeBlockText(children).replace(/\n$/, '')
     if (chatElements && codeClass.split(/\s+/).includes('language-chat-ui')) {
-      return <ChatElementBlock source={text} stream={chatElementStream} renderMarkdown={body => (
+      return <ChatElementBlock source={text} disclosureKey={node?.position?.start?.offset} stream={chatElementStream} renderMarkdown={body => (
         <MarkdownRenderer content={body} className={className} untrustedContent={untrustedContent}
           disablePathLinking={disablePathLinking} compactImages={compactImages} copyableCode={copyableCode}
           basePath={basePath} onLinkClick={onLinkClick} workspaceLinkHref={workspaceLinkHref}

@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { ChatElementDisclosureContext } from './ChatElement'
 
 vi.mock('../../stores/useWorkspaceStore', () => ({
   useWorkspaceStore: (selector: (state: Record<string, unknown>) => unknown) => selector({}),
@@ -128,11 +129,14 @@ it('progressively renders complete records without raw JSON and keeps the widget
   await act(async () => root.unmount())
 })
 
-it('streams ordered timeline records and escaped details without resetting disclosure', async () => {
+it('keeps an opened streaming disclosure through the committed-message remount (PLAT-750-80)', async () => {
   const container = document.createElement('div')
   const root = createRoot(container)
-  const update = async (source: string) => {
-    await act(async () => root.render(<MarkdownRenderer content={'```chat-ui\n' + source} chatElements chatElementStream="progressive" />))
+  const values = new Map<string, boolean>()
+  const update = async (source: string, message = 'live', complete = false) => {
+    await act(async () => root.render(<ChatElementDisclosureContext.Provider value={{ values, scope: 'user-1:reply:0' }}>
+      <MarkdownRenderer key={message} content={'```chat-ui\n' + source} chatElements chatElementStream={complete ? undefined : 'progressive'} />
+    </ChatElementDisclosureContext.Provider>))
   }
   const timeline = '{"type":"timeline","title":"History","items":[{"when":"09:00","title":"Received"},'
   await update(timeline + '{"when":"10:00","title":"Work')
@@ -142,11 +146,21 @@ it('streams ordered timeline records and escaped details without resetting discl
   const details = '{"type":"details","title":"Evidence","body":"'
   await update(details + 'First **fact**')
   const disclosure = container.querySelector('details[data-chat-element="details"]') as HTMLDetailsElement
-  disclosure.open = true
+  await act(async () => {
+    disclosure.open = true
+    disclosure.dispatchEvent(new Event('toggle'))
+  })
   await update(details + 'First **fact**\\nSecond \\u263')
   expect(container.querySelector('details[data-chat-element="details"]')).toBe(disclosure)
   expect(disclosure.open).toBe(true)
   expect(disclosure.textContent).toContain('Second')
   expect(container.querySelector('pre, code')).toBeNull()
+  await update(details + 'First **fact**\\nSecond fact"}', 'canonical', true)
+  const committed = container.querySelector('details[data-chat-element="details"]') as HTMLDetailsElement
+  expect(committed).not.toBe(disclosure)
+  expect(committed.open).toBe(true)
+  expect(committed.textContent).toContain('Second fact')
+  await update(JSON.stringify({ type: 'details', title: 'Different evidence', body: 'Another block' }), 'different', true)
+  expect(container.querySelector<HTMLDetailsElement>('details')?.open).toBe(false)
   await act(async () => root.unmount())
 })

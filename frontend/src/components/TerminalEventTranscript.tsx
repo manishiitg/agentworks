@@ -15,6 +15,7 @@ import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
 import { EventDispatcher } from './events/EventDispatcher'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
+import { ChatElementDisclosureContext } from './ui/ChatElement'
 import { normalizeProductChatFailure } from '../platform/chat/productChatFailure'
 import {
   buildTranscriptItems,
@@ -464,7 +465,7 @@ function useDisclosure(key: string, initial = false) {
 // Where an item sits in its agent turn. A turn is everything between two user
 // messages: tool batches, thoughts, replies, presentation and activity rows.
 type TurnDone = { key: string; durationNs: number; at: string }
-type TurnSlot = { agent: boolean; first: boolean; last: boolean; header?: PollingEvent; showTime: boolean; done?: TurnDone }
+type TurnSlot = { widgetScope?: string; agent: boolean; first: boolean; last: boolean; header?: PollingEvent; showTime: boolean; done?: TurnDone }
 
 // Agent turns share one clock: the first turn, and any turn more than this
 // long after the previous labelled one. User rows always carry their own
@@ -486,6 +487,8 @@ function isUserItem(item: TranscriptRenderItem | undefined): boolean {
 function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
   const slots: TurnSlot[] = []
   let inTurn = false
+  let userKey = 'initial'
+  let replyIndex = 0
   let lastLabelled = NaN
   const decideTime = (item: TranscriptRenderItem): boolean => {
     const at = itemTime(item)
@@ -497,6 +500,8 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
   data.forEach((item, index) => {
     if (isUserItem(item)) {
       inTurn = false
+      userKey = item.key
+      replyIndex = 0
       // User rows always show their time; still advance the label clock so
       // agent-turn grouping behaves exactly as before.
       decideTime(item)
@@ -505,8 +510,12 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
     }
     const first = !inTurn
     inTurn = true
+    // A live message and its canonical reply occupy the same reply position.
+    // Event/virtual-list keys differ, but the reader's disclosure choice does not.
+    const widgetScope = `${userKey}:reply:${replyIndex}`
+    if (item.kind === 'event' && isAgentResponseEvent(item.event)) replyIndex++
     const next = data[index + 1]
-    slots.push({ agent: true, first, last: !next || isUserItem(next), showTime: first && decideTime(item) })
+    slots.push({ widgetScope, agent: true, first, last: !next || isUserItem(next), showTime: first && decideTime(item) })
   })
   // The header carries the turn's reply metadata (turn, duration, time): the
   // turn's first reply, or its first event while there is no reply yet.
@@ -1084,6 +1093,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   readingKey,
 }) => {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
+  const disclosureValues = useContext(DisclosureContext)
   const keptKinds = productRows?.kinds.join('\u0000') ?? ''
   const keepInteractionKinds = useMemo(() => new Set(keptKinds ? keptKinds.split('\u0000') : []), [keptKinds])
   const renderInteraction = productRows?.render
@@ -1323,7 +1333,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             <div data-transcript-key={item.key} data-testid={testId} className="flow-root px-2">
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
                 {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
-                {body}
+                <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>
+                  {body}
+                </ChatElementDisclosureContext.Provider>
                 {slot.last && slot.done && !(workingNow && index === turnSlots.length - 1) && <TurnDoneSummary done={slot.done} />}
               </div>
             </div>

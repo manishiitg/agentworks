@@ -1,6 +1,9 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 import { parseChatElement, type ChatElement as ElementSpec } from './chatElementSpec'
 import { parseStreamingChatElement } from './chatElementStream'
+
+// Reuse the transcript's reading state when a live reply becomes its saved row.
+export const ChatElementDisclosureContext = createContext<{ values: Map<string, boolean>; scope: string } | null>(null)
 
 const frame = 'not-prose my-4 min-w-0 max-w-xl rounded-xl border border-border bg-muted/20 text-foreground'
 const summary = 'cursor-pointer break-words px-4 py-3 text-sm font-medium marker:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring'
@@ -57,10 +60,14 @@ function SmallChart({ spec }: { spec: Extract<ElementSpec, { type: 'chart' }> })
   )
 }
 
-export function ChatElement({ spec, renderMarkdown }: { spec: ElementSpec; renderMarkdown: (body: string) => ReactNode }) {
+export function ChatElement({ spec, renderMarkdown, disclosureKey }: { spec: ElementSpec; renderMarkdown: (body: string) => ReactNode; disclosureKey?: number }) {
+  const disclosure = useContext(ChatElementDisclosureContext)
+  const key = disclosure && disclosureKey !== undefined
+    ? `${disclosure.scope}:widget:${disclosureKey}:${spec.type}:${spec.title}` : undefined
   if (spec.type === 'chart') return <SmallChart spec={spec} />
   if (spec.type === 'details') return (
-    <details className={frame} data-chat-element="details">
+    <details className={frame} data-chat-element="details" open={key ? disclosure?.values.get(key) : undefined}
+      onToggle={event => { if (key) disclosure?.values.set(key, event.currentTarget.open) }}>
       <summary className={summary}>{spec.title}</summary>
       <div className="min-w-0 border-t border-border px-4 py-3">{renderMarkdown(spec.body)}</div>
     </details>
@@ -82,13 +89,14 @@ export function ChatElement({ spec, renderMarkdown }: { spec: ElementSpec; rende
 
 export type ChatElementStream = 'progressive' | 'pending'
 
-export function ChatElementBlock({ source, stream, renderMarkdown }: {
+export function ChatElementBlock({ source, stream, renderMarkdown, disclosureKey }: {
   source: string
+  disclosureKey?: number
   stream?: ChatElementStream
   renderMarkdown: (body: string) => ReactNode
 }) {
   const spec = stream === 'progressive' ? parseStreamingChatElement(source) : stream ? null : parseChatElement(source)
-  if (spec) return <ChatElement spec={spec} renderMarkdown={renderMarkdown} />
+  if (spec) return <ChatElement spec={spec} renderMarkdown={renderMarkdown} disclosureKey={disclosureKey} />
   if (stream) return <div className={`${frame} px-4 py-3 text-sm text-muted-foreground`} role="status" data-chat-element-pending>Preparing visual…</div>
   return <details className={frame} data-chat-element-error>
     <summary className={summary}>Couldn’t display this visual · View source</summary>
