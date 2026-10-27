@@ -98,7 +98,7 @@ function ExtensionVersionLine({ status, download }: { status: ChromeExtensionSta
   if (!outdated) return <p className="mt-1 text-xs text-muted-foreground">Browser Bridge {installed} · up to date</p>
   return <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
     <p className="font-medium text-amber-700 dark:text-amber-300">Browser Bridge{installed ? ` ${installed}` : ''} · update available</p>
-    <p className="mt-1 leading-relaxed text-muted-foreground">Download the new Browser Bridge from this page.</p>
+    <p className="mt-1 leading-relaxed text-muted-foreground">Download it, unzip it over your Browser Bridge folder, then press Reload on Browser Bridge in your browser’s Extensions page.</p>
     <Button asChild size="xs" variant="outline" className="mt-2"><a href={updateURL} download><Download />Download Browser Bridge</a></Button>
   </div>
 }

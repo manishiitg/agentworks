@@ -65,5 +65,5 @@ func DownloadURL() string {
 }
 
 func ExtensionUpdateMessage() string {
-	return "Download the new Browser Bridge from this page: " + DownloadURL()
+	return "Download the new Browser Bridge: " + DownloadURL() + ". Unzip it over your Browser Bridge folder, then press Reload on Browser Bridge in your browser's Extensions page."
 }

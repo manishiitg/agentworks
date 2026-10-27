@@ -385,6 +385,9 @@ func (api *StreamingAPI) handlePlaywrightViewer(w http.ResponseWriter, r *http.R
 			case <-s.done:
 				return
 			default:
+				if strings.HasPrefix(message.Type, "input_") {
+					log.Printf("[BROWSER_INPUT] event=result session=%q user=%q kind=%s transport=playwright result=dropped reason=input_queue_full", id, GetUserIDFromContext(r.Context()), message.Type)
+				}
 				select {
 				case errors <- struct{}{}:
 				default:
