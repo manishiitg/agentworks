@@ -57,7 +57,8 @@ func validateWorkflowDependencies(ctx context.Context, session *WorkshopChatSess
 		// workspace_browser, human, workflow, …) appear in workflow
 		// selected_servers but are provided by the app, not the MCP config — so
 		// they're always available and must not be validated as MCP servers.
-		if common.IsBuiltinToolCategory(server) {
+		// NO_SERVERS is the explicit "nothing selected" marker, not a server.
+		if strings.EqualFold(server, mcpclient.NoServers) || common.IsBuiltinToolCategory(server) {
 			return
 		}
 		if _, ok := required[server]; !ok {

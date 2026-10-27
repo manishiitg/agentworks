@@ -316,6 +316,15 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		s.Tools = kept
 		changed = settingsWith(changed, "mcp_servers")
 	}
+	if slices.Contains(changed, "mcp_servers") {
+		// NO_SERVERS means "nothing selected", so it stands alone: attaching a server drops it and
+		// detaching the last one restores it.
+		if real := slices.DeleteFunc(slices.Clone(s.Servers), func(name string) bool { return name == "NO_SERVERS" }); len(real) > 0 {
+			s.Servers = real
+		} else {
+			s.Servers = []string{"NO_SERVERS"}
+		}
+	}
 	if adds := externalSettingsList(args, "tools", "add"); len(adds) > 0 {
 		for _, tool := range adds {
 			server, toolName, ok := strings.Cut(tool, ":")
