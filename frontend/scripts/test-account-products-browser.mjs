@@ -23,12 +23,14 @@ try {
     assert.equal(await options.count(), 8)
     const boxes = await options.evaluateAll(items => items.map(item => {
       const r = item.getBoundingClientRect(), icon = item.querySelector('svg').getBoundingClientRect()
-      return { x: r.x, y: r.y, right: r.right, width: r.width, iconX: icon.x, iconWidth: icon.width, overflow: item.scrollWidth > item.clientWidth }
+      const label = item.lastElementChild
+      return { x: r.x, y: r.y, right: r.right, width: r.width, iconX: icon.x, iconWidth: icon.width, overflow: item.scrollWidth > item.clientWidth, truncated: label.scrollWidth > label.clientWidth }
     }))
     assert.equal(boxes[0].y, boxes[2].y, `${name}: three columns`)
     for (const box of boxes) {
       assert.ok(Math.abs(box.iconX + box.iconWidth / 2 - (box.x + box.width / 2)) <= 1, `${name}: centered icon`)
       assert.equal(box.overflow, false, `${name}: tile text fits`)
+      assert.equal(box.truncated, false, `${name}: product names remain readable`)
     }
     const bounds = await menu.boundingBox()
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width && bounds.y >= 0 && bounds.y + bounds.height <= height, `${name}: popup stays in viewport`)
