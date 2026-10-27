@@ -16,7 +16,7 @@ vi.mock('../workflow/bots/SlackBotWhere', () => ({ SlackBotWhere: () => null }))
 vi.mock('../workflow/bots/SlackSlugsSection', () => ({ SlackSlugsSection: () => null, slackErrorText: (_error: unknown, message: string) => message }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-it('keeps the bot form readable and preserves server selection restrictions and direct bot management', async () => {
+it('keeps the bot form readable and preserves server selection restrictions and direct bot management without a duplicate chat action', async () => {
   api.get.mockResolvedValue({ data: { bots: [{ id: 'one', name: 'Team bot' }], selected_id: '', can_select: false, allow_bots: true } })
   const host = document.createElement('div'), root = createRoot(host)
   try {
@@ -26,8 +26,8 @@ it('keeps the bot form readable and preserves server selection restrictions and 
     expect(host.textContent).toContain('with their existing access')
     expect(host.querySelector<HTMLSelectElement>('[aria-label="Saved Slack bot"]')?.disabled).toBe(true)
     expect(host.textContent).not.toContain('Personal account controls')
-    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Manage bots in chat')!.click())
-    expect(api.draft).toHaveBeenCalledWith(expect.stringContaining('manage my Slack bot'))
+    expect(host.textContent).not.toContain('Manage bots in chat')
+    expect(host.querySelector('[data-bot-editor]')).not.toBeNull()
     expect(api.post).not.toHaveBeenCalled()
     api.get.mockResolvedValue({ data: { bots: [], selected_id: '', allow_bots: false } })
     await act(async () => root.render(<ProductSlackPanel key="other" workspacePath="Crew/other" section="bot" />))

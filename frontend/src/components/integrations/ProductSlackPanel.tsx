@@ -4,7 +4,6 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 import { useAuthStore } from '../../stores/useAuthStore'
 import SlackAdminPanel from '../admin/SlackAdminPanel'
 import { VaultSlackBots } from './VaultSlackBots'
-import { useVaultSetupDraft } from './useVaultSetupDraft'
 import api, { agentApi } from '../../services/api'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -13,7 +12,6 @@ import { SlackBotWhere } from '../workflow/bots/SlackBotWhere'
 import { SlackSlugsSection, slackErrorText } from '../workflow/bots/SlackSlugsSection'
 import { SlackChecksView } from '../workflow/bots/SlackAppSetupSteps'
 import SlackAccountsPanel from './SlackAccountsPanel'
-import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 
 export interface VaultSlackBot { id: string; name: string; configured: boolean; enabled: boolean; can_manage: boolean; scope_label: string; shared: boolean; identity?: { name?: string; workspace?: string; verified: boolean } }
 export interface SlackBotState {
@@ -40,13 +38,12 @@ export function ProductSlackPanel({ workspacePath, noun = 'Crew', allowBots = tr
    {(['account', 'bot'] as const).map(value => <button key={value} type="button" role="tab" id={`${id}-${value}-tab`} aria-controls={`${id}-${value}`} aria-selected={current === value} onClick={() => setActive(value)} className={`min-h-11 border-b-2 px-3 py-2 text-sm ${current === value ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>{value === 'account' ? 'My Slack account' : 'Slack bot'}</button>)}
   </div>}
   <section key={`${server}:${actor}:${workspacePath}:${current}`} role={allowBots ? 'tabpanel' : undefined} id={`${id}-${current}`} aria-labelledby={allowBots ? `${id}-${current}-tab` : undefined}>
-   {current === 'account' ? <SlackAccountsPanel workspacePath={workspacePath} noun={noun} tabId={tabId}/> : <SlackBotChoice workspacePath={workspacePath} noun={noun} tabId={tabId}/>}
+   {current === 'account' ? <SlackAccountsPanel workspacePath={workspacePath} noun={noun} tabId={tabId}/> : <SlackBotChoice workspacePath={workspacePath} noun={noun}/>}
   </section>
  </div>
 }
 
-export function SlackBotChoice({ workspacePath, noun = 'Crew', tabId }: { workspacePath: string; noun?: string; tabId?: string }) {
- const setup = useVaultSetupDraft(tabId)
+export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath: string; noun?: string }) {
  const admin = useAuthStore(state => state.user?.is_admin === true)
  const multiUser = useAuthStore(state => state.isMultiUserMode)
  const [data, setData] = useState<SlackBotState | null>(null)
@@ -69,7 +66,7 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew', tabId }: { worksp
  }
  return <section aria-label={`Let people talk to this ${noun}`} className="space-y-5 text-sm">
   <div><h3 className="text-base font-semibold">Let people talk to this {noun} in Slack</h3><p className="mt-1 text-sm text-muted-foreground">People message the bot. Replies come from the bot, with their existing access.</p></div>
-  {(error || setup.error) && <p role="alert" className="text-destructive">{error || setup.error} <button className="underline" onClick={() => void refresh()}>Retry</button></p>}
+  {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => void refresh()}>Retry</button></p>}
   {!data && !error ? <p role="status" className="text-muted-foreground">Loading bots…</p> : data && <>
    {data.bots.length > 0 && (!chosen || data.bots.length > 1) && <label className="flex flex-col gap-2 font-medium">Slack bot<select aria-label="Saved Slack bot" className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm font-normal" disabled={!data.can_select || busy} value={data.selected_id} onChange={event => void select(event.target.value)}>
     <option value="" disabled>Choose a saved Slack bot</option>
@@ -91,6 +88,5 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew', tabId }: { worksp
   </>}
   <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">Add or manage bots</summary><div className="mt-4"><VaultSlackBots/></div></details>
   {admin && <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">{multiUser ? 'Company Slack bot setup' : 'Shared Slack bot setup'}</summary><div className="mt-4"><SlackAdminPanel/></div></details>}
-  <WorkspacePanelActions><Button size="sm" variant="outline" onClick={() => void setup.open('Help me add, reconnect or manage my Slack bot through the existing bot tools. Inspect saved bots first, ask what I want to change, and never repeat token values.')}>Manage bots in chat</Button></WorkspacePanelActions>
  </section>
 }
