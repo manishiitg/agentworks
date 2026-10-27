@@ -1,5 +1,4 @@
 import { WorkspaceSplitDivider } from '../../components/workspace/WorkspaceSplitDivider'
-import { DashboardLayoutControls } from '../../components/workflow/DashboardLayoutControls'
 import { useParentSplit } from './platform/useParentSplit'
 import { ActivityDescription } from './ActivityDescription'
 import { isSparkQuillPreviewPath } from './platform/mcpPreview'
@@ -2137,8 +2136,6 @@ export default function LearningApp() {
           className={`fl-shell${parentSplit.resizing ? ' is-resizing' : ''}`}
           data-rail={chatsRailOpen ? 'open' : 'closed'}
           data-drawer="open"
-          data-chat={parentSplit.chatOpen ? 'open' : 'closed'}
-          data-preview-device={parentSplit.device}
           style={{ ['--parent-side-w' as string]: `${Math.round(parentSplit.workspaceWidth)}px` }}
         >
           <aside className="fl-rail" aria-label="Chats" aria-hidden={!chatsRailOpen}>
@@ -2442,18 +2439,14 @@ export default function LearningApp() {
               />
             )}
           </section>
-          {parentSplit.chatOpen && <WorkspaceSplitDivider
+          <WorkspaceSplitDivider
             className="fl-parent-split-rail fl-platform-ui"
             ratio={parentSplit.ratio}
             onPointerDown={parentSplit.onPointerDown}
             onStep={parentSplit.onStep}
-          />}
-          {!parentSplit.chatOpen && <button className="fl-reopen-pane fl-reopen-chat" type="button" aria-label="Show chat panel" onClick={() => parentSplit.setChatOpen(true)}><PanelLeftOpen size={17} /> Chat</button>}
+          />
 
           <aside className="fl-drawer" aria-label="Learning workspace">
-            <div className="fl-workspace-layout fl-platform-ui">
-              <DashboardLayoutControls width={100 * (1 - parentSplit.ratio)} onWidthChange={width => parentSplit.onStep(1 - width / 100 - parentSplit.ratio)} previewDevice={parentSplit.device} onPreviewDeviceChange={parentSplit.changeDevice} chatVisible={parentSplit.chatOpen} onToggleChat={() => parentSplit.setChatOpen(!parentSplit.chatOpen)} />
-            </div>
             {!((drawerTab === 'files' || drawerTab === 'allfiles' || drawerTab === 'uploaded') && viewerPath) && (
               <div className="fl-drawer-tabs" role="tablist" aria-label="Workspace views">
                 <button role="tab" aria-selected={drawerTab === 'progress'} className={drawerTab === 'progress' ? 'is-active' : ''} type="button" onClick={() => setDrawerTab('progress')}>Progress</button>

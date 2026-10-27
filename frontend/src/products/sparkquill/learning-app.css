@@ -215,8 +215,7 @@
 .fl-shell { --rail-w: 0px; position: relative; display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr) auto var(--parent-side-w, 592px); height: 100vh; height: 100dvh; background: var(--cream); transition: grid-template-columns .2s ease; }
 .fl-shell[data-rail="open"] { --rail-w: 272px; }
 .fl-shell[data-drawer="closed"] { grid-template-columns: var(--rail-w) minmax(0, 1fr) 0 0; }
-.fl-shell[data-chat="closed"] { grid-template-columns: var(--rail-w) 0 0 minmax(0, 1fr); }
-.fl-shell[data-chat="closed"] > .fl-center, .fl-shell[data-drawer="closed"] > .fl-drawer { display: none; }
+.fl-shell[data-drawer="closed"] > .fl-drawer { display: none; }
 .fl-shell > .fl-rail { grid-column: 1; grid-row: 1; }
 .fl-shell > .fl-center { grid-column: 2; grid-row: 1; }
 .fl-shell > .fl-drawer { grid-column: 4; grid-row: 1; }
@@ -224,12 +223,8 @@
 .fl-shell.is-resizing iframe { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .fl-shell { transition: none; } }
 
-/* The platform divider supplies the drag grip; sizing uses the shared layout menu. */
+/* The platform divider supplies the drag grip between chat and workspace. */
 .fl-shell > .fl-parent-split-rail { display: block; grid-column: 3; grid-row: 1; }
-.fl-reopen-pane { position: absolute; top: 50%; z-index: 35; display: flex; align-items: center; gap: 6px; padding: 10px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--heading); cursor: pointer; }
-.fl-reopen-chat { left: var(--rail-w); }
-.fl-reopen-workspace { right: 0; }
-.fl-shell[data-preview-device="mobile"] :is(.fl-map-frame, .fl-viewer-frame) { max-width: 480px; align-self: center; }
 
 /* Left conversation/history rail */
 .fl-rail { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--navy); color: #cddaf0; font-family: var(--font-ui); }
@@ -1076,8 +1071,8 @@ audio.fl-viewer-media { background: var(--surface); }
   .learning-stage { padding: 16px 20px 40px; }
   .learning-panel { margin-top: 35px; }
   .fl-shell, .fl-shell[data-rail], .fl-shell[data-drawer] { grid-template-columns: minmax(0, 1fr); }
-  .fl-rail, .fl-drawer, .fl-shell > .fl-parent-split-rail, .fl-reopen-pane { display: none; }
-  .fl-shell > .fl-center, .fl-shell[data-chat="closed"] > .fl-center { display: flex; grid-column: 1; }
+  .fl-rail, .fl-drawer, .fl-shell > .fl-parent-split-rail { display: none; }
+  .fl-shell > .fl-center { display: flex; grid-column: 1; }
 }
 
 @media (max-width: 600px) {
@@ -1283,6 +1278,3 @@ audio.fl-viewer-media { background: var(--surface); }
 /* Model choices live in parent Settings for both learning roles. */
 .fl-settings-model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: 14px; }
 .fl-settings-models .model-reasoning-panel { left: auto; right: 0; }
-
-.fl-workspace-layout { display: flex; justify-content: flex-end; padding: 6px 12px; border-bottom: 1px solid var(--line); }
-@media (max-width: 830px) { .fl-workspace-layout { display: none; } }

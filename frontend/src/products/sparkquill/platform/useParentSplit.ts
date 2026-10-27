@@ -1,21 +1,16 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { usePointerDrag } from '../../../hooks/usePointerDrag'
-import {
-  readReportPreviewPreference, writeReportPreviewPreference, writeWorkflowSplitPreference,
-  REPORT_PREVIEW_PREFERENCE_CHANGED_EVENT, type ReportPreviewDevice,
-} from '../../../utils/reportPreviewPreference'
+import { writeWorkflowSplitPreference } from '../../../utils/reportPreviewPreference'
 import { parentWorkspaceWidth, readParentSplitRatio, SPARKQUILL_PREVIEW_SCOPE } from './parentSplit'
 
 export function useParentSplit(active: boolean, railOpen: boolean, windowWidth: number) {
   const bodyRef = useRef<HTMLDivElement>(null)
   const [bodyWidth, setBodyWidth] = useState(windowWidth)
   const available = Math.max(0, bodyWidth - (railOpen ? 272 : 0))
-  const [device, setDevice] = useState(() => readReportPreviewPreference(SPARKQUILL_PREVIEW_SCOPE))
-  const [ratio, setRatio] = useState(() => readParentSplitRatio(device))
+  const [ratio, setRatio] = useState(readParentSplitRatio)
   const [resizing, setResizing] = useState(false)
-  const [chatOpen, setChatOpen] = useState(true)
   const { start, stop } = usePointerDrag()
-  const workspaceWidth = parentWorkspaceWidth(available, device, ratio)
+  const workspaceWidth = parentWorkspaceWidth(available, ratio)
   const shownRatio = available > 0 ? 1 - workspaceWidth / available : 0.5
 
   useEffect(() => {
@@ -28,31 +23,19 @@ export function useParentSplit(active: boolean, railOpen: boolean, windowWidth: 
     return () => observer.disconnect()
   }, [active, windowWidth])
   useEffect(() => {
-    const sync = () => {
-      const next = readReportPreviewPreference(SPARKQUILL_PREVIEW_SCOPE)
-      setDevice(next)
-      setRatio(readParentSplitRatio(next))
-    }
-    window.addEventListener(REPORT_PREVIEW_PREFERENCE_CHANGED_EVENT, sync)
+    const sync = () => setRatio(readParentSplitRatio())
     window.addEventListener('storage', sync)
     return () => {
-      window.removeEventListener(REPORT_PREVIEW_PREFERENCE_CHANGED_EVENT, sync)
       window.removeEventListener('storage', sync)
     }
-  }, [available])
+  }, [])
   useEffect(() => { if (!active) { stop(); setResizing(false) } }, [active, stop])
 
   const commit = (next: number) => {
-    const width = parentWorkspaceWidth(available, device, next)
+    const width = parentWorkspaceWidth(available, next)
     const clamped = available > 0 ? 1 - width / available : 0.5
     setRatio(clamped)
-    writeWorkflowSplitPreference(SPARKQUILL_PREVIEW_SCOPE, clamped, device)
-  }
-  const changeDevice = (next: ReportPreviewDevice) => {
-    stop(); setResizing(false)
-    setDevice(next)
-    setRatio(readParentSplitRatio(next))
-    writeReportPreviewPreference(SPARKQUILL_PREVIEW_SCOPE, next)
+    writeWorkflowSplitPreference(SPARKQUILL_PREVIEW_SCOPE, clamped)
   }
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     const body = bodyRef.current
@@ -61,17 +44,17 @@ export function useParentSplit(active: boolean, railOpen: boolean, windowWidth: 
     let last = shownRatio
     const started = start(event, {
       onMove: clientX => {
-        const width = parentWorkspaceWidth(available, device, 1 - (right - clientX) / available)
+        const width = parentWorkspaceWidth(available, 1 - (right - clientX) / available)
         last = 1 - width / available
         setRatio(last)
       },
       onEnd: () => {
         setResizing(false)
-        writeWorkflowSplitPreference(SPARKQUILL_PREVIEW_SCOPE, last, device)
+        writeWorkflowSplitPreference(SPARKQUILL_PREVIEW_SCOPE, last)
       },
     })
     if (started) setResizing(true)
   }
-  return { bodyRef, workspaceWidth, ratio: shownRatio, device, changeDevice, onPointerDown,
-    onStep: (delta: number) => commit(shownRatio + delta), resizing, chatOpen, setChatOpen }
+  return { bodyRef, workspaceWidth, ratio: shownRatio, onPointerDown,
+    onStep: (delta: number) => commit(shownRatio + delta), resizing }
 }
