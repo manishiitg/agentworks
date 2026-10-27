@@ -132,7 +132,7 @@ var providerStaticInfoMap = map[string]providerStaticInfo{
 	},
 	"cursor-cli": {
 		displayName:     "Cursor CLI",
-		description:     "Uses cursor-agent through tmux. Supports 100+ models via Cursor subscription.",
+		description:     "Uses your Cursor account for coding chats.",
 		integrationKind: "coding_agent",
 		authDescription: "Local CLI (API key optional)",
 		requiresAPIKey:  false,
@@ -678,7 +678,7 @@ func fetchCursorCLIModels() *dynamicModelsResponse {
 		CachedAt:           time.Now().UTC().Format(time.RFC3339),
 	}
 
-	binPath, err := runtimeAvailableForProvider("cursor-cli")
+	_, err := runtimeAvailableForProvider("cursor-cli")
 	if err != nil {
 		resp.Source = "fallback_metadata"
 		resp.Models = cursorFallbackModels()
@@ -688,7 +688,13 @@ func fetchCursorCLIModels() *dynamicModelsResponse {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	listCmd := exec.CommandContext(ctx, binPath, "--list-models")
+	spec, err := cursorAccountCommand(ctx, "models")
+	if err != nil {
+		resp.Source = "fallback_metadata"
+		resp.Models = cursorFallbackModels()
+		return resp
+	}
+	listCmd := exec.CommandContext(ctx, spec.command, spec.args...)
 	listCmd.Env = append(minimalChildEnv(), passthroughChildEnv("CURSOR_API_KEY")...)
 	out, err := listCmd.Output()
 	if err != nil {

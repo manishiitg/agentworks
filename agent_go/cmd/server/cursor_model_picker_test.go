@@ -67,30 +67,43 @@ esac
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	sdk := filepath.Join(bin, "sdk.cjs")
+	if err := os.WriteFile(sdk, []byte(`exports.Cursor={models:{list:async()=>{
+ if(process.env.CURSOR_AUTH_TOKEN)throw Error('ambient credential');
+ const ids=process.env.CURSOR_API_KEY==='test-first-key'?['first-2','first-3']:process.env.CURSOR_API_KEY==='test-second-key'?['second-1']:[];
+ return ids.map(id=>({id,displayName:id}));
+ }}};`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CURSOR_SDK_PATH", sdk)
 	t.Setenv("CURSOR_AUTH_TOKEN", "ambient-token-must-not-reach-private-account")
-	for _, tc := range []struct {
-		user, id, want string
-		status         int
-	}{
-		{"alice", a.ID, "first-2,first-3", http.StatusOK},
-		{"alice", b.ID, "second-1", http.StatusOK},
-		{"bob", a.ID, "", http.StatusForbidden},
-	} {
-		w := env.do(t, env.api.handleGetProviderModels, http.MethodGet, "/models?latest=true&connection_id="+tc.id, tc.user, nil, map[string]string{"provider": "cursor-cli"})
-		if w.Code != tc.status {
-			t.Fatalf("%s account %s: HTTP %d: %s", tc.user, tc.id, w.Code, w.Body.String())
-		}
-		if tc.status == http.StatusOK {
-			var response dynamicModelsResponse
-			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-				t.Fatal(err)
+	for _, transport := range []string{"sdk", "acp"} {
+		t.Setenv("CURSOR_CLI_TRANSPORT", transport)
+
+		for _, tc := range []struct {
+			user, id, want string
+			status         int
+		}{
+			{"alice", a.ID, "first-2,first-3", http.StatusOK},
+			{"alice", b.ID, "second-1", http.StatusOK},
+			{"bob", a.ID, "", http.StatusForbidden},
+		} {
+			w := env.do(t, env.api.handleGetProviderModels, http.MethodGet, "/models?latest=true&connection_id="+tc.id, tc.user, nil, map[string]string{"provider": "cursor-cli"})
+			if w.Code != tc.status {
+				t.Fatalf("%s account %s: HTTP %d: %s", tc.user, tc.id, w.Code, w.Body.String())
 			}
-			var ids []string
-			for _, m := range response.Models {
-				ids = append(ids, m.ModelID)
-			}
-			if strings.Join(ids, ",") != tc.want {
-				t.Fatalf("wrong account inventory: %+v", response.Models)
+			if tc.status == http.StatusOK {
+				var response dynamicModelsResponse
+				if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				var ids []string
+				for _, m := range response.Models {
+					ids = append(ids, m.ModelID)
+				}
+				if strings.Join(ids, ",") != tc.want {
+					t.Fatalf("wrong account inventory: %+v", response.Models)
+				}
 			}
 		}
 	}

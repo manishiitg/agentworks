@@ -382,7 +382,7 @@ func ownDefaultProviderAccountID(ctx context.Context, userID, provider string) s
 // Never admit such a link, even if the registry marks the account private.
 var privateProviderCredentialPaths = []string{
 	".claude/.credentials.json", ".codex/auth.json", ".config/cursor/auth.json",
-	".cursor/cli-config.json", ".config/muse/auth.json",
+	".cursor/cli-config.json", ".cursor/sdk/auth.json", ".config/muse/auth.json",
 }
 
 func checkPrivateProviderCredentialLinks(home string) error {

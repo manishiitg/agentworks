@@ -44,7 +44,11 @@ var codexCLIAuthStatusCommand = func(ctx context.Context) ([]byte, error) {
 }
 
 var cursorCLIStatusJSON = func(ctx context.Context) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "cursor-agent", "status", "--format", "json")
+	spec, err := cursorAccountCommand(ctx, "status")
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, spec.command, spec.args...)
 	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("CURSOR_API_KEY")...)
 	return cmd.Output()
 }
@@ -70,7 +74,7 @@ func agyCLIProbeEnv() []string {
 }
 
 func cursorCLILoginRequiredMessage() string {
-	return "Cursor Agent CLI is installed but not logged in. Run `cursor-agent login` in a terminal, or set CURSOR_API_KEY, then try again."
+	return "Sign in again to use Cursor. Open Providers, select this account, and choose Sign in."
 }
 
 // listProviderModelsJSON returns a JSON string of all frontend-visible models for the given
@@ -316,7 +320,7 @@ func providerAuthConfigured(provider string, keys *llm.ProviderAPIKeys) (bool, s
 			return true, "CURSOR_API_KEY or workspace provider auth"
 		}
 		configured, _ := cursorCLILocalAuthState()
-		return configured, "Cursor CLI login or CURSOR_API_KEY/workspace provider auth"
+		return configured, "Cursor browser login or configured API key"
 	case string(llm.ProviderPiCLI):
 		if piProviderAuthConfigured(keys) {
 			return true, "Provider-specific Pi API key or workspace provider auth"

@@ -40,7 +40,7 @@ export function accountStatusText(status?: ProviderAccountStatus | 'loading', ke
   }
   switch (status.state) {
     case 'signed_in': return `Signed in${status.identity ? ` as ${status.identity}` : ''}${status.verified ? ' (checked)' : ''}`
-    case 'signed_out': return 'Signed out'
+    case 'signed_out': return status.detail || 'Signed out'
     case 'key_rejected': return `Login rejected${status.detail ? `: ${status.detail}` : ''}`
     default: return status.detail ? `Status unknown: ${status.detail}` : 'Status unknown'
   }

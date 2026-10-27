@@ -146,6 +146,13 @@ func runProviderAccountCommand(ctx context.Context, target providerAccountTarget
 	command := exec.CommandContext(runCtx, spec.command, spec.args...)
 	command.Env = target.Env
 	command.Dir = dir
+	if len(spec.readPaths) > 0 {
+		cleanup, confineErr := confineProviderSetup(command, target.Provider, target.Env, !target.Server, spec.readPaths...)
+		if confineErr != nil {
+			return "", confineErr
+		}
+		defer cleanup()
+	}
 	output, err := command.CombinedOutput()
 	if len(output) > 64*1024 {
 		output = output[:64*1024]
@@ -236,7 +243,12 @@ func checkProviderAccountStatus(ctx context.Context, target providerAccountTarge
 		method, _, _ := strings.Cut(strings.TrimPrefix(line, "Logged in using "), " - ")
 		status.Identity = safeIdentity(method)
 	case "cursor-cli":
-		output, err := runProviderAccountCommand(ctx, target, providerStatusCommands["cursor-cli"], providerStatusTimeout)
+		spec, err := cursorAccountCommand(ctx, "status")
+		if err != nil {
+			status.Detail = "Cursor is still being set up. Try again shortly."
+			return status
+		}
+		output, err := runProviderAccountCommand(ctx, target, spec, providerStatusTimeout)
 		var parsed struct {
 			IsAuthenticated bool `json:"isAuthenticated"`
 			UserInfo        struct {
@@ -254,6 +266,7 @@ func checkProviderAccountStatus(ctx context.Context, target providerAccountTarge
 			status.State = "key_rejected"
 		default:
 			status.State = "signed_out"
+			status.Detail = "Sign in again to use Cursor."
 		}
 	case "muse-cli":
 		status.State, status.Identity = museAccountStatus(target)
@@ -400,6 +413,14 @@ func (api *StreamingAPI) handleProviderAccountSignOut(w http.ResponseWriter, r *
 	if !ok {
 		http.Error(w, "this CLI has no sign-out", http.StatusBadRequest)
 		return
+	}
+	if target.Provider == "cursor-cli" {
+		var err error
+		spec, err = cursorAccountCommand(r.Context(), "logout")
+		if err != nil {
+			http.Error(w, "Cursor is still being set up. Try again shortly.", http.StatusServiceUnavailable)
+			return
+		}
 	}
 	// Stop the CLIs running on this account before its login goes away.
 	closed := api.closeSessionsOnProviderAccount(target.ID)

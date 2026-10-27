@@ -22,7 +22,7 @@ import (
 // userAccount says the terminal belongs to a personal account (it has its own private HOME). On a host that
 // cannot confine (no Landlock) a multi-user server refuses the terminal instead of running it open; a
 // single-user install (desktop) is unchanged. The returned function releases the policy file.
-func confineProviderSetup(cmd *exec.Cmd, provider string, environment []string, userAccount bool) (func(), error) {
+func confineProviderSetup(cmd *exec.Cmd, provider string, environment []string, userAccount bool, readPaths ...string) (func(), error) {
 	noop := func() {}
 	if !userAccount {
 		return noop, nil
@@ -56,6 +56,7 @@ func confineProviderSetup(cmd *exec.Cmd, provider string, environment []string, 
 		// to the server home and links the personal login to the shared login.
 		CredentialHome: home,
 		CredentialEnv:  credentialEnv,
+		HostReadPaths:  readPaths,
 	}
 	return clilaunch.ConfineCmd(policy, cmd, cmd.Dir)
 }

@@ -22,6 +22,11 @@ func nativeProviderUsage(provider string) bool {
 // Called only after handleStartProviderSetup authorizes the selected account.
 // No PTY, startup keystrokes or model prompt participates in a quota query.
 func writeNativeProviderUsage(w http.ResponseWriter, r *http.Request, provider string, environment []string) bool {
+	// SDK browser login is a user API key. The CLI dashboard token may belong
+	// to a different account even under the same HOME; never report its quota.
+	if provider == "cursor-cli" && providers.CursorSDKEnabled() {
+		environment = append(append([]string{}, environment...), "AGENT_CLI_CREDENTIAL_STORE=memory", "CURSOR_AUTH_TOKEN=")
+	}
 	usage, err := readNativeAccountUsage(r.Context(), provider, nativeUsageEnvironment(provider, environment))
 	reason := ""
 	if err != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os/exec"
 	"regexp"
 	"slices"
 	"strconv"
@@ -34,17 +33,19 @@ func (api *StreamingAPI) handleCursorModelPicker(w http.ResponseWriter, r *http.
 		http.Error(w, "Account could not be loaded. Reopen Models to retry.", http.StatusServiceUnavailable)
 		return
 	}
-	bin, err := runtimeAvailableForProvider("cursor-cli")
+	_, err = runtimeAvailableForProvider("cursor-cli")
 	if err != nil {
 		http.Error(w, "Cursor is not installed. Set it up in Providers.", http.StatusServiceUnavailable)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "--list-models")
-	cmd.Env = target.Env
-
-	out, err := cmd.Output()
+	spec, err := cursorAccountCommand(ctx, "models")
+	if err != nil {
+		http.Error(w, "Cursor is still being set up. Try again shortly.", http.StatusServiceUnavailable)
+		return
+	}
+	out, err := runProviderAccountCommand(ctx, target, spec, 15*time.Second)
 	if err != nil {
 		http.Error(w, "Cursor models could not be loaded. Check the account in Providers.", http.StatusBadGateway)
 		return

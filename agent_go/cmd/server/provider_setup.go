@@ -44,8 +44,9 @@ func (e *providerSetupConflictError) Error() string {
 }
 
 type providerSetupCommand struct {
-	command string
-	args    []string
+	command   string
+	args      []string
+	readPaths []string
 }
 
 // Provider setup never accepts a command from the browser. Each supported
@@ -446,6 +447,11 @@ func (m *providerSetupManager) startWithArgs(ownerID, provider, action string, c
 		cleanup = func() {}
 	}
 	spec, err := providerSetupCommandFor(provider, action)
+	if err == nil && provider == "cursor-cli" && action == "authenticate" {
+		ctx, cancel := context.WithTimeout(context.Background(), providerSetupMaxDuration)
+		spec, err = cursorAccountCommand(ctx, "login")
+		cancel()
+	}
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -526,7 +532,7 @@ func (m *providerSetupManager) startWithArgs(ownerID, provider, action string, c
 		cols, rows = liveAttachDefaultCols, liveAttachDefaultRows
 	}
 	// A personal account's terminal runs confined to that account's private home (provider_setup_confine.go).
-	releaseConfinement, confineErr := confineProviderSetup(command, provider, environment, providerSetupIsPersonalBinding(provider, bindingID))
+	releaseConfinement, confineErr := confineProviderSetup(command, provider, environment, providerSetupIsPersonalBinding(provider, bindingID), spec.readPaths...)
 	if confineErr != nil {
 		cancel()
 		cleanup()
