@@ -103,7 +103,8 @@ func (api *StreamingAPI) crewScheduleJobs(r *http.Request, crewID string) ([]Sch
 }
 
 func (api *StreamingAPI) externalScheduleCall(w http.ResponseWriter, r *http.Request, args map[string]any, target externalScheduleTarget) {
-	if api.scheduler == nil {
+	// A workflow's saved run history is read from its own files; it needs no running scheduler.
+	if api.scheduler == nil && !(externalArg(args, "action") == "runs" && target.workflow != nil) {
 		externalError(w, http.StatusServiceUnavailable, "scheduler_unavailable", "The scheduler is not running on this server.")
 		return
 	}
@@ -135,8 +136,10 @@ func (api *StreamingAPI) externalScheduleCall(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	// The schedule must belong to the named workflow or Crew.
-	if scheduleID != "" {
+	// The schedule must belong to the named workflow or Crew. A workflow's run history stays readable after its schedule
+	// is deleted and for webhook runs: externalScheduleRuns reads only this workflow's own history and refuses an ID
+	// with neither a schedule nor runs, as get_schedule_runs did (PLAT-856-399).
+	if scheduleID != "" && !(action == "runs" && target.workflow != nil) {
 		belongs := false
 		if target.workflow != nil {
 			for _, sched := range target.workflow.Manifest.Schedules {
