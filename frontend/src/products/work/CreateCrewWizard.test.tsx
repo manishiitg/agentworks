@@ -3,7 +3,6 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 vi.mock('./RunsOnPicker', () => ({ RunsOnPicker: ({ saveAccount }: { saveAccount: string }) => <span data-testid="provider-picker">{saveAccount}</span> }))
-vi.mock('./CrewIncludedFeatures', () => ({ CrewIncludedFeatures: ({ type }: { type: string }) => <span data-testid="included-features">{type}</span> }))
 import { CreateCrewWizard } from './CreateCrewWizard'
 import { CREW_STARTER_TYPES } from './crewStarterTypes'
 
@@ -35,8 +34,8 @@ it.each(CREW_STARTER_TYPES)('previews and creates the $label starting point with
   await click(host, 'Continue')
   expect(host.textContent).toContain('Step 2 of 2')
   expect(document.activeElement?.id).toBe('crew-wizard-name')
-  expect(host.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe(starter.purpose)
-  expect(host.querySelector('[data-testid="included-features"]')?.textContent).toBe(starter.id)
+  expect(host.querySelector('textarea')).toBeNull()
+  expect(host.textContent).not.toMatch(/What.s included|Add instructions/)
   expect(host.querySelector('details')!.open).toBe(false)
   expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(false)
   expect(host.querySelector('[data-testid="provider-picker"]')?.textContent).toBe('when-needed')
@@ -47,7 +46,7 @@ it.each(CREW_STARTER_TYPES)('previews and creates the $label starting point with
 it('keeps blank creation, optional sharing and both existing modes available', async () => {
   const { host, onCreate } = await render({ initialMode: 'cowork' })
   await click(host, 'Start blank')
-  expect(host.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('')
+  expect(host.querySelector('textarea')).toBeNull()
   await input(host, '#crew-wizard-name', 'My helper')
   await act(async () => host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click())
   expect(host.textContent).toContain('Only me')
@@ -55,16 +54,15 @@ it('keeps blank creation, optional sharing and both existing modes available', a
   await click(host, 'Create Crew')
   expect(onCreate).toHaveBeenCalledExactlyOnceWith('My helper', '', undefined, 'cowork', { type: undefined, openSharing: true }, undefined)
 })
-it('preserves edits on Back and errors, blocks changes while creating, and supports Escape', async () => {
+it('preserves the name on Back and errors, blocks changes while creating, and supports Escape', async () => {
   const { host, onClose, onCreate, update } = await render()
   await act(async () => host.querySelector<HTMLInputElement>('input[value="brain"]')!.click())
   await click(host, 'Continue')
   await input(host, '#crew-wizard-name', 'Knowledge helper')
-  await input(host, 'textarea', 'Only help with the selected team knowledge.')
   await click(host, 'Back')
   await act(async () => host.querySelector<HTMLInputElement>('input[value="specialist"]')!.click())
   await click(host, 'Continue')
-  expect(host.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Only help with the selected team knowledge.')
+  expect(host.querySelector<HTMLInputElement>('#crew-wizard-name')!.value).toBe('Knowledge helper')
   await update({ error: 'Could not create Crew.' })
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('Could not create Crew.')
   expect(host.querySelector<HTMLInputElement>('#crew-wizard-name')!.value).toBe('Knowledge helper')

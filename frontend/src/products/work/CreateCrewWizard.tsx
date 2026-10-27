@@ -3,16 +3,14 @@ import { AlertCircle, ArrowLeft, ArrowRight, Check, FolderOpen, Loader2, LockKey
 import type { ProductMode } from '../../platform/chat/productProjects'
 import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import { CREW_STARTER_TYPES, type CrewOnboarding, type CrewStarterType } from './crewStarterTypes'
-import { CrewIncludedFeatures } from './CrewIncludedFeatures'
 
-export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', studio = false, profileVersion = 3, allowExistingFolder = false }: {
+export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', studio = false, allowExistingFolder = false }: {
   onClose: () => void
   onCreate: (title: string, purpose: string, runsOn: RunsOnSelection | undefined, mode: ProductMode, onboarding: CrewOnboarding, rootPath?: string) => void | Promise<void>
   submitting: boolean
   error: string | null
   initialMode?: ProductMode
   studio?: boolean
-  profileVersion?: number
   allowExistingFolder?: boolean
 }) {
   const [step, setStep] = useState(1)
@@ -20,7 +18,6 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
   const [title, setTitle] = useState('')
   const [rootPath, setRootPath] = useState('')
   const [folderError, setFolderError] = useState<string | null>(null)
-  const [purpose, setPurpose] = useState(initialMode === 'cowork' ? CREW_STARTER_TYPES.find(item => item.id === 'cowork')!.purpose : '')
   const [mode, setMode] = useState(initialMode)
   const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
   const [openSharing, setOpenSharing] = useState(false)
@@ -28,6 +25,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
   const headingRef = useRef<HTMLHeadingElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const selected = CREW_STARTER_TYPES.find(item => item.id === type)
+  const purpose = selected?.purpose || ''
   const starters = studio ? CREW_STARTER_TYPES.filter(item => item.id === 'code' || item.id === 'cowork') : CREW_STARTER_TYPES
   const closingRef = useRef({ onClose, submitting })
   closingRef.current = { onClose, submitting }
@@ -52,8 +50,6 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
   }, [])
   useEffect(() => { if (step === 2) nameRef.current?.focus(); else headingRef.current?.focus() }, [step])
   const choose = (next?: CrewStarterType) => {
-    const previous = CREW_STARTER_TYPES.find(item => item.id === type)
-    if (!purpose || purpose === previous?.purpose) setPurpose(CREW_STARTER_TYPES.find(item => item.id === next)?.purpose || '')
     setType(next)
     if (studio && next) setMode(next === 'code' ? 'dev' : 'cowork')
   }
@@ -101,12 +97,6 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
             <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{rootPath.trim() ? 'Work directly with these files. Crew resources stay in .agentworks; chats and sign-ins stay private.' : 'Choose an existing folder to work with files already on this computer.'}</p>
             {folderError && <p role="alert" className="mt-1 text-xs text-destructive">{folderError}</p>}
           </div>}
-          <CrewIncludedFeatures type={type} mode={mode} profileVersion={profileVersion} />
-          <details>
-            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Add instructions <span className="font-normal">(optional)</span></summary>
-            <label className="sr-only" htmlFor="crew-wizard-purpose">What should it help with?</label>
-            <textarea id="crew-wizard-purpose" value={purpose} onChange={event => setPurpose(event.target.value)} rows={2} maxLength={1000} disabled={submitting} className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
-          </details>
           <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
             {studio ? <span className="text-sm text-muted-foreground">Your private workspace</span> : <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={openSharing} onChange={event => setOpenSharing(event.target.checked)} disabled={submitting} />Set up sharing next</label>}
             <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground" title="Choose people and permissions after creation."><LockKeyhole aria-hidden="true" className="h-3 w-3" />Only me</span>

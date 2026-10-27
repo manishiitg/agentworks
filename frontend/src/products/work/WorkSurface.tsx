@@ -1364,7 +1364,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           allowExistingFolder={isLocalDeployment() && getActiveWorkspaceProfile().type === 'local'}
           initialMode={createMode}
           studio={createStudio}
-          profileVersion={product.profileVersion}
           submitting={creating}
           error={createError}
         />
