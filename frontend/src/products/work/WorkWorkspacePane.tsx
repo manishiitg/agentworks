@@ -230,7 +230,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const ask = useCallback((message: string) => product.profileId === 'work'
     ? sendWorkspacePaneMessageToChat({ tabId, message })
     : sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId, tabId])
-  const serverFiles = <FileWorkspacePane workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
+  const usesExistingFolder = Boolean(filesPath && filesPath !== workspacePath)
+  const serverFiles = <FileWorkspacePane workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? [] : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
   const sharedFiles = useMemo(
     () => (readOnly ? sharedCrewFileClient(projectId, workspacePath, product.profileId) : null),
     [readOnly, projectId, workspacePath, product.profileId],
