@@ -1152,6 +1152,8 @@ export type ToolDefinition = {
 // Planner API types
 export interface PlannerFile {
   filepath: string;
+  /** Server-supplied label; never used to resolve or mutate the file. */
+  display_name?: string;
   content?: string;
   last_modified?: string;
   folder?: string;

@@ -207,7 +207,7 @@ export default function PlannerFileList({
     const isExpanded = forceExpandFolders || expandedFolders.has(file.filepath)
     const isEmptyFolder = file.type === 'folder' && !forceExpandFolders && !!emptyFolders?.has(file.filepath) && !file.children?.length
     const isClickable = true // backend determines if content is viewable; binary files show error after fetch
-    const fileName = file.filepath.split('/').pop() || file.filepath
+    const fileName = file.display_name || file.filepath.split('/').pop() || file.filepath
     // Check both filepath (adjusted for display) and originalFilepath (original path)
     // This ensures workspace tool events can highlight files even when paths are adjusted in workflow mode
     const isHighlighted = !!highlightedFile && (highlightedFile === file.filepath || highlightedFile === file.originalFilepath)

@@ -61,6 +61,30 @@ describe('flattenVisiblePlannerFiles', () => {
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('PlannerFileList Work controls', () => {
+  it('shows the selected folder label while opening its original tree paths', async () => {
+    const child = file('notes.txt')
+    const folder = { ...file('_files', 'folder', [child]), display_name: 'existing-project', originalFilepath: 'Crew/example/_files' }
+    const onFolderClick = vi.fn(), onFileClick = vi.fn()
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<TooltipProvider><PlannerFileList
+        files={[folder]} loading={false} error={null}
+        onFolderClick={onFolderClick} onFileClick={onFileClick}
+        onFileDelete={() => undefined} onFolderDelete={() => undefined}
+        onRetry={() => undefined} expandedFolders={new Set(['_files'])}
+        chatFileContext={[]} addFileToContext={() => undefined} hideRootActions
+      /></TooltipProvider>))
+      const row = host.querySelector('[data-filepath="_files"]') as HTMLElement
+      expect(row.textContent).toContain('existing-project')
+      expect(row.textContent).not.toContain('_files')
+      await act(async () => row.click())
+      expect(onFolderClick).toHaveBeenCalledWith(folder)
+      await act(async () => (host.querySelector('[data-filepath="notes.txt"]') as HTMLElement).click())
+      expect(onFileClick).toHaveBeenCalledWith(child)
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('creates a file in the selected nested folder and omits the action without edit access', async () => {
     const folder = { ...file('project/functions', 'folder'), originalFilepath: 'Chats/Code/projects/project/functions' }
     const files = [file('project', 'folder', [folder])]

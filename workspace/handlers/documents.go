@@ -220,7 +220,7 @@ func getAllDocumentsRecursively(searchPath, docsDir string, maxDepth int, limit,
 		"venv":         true,
 	}
 
-	searchVirtual, _, localBound, bindingErr := crewroot.Reverse(docsDir, searchPath)
+	searchVirtual, roots, localBound, bindingErr := crewroot.Reverse(docsDir, searchPath)
 	if bindingErr != nil {
 		return nil, bindingErr
 	}
@@ -290,6 +290,9 @@ func getAllDocumentsRecursively(searchPath, docsDir string, maxDepth int, limit,
 				doc := models.Document{
 					FilePath: relPathFromDocs,
 					Type:     "folder",
+				}
+				if isRoot && localBound && roots.Local && searchVirtual == roots.FilesPath() {
+					doc.DisplayName = filepath.Base(roots.Files)
 				}
 				if metadata {
 					doc.LastModified = info.ModTime().UTC().Format("2006-01-02T15:04:05Z07:00")
