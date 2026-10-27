@@ -370,7 +370,13 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			r2.Header.Set("X-Session-ID", chat.SessionID)
 			api.handleStopSession(w2, r2)
 		}
-		respond(scheduleHandler(r, stop, http.MethodPost, "/api/session/stop", nil, nil, map[string]any{}))
+		// The website's stop handler answers in plain text; MCP gets a JSON reply (PLAT-856-398).
+		status, body := scheduleHandler(r, stop, http.MethodPost, "/api/session/stop", nil, nil, map[string]any{})
+		if status >= 400 {
+			respond(status, body)
+			return
+		}
+		externalJSON(w, map[string]any{"crew_id": crewID, "chat_id": chat.ChatID, "stopped": true})
 	case "delete":
 		sessionID := externalArg(args, "session_id")
 		if sessionID == "" {
