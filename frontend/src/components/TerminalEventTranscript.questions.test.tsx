@@ -45,11 +45,11 @@ describe('workflow clarification controls', () => {
     expect(host.textContent).toContain('Clarification needed')
     expect(host.textContent).toContain('Keep both integrations')
     expect(host.textContent).not.toMatch(/Muse|Claude|Codex/)
-    expect(button(host, 'Send choice').disabled).toBe(true)
+    expect(button(host, 'Send answer').disabled).toBe(true)
     await choose(host, 'Gmail only')
-    expect(button(host, 'Send choice').disabled).toBe(true)
+    expect(button(host, 'Send answer').disabled).toBe(true)
     await choose(host, 'Read mail')
-    await act(async () => button(host, 'Send choice').click())
+    await act(async () => button(host, 'Send answer').click())
     expect(onAnswer).toHaveBeenCalledExactlyOnceWith(provider, 'one', [
       { id: 'scope', selectedLabels: ['Gmail only'] }, { id: 'purpose', selectedLabels: ['Read mail'] },
     ], false)
@@ -68,7 +68,7 @@ describe('workflow clarification controls', () => {
     expect(cards[0].querySelectorAll('input:checked')).toHaveLength(2)
     expect(cards[1].querySelectorAll('input:checked')).toHaveLength(0)
     await choose(cards[1], 'Sheets and Gmail'); await choose(cards[1], 'Send reports')
-    await act(async () => button(cards[1], 'Send choice').click())
+    await act(async () => button(cards[1], 'Send answer').click())
     expect(onAnswer).toHaveBeenCalledWith('muse-cli', 'two', [
       { id: 'scope', selectedLabels: ['Sheets and Gmail'] }, { id: 'purpose', selectedLabels: ['Send reports'] },
     ], false)
@@ -81,10 +81,10 @@ describe('workflow clarification controls', () => {
     const onAnswer = vi.fn().mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValue(undefined)
     const { host } = await mount([request()], onAnswer)
     await choose(host, 'Gmail only'); await choose(host, 'Read mail')
-    await act(async () => button(host, 'Send choice').click())
+    await act(async () => button(host, 'Send answer').click())
     expect(host.querySelector('[role="alert"]')?.textContent).toBe('Connection lost')
     expect(host.querySelectorAll('input:checked')).toHaveLength(2)
-    await act(async () => button(host, 'Send choice').click())
+    await act(async () => button(host, 'Send answer').click())
     expect(onAnswer).toHaveBeenCalledTimes(2)
   })
 
@@ -93,19 +93,19 @@ describe('workflow clarification controls', () => {
     const { host, onAnswer, render } = await mount([requested])
     const other = Array.from(host.querySelectorAll('label')).find(label => label.textContent === 'Other')!
     await act(async () => (other.querySelector('input') as HTMLInputElement).click())
-    expect(button(host, 'Send choice').disabled).toBe(true)
-    const input = host.querySelector('input[placeholder="Type your answer"]') as HTMLInputElement
+    expect(button(host, 'Send answer').disabled).toBe(true)
+    const input = host.querySelector('textarea[placeholder="Type your answer"]') as HTMLTextAreaElement
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Keep both and add alerts')
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'Keep both and add alerts')
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    expect(button(host, 'Send choice').disabled).toBe(false)
-    await act(async () => button(host, 'Send choice').click())
+    expect(button(host, 'Send answer').disabled).toBe(false)
+    await act(async () => button(host, 'Send answer').click())
     expect(onAnswer).toHaveBeenCalledWith('claude-code', 'native', [{ id: 'scope', selectedLabels: [], otherText: 'Keep both and add alerts' }], false)
     await render([requested, event('claude-other-settle', { provider: 'claude-code', prompt_id: 'native', kind: 'settled', outcome: 'answered', answers: [{ id: 'scope', other_text: 'Keep both and add alerts' }] })])
     expect(host.textContent).toContain('Keep both and add alerts')
     expect(host.querySelector('input:checked:disabled')).not.toBeNull()
-    expect(host.querySelector('input[placeholder="Type your answer"]')).toBeNull()
+    expect(host.querySelector('textarea[placeholder="Type your answer"]')).toBeNull()
   })
 
   it('counts a custom answer towards multi-select bounds and clears it when choosing a radio option', async () => {
@@ -117,14 +117,14 @@ describe('workflow clarification controls', () => {
     await render([event('other-radio', { provider: 'claude-code', prompt_id: 'radio', kind: 'requested', questions: [{ ...questions[0], allow_other: true }] })])
     const radioOther = Array.from(host.querySelectorAll('label')).find(label => label.textContent === 'Other')!
     await act(async () => (radioOther.querySelector('input') as HTMLInputElement).click())
-    const custom = host.querySelector('input[placeholder="Type your answer"]') as HTMLInputElement
+    const custom = host.querySelector('textarea[placeholder="Type your answer"]') as HTMLTextAreaElement
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(custom, 'Keep both')
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(custom, 'Keep both')
       custom.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await choose(host, 'Gmail only')
-    expect(host.querySelector('input[placeholder="Type your answer"]')).toBeNull()
-    await act(async () => button(host, 'Send choice').click())
+    expect(host.querySelector('textarea[placeholder="Type your answer"]')).toBeNull()
+    await act(async () => button(host, 'Send answer').click())
     expect(onAnswer).toHaveBeenCalledWith('claude-code', 'radio', [{ id: 'scope', selectedLabels: ['Gmail only'] }], false)
   })
 

@@ -41,10 +41,10 @@ func normalizeServerNames(servers []string) []string {
 }
 
 // forceWorkflowClaudeCodeInteractiveTransport clears per-agent overrides so Claude
-// uses the server's CLAUDE_CODE_TRANSPORT selection (tmux by default).
+// uses the server's CLAUDE_CODE_TRANSPORT selection (SDK by default).
 func forceWorkflowClaudeCodeInteractiveTransport(config *agents.OrchestratorAgentConfig) {
 	if workflowAgentConfigUsesClaudeCode(config) {
-		config.ClaudeCodeTransport = "" // Inherit CLAUDE_CODE_TRANSPORT; default remains tmux.
+		config.ClaudeCodeTransport = "" // Inherit CLAUDE_CODE_TRANSPORT; default is SDK.
 	}
 }
 
