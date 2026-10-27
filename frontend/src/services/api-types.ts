@@ -339,9 +339,10 @@ export interface SharedProjectSummary {
   name?: string
   owner_id: string
   owner_username?: string
-  /** Owner's physical crew root: scopes chat history. File reads for
-   * shared crews go through the mediated endpoints, never the proxy. */
+  /** Stable project namespace for settings and mediated shared file reads. */
   workspace_path: string
+  /** Server-selected logical file root; resource/settings scope stays workspace_path. */
+  files_path?: string
   created_at?: string
   updated_at?: string
   llm?: SharedProjectLLM

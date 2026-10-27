@@ -65,7 +65,8 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { hasProductCreateAccess } from '../../utils/workflowPermissions'
-import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { isLocalDeployment } from '../productSurfaceConfig'
+import { getActiveWorkspaceProfile, useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { ProjectAgentTabs } from '../../components/chat/ProjectAgentTabs'
@@ -241,8 +242,8 @@ function useWorkSessions(product: ProjectProductConfig) {
     return () => { cancelled = true }
   }, [product, selectedId, allowedProducts, setSelectedId, updateSessions])
 
-  const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode) => {
-    const session = await createWorkSession(title, description, icon, product, runsOn, mode)
+  const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode, rootPath?: string) => {
+    const session = await createWorkSession(title, description, icon, product, runsOn, mode, rootPath)
     if (runsOn?.provider) rememberRunsOn(product.profileId, runsOn.provider)
     updateSessions((current) => [session, ...current])
     setSelectedId(session.id)
@@ -1253,7 +1254,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (persist) writeWorkSplitRatio(selected?.id, ratio)
   }, [selected?.id])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode, onboarding?: CrewOnboarding) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode, onboarding?: CrewOnboarding, rootPath?: string) => {
     if (creating) return
     const startedAtHome = window.location.pathname === '/home'
     const user = useAuthStore.getState().user
@@ -1263,7 +1264,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setCreating(true)
     setCreateError(null)
     try {
-      const created = await create(title, description, icon, runsOn, mode)
+      const created = await create(title, description, icon, runsOn, mode, rootPath)
       if (!isCurrent()) return
       if (created.creationWarnings?.length) useChatStore.getState().addToast(created.creationWarnings.join(' '), 'warning')
       if (onboarding) {
@@ -1282,7 +1283,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       setCreateOpen(false)
       if (startedAtHome && window.location.pathname === '/home') openAppProduct({ surface: 'work', id: created.id })
     } catch (cause) {
-      setCreateError(cause instanceof Error ? cause.message : `Could not create ${product.itemNoun}.`)
+      const serverMessage = (cause as { response?: { data?: unknown } })?.response?.data
+      setCreateError(typeof serverMessage === 'string' && serverMessage.trim() ? serverMessage.trim() : cause instanceof Error ? cause.message : `Could not create ${product.itemNoun}.`)
     } finally {
       setCreating(false)
     }
@@ -1358,7 +1360,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       {createOpen ? (
         <CreateCrewWizard
           onClose={() => { if (!creating) setCreateOpen(false) }}
-          onCreate={(title, purpose, runsOn, mode, onboarding) => createProject(title, purpose, undefined, runsOn, mode, onboarding)}
+          onCreate={(title, purpose, runsOn, mode, onboarding, rootPath) => createProject(title, purpose, undefined, runsOn, mode, onboarding, rootPath)}
+          allowExistingFolder={isLocalDeployment() && getActiveWorkspaceProfile().type === 'local'}
           initialMode={createMode}
           studio={createStudio}
           profileVersion={product.profileVersion}
@@ -1372,7 +1375,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         onConfirm={() => { void deleteProject() }}
         title={`Delete ${product.noun}`}
         message={deleteCandidate
-          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database?${product.profileId === 'work' ? ' Remove this Crew from every workflow before deleting it.' : ''} This cannot be undone.`
+          ? deleteCandidate.filesPath && deleteCandidate.filesPath !== deleteCandidate.workspacePath
+            ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and its setup, chat history, dashboards and database? Your selected folder and files will stay. Remove this Crew from every workflow before deleting it. This cannot be undone.`
+            : `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database?${product.profileId === 'work' ? ' Remove this Crew from every workflow before deleting it.' : ''} This cannot be undone.`
           : ''}
         confirmText={`Delete ${product.noun}`}
         loadingText={`Deleting ${product.noun}…`}
@@ -1452,6 +1457,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                     <SharedCrewWorkspace key={selected.id} projectId={selected.id} enabled={isShared}><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}
+                        filesPath={selected.filesPath}
                         projectId={selected.id}
                         projectTitle={selected.title}
                         projectDescription={selected.description}

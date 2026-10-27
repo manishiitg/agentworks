@@ -42,7 +42,7 @@ it.each(CREW_STARTER_TYPES)('previews and creates the $label starting point with
   expect(host.querySelector('[data-testid="provider-picker"]')?.textContent).toBe('when-needed')
   await input(host, '#crew-wizard-name', '  Example Crew  ')
   await click(host, 'Create Crew')
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith('Example Crew', starter.purpose, undefined, 'dev', { type: starter.id, openSharing: false })
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith('Example Crew', starter.purpose, undefined, 'dev', { type: starter.id, openSharing: false }, undefined)
 })
 it('keeps blank creation, optional sharing and both existing modes available', async () => {
   const { host, onCreate } = await render({ initialMode: 'cowork' })
@@ -53,7 +53,7 @@ it('keeps blank creation, optional sharing and both existing modes available', a
   expect(host.textContent).toContain('Only me')
   expect([...host.querySelectorAll('select option')].map(node => node.getAttribute('value'))).toEqual(['cowork', 'dev'])
   await click(host, 'Create Crew')
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My helper', '', undefined, 'cowork', { type: undefined, openSharing: true })
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My helper', '', undefined, 'cowork', { type: undefined, openSharing: true }, undefined)
 })
 it('preserves edits on Back and errors, blocks changes while creating, and supports Escape', async () => {
   const { host, onClose, onCreate, update } = await render()
@@ -86,5 +86,24 @@ it('creates Studio through the private Code/Cowork choices without new sharing o
   expect(host.querySelector('input[type="checkbox"]')).toBeNull()
   await input(host, '#crew-wizard-name', 'My code workspace')
   await click(host, 'Create Studio')
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My code workspace', CREW_STARTER_TYPES.find(item => item.id === 'code')!.purpose, undefined, 'dev', { type: 'code', openSharing: false })
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My code workspace', CREW_STARTER_TYPES.find(item => item.id === 'code')!.purpose, undefined, 'dev', { type: 'code', openSharing: false }, undefined)
+})
+
+it('offers an existing folder only for local creation and forwards the selected path', async () => {
+  const previous = window.electronAPI
+  const pick = vi.fn(async () => '/Users/example/work')
+  window.electronAPI = { ...previous, pickWorkflowFolder: pick } as typeof window.electronAPI
+  try {
+    const { host, onCreate, update } = await render()
+    await click(host, 'Start blank')
+    expect(host.querySelector('#crew-wizard-folder')).toBeNull()
+    await update({ allowExistingFolder: true })
+    await input(host, '#crew-wizard-name', 'Existing work')
+    await click(host, 'Browse')
+    expect(pick).toHaveBeenCalledOnce()
+    expect(host.querySelector<HTMLInputElement>('#crew-wizard-folder')!.value).toBe('/Users/example/work')
+    expect(host.textContent).toContain('chats and sign-ins stay private')
+    await click(host, 'Create Crew')
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith('Existing work', '', undefined, 'dev', { type: undefined, openSharing: false }, '/Users/example/work')
+  } finally { window.electronAPI = previous }
 })

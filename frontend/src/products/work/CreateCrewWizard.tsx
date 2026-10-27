@@ -1,22 +1,25 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { AlertCircle, ArrowLeft, ArrowRight, Check, Loader2, LockKeyhole, X } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ArrowRight, Check, FolderOpen, Loader2, LockKeyhole, X } from 'lucide-react'
 import type { ProductMode } from '../../platform/chat/productProjects'
 import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import { CREW_STARTER_TYPES, type CrewOnboarding, type CrewStarterType } from './crewStarterTypes'
 import { CrewIncludedFeatures } from './CrewIncludedFeatures'
 
-export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', studio = false, profileVersion = 3 }: {
+export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', studio = false, profileVersion = 3, allowExistingFolder = false }: {
   onClose: () => void
-  onCreate: (title: string, purpose: string, runsOn: RunsOnSelection | undefined, mode: ProductMode, onboarding: CrewOnboarding) => void | Promise<void>
+  onCreate: (title: string, purpose: string, runsOn: RunsOnSelection | undefined, mode: ProductMode, onboarding: CrewOnboarding, rootPath?: string) => void | Promise<void>
   submitting: boolean
   error: string | null
   initialMode?: ProductMode
   studio?: boolean
   profileVersion?: number
+  allowExistingFolder?: boolean
 }) {
   const [step, setStep] = useState(1)
   const [type, setType] = useState<CrewStarterType | undefined>(initialMode === 'cowork' ? 'cowork' : undefined)
   const [title, setTitle] = useState('')
+  const [rootPath, setRootPath] = useState('')
+  const [folderError, setFolderError] = useState<string | null>(null)
   const [purpose, setPurpose] = useState(initialMode === 'cowork' ? CREW_STARTER_TYPES.find(item => item.id === 'cowork')!.purpose : '')
   const [mode, setMode] = useState(initialMode)
   const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
@@ -58,7 +61,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
     event.preventDefault()
     if (submitting) return
     if (step === 1) { if (type) setStep(2); return }
-    if (title.trim()) void onCreate(title.trim(), purpose.trim(), runsOn, mode, { type, openSharing: studio ? false : openSharing })
+    if (title.trim()) void onCreate(title.trim(), purpose.trim(), runsOn, mode, { type, openSharing: studio ? false : openSharing }, allowExistingFolder ? rootPath.trim() || undefined : undefined)
   }
   return <div className="fixed inset-0 z-50 grid place-items-center bg-black/65 p-3 backdrop-blur-sm sm:p-6">
     <form ref={formRef} tabIndex={-1} onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="crew-wizard-title" aria-describedby="crew-wizard-description" aria-busy={submitting} className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
@@ -85,6 +88,19 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
           <label className="block text-sm font-medium" htmlFor="crew-wizard-name">{studio ? 'Workspace name' : 'Crew name'}
             <input ref={nameRef} id="crew-wizard-name" value={title} onChange={event => setTitle(event.target.value)} maxLength={60} disabled={submitting} placeholder="e.g. Operations helper" className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
           </label>
+          {allowExistingFolder && <div>
+            <label className="block text-sm font-medium" htmlFor="crew-wizard-folder">Folder <span className="font-normal text-muted-foreground">(optional)</span></label>
+            <div className="mt-1.5 flex gap-2">
+              <input id="crew-wizard-folder" value={rootPath} onChange={event => { setRootPath(event.target.value); setFolderError(null) }} disabled={submitting} placeholder="Use a new AgentWorks folder" className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              {window.electronAPI?.pickWorkflowFolder && <button type="button" disabled={submitting} onClick={async () => {
+                setFolderError(null)
+                try { const folder = await window.electronAPI!.pickWorkflowFolder!(); if (folder) setRootPath(folder) }
+                catch { setFolderError('Could not open the folder picker. You can paste the folder path instead.') }
+              }} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"><FolderOpen aria-hidden="true" className="h-4 w-4" />Browse</button>}
+            </div>
+            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{rootPath.trim() ? 'Work directly with these files. Crew resources stay in .agentworks; chats and sign-ins stay private.' : 'Choose an existing folder to work with files already on this computer.'}</p>
+            {folderError && <p role="alert" className="mt-1 text-xs text-destructive">{folderError}</p>}
+          </div>}
           <CrewIncludedFeatures type={type} mode={mode} profileVersion={profileVersion} />
           <details>
             <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Add instructions <span className="font-normal">(optional)</span></summary>

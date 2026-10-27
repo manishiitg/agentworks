@@ -77,6 +77,11 @@ export function gatewayBaseUrl(): string | null {
   return url
 }
 
+/** Installation location, including local builds that also enable server products. */
+export function isLocalDeployment(): boolean {
+  return import.meta.env.VITE_DEPLOYMENT_MODE === 'local' || runtimeConfig()?.deploymentMode === 'local'
+}
+
 export function isLocalProductInstallation(): boolean {
   // Packaged local assets omit server entries. Source development uses the
   // local-full build profile and explicitly advertises the launcher opt-in.

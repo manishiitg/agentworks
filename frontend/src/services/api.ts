@@ -1328,7 +1328,7 @@ export const agentApi = {
   },
 
   /** The Crews the signed-in user owns that live at the shared root (Crew/<folder>); older servers have none. */
-  listOwnSharedProjects: async (profileId: string): Promise<{ projects: Array<{ id: string; title?: string; workspace_path: string }> }> => {
+  listOwnSharedProjects: async (profileId: string): Promise<{ projects: Array<{ id: string; title?: string; workspace_path: string; files_path: string }> }> => {
     const response = await api.get(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/own-shared-projects`,
     )
@@ -1352,7 +1352,7 @@ export const agentApi = {
     return response.data
   },
 
-  createProductProject: async (profileId: string, spec: { name: string; purpose: string; icon?: string; mode?: 'dev' | 'cowork' | 'local'; llm_config?: PresetLLMConfig; templates?: readonly { id: string; version: number }[]; selected_skills?: readonly string[]; files?: Readonly<Record<string, string>> }): Promise<{ id: string; workspace_path: string; product_manifest: Record<string, unknown>; runtime_manifest: Record<string, unknown>; warnings?: string[] }> => {
+  createProductProject: async (profileId: string, spec: { name: string; purpose: string; root_path?: string; icon?: string; mode?: 'dev' | 'cowork' | 'local'; llm_config?: PresetLLMConfig; templates?: readonly { id: string; version: number }[]; selected_skills?: readonly string[]; files?: Readonly<Record<string, string>> }): Promise<{ id: string; workspace_path: string; files_path: string; product_manifest: Record<string, unknown>; runtime_manifest: Record<string, unknown>; warnings?: string[] }> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects`, spec, { skipSessionContext: true })
     return response.data
   },

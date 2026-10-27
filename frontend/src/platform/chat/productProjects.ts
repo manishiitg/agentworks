@@ -17,6 +17,8 @@ export type ProductProject<P extends string = string> = {
   identity?: ProductIdentity
   sessionId: string
   workspacePath: string
+  /** Opaque logical file root supplied by the server for a bound local folder. */
+  filesPath?: string
   createdAt: string
   updatedAt: string
   llmConfig?: PresetLLMConfig
@@ -220,8 +222,10 @@ function applyRuntimeManifest<P extends string>(project: ProductProject<P>, cont
 export async function loadProductProjects<P extends string>(root: string, product: P, storage: ProductProjectStorageOptions = {}): Promise<ProductProject<P>[]> {
   // The server selects each Crew's current registered location. Folder scans
   // can include retired filesystem links and cannot decide project identity.
-  const manifests = storage.includeOwnSharedProjects
-    ? (await agentApi.listOwnSharedProjects(product)).projects.map(project => ({ filepath: `${project.workspace_path}/product.json`, type: 'file', last_modified: undefined }))
+  const directory = storage.includeOwnSharedProjects ? (await agentApi.listOwnSharedProjects(product)).projects : undefined
+  const filesRoots = new Map(directory?.map(project => [project.workspace_path, project.files_path]))
+  const manifests = directory
+    ? directory.map(project => ({ filepath: `${project.workspace_path}/product.json`, type: 'file', last_modified: undefined }))
     : dedupeByFilepath(flattenFiles(responseFiles(await agentApi.getPlannerFiles(root, -1, 2)))
       .filter(file => file.type !== 'folder' && file.filepath.endsWith('/product.json')))
   const projects = await Promise.all(manifests.map(async (file) => {
@@ -242,6 +246,7 @@ export async function loadProductProjects<P extends string>(root: string, produc
         product,
         document.lastModified || file.last_modified,
       )
+      if (project) project.filesPath = filesRoots.get(workspacePath)
       if (!project || !runtimeRead) return project
       const runtimeDocument = await runtimeRead
       return runtimeDocument ? applyRuntimeManifest(project, runtimeDocument.content) : { ...project, runtimeConfigInitialized: false }
@@ -256,6 +261,7 @@ export async function loadProductProjects<P extends string>(root: string, produc
 
 export async function createProductProject<P extends string>(options: {
   root: string
+  rootPath?: string
   product: P
   title: string
   description: string
@@ -273,13 +279,13 @@ export async function createProductProject<P extends string>(options: {
   const description = options.description.trim()
   if (options.product === 'work' || options.product === 'code') {
     const created = await agentApi.createProductProject(options.product, {
-      name: title, purpose: description, icon: options.identity?.icon,
+      name: title, purpose: description, root_path: options.rootPath, icon: options.identity?.icon,
       mode: options.mode, llm_config: options.llmConfig,
       selected_skills: options.selectedSkills, files: options.initialFiles,
     })
     const project = parseProductProjectManifest(JSON.stringify(created.product_manifest), created.workspace_path, options.product)
     if (!project || project.id !== created.id) throw new Error('The new Crew could not be opened. Reload your projects to find it.')
-    return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), creationWarnings: created.warnings }
+    return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), filesPath: created.files_path, creationWarnings: created.warnings }
   }
   // Personal products retain their existing creation path. Crew and Code
   // have already returned through server-owned creation above.

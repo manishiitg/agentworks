@@ -52,10 +52,11 @@ it('uses the server creation response and never writes project manifests or fall
   updatePlannerFile.mockClear()
   reserveProject.mockClear()
   for (const mode of ['cowork'] as const) {
-    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [] } } })
+    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', files_path: 'Crew/assistant-new/_files', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [] } } })
     const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '', mode })
     expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Assistant', mode }))
     expect(created.workspacePath).toBe('Crew/assistant-new')
+    expect(created.filesPath).toBe('Crew/assistant-new/_files')
     expect(created.mode).toBe(mode)
   }
   createServerProject.mockRejectedValueOnce(new Error('Creation refused'))
@@ -131,13 +132,14 @@ describe('loadProductProjects with Crews at the shared root', () => {
   })
 
   it('loads the current locations chosen by the server', async () => {
-    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'legacy', workspace_path: 'Chats/Work/projects/legacy-1a2b' }, { id: 'moved', workspace_path: 'Crew/moved-3c4d' }] })
+    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'legacy', workspace_path: 'Chats/Work/projects/legacy-1a2b' }, { id: 'moved', workspace_path: 'Crew/moved-3c4d', files_path: 'Crew/moved-3c4d/_files' }] })
     const projects = await loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })
     expect(projects.map(p => [p.id, p.workspacePath]).sort()).toEqual([
       ['legacy', 'Chats/Work/projects/legacy-1a2b'],
       ['moved', 'Crew/moved-3c4d'],
     ])
     expect(listOwnSharedProjects).toHaveBeenCalledWith('work')
+    expect(projects.find(project => project.id === 'moved')?.filesPath).toBe('Crew/moved-3c4d/_files')
     expect(getPlannerFiles).not.toHaveBeenCalled()
   })
 
@@ -150,7 +152,7 @@ describe('loadProductProjects with Crews at the shared root', () => {
   })
 
   it('ignores retired folder entries for a moved Crew', async () => {
-    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'moved', workspace_path: 'Crew/moved-3c4d' }] })
+    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'moved', workspace_path: 'Crew/moved-3c4d', files_path: 'Crew/moved-3c4d/_files' }] })
     const projects = await loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })
     expect(projects).toHaveLength(1)
   })
