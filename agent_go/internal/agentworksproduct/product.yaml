@@ -500,6 +500,8 @@ chat:
       - get_crew
       - get_crew_costs
       - list_crew_files
+      - list_crew_snapshots
+      - compare_crew_snapshot
       - search_crew_files
       - read_crew_file
       - project_functions_calls

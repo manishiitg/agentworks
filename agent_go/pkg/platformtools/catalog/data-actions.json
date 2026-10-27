@@ -301,5 +301,19 @@
     "description": "Remove a folder attachment from this Crew.",
     "source": "crew_folders",
     "source_action": "detach"
+  },
+  {
+    "family": "files",
+    "name": "snapshots",
+    "member": "list_crew_snapshots",
+    "description": "List saved file comparisons for Crew turns.",
+    "external_members": "list_crew_snapshots"
+  },
+  {
+    "family": "files",
+    "name": "snapshot_compare",
+    "member": "compare_crew_snapshot",
+    "description": "Compare files observed before and after a Crew turn. No undo.",
+    "external_members": "compare_crew_snapshot"
   }
 ]

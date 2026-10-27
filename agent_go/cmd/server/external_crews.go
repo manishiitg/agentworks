@@ -19,6 +19,7 @@ import (
 // never exposed, whoever owns the Crew.
 
 var externalCrewTools = map[string]bool{
+	"list_crew_snapshots": true, "compare_crew_snapshot": true,
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true,
 	"ask_crew": true, "write_crew_file": true, "suggest_crew_change": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
@@ -284,6 +285,12 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	}
 	label := fmt.Sprint(summary["name"])
 	switch name {
+	case "list_crew_snapshots", "compare_crew_snapshot":
+		op := "snapshots"
+		if name == "compare_crew_snapshot" {
+			op = "snapshot_compare"
+		}
+		api.serveCrewFileSnapshots(w, r, crew.Binding.WorkspacePath, op, str("snapshot_id"), str("file"))
 	case "get_crew":
 		externalJSON(w, externalCrewDescription(ctx, crew, manifest, summary))
 	case "suggest_crew_change":

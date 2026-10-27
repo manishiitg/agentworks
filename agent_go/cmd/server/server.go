@@ -367,6 +367,8 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
+	crewTurnSnapshots sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
+
 	localDevices                sync.Map // user/device -> authenticated outbound executor
 	codingAgentClarificationsMu sync.Mutex
 	codingAgentClarifications   map[string]*pendingCodingAgentClarification
@@ -5530,6 +5532,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// response so a fast waiter can never observe an unregistered root.
 	req.userID = currentUserID
 	api.trackConversationTurnStart(queryID, sessionID, req)
+	api.startCrewTurnSnapshot(queryID, sessionID, req)
 
 	// Return immediate response with query ID
 	response := QueryResponse{
@@ -10255,6 +10258,7 @@ func (api *StreamingAPI) recordRetainedLiveInput(sessionID, message, provider, c
 	}
 	api.lastQueryMu.RUnlock()
 	api.trackConversationTurnStart(executionID, sessionID, request)
+	api.watchCrewTurnSnapshot(executionID)
 	api.recordLiveCodingAgentUserMessage(sessionID, message, provider, messageID, "sent_to_cli", clientMessageID)
 	if sessionOwnsCompletion {
 		api.markMCPAgentSessionTurnRunningWithNativeID(sessionID, executionID, nativeTurnID, acceptedAt)
@@ -11272,6 +11276,7 @@ func copyInternalResponse(w http.ResponseWriter, recorded *internalResponseCaptu
 // deliverQueryAsLiveInputNow performs the delivery synchronously; see
 // tryDeliverQueryAsLiveInput for the response-time bound around it.
 func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) bool {
+	defer api.discardUnstartedCrewSnapshot(queryID)
 	if isQueuedMessageSteer(r.Context()) {
 		// The asynchronous fast-response path can outlive the route's earlier
 		// eligibility check. Refuse before attempting any provider delivery.
@@ -11304,6 +11309,9 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			if api.queueIdleRetainedInput(w, r, sessionID, retainedSession.ActiveTurnID() != "") {
 				sessionInputCancel()
 				return true
+			}
+			if retainedSession.ActiveTurnID() == "" {
+				api.prepareCrewTurnSnapshot(queryID, sessionID, QueryRequest{})
 			}
 			// The message's identity goes with it: if it has to wait for the turn's next step, the turn records it
 			// once under this identity, matching the person's bubble (PLAT-872-59).
@@ -11357,6 +11365,9 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			fallbackCancel()
 			return true
 		}
+		if !api.isSessionBusy(sessionID) {
+			api.prepareCrewTurnSnapshot(queryID, sessionID, QueryRequest{})
+		}
 		retainedProvider, handled, err := api.deliverRetainedMainTerminalInput(fallbackCtx, sessionID, withSessionMode(sessionModeFromContext(r.Context()), message))
 		fallbackCancel()
 		if handled {
@@ -11407,6 +11418,9 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 	// The message's identity exists before delivery: a queued message keeps it and is recorded once, where
 	// the agent takes it, so the chat matches the person's bubble instead of adding a second (PLAT-872).
 	messageID := newSteerMessageID()
+	if !hasActiveForegroundTurn {
+		api.prepareCrewTurnSnapshot(queryID, sessionID, QueryRequest{})
+	}
 	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
 		SessionID:       sessionID,
 		Message:         message,
@@ -11452,6 +11466,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 	// there is no double message.
 	if !hasActiveForegroundTurn {
 		api.trackConversationTurnStart(queryID, sessionID, QueryRequest{Query: message, TriggeredBy: "interactive"})
+		api.watchCrewTurnSnapshot(queryID)
 		api.setSessionBusy(sessionID, false)
 		api.markRetainedMainCodingTurnRunning(sessionID, queryID)
 	}
@@ -11615,6 +11630,8 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		r = r.WithContext(context.WithValue(r.Context(), retainedQueueInputKey{}, retainedQueueInput{Request: queuedRequest, LiveInput: true}))
 	}
 
+	snapshotExecutionID := "live-turn:" + newSteerMessageID()
+	defer api.discardUnstartedCrewSnapshot(snapshotExecutionID)
 	// One durable mcpagent Session owns warm delivery across transports and
 	// remains addressable after the wrapped Go turn has completed.
 	tryColdRetainedFallback := true
@@ -11628,6 +11645,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 			if api.queueIdleRetainedInput(w, r, sessionID, retainedSession.ActiveTurnID() != "") {
 				sessionInputCancel()
 				return
+			}
+			if retainedSession.ActiveTurnID() == "" {
+				api.prepareCrewTurnSnapshot(snapshotExecutionID, sessionID, policyRequest)
 			}
 			delivery, err := retainedSession.SendIdentified(sessionInputCtx, req.Message,
 				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
@@ -11647,7 +11667,7 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 				return
 			} else if delivery.Status == mcpagent.UserMessageDeliveryStatusSentToCLI {
 				provider := string(delivery.Provider)
-				messageID := api.recordMCPAgentSessionLiveInputAt(sessionID, req.Message, provider, clientMessageIDFromContext(r.Context()), delivery.TurnID, deliveryStartedAt)
+				messageID := api.recordMCPAgentSessionLiveInputAt(sessionID, req.Message, provider, clientMessageIDFromContext(r.Context()), delivery.TurnID, deliveryStartedAt, snapshotExecutionID)
 				writeRetainedTerminalLiveInputResponseWithMessageID(w, sessionID, provider, messageID)
 				log.Printf("[LIVE INPUT] Delivered through durable mcpagent session=%s provider=%s transport=%s: %.80s", sessionID, provider, delivery.Transport, req.Message)
 				api.persistLiveInputUserMessage(r.Context(), sessionID, req.Message)
@@ -11666,6 +11686,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 			fallbackCancel()
 			return
 		}
+		if !api.isSessionBusy(sessionID) {
+			api.prepareCrewTurnSnapshot(snapshotExecutionID, sessionID, policyRequest)
+		}
 		retainedProvider, handled, err := api.deliverRetainedMainTerminalInput(fallbackCtx, sessionID, req.Message)
 		fallbackCancel()
 		if handled {
@@ -11673,7 +11696,8 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 				writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
 				return
 			}
-			writeRetainedTerminalLiveInputResponse(w, sessionID, req.Message, retainedProvider, clientMessageIDFromContext(r.Context()), api)
+			messageID := api.recordRetainedTerminalLiveInput(sessionID, req.Message, retainedProvider, clientMessageIDFromContext(r.Context()), snapshotExecutionID)
+			writeRetainedTerminalLiveInputResponseWithMessageID(w, sessionID, retainedProvider, messageID)
 			api.persistLiveInputUserMessage(r.Context(), sessionID, req.Message)
 			return
 		}
@@ -11735,6 +11759,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	inputCtx, cancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 	defer cancel()
 	messageID := newSteerMessageID()
+	if !hasActiveForegroundTurn {
+		api.prepareCrewTurnSnapshot(snapshotExecutionID, sessionID, policyRequest)
+	}
 	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
 		SessionID:       sessionID,
 		Message:         req.Message,
@@ -11781,8 +11808,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		api.persistLiveInputUserMessage(r.Context(), sessionID, req.Message)
 	}
 	if !hasActiveForegroundTurn {
-		executionID := "live-turn:" + messageID
+		executionID := snapshotExecutionID
 		api.trackConversationTurnStart(executionID, sessionID, QueryRequest{Query: req.Message, TriggeredBy: "interactive"})
+		api.watchCrewTurnSnapshot(executionID)
 		api.markRetainedMainCodingTurnRunning(sessionID, executionID)
 	}
 	log.Printf("[LIVE INPUT] Delivered user message to provider %s session %s status=%s: %.80s", provider, sessionID, deliveryStatus, req.Message)
