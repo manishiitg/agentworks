@@ -983,8 +983,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   useEffect(() => {
     const open = (event: Event) => {
-      const detail = (event as CustomEvent<{ workspacePath?: string }>).detail
-      if (detail?.workspacePath === selected?.workspacePath) selectWorkspaceView('dashboard')
+      const detail = (event as CustomEvent<{ workspacePath?: string; openPanel?: boolean }>).detail
+      // Dashboard-internal navigation only changes the selected document.
+      // Opening the panel is an explicit request from a clicked chat link.
+      if (detail?.openPanel && detail.workspacePath === selected?.workspacePath) selectWorkspaceView('dashboard')
     }
     window.addEventListener(REPORT_SELECTION_EVENT, open)
     return () => window.removeEventListener(REPORT_SELECTION_EVENT, open)

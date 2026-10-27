@@ -171,10 +171,10 @@ export function readStoredReportDocumentSelection(workspacePath: string): string
   try { return cleanReportPath(window.localStorage.getItem(selectionKey(workspacePath)) || '') } catch { return '' }
 }
 
-export function selectReportDocument(workspacePath: string, path: string): void {
+export function selectReportDocument(workspacePath: string, path: string, openPanel = false): void {
   const clean = cleanReportPath(path) || DEFAULT_REPORT_PATH
   try { window.localStorage.setItem(selectionKey(workspacePath), clean) } catch { /* optional persistence */ }
-  window.dispatchEvent(new CustomEvent(REPORT_SELECTION_EVENT, { detail: { workspacePath, path: clean } }))
+  window.dispatchEvent(new CustomEvent(REPORT_SELECTION_EVENT, { detail: { workspacePath, path: clean, openPanel } }))
 }
 
 export function useReportDocuments(workspacePath: string): ReportDocumentCatalog & { loading: boolean; refresh: () => void } {

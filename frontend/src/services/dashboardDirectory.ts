@@ -95,7 +95,7 @@ export async function openDashboardWorkspaceLink(href: string): Promise<boolean>
 function openResolvedDashboard(workspace: string, document: string, product: DashboardDirectoryEntry['product'], project: string): boolean {
   const surface = product === 'crew' ? 'work' : product === 'workflow' ? 'agentworks' : product === 'relay' ? 'relays' : null
   if (!surface || !workspace || !document || !project) return false
-  selectReportDocument(workspace, document)
+  selectReportDocument(workspace, document, true)
   openAppProduct({ surface, id: project, view: surface === 'work' ? 'dashboard' : 'report' })
   return true
 }
