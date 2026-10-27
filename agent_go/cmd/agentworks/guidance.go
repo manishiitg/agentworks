@@ -33,7 +33,7 @@ func (o *options) checkGuidanceAtStart(cmd commandContext) {
 	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), 2*time.Second)
 	defer cancel()
-	raw, err := client.Call(ctx, "get_agent_context", nil)
+	raw, err := client.Call(ctx, "help", map[string]any{"action": "context"})
 	if err != nil {
 		return
 	}

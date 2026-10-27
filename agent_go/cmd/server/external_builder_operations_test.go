@@ -61,6 +61,7 @@ func (f *builderOperationFixture) call(t *testing.T, raw, name string, args map[
 		args = map[string]any{}
 	}
 	args["workflow_id"] = "invoices"
+	name, args = canonicalTestCall(name, args)
 	data, err := json.Marshal(map[string]any{"name": name, "arguments": args})
 	if err != nil {
 		t.Fatal(err)

@@ -38,19 +38,19 @@ starting it grants no folder automatically.
 Then tell your own MCP agent, for example: “Connect my Reports folder to this
 Crew with Read access” or “Allow commands in my project folder.” It can list
 your connected computer, browse folder names, and save the same permissions as
-the website with `manage_laptop_access`. Connect once in My Vault. For a Goal, pass its `workflow_id` from `list_workflows`; for a Crew, its `workspace_id` comes from
+the website with `terminal` (`laptop_get`, `laptop_set` and the other `laptop_` actions). Connect once in My Vault. For a Goal, pass its `workflow_id` from `workflow action=list`; for a Crew, its `workspace_id` comes from
 `workspace action=list`. Read allows listing and copying files; Read & write also permits
 writing files. Commands are a separate switch (`commands`). Removing access takes effect on subsequent calls, including while
 the computer is offline.
 
-- `list_local_files` lists one folder of a granted folder; `write_local_file`
+- `terminal action=local_files` lists one folder of a granted folder; `terminal action=local_write`
   creates or replaces a text file in a granted Read & write folder.
-- `execute_local_shell_command` runs on your computer in a granted Read & write
+- `terminal action=local_execute` runs on your computer in a granted Read & write
   folder, when the commands switch is on. Commands use your computer’s existing operating-system permissions;
   the folder is their starting location. Server environment and secrets are
   never forwarded. If a connection or timeout leaves the outcome uncertain,
   inspect the result before retrying a command with effects.
-- `copy_local_file_to_project` copies a local file into the Crew’s normal writable
+- `terminal action=local_copy` copies a local file into the Crew’s normal writable
   areas, including binary files up to 11 MiB. It replaces the destination
   through the normal guarded writer. Bytes do not pass through the model.
 
@@ -328,14 +328,14 @@ agentworks files code --workflow WORKFLOW_ID --step-id run-basic-smoke
 agentworks files read --workflow WORKFLOW_ID --path code/run-basic-smoke/modules/auth.py
 ```
 
-MCP `list_files` and `search_files` accept the same optional `path` and
+MCP `files action=list` and `files action=search` accept the same optional `path` and
 `glob` arguments. The glob is relative to `path`; `**` matches any number
 of directories, including zero. Filtering happens before pagination and,
-for `search_files`, before file content is scanned. Hidden workspace paths,
+for `files action=search`, before file content is scanned. Hidden workspace paths,
 runtime caches, and installed packages (including `.cache`, `.local`,
 `__pycache__`, `.venv`, `node_modules`, and `site-packages`) are unavailable
 to file listing, search, direct reading, and preview links. To identify
-a workflow step for a test script, use MCP `list_step_code` or CLI
+a workflow step for a test script, use MCP `files action=code` or CLI
 `files code`. The inventory defaults to Python files and annotates each
 entry with its step ID, plan title, and whether that step is still in the
 plan. Current workflows read `code/<step-id>/`; legacy workflows read
@@ -357,7 +357,7 @@ server's schemas:
 
 ```sh
 agentworks tools list
-agentworks tools call get_guidance_topic --input ./topic.json
+agentworks tools call help --input ./topic.json   # {"action":"topic","topic":"..."}
 ```
 
 ```sh
@@ -392,9 +392,9 @@ agentworks schedules runs --workflow WORKFLOW_ID --schedule-id daily
 agentworks schedules trigger --workflow WORKFLOW_ID --schedule-id daily
 ```
 
-`runs:execute` implies workflow visibility (`list_workflows`, `get_plan`,
-run evidence, status). Direct file content (`list_files`, `search_files`,
-`list_step_code`, `read_file`, `get_file_link`, knowledge reads) stays behind
+`runs:execute` implies workflow visibility (`workflow action=list`, `workflow action=plan`,
+run evidence, status). Direct file content (`files action=list`, `files action=search`,
+`files action=code`, `files action=read`, `files action=link`, knowledge reads) stays behind
 `files:read` —
 but a run or chat session necessarily reads its own workflow's files to
 execute, so `runs:execute` includes those in-session reads and the results
@@ -453,9 +453,9 @@ agentworks files download --workflow WORKFLOW_ID --path db/assets/report.pdf \
   --output ./report.pdf
 ```
 
-MCP exposes the same `get_file_link` tool with `workflow_id` and `path` arguments.
+MCP exposes the same `files action=link` tool with `workflow_id` and `path` arguments.
 It returns the file size, content type, `preview_url`, and `download_url` without
-loading the asset into model context. An external agent can call `get_file_link`
+loading the asset into model context. An external agent can call `files action=link`
 and give the user its `preview_url` for any existing output.
 
 The preview opens `/file?path=…` in AgentWorks. Local installations initialize
@@ -526,19 +526,19 @@ Two constraints define the intended boundary:
 
 The five implemented operations are:
 
-- `get_agent_context`: role, token capabilities, available tools, and guidance
+- `help action=context`: role, token capabilities, available tools, and guidance
   version, plus the preparation checklist (with a run section when the token
   allows `runs:execute`). This is a global tool;
   pass `workflow_id` to include the caller's role on a workflow. CLI:
   `agentworks guidance context [--workflow ID]`.
-- `list_guidance_topics` / `get_guidance_topic`: server-owned guidance for
+- `help action=topics` / `help action=topic`: server-owned guidance for
   `plan-change-impact`, `plan-design`, `planning-steps`, `step-description`,
   `step-config`, `skill-management`, `file-layout`, and `secure-share-links`.
   Each topic is rendered live from the canonical Builder reference, and every
   internal-only operation named by served content is disclosed in that topic's
   external mapping note (enforced by test). Topics documenting internal-only
   tool names are excluded from the profile.
-- `list_workflow_knowledge` / `read_workflow_knowledge`: workflow learnings,
+- `files action=knowledge_list` / `files action=knowledge_read`: workflow learnings,
   knowledgebase notes, workspace skill folders, and skill wiring
   (workflow-selected skills plus per-step `enabled_skills`). Reads are confined
   to `learnings/`, `knowledgebase/`, and `skills/<folder>/<file>` content, and
@@ -550,7 +550,7 @@ The five implemented operations are:
 
 MCP initialization delivers short instructions that tell the client whether
 the bridge reads only or also runs (chosen from the scope-filtered catalog),
-to call `get_agent_context` first, and to load
+to call `help action=context` first, and to load
 relevant topics. The companion
 skill source lives at
 `agent_go/pkg/agentworksclient/skills/agentworks/SKILL.md`, embedded in the
@@ -558,7 +558,7 @@ CLI; `agentworks skills install --dir <skill-dir> [--force]` writes it to
 `<dir>/agentworks/` (default `.agents/skills`, refusing to clobber without
 `--force`). The guidance version is computed from the allowlist, mapping
 notes, and rendered content, so cached clients detect canonical changes
-without a manual bump. `get_agent_context` with `workflow_id` also returns
+without a manual bump. `help action=context` with `workflow_id` also returns
 `effective_tools`, filtered by the caller's role on top of token scopes.
 
 Canonical guidance tools require `workflows:read`; knowledge tools require
@@ -582,7 +582,7 @@ The second review confirmed these completed fixes:
   empty.
 - The guidance version is derived from the allowlist, mapping notes, and
   rendered canonical content.
-- `get_agent_context` returns role-filtered `effective_tools` in addition to
+- `help action=context` returns role-filtered `effective_tools` in addition to
   token-level availability.
 - Global topic commands do not expose the inapplicable `--workflow` flag.
 - `agentworks skills install --dir <skill-dir> [--force]` installs the embedded
@@ -665,11 +665,11 @@ it appears in `external_denylist`.
 
 For webhook runs, `get_schedule_runs` returns the accepted delivery's
 `commit_sha`, `component`, `env`, and `deployed_at` under `webhook` when those
-fields were present in the delivery body. `get_run` returns the same `webhook`
+fields were present in the delivery body. `runs action=get` returns the same `webhook`
 metadata for that run folder. These fields identify the deploy ping that
 started the run; overlapping pings skipped by the trigger do not create runs.
 `get_schedule_runs` can read retained history for a deleted schedule ID and
-marks that case with `schedule_deleted: true`. `list_workflow_knowledge` pages
+marks that case with `schedule_deleted: true`. `files action=knowledge_list` pages
 the learnings and knowledgebase inventories together with `limit` and `offset`;
 follow `next_offset` while `has_more` is true. Directory listing tools return
 `exists: true` when the requested path exists, even if the result page is empty.
@@ -723,7 +723,7 @@ replication requires a shared transactional authentication store.
 
 ## Manage Vault through platform MCP
 
-The main AgentWorks endpoint (`/api/external/v1/mcp`) also supports Vault administration. Discover the following tools through `get_api_spec`, then invoke them with `call_tool`: `manage_vault_access`, `manage_vault_groups`, `manage_vault_secret_access`, `query_vault_db`, `mutate_vault_db`, `list_vault_mcp_servers`, and `call_vault_mcp_tool`. They need no workflow ID and reuse the existing Vault connection, live permission, membership and service transport handlers. Vault owns the shared builder/platform-MCP tool list in `agent_go/internal/caplayerproduct/product.yaml`; the same schemas and handlers serve both transports. Manifest/catalog and schema-parity tests reject drift. Provider-native shell/file tools are not part of this management API. Regex conditions require a plain-language description.
+The main AgentWorks endpoint (`/api/external/v1/mcp`) also supports Vault administration. Discover the following tools through `get_api_spec`, then invoke them with `call_tool`: the `vault` tool's `access_*`, `groups_*`, secret (`shared_secrets`, `grant_secret`, `set_value`, `share_secret`), `governance_*`, `connections` and `call` actions. They need no workflow ID and reuse the existing Vault connection, live permission, membership and service transport handlers. Vault owns the shared builder/platform-MCP tool list in `agent_go/internal/caplayerproduct/product.yaml`; the same schemas and handlers serve both transports. Manifest/catalog and schema-parity tests reject drift. Provider-native shell/file tools are not part of this management API. Regex conditions require a plain-language description.
 
 The connection needs `vault:manage` and its current user must be an active Vault administrator. Local single-user mode uses its administrator account. SSO accounts follow the live directory role and Vault entitlement. OAuth consent filters this scope for non-administrators, and discovery and every invocation recheck the role. Older approved connections/PATs without the new scope must reconnect or receive a new token; existing grants are not expanded silently. Restart a legacy stdio bridge to refresh its cached catalog.
 
@@ -733,9 +733,9 @@ Example read-only check:
 {"name":"manage_vault_access","arguments":{"operation":"inspect_environment","arguments":{}}}
 ```
 
-Group operations: `list`, `create` (group_id/name/optional description), `update`, `list_members`, `add_member`, `remove_member`. Member IDs come from `manage_vault_access` operation `list_users`; adding a member binds only an active platform identity and does not provision product slots. Secret operations: `list` (optional group_id) and `set` (group_id/name/allowed). Secret values stay in the encrypted store and never appear in responses. Add/rotate values through the secure UI.
+Group operations: `list`, `create` (group_id/name/optional description), `update`, `list_members`, `add_member`, `remove_member`. Member IDs come from `vault action=access_list_users`; adding a member binds only an active platform identity and does not provision product slots. Secret operations: `list` (optional group_id) and `set` (group_id/name/allowed). Secret values stay in the encrypted store and never appear in responses. Add/rotate values through the secure UI.
 
-The separate `/api/vault/mcp` endpoint executes permitted connected MCP tools using `vault:mcp` OAuth and current user/group restrictions. Those runtime restrictions remain unchanged. The explicitly authorized `call_vault_mcp_tool` management operation instead uses the same administrator setup authority as the Vault builder, independently of group/regex grants, to resolve real resource IDs before configuring restrictions. It is limited to active Vault connections and approved tools, rechecks the current administrator on every request, and the gateway validates schemas and audits calls as the actual user. Upstream mutations require an explicit user request. Private connections belonging to other people and secret values are excluded.
+The separate `/api/vault/mcp` endpoint executes permitted connected MCP tools using `vault:mcp` OAuth and current user/group restrictions. Those runtime restrictions remain unchanged. The explicitly authorized `vault action=call` management operation instead uses the same administrator setup authority as the Vault builder, independently of group/regex grants, to resolve real resource IDs before configuring restrictions. It is limited to active Vault connections and approved tools, rechecks the current administrator on every request, and the gateway validates schemas and audits calls as the actual user. Upstream mutations require an explicit user request. Private connections belonging to other people and secret values are excluded.
 
 
 ## Guarded public file writes
@@ -750,14 +750,14 @@ agentworks login --server https://your-agentworks.example \
 agentworks files read --workflow invoices --path docs/readme.md
 ```
 
-Call `write_file` through MCP `call_tool`, or `agentworks files write --input edit.json`:
+Call `files action=write` through MCP `call_tool`, or `agentworks files write --input edit.json`:
 
 ```json
 {
   "workflow_id": "invoices",
   "path": "docs/readme.md",
   "content": "Updated documentation\n",
-  "expected_revision": "revision-from-read_file-or-missing",
+  "expected_revision": "revision-from-files-read-or-missing",
   "request_id": "unique-id-for-this-write"
 }
 ```
@@ -831,11 +831,11 @@ Crew settings. The old `--workspace`, `--block`, `--downloads`, `--folder` and `
 
 The owner's interactive Builder chat gets these extra tools:
 
-- `list_local_files` and `write_local_file`: list a folder, and write a text file in
+- `terminal action=local_files` and `terminal action=local_write`: list a folder, and write a text file in
   a Read & write folder.
-- `execute_local_shell_command`: run a command in the connected folder on the
-  laptop (needs the commands switch). Normal `execute_shell_command` continues to run on the server.
-- `copy_local_file_to_project`: copy a relative local file into an editable relative
+- `terminal action=local_execute`: run a command in the connected folder on the
+  laptop (needs the commands switch). Normal `terminal action=execute` continues to run on the server.
+- `terminal action=local_copy`: copy a relative local file into an editable relative
   Crew path. Text and binary files up to 11 MiB are copied as bytes through the
   normal guarded Crew writer. The model receives a receipt, not the file bytes.
 
@@ -865,7 +865,7 @@ Local executor receipts record the same identity plus the device ID and source
 `server_local_executor`. Identity comes from server authentication, never tool
 arguments. Private records also retain the timestamp and capped before-content.
 
-MCP `builder_chat` requests use the normal typed plan tools. The existing
+MCP `sessions action=builder_chat` requests use the normal typed plan tools. The existing
 `planning/changelog/*.json` entries preserve `origin.type=external_builder`,
 user ID/name, session ID, operation ID and `via_token=token:<connection ID>`, plus
 change reason, timestamp and before/after hashes. A separate Builder audit also
@@ -934,4 +934,4 @@ CLI update and stop/start preserve and reconnect still-live approved attachments
 
 Terminal attach/detach refuse coding-agent process ancestry even through a PTY; the person uses the in-chat hook instead. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.
 
-My Vault computers can also be listed over MCP with `manage_laptop_access` and `action: "devices"`, without a project selector. Then choose the computer and its grants in a Goal or Crew. Goal steps and schedules stay on the server; their Gmail and Slack settings remain independent.
+My Vault computers can also be listed over MCP with `terminal` and `action: "laptop_devices"`, without a project selector. Then choose the computer and its grants in a Goal or Crew. Goal steps and schedules stay on the server; their Gmail and Slack settings remain independent.

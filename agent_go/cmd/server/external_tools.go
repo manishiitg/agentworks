@@ -67,7 +67,7 @@ func externalTools() ([]externalTool, error) {
 				props = map[string]any{}
 			}
 			if scoped {
-				props["workflow_id"] = externalString("Workflow ID returned by list_workflows. Never a filesystem path.")
+				props["workflow_id"] = externalString("Workflow ID returned by workflow action=list. Never a filesystem path.")
 				required = append(required, "workflow_id")
 			}
 			req := make([]any, len(required))
@@ -81,7 +81,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and schedule counts only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and schedule counts only. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
 		externalAgentMessageDefinition(add)
 		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide Context beside the model in all your chats. Off by default. Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
 		externalServerProductDefinitions(add)
@@ -106,7 +106,7 @@ func externalTools() ([]externalTool, error) {
 		add("get_file_link", "Get an existing workflow, Flow or Crew file/folder's authenticated browser preview URL. Files include a download URL, size and content type. Pass exactly one of workflow_id (files:read) or crew_id (crews:read); existing visibility, project bounds and file guards apply. Links contain no credentials and grant no access; recipients must sign in with their own current project access.", false, false, map[string]any{"path": externalString("Canonical project-relative file or folder path."), "workflow_id": externalString("Workflow or Flow ID."), "crew_id": externalString("Crew ID returned by crew list.")}, "path")
 		defined[len(defined)-1].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workflow_id"}}, map[string]any{"required": []any{"crew_id"}}}
 		add("read_file", "Read a workflow file: text up to 2 MiB, smaller binary content as base64. Larger files up to 11 MiB return size and revision metadata without content, for guarded replacement or authenticated download.", false, true, map[string]any{"path": externalString("Workflow-relative file path.")}, "path")
-		add("write_file", "Write UTF-8 source or documentation (content), or a binary file such as an image, PDF or spreadsheet (content_base64, at most 11 MiB), within your current owner/editor role and existing workflow or Flow authoring consent. Read first for expected_revision (missing for new files); use a unique request_id and reuse it only for identical retries. Planning, workflow configuration, databases and private paths are protected.", true, true, map[string]any{"path": externalString("Workflow-relative file path."), "content": externalString("UTF-8 content, at most 2 MiB."), "content_base64": externalString("Base64 of a binary file, at most 11 MiB decoded. Pass this or content."), "expected_revision": externalString("Revision returned by read_file, or missing."), "request_id": externalString("Unique durable mutation ID (at most 128 characters).")}, "path", "expected_revision", "request_id")
+		add("write_file", "Write UTF-8 source or documentation (content), or a binary file such as an image, PDF or spreadsheet (content_base64, at most 11 MiB), within your current owner/editor role and existing workflow or Flow authoring consent. Read first for expected_revision (missing for new files); use a unique request_id and reuse it only for identical retries. Planning, workflow configuration, databases and private paths are protected.", true, true, map[string]any{"path": externalString("Workflow-relative file path."), "content": externalString("UTF-8 content, at most 2 MiB."), "content_base64": externalString("Base64 of a binary file, at most 11 MiB decoded. Pass this or content."), "expected_revision": externalString("Revision returned by files action=read, or missing."), "request_id": externalString("Unique durable mutation ID (at most 128 characters).")}, "path", "expected_revision", "request_id")
 		// Product declarations admit tools; current roles and existing connection
 		// consent separately authorize reads, execution and direct authoring.
 		// Catalog membership is admitted by product.yaml (chat.run
@@ -129,14 +129,14 @@ func externalTools() ([]externalTool, error) {
 		relayVersion := externalString("Flows only: a published version from relay action=releases (e.g. v3) to read that version's production runs; omit for draft test runs. Needs owner or editor access.")
 		p = page()
 		p["version"] = relayVersion
-		add("list_runs", "List saved run folders and their metadata files. Use get_run for a chosen run. For a Flow, pass version to see a published version's production runs.", false, true, p)
+		add("list_runs", "List saved run folders and their metadata files. Use runs action=get for a chosen run. For a Flow, pass version to see a published version's production runs.", false, true, p)
 		for _, name := range []string{"get_run", "get_logs"} {
 			p = page()
 			p["version"] = relayVersion
 			p["run_folder"] = externalString("Run directory relative to runs/, e.g. iteration-0/group-name.")
-			description := "Inspect a saved run's files or log files; use read_file to retrieve selected content."
+			description := "Inspect a saved run's files or log files; use files action=read to retrieve selected content."
 			if name == "get_run" {
-				description = "Inspect a saved run's files and webhook deploy metadata (commit_sha, component, env, deployed_at) when present. Use read_file to retrieve selected content."
+				description = "Inspect a saved run's files and webhook deploy metadata (commit_sha, component, env, deployed_at) when present. Use files action=read to retrieve selected content."
 			}
 			add(name, description, false, true, p, "run_folder")
 		}
@@ -147,7 +147,7 @@ func externalTools() ([]externalTool, error) {
 			if props == nil {
 				props = map[string]any{}
 			}
-			props["workflow_id"] = externalString("Workflow ID returned by list_workflows. Never a filesystem path.")
+			props["workflow_id"] = externalString("Workflow ID returned by workflow action=list. Never a filesystem path.")
 			required = append(required, "workflow_id")
 			req := make([]any, len(required))
 			for i, r := range required {
@@ -187,14 +187,14 @@ func externalTools() ([]externalTool, error) {
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see runs action=status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from runs action=status."), "request_id": externalString("Pending input request ID from runs action=status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
-		addRun("stop_step", "Stop one running step or background execution by its execution ID from execute_step, query_step, or list_executions. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID returned by a run tool or query_step."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
+		addRun("stop_step", "Stop one running step or background execution by its execution ID from runs action=step, runs action=step_status, or runs action=active. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID returned by a run tool or runs action=step_status."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
 		addRun("stop_all_executions", "Stop all running executions owned by this connection in the workflow, or one session you started (here or in the app) when session_id is given. Executes directly.", true, map[string]any{"session_id": map[string]any{"type": "string", "description": "Optional run session ID to stop instead of every owned session."}})
 		// Crews: bounded by the token's Crew list; crews:read.
 		crewID := func(props map[string]any) map[string]any {
 			if props == nil {
 				props = map[string]any{}
 			}
-			props["crew_id"] = externalString("Crew ID returned by list_crews.")
+			props["crew_id"] = externalString("Crew ID returned by workspace action=list.")
 			return props
 		}
 		add("list_crews", "List the Crews this connection may use: ID, name, identity, owner. Requires crews:read.", false, false, map[string]any{"query": externalString("Filter by Crew name, identity, or ID.")})
@@ -215,8 +215,8 @@ func externalTools() ([]externalTool, error) {
 		add("list_crew_files", "List a Crew's project files (crew-relative paths), paginated. Start from a folder with path, go deeper with depth (up to 8), and find files by name with glob (e.g. **/*Login*). Private areas (chat transcripts under builder/, db/, the Crew's manifests, hidden folders) are never listed. Requires crews:read.", false, false, crewFiles(false), "crew_id")
 		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
 		add("list_crew_snapshots", "List saved file comparisons for this Crew's turns. No prompts or conversations are included; incomplete captures are marked. Requires crews:read.", false, false, crewID(nil), "crew_id")
-		add("compare_crew_snapshot", "Compare eligible files before and after a saved Crew turn. Changes may include other chats or editors. Pass file to read its historical diff, or file and side (before/after) to read the saved version. Text up to 2 MiB and binary up to 512 KiB return content; larger files return metadata. Current file grants apply. No undo.", false, false, crewID(map[string]any{"snapshot_id": externalString("Snapshot ID returned by list_crew_snapshots."), "file": externalString("Optional file path returned by this comparison."), "side": externalString("Optional before or after, with file, to read that saved version instead of a diff.")}), "crew_id", "snapshot_id")
-		add("read_crew_file", "Read a Crew project file: text up to 2 MiB returns content and smaller binary files return content_base64. Larger files up to 11 MiB return size/revision metadata without content, for guarded replacement or authenticated download. Private areas and symlinks are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files."), "agent_id": externalString("Optional published agent ID from workspace get.")}), "crew_id", "path")
+		add("compare_crew_snapshot", "Compare eligible files before and after a saved Crew turn. Changes may include other chats or editors. Pass file to read its historical diff, or file and side (before/after) to read the saved version. Text up to 2 MiB and binary up to 512 KiB return content; larger files return metadata. Current file grants apply. No undo.", false, false, crewID(map[string]any{"snapshot_id": externalString("Snapshot ID returned by files action=snapshots."), "file": externalString("Optional file path returned by this comparison."), "side": externalString("Optional before or after, with file, to read that saved version instead of a diff.")}), "crew_id", "snapshot_id")
+		add("read_crew_file", "Read a Crew project file: text up to 2 MiB returns content and smaller binary files return content_base64. Larger files up to 11 MiB return size/revision metadata without content, for guarded replacement or authenticated download. Private areas and symlinks are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from files action=list."), "agent_id": externalString("Optional published agent ID from workspace get.")}), "crew_id", "path")
 		// crews:run — the call runs as a turn in this user's own continuing
 		// conversation with the Crew, never its main chat.
 		submission := map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for one intended call; reuse it on an uncertain retry to get the original call_id, even after completion or restart."}
@@ -229,7 +229,7 @@ func externalTools() ([]externalTool, error) {
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
 		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
-		add("create_crew", "Create a Crew you own from a spec: name, icon, purpose (what the Crew is for; its standing instructions), skills, functions, schedules, project files. Returns the new Crew as get_crew does. Requires crews:write on a connection covering all your Crews.", false, false, specProps, "name", "purpose")
+		add("create_crew", "Create a Crew you own from a spec: name, icon, purpose (what the Crew is for; its standing instructions), skills, functions, schedules, project files. Returns the new Crew as workspace action=get does. Requires crews:write on a connection covering all your Crews.", false, false, specProps, "name", "purpose")
 		strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
 		add("update_crew", "Edit a Crew you own. Every field is optional; omitted parts stay as they are. skills: set/add/remove names. functions: upsert specs / delete names. schedules: add specs (an add whose name already exists counts as already added), update specs by id, remove ids (an id that is already gone counts as removed), so a retry after a dropped connection is safe. files: write project files; remove_files deletes them. Requires crews:write.", false, false, crewID(map[string]any{
 			"name": map[string]any{"type": "string", "maxLength": 60}, "icon": map[string]any{"type": "string", "maxLength": 8},
@@ -242,9 +242,9 @@ func externalTools() ([]externalTool, error) {
 			"return_spec":  map[string]any{"type": "boolean", "description": "Return the whole updated Crew (every function's instructions and schemas) instead of the compact summary. Default false."},
 		}), "crew_id")
 		add("write_crew_file", "Write one project file of a Crew: UTF-8 text (content) or a binary file such as an image, PDF or spreadsheet (content_base64, at most 11 MiB). Replaces the file unless expected_revision is given; request_id makes a retry safe. The Crew's manifests, functions.json, chats, databases and hidden folders are refused. With the agentworks CLI, crews put uploads a local file without pasting it into the call. The Crew's owner may write any editable path (needs crews:write outside shared/<your id>/); anyone else who can run the Crew (crews:run) may write only under shared/<your id>/ (at most 5 MiB a file, 50 MiB and 200 files in all), where the Crew and everyone with access to it can read it.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path, e.g. scripts/report.py."), "content": map[string]any{"type": "string", "description": "UTF-8 text, at most 2 MiB."}, "content_base64": externalString("Base64 of a binary file, at most 11 MiB decoded. Pass this or content."), "expected_revision": externalString("Optional: the file's revision (or missing for a new file); the write is refused if it changed."), "request_id": externalString("Optional unique ID (at most 128 characters); reuse it only to retry the identical write.")}), "crew_id", "path")
-		add("export_crew", "Export a Crew as a portable spec (identity, skills with their project-local skill files, functions and schedules). Chats, memory, databases, secrets, and model connections are never included. Pass the result to import_crew on any AgentWorks server. Requires crews:read.", false, false, crewID(nil), "crew_id")
-		importSpec := map[string]any{"type": "object", "properties": specProps, "required": []any{"name"}, "description": "A spec from export_crew (or a Crew Agent Playbook catalog entry)."}
-		add("import_crew", "Create a Crew you own from a spec produced by export_crew. Schedules arrive disabled unless enable_schedules is true. Requires crews:write on a connection covering all your Crews.", false, false, map[string]any{"spec": importSpec, "enable_schedules": map[string]any{"type": "boolean"}}, "spec")
+		add("export_crew", "Export a Crew as a portable spec (identity, skills with their project-local skill files, functions and schedules). Chats, memory, databases, secrets, and model connections are never included. Pass the result to workspace action=import on any AgentWorks server. Requires crews:read.", false, false, crewID(nil), "crew_id")
+		importSpec := map[string]any{"type": "object", "properties": specProps, "required": []any{"name"}, "description": "A spec from workspace action=export (or a Crew Agent Playbook catalog entry)."}
+		add("import_crew", "Create a Crew you own from a spec produced by workspace action=export. Schedules arrive disabled unless enable_schedules is true. Requires crews:write on a connection covering all your Crews.", false, false, map[string]any{"spec": importSpec, "enable_schedules": map[string]any{"type": "boolean"}}, "spec")
 		// Vault management reuses the administrator builder and UI handlers.
 		externalVaultDefinitions(add)
 		// Code review (crews:review; admins and Code reviewers only).
@@ -489,7 +489,7 @@ func (api *StreamingAPI) handleExternalTools(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	if names := r.URL.Query()["names"]; len(names) > 0 {
-		result := externalMCPAPISpec(map[string]any{"names": names}, externalListedTools(GetUserFromContext(r.Context()), allowed), allowed, func(value map[string]any, names []string) {
+		result := externalMCPAPISpec(map[string]any{"names": names}, externalListedTools(GetUserFromContext(r.Context()), allowed), func(value map[string]any, names []string) {
 			api.externalPrepareGuidance(r, value, r.URL.Query().Get("guidance_session_id"))
 		})
 		if result.IsError {
@@ -980,7 +980,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 			for _, item := range matches[start:end] {
 				rows = append(rows, externalCompactWorkflow(item))
 			}
-			externalJSON(w, map[string]any{"workflows": rows, "total": len(matches), "next_offset": end, "has_more": end < len(matches), "note": "Compact list: use get_workflow for one workflow's full manifest."})
+			externalJSON(w, map[string]any{"workflows": rows, "total": len(matches), "next_offset": end, "has_more": end < len(matches), "note": "Compact list: use workflow action=get for one workflow's full manifest."})
 			return
 		}
 		page := make([]DiscoveredWorkflow, 0, end-start)
@@ -1305,7 +1305,7 @@ func (api *StreamingAPI) externalPlanCall(w http.ResponseWriter, r *http.Request
 	if stepID := externalArg(args, "step_id"); stepID != "" {
 		step := externalPlanFindStep(plan, stepID)
 		if step == nil {
-			externalError(w, 404, "not_found", "No step "+stepID+" in the plan; call get_plan with view=outline for the step ids.")
+			externalError(w, 404, "not_found", "No step "+stepID+" in the plan; call workflow action=plan with view=outline for the step ids.")
 			return
 		}
 		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "step_id": stepID, "step": step, "config": externalPlanConfigFor(config, stepID)})
@@ -1415,7 +1415,7 @@ func externalPlanOutline(plan, config any) map[string]any {
 		return out
 	}
 	return map[string]any{"steps": steps, "plan_sections": sizes(plan), "config_sections": sizes(config),
-		"next": "get_plan with step_id=<id> reads one step and its configuration; without view or step_id returns everything."}
+		"next": "workflow action=plan with step_id=<id> reads one step and its configuration; without view or step_id returns everything."}
 }
 
 // externalWorkflowView is a workflow as an external client may see it: the manifest without the stored webhook

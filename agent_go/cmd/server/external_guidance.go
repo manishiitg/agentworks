@@ -223,7 +223,7 @@ func externalTopicNoteFor(claims *UserClaims, topic externalGuidanceTopic) strin
 	if len(named) == 0 {
 		return note
 	}
-	auto := "Not in this connection's catalog (do not call): " + strings.Join(named, ", ") + ". Describe the needed change in your reply, or delegate it with builder action=chat when that is available."
+	auto := "Not in this connection's catalog (do not call): " + strings.Join(named, ", ") + ". Describe the needed change in your reply, or delegate it with sessions action=builder_chat when that is available."
 	if note == "" {
 		return auto
 	}
@@ -446,10 +446,10 @@ func externalPreparation(claims *UserClaims) []string {
 	steps := []string{
 		"Choose a product with help action=topic topic=product-guide. For an installable MCP usage skill, request help action=skills topics=[agentworks-mcp]. These are versioned server guidance, independent of Brain access.",
 		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Workflow Run-session tools start model turns; direct Crew and project handlers execute without a model turn.",
-		"Call list_workflows to discover workflow IDs; IDs are never filesystem paths.",
+		"Call workflow action=list to discover workflow IDs; IDs are never filesystem paths.",
 		"Load only the guidance topics relevant to the task; topic list via help action=topics.",
-		"Use get_file_link for preview/download URLs; links identify a file and never grant permission.",
-		"Use files download (not read_file) for a local copy; downloads refuse to overwrite existing files.",
+		"Use files action=link for preview/download URLs; links identify a file and never grant permission.",
+		"Use files download (not files action=read) for a local copy; downloads refuse to overwrite existing files.",
 	}
 	if claims != nil && claims.AccessToken != nil && claims.AccessToken.Allows("dashboards:read") {
 		steps[1] = "Use only tools present in this connection’s catalog. Dashboards: dashboard action=list discovers accessible projects and published documents; action=get reads the selected source. Links require recipients to have current project access."
@@ -459,11 +459,11 @@ func externalPreparation(claims *UserClaims) []string {
 	}
 	canRun := claims == nil || claims.AccessToken == nil || claims.AccessToken.Allows("runs:execute")
 	if canRun {
-		steps = append(steps, "To run: call a run-mode tool such as execute_step (its reply carries session_id), then poll runs action=status for completion. Read run evidence with runs action=list, get_run, and runs action=logs.")
-		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer pending human_feedback requests with runs action=reply_input.")
+		steps = append(steps, "To run: call a run-mode tool such as runs action=step (its reply carries session_id), then poll runs action=status for completion. Read run evidence with runs action=list, runs action=get, and runs action=logs.")
+		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer pending questions with runs action=reply_input.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "builder_chat"}) {
-		steps = append(steps, "For direct workflow edits, plan action=list returns native operation schemas. Read get_plan for expected_revision, then call plan with that revision, a unique request_id and the exact arguments. Existing Builder consent and current owner/editor/team roles apply; native validation and plan changelog remain. Builder action=chat can delegate an editing request to the configured model when requested; poll action=status and answer action=reply_input by operation_id.")
+		steps = append(steps, "For direct workflow edits, plan action=list returns native operation schemas. Read workflow action=plan for expected_revision, then call plan with that revision, a unique request_id and the exact arguments. Existing Builder consent and current owner/editor/team roles apply; native validation and plan changelog remain. Builder action=chat can delegate an editing request to the configured model when requested; poll action=status and answer action=reply_input by operation_id.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_google_account"}) {
 		steps = append(steps, "For personal Google or Slack accounts, use integrations with workflow_id or crew_id. Start with action=google_list_saved or slack_list_saved. The corresponding attach/detach action changes only this item; connect/reconnect returns a browser sign-in link; disconnect removes the saved connection everywhere. Existing Builder access, account ownership and current item access apply.")
@@ -473,7 +473,7 @@ func externalPreparation(claims *UserClaims) []string {
 	}
 	if claims != nil && claims.AccessToken != nil {
 		if productEnabled("relays") {
-			steps = append(steps, "For Flows (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or builder action=chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. Everyone else with access chats with a Flow in Run mode in the app: it reads the published source, shows every run and runs a published version, but changes nothing. Creation requires relays:write consent covering all accessible workflows.")
+			steps = append(steps, "For Flows (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or sessions action=builder_chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. Everyone else with access chats with a Flow in Run mode in the app: it reads the published source, shows every run and runs a published version, but changes nothing. Creation requires relays:write consent covering all accessible workflows.")
 		}
 		steps = append(steps, "This token is restricted: unavailable tools are omitted from the tools list.")
 	}
@@ -494,7 +494,7 @@ func (api *StreamingAPI) externalGuidanceTopicList(w http.ResponseWriter, r *htt
 		}
 		topics = append(topics, item)
 	}
-	externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topics": topics, "refresh": "Each topic has its own version. Fetch a topic again only when its version differs from the one you saved; pass known_version to get_guidance_topic to skip an unchanged body."})
+	externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topics": topics, "refresh": "Each topic has its own version. Fetch a topic again only when its version differs from the one you saved; pass known_version to help action=topic to skip an unchanged body."})
 }
 
 // externalGuidanceTopicBody serves get_guidance_topic.
@@ -730,7 +730,7 @@ func (api *StreamingAPI) externalReadKnowledge(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if !allowed {
-		externalError(w, 403, "protected_path", "Choose a knowledgebase/ or skills/ file from list_workflow_knowledge. Older guide files remain readable as workflow history.")
+		externalError(w, 403, "protected_path", "Choose a knowledgebase/ or skills/ file from files action=knowledge_list. Older guide files remain readable as workflow history.")
 		return
 	}
 	if strings.HasPrefix(clean, "knowledgebase/") && workflow.Manifest.KnowledgebaseMode == "shared" {

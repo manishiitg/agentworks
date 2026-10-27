@@ -21,7 +21,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-const sparkquillMCPInstructions = `You are connected to SparkQuill, the family's learning workspace. Use get_api_spec to discover tools and their schemas, then call_tool. Paths are relative to this family's workspace, never absolute or another user's path. Read materials and learning context before building. create_learning_activity and update_learning_activity delegate to Quill in a separate conversation and return a job_id: poll get_activity_status. Finished activities can be previewed with get_file_link; assign_activity hands a finished activity to the child. Direct file edits require sparkquill:write, expected_revision and a stable request_id; read first and reuse request_id only for identical retries. Upload binary files as base64 (up to 2 MiB decoded per file). Internal state, PINs, secrets and progress records cannot be edited as files. Creation does not automatically hand an activity to the child. Only tools in this connection's catalog are available.`
+const sparkquillMCPInstructions = `You are connected to SparkQuill, the family's learning workspace. Use get_api_spec to discover tools and their schemas, then call_tool. Paths are relative to this family's workspace, never absolute or another user's path. Read materials and learning context before building. create_learning_activity and update_learning_activity delegate to Quill in a separate conversation and return a job_id: poll get_activity_status. Finished activities can be previewed with files action=link; assign_activity hands a finished activity to the child. Direct file edits require sparkquill:write, expected_revision and a stable request_id; read first and reuse request_id only for identical retries. Upload binary files as base64 (up to 2 MiB decoded per file). Internal state, PINs, secrets and progress records cannot be edited as files. Creation does not automatically hand an activity to the child. Only tools in this connection's catalog are available.`
 
 var sparkquillScopes = []string{"sparkquill:read", "sparkquill:write", "sparkquill:run"}
 
@@ -139,7 +139,7 @@ func sparkquillExternalTools() ([]externalTool, error) {
 		}
 		add("create_file", "Create a new UTF-8 content file; refuses to overwrite an existing file. Reuse request_id only for identical retries.", true, false, content(), "path", "content", "request_id")
 		p := content()
-		p["expected_revision"] = externalString("Current revision from read_file. Read and reconcile on conflict.")
+		p["expected_revision"] = externalString("Current revision from files action=read. Read and reconcile on conflict.")
 		add("update_file", "Replace an existing UTF-8 file using its current revision. Does not create missing files.", true, false, p, "path", "content", "expected_revision", "request_id")
 		p = content()
 		delete(p, "content")

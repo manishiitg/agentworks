@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"sort"
 	"strings"
 	"testing"
 
@@ -24,30 +23,6 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "other"); err != nil {
 				t.Fatal(err)
 			}
-			for _, group := range []string{"crew_execution", "crew_integrations"} {
-				owner := crewCapabilityHTTP(t, f, crewWriter("owner"), group, map[string]any{"action": "list"}, 200)
-				coOwner := crewCapabilityHTTP(t, f, crewWriter("other"), group, map[string]any{"action": "list"}, 200)
-				names := func(body string) string {
-					var inventory struct {
-						Tools []struct {
-							Name string `json:"name"`
-						} `json:"tools"`
-					}
-					if err := json.Unmarshal([]byte(body), &inventory); err != nil {
-						t.Fatal(err)
-					}
-					out := []string{}
-					for _, tool := range inventory.Tools {
-						out = append(out, tool.Name)
-					}
-					sort.Strings(out)
-					return strings.Join(out, ",")
-				}
-				if names(owner) != names(coOwner) {
-					t.Fatalf("%s exposes different owner/co-owner native tools", group)
-				}
-			}
-
 			claims := &UserClaims{UserID: person, Username: person}
 			ctx := context.WithValue(context.Background(), UserContextKey, claims)
 			const panelSession = "co-owner-panel-parity"
@@ -56,12 +31,17 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			if err := f.api.registerWorkspacePanelChatTools(panels, nil, person, panelSession, externalCommandCrewRoot, "work"); err != nil {
 				t.Fatal(err)
 			}
+			// The panel keeps its chat tool names; MCP reaches the same handlers by their merged names.
 			for name, args := range map[string]map[string]any{"settings": {"action": "get"}, "crew_owners": {"action": "list"}} {
 				got, err := panels.tools[name].exec(ctx, args)
 				if err != nil {
 					t.Fatalf("%s native panel as %s: %v", name, person, err)
 				}
-				want := crewCapabilityHTTP(t, f, crewWriter(person), name, args, 200)
+				mcpName, mcpArgs := name, args
+				if name == "crew_owners" {
+					mcpName, mcpArgs = "workspace", map[string]any{"action": "owners"}
+				}
+				want := crewCapabilityHTTP(t, f, crewWriter(person), mcpName, mcpArgs, 200)
 				if strings.TrimSpace(got) != strings.TrimSpace(want) {
 					t.Fatalf("%s chat and MCP differ for %s", name, person)
 				}
@@ -251,7 +231,7 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 				if _, err := panels.tools["settings"].exec(ctx, map[string]any{"action": "get"}); err == nil {
 					t.Fatal("retained Builder panel admitted removed co-owner")
 				}
-				crewCapabilityHTTP(t, f, crewWriter(person), "crew_integrations", map[string]any{"action": "list"}, 403)
+				crewCapabilityHTTP(t, f, crewWriter(person), "integrations", map[string]any{"action": "slack_bot_get"}, 403)
 			}
 			// The feature declaration and actual registrar admit the same sharing tools.
 			if !agentprofiles.HasFeature(profile, "dashboard") {

@@ -55,11 +55,11 @@ func externalCodeReviewDefinitions(add func(name, description string, write, sco
 		"to":   map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}-\d{2}$`},
 	})
 	add("list_review_files", "List a Crew project's files. Its HOME (git and CLI logins) and dependency folders are never shown."+suffix, false, false, project(nil), "owner_id", "project_id")
-	add("read_review_file", "Read one file of a Crew project (up to 512 KiB)."+suffix, false, false, project(map[string]any{"path": externalString("Workspace-relative path from list_review_files.")}), "owner_id", "project_id", "path")
+	add("read_review_file", "Read one file of a Crew project (up to 512 KiB)."+suffix, false, false, project(map[string]any{"path": externalString("Workspace-relative path from workspace_review action=files.")}), "owner_id", "project_id", "path")
 	add("list_review_chats", "List a Crew project's chats: the owner's and every sharer's, newest first."+suffix, false, false, project(nil), "owner_id", "project_id")
 	add("read_review_chat", "Read one chat of a Crew project: messages, tool calls and their output."+suffix, false, false, project(map[string]any{
-		"session_id": externalString("Chat session ID from list_review_chats."),
-		"user_id":    externalString("The chat's user_id from list_review_chats."),
+		"session_id": externalString("Chat session ID from workspace_review action=chats."),
+		"user_id":    externalString("The chat's user_id from workspace_review action=chats."),
 	}), "owner_id", "project_id", "session_id", "user_id")
 	add("get_review_audit", "Read a month of the Crew review audit log: who viewed which Crew, what, and when (admins and reviewers)."+suffix, false, false, map[string]any{
 		"month": map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}$`, "description": "YYYY-MM; defaults to the current month."},

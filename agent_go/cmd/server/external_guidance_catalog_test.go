@@ -72,7 +72,7 @@ func TestExternalGuidanceCatalogAndWorkflowSkills(t *testing.T) {
 		}
 	}
 	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools?names=list_workflows", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools?names=help", nil)
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
 		w := httptest.NewRecorder()
 		f.api.handleExternalTools(w, req)
@@ -83,7 +83,7 @@ func TestExternalGuidanceCatalogAndWorkflowSkills(t *testing.T) {
 	}
 	prepare := func(handle string) map[string]any {
 		t.Helper()
-		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools?names=files&names=plan&names=settings&names=list_workflows&guidance_session_id="+handle, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools?names=files&names=plan&names=settings&names=workflow&guidance_session_id="+handle, nil)
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
 		w := httptest.NewRecorder()
 		f.api.handleExternalTools(w, req)

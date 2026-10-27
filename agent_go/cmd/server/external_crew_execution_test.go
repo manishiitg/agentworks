@@ -157,18 +157,13 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 		crewCapabilityHTTP(t, f, denied, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM example"}, 403)
 	}
 	crewCapabilityHTTP(t, f, guarded, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM example"}, 403)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "execute_shell_command", "arguments": map[string]any{"command": "pwd", "working_directory": "Workflow/other"}}, 400)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "terminal", map[string]any{"action": "execute", "command": "pwd", "working_directory": "Workflow/other"}, 400)
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "database", map[string]any{"action": "migrate", "migration_file": "../other.sql"}, 400)
 	bounded := crewWriter("owner")
 	bounded.AccessToken.AllCrews, bounded.AccessToken.CrewIDs = false, []string{"other"}
-	crewCapabilityHTTP(t, f, bounded, "crew_execution", map[string]any{"action": "list"}, 403)
-	list := crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "list"}, 200)
-	if strings.Contains(list, "mutate_workflow_db") || strings.Contains(list, "apply_workflow_db_migration") || strings.Contains(list, "create_workflow_database_snapshot") {
-		t.Fatal("public execution inventory retained database duplicates")
-	}
-	if !json.Valid([]byte(list)) || !strings.Contains(list, "inputSchema") || !strings.Contains(list, "agent_browser") {
-		t.Fatal(list)
-	}
+	crewCapabilityHTTP(t, f, bounded, "terminal", map[string]any{"action": "history"}, 403)
+	// One name per job: the retired grouped name is refused, not aliased.
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "list"}, 404)
 	// Attached workflow dispatch keeps the external connection's target ceilings.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work","agentworks"]}]}`)
 	f.api.scheduler = NewSchedulerService(f.api)
@@ -182,7 +177,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	refServer := serveExternalMCP(t, f.api, refClaims)
 	refClient := dialExternalMCP(t, ctx, refServer.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, refClient)
-	result := callRemoteTool(t, ctx, refClient, "call_tool", map[string]any{"name": "crew_execution", "arguments": map[string]any{"crew_id": "team", "action": "list_attached_workflows", "arguments": map[string]any{}}})
+	result := callRemoteTool(t, ctx, refClient, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"crew_id": "team", "action": "references_list"}})
 	requireRemoteSuccess(t, result, "attached workflow discovery")
 	listed, _ := json.Marshal(result)
 	if !strings.Contains(string(listed), "Workflow/visible") || strings.Contains(string(listed), "Workflow/hidden") {

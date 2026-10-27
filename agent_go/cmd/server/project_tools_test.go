@@ -17,16 +17,42 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-// Older file regressions keep their inputs and access assertions, but issue
-// the current public family/action request instead of retired source names.
-func canonicalFileTestCall(name string, args map[string]any) (string, map[string]any) {
-	for source, action := range map[string]string{"read_file": "read", "write_file": "write", "list_files": "list", "search_files": "search", "list_step_code": "code"} {
-		if name == source {
-			return "files", withFileTestAction(args, action)
+// Older regressions keep their inputs and access assertions, but issue the
+// current public family/action request: old member names are not callable
+// (one name per job, PLAT-825). A grouped source call such as
+// crew_references action=list maps through its member crew_references__list.
+func canonicalTestCall(name string, args map[string]any) (string, map[string]any) {
+	catalog, err := externalTools()
+	if err != nil {
+		return name, args
+	}
+	members := []string{name}
+	if action := externalArg(args, "action"); action != "" {
+		members = append(members, name+"__"+action)
+	}
+	for _, tool := range catalog {
+		for _, action := range tool.actionOrder {
+			for _, member := range externalMemberNames(tool.actions[action]) {
+				for i, candidate := range members {
+					if member != candidate {
+						continue
+					}
+					input := map[string]any{}
+					for k, v := range args {
+						input[k] = v
+					}
+					if i == 0 {
+						delete(input, "action")
+					}
+					input["action"] = action
+					return tool.Name, input
+				}
+			}
 		}
 	}
 	return name, args
 }
+
 func withFileTestAction(args map[string]any, action string) map[string]any {
 	input := map[string]any{"action": action}
 	for k, v := range args {

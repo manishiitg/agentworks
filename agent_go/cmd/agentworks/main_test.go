@@ -87,7 +87,7 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 
 		{[]string{"functions", "call", "--project", "crew-sample", "--function", "review", "--function-input", `{"build":"812"}`}, "", "functions", map[string]any{"action": "call", "project": "crew-sample", "function": "review", "input": map[string]any{"build": "812"}}},
 		{[]string{"functions", "call-status", "--call", "call-sample"}, "", "functions", map[string]any{"action": "status", "call_id": "call-sample"}},
-		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "get_plan", map[string]any{"workflow_id": "wf-1"}},
+		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "workflow", map[string]any{"action": "plan", "workflow_id": "wf-1"}},
 		{[]string{"plan", "list", "--workflow", "wf-1"}, "", "plan", map[string]any{"workflow_id": "wf-1", "action": "list"}},
 		{[]string{"plan", "edit", "--workflow", "wf-1", "--input", "-"}, `{"action":"update_step","arguments":{"step_id":"fetch","changes":{"title":"Fetch invoices","reason":"Clarify scope"}},"expected_revision":"revision","request_id":"edit-1"}`, "plan", map[string]any{"workflow_id": "wf-1", "action": "update_step", "expected_revision": "revision", "request_id": "edit-1", "arguments": map[string]any{"step_id": "fetch", "changes": map[string]any{"title": "Fetch invoices", "reason": "Clarify scope"}}}},
 		{[]string{"files", "read", "--workflow", "wf-1", "--path", "notes.md"}, "", "files", map[string]any{"action": "read", "workflow_id": "wf-1", "path": "notes.md"}},
@@ -588,7 +588,7 @@ func TestMCPStdioRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(initialized.Instructions, "get_agent_context") {
+	if !strings.Contains(initialized.Instructions, "help action=context") {
 		t.Fatalf("initialize instructions missing guidance entrypoint: %q", initialized.Instructions)
 	}
 	listed, err := client.ListTools(ctx, mcp.ListToolsRequest{})
@@ -869,8 +869,11 @@ func cliTestServer(handler http.Handler) *httptest.Server {
 		if r.URL.Path == "/api/external/v1/call" {
 			data, _ := io.ReadAll(r.Body)
 			r.Body = io.NopCloser(bytes.NewReader(data))
-			var call struct{ Name string }
-			if json.Unmarshal(data, &call) == nil && call.Name == "get_agent_context" {
+			var call struct {
+				Name      string
+				Arguments map[string]any
+			}
+			if json.Unmarshal(data, &call) == nil && call.Name == "help" && call.Arguments["action"] == "context" {
 				_, _ = w.Write([]byte(`{"guidance_version":"test-guidance"}`))
 				return
 			}

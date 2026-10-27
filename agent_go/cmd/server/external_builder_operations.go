@@ -20,19 +20,19 @@ import (
 
 // External authoring is always available; connection consent and current roles authorize each operation.
 func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (your main Builder or a selected tab you control). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll builder action=status. It has the same tools as the website Builder.", true, true, map[string]any{
+	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (your main Builder or a selected tab you control). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll sessions action=builder_status. It has the same tools as the website Builder.", true, true, map[string]any{
 		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue your main Builder tab."), "wait_seconds": externalBuilderWaitSchema}, "message", "submission_id")
-	add("builder_tabs", "Named Builder tabs for a Goal or Relay. Same actions and access as the website: list, open, read, rename, pin, order, close. All people with Builder access see project tabs; only the tab's owner controls it. Run records remain separate. Use tab_action, chat_id and name. Use session_id from list for builder action=chat.", true, true, goalOwnerTabSchema(true)["properties"].(map[string]interface{}), "tab_action")
+	add("builder_tabs", "Named Builder tabs for a Goal or Relay. Same actions and access as the website: list, open, read, rename, pin, order, close. All people with Builder access see project tabs; only the tab's owner controls it. Run records remain separate. Use tab_action, chat_id and name. Use session_id from list for sessions action=builder_chat.", true, true, goalOwnerTabSchema(true)["properties"].(map[string]interface{}), "tab_action")
 	add("builder_file_history", "List your audited Builder file edits for one workflow-relative path, including revisions and restore IDs. Previous credentials from the same account remain recoverable.", false, true,
 		map[string]any{"path": externalString("Workflow-relative source file path, such as code/task.py.")}, "path")
 	add("builder_restore_file", "Restore the content that preceded one audited Builder file edit. Requires the file's current revision to prevent overwriting newer work.", true, true,
-		map[string]any{"path": externalString("Workflow-relative source file path."), "edit_id": externalString("Edit ID from builder action=file_history."), "expected_revision": externalString("Current revision from read_file, or missing.")}, "path", "edit_id", "expected_revision")
+		map[string]any{"path": externalString("Workflow-relative source file path."), "edit_id": externalString("Edit ID from sessions action=file_history."), "expected_revision": externalString("Current revision from files action=read, or missing.")}, "path", "edit_id", "expected_revision")
 	for _, name := range []string{"builder_status", "builder_reply_input", "builder_cancel"} {
-		props := map[string]any{"operation_id": externalString("Operation ID returned by builder action=chat.")}
+		props := map[string]any{"operation_id": externalString("Operation ID returned by sessions action=builder_chat.")}
 		required := []string{"operation_id"}
 		desc := "Poll your connection's Builder operation: status, final answer, error and pending_inputs. Does not expose unrelated turns in the shared chat."
 		if name == "builder_reply_input" {
-			props["request_id"] = externalString("Pending input unique_id from builder action=status.")
+			props["request_id"] = externalString("Pending input unique_id from sessions action=builder_status.")
 			props["response"] = externalString("Answer to the pending question.")
 			required = append(required, "request_id", "response")
 			desc = "Answer this Builder operation's pending question. Requires current Builder permission."
@@ -48,7 +48,7 @@ func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]
 
 // externalBuilderWaitSchema lets a caller wait for a Builder operation in one
 // call instead of polling. Capped like every MCP wait, under the proxy timeout.
-var externalBuilderWaitSchema = map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the final answer or a pending question before returning (max 25). On status queued/running, call builder action=status with wait_seconds again."}
+var externalBuilderWaitSchema = map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the final answer or a pending question before returning (max 25). On status queued/running, call sessions action=builder_status with wait_seconds again."}
 
 type externalBuilderOperation struct {
 	ID           string    `json:"operation_id"`

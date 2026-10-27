@@ -39,7 +39,7 @@ func TestExternalCrewLinksOverMCPAndAssetAccess(t *testing.T) {
 	initializeExternalMCP(t, ctx, cli)
 	link := func(p string) map[string]any {
 		t.Helper()
-		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "get_file_link", "arguments": map[string]any{"crew_id": "team", "path": p}})
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "files", "arguments": map[string]any{"action": "link", "crew_id": "team", "path": p}})
 		requireRemoteSuccess(t, result, "get_file_link")
 		var value map[string]any
 		if err := json.Unmarshal([]byte(marshalStructured(t, result)), &value); err != nil {
@@ -104,7 +104,8 @@ func TestExternalCrewLinksOverMCPAndAssetAccess(t *testing.T) {
 	}
 	call := func(claims *UserClaims, args map[string]any, status int) {
 		t.Helper()
-		body, _ := json.Marshal(map[string]any{"name": "get_file_link", "arguments": args})
+		args["action"] = "link"
+		body, _ := json.Marshal(map[string]any{"name": "files", "arguments": args})
 		w := httptest.NewRecorder()
 		f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/v1/call", string(body), claims, nil))
 		externalTestBody(t, w, status)

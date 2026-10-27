@@ -25,11 +25,10 @@ import (
 func crewCapabilityHTTP(t *testing.T, f *externalToolsFixture, claims *UserClaims, name string, args map[string]any, status int) string {
 	t.Helper()
 	args["crew_id"] = "team"
+	name, args = canonicalTestCall(name, args)
 	body, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
 	w := httptest.NewRecorder()
-	// Member tool names are internal since 9a5930513 (PLAT-825 merged tools), so
-	// call them the way the server's own callers do (PLAT-856-386).
-	f.api.dispatchExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), claims, nil), true)
+	f.api.dispatchExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), claims, nil), false)
 	externalTestBody(t, w, status)
 	return w.Body.String()
 }
@@ -185,24 +184,24 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	claims := crewWriter("owner")
 	claims.AccessToken.Scopes = append(claims.AccessToken.Scopes, "workflows:read", "files:read")
 	claims.AccessToken.AllWorkflows = true
-	result = crewCapabilityHTTP(t, f, claims, "crew_references", map[string]any{"action": "list"}, 200)
+	result = crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "references_list"}, 200)
 	if !strings.Contains(result, "Workflow/research") {
 		t.Fatal(result)
 	}
-	crewCapabilityHTTP(t, f, claims, "crew_references", map[string]any{"action": "attach", "workspace_path": "Workflow/research"}, 200)
+	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research"}, 200)
 	if manifest, _, _ := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json"); !strings.Contains(manifest, "Workflow/research") {
 		t.Fatal("reference was not persisted")
 	}
-	crewCapabilityHTTP(t, f, claims, "crew_references", map[string]any{"action": "detach", "workspace_path": "Workflow/research"}, 200)
+	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_detach", "workspace_path": "Workflow/research"}, 200)
 	claims.AccessToken.AllWorkflows = false
 	claims.AccessToken.WorkflowIDs = []string{"other"}
-	crewCapabilityHTTP(t, f, claims, "crew_references", map[string]any{"action": "attach", "workspace_path": "Workflow/research"}, 403)
-	result = crewCapabilityHTTP(t, f, claims, "crew_references", map[string]any{"action": "list"}, 200)
+	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research"}, 403)
+	result = crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "references_list"}, 200)
 	if strings.Contains(result, "Workflow/research") {
 		t.Fatal("out-of-bound reference was listed")
 	}
-	for _, group := range []string{"skills", "mcp", "crew_references"} {
-		action := map[string]string{"skills": "uninstall", "mcp": "remove", "crew_references": "attach"}[group]
+	for _, group := range []string{"skills", "mcp", "workspace"} {
+		action := map[string]string{"skills": "uninstall", "mcp": "remove", "workspace": "reference_attach"}[group]
 		crewCapabilityHTTP(t, f, crewReader("owner"), group, map[string]any{"action": action}, 403)
 		crewCapabilityHTTP(t, f, crewWriter("other"), group, map[string]any{"action": action}, 403)
 	}
@@ -303,8 +302,11 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	call := func(args map[string]any) map[string]any {
 		t.Helper()
 		args["crew_id"] = "team"
-		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "crew_diagnostics", "arguments": args})
-		requireRemoteSuccess(t, result, "crew_diagnostics")
+		// browser action=status and mcp action=diagnostics replace the retired crew_diagnostics name.
+		name := map[string]string{"browser": "browser", "connections": "mcp"}[args["action"].(string)]
+		args["action"] = map[string]string{"browser": "status", "connections": "diagnostics"}[args["action"].(string)]
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": name, "arguments": args})
+		requireRemoteSuccess(t, result, "diagnostics")
 		raw := marshalStructured(t, result)
 		for _, hidden := range []string{"unattached", "hidden-endpoint", "private-diagnostic-marker", unrelatedBrowser, "crew-chat", "private-playwright-run", "private-command-marker", "owner-private-browser", "pw-unrelated-test", "host-probe-error-marker", "authorized_endpoints", "configured_cdp_ports", "reachable_cdp_ports", "check_errors", "recording_error", "agent_session", "workflow_session", `"port"`} {
 			if strings.Contains(raw, hidden) {
@@ -342,7 +344,12 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &browserManifest); err != nil {
 		t.Fatal(err)
 	}
-	browserManifest["capabilities"].(map[string]any)["browser_mode"] = "cdp"
+	capabilities, _ := browserManifest["capabilities"].(map[string]any)
+	if capabilities == nil {
+		capabilities = map[string]any{}
+		browserManifest["capabilities"] = capabilities
+	}
+	capabilities["browser_mode"] = "cdp"
 	encodedBrowserManifest, _ := json.Marshal(browserManifest)
 	f.write(t, externalCommandCrewRoot+"/workflow.json", string(encodedBrowserManifest))
 	upstream, err := url.Parse(workspaceURL)
@@ -377,19 +384,19 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	if _, exposed := page["items"].([]any)[0].(map[string]any)["parameters"]; exposed {
 		t.Fatal("reader saw full schemas")
 	}
-	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "vault_attached", "include_tools": true}, 403)
+	crewCapabilityHTTP(t, f, reader, "mcp", map[string]any{"action": "diagnostics", "name": "vault_attached", "include_tools": true}, 403)
 	ownerSrv := serveExternalMCP(t, f.api, crewReader("owner"))
 	ownerClient := dialExternalMCP(t, ctx, ownerSrv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, ownerClient)
-	ownerTools := callRemoteTool(t, ctx, ownerClient, "call_tool", map[string]any{"name": "crew_diagnostics", "arguments": map[string]any{"crew_id": "team", "action": "connections", "name": "vault_attached", "include_tools": true}})
-	requireRemoteSuccess(t, ownerTools, "crew_diagnostics")
+	ownerTools := callRemoteTool(t, ctx, ownerClient, "call_tool", map[string]any{"name": "mcp", "arguments": map[string]any{"crew_id": "team", "action": "diagnostics", "name": "vault_attached", "include_tools": true}})
+	requireRemoteSuccess(t, ownerTools, "diagnostics")
 	if raw := marshalStructured(t, ownerTools); !strings.Contains(raw, `"parameters"`) || !strings.Contains(raw, `"required":["query"]`) {
 		t.Fatalf("owner full schema = %s", raw)
 	}
-	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "vault_unattached"}, 403)
+	crewCapabilityHTTP(t, f, reader, "mcp", map[string]any{"action": "diagnostics", "name": "vault_unattached"}, 403)
 	bounded := crewReader("other")
 	bounded.AccessToken.AllCrews, bounded.AccessToken.CrewIDs = false, []string{"different"}
-	crewCapabilityHTTP(t, f, bounded, "crew_diagnostics", map[string]any{"action": "browser"}, 403)
+	crewCapabilityHTTP(t, f, bounded, "browser", map[string]any{"action": "status"}, 403)
 }
 
 // Discovery connects over the real MCP transport even if an older cache exists.

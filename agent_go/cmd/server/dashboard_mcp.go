@@ -20,8 +20,8 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	for _, name := range []string{"upload_dashboard_asset", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
-			"workflow_id":  externalString("Workflow or Flow ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
-			"crew_id":      externalString("Crew ID from list_crews or the dashboard list."),
+			"workflow_id":  externalString("Workflow or Flow ID from workflow action=list or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
+			"crew_id":      externalString("Crew ID from workspace action=list or the dashboard list."),
 			"workspace":    externalString("Project root from the dashboard list; needed only for an owned Code project."),
 			"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 		}
@@ -112,7 +112,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	shareProps := map[string]any{
 		"workflow_id":  externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),
 		"flow_id":      externalString("Flow ID from workflow action=list or relay. Pass exactly one of workflow_id, flow_id, crew_id or workspace."),
-		"crew_id":      externalString("Crew ID from list_crews or the dashboard list."),
+		"crew_id":      externalString("Crew ID from workspace action=list or the dashboard list."),
 		"workspace":    externalString("Existing project root or stable work:<id> from workspace list/get."),
 		"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 	}

@@ -21,9 +21,12 @@ func TestCLIGuidanceStartupRefresh(t *testing.T) {
 			t.Error("startup lost authentication")
 		}
 		if r.URL.Path == "/api/external/v1/call" {
-			var request struct{ Name string }
+			var request struct {
+				Name      string
+				Arguments map[string]any
+			}
 			_ = json.NewDecoder(r.Body).Decode(&request)
-			if request.Name != "get_agent_context" {
+			if request.Name != "help" || request.Arguments["action"] != "context" {
 				t.Errorf("unexpected startup operation %s", request.Name)
 			}
 			checks++

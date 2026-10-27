@@ -3,7 +3,7 @@ package server
 import "net/http"
 
 func externalAfterRunDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("run_after_run", "Back up or publish a workflow now, the same pass that runs after a run. Works only when that option is set up (see get_settings backup/publish; set up in the app's Builder with /backup or /publish) and something changed since the last time. Returns started, or why nothing started. Owners and editors with run access. To record a requested notification test, use record_summary with a clearly labelled test summary.", true, true, map[string]any{
+	add("run_after_run", "Back up or publish a workflow now, the same pass that runs after a run. Works only when that option is set up (see settings action=get backup/publish; set up in the app's Builder with /backup or /publish) and something changed since the last time. Returns started, or why nothing started. Owners and editors with run access. To record a requested notification test, use messages action=record_summary with a clearly labelled test summary.", true, true, map[string]any{
 		"option": map[string]any{"type": "string", "enum": []any{"backup", "publish"}},
 	}, "option")
 }

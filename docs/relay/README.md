@@ -104,14 +104,14 @@ Relay tools are admitted by `agent_go/internal/relayproduct/product.yaml` under
 
 | Tool | Purpose |
 | --- | --- |
-| `create_relay` | Create an owned draft, an object `INPUT`, a default variable group, and an enabled function trigger |
-| `builder_chat` | Edit the graph, exact prompts, message sequences, per-step models, and custom Python tool source through the existing Builder |
-| `builder_status`, `builder_reply_input`, `builder_cancel` | Poll, answer, or cancel that Builder operation |
-| `update_relay` | Rename the draft or change its designated output agent |
-| `test_relay` | Execute the draft with sample JSON input |
-| `get_relay_releases`, `publish_relay` | Inspect or freeze immutable versions using the existing publisher |
-| `run_relay` | Execute an explicit published version, or the active version when omitted |
-| `get_relay_run` | Poll the durable run ID and retrieve status, final JSON, and step outputs |
+| `workspace action=create kind=relay` | Create an owned draft, an object `INPUT`, a default variable group, and an enabled function trigger |
+| `sessions action=builder_chat` | Edit the graph, exact prompts, message sequences, per-step models, and custom Python tool source through the existing Builder |
+| `sessions action=builder_status`, `sessions action=builder_reply_input`, `sessions action=builder_cancel` | Poll, answer, or cancel that Builder operation |
+| `relay action=update` | Rename the draft or change its designated output agent |
+| `relay action=test` | Execute the draft with sample JSON input |
+| `relay action=releases`, `relay action=publish` | Inspect or freeze immutable versions using the existing publisher |
+| `relay action=run` | Execute an explicit published version, or the active version when omitted |
+| `relay action=get_run` | Poll the durable run ID and retrieve status, final JSON, and step outputs |
 
 CLI and MCP authoring require existing connection consent and current roles; no deployment switch is needed.
 An OAuth client must explicitly request `relays:write workflows:read files:read
@@ -125,27 +125,27 @@ account also has Relay product access. Owner/editor access is checked live.
 Read access plus `runs:execute` permits published execution, never draft testing.
 
 Use `get_api_spec` to discover this connection's actual tools and schemas before
-calling them. IDs come from `list_workflows` (inspect `manifest.kind=relay`) or
-`create_relay`, never filesystem paths. For example, these are **call_tool**
+calling them. IDs come from `workflow action=list` (inspect `manifest.kind=relay`) or
+`workspace action=create kind=relay`, never filesystem paths. For example, these are **call_tool**
 arguments:
 
 ```json
-{"name":"create_relay","arguments":{"label":"Hello","submission_id":"hello-create-1"}}
+{"name":"workspace","arguments":{"action":"create","kind":"relay","spec":{"label":"Hello"},"idempotency_key":"hello-create-1"}}
 ```
 
 Creation returns `workflow_id`, an owned manifest, default output agent ID
-`answer`, and function `process`. Send `builder_chat` a request to build that
+`answer`, and function `process`. Send `sessions action=builder_chat` a request to build that
 agent with authored system/user prompts and JSON output; use a unique
-`submission_id` and poll its `operation_id` with `builder_status`. Source-file
+`submission_id` and poll its `operation_id` with `sessions action=builder_status`. Source-file
 editing uses the shared managed file tools with revision checks and audit.
 External Builder retains its existing restrictions on shell, account tools,
 and connected-account access; execution uses the existing step sandbox.
 
 ```json
-{"name":"test_relay","arguments":{"workflow_id":"<returned ID>","function":"process","input":{"name":"Asha"},"idempotency_key":"sample-1"}}
-{"name":"publish_relay","arguments":{"workflow_id":"<returned ID>"}}
-{"name":"run_relay","arguments":{"workflow_id":"<returned ID>","function":"process","version":"v1","input":{"name":"Asha"},"idempotency_key":"production-1"}}
-{"name":"get_relay_run","arguments":{"workflow_id":"<returned ID>","run_id":"<returned run ID>"}}
+{"name":"relay","arguments":{"action":"test","workflow_id":"<returned ID>","function":"process","input":{"name":"Asha"},"idempotency_key":"sample-1"}}
+{"name":"relay","arguments":{"action":"publish","workflow_id":"<returned ID>"}}
+{"name":"relay","arguments":{"action":"run","workflow_id":"<returned ID>","function":"process","version":"v1","input":{"name":"Asha"},"idempotency_key":"production-1"}}
+{"name":"relay","arguments":{"action":"get_run","workflow_id":"<returned ID>","run_id":"<returned run ID>"}}
 ```
 
 Creation retries with the same grant/submission ID return the original Relay;

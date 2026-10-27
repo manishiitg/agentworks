@@ -463,7 +463,7 @@ func externalCrewCreateError(crewID string, err error) string {
 	if crewID == "" {
 		return err.Error()
 	}
-	return fmt.Sprintf("Crew %s was created but not finished: %v. Fix it with update_crew.", crewID, err)
+	return fmt.Sprintf("Crew %s was created but not finished: %v. Fix it with workspace action=update.", crewID, err)
 }
 
 func remarshalExternalArgs(raw any, out any) error {
@@ -967,7 +967,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"agent":         map[string]any{"type": "string", "description": crewFunctionAgentHelp},
 	}}
 	scheduleSpec := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-		"id":              str("Schedule ID (update only; from get_crew)."),
+		"id":              str("Schedule ID (update only; from workspace action=get)."),
 		"name":            str("Schedule name."),
 		"description":     str("Optional note."),
 		"message":         str("The instruction sent to the Crew on each run."),
@@ -1035,7 +1035,7 @@ func externalCrewUpdateReply(full map[string]any, update crewUpdate) map[string]
 		"crew_id": full["crew_id"], "name": full["name"], "updated": true,
 		"changed": changed, "skills": full["skills"], "functions": functions, "schedules": schedules,
 		"files_written": files, "files_removed": update.RemoveFiles,
-		"note": "Compact reply. get_crew returns the full spec; pass return_spec=true to get it here.",
+		"note": "Compact reply. workspace action=get returns the full spec; pass return_spec=true to get it here.",
 	}
 }
 

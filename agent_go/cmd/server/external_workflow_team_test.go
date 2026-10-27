@@ -42,9 +42,9 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	server := serveExternalMCP(t, f.api, claims)
 	cli := dialExternalMCP(t, t.Context(), server.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), cli)
-	spec := callRemoteTool(t, t.Context(), cli, "get_api_spec", map[string]any{"names": []any{"workflow_team"}})
+	spec := callRemoteTool(t, t.Context(), cli, "get_api_spec", map[string]any{"names": []any{"workspace"}})
 	requireRemoteSuccess(t, spec, "team discovery")
-	get := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workflow_team", "arguments": map[string]any{"workflow_id": "invoices", "action": "get"}})
+	get := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workflow_id": "invoices", "action": "team_get"}})
 	requireRemoteSuccess(t, get, "team read")
 	if text := marshalStructured(t, get); !strings.Contains(text, "eligible_members") || !strings.Contains(text, "first") {
 		t.Fatalf("missing member/route discovery: %s", text)
@@ -68,8 +68,8 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	if err := json.Unmarshal([]byte(f.read(t, "Workflow/invoices/workflow.json")), &untouched); err != nil || untouched.Team != nil {
 		t.Fatalf("an unconfirmed update changed the team: %v %+v", err, untouched.Team)
 	}
-	result := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workflow_team", "arguments": map[string]any{
-		"workflow_id": "invoices", "action": "update", "team": policy, "expected_revision": 0, "confirm": "invoices"}})
+	result := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{
+		"workflow_id": "invoices", "action": "team_update", "team": policy, "expected_revision": 0, "confirm": "invoices"}})
 	requireRemoteSuccess(t, result, "team enablement")
 	read := func() *WorkflowManifest {
 		t.Helper()

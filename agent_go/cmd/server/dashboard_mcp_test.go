@@ -98,7 +98,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	rsrv := serveExternalMCP(t, f.api, reader)
 	rcli := dialExternalMCP(t, ctx, rsrv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, rcli)
-	guide := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "get_guidance_topic", "arguments": map[string]any{"topic": "dashboard-authoring"}})
+	guide := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "help", "arguments": map[string]any{"action": "topic", "topic": "dashboard-authoring"}})
 	requireRemoteSuccess(t, guide, "dashboard-only connection usage guidance")
 	// A read-only connection is shown one dashboard tool without write actions,
 	// and no old names.

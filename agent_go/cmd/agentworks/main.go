@@ -905,7 +905,7 @@ func loginsCommand(o *options) *cobra.Command {
 	}}
 }
 
-// Crew command arguments adapt to the same public families as MCP.
+// Crew and workflow command arguments adapt to the same public families as MCP.
 func crewCommandCall(name string, args map[string]any) (string, map[string]any) {
 	family, action := "", ""
 	switch name {
@@ -939,6 +939,12 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 		family, action = "functions", "status"
 	case "suggest_crew_change":
 		family, action = "needs_you", "suggest"
+	case "list_workflows":
+		family, action = "workflow", "list"
+	case "get_workflow":
+		family, action = "workflow", "get"
+	case "get_plan":
+		family, action = "workflow", "plan"
 	default:
 		return name, args
 	}

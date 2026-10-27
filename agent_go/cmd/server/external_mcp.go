@@ -47,14 +47,14 @@ var externalMCPToolNames = []string{externalMCPToolSpec, externalMCPToolSearch, 
 // Remote instructions are short: the two tool descriptions teach the
 // protocol, since hosted clients may not deliver initialize instructions at
 // all (ChatGPT delivers tools only).
-const externalMCPRelayInstructions = " Flows: discover IDs with list_workflows and kind=relay. When authorized, use guarded files for permitted source edits or builder action=chat to delegate, relay action=test to test the draft, and relay action=publish to freeze a version. Use relay action=run for a published version and relay action=get_run to poll durable results. Flows have Builder-only chat. Creation requires separate relays:write consent."
+const externalMCPRelayInstructions = " Flows: discover IDs with workflow action=list and kind=relay. When authorized, use guarded files for permitted source edits or sessions action=builder_chat to delegate, relay action=test to test the draft, and relay action=publish to freeze a version. Use relay action=run for a published version and relay action=get_run to poll durable results. Flows have Builder-only chat. Creation requires separate relays:write consent."
 
-const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (list_workflows). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Your own MCP sign-in follows your website role: owners and workflow editors use Builder capabilities; people using shared work use Run mode. Machine, service-account and device connections keep their assigned limits. Source, plan and workflow configuration edits use current Builder access, native validation and revision checks. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with list_workflows first; IDs are never filesystem paths.<!-- /product --> Dashboards: read get_guidance_topic(topic="dashboard-authoring") for the HTML data/script contract. With current project access for viewing and Builder access for editing, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
+const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (workflow action=list). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Your own MCP sign-in follows your website role: owners and workflow editors use Builder capabilities; people using shared work use Run mode. Machine, service-account and device connections keep their assigned limits. Source, plan and workflow configuration edits use current Builder access, native validation and revision checks. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with workflow action=list first; IDs are never filesystem paths.<!-- /product --> Dashboards: read help action=topic topic="dashboard-authoring" for the HTML data/script contract. With current project access for viewing and Builder access for editing, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
 
-const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server through a connection with reading consent. <!-- product:agentworks -->It gives access to the user's workflows (list_workflows). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Every tool reads; nothing creates, edits, or runs. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with list_workflows first; IDs are never filesystem paths.<!-- /product --> Answer from what you read; if the task needs a change, say so instead of attempting one. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
+const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server through a connection with reading consent. <!-- product:agentworks -->It gives access to the user's workflows (workflow action=list). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Every tool reads; nothing creates, edits, or runs. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with workflow action=list first; IDs are never filesystem paths.<!-- /product --> Answer from what you read; if the task needs a change, say so instead of attempting one. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
 
 // Appended for existing Crew authoring consent; handlers still check roles.
-const externalMCPCrewAuthoringInstructions = `Crews: load crew-authoring guidance and the current schemas. Listed Crew setup, file, skill and MCP actions use existing Crew authoring consent and current project roles; get_crew reads the spec and export_crew returns its portable form.`
+const externalMCPCrewAuthoringInstructions = `Crews: load crew-authoring guidance and the current schemas. Listed Crew setup, file, skill and MCP actions use existing Crew authoring consent and current project roles; workspace action=get reads the spec and workspace action=export returns its portable form.`
 
 var externalMCPToolSchemas = map[string]map[string]any{
 	externalMCPToolSpec: {
@@ -182,13 +182,13 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == "plan" {
-			instructions += " Direct plans: plan action=list returns native schemas. Read get_plan for expected_revision, then edit with the exact arguments and a unique request_id; identical retries return the receipt. Current roles, Builder consent, native validators and plan changelog apply."
+			instructions += " Direct plans: plan action=list returns native schemas. Read workflow action=plan for expected_revision, then edit with the exact arguments and a unique request_id; identical retries return the receipt. Current roles, Builder consent, native validators and plan changelog apply."
 		}
 		if tool.Name == "workflow_upgrade" {
 			instructions += " Contract upgrades: workflow_upgrade action=status only lists owed migrations. Begin an explicit upgrade with action=prepare before Builder chat or plan checkers; this converts retired agent records without stamping. Do each migration's work in order, then action=stamp with version and confirm=workflow_id. The Builder's stamp checks and ordering apply."
 		}
 		if tool.Name == "crew_execution" {
-			instructions += " Direct Crew tools: crew_execution and crew_integrations action=list return native schemas; authorized owners execute them without a model turn. History is redacted and owner-only. manage_crew_chats tools/tool addresses only your own chat; background starts require its initialized native sandbox and UI actions return actual browser receipts. Human sign-in and approval retain app flows."
+			instructions += " Direct Crew tools: terminal, browser, database, mcp and integrations run with crew_id; authorized owners execute them without a model turn. History is redacted and owner-only. sessions action=runtime_tools/runtime_call address only your own chat; background starts require its initialized native sandbox and UI actions return actual browser receipts. Human sign-in and approval retain app flows."
 		}
 	}
 	for _, tool := range allowed {
@@ -199,7 +199,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 			instructions += externalMCPRelayInstructions
 		}
 		if tool.Name == "builder_chat" {
-			instructions += " Builder: use builder action=chat to send editing requests to the configured model in your existing workflow chat. Use a unique submission_id, poll builder action=status by operation_id, and answer pending questions with builder action=reply_input. builder action=cancel stops only that operation. Check get_agent_context(workflow_id) for current effective tools."
+			instructions += " Builder: use sessions action=builder_chat to send editing requests to the configured model in your existing workflow chat. Use a unique submission_id, poll sessions action=builder_status by operation_id, and answer pending questions with sessions action=builder_reply_input. sessions action=builder_cancel stops only that operation. Check help action=context with workflow_id for current effective tools."
 			break
 		}
 	}
@@ -360,7 +360,7 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 		return externalMCPSearchTools(args, externalListedTools(GetUserFromContext(r.Context()), allowed))
 	}
 	if name == externalMCPToolSpec {
-		return externalMCPAPISpec(args, externalListedTools(GetUserFromContext(r.Context()), allowed), allowed, func(value map[string]any, names []string) {
+		return externalMCPAPISpec(args, externalListedTools(GetUserFromContext(r.Context()), allowed), func(value map[string]any, names []string) {
 			handle, _ := args["guidance_session_id"].(string)
 			api.externalPrepareGuidance(r, value, handle)
 		})
@@ -464,15 +464,9 @@ func externalMCPDispatchResult(rec *externalMCPRecorder) *mcp.CallToolResult {
 
 // externalMCPAPISpec serves the scope-filtered catalog: no names returns the
 // name/description list, names returns full schemas for those tools.
-// listed is what the connection is shown; allowed adds hidden aliases, whose
-// schemas can still be read by name.
-func externalMCPAPISpec(args map[string]any, listed, allowed []externalTool, prepare ...func(map[string]any, []string)) *mcp.CallToolResult {
-	byName := make(map[string]externalTool, len(allowed))
-	for _, tool := range allowed {
-		if !tool.internalOnly {
-			byName[tool.Name] = tool
-		}
-	}
+// listed is what the connection is shown; old member names are not readable.
+func externalMCPAPISpec(args map[string]any, listed []externalTool, prepare ...func(map[string]any, []string)) *mcp.CallToolResult {
+	byName := make(map[string]externalTool, len(listed))
 	for _, tool := range listed {
 		byName[tool.Name] = tool
 	}

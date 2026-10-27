@@ -16,8 +16,8 @@ import (
 
 func externalMessagingDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("manage_messaging", "Slack and WhatsApp for a workflow, Flow or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. set_target: name, description and slug shown in Slack's \"who should answer\" picker (pass only what you want to change; an empty value goes back to the product's). add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_status: your linked phone and connection. whatsapp_routing: existing agent destinations. whatsapp_unpair: disconnect your own phone when requested. whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
-		"workflow_id":   externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
-		"crew_id":       externalString("Crew ID from list_crews. Pass this or workflow_id."),
+		"workflow_id":   externalString("Workflow or Flow ID from workflow action=list. Pass this or crew_id."),
+		"crew_id":       externalString("Crew ID from workspace action=list. Pass this or workflow_id."),
 		"action":        map[string]any{"type": "string", "enum": []any{"status", "set_target", "add_channel", "remove_channel", "use_bot", "whatsapp_link", "whatsapp_status", "whatsapp_routing", "whatsapp_unpair"}},
 		"channel_id":    externalString("Exact Slack channel ID, e.g. C0123ABCD."),
 		"connection_id": externalString("For use_bot: a bot id from status, or \"shared\"."),

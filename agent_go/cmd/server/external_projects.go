@@ -15,9 +15,9 @@ import (
 
 func externalProjectDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	names := map[string]any{"type": "array", "maxItems": 100, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "description": "User ids, usernames or emails."}
-	add("manage_project", "Rename, duplicate, delete or share a workflow, Flow or Crew. Pass workflow_id or crew_id. rename (workflows and Flows; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Flows): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: a Goal's or Flow's owners (they build and change it) and readers (the people who can use it); set_access changes only the lists you send, owners only, and the main owner stays. Everyone in the company is the share tool's choice. Crew ownership uses crew_owners.", true, false, map[string]any{
-		"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
-		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
+	add("manage_project", "Rename, duplicate, delete or share a workflow, Flow or Crew. Pass workflow_id or crew_id. rename (workflows and Flows; Crews use workspace action=update): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Flows): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: a Goal's or Flow's owners (they build and change it) and readers (the people who can use it); set_access changes only the lists you send, owners only, and the main owner stays. Everyone in the company is the share tool's choice. Crew ownership uses workspace.", true, false, map[string]any{
+		"workflow_id": externalString("Workflow or Flow ID from workflow action=list. Pass this or crew_id."),
+		"crew_id":     externalString("Crew ID from workspace action=list. Pass this or workflow_id."),
 		"action":      map[string]any{"type": "string", "enum": []any{"rename", "duplicate", "delete", "get_access", "set_access"}},
 		"label":       map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
 		"description": map[string]any{"type": "string", "maxLength": 300, "description": "For rename: one short line about what the workflow is for."},
@@ -146,8 +146,8 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 		}
 		respond(scheduleHandler(r, api.handleDeleteAgentProfileProject, http.MethodDelete, "/api/agent-profiles/"+manifest.Product+"/projects/"+url.PathEscape(manifest.ID), vars, nil, nil))
 	case "set_access":
-		externalError(w, 409, "use_share_dashboard", "Share this Crew from its dashboard: call share_dashboard, or open the dashboard and press Share.")
+		externalError(w, 409, "use_share_dashboard", "Share this Crew from its dashboard: call share action=set, or open the dashboard and press Share.")
 	default:
-		externalError(w, 400, "invalid_arguments", action+" does not apply to a Crew; rename it with update_crew.")
+		externalError(w, 400, "invalid_arguments", action+" does not apply to a Crew; rename it with workspace action=update.")
 	}
 }

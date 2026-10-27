@@ -38,7 +38,7 @@ func (api *StreamingAPI) registerExternalBuilderWorkspaceTools(registrar definit
 				required = append(required, "query")
 			}
 		case "write_file":
-			description = "Create or replace a workflow source file using the revision returned by read_file (or missing for a new file). Stale revisions fail: reread and reconcile before retrying. Plans use typed plan tools. Requires the local workspace mount."
+			description = "Create or replace a workflow source file using the revision returned by files action=read (or missing for a new file). Stale revisions fail: reread and reconcile before retrying. Plans use typed plan tools. Requires the local workspace mount."
 			props["content"] = map[string]interface{}{"type": "string", "maxLength": wf.MaxFileBytes}
 			props["expected_revision"] = map[string]interface{}{"type": "string", "minLength": 1}
 			required = append(required, "content", "expected_revision")

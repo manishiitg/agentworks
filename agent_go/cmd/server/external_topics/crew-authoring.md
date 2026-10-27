@@ -16,7 +16,7 @@ Use the current action families returned by discovery. Project and chat identiti
 A Crew can have standing instructions (`purpose`), skills, typed **functions**,
 schedules, a dashboard and project files. Memory is optional; existing projects
 keep their setting. Every Crew runs on the server; an optional laptop connection adds local command and local-to-Crew copy tools without changing server features.
-A Crew has one main owner (its creator) and can have co-owners; owners build and edit it together, and share its project resources. Each owner may choose their personal provider account or an available company account for their own named chat; inherited Crew model/account settings still run as the main owner. All Builders can see every Builder chat in their project. People with Run access see the dashboard and explicitly selected existing agents. Generic Ask keeps its caller conversation. Owners share the full Crew configuration, including schedules, Watchers, functions, skills, files, memory, connections, selected secrets and laptop access. Owners add or remove co-owners with `crew_owners` (the creator stays); Each owner has their own named Builder tab and controls any further tabs they create. All owners can view every owner’s tabs, while typing, steering, stopping, terminal input, renaming, resetting, closing and model changes belong to that tab’s owner, equally on the website and MCP. There is no whole-Crew edit lock. Use `list_project_chats` and `ask_project_chat` for attributed messages between agents; a message does not impersonate the receiving owner. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
+A Crew has one main owner (its creator) and can have co-owners; owners build and edit it together, and share its project resources. Each owner may choose their personal provider account or an available company account for their own named chat; inherited Crew model/account settings still run as the main owner. All Builders can see every Builder chat in their project. People with Run access see the dashboard and explicitly selected existing agents. Generic Ask keeps its caller conversation. Owners share the full Crew configuration, including schedules, Watchers, functions, skills, files, memory, connections, selected secrets and laptop access. Owners add or remove co-owners with `crew_owners` (the creator stays); Each owner has their own named Builder tab and controls any further tabs they create. All owners can view every owner’s tabs, while typing, steering, stopping, terminal input, renaming, resetting, closing and model changes belong to that tab’s owner, equally on the website and MCP. There is no whole-Crew edit lock. Use `sessions action=list` and `sessions action=ask` for attributed messages between agents; a message does not impersonate the receiving owner. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
 
 Over MCP, use `share action=get` to inspect the audience, then `share action=set` with `crew_id` and the owner's chosen mode: `private` (Only me), `people` (Chosen people, with `emails`) or `everyone`. Only the owner changes sharing, with existing authoring consent. The people list replaces the saved list: preserve people the owner did not ask to remove. A standard dashboard is created when needed.
 
@@ -32,18 +32,17 @@ Example: a support lead provides a policy and asks for a reply-drafting assistan
 
 ## Create and edit
 
-`crew_execution` runs native tools directly without a Builder model turn. Call
-`action=list` with `crew_id` for the enabled names, descriptions and exact input
-schemas, then use that tool name as `action` and its parameters as `arguments`.
-Available tools include `execute_shell_command`, `agent_browser`,
-`mutate_workflow_db`, `apply_workflow_db_migration` and
-`create_workflow_database_snapshot` and `call_selected_mcp_tool`. For connected
-MCP, discover this Crew's actual servers/tools first through `crew_mcp` and
-`crew_diagnostics`; live attachment, selected-tool and Vault checks apply; authorized Vault defaults
-remain available under their current account/group permissions.
-`crew_integrations action=list` exposes the enabled shared Slack, Google account
-and incoming-email tools with their native schemas. Attached workflow tools also
-appear in `crew_execution`: list attachments/triggers, run a trigger with a stable
+Crew tools run directly without a Builder model turn, each through its one tool
+with `crew_id`: `terminal action=execute` for shell commands, `browser
+action=execute` for the browser, `database action=mutate|migrate|snapshot` for
+the Crew database and `mcp action=call` for a selected MCP tool. Read exact
+schemas with get_api_spec. For connected MCP, discover this Crew's actual
+servers/tools first through `mcp action=list` and `mcp action=diagnostics`;
+live attachment, selected-tool and Vault checks apply; authorized Vault defaults
+remain available under their current account/group permissions. Shared Slack,
+Google account and incoming-email actions are in `integrations` and `messages`.
+Attached workflows are in `functions`: list attachments/triggers with
+`functions action=triggers`, run one with `functions action=run_trigger` and a stable
 `delivery_id`, then poll its returned `run_id` and `trigger_id`. The attachment,
 exact Crew binding and current workflow access are checked. Workflow read/file
 consent and target bounds apply; a run additionally requires `runs:execute`.
@@ -108,7 +107,7 @@ type, properties, required, items, enum).
 - Builders change the Crew; people with Run access use its shared chat, dashboard and published functions under the current server checks. Share never grants Builder controls or access to unselected Builder conversations. Selected agents expose their existing conversation and accept attributed requests.
 - For a conversation, use `workspace action=ask` with the discovered workspace ID and optional `chat_id`. Keep the returned chat and submission receipt; read progress and replies with `workspace action=read_chat`, `chat_id`, `after` and `wait_seconds` (up to 25). Ask without a chat ID opens or uses the caller's own conversation. A started turn is not a finished answer; inspect its returned status.
 - Ask is available to people the Crew is shared with. Use an ordinary one-time schedule for a later check, targeting the intended Crew chat. Schedules respect the scheduler pause.
-- Use `workspace action=set_chat_model` with `workspace_id`, `chat_id`, `engine`, `model_id` and optional `reasoning_effort` and `connection_id` to select your own chat's model and personal or available company account. `workspace action=chats` returns `provider_connections` with available account IDs. Omit `engine` to use the Crew's model again.
+- Use `models action=set` with `scope=tab`, `workspace_id`, `chat_id`, `engine`, `model_id` and optional `reasoning_effort` and `connection_id` to select your own chat's model and personal or available company account; `models action=list` with `scope=tab` reads it. `workspace action=chats` returns `provider_connections` with available account IDs. Omit `engine` to use the Crew's model again.
 - Named function tabs keep earlier calls' conversation; `execution: "fresh"` starts without it.
   Put lasting instructions and shared knowledge in `MEMORY.md` or the Crew's files,
   and say how to use them in `purpose` and function `instructions`.
@@ -189,7 +188,7 @@ is a failed call: read its `answer` and `files`, fix the instructions, and call 
 
 ## Existing file and folder links
 
-Use `get_file_link` with `crew_id` and a canonical Crew-relative `path` for
+Use `files action=link` with `crew_id` and a canonical Crew-relative `path` for
 an existing artifact. This requires existing `crews:read` consent and current
 Crew access; connection Crew bounds and file guards also apply. File results
 include `preview_url`, `download_url`, size and content type; folder results
@@ -245,7 +244,7 @@ Crews run on the server. An optional laptop connection in Settings adds local co
 
 ## Crew email inboxes
 
-Crew inboxes are available on servers only; there is no company email switch. People connect Gmail in My Vault and choose one account with `manage_google_account` action=set_inbox_account. Incoming email is on by default per Crew once its owner selects the inbox account. An explicit off setting stays off. When asked, turn receiving off or back on for just that Crew with crew_integrations action=configure_agent_inbox and arguments={"enabled":true}; use false to stop receiving while keeping stored mail. Only enabled Crew addresses are polled, about every 60 seconds. Selecting Gmail starts receiving for that owner’s enabled Crews; it never creates a Watcher. Read that Crew’s addressed mail with `get_agent_inbox` or `agent_inbox`; use the right-panel Inbox to see conversations and attachments. Other personal email stays private. No company mailbox or Google Cloud receiving setup is needed. Receiving stores mail only; optional ordinary Python Watchers decide what starts work.
+Crew inboxes are available on servers only; there is no company email switch. People connect Gmail in My Vault and choose one account with `integrations action=google_set_inbox_account`. Incoming email is on by default per Crew once its owner selects the inbox account. An explicit off setting stays off. When asked, turn receiving off or back on for just that Crew with `messages action=mail_configure` and `enabled: true`; use false to stop receiving while keeping stored mail. Only enabled Crew addresses are polled, about every 60 seconds. Selecting Gmail starts receiving for that owner’s enabled Crews; it never creates a Watcher. Read that Crew’s addressed mail with `get_agent_inbox` or `agent_inbox`; use the right-panel Inbox to see conversations and attachments. Other personal email stays private. No company mailbox or Google Cloud receiving setup is needed. Receiving stores mail only; optional ordinary Python Watchers decide what starts work.
 
 
 ### Watch your existing Gmail

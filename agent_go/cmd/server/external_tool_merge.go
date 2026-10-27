@@ -74,9 +74,6 @@ func dashboardMergeActions(family string) [][2]string {
 	return out
 }
 
-// Hidden with no merged tool: a narrower duplicate of a merged action.
-var externalHiddenAliases = map[string]string{"get_report_link": "dashboard action=link"}
-
 func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 	var err error
 	catalog, err = configurationExternalMembers(catalog)
@@ -94,11 +91,6 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		index[tool.Name] = i
 		if projectServiceTool(tool.Name) || platformtools.IsMember(tool.Name) {
 			catalog[i].hidden, catalog[i].internalOnly = true, true
-		}
-	}
-	for name := range externalHiddenAliases {
-		if i, ok := index[name]; ok {
-			catalog[i].hidden = true
 		}
 	}
 	for _, merge := range externalToolMerges {
@@ -124,7 +116,9 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 				if _, has := member.InputSchema["properties"].(map[string]any)["action"]; has {
 					return nil, fmt.Errorf("merged tool %q: member %q already has an action field", merge.name, member.Name)
 				}
-				member.hidden = true
+				// One name per job (the decisions log, PLAT-825): a merged member is
+				// reached only through its merged tool, never by its old name.
+				member.hidden, member.internalOnly = true, true
 				for key, value := range member.InputSchema["properties"].(map[string]any) {
 					externalMergeProperty(props, key, value)
 				}

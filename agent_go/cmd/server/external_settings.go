@@ -40,18 +40,18 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	}
 	target := func() map[string]any {
 		return map[string]any{
-			"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
-			"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
+			"workflow_id": externalString("Workflow or Flow ID from workflow action=list. Pass this or crew_id."),
+			"crew_id":     externalString("Crew ID from workspace action=list. Pass this or workflow_id."),
 		}
 	}
-	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Flows), plus a version for update_settings. Builders also receive the names-only project Vault panel inventory under vault.", false, false, target())
+	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Flows), plus a version for settings action=update. Builders also receive the names-only project Vault panel inventory under vault.", false, false, target())
 	sourceTarget := target()
 	add("get_secret_sources", "Explain this product's saved secret choices by name: its own copy, the company Vault copy and which takes priority. Values, token validity and account identities are not checked. Does not change selections or stored copies. Pass workflow_id or crew_id.", false, false, sourceTarget)
 	props := target()
 	for key, value := range map[string]any{
 		"chat_instructions":  map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional short instructions for the app chat: behavior, tone and what to do first. Visible to people who can use the app; no secrets. Empty clears. Owner only; never grants tools or permissions."},
 		"expected_version":   externalString("Version from settings action=get; the update is refused if the settings changed since."),
-		"models":             map[string]any{"type": "object", "description": "The models object from get_settings with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
+		"models":             map[string]any{"type": "object", "description": "The models object from settings action=get with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
 		"mcp_servers":        map[string]any{"type": "object", "additionalProperties": false, "description": "Attach/detach apps (MCP servers and Vault apps), or replace the complete selection.", "properties": map[string]any{"add": names, "remove": names, "replace": names}},
 		"use_all_vault_apps": map[string]any{"type": "boolean", "description": "Use all my Vault apps automatically. On: every Vault app the owner may use is available. Off: only the Vault apps listed in mcp_servers."},
 		"tools":              addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),

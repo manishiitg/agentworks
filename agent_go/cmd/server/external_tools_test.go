@@ -175,7 +175,7 @@ func (f *externalToolsFixture) read(t *testing.T, rel string) string {
 }
 func (f *externalToolsFixture) call(t *testing.T, user, name string, args map[string]any) *httptest.ResponseRecorder {
 	t.Helper()
-	name, args = canonicalFileTestCall(name, args)
+	name, args = canonicalTestCall(name, args)
 	data, err := json.Marshal(map[string]any{"name": name, "arguments": args})
 	if err != nil {
 		t.Fatal(err)
@@ -607,7 +607,7 @@ func TestExternalToolsClientTransportThroughJWTAndWorkspace(t *testing.T) {
 			t.Fatalf("write tool %s exposed in client catalog", name)
 		}
 	}
-	raw, err := client.Call(ctx, "get_plan", map[string]any{"workflow_id": "invoices"})
+	raw, err := client.Call(ctx, "workflow", map[string]any{"action": "plan", "workflow_id": "invoices"})
 	if err != nil {
 		t.Fatalf("get_plan: %v", err)
 	}

@@ -29,7 +29,7 @@ func externalWorkflowTeamDefinition(add func(string, string, bool, bool, map[str
 		"team":   policy, "expected_revision": map[string]any{"type": "integer", "minimum": 0, "description": "Current team revision from get; required for mutations."},
 		"confirm":                    externalString("Must equal workflow_id when update adds members or changes the Leader; the reply of an unconfirmed attempt lists exactly what would change."),
 		"expected_schedule_revision": externalString("Exact schedule revision from get's schedule_revisions; required only for reauthorize_schedule."),
-		"schedule_id":                externalString("Existing schedule ID from manage_schedules action=list; only for reauthorize_schedule.")}, "action")
+		"schedule_id":                externalString("Existing schedule ID from schedules action=list; only for reauthorize_schedule.")}, "action")
 }
 
 func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
@@ -177,7 +177,7 @@ func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http
 			out["eligible_members"] = members
 		}
 	}
-	out["note"] = "Team permission changes require explicit schedule reauthorization. Use manage_schedules to inspect schedules; use reauthorize_schedule with the saved team revision after reviewing them."
+	out["note"] = "Team permission changes require explicit schedule reauthorization. Use schedules action=list to inspect schedules; use reauthorize_schedule with the saved team revision after reviewing them."
 	externalJSON(w, out)
 }
 

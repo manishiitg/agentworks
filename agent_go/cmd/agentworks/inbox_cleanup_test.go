@@ -27,7 +27,7 @@ func TestCLIInboxCleanup(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Error(err)
 				}
-				if body.Name == "get_agent_context" {
+				if body.Name == "help" && body.Arguments["action"] == "context" {
 					fmt.Fprint(w, `{"guidance_version":"test-guidance"}`)
 					return
 				}

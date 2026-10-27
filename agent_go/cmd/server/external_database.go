@@ -10,8 +10,8 @@ import (
 
 func externalDatabaseDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("query_database", "Read a workflow's, Flow's or Crew's database (db/db.sqlite) read-only: pass sql for one SELECT, WITH or EXPLAIN statement (params bind ? placeholders), action=describe (optional table) for tables and columns, or action=integrity_check. Results are paged: give the query an ORDER BY and pass offset for the next page. Anyone who can open the workflow or Crew may read it. Crew owners with crews:write use the offered database mutate, migrate and snapshot actions; workflow and Flow writes retain their existing authoring/runtime paths.", false, false, map[string]any{
-		"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
-		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
+		"workflow_id": externalString("Workflow or Flow ID from workflow action=list. Pass this or crew_id."),
+		"crew_id":     externalString("Crew ID from workspace action=list. Pass this or workflow_id."),
 		"sql":         map[string]any{"type": "string", "minLength": 1, "maxLength": 20000},
 		"params":      map[string]any{"type": "array", "maxItems": 100, "description": `For the signed-in caller, pass {"$current_user_id":true} as a params value; the server binds the person ID, including when a function runs with its Crew owner's authority. This filters data without changing shared access.`},
 		"action":      map[string]any{"type": "string", "enum": []any{"query", "describe", "integrity_check"}},

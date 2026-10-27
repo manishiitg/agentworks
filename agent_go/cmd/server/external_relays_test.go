@@ -69,6 +69,7 @@ func (f *externalRelayFixture) token(t *testing.T, user string, scopes []string,
 }
 func (f *externalRelayFixture) relayCall(t *testing.T, raw, name string, args map[string]any, want int) map[string]any {
 	t.Helper()
+	name, args = canonicalTestCall(name, args)
 	data, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
 	req := httptest.NewRequest("POST", "/api/external/v1/call", strings.NewReader(string(data)))
 	req.Header.Set("Authorization", "Bearer "+raw)

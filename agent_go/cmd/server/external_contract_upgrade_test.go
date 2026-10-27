@@ -41,7 +41,7 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	f.call(t, owner, "workflow_upgrade", managedStamp, 200)
 	layoutStamp := map[string]any{"action": "stamp", "version": "1.0.46", "confirm": "invoices"}
 	f.call(t, owner, "workflow_upgrade", layoutStamp, 409) // heading checks still apply
-	revision := externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	revision := externalTestBody(t, f.call(t, owner, "workflow", map[string]any{"action": "plan"}, 200), 200)["revision"].(string)
 	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "layout-before-agent-stamp", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nTalk to the person.\n## Inputs\nTheir message.\n## Output\nA greeting.\n## Done when\nThe person is greeted.", "reason": "Organize the existing greeting task."}}}, 200)
 	f.call(t, owner, "workflow_upgrade", layoutStamp, 200)
 
@@ -73,7 +73,7 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	}
 	nextStamp := map[string]any{"action": "stamp", "version": "1.0.48", "confirm": "invoices"}
 	f.call(t, owner, "workflow_upgrade", nextStamp, 409)
-	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	revision = externalTestBody(t, f.call(t, owner, "workflow", map[string]any{"action": "plan"}, 200), 200)["revision"].(string)
 	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "review-description-first", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"prompt_contract": "description-first-v1", "description": "Greet the person once.", "system_rules": "Never repeat the greeting to validate it.", "items": []any{}, "reason": "Reviewed description-first task; remove redundant execution item."}}}, 200)
 	f.call(t, owner, "workflow_upgrade", nextStamp, 200)
 	// A workflow already on 1.0.48 owes the resource-intent review (1.0.49).
@@ -84,7 +84,7 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	intentStamp := map[string]any{"action": "stamp", "version": "1.0.49", "confirm": "invoices"}
 	// Refused while the description says nothing about the four resources.
 	f.call(t, owner, "workflow_upgrade", intentStamp, 409)
-	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	revision = externalTestBody(t, f.call(t, owner, "workflow", map[string]any{"action": "plan"}, 200), 200)["revision"].(string)
 	// Saying "none" for a resource the description itself names is a contradiction, not a review.
 	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-contradiction", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: none\n- Database: none\n- Brain: none\n- Learnings: none\n\n## Guides\nknowledgebase/tone.md", "reason": "Resource intent review."}}}, 200)
 	f.call(t, owner, "workflow_upgrade", intentStamp, 409)
@@ -93,7 +93,7 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	f.write(t, "Workflow/invoices/planning/step_config.json", config)
 	f.write(t, "Workflow/invoices/knowledgebase/tone.md", "Use a clear greeting.")
 	f.write(t, "Workflow/invoices/learnings/_global/references/greeting.md", "Greet once.")
-	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	revision = externalTestBody(t, f.call(t, owner, "workflow", map[string]any{"action": "plan"}, 200), 200)["revision"].(string)
 	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-reviewed", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: reads the tone guide; no writes\n- Database: none\n- Brain: none\n- Learnings: reads the named greeting guide; no contributions\n\n## Guides\nknowledgebase/tone.md\nlearnings/_global/references/greeting.md", "reason": "Resource intent review."}}}, 200)
 	configBeforeStamp := f.read(t, "Workflow/invoices/planning/step_config.json")
 	f.call(t, owner, "workflow_upgrade", intentStamp, 200)
@@ -112,7 +112,7 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	if strings.Contains(after, `"version":"1.0.50"`) {
 		t.Fatal("status still requires the retired conversion", after)
 	}
-	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	revision = externalTestBody(t, f.call(t, owner, "workflow", map[string]any{"action": "plan"}, 200), 200)["revision"].(string)
 	f.call(t, owner, "plan", map[string]any{"action": "migrate_workflow_skills", "arguments": map[string]any{}, "expected_revision": revision, "request_id": "skills-after-reviewed-resource-intent"}, 200)
 	f.call(t, owner, "workflow_upgrade", skillsStamp, 200)
 	after = f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()

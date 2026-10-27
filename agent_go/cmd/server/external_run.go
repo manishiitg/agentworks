@@ -44,7 +44,7 @@ func externalRunProxyTool(name string) externalTool {
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"workflow_id": externalString("Workflow ID returned by list_workflows. Never a filesystem path."),
+				"workflow_id": externalString("Workflow ID returned by workflow action=list. Never a filesystem path."),
 				"session_id":  map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new run session."},
 			},
 			"required":             []any{"workflow_id"},
@@ -235,7 +235,7 @@ func (api *StreamingAPI) externalStopStep(w http.ResponseWriter, r *http.Request
 	}
 	api.trackedWorkflowExecutionsMux.RUnlock()
 	if targetSessionID == "" {
-		externalError(w, http.StatusNotFound, "execution_not_found", "No running execution with that ID in this workflow; see runs action=status or list_executions")
+		externalError(w, http.StatusNotFound, "execution_not_found", "No running execution with that ID in this workflow; see runs action=status or runs action=active")
 		return
 	}
 	if sessionFilter != "" && sessionFilter != targetSessionID {
