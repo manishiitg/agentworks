@@ -245,6 +245,16 @@ func validMCPOAuthScopes(raw string) ([]string, bool) {
 		}
 		seen[scope] = true
 	}
+	if sparkquillOnlyDeployment() || hasSparkQuillScopes(scopes) {
+		if !seen["sparkquill:read"] {
+			return nil, false
+		}
+		for _, scope := range scopes {
+			if !slices.Contains(sparkquillScopes, scope) {
+				return nil, false
+			}
+		}
+	}
 	if (seen["builder:chat"] || seen["relays:write"]) && (!seen["workflows:read"] || !seen["files:read"] || !seen["runs:execute"]) {
 		return nil, false
 	}
