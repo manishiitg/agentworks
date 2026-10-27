@@ -9,6 +9,7 @@ refresh="${4:-0}"
 case "$agy_auth_mode" in auto|gemini) ;; *) echo 'Invalid Agy authentication mode' >&2; exit 1 ;; esac
 case "$refresh" in 0|1) ;; *) echo 'Tool refresh must be 0 or 1' >&2; exit 1 ;; esac
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+sdk_installer="${5:-$script_dir/../../agent_go/internal/codingsdks/coding-sdks.cjs}"
 CODING_CLI_BINARIES=(claude codex cursor-agent pi muse agy)
 install -d -m 0755 "$prefix/bin" "$service_home/.local/bin"
 export PATH="$prefix/node/bin:$prefix/bin:$service_home/.local/bin:$PATH"
@@ -22,7 +23,7 @@ umask "$previous_umask"
 flock -w 300 9
 state="$prefix/.coding-cli-state"
 install -d -m 0700 "$state"
-policy="$(sha256sum "$script_dir/install-coding-clis.sh" "$script_dir/install-agy.sh" "$script_dir/coding-cli-state.py" | cut -d ' ' -f 1 | sha256sum | cut -d ' ' -f 1)"
+policy="$(sha256sum "$script_dir/install-coding-clis.sh" "$script_dir/install-agy.sh" "$script_dir/coding-cli-state.py" "$sdk_installer" | cut -d ' ' -f 1 | sha256sum | cut -d ' ' -f 1)"
 policy+=":$(node --version):$(npm --version):$(uname -m)"
 tool_policy() {
   if [[ "$1" == agy ]]; then printf '%s:agy:%s' "$policy" "$agy_auth_mode"; else printf '%s:%s' "$policy" "$1"; fi
@@ -90,33 +91,10 @@ install_node_cli claude @anthropic-ai/claude-code
 install_node_cli codex @openai/codex
 install_node_cli pi @earendil-works/pi-coding-agent
 
-# SDKs share the managed CLI prefix. Adapters resolve beside the PATH entry,
-# then use npm's global root only for installations managed outside the server.
-install_node_sdk() {
-  local package="$1" expected_version="$2" entry="$3" export_name="$4" version
-  sdk_version() {
-    timeout 45 node --input-type=module - "$prefix/lib/node_modules/$package" "$entry" "$export_name" <<'JS'
-import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-const [root, entry, exportName] = process.argv.slice(2);
-const sdk = await import(pathToFileURL(`${root}/${entry}`).href);
-// Bundled CommonJS exposes its namespace as default under dynamic import.
-const exported = sdk[exportName] ?? sdk.default?.[exportName];
-if (typeof exported !== 'function') throw new Error(`Missing SDK export ${exportName}`);
-console.log(JSON.parse(readFileSync(`${root}/package.json`, 'utf8')).version);
-JS
-  }
-  if [[ "$refresh" == 0 ]] && version="$(sdk_version 2>/dev/null)" && [[ "$version" == "$expected_version" ]]; then
-    printf '    %s: %s (unchanged)\n' "$package" "$version"
-    return
-  fi
-  npm install -g --prefix "$prefix" --include=optional \
-    --allow-scripts=@anthropic-ai/claude-agent-sdk,@anthropic-ai/claude-code,esbuild "$package@$expected_version"
-  version="$(sdk_version)" && [[ "$version" == "$expected_version" ]] || { echo "FATAL: $package SDK does not load" >&2; return 1; }
-  printf '    %s: %s\n' "$package" "$version"
-}
-install_node_sdk @anthropic-ai/claude-agent-sdk 0.3.311 sdk.mjs query
-install_node_sdk @cursor/sdk 1.1.0 dist/cjs/index.js Agent
+# Same version/export contract as the provisioner embedded in local/Desktop.
+sdk_args=(--prefix "$prefix")
+[[ "$refresh" == 0 ]] || sdk_args+=(--force)
+node "$sdk_installer" "${sdk_args[@]}"
 
 if needs_install cursor-agent; then
   curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 https://cursor.com/install | bash

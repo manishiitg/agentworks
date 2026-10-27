@@ -20,6 +20,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-sdks:
+    if: contains(github.event.head_commit.message, 'Verify-Native-SDKs: true')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      GOWORK: "off"
+      AGENTWORKS_TEST_REAL_CODING_SDKS: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: agent_go/go.mod
+      - name: Install and import the real SDKs through the embedded provisioner
+        working-directory: agent_go
+        run: go test -v ./internal/codingsdks -count=1
+
   arm-release:
     if: >-
       contains(github.event.head_commit.message, 'Verify-ARM-Release: true')

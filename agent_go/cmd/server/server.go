@@ -33,6 +33,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cliupdate"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codingsdks"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/inspector"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
@@ -1708,7 +1709,18 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	cliUpdateCtx, stopCLIUpdates := context.WithCancel(context.Background())
 	defer stopCLIUpdates()
-	if !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_ENABLED")), "false") && !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_DRY_RUN")), "true") {
+	cliUpdatesEnabled := !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_ENABLED")), "false") && !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_DRY_RUN")), "true")
+	if root, err := cliupdate.DefaultRoot(); err == nil {
+		sdks, sdkErr := codingsdks.New(cliUpdateCtx, filepath.Join(filepath.Dir(root), "coding-sdks"), cliUpdatesEnabled, log.Printf)
+		if sdkErr != nil {
+			log.Printf("[CODING SDK] setup unavailable; update the app and try again")
+		} else {
+			llmtypes.SetCodingSDKSetup(sdks.Ensure)
+			defer llmtypes.SetCodingSDKSetup(nil)
+			sdks.Start()
+		}
+	}
+	if cliUpdatesEnabled {
 		root, updateErr := cliupdate.DefaultRoot()
 		if updateErr == nil {
 			var manager *cliupdate.Manager
