@@ -402,7 +402,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               useChatStore.getState().addToast('Could not open this chat.', 'error')
             )
           }}
-          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose || disclosure ? 'pr-9' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
+          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose || disclosure ? 'pr-9' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
         >
           {hasSourceIcon && <span className={`shrink-0 ${workspaceEntry ? '' : 'opacity-60'}`} title={sourceLabel} aria-hidden="true">
             {workspaceEntry ? (
