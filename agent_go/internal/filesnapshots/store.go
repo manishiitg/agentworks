@@ -71,11 +71,12 @@ type Change struct {
 	Binary  bool   `json:"binary,omitempty"`
 }
 type Comparison struct {
-	Record    Record   `json:"snapshot"`
-	Changes   []Change `json:"changes"`
-	Diff      string   `json:"diff,omitempty"`
-	Truncated bool     `json:"truncated,omitempty"`
-	Note      string   `json:"note"`
+	Record       Record   `json:"snapshot"`
+	Changes      []Change `json:"changes"`
+	Diff         string   `json:"diff,omitempty"`
+	Truncated    bool     `json:"truncated,omitempty"`
+	SkippedCount int      `json:"skipped_count"`
+	Note         string   `json:"note"`
 }
 type Store struct{ Root, Private string }
 
@@ -585,6 +586,12 @@ func (s Store) Compare(ctx context.Context, id, file string, allow func(string) 
 		}
 	}
 	sort.Strings(out.Record.Skipped)
+	out.SkippedCount = len(out.Record.Skipped)
+	// The full list remains in the private record and filter above. Cards
+	// need a count and bounded examples, not megabytes of skipped paths.
+	if len(out.Record.Skipped) > 50 {
+		out.Record.Skipped = out.Record.Skipped[:50]
+	}
 	for _, p := range r.Omitted {
 		skipped[p] = true
 	}

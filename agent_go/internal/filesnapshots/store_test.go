@@ -172,6 +172,34 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 	if err != nil || r.Status != "partial" || len(c.Changes) != 0 || len(c.Record.Skipped) != 1 {
 		t.Fatalf("false deletion: %v %+v", err, c)
 	}
+	// Large-Crew responses keep bounded examples; the count and examples
+	// must obey the same current file grant as historical contents.
+	for i := 0; i < 60; i++ {
+		f, err := os.Create(filepath.Join(s.Root, fmt.Sprintf("large-%02d.bin", i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = f.Truncate(MaxFileBytes + 1)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Begin(t.Context(), "many-skipped"); err != nil {
+		t.Fatal(err)
+	}
+	many, err := s.Finish(t.Context(), "many-skipped")
+	if err != nil {
+		t.Fatal(err)
+	}
+	limited, err := s.Compare(t.Context(), many.ID, "", func(string) bool { return true })
+	if err != nil || limited.SkippedCount != 61 || len(limited.Record.Skipped) != 50 || len(many.Skipped) != 122 {
+		t.Fatalf("unbounded or lost omissions: %v %+v", err, limited)
+	}
+	granted, err := s.Compare(t.Context(), many.ID, "", func(p string) bool { return p == "asset.bin" })
+	if err != nil || granted.SkippedCount != 1 || len(granted.Record.Skipped) != 1 || granted.Record.Skipped[0] != "asset.bin" {
+		t.Fatalf("skipped response exposed denied paths/count: %v %+v", err, granted)
+	}
 	// One unreadable file must not lose other files or become a false deletion.
 	// The remote verifier runs unprivileged; root can still read mode 000.
 	unreadable := filepath.Join(s.Root, "unreadable.txt")
