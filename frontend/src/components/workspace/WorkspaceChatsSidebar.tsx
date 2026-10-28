@@ -416,7 +416,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               <span
                 className={`mt-1 flex items-center gap-1 truncate text-[10px] leading-3 ${row.waiting ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'}`}
               >
-                {hasSourceIcon && !workspaceEntry && <SourceIcon className="h-3 w-3 shrink-0" aria-label={sourceLabel} />}
+                {hasSourceIcon && !workspaceEntry && <span className="shrink-0" title={sourceLabel} aria-hidden="true"><SourceIcon className="h-3 w-3" /></span>}
                 <span className="truncate">{details}</span>
               </span>
             )}
