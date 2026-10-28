@@ -1190,6 +1190,12 @@ func resolveProductProjectBindingInRoot(
 			if folder == "" || strings.Contains(folder, "/") || strings.HasPrefix(folder, ".") {
 				continue
 			}
+			// The registry decides ownership by folder alone, so check it before reading the manifest: the shared
+			// root holds every owner's Crews, and reading all of them to resolve one of the caller's made each
+			// resolution cost one workspace read per Crew on the server.
+			if !ownerOK(folder) {
+				continue
+			}
 		}
 		// The workspace listing can return a folder both nested under its root
 		// and as a top-level item, which repeats the same file path. That is one
@@ -1210,9 +1216,6 @@ func resolveProductProjectBindingInRoot(
 		if json.Unmarshal([]byte(raw), &manifest) != nil ||
 			strings.TrimSpace(manifest.Product) != profile.ID ||
 			strings.TrimSpace(manifest.ID) != resourceProjectID {
-			continue
-		}
-		if ownerOK != nil && !ownerOK(strings.TrimSuffix(strings.TrimPrefix(candidate, rootPrefix), "/product.json")) {
 			continue
 		}
 		if strings.TrimSpace(manifest.Title) == "" || strings.TrimSpace(manifest.SessionID) == "" {

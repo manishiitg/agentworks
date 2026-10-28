@@ -224,16 +224,12 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	}
 	// A Crew at the shared root (PLAT-442 step 4) has its owner in the server's registry: one listing of Crew/ finds
 	// it whoever the owner is (not the caller, whose own were tried above).
-	var sharedOwner string
+	// ownerOK runs for every folder before its manifest is read, so the owner is taken from the matched folder.
 	if shared, err := resolveProductProjectBindingInRoot(ctx, profile, workspaceref.SharedCrewRoot, strings.TrimSpace(projectID), crewResourceProjectID(projectID), store, func(folder string) bool {
 		owner := sharedCrewOwner(folder)
-		if owner == "" || owner == sanitizeUserIDForPath(callerID) {
-			return false
-		}
-		sharedOwner = owner
-		return true
+		return owner != "" && owner != sanitizeUserIDForPath(callerID)
 	}); err == nil {
-		return reader(sharedOwner, shared)
+		return reader(sharedCrewOwner(filepath.Base(shared.WorkspacePath)), shared)
 	} else if !errors.Is(err, errProjectNotFound) {
 		return denied()
 	}

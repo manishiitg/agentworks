@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 // The canonical action family reuses native project services. Origin IDs remain
@@ -267,6 +269,12 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 		}
 		owners := append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...)
 		for _, owner := range owners {
+			// Navigation keeps only work the caller builds; another owner's Crew qualifies only when the caller
+			// co-owns it. Skipping the other owners here (registry only) avoids reading and resolving every Crew
+			// shared with the caller on each sidebar refresh; the kept rows are still resolved below.
+			if navigation && owner != claims.UserID && !ownerHasCrewCoOwnedBy(r.Context(), profile, owner, claims.UserID) {
+				continue
+			}
 			rows := listProjectsForOwner(r.Context(), claims, profile, owner, owner != claims.UserID)
 			for _, row := range rows {
 				if q := strings.ToLower(strings.TrimSpace(externalArg(args, "query"))); q != "" && !strings.Contains(strings.ToLower(row.Title), q) {
@@ -297,6 +305,21 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 		}
 	}
 	externalJSON(w, map[string]any{"workspaces": items})
+}
+
+// ownerHasCrewCoOwnedBy reports whether any of owner's projects of profile lists callerID as a co-owner. A listing
+// failure answers true so the full path decides.
+func ownerHasCrewCoOwnedBy(ctx context.Context, profile agentprofiles.Profile, owner, callerID string) bool {
+	paths, _, err := listProjectManifestPaths(ctx, defaultProductProjectStore(), owner, profile)
+	if err != nil {
+		return true
+	}
+	for _, candidate := range paths {
+		if crewIsCoOwner(strings.TrimSuffix(candidate, "/product.json"), callerID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (api *StreamingAPI) handleWorkspaces(w http.ResponseWriter, r *http.Request) {

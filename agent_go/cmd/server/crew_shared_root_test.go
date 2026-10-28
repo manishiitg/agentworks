@@ -120,6 +120,14 @@ func TestCrewAccessReaderNeedsProjectSharing(t *testing.T) {
 	if crewAccessFor(f.Claims(fixtureUserB), ref) != crewAccessReader || !newLiveFeedAccess(f.Claims(fixtureUserB)).visible(f.Ctx(fixtureUserB), ref.Root) {
 		t.Fatal("with sharing on, a user with the Crew product is a reader")
 	}
+	// The shared-root scan checks the registry owner of every folder before reading manifests; the reader binding must
+	// still name the matched Crew's owner, not the last folder checked (here a later Crew owned by someone else).
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "zeta-f0f0f0f0", OwnerID: fixtureUserC, Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, ""); err != nil || got.OwnedByCaller || got.OwnerID != fixtureUserA {
+		t.Fatalf("reader binding through the shared root = %+v err=%v, want owner %q", got, err, fixtureUserA)
+	}
 	// The owner can keep one Crew to themselves while sharing is on (PLAT-725).
 	if err := defaultProjectOwners().SetPrivate("work", fixtureCrewFolder, true); err != nil {
 		t.Fatal(err)
