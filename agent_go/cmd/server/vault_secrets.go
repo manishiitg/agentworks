@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -188,8 +189,18 @@ func globalSecretNamesWithoutValue(ctx context.Context, userID string) []string 
 	return secretNamesWithoutValue(allowed, getGlobalSecrets())
 }
 
+// lastGrantsLogUnix rate-limits the "runtime grants unavailable" line to one a minute: every run asks again.
+var lastGrantsLogUnix atomic.Int64
+
 func visibleGlobalSecrets(ctx context.Context, userID string) []globalSecretEntry {
-	rows, _ := permittedGlobalSecrets(ctx, userID)
+	rows, err := permittedGlobalSecrets(ctx, userID)
+	if err != nil {
+		// Without the grants no promoted or shared secret resolves; say so once a minute (no names or values).
+		if now := time.Now().Unix(); now-lastGrantsLogUnix.Load() >= 60 {
+			lastGrantsLogUnix.Store(now)
+			log.Printf("[SECRETS] runtime grants unavailable user=%s err=%v (promoted and shared secrets are not resolved for this run)", userID, err)
+		}
+	}
 	return rows
 }
 func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID string, scoped []struct {
