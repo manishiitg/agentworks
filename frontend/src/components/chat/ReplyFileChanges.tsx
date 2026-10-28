@@ -7,7 +7,10 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { openChatFiles } from '../workspace/chatFileNavigation'
 import { useChatStore } from '../../stores/useChatStore'
-import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
+import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
+import { commandsApi } from '../../api/commands'
+import { renderCommandPrompt } from '../../commands/commandPrompt'
+import type { UserCommand } from '../../types/commands'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../../utils/chatIdentity'
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
 
@@ -24,6 +27,20 @@ function prLine(pr: PullRequest) {
   const review = pr.review === 'approved' ? ' · approved' : pr.review === 'changes_requested' ? ' · changes requested' : pr.state === 'open' ? ' · no review yet' : ''
   return `PR #${pr.number}${pr.state === 'open' ? '' : ` ${pr.state}`}${checks}${review}`
 }
+
+type UndoItem = { path: string; status: string; action: string; reason?: string }
+type UndoPlan = { restore: UndoItem[]; skipped: UndoItem[] }
+const fileList = (items: UndoItem[]) => items.slice(0, 5).map(item => item.path.split('/').pop()).join(', ') + (items.length > 5 ? `, +${items.length - 5} more` : '')
+const plural = (n: number) => `${n} file${n === 1 ? '' : 's'}`
+const errorText = (cause: unknown, fallback: string) => (cause as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || (cause instanceof Error ? cause.message : fallback)
+// This reply's context for a card button: replaces {{context}} in the saved message.
+export const cardContext = (groups: FileGroup[]) => {
+  const paths = groups.flatMap(group => group.files.map(file => file.path)).slice(0, 20)
+  const repo = groups.find(group => group.kind === 'repo' && group.branch)
+  const pr = repo?.pr?.url
+  return `Context: this reply changed these files: ${paths.join(', ')}${repo ? ` in ${repo.name} on branch ${repo.branch}` : ''}${pr ? `; PR ${pr}` : ''}`
+}
+const addButtonStarter = 'Add a button called ___ that sends: ___'
 
 const endpoint = '/api/workspace-snapshots'
 const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId })
@@ -46,6 +63,8 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const [groups, setGroups] = useState<FileGroup[]>([])
   const [canEdit, setCanEdit] = useState(false)
   const [asked, setAsked] = useState('')
+  const [commands, setCommands] = useState<UserCommand[]>([])
+  const [undo, setUndo] = useState<{ plan?: UndoPlan; busy?: boolean; done?: string; error?: string } | null>(null)
   const latest = result?.history.latest_snapshot_id === reference.snapshotId && (!reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId)
   const reviewed = result?.history.baseline_snapshot_id === reference.snapshotId
   useEffect(() => {
@@ -63,6 +82,28 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       .catch(() => setCanEdit(false))
     return () => controller.abort()
   }, [reference.workspacePath, reference.snapshotId, reference.sessionId, reference.latestSnapshotId, revision])
+  useEffect(() => {
+    if (!canEdit) { setCommands([]); return }
+    let current = true
+    // Buttons are the Crew's commands marked for the card; nothing extra if the list cannot load.
+    void commandsApi.listCommands(reference.workspacePath)
+      .then(response => { if (current) setCommands((response.commands ?? []).filter(command => command.frontmatter.show_on_card === true)) })
+      .catch(() => { if (current) setCommands([]) })
+    return () => { current = false }
+  }, [canEdit, reference.workspacePath])
+  const undoParams = (op: string) => ({ ...paramsFor(reference), session_id: reference.sessionId, op })
+  const undoCall = (method: 'get' | 'post', op: string) => method === 'get' ? api.get<{ undo: UndoPlan }>(endpoint, { params: undoParams(op) }) : api.post<{ undo: UndoPlan }>(endpoint, {}, { params: undoParams(op) })
+  const startUndo = async () => {
+    setUndo({ busy: true })
+    try { setUndo({ plan: (await undoCall('get', 'snapshot_undo_preview')).data.undo }) } catch (cause) { setUndo({ error: errorText(cause, 'Could not check what to undo. Try again.') }) }
+  }
+  const confirmUndo = async () => {
+    setUndo({ busy: true })
+    try {
+      const plan = (await undoCall('post', 'snapshot_undo')).data.undo
+      setUndo({ done: `Restored ${plural(plan.restore.length)}${plan.skipped.length ? `, left ${plural(plan.skipped.length)} alone` : ''}.` })
+    } catch (cause) { setUndo({ error: errorText(cause, 'Could not undo this reply. Try again.') }) }
+  }
   const ask = async (key: string, message: string) => {
     setReviewError(''); setAsked('')
     try {
@@ -109,6 +150,27 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           </div>
         ))}
       {reviewError && <p role="alert" className="mt-2 text-xs">{reviewError}</p>}
+      {canEdit && <div className="mt-2 flex flex-wrap items-center gap-2 border-t pt-2">
+        {commands.map(command => (
+          <button key={command.frontmatter.name} type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void ask(`command:${command.frontmatter.name}`, renderCommandPrompt(command.content, cardContext(groups)))}>{command.frontmatter.description || command.frontmatter.name}</button>
+        ))}
+        <button type="button" className="rounded border border-dashed px-2 py-1 text-xs" onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}>+ Add button</button>
+        {commands.some(command => asked === `command:${command.frontmatter.name}`) && <span className="text-xs text-muted-foreground">Asked in this chat.</span>}
+        {!undo && <button type="button" className="ml-auto rounded border px-2 py-1 text-xs" onClick={() => void startUndo()}>Undo this reply</button>}
+      </div>}
+      {canEdit && undo && <div className="mt-2 rounded border border-border p-2 text-xs" role="group" aria-label="Undo this reply">
+        {undo.busy && <span>Working…</span>}
+        {undo.error && <p role="alert">{undo.error}</p>}
+        {undo.done && <p>{undo.done}</p>}
+        {undo.plan && <>
+          <p>{undo.plan.restore.length ? `This will put back ${plural(undo.plan.restore.length)} (${fileList(undo.plan.restore)})` : 'There is nothing to put back'}{undo.plan.skipped.length ? ` and leave ${plural(undo.plan.skipped.length)} alone because a later reply changed them (${fileList(undo.plan.skipped)}).` : '.'}</p>
+          <div className="mt-1 flex gap-2">
+            {undo.plan.restore.length > 0 && <button type="button" className="rounded border border-primary px-2 py-1" onClick={() => void confirmUndo()}>Undo {plural(undo.plan.restore.length)}</button>}
+            <button type="button" className="rounded border px-2 py-1" onClick={() => setUndo(null)}>Cancel</button>
+          </div>
+        </>}
+        {(undo.done || undo.error) && <button type="button" className="mt-1 underline" onClick={() => setUndo(null)}>Close</button>}
+      </div>}
       <button type="button" className="mt-2 text-xs underline" onClick={() => openChatFiles(reference.sessionId)}>Review changes</button>
       {latest && <div className="mt-2 flex flex-wrap items-center gap-2 border-t pt-2 text-xs">
         {result?.since_review && <span>Since your last review: {result.since_review.files} files <span className="text-green-600">+{result.since_review.added}</span> <span className="text-red-500">−{result.since_review.removed}</span></span>}

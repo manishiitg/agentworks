@@ -3,6 +3,7 @@ export interface CommandFrontmatter {
   description: string
   icon?: string
   modes?: string[]
+  show_on_card?: boolean
 }
 
 export interface UserCommand {
