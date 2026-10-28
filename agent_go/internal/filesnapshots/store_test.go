@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -997,5 +998,65 @@ func TestInitialImportResumesAfterCancel(t *testing.T) {
 	r, err := f.s.BeginWithin(5*time.Second, "after-import")
 	if c := r.BeforeCapture; err != nil || r.Status != "capturing" || c.Cold || c.Changed != 0 || c.Reused != 19 {
 		t.Fatalf("send after import: %v %+v", err, r)
+	}
+}
+
+// indexStat returns the mtime seconds and size the persisted private index
+// records for a loose file.
+func (f crewFixture) indexStat(rel string) (mtime, size string) {
+	f.t.Helper()
+	cmd := exec.Command("git", "--git-dir="+f.s.gitDir(), "--work-tree="+f.s.Root, "ls-files", "--debug", "--", rel)
+	cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+f.s.indexFile("loose"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	out, err := cmd.Output()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if v, ok := strings.CutPrefix(line, "mtime: "); ok {
+			mtime, _, _ = strings.Cut(v, ":")
+		}
+		if v, ok := strings.CutPrefix(line, "size: "); ok {
+			size, _, _ = strings.Cut(v, "\t")
+		}
+	}
+	return mtime, size
+}
+
+// Review of the git-native capture (P2): Git found a touched file's bytes
+// unchanged but the new stat was never saved, so every later capture re-hashed
+// it. A successful capture now persists refreshed stat data: a touched,
+// byte-identical file and a fresh, racily clean file stop being re-checked,
+// also after a restart, and nothing is re-imported.
+func TestRefreshedStatPersistsForUnchangedContent(t *testing.T) {
+	f := newCrew(t)
+	touched := f.put("touched.txt", "same bytes\n")
+	f.backdateAll()
+	if _, err := f.s.Begin(t.Context(), "first"); err != nil {
+		t.Fatal(err)
+	}
+	newer := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
+	if err := os.Chtimes(touched, newer, newer); err != nil {
+		t.Fatal(err)
+	}
+	f.put("fresh.txt", "fresh\n") // may be racily clean in this capture
+	r, err := f.s.Begin(t.Context(), "touched")
+	if c := r.BeforeCapture; err != nil || c.Changed != 1 || c.ImportedBytes != int64(len("fresh\n")) {
+		t.Fatalf("touched file was re-imported: %v %+v", err, c)
+	}
+	if mtime, _ := f.indexStat("touched.txt"); mtime != strconv.FormatInt(newer.Unix(), 10) {
+		t.Fatalf("refreshed stat not persisted: index mtime %s, file %d", mtime, newer.Unix())
+	}
+	time.Sleep(1100 * time.Millisecond) // leave fresh.txt's timestamp tick
+	if _, err := f.s.Begin(t.Context(), "settle"); err != nil {
+		t.Fatal(err)
+	}
+	if _, size := f.indexStat("fresh.txt"); size != strconv.Itoa(len("fresh\n")) {
+		t.Fatalf("racily clean entry never got its stat: size %s", size)
+	}
+	states.Delete(f.s.Private) // restart
+	again, err := f.s.BeginWithin(5*time.Second, "after-restart")
+	if c := again.BeforeCapture; err != nil || c.Changed != 0 || c.Reused != 2 || c.ImportedBytes != 0 {
+		t.Fatalf("after restart: %v %+v", err, c)
 	}
 }
