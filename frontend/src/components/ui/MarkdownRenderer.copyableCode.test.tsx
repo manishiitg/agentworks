@@ -209,6 +209,9 @@ it('refuses executable card URLs and ambiguous or dangling graph identities (PLA
 
 
 it('opens a known same-server dashboard link in its server-resolved Crew panel (PLAT-750-82)', async () => {
+  // Node's optional native localStorage is absent in the remote test runner.
+  const stored = new Map<string, string>()
+  vi.stubGlobal('localStorage', { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => { stored.set(key, value) }, removeItem: (key: string) => { stored.delete(key) } })
   const original = window.location.pathname + window.location.search
   const external = vi.spyOn(window, 'open').mockImplementation(() => null)
   window.history.replaceState({}, '', '/crew/projects/current')
@@ -233,5 +236,6 @@ it('opens a known same-server dashboard link in its server-resolved Crew panel (
     dashboardGet.mockReset()
     window.history.replaceState({}, '', original)
     window.localStorage.removeItem('report-document:Crew/sample')
+    vi.unstubAllGlobals()
   }
 })
