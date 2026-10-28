@@ -122,21 +122,21 @@
   .dark {
     color-scheme: dark;
     /* Deep dark app palette */
-    --background: 0 0% 12%;               /* #1e1e1e - app background */
+    --background: 220 13% 6%;             /* #0d0f12 - app background */
     --foreground: 220 16% 91%;            /* #e4e7ec - primary text */
-    --card: 0 0% 15%;                     /* #252526 - panel background */
+    --card: 220 12% 9%;                   /* #14171b - panel background */
     --card-foreground: 220 16% 91%;       /* #e4e7ec - panel text */
     
     /* Surface Colors */
-    --popover: 0 0% 15%;                  /* #252526 - elevated surface */
+    --popover: 220 12% 8%;                /* #121418 - elevated surface */
     --popover-foreground: 220 16% 91%;    /* #e4e7ec - popover text */
     --primary: 200 100% 40%;              /* #007acc - VS Code blue */
     --primary-foreground: 0 0% 100%;      /* White text on blue */
-    --secondary: 0 0% 18%;               /* #2d2d30 - secondary surface */
+    --secondary: 220 10% 13%;             /* #1d2025 - secondary surface */
     --secondary-foreground: 220 16% 91%;  /* #e4e7ec - secondary text */
     
     /* Accent Colors */
-    --muted: 0 0% 18%;                   /* #2d2d30 - muted surface */
+    --muted: 220 10% 13%;                 /* #1d2025 - muted surface */
     --muted-foreground: 220 9% 66%;       /* #a2a7b0 - muted text */
     --accent: 200 100% 40%;               /* #007acc - VS Code blue */
     --accent-foreground: 0 0% 100%;       /* White text on accent */
@@ -149,8 +149,8 @@
     --info: 200 100% 40%;                 /* #007acc - VS Code blue */
     
     /* Border & Input */
-    --border: 0 0% 24%;                  /* #3c3c3c - subtle border */
-    --input: 0 0% 18%;                   /* #2d2d30 - input surface */
+    --border: 220 9% 18%;                 /* #2a2d33 - subtle border */
+    --input: 220 10% 12%;                 /* #1b1e23 - input surface */
     --ring: 200 100% 40%;                 /* #007acc - VS Code focus ring */
     
     /* Chart Colors - VS Code inspired */
