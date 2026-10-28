@@ -35,24 +35,18 @@ async function mount(events: PollingEvent[], retry?: () => Promise<void>) {
 }
 
 describe('shared transcript failure retry', () => {
-  it('renders provider restart context as a compact continuity notice', async () => {
+  it('hides provider restart context from the chat', async () => {
     const raw = '[AGENTWORKS CONVERSATION CONTINUITY]\nThis provider session was restarted. Before answering, read the complete 423-message conversation archive at builder/conversation/private.json.'
     const host = await mount([event('continuity', 'user_message', { content: raw })])
-    const notice = host.querySelector('[data-testid="conversation-continuity-notice"]')!
-    expect(notice.textContent).toContain('Conversation restored')
-    expect(notice.textContent).toContain('Previous conversation loaded')
-    expect((notice as HTMLDetailsElement).open).toBe(false)
-    expect(notice.querySelector('summary')?.textContent).not.toContain('builder/conversation/private.json')
+    expect(host.textContent).not.toContain('Conversation restored')
+    expect(host.textContent).not.toContain('builder/conversation/private.json')
   })
 
-  it('shows the typed message beside a continuity notice', async () => {
+  it('shows only the typed message of a wrapped prompt', async () => {
     const raw = '[AGENTWORKS CONVERSATION CONTINUITY]\nThis provider session was restarted.\n[/AGENTWORKS CONVERSATION CONTINUITY]\n\n[USER MESSAGE]\nhi'
     const host = await mount([event('user:sub-1', 'user_message', { content: raw, metadata: { client_message_id: 'sub-1', display_content: 'hi' } })])
-    expect(host.querySelector('[data-testid="conversation-continuity-notice"]')).not.toBeNull()
-    const bubbles = Array.from(host.querySelectorAll('div.whitespace-pre-wrap'))
-      .filter(element => !element.closest('[data-testid="conversation-continuity-notice"]'))
-    expect(bubbles.map(element => element.textContent)).toEqual(['hi'])
-    expect(host.querySelectorAll('[data-testid="conversation-continuity-notice"]')).toHaveLength(1)
+    expect(Array.from(host.querySelectorAll('div.whitespace-pre-wrap')).map(element => element.textContent)).toEqual(['hi'])
+    expect(host.textContent).not.toContain('Conversation restored')
   })
 
   it('renders Muse progress as an assistant response without a Thinking disclosure', async () => {

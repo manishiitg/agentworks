@@ -1,7 +1,6 @@
 package events
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -41,8 +40,6 @@ type turnPhaseState struct {
 	attempt  int
 	total    int
 	nextIn   string
-	tool     string // what a running tool is doing, shown instead of a playful word (PLAT-872-59 cleanup)
-	toolID   string
 	updated  time.Time
 	announce string // signature of the last announced state
 }
@@ -91,54 +88,6 @@ func turnPhaseText(s *turnPhaseState) string {
 		return text
 	case turnPhaseWaitingForYou:
 		return turnPhaseWaitingMessage
-	case turnPhaseRunning:
-		return s.tool
-	}
-	return ""
-}
-
-// turnPhaseToolText says what a starting tool call does: the command for a shell call, else the tool's name.
-func turnPhaseToolText(event Event) (text, id string) {
-	if event.Data == nil {
-		return "", ""
-	}
-	start, ok := event.Data.Data.(*events.ToolCallStartEvent)
-	if !ok {
-		return "", ""
-	}
-	var args map[string]interface{}
-	_ = json.Unmarshal([]byte(start.ToolParams.Arguments), &args)
-	if command, _ := args["command"].(string); strings.TrimSpace(command) != "" {
-		// The first line only: a script written inline shows as its command, not its code.
-		command = strings.Join(strings.Fields(strings.SplitN(strings.TrimSpace(command), "\n", 2)[0]), " ")
-		if runes := []rune(command); len(runes) > 80 {
-			command = string(runes[:80]) + "…"
-		}
-		return "Running " + command, start.ToolCallID
-	}
-	name := strings.TrimSpace(start.ToolName)
-	// Cursor reports every MCP call as "mcp"; the tool's own name is in its arguments.
-	for _, key := range []string{"toolName", "tool_name", "name"} {
-		if inner, _ := args[key].(string); strings.EqualFold(name, "mcp") && strings.TrimSpace(inner) != "" {
-			name = strings.TrimSpace(inner)
-			break
-		}
-	}
-	if name != "" {
-		return "Using " + strings.ReplaceAll(name, "_", " "), start.ToolCallID
-	}
-	return "", start.ToolCallID
-}
-
-func turnPhaseEndedToolID(event Event) string {
-	if event.Data == nil {
-		return ""
-	}
-	switch d := event.Data.Data.(type) {
-	case *events.ToolCallEndEvent:
-		return d.ToolCallID
-	case *events.ToolCallErrorEvent:
-		return d.ToolCallID
 	}
 	return ""
 }
@@ -268,15 +217,6 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		if st != nil && st.phase != turnPhaseRunning {
 			set(turnPhaseRunning)
 		}
-		if st != nil && event.Type == "tool_call_start" {
-			st.tool, st.toolID = turnPhaseToolText(event)
-		}
-	case "tool_call_end", "tool_call_error":
-		if st != nil && st.tool != "" {
-			if id := turnPhaseEndedToolID(event); id == "" || st.toolID == "" || id == st.toolID {
-				st.tool, st.toolID = "", ""
-			}
-		}
 	case "streaming_chunk":
 		if st != nil && st.phase != turnPhaseRunning {
 			// The agent's own words. A terminal-screen snapshot is the pane, not output: a sign-in or update screen
@@ -304,7 +244,7 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		if label := turnPhaseEventLabel(event); label != "" {
 			st.label = label
 		}
-		sig := fmt.Sprintf("%s|%s|%s|%d|%d|%s|%s", st.phase, st.label, st.reason, st.attempt, st.total, st.nextIn, st.tool)
+		sig := fmt.Sprintf("%s|%s|%s|%d|%d|%s", st.phase, st.label, st.reason, st.attempt, st.total, st.nextIn)
 		if sig != st.announce {
 			st.announce = sig
 			copied := *st
