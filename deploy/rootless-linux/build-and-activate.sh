@@ -101,7 +101,6 @@ install -m 0755 "$REPO_ROOT/scripts/migrations/fold-crew-role.py" "$BUILD_DIR/mi
 install -m 0755 "$REPO_ROOT/scripts/migrations/account-availability.py" "$BUILD_DIR/migrations/account-availability.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/vault-apps-setting.py" "$BUILD_DIR/migrations/vault-apps-setting.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/one-sharing-model.py" "$BUILD_DIR/migrations/one-sharing-model.py"
-install -m 0755 "$REPO_ROOT/scripts/remove-autopilot-engine.py" "$BUILD_DIR/migrations/remove-autopilot-engine.py"
 install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"
 install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
 install -m 0755 "$REPO_ROOT/scripts/migrate-project-schedules.py" "$BUILD_DIR/migrations/migrate-project-schedules.py"
@@ -443,21 +442,12 @@ python3 "$BUILD_DIR/migrations/crew-owner-tabs.py" --workspace-root "$REMOTE_APP
 python3 "$BUILD_DIR/migrations/agentbridge-receipts.py" "$REMOTE_APP/data/docs/_system/agent_messages/conversations.json"
 python3 "$BUILD_DIR/migrations/retire-agent-server-relay.py" --state-root "$REMOTE_APP/state" --mailbox "$REMOTE_APP/data/docs/_system/agent_messages/conversations.json"
 python3 "$BUILD_DIR/migrations/fold-crew-role.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"
-python3 "$BUILD_DIR/migrations/remove-autopilot-engine.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/remove-autopilot-$(date -u +%Y%m%dT%H%M%SZ)"
 grouped_tool_catalog_args=()
 for grouped_tool_catalog in "$BUILD_DIR/migrations/"*-actions.json; do
   grouped_tool_catalog_args+=(--catalog "$grouped_tool_catalog")
 done
 python3 "$BUILD_DIR/migrations/group-platform-tool-selections.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/group-platform-tools-$(date -u +%Y%m%dT%H%M%SZ)" "${grouped_tool_catalog_args[@]}" --native-namespace workspace_advanced --native-namespace workspace_browser --native-namespace human_tools
 python3 "$BUILD_DIR/migrations/simplify-workflow-settings.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/simplify-workflow-settings-$(date -u +%Y%m%dT%H%M%SZ)"
-# One-off saved-agent shape preparation, with backups/changelog and no stamps.
-agent_plan_roots=()
-for agent_plan_root in "$REMOTE_APP/data/docs/Workflow" "$REMOTE_APP/data/docs/_users/"*/Workflow; do
-  if [[ -d "$agent_plan_root" ]]; then agent_plan_roots+=("$agent_plan_root"); fi
-done
-if (( ${#agent_plan_roots[@]} )); then
-  "$BUILD_DIR/bin/$PRODUCT-agent" server migrate-workflow-agent-steps "${agent_plan_roots[@]}" --prepare-only --apply --server-drained
-fi
 MIGRATION_STOPPED_AGENT=0
 ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
 MIGRATION_STOPPED_AGENT=1

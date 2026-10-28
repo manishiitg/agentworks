@@ -29,20 +29,12 @@ python3 "$migration_repo/scripts/migrations/crew-owner-tabs.py" --workspace-root
 python3 "$migration_repo/scripts/migrations/agentbridge-receipts.py" "$migration_docs/_system/agent_messages/conversations.json"
 python3 "$migration_repo/scripts/migrations/retire-agent-server-relay.py" --state-root "$migration_state" --mailbox "$migration_docs/_system/agent_messages/conversations.json"
 python3 "$migration_repo/scripts/migrations/fold-crew-role.py" --workspace-root "$migration_docs" --state-root "$migration_state"
-python3 "$migration_repo/scripts/remove-autopilot-engine.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/remove-autopilot"
 migration_catalogs=()
 for migration_catalog in "$migration_repo/agent_go/pkg/platformtools/catalog/"*-actions.json; do
   if [[ -f "$migration_catalog" ]]; then migration_catalogs+=(--catalog "$migration_catalog"); fi
 done
 python3 "$migration_repo/scripts/group-platform-tool-selections.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/group-platform-tools" "${migration_catalogs[@]}" --native-namespace workspace_advanced --native-namespace workspace_browser --native-namespace human_tools
 python3 "$migration_repo/scripts/simplify-workflow-settings.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/simplify-workflow-settings"
-migration_plan_roots=()
-for migration_root in "$migration_docs/Workflow" "$migration_docs/_users/"*/Workflow; do
-  if [[ -d "$migration_root" ]]; then migration_plan_roots+=("$migration_root"); fi
-done
-if (( ${#migration_plan_roots[@]} )); then
-  "$migration_agent" server migrate-workflow-agent-steps "${migration_plan_roots[@]}" --prepare-only --apply --server-drained
-fi
 python3 "$migration_repo/scripts/migrate_workflow_builder_chats.py" --workspace-root "$migration_docs" --default-owner-id "$migration_user" --default-owner-username "Local user" --apply
 python3 "$migration_repo/scripts/migrate-project-schedules.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/project-schedules" --single-user --local-user-id "$migration_user"
 python3 "$migration_repo/scripts/migrate-browser-modes.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/browser-modes" --state-root "$migration_state" --deployment-mode local
