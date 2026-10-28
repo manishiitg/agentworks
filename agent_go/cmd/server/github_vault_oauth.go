@@ -105,8 +105,14 @@ type githubOrgBlock struct {
 
 const githubOrgRefresh = 5 * time.Minute
 
-// githubOrgAccess lists the person's organisations and checks each with one cheap call. It never logs the token.
+// githubOrgCheckBudget bounds the whole organisation check, so a slow GitHub cannot hold up a status reply.
+var githubOrgCheckBudget = 5 * time.Second
+
+// githubOrgAccess lists the person's organisations and checks each with one cheap call, a few at a time within
+// githubOrgCheckBudget; an organisation not answered in time is reported as "unchecked". It never logs the token.
 func githubOrgAccess(ctx context.Context, token string) (reach []string, blocked []githubOrgBlock) {
+	ctx, cancel := context.WithTimeout(ctx, githubOrgCheckBudget)
+	defer cancel()
 	get := func(path string) (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubAPIURL+path, nil)
 		if err != nil {
@@ -131,24 +137,50 @@ func githubOrgAccess(ctx context.Context, token string) (reach []string, blocked
 		log.Printf("[GITHUB_VAULT] organisation list failed status=%d", resp.StatusCode)
 		return nil, nil
 	}
-	for _, m := range memberships {
-		org := m.Organization.Login
-		if org == "" {
+	// why: "" reachable, "sso", "approval", "unchecked" (no answer within the budget), "other" (not shown).
+	whys := make([]string, len(memberships))
+	slots := make(chan struct{}, 6)
+	var wg sync.WaitGroup
+	for i, m := range memberships {
+		whys[i] = "unchecked"
+		if m.Organization.Login == "" {
 			continue
 		}
-		check, err := get("/orgs/" + url.PathEscape(org) + "/repos?per_page=1")
-		if err != nil {
-			continue
-		}
-		body, _ := io.ReadAll(io.LimitReader(check.Body, 8<<10))
-		check.Body.Close()
-		switch {
-		case check.StatusCode == http.StatusOK:
+		wg.Add(1)
+		go func(i int, org string) {
+			defer wg.Done()
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+				return
+			}
+			check, err := get("/orgs/" + url.PathEscape(org) + "/repos?per_page=1")
+			if err != nil {
+				return
+			}
+			body, _ := io.ReadAll(io.LimitReader(check.Body, 8<<10))
+			check.Body.Close()
+			switch {
+			case check.StatusCode == http.StatusOK:
+				whys[i] = ""
+			case check.Header.Get("X-GitHub-SSO") != "":
+				whys[i] = "sso"
+			case check.StatusCode == http.StatusForbidden && strings.Contains(strings.ToLower(string(body)), "access restrictions"):
+				whys[i] = "approval"
+			default:
+				whys[i] = "other"
+			}
+		}(i, m.Organization.Login)
+	}
+	wg.Wait()
+	for i, m := range memberships {
+		switch org := m.Organization.Login; {
+		case org == "" || whys[i] == "other":
+		case whys[i] == "":
 			reach = append(reach, org)
-		case check.Header.Get("X-GitHub-SSO") != "":
-			blocked = append(blocked, githubOrgBlock{Org: org, Why: "sso"})
-		case check.StatusCode == http.StatusForbidden && strings.Contains(strings.ToLower(string(body)), "access restrictions"):
-			blocked = append(blocked, githubOrgBlock{Org: org, Why: "approval"})
+		default:
+			blocked = append(blocked, githubOrgBlock{Org: org, Why: whys[i]})
 		}
 	}
 	return reach, blocked
@@ -160,11 +192,14 @@ func githubAccessSummary(rec *githubAccountRecord) string {
 	works := append([]string{}, rec.Orgs...)
 	works = append(works, "your own repositories")
 	parts = append(parts, "works in: "+strings.Join(works, ", "))
-	var approval, sso []string
+	var approval, sso, unchecked []string
 	for _, b := range rec.NeedsApproval {
-		if b.Why == "sso" {
+		switch b.Why {
+		case "sso":
 			sso = append(sso, b.Org)
-		} else {
+		case "unchecked":
+			unchecked = append(unchecked, b.Org)
+		default:
 			approval = append(approval, b.Org)
 		}
 	}
@@ -173,6 +208,9 @@ func githubAccessSummary(rec *githubAccountRecord) string {
 	}
 	if len(sso) > 0 {
 		parts = append(parts, "needs single sign-on: "+strings.Join(sso, ", ")+" (on GitHub's page for this app, authorize it for that organisation's single sign-on)")
+	}
+	if len(unchecked) > 0 {
+		parts = append(parts, "not checked yet: "+strings.Join(unchecked, ", ")+" (GitHub was slow; checked again next time)")
 	}
 	return strings.Join(parts, " · ")
 }

@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -43,7 +44,12 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 		case r.URL.Path == "/user" && r.Header.Get("Authorization") == "Bearer "+token:
 			_ = json.NewEncoder(w).Encode(map[string]string{"login": "alice-gh"})
 		case r.URL.Path == "/user/memberships/orgs":
-			_, _ = w.Write([]byte(`[{"organization":{"login":"acme"}},{"organization":{"login":"bigcorp"}},{"organization":{"login":"samlco"}}]`))
+			_, _ = w.Write([]byte(`[{"organization":{"login":"acme"}},{"organization":{"login":"bigcorp"}},{"organization":{"login":"samlco"}},{"organization":{"login":"slowco"}}]`))
+		case r.URL.Path == "/orgs/slowco/repos":
+			select { // answers after the check's budget
+			case <-time.After(2 * time.Second):
+			case <-r.Context().Done():
+			}
 		case r.URL.Path == "/orgs/acme/repos":
 			_, _ = w.Write([]byte(`[]`))
 		case r.URL.Path == "/orgs/bigcorp/repos":
@@ -76,7 +82,10 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 	}
 	githubRemoveToken = func(_ context.Context, _ *StreamingAPI, person, _ string) error { delete(stored, person); return nil }
 	githubTokenValue = func(*githubAccountRecord) string { return stored["alice"] }
+	oldBudget := githubOrgCheckBudget
+	githubOrgCheckBudget = 500 * time.Millisecond
 	t.Cleanup(func() {
+		githubOrgCheckBudget = oldBudget
 		githubAuthorizeURL, githubTokenURL, githubAPIURL = oldAuthorize, oldToken, oldAPI
 		githubStoreToken, githubRemoveToken, githubTokenValue = oldStore, oldRemove, oldValue
 	})
@@ -119,9 +128,11 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 		t.Fatalf("a connection finished twice: %d", again.Code)
 	}
 	// One app serves every organisation: the reply says where the account works and which orgs still need an owner's
-	// approval (restricted OAuth Apps) or single sign-on (SAML).
+	// approval (restricted OAuth Apps) or single sign-on (SAML); one that GitHub is slow to answer does not hold up the
+	// reply beyond the check's budget and is reported as not checked yet.
 	if status := call(http.MethodGet, "/api/vault/github", "", "alice"); !strings.Contains(status.Body.String(), `"login":"alice-gh"`) || strings.Contains(status.Body.String(), token) ||
-		!strings.Contains(status.Body.String(), "works in: acme, your own repositories") || !strings.Contains(status.Body.String(), "needs approval: bigcorp") || !strings.Contains(status.Body.String(), "needs single sign-on: samlco") {
+		!strings.Contains(status.Body.String(), "works in: acme, your own repositories") || !strings.Contains(status.Body.String(), "needs approval: bigcorp") || !strings.Contains(status.Body.String(), "needs single sign-on: samlco") ||
+		!strings.Contains(status.Body.String(), "not checked yet: slowco") {
 		t.Fatalf("status = %s", status.Body.String())
 	}
 	if status := call(http.MethodGet, "/api/vault/github", "", "bob"); !strings.Contains(status.Body.String(), `"connected":false`) {
