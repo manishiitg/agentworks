@@ -61,7 +61,7 @@ export function GitHubConnectCompletion() {
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
     api.post<{ login: string; summary?: string }>('/api/vault/github/complete', { state })
       .then(result => setNote(`${result.data.summary || `GitHub connected as ${result.data.login}`}. Your Crews can now use it for Git work.`))
-      .catch(cause => setNote(errorText(cause, 'GitHub could not be connected. Start again from the project's Secrets panel or ask in chat.')))
+      .catch(cause => setNote(errorText(cause, "GitHub could not be connected. Start again from the project's Secrets panel or ask in chat.")))
   }, [])
   if (!note) return null
   return <div role="status" className="fixed right-4 top-16 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg">
