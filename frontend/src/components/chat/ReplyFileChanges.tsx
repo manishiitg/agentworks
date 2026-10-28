@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { CheckCircle2, Eye, GitCommitHorizontal, GitCompare, Play, Plus, Undo2, Zap } from 'lucide-react'
+import { Play, Plus, Undo2, Zap } from 'lucide-react'
 import api from '../../services/api'
-import { markFilesReviewed, useReviewRevision, type FileChange, type ReviewResult } from '../workspace/chatFileReview'
+import { useReviewRevision, type FileChange, type ReviewResult } from '../workspace/chatFileReview'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
 import { useProjectMode } from '../../products/work/codeLocalFiles'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -14,6 +14,7 @@ import { renderCommandPrompt } from '../../commands/commandPrompt'
 import type { UserCommand } from '../../types/commands'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../../utils/chatIdentity'
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
+import { FileDiffIcon, GitCommitIcon, GitPullRequestIcon } from '../icons/octicons'
 
 type PullRequest = { number?: number; url?: string; state: string; checks?: string; review?: string }
 type FileGroup = { kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; new_checkout: boolean; files: FileChange[]; total_files: number; more_count: number; pr?: PullRequest }
@@ -22,7 +23,7 @@ const ownName = (path: string, root: string) => root && path.startsWith(`${root}
 // Plain-language requests for the agent in this same chat. Only this reply's files
 // are named, and the agent is told never to push the main branch.
 export const commitRequest = (group: FileGroup) => `Commit these files in ${group.name} (${group.root || 'the Crew folder'}) on branch ${group.branch}. Stage only the files listed here, by name, and use a short message that describes the change. Do not push yet.\n${group.files.map(file => `- ${file.path}`).join('\n')}${group.more_count ? `\n(and ${group.more_count} more files from this reply)` : ''}`
-export const pushRequest = (group: FileGroup) => `Push branch ${group.branch} of ${group.name} (${group.root || 'the Crew folder'}) to GitHub and open a pull request for it. Never push main or master: if this branch is main or master, make a new branch first. Include only the work from this reply, and send me the pull request link.`
+export const pushRequest = (group: FileGroup) => `Open a pull request for this reply's work in ${group.name} (${group.root || 'the Crew folder'}). If branch ${group.branch} is the default branch (main or master), first create a new branch from it with a short descriptive name; otherwise use ${group.branch}. Never push the default branch. If these files are not committed yet, commit them, staging only the files listed here, by name:\n${group.files.map(file => `- ${file.path}`).join('\n')}${group.more_count ? `\n(and ${group.more_count} more files from this reply)` : ''}\nThen push the branch to GitHub and open a pull request with a proper description: a short title, a summary of what changed and why based on this chat, the list of changed files, and how it was tested. Reply with the pull request link.`
 function prLine(pr: PullRequest) {
   const checks = pr.checks && pr.checks !== 'none' ? ` · checks ${pr.checks}` : ''
   const review = pr.review === 'approved' ? ' · approved' : pr.review === 'changes_requested' ? ' · changes requested' : pr.state === 'open' ? ' · no review yet' : ''
@@ -64,7 +65,6 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const [result, setResult] = useState<ReviewResult | null>(null)
   const comparison = result?.comparison
   const [revision] = useReviewRevision()
-  const [reviewing, setReviewing] = useState(false)
   const [reviewError, setReviewError] = useState('')
   const [groups, setGroups] = useState<FileGroup[]>([])
   const [canEdit, setCanEdit] = useState(false)
@@ -125,7 +125,6 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const total = result?.total_changes ?? comparison?.changes?.length ?? 0
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const added = sum('added'), removed = sum('removed')
-  const firstChange = comparison?.changes?.[0]
   const repoGroups = groups.filter(group => group.kind === 'repo' && group.branch)
   const isOpen = open ?? latest
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
@@ -139,12 +138,12 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
-          <IconButton strong label="Review changes" onClick={() => openChatFiles(reference.sessionId)}><Eye /></IconButton>
-          {firstChange && <IconButton label="Compare" onClick={() => openChatFiles(reference.sessionId, { reference, change: firstChange })}><GitCompare /></IconButton>}
-          {canEdit && latest && !reviewed && result?.history.can_review && <IconButton label="Mark as reviewed" disabled={reviewing} onClick={() => { setReviewing(true); setReviewError(''); void markFilesReviewed(reference.workspacePath,reference.sessionId,reference.snapshotId).catch(() => setReviewError('Could not save the review point. Try again.')).finally(() => setReviewing(false)) }}><CheckCircle2 /></IconButton>}
-          {canEdit && repoGroups.length > 0 && <IconButton label="Commit these changes" onClick={() => void ask('commit:reply', repoGroups.map(commitRequest).join('\n\n'))}><GitCommitHorizontal /></IconButton>}
-          {canEdit && undo === null && <><Divider /><IconButton label="Undo this reply" onClick={() => void startUndo()}><Undo2 /></IconButton></>}
-          {canEdit && (commands.length > 0 || undo === null) && <Divider />}
+          <IconButton strong label="Review changes" onClick={() => openChatFiles(reference.sessionId)}><FileDiffIcon /></IconButton>
+          {canEdit && repoGroups.length > 0 && <>
+            <IconButton label="Commit on the current branch" onClick={() => void ask('commit:reply', repoGroups.map(commitRequest).join('\n\n'))}><GitCommitIcon /></IconButton>
+            <IconButton label="Push to a branch and open a PR" onClick={() => void ask('push:reply', repoGroups.map(pushRequest).join('\n\n'))}><GitPullRequestIcon /></IconButton>
+          </>}
+          {canEdit && <Divider />}
           {canEdit && commands.map(command => {
             const name = command.frontmatter.name
             return <IconButton key={name} label={command.frontmatter.description || name} onClick={() => void ask(`command:${name}`, renderCommandPrompt(command.content, cardContext(groups)))}>{name === 'check-this-change' ? <Play /> : <Zap />}</IconButton>
@@ -152,22 +151,9 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           {canEdit && <IconButton label="Add button" onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}><Plus /></IconButton>}
         </div>
       </div>
-      {(asked === 'commit:reply' || commands.some(command => asked === `command:${command.frontmatter.name}`)) && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
+      {(asked === 'commit:reply' || asked === 'push:reply' || commands.some(command => asked === `command:${command.frontmatter.name}`)) && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
       {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-diff-add">+{result.since_review.added}</span> <span className="text-diff-del">−{result.since_review.removed}</span></p>}
       {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
-      {canEdit && undo && <div className="mt-2 rounded border border-border p-2 text-xs" role="group" aria-label="Undo this reply">
-        {undo.busy && <span>Working…</span>}
-        {undo.error && <p role="alert">{undo.error}</p>}
-        {undo.done && <p>{undo.done}</p>}
-        {undo.plan && <>
-          <p>{undo.plan.restore.length ? `This will put back ${plural(undo.plan.restore.length)} (${fileList(undo.plan.restore)})` : 'There is nothing to put back'}{undo.plan.skipped.length ? ` and leave ${plural(undo.plan.skipped.length)} alone because a later reply changed them (${fileList(undo.plan.skipped)}).` : '.'}</p>
-          <div className="mt-1 flex gap-2">
-            {undo.plan.restore.length > 0 && <button type="button" className="rounded border border-primary px-2 py-1" onClick={() => void confirmUndo()}>Undo {plural(undo.plan.restore.length)}</button>}
-            <button type="button" className="rounded border px-2 py-1" onClick={() => setUndo(null)}>Cancel</button>
-          </div>
-        </>}
-        {(undo.done || undo.error) && <button type="button" className="mt-1 underline" onClick={() => setUndo(null)}>Close</button>}
-      </div>}
       {isOpen && <div>
         {[...groups].sort((x, y) => Number(x.kind === 'crew_files') - Number(y.kind === 'crew_files')).map(group => (
           <div key={`${group.kind}:${group.root}`} className="mt-3 border-t border-border pt-2 first:mt-2 first:border-0 first:pt-0">
@@ -189,13 +175,22 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
             </ul>
             {group.kind === 'repo' && group.pr?.state === 'connect_github' && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('secrets')}>Connect GitHub to see PR status</button>}
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <a className="mt-1 block text-xs underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>}
-            {group.kind === 'repo' && canEdit && group.branch && <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void ask(`commit:${group.root}`, commitRequest(group))}>Commit</button>
-              <button type="button" className="rounded border border-primary px-2 py-1 text-xs" onClick={() => void ask(`push:${group.root}`, pushRequest(group))}>Push &amp; open PR</button>
-              {(asked === `commit:${group.root}` || asked === `push:${group.root}`) && <span className="text-xs text-muted-foreground">Asked in this chat.</span>}
-            </div>}
           </div>
         ))}
+        {canEdit && undo === null && <button type="button" className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" onClick={() => void startUndo()}><Undo2 />Undo this reply</button>}
+        {canEdit && undo && <div className="mt-2 rounded border border-border p-2 text-xs" role="group" aria-label="Undo this reply">
+          {undo.busy && <span>Working…</span>}
+          {undo.error && <p role="alert">{undo.error}</p>}
+          {undo.done && <p>{undo.done}</p>}
+          {undo.plan && <>
+            <p>{undo.plan.restore.length ? `This will put back ${plural(undo.plan.restore.length)} (${fileList(undo.plan.restore)})` : 'There is nothing to put back'}{undo.plan.skipped.length ? ` and leave ${plural(undo.plan.skipped.length)} alone because a later reply changed them (${fileList(undo.plan.skipped)}).` : '.'}</p>
+            <div className="mt-1 flex gap-2">
+              {undo.plan.restore.length > 0 && <button type="button" className="rounded border border-primary px-2 py-1" onClick={() => void confirmUndo()}>Undo {plural(undo.plan.restore.length)}</button>}
+              <button type="button" className="rounded border px-2 py-1" onClick={() => setUndo(null)}>Cancel</button>
+            </div>
+          </>}
+          {(undo.done || undo.error) && <button type="button" className="mt-1 underline" onClick={() => setUndo(null)}>Close</button>}
+        </div>}
       </div>}
 
     </section>

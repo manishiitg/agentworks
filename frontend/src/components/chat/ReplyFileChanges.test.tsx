@@ -43,8 +43,9 @@ describe('reply card groups', () => {
     expect(host.textContent!.indexOf('app')).toBeLessThan(host.textContent!.indexOf('not in Git'))
     await act(async () => button(host, 'Commit')!.click())
     expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ tabId: 'tab1', message: expect.stringContaining('on branch fix-tts. Stage only the files listed here') })
-    await act(async () => button(host, 'Push')!.click())
-    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[1][0].message).toContain('Never push main or master')
+    await act(async () => button(host, 'Push to a branch and open a PR')!.click())
+    const push = vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[1][0].message
+    for (const text of ['Never push the default branch', '- app/tts.py', 'a summary of what changed and why based on this chat', 'how it was tested', 'pull request link']) expect(push).toContain(text)
   })
   it('shows no Git buttons to people who cannot edit the Crew', async () => {
     const host = await render(false)
@@ -79,21 +80,23 @@ describe('reply card groups', () => {
     expect(button(host, 'Undo this reply')).toBeUndefined()
     expect(button(host, 'Add button')).toBeUndefined()
   })
-  it('shows totals and every action in the header; the latest reply is open, an older one is collapsed', async () => {
+  it('shows totals and the header actions; the latest reply is open, an older one is collapsed', async () => {
     const latest = await render(true)
     expect(latest.textContent).toContain('Files changed during this reply · 2 files')
     expect(latest.textContent).toContain('+4')
-    for (const text of ['Review changes', 'Compare', 'Commit these changes', 'Undo this reply', 'Check this change', 'Add button']) expect(button(latest, text)).toBeDefined()
+    for (const text of ['Review changes', 'Commit on the current branch', 'Push to a branch and open a PR', 'Check this change', 'Add button']) expect(button(latest, text)).toBeDefined()
+    for (const text of ['Compare', 'Mark as reviewed']) expect(button(latest, text)).toBeUndefined()
+    expect(button(latest, 'Undo this reply')).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
     const older = await render(true, 2, 'newer')
     expect(older.textContent).not.toContain('PR #305')
     expect(button(older, 'Check this change')).toBeDefined()
-    expect(button(older, 'Undo this reply')).toBeDefined()
+    // Undo lives only inside the opened card, under the file list.
+    expect(button(older, 'Undo this reply')).toBeUndefined()
   })
-  it('a Run person sees only Review changes and Compare in the header', async () => {
+  it('a Run person sees only Review changes in the header', async () => {
     const host = await render(false)
     expect(button(host, 'Review changes')).toBeDefined()
-    expect(button(host, 'Compare')).toBeDefined()
-    expect(button(host, 'Mark as reviewed')).toBeUndefined()
+    expect(button(host, 'Commit on the current branch')).toBeUndefined()
   })
 })
