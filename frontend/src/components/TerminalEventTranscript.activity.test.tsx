@@ -6,6 +6,7 @@ import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { CleanConversationSurface } from './CleanConversationSurface'
 import api from '../services/api'
+import { setProjectMode } from '../products/work/codeLocalFiles'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import type { ActiveSessionInfo } from '../services/api-types'
@@ -392,6 +393,22 @@ it('keeps a late file comparison on its original reply in both transcript views 
         expect(host.querySelector('[data-testid="saved-preview"]')?.textContent).toBe('Saved report from the first reply')
         expect(get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ op: 'snapshot_file', snapshot_id: 'saved-first', file: 'report.md', side: 'after' }) }))
         expect(host.textContent).toContain('Open current file')
+        // PLAT-746-158: a saved card disappears when the project is Cowork,
+        // including after reopening old history; it does not fetch comparisons.
+        const priorTabs = useChatStore.getState().chatTabs
+        try {
+          await act(async () => {
+            useChatStore.setState({ chatTabs: { ...priorTabs, 'files-tab': { sessionId: 'files-session', metadata: { agentProfileProjectId: 'snapshot-project' } } as ChatTab } })
+            setProjectMode('snapshot-project', 'cowork')
+          })
+          const requests = get.mock.calls.length
+          await render([...history, late])
+          expect(host.querySelector('[aria-label="Files changed during this reply"]')).toBeNull()
+          expect(get.mock.calls.length).toBe(requests)
+          await act(async () => setProjectMode('snapshot-project', 'dev'))
+          expect(host.querySelector('[aria-label="Files changed during this reply"]')).not.toBeNull()
+        } finally { await act(async () => useChatStore.setState({ chatTabs: priorTabs })) }
+
       } finally { await act(async () => root.unmount()); host.remove() }
     }
   } finally { get.mockRestore(); showModal.mockRestore() }

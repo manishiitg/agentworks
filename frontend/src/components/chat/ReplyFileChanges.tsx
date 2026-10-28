@@ -18,10 +18,11 @@ export function ReplyFileChanges({ reference }: { reference: ReplyFileChangesRef
   const account = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = JSON.stringify([account, server, reference.workspacePath, reference.snapshotId])
-  return <ScopedFileChanges key={scope} reference={reference} studio={mode === 'dev'} />
+  if (mode !== 'dev') return null
+  return <ScopedFileChanges key={scope} reference={reference} />
 }
 
-function ScopedFileChanges({ reference, studio }: { reference: ReplyFileChangesRef; studio: boolean }) {
+function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const [comparison, setComparison] = useState<Comparison | null>(null)
   const [selected, setSelected] = useState<{ change: Change; view: 'preview' | 'diff' } | null>(null)
   useEffect(() => {
@@ -47,9 +48,9 @@ function ScopedFileChanges({ reference, studio }: { reference: ReplyFileChangesR
             <li key={change.path} className="flex flex-wrap items-center gap-2">
               <button type="button" className="min-w-0 break-all text-left underline underline-offset-2" onClick={() => setSelected({ change, view: 'preview' })}>{change.path}</button>
               <span className="text-xs text-muted-foreground">{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : 'Changed'}</span>
-              {studio && !change.binary && typeof change.added === 'number' && typeof change.removed === 'number'
+              {!change.binary && typeof change.added === 'number' && typeof change.removed === 'number'
                 && <span className="text-xs" aria-label={`${change.added} lines added, ${change.removed} lines removed`}><span className="text-green-600">+{change.added}</span> <span className="text-red-500">−{change.removed}</span></span>}
-              {studio && !change.binary && <button type="button" className="ml-auto text-xs underline" onClick={() => setSelected({ change, view: 'diff' })}>Compare</button>}
+              {!change.binary && <button type="button" className="ml-auto text-xs underline" onClick={() => setSelected({ change, view: 'diff' })}>Compare</button>}
             </li>
           ))}
         </ul>

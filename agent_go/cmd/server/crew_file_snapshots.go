@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"log"
 	"mime"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,6 +25,24 @@ import (
 
 const crewSnapshotTimeout = 15 * time.Second
 const crewSnapshotBeforeTimeout = 2 * time.Second
+
+// PLAT-746-158: file review belongs to Studio. Read the server-owned project
+// metadata before touching the snapshot store; browser mode is not the switch.
+func crewSnapshotsEnabled(roots crewroot.Roots) bool {
+	raw, err := os.ReadFile(filepath.Join(roots.Private, "product.json"))
+	if err != nil {
+		return false
+	}
+	var project struct {
+		Mode string `json:"mode"`
+	}
+	if json.Unmarshal(raw, &project) != nil {
+		return false
+	}
+	// An unspecified project mode is Studio throughout the existing product.
+	mode := strings.TrimSpace(project.Mode)
+	return mode == "" || mode == "dev"
+}
 
 type crewTurnSnapshot struct {
 	store                        filesnapshots.Store
@@ -50,6 +70,10 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	}
 	roots, found, err := crewStorageRoots(folder)
 	if err != nil || !found {
+		return
+	}
+	if !crewSnapshotsEnabled(roots) {
+		log.Printf("[FILE_SNAPSHOT] phase=skipped session=%s execution=%s reason=studio_only", sessionID, executionID)
 		return
 	}
 	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private}, root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID)}

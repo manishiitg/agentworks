@@ -61,6 +61,25 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	api.eventStore = storeevents.NewEventStore(100)
 	api.eventStore.AddEvent("session", storeevents.Event{ID: "earlier", Type: "user_message", SessionID: "session"})
 	api.lastQueryRequests = map[string]QueryRequest{"session": {SelectedFolder: linkBetaPath}}
+	// PLAT-746-158: Cowork turns must not create Git storage, even when a
+	// browser or native client sends the same ordinary chat request as Studio.
+	modeFile := filepath.Join(private, "product.json")
+	if err := os.WriteFile(modeFile, []byte(`{"mode":"cowork"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	api.prepareCrewTurnSnapshot("cowork-turn", "session", QueryRequest{SelectedFolder: linkBetaPath})
+	if _, exists := api.crewTurnSnapshots.Load("cowork-turn"); exists {
+		t.Fatal("Cowork started a file capture")
+	}
+	entries, err := os.ReadDir(private)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "product.json" {
+		t.Fatalf("Cowork created snapshot storage: %v %v", entries, err)
+	}
+	// Switching the saved project mode enables the following turn; no reload
+	// or client-provided mode is needed. The rest exercises real Git capture.
+	if err := os.WriteFile(modeFile, []byte(`{"mode":"dev"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	api.trackConversationTurnStart("turn", "session", QueryRequest{SelectedFolder: linkBetaPath})
 	api.prepareCrewTurnSnapshot("turn", "session", QueryRequest{SelectedFolder: linkBetaPath})
 	value, ok := api.crewTurnSnapshots.Load("turn")
