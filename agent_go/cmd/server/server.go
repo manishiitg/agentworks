@@ -11301,6 +11301,8 @@ func (api *StreamingAPI) startTurnAfterLateNoTarget(w http.ResponseWriter, r *ht
 		api.lastQueryMu.RLock()
 		req, known = api.lastQueryRequests[sessionID]
 		api.lastQueryMu.RUnlock()
+		// The session's last request may have come from a schedule, a bot or another agent; this message is the person's.
+		req.TriggeredBy, req.BotPlatform, req.AgentMessageInbox, req.SessionKind = "", "", "", ""
 	}
 	if !known {
 		// No base request to start the turn from: the message stays uncertain.
