@@ -90,10 +90,11 @@ fi
 mkdir -p "$WORK/home"
 CACHE="${VERIFY_CACHE:?}"
 export GOCACHE="$CACHE/go-build" GOMODCACHE="$CACHE/gomod" npm_config_cache="$CACHE/npm"
-# Test binaries grow the Go cache past the disk (67G filled the build host). Over 30G, drop entries unused for a day; a
-# concurrent run that misses one just rebuilds it.
-if [[ -d "$GOCACHE" ]] && (( $(du -sk "$GOCACHE" | cut -f1) > 30 * 1024 * 1024 )); then
-  find "$GOCACHE" -type f -mtime +0 -delete 2>/dev/null || true
+# Test binaries grow the Go cache past the disk (67G filled the build host; on 2026-10-28 a day of runs reached 56G with nothing a
+# day old, the disk filled and the server's own service crash-looped). Over 20G, wipe it; a concurrent run that misses an entry
+# just rebuilds it.
+if [[ -d "$GOCACHE" ]] && (( $(du -sk "$GOCACHE" | cut -f1) > 20 * 1024 * 1024 )); then
+  find "$GOCACHE" -mindepth 1 -delete 2>/dev/null || true
 fi
 export GOWORK=off GOTOOLCHAIN=local GOFLAGS="-modcacherw" NODE_OPTIONS=--max-old-space-size=4096
 cd "$WORK/repo"

@@ -65,9 +65,16 @@ python3 - "$BUILDS" "$KEEP" <<'PY'
 import re, shutil, sys, time
 from pathlib import Path
 root, keep = Path(sys.argv[1]), int(sys.argv[2])
-# A pinned build (marker file in <builds>/.pinned/, `./deploy.sh pin <build>`) is a known-good one to deploy later: it is never
-# removed and does not count toward the newest $KEEP.
-pinned = {m.name for m in (root / ".pinned").glob("*")} if (root / ".pinned").is_dir() else set()
+# A pinned build (marker file in <builds>/.pinned/, `./deploy.sh pin <build>`) is a known-good one to deploy later: while
+# pinned it is never removed and does not count toward the newest $KEEP.
+# A pin lasts 3 days: forgotten pins kept 29 builds (~20 GB) and helped fill the disk.
+pinned = set()
+for marker in (root / ".pinned").glob("*") if (root / ".pinned").is_dir() else ():
+    if time.time() - marker.stat().st_mtime > 3 * 86400:
+        print(f"pin expired: {marker.name}")
+        marker.unlink()
+    else:
+        pinned.add(marker.name)
 builds = sorted((d for d in root.iterdir() if re.fullmatch(r"[0-9a-f]{8}(?:-arm64)?-\d{14}", d.name) and (d / "manifest.json").is_file() and d.name not in pinned), key=lambda d: d.name.rsplit("-", 1)[1], reverse=True)
 for arm64 in (False, True):
     architecture_builds = [d for d in builds if ("-arm64-" in d.name) == arm64]
@@ -172,10 +179,19 @@ OUT="$BUILDS/$NAME.partial"
 JOBS="${BUILD_JOBS:-$(nproc)}"
 export PATH="$BUILDS/.toolchain/go/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH"
 export GOMAXPROCS="$JOBS" GOFLAGS="-p=$JOBS -modcacherw" NODE_OPTIONS=--max-old-space-size=4096
-# No build caches are kept on the server: they live in the scratch folder, which the exit trap removes.
-export GOCACHE="$WORK/cache/go-build" GOMODCACHE="$WORK/cache/gomod" npm_config_cache="$WORK/cache/npm"
+# Build caches persist between builds (a cold build recompiled and re-downloaded everything, ~9 minutes) but each has a hard cap:
+# one over its cap is wiped before the build. Uncapped, the Go cache grew to 68 GB on this host (PLAT-545).
+CACHE="$BUILDS/.cache"
+export GOCACHE="$CACHE/go-build" GOMODCACHE="$CACHE/gomod" npm_config_cache="$CACHE/npm"
+for capped in "$GOCACHE:15" "$GOMODCACHE:6" "$npm_config_cache:3"; do
+  dir="${capped%:*}" cap_gb="${capped##*:}"
+  if [[ -d "$dir" ]] && (( $(du -sk "$dir" | cut -f1) > cap_gb * 1024 * 1024 )); then
+    echo "Build cache $dir is over ${cap_gb} GB; wiping it"
+    chmod -R u+w "$dir" 2>/dev/null || true
+    rm -rf "$dir"
+  fi
+done
 mkdir -p "$GOCACHE" "$GOMODCACHE" "$npm_config_cache"
-rm -rf "$BUILDS/.cache"
 for command in git go gcc npm node python3 file sha256sum; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
 rm -rf "$OUT"
 mkdir -p "$OUT/bin" "$OUT/frontend" "$OUT/static" "$OUT/downloads" "$OUT/packages"
