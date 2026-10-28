@@ -21,7 +21,7 @@ func TestExternalSignInAppsUsesAdminGuardsAndSealedStore(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"admin"},{"id":"other","username":"other","role":"creator"}]}`)
 	api.logger = loggerv2.NewNoop()
 	api.mcpConfigPath = filepath.Join(t.TempDir(), "mcp.json")
-	if err := os.WriteFile(api.mcpConfigPath, []byte(`{"mcpServers":{"Slack":{"url":"https://mcp.slack.com/mcp","protocol":"http","oauth":{"auth_url":"https://slack.com/oauth/v2_user/authorize","token_url":"https://slack.com/api/oauth.v2.user.access"}}}}`), 0600); err != nil {
+	if err := os.WriteFile(api.mcpConfigPath, []byte(`{"mcpServers":{"Slack":{"url":"https://mcp.slack.com/mcp","protocol":"http","oauth":{"auth_url":"https://slack.com/oauth/v2_user/authorize","token_url":"https://slack.com/api/oauth.v2.user.access","scopes":["chat:write","im:read","chat:write"]}}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	claims := func(user, scope string) *UserClaims {
@@ -58,6 +58,9 @@ func TestExternalSignInAppsUsesAdminGuardsAndSealedStore(t *testing.T) {
 	}
 	if out := call(admin, map[string]any{"action": "list"}, 200); strings.Contains(out, secret) || !strings.Contains(out, `"configured":true`) {
 		t.Fatal("list leaked credentials or lost setup status")
+	}
+	if out := call(admin, map[string]any{"action": "list"}, 200); !strings.Contains(out, `"scopes":["chat:write","im:read"]`) {
+		t.Fatal("setup did not advertise the catalog's existing scopes once")
 	}
 	call(admin, map[string]any{"action": "remove", "provider": "slack"}, 200)
 	if app, err := readMCPApp("slack"); err != nil || app != nil {

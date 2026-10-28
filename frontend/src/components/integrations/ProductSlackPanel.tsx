@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useId, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { ChevronDown, RefreshCw } from 'lucide-react'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { VaultSlackBots } from './VaultSlackBots'
@@ -24,36 +24,48 @@ export const slackBotsApi = {
  act: async (action: string, args: Record<string, unknown> = {}) => (await api.post('/api/integrations/slack/bots', { action, ...args })).data,
 }
 
-/** Presentation tabs only: personal-account lending and bot administration keep their own server checks. */
-export function ProductSlackPanel({ workspacePath, noun = 'Crew', allowBots = true, section = 'account', tabId }: { workspacePath: string; noun?: string; allowBots?: boolean; section?: 'account' | 'bot'; tabId?: string }) {
+export type SlackBotOverview = { status: string; names: string[]; allowed?: boolean }
+
+/** Two independent connections on one page; status comes from the saved server state. */
+export function ProductSlackPanel(props: { workspacePath: string; noun?: string; allowBots?: boolean; section?: 'account' | 'bot'; tabId?: string }) {
  const actor = useAuthStore(state => state.user?.id)
  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
- const [active, setActive] = useState(section)
- const id = useId()
- useEffect(() => { setActive(section) }, [section, workspacePath])
- const current = allowBots ? active : 'account'
- return <div className="w-full max-w-3xl space-y-5">
-  {allowBots && <div role="tablist" aria-label="Slack connection type" className="flex gap-1 border-b border-border">
-   {(['account', 'bot'] as const).map(value => <button key={value} type="button" role="tab" id={`${id}-${value}-tab`} aria-controls={`${id}-${value}`} aria-selected={current === value} onClick={() => setActive(value)} className={`min-h-11 border-b-2 px-3 py-2 text-sm ${current === value ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>{value === 'account' ? 'My Slack account' : 'Slack bot'}</button>)}
-  </div>}
-  <section key={`${server}:${actor}:${workspacePath}:${current}`} role={allowBots ? 'tabpanel' : undefined} id={`${id}-${current}`} aria-labelledby={allowBots ? `${id}-${current}-tab` : undefined}>
-   {current === 'account' ? <SlackAccountsPanel workspacePath={workspacePath} noun={noun} tabId={tabId}/> : <SlackBotChoice workspacePath={workspacePath} noun={noun}/>}
-  </section>
+ return <SlackConnections key={`${server}:${actor}:${props.workspacePath}`} {...props}/>
+}
+
+function SlackConnections({ workspacePath, noun = 'Crew', allowBots = true, section = 'account', tabId }: { workspacePath: string; noun?: string; allowBots?: boolean; section?: 'account' | 'bot'; tabId?: string }) {
+ const [bot, setBot] = useState<SlackBotOverview>({status:'Checking…',names:[]})
+ const [account, setAccount] = useState('Checking…')
+ return <div className="w-full max-w-3xl space-y-4">
+  <p className="text-sm text-muted-foreground">Use a bot, your own account, or both. Each connection keeps its own permissions.</p>
+  {allowBots && bot.allowed !== false && <details open={section === 'bot'} aria-label="Slack bot connection" className="group rounded-lg border border-border p-4">
+   <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2"><span className="flex items-center gap-2 text-sm font-semibold"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180"/>Let people message this {noun}</span><span className="text-xs text-muted-foreground">{bot.status}</span></summary>
+   <div className="mt-4"><SlackBotChoice workspacePath={workspacePath} noun={noun} embedded onOverview={setBot}/></div>
+  </details>}
+  <details open={section === 'account' || !allowBots} aria-label="Personal Slack connection" className="group rounded-lg border border-border p-4">
+   <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2"><span className="flex items-center gap-2 text-sm font-semibold"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180"/>Use Slack as me</span><span className="text-xs text-muted-foreground">{account}</span></summary>
+   <div className="mt-4"><SlackAccountsPanel workspacePath={workspacePath} noun={noun} tabId={tabId} embedded savedBotNames={bot.names} onStatus={setAccount}/></div>
+  </details>
  </div>
 }
 
-export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath: string; noun?: string }) {
+export function SlackBotChoice({ workspacePath, noun = 'Crew', embedded = false, onOverview }: { workspacePath: string; noun?: string; embedded?: boolean; onOverview?: (overview: SlackBotOverview) => void }) {
  const [data, setData] = useState<SlackBotState | null>(null)
  const [error, setError] = useState('')
  const [busy, setBusy] = useState(false)
  const [slug, setSlug] = useState('')
  const [checks, setChecks] = useState<{ id: string; result: SlackTestResponse } | null>(null)
- const refresh = useCallback(async () => { try { const next = await slackBotsApi.list(workspacePath); setData(next); setSlug(next.settings?.slug || ''); setError('') } catch (cause) { setError(slackErrorText(cause, 'Could not load Slack bots.')) } }, [workspacePath])
+ const update = useCallback((next: SlackBotState) => {
+  setData(next); setSlug(next.settings?.slug || ''); setError('')
+  const selected = next.bots.find(bot => bot.id === next.selected_id)
+  onOverview?.({allowed:next.allow_bots,status:selected ? !selected.configured ? 'Needs setup' : !selected.enabled ? 'Paused' : `Bot saved · ${slackBotName(selected)}` : next.bots.some(bot => bot.configured) ? 'Choose a saved bot' : 'Not set up',names:next.bots.filter(bot => bot.configured).map(slackBotName)})
+ },[onOverview])
+ const refresh = useCallback(async () => { try { update(await slackBotsApi.list(workspacePath)) } catch (cause) { setError(slackErrorText(cause, 'Could not load Slack bots.')); onOverview?.({status:'Could not load',names:[]}) } }, [workspacePath, update, onOverview])
  useEffect(() => { void refresh(); const focus = () => void refresh(); window.addEventListener('focus', focus); return () => window.removeEventListener('focus', focus) }, [refresh])
  if (data?.allow_bots === false) return null
  const chosen = data?.bots.find(bot => bot.id === data.selected_id)
  const result = checks?.id === chosen?.id ? checks?.result : null
- const select = async (id: string) => { setBusy(true); setChecks(null); try { const next = await slackBotsApi.act('select', { workspace_path: workspacePath, connection_id: id }) as SlackBotState; setData(next); setSlug(next.settings?.slug || ''); setError('') } catch (cause) { setError(slackErrorText(cause, 'Could not choose this bot.')) } finally { setBusy(false) } }
+ const select = async (id: string) => { setBusy(true); setChecks(null); try { const next = await slackBotsApi.act('select', { workspace_path: workspacePath, connection_id: id }) as SlackBotState; update(next) } catch (cause) { setError(slackErrorText(cause, 'Could not choose this bot.')) } finally { setBusy(false) } }
  const check = async () => {
   if (!chosen) return
   setBusy(true); setError(''); setChecks(null)
@@ -62,7 +74,7 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath
   finally { setBusy(false) }
  }
  return <section aria-label={`Let people talk to this ${noun}`} className="space-y-5 text-sm">
-  <div><h3 className="text-base font-semibold">Slack bots</h3><p className="mt-1 text-sm text-muted-foreground">Let people talk to this {noun} in Slack, with their existing access.</p></div>
+  {!embedded && <div><h3 className="text-base font-semibold">Slack bots</h3><p className="mt-1 text-sm text-muted-foreground">Let people talk to this {noun} in Slack, with their existing access.</p></div>}
   {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => void refresh()}>Retry</button></p>}
   {!data && !error ? <p role="status" className="text-muted-foreground">Loading bots…</p> : data && <>
    <VaultSlackBots data={data} workspacePath={workspacePath} busy={busy} onSelect={select} onUpdated={refresh}>

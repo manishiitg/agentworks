@@ -180,6 +180,7 @@ type mcpAppGroup struct {
 	Key        string   `json:"key"`
 	Label      string   `json:"label"`
 	Servers    []string `json:"servers"`
+	Scopes     []string `json:"scopes,omitempty"`
 	Configured bool     `json:"configured"`
 	ClientID   string   `json:"client_id,omitempty"`
 	UpdatedAt  string   `json:"updated_at,omitempty"`
@@ -227,6 +228,18 @@ func mcpAppGroupsFor(servers map[string]mcpclient.MCPServerConfig) []mcpAppGroup
 			byKey[key] = group
 		}
 		group.Servers = append(group.Servers, name)
+		for _, scope := range cfg.OAuth.Scopes {
+			found := false
+			for _, existing := range group.Scopes {
+				if existing == scope {
+					found = true
+					break
+				}
+			}
+			if !found {
+				group.Scopes = append(group.Scopes, scope)
+			}
+		}
 	}
 	for _, key := range mcpAppStandaloneKeys {
 		if byKey[key] == nil && mcpAppFocusKeys[key] {
@@ -236,6 +249,7 @@ func mcpAppGroupsFor(servers map[string]mcpclient.MCPServerConfig) []mcpAppGroup
 	out := make([]mcpAppGroup, 0, len(byKey))
 	for key, group := range byKey {
 		sort.Strings(group.Servers)
+		sort.Strings(group.Scopes)
 		if app, err := readMCPApp(key); err == nil && app != nil {
 			group.Configured, group.ClientID, group.UpdatedAt = true, app.ClientID, app.UpdatedAt
 		}

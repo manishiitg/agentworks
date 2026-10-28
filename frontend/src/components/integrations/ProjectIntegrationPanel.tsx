@@ -16,7 +16,7 @@ import { ProjectVaultPanel } from './ProjectVaultPanel'
 
 export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop'
 export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
-  connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'My Slack account', laptop: 'Local laptop',
+  connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'Slack', laptop: 'Local laptop',
 }
 export function integrationPanelQuestion(section: string, label: string): string {
  if(section==='slack'||section==='slack-account') return buildAskAIMessage({view:label,summary:section==='slack'?'Help me connect or manage the Slack bot for this project.':'Help me with my Slack account for this project.',instructions:"Read the Slack account and Slack bot panel skills. Inspect saved accounts, the selected bot, its verified Slack identity, sign-in setup and channel settings before advising. My Slack account sends as the person; the bot lets people talk to this project in Slack. Help manage the requested part through existing native tools and current owner, account and administrator checks. Never repeat token or secret values."})

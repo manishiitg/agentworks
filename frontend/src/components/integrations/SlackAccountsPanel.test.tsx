@@ -6,7 +6,6 @@ import { expect, it, vi } from 'vitest'
 const requests = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(async () => ({ data: {} })) }))
 vi.mock('../../services/api', () => ({ default: requests, getApiBaseUrl: () => 'https://app.example.com' }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
-vi.mock('./CompanySignInSetup', () => ({ CompanySignInSetup: () => <div>Slack sign-in setup</div> }))
 import SlackAccountsPanel from './SlackAccountsPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -34,4 +33,20 @@ it('shows one own Slack account and only the server-authorized actions', async (
   } finally {
     act(() => root.unmount()); host.remove()
   }
+})
+
+
+it('recognizes the saved bot separately from missing personal sign-in and explains the next step', async () => {
+ requests.get.mockResolvedValue({data:{accounts:[],can_connect:true,sign_in_ready:false}})
+ const host=document.createElement('div'), root=createRoot(host)
+ const status=vi.fn()
+ try {
+  await act(async()=>root.render(<SlackAccountsPanel workspacePath="Crew/example" savedBotNames={['Example helper']} onStatus={status}/>))
+  expect(host.textContent).toContain('Saved bots available: Example helper')
+  expect(host.textContent).toContain('reuse the same Slack app')
+  expect(host.textContent).toContain('Ask an administrator')
+  expect(status).toHaveBeenLastCalledWith('Sign-in setup needed')
+  expect(host.querySelector('form[aria-label="Slack sign-in app"]')).toBeNull()
+  expect([...host.querySelectorAll('button')].some(button=>button.textContent==='Connect my Slack')).toBe(false)
+ } finally {await act(async()=>root.unmount());vi.clearAllMocks()}
 })

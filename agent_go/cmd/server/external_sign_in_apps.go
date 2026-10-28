@@ -12,7 +12,7 @@ import (
 const externalSignInAppsTool = "sign_in_apps"
 
 func externalSignInAppsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalSignInAppsTool, "Set up this server's sign-in apps as an administrator, using the same rules as Settings. list returns providers, setup status and callback URL; set saves the provider's client_id and client_secret; remove clears its app. Use the provider key from list. Existing users:manage consent is required. Secret values are stored encrypted and never returned; after saving, refer only to the provider name. Each person still connects their own account in their browser. This does not approve sender access or complete anyone's sign-in.", true, false, map[string]any{
+	add(externalSignInAppsTool, "Set up this server's sign-in apps as an administrator, using the same rules as Settings. list returns providers, setup status, callback URL and the catalog scopes already requested on sign-in; set saves the provider's client_id and client_secret; remove clears its app. Use the provider key from list. Existing users:manage consent is required. Secret values are stored encrypted and never returned; after saving, refer only to the provider name. Each person still connects their own account in their browser. This does not approve sender access or complete anyone's sign-in.", true, false, map[string]any{
 		"action":        map[string]any{"type": "string", "enum": []any{"list", "set", "remove"}},
 		"provider":      externalString("Provider key from list; required for set/remove."),
 		"project_id":    externalString("Google OAuth project ID from its JSON, when available."),
