@@ -5,7 +5,6 @@
 package safegit
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"os/exec"
