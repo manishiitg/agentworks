@@ -29,18 +29,23 @@ def crews(root):
 
 def migrate(root, check=False):
     root = Path(root).resolve()
-    changed = 0
+    changed = skipped = 0
     for crew in crews(root):
         custom = crew / 'commands/custom'
         if (custom / MARKER).exists() or (custom / NAME).exists():
             continue
-        changed += 1
         if check:
+            changed += 1
             continue
-        (custom / NAME).mkdir(parents=True)
-        (custom / NAME / 'COMMAND.md').write_text(COMMAND)
-        (custom / MARKER).write_text('seeded\n')
-    return {'event': 'card_default_command', 'changed_crews': changed, 'check': check}
+        # One unreadable Crew must not fail the deploy: skip it, report it, and add the command next time.
+        try:
+            (custom / NAME).mkdir(parents=True)
+            (custom / NAME / 'COMMAND.md').write_text(COMMAND)
+            (custom / MARKER).write_text('seeded\n')
+            changed += 1
+        except OSError:
+            skipped += 1
+    return {'event': 'card_default_command', 'changed_crews': changed, 'skipped_crews': skipped, 'check': check}
 
 
 if __name__ == '__main__':
