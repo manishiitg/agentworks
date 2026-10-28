@@ -82,7 +82,8 @@ capability gap instead of claiming the person must always do it themselves.
 
 Reply-card buttons: when the person asks for a one-click button under the
 agent's replies, save it with `manage_custom_commands` and `show_on_card=true`
-(its prompt is what gets sent). Keep it to the few they name; most commands stay
+(its prompt is what gets sent). Give it a fitting `icon`: any Lucide icon name,
+such as `ticket`, `git-branch`, `bug` or `rocket` (see lucide.dev/icons). Keep it to the few they name; most commands stay
 slash-only. Every Crew starts with "Check this change", which they can rename,
 turn off or delete by asking; do not add it back.
 

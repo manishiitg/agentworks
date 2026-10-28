@@ -13,7 +13,7 @@ NAME = 'check-this-change'
 MARKER = '.card-default-seeded'
 MESSAGE = ('Look over the files you changed in this reply. Point out anything that looks wrong or risky, '
            'anything you missed, and what I should test.')
-COMMAND = ('---\nname: check-this-change\ndescription: Check this change\nicon: eye\nmodes:\n  - multi-agent\n'
+COMMAND = ('---\nname: check-this-change\ndescription: Check this change\nicon: play\nmodes:\n  - multi-agent\n'
            'show_on_card: true\n---\n\n' + MESSAGE + '\n\n{{context}}\n')
 
 

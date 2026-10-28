@@ -14,3 +14,19 @@ func TestValidateFolderNameRejectsPathTraversal(t *testing.T) {
 		}
 	}
 }
+
+// Any Lucide icon name is accepted for a command; an unknown name is refused
+// so the reply card never silently draws a fallback icon.
+func TestValidateCommandContentChecksLucideIconName(t *testing.T) {
+	content := func(icon string) string {
+		return "---\nname: ticket\ndescription: \"Update ticket\"\nicon: \"" + icon + "\"\n---\n\nDo it.\n"
+	}
+	for _, icon := range []string{"ticket", "git-branch", ""} {
+		if _, _, err := ValidateCommandContent(content(icon)); err != nil {
+			t.Fatalf("icon %q refused: %v", icon, err)
+		}
+	}
+	if _, _, err := ValidateCommandContent(content("lightning-bolt-x")); err == nil {
+		t.Fatal("unknown icon name was accepted")
+	}
+}

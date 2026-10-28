@@ -75,7 +75,8 @@ operation, timing and outcome, with commands, values and payloads withheld.
 
 - `manage_crew_commands` with `crew_id` and `action=list|create|update|delete`
   uses the same custom-command tool as Crew chat, directly without a model turn.
-  Create/update take `name`, `description`, `prompt` and optional `icon`;
+  Create/update take `name`, `description`, `prompt` and optional `icon`
+  (any Lucide icon name, such as `ticket` or `bug`; see lucide.dev/icons);
   delete takes `name`. Custom commands appear in the Crew's slash menu.
   `show_on_card=true` (default false) also shows the command as a button on
   each reply card; use it for only the few commands the person wants one click

@@ -1,37 +1,17 @@
 import { createElement } from 'react'
-import {
-  Zap, Eye, Code, FileText, MessageCircle, Search, Bookmark, Star, Terminal
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { commandsApi } from '../api/commands'
 import type { UserCommand } from '../types/commands'
 import type { CommandDefinition } from './types'
 import type { ModeCategory } from '../stores/useModeStore'
 import { setUserCommands } from './registry'
 import { renderCommandPrompt } from './commandPrompt'
+import { CommandIcon } from './CommandIcon'
 
 type CommandMode = Exclude<ModeCategory, null>
 let commandLoadGeneration = 0
 
-const iconComponents: Record<string, LucideIcon> = {
-  zap: Zap,
-  eye: Eye,
-  code: Code,
-  'file-text': FileText,
-  'message-circle': MessageCircle,
-  search: Search,
-  bookmark: Bookmark,
-  star: Star,
-  terminal: Terminal,
-}
-
-function makeIcon(name: string) {
-  const Comp = iconComponents[name] || Terminal
-  return createElement(Comp, { className: 'w-4 h-4' })
-}
-
 function toCommandDefinition(uc: UserCommand): CommandDefinition {
-  const icon = makeIcon(uc.frontmatter.icon || 'terminal')
+  const icon = createElement(CommandIcon, { name: uc.frontmatter.icon, className: 'w-4 h-4' })
 
   const modes = uc.frontmatter.modes && uc.frontmatter.modes.length > 0
     ? uc.frontmatter.modes

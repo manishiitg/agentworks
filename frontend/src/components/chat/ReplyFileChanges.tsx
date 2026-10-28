@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Play, Plus, Undo2, Zap } from 'lucide-react'
+import { Plus, Undo2, Zap } from 'lucide-react'
 import api from '../../services/api'
 import { useReviewRevision, type FileChange, type ReviewResult } from '../workspace/chatFileReview'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
@@ -11,6 +11,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { commandsApi } from '../../api/commands'
 import { renderCommandPrompt } from '../../commands/commandPrompt'
+import { CommandIcon } from '../../commands/CommandIcon'
 import type { UserCommand } from '../../types/commands'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../../utils/chatIdentity'
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
@@ -153,7 +154,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           {canEdit && <Divider />}
           {canEdit && commands.map(command => {
             const name = command.frontmatter.name
-            return <IconButton key={name} label={command.frontmatter.description || name} name={name} hint={command.frontmatter.description || `Runs your ${name} command in this chat.`} onClick={() => void ask(`command:${name}`, renderCommandPrompt(command.content, cardContext(groups)))}>{name === 'check-this-change' ? <Play /> : <Zap />}</IconButton>
+            return <IconButton key={name} label={command.frontmatter.description || name} name={name} hint={command.frontmatter.description || `Runs your ${name} command in this chat.`} onClick={() => void ask(`command:${name}`, renderCommandPrompt(command.content, cardContext(groups)))}><CommandIcon name={command.frontmatter.icon} fallback={Zap} /></IconButton>
           })}
           {canEdit && <IconButton label="Add button" hint="Add your own button to this card." onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}><Plus /></IconButton>}
         </div></TooltipProvider>

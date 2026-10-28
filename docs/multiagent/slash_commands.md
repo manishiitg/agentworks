@@ -150,12 +150,12 @@ Review my current code changes for bugs, security issues, and performance proble
 |-------|----------|-------------|
 | `name` | Yes | Command name (alphanumeric, hyphens, underscores) |
 | `description` | Yes | Brief description shown in the command picker |
-| `icon` | No | Icon name from available set (default: `terminal`) |
+| `icon` | No | Any Lucide icon name, see lucide.dev/icons (default: `terminal`) |
 | `modes` | No | Array of modes to restrict visibility. Empty `[]` = all modes |
 
-### Available Icons
+### Icons
 
-`terminal`, `zap`, `eye`, `code`, `file-text`, `message-circle`, `search`, `bookmark`, `star`
+Any Lucide icon name in kebab-case, for example `ticket`, `git-branch`, `bug` or `rocket` (see lucide.dev/icons). The server refuses names Lucide does not have.
 
 ### Context Placeholder
 

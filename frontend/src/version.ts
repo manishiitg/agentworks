@@ -1,3 +1,3 @@
 // The pre-commit hook increments this product patch version automatically.
 // Shown in the product switcher dropdown.
-export const APP_VERSION = '0.50.2700'
+export const APP_VERSION = '0.50.2701'

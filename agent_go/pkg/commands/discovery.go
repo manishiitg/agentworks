@@ -218,6 +218,9 @@ func ValidateCommandContent(content string) (*CommandFrontmatter, string, error)
 			return nil, "", fmt.Errorf("name contains invalid character '%c' (only alphanumeric, hyphens, and underscores allowed)", c)
 		}
 	}
+	if err := ValidateIcon(frontmatter.Icon); err != nil {
+		return nil, "", err
+	}
 
 	return frontmatter, body, nil
 }
@@ -241,7 +244,7 @@ const (
 
 // DefaultCardCommandContent is the COMMAND.md text of the default card command.
 func DefaultCardCommandContent() string {
-	fm := &CommandFrontmatter{Name: DefaultCardCommandName, Description: "Check this change", Icon: "eye", Modes: []string{"multi-agent"}, ShowOnCard: true}
+	fm := &CommandFrontmatter{Name: DefaultCardCommandName, Description: "Check this change", Icon: "play", Modes: []string{"multi-agent"}, ShowOnCard: true}
 	content, _ := SerializeCommandFile(fm, DefaultCardCommandMessage)
 	return EnsureContextPlaceholder(content)
 }
