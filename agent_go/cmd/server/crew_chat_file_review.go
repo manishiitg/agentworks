@@ -112,8 +112,8 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, sessionID, r
 	if len(out.Reviews) > 0 {
 		out.Baseline = out.Reviews[len(out.Reviews)-1].ID
 	}
-	if !out.Available {
-		out.Note = "The start of this chat was not captured or is no longer retained. Open a reply’s file card, or mark the latest reply as reviewed to start from there."
+	if len(out.Replies) == 0 {
+		out.Note = "No file changes saved for this chat yet. Changes appear here after the agent edits files."
 	}
 	return out, nil
 }
@@ -201,7 +201,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		first, last, side = id, id, "before"
-	} else if baseline == "start" && !history.Available {
+	} else if baseline == "start" && len(history.Replies) == 0 {
 		if op == "snapshot_file" || r.URL.Query().Get("line") != "" {
 			externalError(w, 404, "snapshot_unavailable", history.Note)
 			return

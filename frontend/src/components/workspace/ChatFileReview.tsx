@@ -53,7 +53,7 @@ export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
   }
   return <section className="flex h-full min-h-0 flex-col" aria-label="Changes in this chat">
     <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-      <strong className="mr-auto">{reviewId ? 'Reviewed changes' : 'Changes since your last review'}</strong>
+      <strong className="mr-auto">{reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'}</strong>
       <button type="button" className="text-xs underline" onClick={refresh}>Refresh</button>
       <button type="button" className="text-xs underline" onClick={onBrowse}>Browse files</button>
       {!!result?.history.reviews?.length && <details className="w-full text-xs"><summary className="cursor-pointer">Review history</summary><div className="mt-2 flex flex-wrap gap-3"><button type="button" className="underline" onClick={() => setReviewId('')}>Changes since your last review</button>{[...result.history.reviews].reverse().map(point => <button type="button" className="underline" key={point.snapshot_id} onClick={() => setReviewId(point.snapshot_id)}>Reviewed {new Date(point.reviewed_at).toLocaleString()}</button>)}</div></details>}
@@ -63,7 +63,7 @@ export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
       {result && !result.comparison && <p className="p-3 text-sm">{result.history.note}</p>}
       <div className="grid gap-1 border-b border-border p-2">
-        {result?.comparison && <p className="p-2 text-xs text-muted-foreground">{result.total_changes ?? changes.length} changed files</p>}
+        {result?.comparison && <p className="p-2 text-xs text-muted-foreground">{result.total_changes ?? changes.length} changed files{!reviewId && !result.history.reviews?.length && !result.history.available ? ' (since the first saved reply of this chat)' : ''}</p>}
         {changes.map(change => <button type="button" key={change.path} className="flex gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50" onClick={() => { if (through) openChatFiles(sessionId, { reference: { workspacePath, sessionId, snapshotId: '' }, change, query: { session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }) }}>
           <span className="min-w-0 flex-1 break-all">{change.path}</span><span>{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span><span className="text-green-600">{!change.binary && `+${change.added ?? 0}`}</span><span className="text-red-500">{change.binary ? 'Binary' : `−${change.removed ?? 0}`}</span>
         </button>)}

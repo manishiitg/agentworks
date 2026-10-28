@@ -31,6 +31,8 @@ describe('Studio review comments', () => {
     try {
       await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
       const button = (text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text))!
+      expect(host.textContent).toContain('Changes in this chat')
+      expect(host.textContent).not.toContain('since your last review')
       await act(async () => button('main.ts').click())
       expect(openChatFiles).toHaveBeenCalledWith('chat-a', expect.objectContaining({ query: { session_id: 'chat-a', through_snapshot_id: 'last', baseline_snapshot_id: 'start' } }))
       expect(host.querySelector('select')).toBeNull()
