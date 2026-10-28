@@ -39,8 +39,8 @@ import (
 // store's info/attributes unsets every conversion so that re-hash is of the
 // raw bytes too (otherwise a converted file would merely never become clean).
 //
-// An index changes only through a temporary copy that replaces it after the
-// capture's commit and the head ref are written, so every blob an index names
+// Every capture works on a temporary copy of each index (refreshed first)
+// that replaces it after the capture's commit and the head ref are written, so every blob an index names
 // stays reachable and a killed capture leaves the previous index intact.
 
 // headRef always points at the newest capture: it keeps every object the
@@ -154,22 +154,37 @@ func parallel(n int, fn func(int) error) error {
 	return errors.Join(errs...)
 }
 
-// status reads which paths a checkout's persisted index holds and which of
-// them Git reports changed (stat mismatch, racily clean, deleted).
+// status refreshes a temporary copy of a checkout's persisted index, then
+// reads which paths it holds and which of them Git reports changed. The
+// refresh records new stat data for files whose stat changed but whose bytes
+// still match (a touch, a checkout of the same content, a racily clean
+// entry), so they are not re-hashed on every later capture; the copy replaces
+// the persisted index only when the capture commits.
 func (s Store) status(ctx context.Context, c *checkout) error {
 	c.indexed, c.dirty = map[string]bool{}, map[string]bool{}
 	index := s.indexFile(c.key)
 	if _, err := os.Stat(index); err != nil {
 		return nil
 	}
-	out, err := s.indexCommand(ctx, c, index, "ls-files", "-c", "-m", "-t", "-z").Output()
+	tmp := index + ".tmp"
+	if err := copyIndex(index, tmp); err != nil {
+		return err
+	}
+	c.reused, c.changed = true, true
+	// Git lstats the work-tree paths itself and follows a symlinked parent
+	// directory; that only decides changed or unchanged. No content is
+	// imported from it: contents come only from the confined reads below.
+	_, err := s.runIndex(ctx, c, tmp, nil, "update-index", "-q", "--ignore-missing", "--refresh")
+	var out []byte
+	if err == nil {
+		out, err = s.runIndex(ctx, c, tmp, nil, "ls-files", "-c", "-m", "-t", "-z")
+	}
 	if err != nil {
 		if ctx.Err() == nil {
 			_ = os.Remove(index) // unreadable: rebuild this checkout
 		}
 		return fmt.Errorf("read snapshot index: %w", err)
 	}
-	c.reused = true
 	for _, e := range bytes.Split(out, []byte{0}) {
 		if len(e) < 3 || e[1] != ' ' {
 			continue
@@ -214,44 +229,35 @@ func copyIndex(from, to string) error {
 	return os.Chtimes(to, info.ModTime(), info.ModTime())
 }
 
-// writeCheckout applies removals and new blobs to a temporary copy of the
-// checkout's index and writes its tree. An unchanged checkout reads its tree
-// from the persisted index.
+// writeCheckout applies removals and new blobs to the checkout's temporary
+// index (refreshed by status, or new) and writes its tree.
 func (s Store) writeCheckout(ctx context.Context, c *checkout) error {
-	index := s.indexFile(c.key)
-	if len(c.remove) == 0 && len(c.add) == 0 {
-		if !c.reused || c.count == 0 {
-			return nil
+	index := s.indexFile(c.key) + ".tmp"
+	if !c.reused && len(c.add) == 0 {
+		return nil
+	}
+	c.changed = true
+	if len(c.remove) > 0 {
+		if _, err := s.runIndex(ctx, c, index, []byte(strings.Join(c.remove, "\x00")+"\x00"), "update-index", "-z", "--force-remove", "--stdin"); err != nil {
+			return err
 		}
-	} else {
-		tmp := index + ".tmp"
-		if c.reused {
-			if err := copyIndex(index, tmp); err != nil {
-				return err
-			}
+	}
+	if len(c.add) > 0 {
+		var in bytes.Buffer
+		for _, e := range c.add {
+			fmt.Fprintf(&in, "%s %s\t%s\x00", e.mode, e.oid, e.path)
 		}
-		index, c.changed = tmp, true
-		if len(c.remove) > 0 {
-			if _, err := s.runIndex(ctx, c, index, []byte(strings.Join(c.remove, "\x00")+"\x00"), "update-index", "-z", "--force-remove", "--stdin"); err != nil {
-				return err
-			}
+		if _, err := s.runIndex(ctx, c, index, in.Bytes(), "update-index", "-z", "--index-info"); err != nil {
+			return err
 		}
-		if len(c.add) > 0 {
-			var in bytes.Buffer
-			for _, e := range c.add {
-				fmt.Fprintf(&in, "%s %s\t%s\x00", e.mode, e.oid, e.path)
-			}
-			if _, err := s.runIndex(ctx, c, index, in.Bytes(), "update-index", "-z", "--index-info"); err != nil {
-				return err
-			}
-			// Record stat data, only for files that still hash to our blob.
-			if _, err := s.runIndex(ctx, c, index, nil, "update-index", "-q", "--ignore-missing", "--refresh"); err != nil {
-				return err
-			}
+		// Record stat data, only for files that still hash to our blob. As in
+		// status, Git's own lstat/re-hash here decides only changed or not.
+		if _, err := s.runIndex(ctx, c, index, nil, "update-index", "-q", "--ignore-missing", "--refresh"); err != nil {
+			return err
 		}
-		if c.count == 0 {
-			return nil
-		}
+	}
+	if c.count == 0 {
+		return nil
 	}
 	out, err := s.runIndex(ctx, c, index, nil, "write-tree")
 	if err != nil {
