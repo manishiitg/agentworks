@@ -31,7 +31,11 @@ function ScopedFileChanges({ reference, studio }: { reference: ReplyFileChangesR
       .catch(() => { /* Expired/unavailable history has no change card. */ })
     return () => controller.abort()
   }, [reference.workspacePath, reference.snapshotId])
-  if (!comparison?.changes?.length) return null
+  if (!comparison?.changes?.length) {
+    return comparison?.snapshot?.status === 'partial'
+      ? <p className="my-3 text-xs text-muted-foreground" role="status">File comparison is incomplete. Some files could not be captured for this reply.</p>
+      : null
+  }
   return (
     <section className="my-3 rounded-lg border border-border px-3 py-2 text-sm" aria-label="Files changed during this reply">
       <details>

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -171,11 +172,94 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 	if err != nil || r.Status != "partial" || len(c.Changes) != 0 || len(c.Record.Skipped) != 1 {
 		t.Fatalf("false deletion: %v %+v", err, c)
 	}
+	// One unreadable file must not lose other files or become a false deletion.
+	// The remote verifier runs unprivileged; root can still read mode 000.
+	unreadable := filepath.Join(s.Root, "unreadable.txt")
+	if err := os.WriteFile(unreadable, []byte("prior bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Begin(t.Context(), "unreadable"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unreadable, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(unreadable, 0600)
+	f, readErr := os.Open(unreadable)
+	if f != nil {
+		f.Close()
+	}
+	if errors.Is(readErr, fs.ErrPermission) {
+		record, err := s.Finish(t.Context(), "unreadable")
+		if err != nil || record.Status != "partial" || record.AfterCapture.ReadSkipped != 1 {
+			t.Fatalf("one read error lost the whole capture: %v %+v", err, record)
+		}
+		comparison, err := s.Compare(t.Context(), record.ID, "", func(string) bool { return true })
+		if err != nil || len(comparison.Changes) != 0 {
+			t.Fatalf("unreadable file became a deletion: %v %+v", err, comparison)
+		}
+	}
 	if _, err := s.Begin(t.Context(), "undelivered"); err != nil {
 		t.Fatal(err)
 	}
 	s.Abandon("undelivered")
 	if _, err := s.Compare(t.Context(), ID("undelivered"), "", func(string) bool { return true }); err == nil {
 		t.Fatal("undelivered turn has a comparison")
+	}
+}
+
+// PLAT-746-158: large assets exhausted the aggregate budget before later
+// source paths, and unchanged stored blobs kept exhausting it on every turn.
+func TestLargeAssetsDoNotStarveSourceOrChargeCachedBlobs(t *testing.T) {
+	s := Store{Root: t.TempDir(), Private: t.TempDir()}
+	for i := 0; i < 11; i++ {
+		p := filepath.Join(s.Root, fmt.Sprintf("asset-%02d.bin", i))
+		f, err := os.Create(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = f.Truncate(MaxFileBytes)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	source := filepath.Join(s.Root, "z-source.ts")
+	if err := os.WriteFile(source, []byte("before\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.Begin(t.Context(), "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.BeforeCapture.BudgetSkipped == 0 {
+		t.Fatal("fixture did not exceed capture budget")
+	}
+	if err := os.WriteFile(source, []byte("after\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.Finish(t.Context(), "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparison, err := s.Compare(t.Context(), after.ID, "z-source.ts", func(string) bool { return true })
+	if err != nil || !strings.Contains(comparison.Diff, "-before\n+after") {
+		t.Fatalf("source starved behind assets: %v %+v", err, comparison)
+	}
+	// The after capture filled previously skipped assets. A warm before must
+	// represent all files even though the tree is larger than the import budget.
+	warm, err := s.Begin(t.Context(), "warm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warm.Skipped) != 0 || warm.BeforeCapture.ImportedBytes != 0 || warm.BeforeCapture.Reused != 12 {
+		t.Fatalf("cached blobs charged or dropped: %+v", warm)
+	}
+	if _, err := s.Finish(t.Context(), "warm"); err != nil {
+		t.Fatal(err)
+	}
+	later, err := s.Compare(t.Context(), after.ID, "z-source.ts", func(string) bool { return true })
+	if err != nil || later.Diff != comparison.Diff {
+		t.Fatalf("saved comparison changed: %v", err)
 	}
 }

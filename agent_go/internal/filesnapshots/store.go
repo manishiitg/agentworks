@@ -32,15 +32,28 @@ const keepTurns = 50
 
 // Record contains no prompt, transcript or account credentials.
 type Record struct {
-	ID          string     `json:"id"`
-	ExecutionID string     `json:"execution_id"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Before      string     `json:"-"`
-	After       string     `json:"-"`
-	Status      string     `json:"status"`
-	Skipped     []string   `json:"skipped,omitempty"`
-	Omitted     []string   `json:"-"`
+	ID            string       `json:"id"`
+	ExecutionID   string       `json:"execution_id"`
+	StartedAt     time.Time    `json:"started_at"`
+	CompletedAt   *time.Time   `json:"completed_at,omitempty"`
+	Before        string       `json:"-"`
+	After         string       `json:"-"`
+	Status        string       `json:"status"`
+	Skipped       []string     `json:"skipped,omitempty"`
+	Omitted       []string     `json:"-"`
+	BeforeCapture CaptureStats `json:"before_capture"`
+	AfterCapture  CaptureStats `json:"after_capture"`
+}
+
+// CaptureStats explains partial captures without exposing file names or contents.
+type CaptureStats struct {
+	Eligible      int   `json:"eligible"`
+	Captured      int   `json:"captured"`
+	Reused        int   `json:"reused"`
+	ImportedBytes int64 `json:"imported_bytes"`
+	SizeSkipped   int   `json:"size_skipped"`
+	BudgetSkipped int   `json:"budget_skipped"`
+	ReadSkipped   int   `json:"read_skipped"`
 }
 
 // diskRecord keeps Git object names private to the server.
@@ -199,7 +212,7 @@ func (s Store) candidates(ctx context.Context) ([]string, []string, error) {
 // capture streams eligible files into Git's standard importer. Rooted reads
 // cannot follow a replaced ancestor symlink outside the Crew. Git owns object
 // hashing/deduplication; no user Git config, attributes or clean filters run.
-func (s Store) capture(ctx context.Context, ref string) (string, []string, []string, error) {
+func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats) (string, []string, []string, error) {
 	paths, omitted, err := s.candidates(ctx)
 	if err != nil {
 		return "", nil, nil, err
@@ -209,6 +222,39 @@ func (s Store) capture(ctx context.Context, ref string) (string, []string, []str
 		return "", nil, nil, err
 	}
 	defer root.Close()
+	stats.Eligible = len(paths)
+	// A large asset encountered first must not starve ordinary source files.
+	// Stat through the confined root; recheck each file before reading below.
+	skipped := []string{}
+	// Concurrent deletes are ordinary working-tree changes. An unreadable path
+	// is omitted on both sides of the comparison, never shown as a deletion.
+	skipRead := func(path string, err error) {
+		if !errors.Is(err, fs.ErrNotExist) {
+			skipped = append(skipped, path)
+			stats.ReadSkipped++
+		}
+	}
+	sizes := make(map[string]int64, len(paths))
+	present := paths[:0]
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return "", nil, nil, err
+		}
+		info, err := root.Lstat(path)
+		if err != nil {
+			skipRead(path, err)
+			continue
+		}
+		sizes[path] = info.Size()
+		present = append(present, path)
+	}
+	paths = present
+	sort.Slice(paths, func(i, j int) bool {
+		if sizes[paths[i]] == sizes[paths[j]] {
+			return paths[i] < paths[j]
+		}
+		return sizes[paths[i]] < sizes[paths[j]]
+	})
 	cmd := s.command(ctx, "fast-import", "--quiet", "--done", "--date-format=raw")
 	input, err := cmd.StdinPipe()
 	if err != nil {
@@ -221,7 +267,6 @@ func (s Store) capture(ctx context.Context, ref string) (string, []string, []str
 	}
 	// Each checkpoint is independent, so deleting an old ref permits Git GC.
 	_, err = fmt.Fprintf(input, "commit %s\ncommitter AgentWorks <snapshot@example.com> %d +0000\ndata 14\nFile snapshot\n\ndeleteall\n", ref, time.Now().Unix())
-	skipped := []string{}
 	captured := map[string]os.FileInfo{}
 	cache := s.state().files
 	var total int64
@@ -244,20 +289,22 @@ func (s Store) capture(ctx context.Context, ref string) (string, []string, []str
 		}
 		info, e := root.Lstat(path)
 		if e != nil {
-			err = e
-			break
+			skipRead(path, e)
+			continue
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, e := root.Readlink(path)
 			if e != nil {
-				err = e
-				break
+				skipRead(path, e)
+				continue
 			}
 			err = writeData("120000", path, []byte(target))
+			stats.Captured++
 			continue
 		}
-		if !info.Mode().IsRegular() || info.Size() > MaxFileBytes || total+info.Size() > maxCaptureBytes {
+		if !info.Mode().IsRegular() || info.Size() > MaxFileBytes {
 			skipped = append(skipped, path)
+			stats.SizeSkipped++
 			continue
 		}
 		if previous, ok := cache[path]; ok && os.SameFile(info, previous.info) && info.Size() == previous.info.Size() && info.ModTime() == previous.info.ModTime() && info.Mode() == previous.info.Mode() {
@@ -266,38 +313,53 @@ func (s Store) capture(ctx context.Context, ref string) (string, []string, []str
 				mode = "100755"
 			}
 			_, err = fmt.Fprintf(input, "M %s %s %s\n", mode, previous.blob, strconv.Quote(path))
-			total += info.Size()
+			// Stored blobs cost no read/import bytes, even once the budget is full.
+			stats.Reused++
+			stats.Captured++
 			captured[path] = info
+			continue
+		}
+		if total+info.Size() > maxCaptureBytes {
+			skipped = append(skipped, path)
+			stats.BudgetSkipped++
 			continue
 		}
 		f, e := root.Open(path)
 		if e != nil {
-			err = e
-			break
+			skipRead(path, e)
+			continue
 		}
 		// The open handle's size/type is authoritative if the file changed during enumeration.
 		actual, e := f.Stat()
 		if e != nil {
 			f.Close()
-			err = e
-			break
+			skipRead(path, e)
+			continue
 		}
 		if !actual.Mode().IsRegular() || actual.Size() > MaxFileBytes {
 			f.Close()
+			stats.SizeSkipped++
 			skipped = append(skipped, path)
 			continue
 		}
 		data, e := io.ReadAll(io.LimitReader(f, MaxFileBytes+1))
 		f.Close()
 		if e != nil {
-			err = e
-			break
+			skipRead(path, e)
+			continue
 		}
 		if len(data) > MaxFileBytes || total+int64(len(data)) > maxCaptureBytes {
+			if len(data) > MaxFileBytes {
+				stats.SizeSkipped++
+			} else {
+				stats.BudgetSkipped++
+			}
 			skipped = append(skipped, path)
 			continue
 		}
 		total += int64(len(data))
+		stats.ImportedBytes = total
+		stats.Captured++
 		mode := "100644"
 		if actual.Mode()&0111 != 0 {
 			mode = "100755"
@@ -380,7 +442,7 @@ func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
 		return Record{}, err
 	}
 	r := Record{ID: id, ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing"}
-	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before")
+	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", &r.BeforeCapture)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 	}
@@ -404,7 +466,7 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 		return r, nil
 	}
 	var skipped, omitted []string
-	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after")
+	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after", &r.AfterCapture)
 	r.Skipped = append(r.Skipped, skipped...)
 	r.Omitted = append(r.Omitted, omitted...)
 	now := time.Now().UTC()

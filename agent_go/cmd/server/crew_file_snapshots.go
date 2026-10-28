@@ -60,7 +60,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeTimeout)
 	defer cancel()
 	record, err := snapshot.store.Begin(ctx, executionID)
-	log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v", sessionID, executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err)
+	log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v capture=%+v", sessionID, executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err, record.BeforeCapture)
 	if err != nil && record.ID == "" {
 		api.crewTurnSnapshots.Delete(executionID)
 	}
@@ -115,7 +115,7 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		defer cancel()
 		started := time.Now()
 		record, err := snapshot.store.Finish(ctx, snapshot.executionID)
-		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err)
+		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err, record.AfterCapture)
 		if err == nil && (record.Status == "complete" || record.Status == "partial") {
 			api.publishCrewSnapshot(snapshot, record)
 		}
