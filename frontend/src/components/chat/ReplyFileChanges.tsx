@@ -136,10 +136,10 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
         {latest && reviewed && <span className="text-muted-foreground">Reviewed up to here</span>}
         {canEdit && undo === null && <button type="button" className="rounded border px-2 py-1" onClick={() => void startUndo()}>Undo this reply</button>}
         {canEdit && <span className="text-muted-foreground" aria-hidden>|</span>}
-        {commands.map(command => (
+        {canEdit && commands.map(command => (
           <button key={command.frontmatter.name} type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void ask(`command:${command.frontmatter.name}`, renderCommandPrompt(command.content, cardContext(groups)))}>{command.frontmatter.description || command.frontmatter.name}</button>
         ))}
-        <button type="button" className="rounded border border-dashed px-2 py-1 text-xs" onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}>+ Add button</button>
+        {canEdit && <button type="button" className="rounded border border-dashed px-2 py-1 text-xs" onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}>+ Add button</button>}
         {commands.some(command => asked === `command:${command.frontmatter.name}`) && <span className="text-xs text-muted-foreground">Asked in this chat.</span>}
       </div>
       {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-green-600">+{result.since_review.added}</span> <span className="text-red-500">−{result.since_review.removed}</span></p>}
