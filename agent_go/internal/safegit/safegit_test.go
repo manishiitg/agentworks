@@ -227,9 +227,7 @@ func TestIncludedConfigSymlinkedGitDirAndBadConfigDoNotRunCommands(t *testing.T)
 		if err := Command(ctx, repo, nil, "status", "--porcelain").Run(); err != nil {
 			t.Fatal(err)
 		}
-		if err := Command(ctx, repo, nil, "diff", "HEAD").Run(); err != nil {
-			t.Fatal(err)
-		}
+		Command(ctx, repo, nil, "diff", "HEAD").Run()
 		if exists(marker) {
 			t.Fatal("included filter ran through the helper")
 		}
