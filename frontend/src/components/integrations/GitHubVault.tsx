@@ -10,7 +10,7 @@ const errorText = (cause: unknown, fallback: string) => {
   return typeof data === 'string' ? data : data?.error || fallback
 }
 
-/** Connect GitHub in My Vault: the account becomes your GITHUB_TOKEN secret, so Git work in your Crews acts as you. */
+/** Connect your own GitHub account: the account becomes your GITHUB_TOKEN secret, so Git work in your Crews acts as you. */
 export function GitHubVaultCard() {
   const [status, setStatus] = useState<GitHubStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -27,7 +27,7 @@ export function GitHubVaultCard() {
     setBusy(true); setMessage(null)
     try {
       const result = (await api.delete<{ revoked_at_github: boolean }>('/api/vault/github')).data
-      setMessage(result.revoked_at_github ? 'GitHub disconnected.' : 'Removed from My Vault. GitHub did not confirm it; you can also remove the app in your GitHub settings.')
+      setMessage(result.revoked_at_github ? 'GitHub disconnected.' : 'Removed from your Vault. GitHub did not confirm it; you can also remove the app in your GitHub settings.')
       await load()
     } catch (cause) { setMessage(errorText(cause, 'Could not disconnect GitHub.')) } finally { setBusy(false) }
   }
@@ -61,7 +61,7 @@ export function GitHubConnectCompletion() {
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
     api.post<{ login: string; summary?: string }>('/api/vault/github/complete', { state })
       .then(result => setNote(`${result.data.summary || `GitHub connected as ${result.data.login}`}. Your Crews can now use it for Git work.`))
-      .catch(cause => setNote(errorText(cause, 'GitHub could not be connected. Start again from My Vault.')))
+      .catch(cause => setNote(errorText(cause, 'GitHub could not be connected. Start again from the project's Secrets panel or ask in chat.')))
   }, [])
   if (!note) return null
   return <div role="status" className="fixed right-4 top-16 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg">

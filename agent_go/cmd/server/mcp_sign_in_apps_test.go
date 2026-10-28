@@ -311,9 +311,9 @@ func withMCPAppFocus(t *testing.T, keys ...string) {
 	t.Cleanup(func() { mcpAppFocusKeys, mcpCatalogHiddenKeys = previous, previousHidden })
 }
 
-// GitHub, Google and Slack have sign-in app cards (GitHub's is for connecting GitHub in My Vault,
+// GitHub, Google and Slack have sign-in app cards (GitHub's is for connecting GitHub in your Vault,
 // PLAT-746-158 B8). Google and GitHub are not offered as MCP connectors (Google apps are the Gmail
-// tab / gog; GitHub is used for Git work through My Vault).
+// tab / gog; GitHub is used for Git work through your Vault).
 func TestSignInAppCardsAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	withMCPConnectionsRoot(t)

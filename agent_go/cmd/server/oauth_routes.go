@@ -202,7 +202,7 @@ func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Requ
 		gmailOAuthCallbackHandler(api)(w, r)
 		return
 	}
-	// A GitHub account connecting to My Vault (github_vault_oauth.go) returns here too.
+	// A GitHub account connecting as the person's own account (github_vault_oauth.go) returns here too.
 	if strings.HasPrefix(state, githubStatePrefix) {
 		api.handleGitHubOAuthCallback(w, r)
 		return

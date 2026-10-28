@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// GitHub in My Vault through the deployment's GitHub OAuth App (PLAT-746-158 B8; the decisions log, 2026-10-28).
+// A person's own GitHub account through the deployment's GitHub OAuth App (PLAT-746-158 B8; the decisions log, 2026-10-28).
 // An admin stores the app once (sign-in app "github"); a person connects their own GitHub account in the browser.
 // The token becomes the person's own Vault secret GITHUB_TOKEN in their "My accounts" vault: the same object the
 // paste path stores, so status, removal and delivery have one store. A Crew gets it the way secrets reach work
@@ -248,12 +248,12 @@ func githubApp() (clientID, clientSecret string, ok bool) {
 	return strings.TrimSpace(app.ClientID), strings.TrimSpace(app.ClientSecret), true
 }
 
-const githubNoAppMessage = "This server has no GitHub app set up yet. Ask an administrator to add it in Company sign-in setup, or paste a GitHub token as the secret GITHUB_TOKEN in My Vault."
+const githubNoAppMessage = "This server has no GitHub app set up yet. Ask an administrator to add it in Company sign-in setup, or give me a GitHub token to store as your own secret GITHUB_TOKEN (in chat or the project's Secrets panel)."
 
 // startGitHubConnect returns the GitHub page where the person approves the connection.
 func startGitHubConnect(person, redirect string) (string, error) {
 	if !personVaultActive(person) {
-		return "", errors.New("Your account cannot use My Vault.")
+		return "", errors.New("Your account cannot keep its own Vault items.")
 	}
 	clientID, _, ok := githubApp()
 	if !ok {
@@ -301,7 +301,7 @@ func (api *StreamingAPI) handleGitHubOAuthCallback(w http.ResponseWriter, r *htt
 	if pending == nil {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `<!DOCTYPE html><html><head><title>GitHub</title></head><body style="font-family: sans-serif; text-align: center; padding: 48px;"><h1>This GitHub link has expired</h1><p>Start again with Connect GitHub in My Vault.</p></body></html>`)
+		fmt.Fprint(w, `<!DOCTYPE html><html><head><title>GitHub</title></head><body style="font-family: sans-serif; text-align: center; padding: 48px;"><h1>This GitHub link has expired</h1><p>Start again with Connect GitHub in your Vault.</p></body></html>`)
 		return
 	}
 	http.Redirect(w, r, "/?"+githubCompleteParm+"="+url.QueryEscape(state), http.StatusFound)
@@ -355,7 +355,7 @@ func (api *StreamingAPI) completeGitHubConnect(ctx context.Context, person, stat
 	vaultID, secretName, err := githubStoreToken(ctx, api, person, token)
 	if err != nil {
 		log.Printf("[GITHUB_VAULT] saving the account failed person=%s", person)
-		return nil, errors.New("Your GitHub account could not be saved in My Vault. Try again.")
+		return nil, errors.New("Your GitHub account could not be saved. Try again.")
 	}
 	rec := githubAccountRecord{Login: login, Scopes: scopes, VaultID: vaultID, SecretName: secretName, ConnectedAt: time.Now().UTC().Format(time.RFC3339)}
 	rec.Orgs, rec.NeedsApproval = githubOrgAccess(ctx, token)
@@ -439,12 +439,12 @@ func gitHubStatus(ctx context.Context, person string) map[string]any {
 	return out
 }
 
-// disconnectGitHub revokes the token at GitHub first, then removes it from My Vault even when the revoke fails, and
+// disconnectGitHub revokes the token at GitHub first, then removes it from your Vault even when the revoke fails, and
 // reports whether GitHub confirmed the revoke.
 func (api *StreamingAPI) disconnectGitHub(ctx context.Context, person string) (bool, error) {
 	rec := readGitHubRecord(person)
 	if rec == nil {
-		return false, errors.New("No GitHub account is connected in My Vault.")
+		return false, errors.New("No GitHub account is connected.")
 	}
 	revoked := false
 	clientID, clientSecret, ok := githubApp()
@@ -464,7 +464,7 @@ func (api *StreamingAPI) disconnectGitHub(ctx context.Context, person string) (b
 		}
 	}
 	if err := githubRemoveToken(ctx, api, person, rec.VaultID); err != nil {
-		return revoked, errors.New("Your GitHub account could not be removed from My Vault. Try again.")
+		return revoked, errors.New("Your GitHub account could not be removed. Try again.")
 	}
 	if err := os.Remove(githubRecordPath(person)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return revoked, err
@@ -541,7 +541,7 @@ func (api *StreamingAPI) githubVaultOperation(ctx context.Context, person, opera
 		if err != nil {
 			return "", err
 		}
-		out = map[string]any{"auth_url": link, "next": "Open this link in a browser where you are signed in to AgentWorks, approve on GitHub, and the account is saved in your My Vault. It expires in 10 minutes."}
+		out = map[string]any{"auth_url": link, "next": "Open this link in a browser where you are signed in to AgentWorks, approve on GitHub, and the account is saved in your your Vault. It expires in 10 minutes."}
 	case "github_disconnect":
 		revoked, err := api.disconnectGitHub(ctx, person)
 		if err != nil {
@@ -549,7 +549,7 @@ func (api *StreamingAPI) githubVaultOperation(ctx context.Context, person, opera
 		}
 		note := "GitHub confirmed the access was revoked."
 		if !revoked {
-			note = "Removed from My Vault. GitHub did not confirm the revoke; you can also remove the app under GitHub Settings, Applications."
+			note = "Removed from your Vault. GitHub did not confirm the revoke; you can also remove the app under GitHub Settings, Applications."
 		}
 		out = map[string]any{"removed": true, "revoked_at_github": revoked, "next": note}
 	default:

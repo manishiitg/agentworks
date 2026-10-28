@@ -17,7 +17,7 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-// PLAT-746-158 B8. Connecting GitHub in My Vault: only the person who started a connection can finish it (a link
+// PLAT-746-158 B8. Connecting GitHub in your Vault: only the person who started a connection can finish it (a link
 // sent to a colleague must not put the colleague's account into the starter's vault), a connection finishes once,
 // the token is stored as the person's GITHUB_TOKEN and reaches the owner's all-apps Crews, disconnect revokes at
 // GitHub, and no code, token or app secret is ever logged.

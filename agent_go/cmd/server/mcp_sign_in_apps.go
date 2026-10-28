@@ -66,7 +66,7 @@ var mcpAppLabels = map[string]string{"google": "Google", "github": "GitHub", "sl
 // Drive, Calendar, Docs, Sheets, Slides, used through the server-side gog tool; see
 // docs/design/google_accounts_gog.md). Slack uses its confidential user OAuth
 // endpoints through an internal or Marketplace app. GitHub is the OAuth App people sign in through
-// to connect their own GitHub account in My Vault for Git work (github_vault_oauth.go); it serves no
+// to connect their own GitHub account for Git work (github_vault_oauth.go); it serves no
 // MCP server, so it is always listed (mcpAppStandaloneKeys).
 var mcpAppFocusKeys = map[string]bool{"google": true, "slack": true, "github": true}
 

@@ -650,7 +650,7 @@
     "family": "vault",
     "name": "mine_github_status",
     "member": "manage_my_vaults__github_status",
-    "description": "See whether your GitHub account is connected in My Vault, and which GitHub login it is.",
+    "description": "See whether your GitHub account is connected, and which GitHub login it is.",
     "source": "manage_my_vaults",
     "source_action": "github_status",
     "source_key": "operation"
@@ -659,7 +659,7 @@
     "family": "vault",
     "name": "mine_github_connect",
     "member": "manage_my_vaults__github_connect",
-    "description": "Connect your GitHub account to My Vault: returns a link to approve on GitHub, opened where you are signed in to AgentWorks. Git and gh in your Crews then act as you.",
+    "description": "Connect your own GitHub account: returns a link to approve on GitHub, opened where you are signed in to AgentWorks. Git and gh in your Crews then act as you.",
     "source": "manage_my_vaults",
     "source_action": "github_connect",
     "source_key": "operation"
@@ -668,7 +668,7 @@
     "family": "vault",
     "name": "mine_github_disconnect",
     "member": "manage_my_vaults__github_disconnect",
-    "description": "Disconnect your GitHub account: revokes it at GitHub and removes it from My Vault.",
+    "description": "Disconnect your GitHub account: revokes it at GitHub and removes it from your Vault.",
     "source": "manage_my_vaults",
     "source_action": "github_disconnect",
     "source_key": "operation"
