@@ -306,14 +306,14 @@ function RepoSection({ repo, workspacePath, preferenceKey, onAsk, run, busy, err
         <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-emerald-500" />No changes. The working tree is clean.</p>
       )}
       <ConflictSection repo={repo} run={run} busy={busy} onAsk={onAsk} />
-      <Section
+      <GitSection
         title="Staged Changes"
         count={staged.length}
         action={<button type="button" disabled={busy} title="Unstage all" aria-label="Unstage all" onClick={() => { void run(repo, { op: 'unstage', all: true }) }} className="rounded p-1 hover:bg-background hover:text-foreground"><Minus className="h-3.5 w-3.5" /></button>}
       >
         {staged.map(file => <FileRow key={`s:${file.path}`} repo={repo} file={file} staged workspacePath={workspacePath} busy={busy} run={run} />)}
       </GitSection>
-      <Section
+      <GitSection
         title="Changes"
         count={unstaged.length}
         action={<button type="button" disabled={busy} title="Stage all" aria-label="Stage all" onClick={() => { void run(repo, { op: 'stage', all: true }) }} className="rounded p-1 hover:bg-background hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>}
