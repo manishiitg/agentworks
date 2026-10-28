@@ -128,6 +128,18 @@ func (s Store) command(ctx context.Context, args ...string) *exec.Cmd {
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + s.dir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
 	return cmd
 }
+
+// Unchanged reports whether the reply's saved before and after states hold the same files: such a reply has nothing
+// to review, so no changed-files card is published for it (owner, 2026-10-28: "still shows 0").
+func (s Store) Unchanged(ctx context.Context, r Record) bool {
+	if r.Before == "" || r.After == "" {
+		return false
+	}
+	if r.Before == r.After {
+		return true
+	}
+	return s.command(ctx, "--literal-pathspecs", "diff", "--quiet", "--no-ext-diff", "--no-textconv", r.Before, r.After, "--").Run() == nil
+}
 func (s Store) init(ctx context.Context) error {
 	if err := os.MkdirAll(filepath.Join(s.dir(), "turns"), 0700); err != nil {
 		return err

@@ -172,6 +172,13 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, record 
 	if api.eventStore == nil || end <= snapshot.startSequence {
 		return
 	}
+	checkCtx, cancelCheck := context.WithTimeout(context.Background(), 5*time.Second)
+	unchanged := snapshot.store.Unchanged(checkCtx, record)
+	cancelCheck()
+	if unchanged {
+		log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s skipped=no_changes", snapshot.sessionID, snapshot.executionID, record.ID)
+		return
+	}
 	api.trackedWorkflowExecutionsMux.Lock()
 	if execution := api.trackedWorkflowExecutions[snapshot.executionID]; execution != nil {
 		if execution.Metadata == nil {
