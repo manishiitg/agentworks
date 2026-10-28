@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,9 +79,17 @@ func migrateWorkflowAgentStepsFromDisk(roots []string, apply, drained, prepareOn
 		defer root.Close()
 		err = fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
+				// A folder this account cannot open (another person's private cache) holds no plan to convert.
+				if entry != nil && entry.IsDir() && errors.Is(walkErr, fs.ErrPermission) {
+					return fs.SkipDir
+				}
 				return walkErr
 			}
 			if entry.IsDir() {
+				// Hidden folders (tool caches such as .cache) never hold a workflow plan.
+				if name != "." && strings.HasPrefix(entry.Name(), ".") {
+					return fs.SkipDir
+				}
 				switch entry.Name() {
 				case "runs", "releases", "versions", "backup", "backups", "migration-backups", "moved-workflows", ".trash", ".calls", ".relay_releases", ".git", "node_modules", ".sandbox-cache":
 					return fs.SkipDir
