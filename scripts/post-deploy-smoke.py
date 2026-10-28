@@ -21,7 +21,7 @@ import time
 import uuid
 
 
-PROMPT = ("Post-deploy smoke check. Call this Crew's owners tool once to list the Crew owners, "
+PROMPT = ("Post-deploy smoke check. Call workspace action=owners once for this Crew to list its owners, "
           "then reply with exactly OWNERS=<number of owners, counting the main owner and co-owners> and nothing else.")
 
 
