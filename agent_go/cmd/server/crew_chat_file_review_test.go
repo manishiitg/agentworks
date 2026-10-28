@@ -209,25 +209,40 @@ func TestUndoReplyRefusesReadTokenAndNonOwner(t *testing.T) {
 	}
 }
 
-// PLAT-746-158: applying an undo is refused while a turn runs in the chat;
-// the preview is not (it reaches the owner check instead).
+// PLAT-746-158: applying an undo is refused while a turn runs in the chat, but
+// only after the owner check (a non-owner never learns the chat is busy); the
+// preview stays available.
 func TestUndoReplyApplyRefusedWhileTurnRunning(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	api, _ := newDurableChatAPI(t, "chat-a", "alice")
+	const root = "Crew/undo-crew"
+	crewOwners.mu.Lock()
+	crewOwners.entries = map[string]crewOwnerEntry{}
+	crewOwners.read = func(_ context.Context, r string) string {
+		if r == root {
+			return "alice"
+		}
+		return ""
+	}
+	crewOwners.mu.Unlock()
+	t.Cleanup(func() { crewOwners.mu.Lock(); crewOwners.read = nil; crewOwners.entries = map[string]crewOwnerEntry{}; crewOwners.mu.Unlock() })
 	store := filesnapshots.Store{Root: t.TempDir(), Private: t.TempDir()}
 	all := func(string) bool { return true }
 	api.setSessionBusy("chat-a", true)
-	call := func(method, op string) int {
+	call := func(user, method, op string) int {
 		req := httptest.NewRequest(method, "/?session_id=chat-a", nil)
-		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "bob", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, AllCrews: true}}))
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, AllCrews: true}}))
 		w := httptest.NewRecorder()
-		api.serveCrewReplyUndo(w, req, "Crew/not-theirs", "", op, filesnapshots.ID("x"), store, all, all)
+		api.serveCrewReplyUndo(w, req, root, "", op, filesnapshots.ID("x"), store, all, all)
 		return w.Code
 	}
-	if code := call("POST", "snapshot_undo"); code != 409 {
-		t.Fatalf("apply while busy: %d", code)
+	if code := call("bob", "POST", "snapshot_undo"); code != 403 {
+		t.Fatalf("non-owner while busy: %d", code)
 	}
-	if code := call("GET", "snapshot_undo_preview"); code == 409 {
+	if code := call("alice", "POST", "snapshot_undo"); code != 409 {
+		t.Fatalf("owner apply while busy: %d", code)
+	}
+	if code := call("alice", "GET", "snapshot_undo_preview"); code == 409 {
 		t.Fatal("preview must stay available while busy")
 	}
 }

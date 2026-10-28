@@ -32,10 +32,6 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 		externalError(w, 403, "insufficient_scope", "Undoing a reply's file changes needs crews:write.")
 		return
 	}
-	if apply && api.sessionTurnRunning(sessionID) {
-		externalError(w, http.StatusConflict, "turn_running", "Wait until this reply finishes, or press Stop, then Undo.")
-		return
-	}
 	if !crewProjectOwnedByCaller(GetUserIDFromContext(r.Context()), root) {
 		externalError(w, 403, "forbidden", "Only the Crew's owner can undo a reply's file changes.")
 		return
@@ -46,6 +42,10 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 	}
 	if !api.crewSessionCanControl(r, sessionID) {
 		externalError(w, 403, "forbidden", "Undo changes from a chat you can write in.")
+		return
+	}
+	if apply && api.sessionTurnRunning(sessionID) {
+		externalError(w, http.StatusConflict, "turn_running", "Wait until this reply finishes, or press Stop, then Undo.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), crewSnapshotTimeout*2)
