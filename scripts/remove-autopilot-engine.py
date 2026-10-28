@@ -199,7 +199,15 @@ def migrate_database(path, backup):
         db.execute("PRAGMA foreign_keys=OFF")
         with db:
             db.execute("BEGIN")
-            if "pulse_goal_observations" in tables:
+            if "pulse_goal_observations" in tables and "goal_observations" in tables:
+                # An earlier activation already renamed it and an older release recreated the old table:
+                # keep both sets of rows in goal_observations.
+                columns = [row[1] for row in db.execute("PRAGMA table_info(goal_observations)")]
+                shared = [c for c in (row[1] for row in db.execute("PRAGMA table_info(pulse_goal_observations)")) if c in columns]
+                names = ", ".join(quote(c) for c in shared)
+                db.execute(f"INSERT OR IGNORE INTO goal_observations ({names}) SELECT {names} FROM pulse_goal_observations")
+                db.execute("DROP TABLE pulse_goal_observations")
+            elif "pulse_goal_observations" in tables:
                 db.execute("ALTER TABLE pulse_goal_observations RENAME TO goal_observations")
             if has_source:
                 db.execute("UPDATE report_human_inputs SET source='goal' WHERE source='pulse'")

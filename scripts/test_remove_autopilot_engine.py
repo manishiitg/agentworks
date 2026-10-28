@@ -1,6 +1,7 @@
 """PLAT-825-97: retiring the engine must preserve actual Goal work and routing."""
 import importlib.util
 import json
+import pathlib
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -104,6 +105,20 @@ class RetireEngineTest(unittest.TestCase):
             self.assertEqual(second["workflow_configs"], 0)
             self.assertEqual(second["databases"], 0)
             self.assertFalse((Path(directory) / "second-backup").exists())
+
+    def test_rerun_after_rollback_merges_recreated_old_observation_table(self):
+        # A failed activation renamed the table, then the older release that kept running recreated it.
+        with tempfile.TemporaryDirectory() as tmp:
+            database = pathlib.Path(tmp) / "db.sqlite"
+            with sqlite3.connect(database) as db:
+                db.execute("CREATE TABLE goal_observations (id INTEGER PRIMARY KEY, value REAL)")
+                db.execute("INSERT INTO goal_observations VALUES (1, 42)")
+                db.execute("CREATE TABLE pulse_goal_observations (id INTEGER PRIMARY KEY, value REAL)")
+                db.execute("INSERT INTO pulse_goal_observations VALUES (1, 42), (2, 7)")
+            removal.migrate_database(database, pathlib.Path(tmp) / "backup" / "db.sqlite")
+            with sqlite3.connect(database) as db:
+                self.assertEqual(db.execute("SELECT id, value FROM goal_observations ORDER BY id").fetchall(), [(1, 42), (2, 7)])
+                self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='pulse_goal_observations'").fetchone())
 
     def test_consolidates_after_run_choices_once_with_backup_and_flow_exclusion(self):
         # PLAT-825-112: paused schedules do not turn automation on; current
