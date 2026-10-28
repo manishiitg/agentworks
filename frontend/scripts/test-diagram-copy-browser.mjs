@@ -24,12 +24,13 @@ try {
     } } })
   })
   const results = []
-  for (const [theme, width] of [['dark', 1000], ['light', 360]]) {
+  for (const type of ['diagram', 'swimlane', 'sequence']) for (const [theme, width] of [['dark', 1000], ['light', 360]]) {
     await page.setViewportSize({ width, height: 900 })
-    await page.goto(server.resolvedUrls.local[0] + `scripts/test-fixtures/diagram-copy-qa.html?${theme}`)
+    await page.goto(server.resolvedUrls.local[0] + `scripts/test-fixtures/diagram-copy-qa.html?${theme}&type=${type}`)
     const copy = page.getByRole('button', { name: 'Copy diagram as image', exact: true })
     await copy.click()
-    await page.getByRole('status').filter({ hasText: 'Copied image. Paste it into Slack.' }).waitFor()
+    await page.waitForFunction(() => document.querySelector('[role="status"]')?.textContent)
+    assert.equal(await page.getByRole('status').textContent(), 'Copied image. Paste it into Slack.')
     const result = await page.evaluate(async () => {
       const blob = window.copiedPng
       const image = await createImageBitmap(blob)
@@ -40,28 +41,31 @@ try {
       const viewport = document.querySelector('[data-diagram-viewport]')
       const figure = viewport.closest('figure')
       const body = viewport.firstElementChild
-      const last = document.querySelector('[data-diagram-node="step-7"]')
-      const scale = image.height / (body.offsetHeight + figure.querySelector('figcaption').offsetHeight + 2)
-      const x = (last.getBoundingClientRect().left - figure.getBoundingClientRect().left + last.offsetWidth / 2) * scale
-      const y = (last.getBoundingClientRect().top - figure.getBoundingClientRect().top + last.offsetHeight / 2) * scale
-      const card = Array.from(ctx.getImageData(x, y, 1, 1).data)
-      const background = Array.from(ctx.getImageData(8, image.height - 8, 1, 1).data)
       const pixels = ctx.getImageData(0, 0, image.width, image.height).data
-      const colors = new Set()
-      for (let i = 0; i < pixels.length; i += 256) colors.add(`${pixels[i]},${pixels[i + 1]},${pixels[i + 2]}`)
+      const colors = new Set(), bottomColors = new Set(), rightColors = new Set()
+      let opaque = true
+      for (let i = 0; i < pixels.length; i += 64) {
+        const color = `${pixels[i]},${pixels[i + 1]},${pixels[i + 2]}`
+        colors.add(color)
+        const pixel = i / 4, y = Math.floor(pixel / image.width), x = pixel % image.width
+        if (y > image.height * 0.75) bottomColors.add(color)
+        if (x > image.width * 0.75) rightColors.add(color)
+        if (pixels[i + 3] !== 255) opaque = false
+      }
       const data = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(blob) })
-      return { type: blob.type, width: image.width, height: image.height, bodyHeight: body.offsetHeight, viewportHeight: viewport.clientHeight, card, background, colors: colors.size, gesture: window.clipboardGesture, data }
+      return { type: blob.type, width: image.width, height: image.height, bodyHeight: body.offsetHeight, bodyWidth: body.offsetWidth, viewportHeight: viewport.clientHeight, viewportWidth: viewport.clientWidth, colors: colors.size, bottomColors: bottomColors.size, rightColors: rightColors.size, opaque, gesture: window.clipboardGesture, data }
     })
     assert.equal(result.type, 'image/png')
     assert.equal(result.gesture, true, 'clipboard write starts in the click gesture')
-    assert.ok(result.bodyHeight > result.viewportHeight, 'fixture really scrolls')
+    assert.ok(result.bodyHeight > result.viewportHeight || result.bodyWidth > result.viewportWidth, 'fixture really scrolls')
     assert.ok(result.height > result.bodyHeight, 'PNG includes the full body and title')
-    assert.notDeepEqual(result.card, result.background, 'the offscreen final node is rendered')
-    assert.equal(result.card[3], 255, 'export has an opaque theme background')
+    if (result.bodyWidth > result.viewportWidth) assert.ok(result.rightColors > 8, 'offscreen right content is rendered')
+    if (result.bodyHeight > result.viewportHeight) assert.ok(result.bottomColors > 8, 'offscreen bottom content is rendered')
+    assert.equal(result.opaque, true, 'export has an opaque theme background')
     assert.ok(result.colors > 12, 'PNG includes styled text, boxes and connections')
-    await writeFile(path.join(output, `diagram-copy-${theme}.png`), Buffer.from(result.data.split(',')[1], 'base64'))
+    await writeFile(path.join(output, `diagram-copy-${type}-${theme}.png`), Buffer.from(result.data.split(',')[1], 'base64'))
     delete result.data
-    results.push({ theme, ...result })
+    results.push({ format: type, theme, ...result })
   }
   await page.evaluate(() => { window.failClipboard = true })
   await page.getByRole('button', { name: 'Copy diagram as image', exact: true }).click()
@@ -72,7 +76,7 @@ try {
   await download.saveAs(path.join(output, 'diagram-download-fallback.png'))
   assert.deepEqual(errors, [])
   await writeFile(path.join(output, 'diagram-copy-results.json'), JSON.stringify(results, null, 2))
-  console.log('Diagram PNG: dark/light, desktop/phone, full offscreen content, clipboard gesture and download fallback passed.')
+  console.log('Flow, swimlane and sequence PNGs: dark/light, desktop/phone, full offscreen content, clipboard gesture and download fallback passed.')
 } finally {
   await browser?.close()
   await server.close()

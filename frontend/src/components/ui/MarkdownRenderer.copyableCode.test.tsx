@@ -239,3 +239,28 @@ it('opens a known same-server dashboard link in its server-resolved Crew panel (
     vi.unstubAllGlobals()
   }
 })
+
+
+it('renders native swimlanes and ordered call/reply sequences with strict actor references', async () => {
+  const actors = [{ id: 'person', title: 'Person' }, { id: 'agent', title: '<script>Agent</script>' }]
+  const sequence = { type: 'sequence', title: 'A question', participants: actors, messages: [{ from: 'person', to: 'agent', label: 'Ask' }, { from: 'agent', to: 'person', label: 'Answer', reply: true }] }
+  const swimlane = { type: 'swimlane', title: 'Who does what', lanes: actors, steps: [{ id: 'ask', lane: 'person', title: 'Ask' }, { id: 'answer', lane: 'agent', title: 'Answer' }] }
+  const container = document.createElement('div'), root = createRoot(container)
+  try {
+    for (const spec of [sequence, swimlane]) {
+      await act(async () => root.render(<MarkdownRenderer content={'```chat-ui\n' + JSON.stringify(spec) + '\n```'} chatElements />))
+      expect(container.querySelector(`[data-chat-element="${spec.type}"]`)).not.toBeNull()
+      expect(container.querySelector('script')).toBeNull()
+      expect(container.textContent).toContain('<script>Agent</script>')
+      expect(container.querySelector('[data-diagram-viewport]')).not.toBeNull()
+      expect(container.querySelector('[aria-label="Download diagram image"], [aria-label="Copy diagram as image"]')).not.toBeNull()
+    }
+    const prefix = JSON.stringify({ type: 'sequence', title: 'Streaming calls', participants: actors }).slice(0, -1) + ',"messages":['
+    await act(async () => root.render(<MarkdownRenderer content={'```chat-ui\n' + prefix + JSON.stringify(sequence.messages[0]) + ',{"from":"agent"'} chatElements chatElementStream="progressive" />))
+    expect(container.querySelectorAll('[data-sequence-message]')).toHaveLength(1)
+    expect(parseChatElement(JSON.stringify({ ...sequence, participants: [actors[0], actors[0]] }))).toBeNull()
+    expect(parseChatElement(JSON.stringify({ ...sequence, messages: [{ ...sequence.messages[0], to: 'missing' }] }))).toBeNull()
+    expect(parseChatElement(JSON.stringify({ ...swimlane, steps: [{ ...swimlane.steps[0], lane: 'missing' }] }))).toBeNull()
+    expect(parseChatElement(JSON.stringify({ ...swimlane, steps: [swimlane.steps[0], swimlane.steps[0]] }))).toBeNull()
+  } finally { await act(async () => root.unmount()) }
+})

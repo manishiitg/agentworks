@@ -68,7 +68,7 @@ export function parseStreamingChatElement(source: string): ChatElement | null {
       skip()
       if (source[cursor++] !== ':') break
       skip()
-      if (['data', 'items', 'nodes', 'edges'].includes(key) && source[cursor] === '[') {
+      if (['data', 'items', 'nodes', 'edges', 'lanes', 'steps', 'participants', 'messages'].includes(key) && source[cursor] === '[') {
         const records: unknown[] = []
         fields[key] = records
         cursor++
@@ -112,6 +112,14 @@ export function parseStreamingChatElement(source: string): ChatElement | null {
     if (fields.type === 'diagram' && incompleteArray === 'nodes' && Array.isArray(fields.nodes) && Array.isArray(fields.edges)) {
       const ids = new Set(fields.nodes.map(node => node?.id))
       fields.edges = fields.edges.filter(edge => ids.has(edge?.from) && ids.has(edge?.to))
+    }
+    if (fields.type === 'sequence' && incompleteArray === 'participants' && Array.isArray(fields.participants) && Array.isArray(fields.messages)) {
+      const ids = new Set(fields.participants.map(actor => actor?.id))
+      fields.messages = fields.messages.filter(message => ids.has(message?.from) && ids.has(message?.to))
+    }
+    if (fields.type === 'swimlane' && incompleteArray === 'lanes' && Array.isArray(fields.lanes) && Array.isArray(fields.steps)) {
+      const ids = new Set(fields.lanes.map(lane => lane?.id))
+      fields.steps = fields.steps.filter(step => ids.has(step?.lane))
     }
     return parseChatElement(JSON.stringify(fields))
   } catch { return null }

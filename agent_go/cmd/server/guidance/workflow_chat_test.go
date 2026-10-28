@@ -13,6 +13,9 @@ func TestWorkflowChatProcedurePointersResolveInEachMode(t *testing.T) {
 		for _, file := range skill.SupportingFiles {
 			files[file.RelPath] = string(file.Content)
 		}
+		if files["references/chat-visuals.md"] == "" {
+			t.Fatalf("mode=%s lacks the shared visual format reference", mode)
+		}
 		operations := files["references/workflow-chat.md"]
 		if operations == "" || !strings.Contains(skill.Content, "references/workflow-chat.md") {
 			t.Fatal("operations procedure is not attached/indexed")

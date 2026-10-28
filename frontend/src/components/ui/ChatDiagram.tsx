@@ -1,7 +1,6 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import dagre from 'dagre'
-import { Check, Copy, Download, Loader2 } from 'lucide-react'
-import { diagramPng, downloadDiagram } from './exportChatDiagram'
+import { ChatDiagramFrame } from './ChatDiagramFrame'
 import type { ChatElement, DiagramNode } from './chatElementSpec'
 
 type Point = { x: number; y: number }
@@ -46,11 +45,6 @@ function roundedPath(points: Point[]) {
 export function ChatDiagram({ spec }: { spec: Spec }) {
   const arrow = `chat-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   const region = useRef<HTMLDivElement>(null)
-  const figure = useRef<HTMLElement>(null)
-  const [exporting, setExporting] = useState(false)
-  const [exportStatus, setExportStatus] = useState('')
-  const [downloadOnly, setDownloadOnly] = useState(false)
-  const canCopy = typeof ClipboardItem !== 'undefined' && typeof navigator !== 'undefined' && !!navigator.clipboard?.write && !downloadOnly
   const [groupColumns, setGroupColumns] = useState(3)
   // Partial JSON may change every token without adding a complete node/edge.
   // Keep geometry stable until the validated diagram itself changes.
@@ -97,43 +91,9 @@ export function ChatDiagram({ spec }: { spec: Spec }) {
     observer.observe(host)
     return () => observer.disconnect()
   }, [hasLayout])
-  const exportImage = async () => {
-    if (!figure.current || !layout || exporting) return
-    setExporting(true)
-    setExportStatus('')
-    const png = diagramPng(figure.current, layout.width, layout.height)
-    // Clipboard rejection may happen before rendering finishes.
-    void png.catch(() => {})
-    try {
-      if (canCopy) {
-        // Start the write in the click gesture; rendering supplies its PNG later.
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
-        setExportStatus('Copied image. Paste it into Slack.')
-      } else {
-        downloadDiagram(await png, spec.title)
-        setExportStatus('Image downloaded.')
-      }
-    } catch {
-      if (canCopy && await png.then(() => true, () => false)) {
-        setDownloadOnly(true)
-        setExportStatus('Copy unavailable. Download the image instead.')
-      } else setExportStatus('Could not create the image. Try again.')
-    } finally { setExporting(false) }
-  }
   if (!layout) return <p className="my-4 text-sm text-muted-foreground">This diagram could not be arranged. Try fewer connections.</p>
-  return <figure ref={figure} className="not-prose my-4 w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-muted/20 text-foreground" data-chat-element="diagram">
-    <figcaption className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 text-sm font-semibold">
-      <span className="min-w-0 flex-1">{spec.title}</span>
-      <span data-diagram-export-controls className="flex flex-wrap items-center gap-2">
-        <span role="status" className="text-xs font-normal text-muted-foreground">{exportStatus}</span>
-        <button type="button" disabled={exporting} onClick={() => { void exportImage() }} aria-label={canCopy ? 'Copy diagram as image' : 'Download diagram image'} title={canCopy ? 'Copy image to paste into Slack' : 'Download PNG image'} className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
-          {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : !canCopy ? <Download className="h-3.5 w-3.5" /> : exportStatus.startsWith('Copied') ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          {canCopy ? 'Copy image' : 'Download image'}
-        </button>
-      </span>
-    </figcaption>
-    <div ref={region} data-diagram-viewport className="max-h-[48rem] overflow-auto" role="region" aria-label={spec.title} tabIndex={0}>
-      <div className="relative mx-auto" style={{ width: layout.width, height: layout.height }}>
+  return <ChatDiagramFrame title={spec.title} width={layout.width} height={layout.height} viewportRef={region}
+    description={<ul>{spec.edges.map((edge, index) => <li key={index}>{spec.nodes.find(node => node.id === edge.from)?.title} {edge.bidirectional ? 'connects both ways to' : 'connects to'} {spec.nodes.find(node => node.id === edge.to)?.title}{edge.label ? `: ${edge.label}` : ''}</li>)}</ul>}>
         <svg className="absolute inset-0 text-muted-foreground/70" width={layout.width} height={layout.height} aria-hidden="true">
           <defs><marker id={arrow} viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8Z" fill="currentColor" /></marker></defs>
           {layout.edges.map(({ edge, points, x, y, width, height }, index) => <g key={index}>
@@ -155,8 +115,5 @@ export function ChatDiagram({ spec }: { spec: Spec }) {
             </div>)}
           </div>}
         </section>)}
-      </div>
-    </div>
-    <ul className="sr-only">{spec.edges.map((edge, index) => <li key={index}>{spec.nodes.find(node => node.id === edge.from)?.title} {edge.bidirectional ? 'connects both ways to' : 'connects to'} {spec.nodes.find(node => node.id === edge.to)?.title}{edge.label ? `: ${edge.label}` : ''}</li>)}</ul>
-  </figure>
+  </ChatDiagramFrame>
 }

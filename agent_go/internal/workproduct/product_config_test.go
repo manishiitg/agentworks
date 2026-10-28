@@ -176,6 +176,15 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 			t.Fatalf("feature skill %s has no readable source", name)
 		}
 	}
+	for _, mode := range []string{"builder", "run"} {
+		if !contains(manifest.Chat[mode].Skills, "chat-visuals") {
+			t.Fatalf("%s chat cannot discover the presentation skill", mode)
+		}
+	}
+	visuals := skills.LoadAttachable("", []string{"chat-visuals"})
+	if len(visuals) != 1 || len(visuals[0].SupportingFiles) != 1 || visuals[0].SupportingFiles[0].RelPath != "references/formats.md" {
+		t.Fatal("native visual formats must be readable through the existing skill resolver")
+	}
 	dashboard := skills.LoadAttachable("", []string{"panel-dashboard"})[0]
 	sources := map[string]bool{}
 	for _, file := range dashboard.SupportingFiles {
