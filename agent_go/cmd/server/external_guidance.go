@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
@@ -143,23 +144,83 @@ var externalToolWord = regexp.MustCompile(`[a-z][a-z0-9]*(?:_[a-z0-9]+)+`)
 // verb (Builder tools registered in code are not all in the product lists).
 func externalNamedOperationsFor(claims *UserClaims, body string) []string {
 	// call_tool, get_api_spec and search_tools are this connection's own entry points.
-	exposed := map[string]bool{"call_tool": true, "get_api_spec": true, "search_tools": true}
-	if catalog, err := externalTools(); err == nil {
-		for _, tool := range catalog {
-			if claims == nil || externalTokenAllows(claims, tool) {
-				exposed[tool.Name] = true
-				properties, _ := tool.InputSchema["properties"].(map[string]any)
-				action, _ := properties["action"].(map[string]any)
-				names, _ := strictStringSliceToolArg(action["enum"])
-				for _, name := range names {
-					// An explicitly qualified action is available through its
-					// admitted parent, even when it is not a standalone tool.
-					if externalTextMentions(body, tool.Name+" action="+name) {
-						exposed[name] = true
-					}
-				}
+	entry := map[string]bool{"call_tool": true, "get_api_spec": true, "search_tools": true}
+	index := externalOperationIndexFor()
+	allowed := func(tool externalTool) bool { return claims == nil || externalTokenAllows(claims, tool) }
+	var names []string
+	for _, name := range externalOperationWords(body) {
+		if entry[name] {
+			continue
+		}
+		exposed := false
+		for _, tool := range index.byName[name] {
+			if allowed(tool) {
+				exposed = true
+				break
 			}
 		}
+		// An explicitly qualified action is available through its admitted
+		// parent, even when it is not a standalone tool.
+		for _, tool := range index.byAction[name] {
+			if exposed {
+				break
+			}
+			exposed = externalTextMentions(body, tool.Name+" action="+name) && allowed(tool)
+		}
+		if !exposed {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// externalOperationIndex groups the fixed external catalog by tool name and by action, so a guide checks only the
+// operations it mentions (checking every tool and action per guide made each help call take seconds).
+type externalOperationIndex struct {
+	byName, byAction map[string][]externalTool
+}
+
+var (
+	externalOperationIndexMu    sync.Mutex
+	externalOperationIndexBuilt bool
+	externalOperationIndexMap   externalOperationIndex
+	// Guide text -> sorted operation-like names it mentions. Guides are the fixed embedded topics; the cap only
+	// guards against a caller passing ever-new text.
+	externalOperationWordCache sync.Map
+	externalOperationWordCount atomic.Int64
+)
+
+// The external catalog is built once per process (externalCatalogOnce), so the index is built once from a
+// successful catalog; a failed read is not cached and is tried again on the next call.
+func externalOperationIndexFor() externalOperationIndex {
+	externalOperationIndexMu.Lock()
+	defer externalOperationIndexMu.Unlock()
+	if externalOperationIndexBuilt {
+		return externalOperationIndexMap
+	}
+	index := externalOperationIndex{byName: map[string][]externalTool{}, byAction: map[string][]externalTool{}}
+	catalog, err := externalTools()
+	if err != nil {
+		return index
+	}
+	for _, tool := range catalog {
+		index.byName[tool.Name] = append(index.byName[tool.Name], tool)
+		properties, _ := tool.InputSchema["properties"].(map[string]any)
+		action, _ := properties["action"].(map[string]any)
+		names, _ := strictStringSliceToolArg(action["enum"])
+		for _, name := range names {
+			index.byAction[name] = append(index.byAction[name], tool)
+		}
+	}
+	externalOperationIndexMap, externalOperationIndexBuilt = index, true
+	return index
+}
+
+// externalOperationWords lists the operation names a guide's text mentions: known operations outside this
+// catalog, and snake_case words that start with a tool verb. It depends only on the text.
+func externalOperationWords(body string) []string {
+	if cached, ok := externalOperationWordCache.Load(body); ok {
+		return cached.([]string)
 	}
 	found := map[string]bool{}
 	for _, name := range externalUnavailableToolNames() {
@@ -192,13 +253,14 @@ func externalNamedOperationsFor(claims *UserClaims, body string) []string {
 			}
 		}
 	}
-	var names []string
+	names := make([]string, 0, len(found))
 	for name := range found {
-		if !exposed[name] {
-			names = append(names, name)
-		}
+		names = append(names, name)
 	}
 	sort.Strings(names)
+	if externalOperationWordCount.Add(1) <= 256 {
+		externalOperationWordCache.Store(body, names)
+	}
 	return names
 }
 
