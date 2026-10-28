@@ -125,8 +125,15 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 	api.agentCancelMux.Unlock()
 
 	if !exists {
-		log.Printf("[SESSION DEBUG] No active LLM turn to cancel for session %s", sessionID)
-		go api.settleStoppedTurnWithNoOwner(sessionID)
+		if api.isSessionBusy(sessionID) {
+			// The turn was accepted but is still starting (Stop pressed 6 times at 09:17 on server B, each dropped as
+			// "idle"). Hold the Stop; the turn applies it as soon as it can be cancelled.
+			api.holdPendingTurnStop(sessionID)
+			log.Printf("[SESSION STOP] holding Stop until the starting turn can be cancelled session=%s", sessionID)
+		} else {
+			log.Printf("[SESSION DEBUG] No active LLM turn to cancel for session %s", sessionID)
+			go api.settleStoppedTurnWithNoOwner(sessionID)
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -824,4 +831,30 @@ func (api *StreamingAPI) settleStoredTurnForOwner(r *http.Request, sessionID str
 	api.emitInterruptedTurnEnd(sessionID, "stop_after_restart")
 	log.Printf("[SESSION STOP] settled session=%s outcome=interrupted reason=stored_turn_after_restart", sessionID)
 	return true
+}
+
+const pendingTurnStopTTL = 2 * time.Minute
+
+func (api *StreamingAPI) holdPendingTurnStop(sessionID string) {
+	api.pendingTurnStopsMu.Lock()
+	defer api.pendingTurnStopsMu.Unlock()
+	if api.pendingTurnStops == nil {
+		api.pendingTurnStops = map[string]time.Time{}
+	}
+	api.pendingTurnStops[sessionID] = time.Now()
+}
+
+// takePendingTurnStop reports (and clears) a Stop held for this session's starting turn.
+func (api *StreamingAPI) takePendingTurnStop(sessionID string) bool {
+	api.pendingTurnStopsMu.Lock()
+	defer api.pendingTurnStopsMu.Unlock()
+	at, ok := api.pendingTurnStops[sessionID]
+	delete(api.pendingTurnStops, sessionID)
+	return ok && time.Since(at) <= pendingTurnStopTTL
+}
+
+func (api *StreamingAPI) clearPendingTurnStop(sessionID string) {
+	api.pendingTurnStopsMu.Lock()
+	delete(api.pendingTurnStops, sessionID)
+	api.pendingTurnStopsMu.Unlock()
 }

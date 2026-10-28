@@ -568,6 +568,10 @@ type StreamingAPI struct {
 	// never mistaken for a successfully completed (idle) turn and advanced.
 	interruptedTurns   map[string]bool
 	interruptedTurnsMu sync.Mutex
+	// pendingTurnStops holds a Stop pressed while a turn was still starting (no cancel function yet); the turn
+	// cancels itself as soon as it registers one. Cleared when the session stops being busy.
+	pendingTurnStops   map[string]time.Time
+	pendingTurnStopsMu sync.Mutex
 
 	// Orchestrator objects in memory for guidance injection
 	workflowOrchestrators    map[string]orchestrator.Orchestrator
@@ -8153,6 +8157,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		api.agentCancelMux.Lock()
 		api.agentCancelFuncs[sessionID] = agentCancel
 		api.agentCancelMux.Unlock()
+		if api.takePendingTurnStop(sessionID) {
+			log.Printf("[SESSION STOP] applying Stop pressed while the turn was starting session=%s", sessionID)
+			agentCancel()
+		}
 
 		// Merge global secrets with user-supplied secrets, then inject into system prompt (not user message)
 		chatQuery := req.Query
