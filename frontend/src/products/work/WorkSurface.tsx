@@ -1,3 +1,4 @@
+import { chatFilesNavigationEvent } from '../../components/workspace/chatFileNavigation'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -1015,6 +1016,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const isShared = isWorkSessionRun(selected)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
+  useEffect(() => {
+    const open = (event: Event) => {
+      const session = (event as CustomEvent<{ sessionId: string }>).detail?.sessionId
+      if (session !== activeSessionId || !session || isShared || selectedMode !== 'dev' || !isWorkWorkspaceViewEnabled('files', workspacePanels)) return
+      selectWorkspaceView('files')
+    }
+    window.addEventListener(chatFilesNavigationEvent, open)
+    return () => window.removeEventListener(chatFilesNavigationEvent, open)
+  }, [activeSessionId, isShared, selectedMode, workspacePanels, selectWorkspaceView])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]

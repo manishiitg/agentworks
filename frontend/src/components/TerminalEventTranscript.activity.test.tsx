@@ -6,6 +6,7 @@ import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { CleanConversationSurface } from './CleanConversationSurface'
 import api from '../services/api'
+import { openChatFiles } from './workspace/chatFileNavigation'
 import { setProjectMode } from '../products/work/codeLocalFiles'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
@@ -16,6 +17,7 @@ vi.mock('react-virtuoso', () => ({
     <div>{data.map((item, index) => <div key={computeItemKey(firstItemIndex + index, item)}>{itemContent(firstItemIndex + index, item)}</div>)}{components?.Footer && <components.Footer context={context} />}</div>
   ),
 }))
+vi.mock('./workspace/chatFileNavigation', () => ({ openChatFiles: vi.fn() }))
 vi.mock('./FileContentViewer', () => ({ FileContentViewerBody: ({ source }: { source: { fileContent: string } }) => <pre data-testid="saved-preview">{source.fileContent}</pre> }))
 vi.mock('./events/EventDispatcher', () => ({ EventDispatcher: () => null }))
 vi.mock('./ui/MarkdownRenderer', () => ({ ConversationMarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div> }))
@@ -363,7 +365,6 @@ it('keeps a late file comparison on its original reply in both transcript views 
       { path: 'image.png', status: 'M', binary: true },
     ] } } } as never
   })
-  const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true })
   const numbered = (id: string, type: string, data: Record<string, unknown>, sequence: number) => ({ ...event(id, type, data), sequence, session_id: 'files-session' })
   const first = numbered('first-reply', 'llm_generation_end', { content: 'First report is ready.' }, 2)
   const next = numbered('next-reply', 'llm_generation_end', { content: 'Second report is ready.' }, 5)
@@ -390,9 +391,8 @@ it('keeps a late file comparison on its original reply in both transcript views 
         const binary = [...card.querySelectorAll('li')].find(row => row.textContent?.includes('image.png'))!
         expect(binary.querySelector('[aria-label*="lines added"]')).toBeNull()
         await act(async () => [...card.querySelectorAll('button')].find(button => button.textContent === 'report.md')!.click())
-        expect(host.querySelector('[data-testid="saved-preview"]')?.textContent).toBe('Saved report from the first reply')
-        expect(get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ op: 'snapshot_file', snapshot_id: 'saved-first', file: 'report.md', side: 'after' }) }))
-        expect(host.textContent).toContain('Open current file')
+        expect(host.querySelector('dialog')).toBeNull()
+        expect(openChatFiles).toHaveBeenCalledWith('files-session', expect.objectContaining({ reference: expect.objectContaining({ snapshotId: 'saved-first' }), change: expect.objectContaining({ path: 'report.md' }) }))
         // PLAT-746-158: a saved card disappears when the project is Cowork,
         // including after reopening old history; it does not fetch comparisons.
         const priorTabs = useChatStore.getState().chatTabs
@@ -411,12 +411,12 @@ it('keeps a late file comparison on its original reply in both transcript views 
 
       } finally { await act(async () => root.unmount()); host.remove() }
     }
-  } finally { get.mockRestore(); showModal.mockRestore() }
+  } finally { get.mockRestore() }
 })
 
 // PLAT-746-158: partial captures with no observed changes used to disappear,
 // making missed files indistinguishable from a successful empty comparison.
-it('warns on unknown or changed omissions in both views but hides unchanged skipped assets', async () => {
+it('keeps omission notices out of the reply card in both views', async () => {
   let status = 'partial'
   let uncaptured = 1
   const get = vi.spyOn(api, 'get').mockImplementation(async () => ({ data: { history: { latest_snapshot_id: '', can_review: false }, comparison: { snapshot: { status }, uncaptured_changes: uncaptured, changes: [] } } }) as never)
@@ -436,7 +436,7 @@ it('warns on unknown or changed omissions in both views but hides unchanged skip
           await act(async () => root.render(clean
             ? <CleanConversationSurface events={events} isStreaming={false} isRestoring={false} streamingText="" />
             : <TerminalEventTranscript terminal={null} events={events} />))
-          expect(host.textContent?.includes('may have changed but could not be compared')).toBe(state === 'partial')
+          expect(host.textContent?.includes('may have changed but could not be compared')).toBe(false)
           expect(host.querySelector('[aria-label="Files changed during this reply"]')).toBeNull()
         }
       } finally { await act(async () => root.unmount()); host.remove() }
