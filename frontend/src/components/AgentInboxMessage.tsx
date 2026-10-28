@@ -18,9 +18,10 @@ type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
 const KIND_LABEL: Record<string, string> = { agent: 'Agent', crew: 'Crew', goal: 'Goal', flow: 'Flow', code: 'Crew' }
 const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
-// A message another agent sent into this chat: one quiet row, like "Message to X sent", opened on request.
+// A message another agent sent into this chat, shown open so the person sees what was asked (owner, 2026-10-28:
+// "when builder sends a message to a tab.. i don't see"); the row folds it away on request.
 export function AgentInboxMessage({ message, timestamp, artifact = null }: { message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
   const Icon = Bot
