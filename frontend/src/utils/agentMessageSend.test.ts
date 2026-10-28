@@ -10,6 +10,9 @@ describe('agent message send', () => {
     // A recipient that names itself (a Crew title) is shown by that name, not its raw id.
     const named = parseAgentMessageSend('send_message', args, JSON.stringify({ result: { accepted: true, to_label: 'Crew · ci/cd' } }))
     expect(named).toMatchObject({ target: 'claude-reviewer', targetLabel: 'Crew · ci/cd' })
+    // A Builder asking another tab of its Crew is the same kind of message.
+    const tab = parseAgentMessageSend('mcp__api-bridge__ask_project_chat', JSON.stringify({ chat: 'ab-testing-system', message: 'Can node_modules go?' }), JSON.stringify({ accepted: true }))
+    expect(tab).toMatchObject({ target: 'ab-testing-system', message: 'Can node_modules go?', accepted: true })
   })
 
   it('shows a refused send as failed with the reason, and ignores other tools', () => {

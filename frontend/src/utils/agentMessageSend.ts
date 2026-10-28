@@ -35,8 +35,11 @@ function baseToolName(raw: string): string {
   return (match ? match[1] : raw.trim()).toLowerCase()
 }
 
+// ask_project_chat is the same send, to another tab of this Crew (owner, 2026-10-28: the Builder's message to a tab
+// showed only as "1 tool call").
 export function isAgentMessageSendToolCall(name: string): boolean {
-  return baseToolName(name || '') === 'send_message'
+  const base = baseToolName(name || '')
+  return base === 'send_message' || base === 'ask_project_chat'
 }
 
 export function parseAgentMessageSend(name: string, args: string | undefined, result: string | undefined, status?: string): AgentMessageSendView | null {
@@ -44,7 +47,7 @@ export function parseAgentMessageSend(name: string, args: string | undefined, re
   const input = parseRecord(args) ?? {}
   const message = str(input.message)
   if (!message) return null
-  const target = str(input.target).replace(/^agent:/i, '')
+  const target = (str(input.target) || str(input.chat)).replace(/^agent:/i, '')
   const formatted = result ? formatToolCallResult(result) : null
   const answer = parseRecord(result)
   const failed = status === 'error' || Boolean(formatted?.isError) || answer?.accepted === false

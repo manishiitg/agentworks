@@ -36,8 +36,10 @@ it('shows the saved incoming message before delivery instructions, with separate
     await act(async () => { root.render(<TerminalEventTranscript events={events} terminal={null} />) })
     const card = host.querySelector('[data-testid="agent-inbox-message"]')!
     expect(card).not.toBeNull()
-    // Shown open so the person sees what another agent asked (owner, 2026-10-28); the row folds it away.
+    // One quiet row (owner, 2026-10-25), opened on request; no message text until then.
     expect(card.querySelector('button')?.textContent).toContain('Message from Crew · Reports Builder chat')
+    expect(card.querySelector('[data-testid="agent-inbox-body"]')).toBeNull()
+    await act(async () => { card.querySelector('button')!.click() })
     const messageBody = card.querySelector('[data-testid="agent-inbox-body"]')!
     expect(messageBody.textContent).toBe(body)
     expect(messageBody.textContent).not.toContain(inboxID)
@@ -45,8 +47,6 @@ it('shows the saved incoming message before delivery instructions, with separate
     // No developer details on the card (owner, 2026-10-20): the reply address stays in the agent's own prompt.
     expect(card.querySelector('details')).toBeNull()
     expect(host.querySelectorAll('[data-testid="agent-inbox-message"]')).toHaveLength(1)
-    await act(async () => { card.querySelector('button')!.click() })
-    expect(card.querySelector('[data-testid="agent-inbox-body"]')).toBeNull()
     expect(host.textContent).toContain('[Agent message from Reports Builder chat. Conversation/reply address:')
     // Classification uses server fields even when the visible prompt has no envelope.
     await act(async () => { root.render(<TerminalEventTranscript events={[{ ...events[0], data: { data: { content: 'Plain transport text', metadata } } }]} terminal={null} />) })
@@ -76,6 +76,7 @@ it('keeps a delivered artifact summary as an agent card and loads its complete b
     await act(async () => { root.render(<TerminalEventTranscript events={[summary]} terminal={null} />) })
     const card = host.querySelector('[data-testid="agent-inbox-message"]')!
     expect(card).not.toBeNull()
+    await act(async () => { card.querySelector('button')!.click() })
     expect(agentApi.getChatArtifact).not.toHaveBeenCalled()
     const button = Array.from(card.querySelectorAll('button')).find(item => item.textContent === 'Load full message')!
     await act(async () => {
@@ -93,6 +94,7 @@ it('keeps a delivered artifact summary as an agent card and loads its complete b
       truncated: true, artifact_id: 'artifact-complete', original_size_bytes: body.length,
       metadata: { ...metadata, display_content: 'Complete message…', display_content_truncated: false } } } } as PollingEvent
     await act(async () => { root.render(<TerminalEventTranscript events={[complete]} terminal={null} />) })
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="agent-inbox-message"] button')!.click() })
     expect(host.querySelector('[data-testid="agent-inbox-message"]')?.textContent).toContain('Complete message…')
     expect(host.querySelector('[data-testid="chat-artifact-show-full"]')).toBeNull()
     expect(agentApi.getChatArtifact).not.toHaveBeenCalled()
