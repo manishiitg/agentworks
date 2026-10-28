@@ -1082,6 +1082,12 @@
     "description": "Use the existing Vault migrate connections service with its current access."
   },
   {
+    "family": "vault",
+    "name": "migrate_vaults",
+    "member": "migrate_personal_vaults",
+    "description": "Use the existing Vault migrate vaults service with its current access."
+  },
+  {
     "family": "functions",
     "name": "list",
     "member": "project_functions_list",

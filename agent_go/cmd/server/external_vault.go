@@ -94,6 +94,20 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 		externalJSON(w, map[string]any{"applied": apply, "rows": rows})
 		return
 	}
+	if name == "migrate_personal_vaults" {
+		if !vaultAdminActive(claims.UserID) {
+			externalError(w, 403, "forbidden", "Only a Vault administrator can convert the old personal vaults.")
+			return
+		}
+		apply, _ := args["apply"].(bool)
+		rows, people, err := api.convertPersonalVaults(r.Context(), apply)
+		if err != nil {
+			externalError(w, 502, "conversion_failed", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"applied": apply, "people": people, "rows": rows})
+		return
+	}
 	if name == "list_vault_mcp_servers" || name == "call_vault_mcp_tool" {
 		result, err := vaultManagementMCP(r.Context(), claims.UserID, name, args)
 		if err != nil {

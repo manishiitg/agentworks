@@ -18,6 +18,7 @@ chat:
       - call_vault_mcp_tool
       - manage_vault_tools
       - migrate_place_connections
+      - migrate_personal_vaults
       - read_vault_audit
     external_tools: *vault_tools
 profile:
@@ -36,6 +37,7 @@ profile:
     - {id: caplayer.mcp.call}
     - {id: caplayer.tools.review}
     - {id: caplayer.place.migrate}
+    - {id: caplayer.vaults.convert}
     - {id: caplayer.audit}
   tool_policy:
     mode: allowlist

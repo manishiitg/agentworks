@@ -97,3 +97,60 @@ func TestProjectVaultPreservesProjectIsolationAndOwnership(t *testing.T) {
 		t.Fatal("different project reused secret scope")
 	}
 }
+
+// The one-off conversion (PLAT-856-400): a solely owned vault merges into the owner's personal vault, a shared one
+// becomes a group whose connection and secret still reach only its members (never everyone), and a bad plan changes
+// nothing.
+func TestConvertPersonVaults(t *testing.T) {
+	s := NewMemoryStore()
+	s.AddWorkspace(Workspace{ID: "w", Name: "w"})
+	for _, u := range []string{"alice", "bob"} {
+		s.AddUser(User{ID: u, WorkspaceID: "w"})
+	}
+	if err := s.EnsurePlatformGroup("w"); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.groups["v-old"] = Group{ID: "v-old", WorkspaceID: "w", Name: "Tools", Kind: GroupKindVault, Owners: []string{"alice"}}
+	s.members["v-old"] = map[string]bool{"alice": true}
+	s.groups["v-team"] = Group{ID: "v-team", WorkspaceID: "w", Name: "Team", Kind: GroupKindVault, Owners: []string{"alice"}}
+	s.members["v-team"] = map[string]bool{"alice": true, "bob": true}
+	s.mu.Unlock()
+	s.AddConnector(Connector{ID: "c-old", WorkspaceID: "w", Provider: "notion", Status: StatusActive, VaultID: "v-old"})
+	s.AddConnector(Connector{ID: "c-team", WorkspaceID: "w", Provider: "jira", Status: StatusActive, VaultID: "v-team"})
+	for vault, secret := range map[string]string{"v-old": "VLT_OLD__KEY", "v-team": "VLT_TEAM__TOKEN"} {
+		if err := s.VaultAddSecret("alice", vault, secret); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ConvertPersonVaults("w", []VaultConversion{{VaultID: "v-team", Mode: "company"}}); err == nil {
+		t.Fatal("a plan that leaves a secret without its new name must be refused")
+	}
+	if _, ok := s.groups["v-team"]; !ok || !s.groups["v-team"].IsVault() {
+		t.Fatal("a refused plan changed the store")
+	}
+	plan := []VaultConversion{
+		{VaultID: "v-old", Mode: "merge", TargetID: "v-mine", SecretRenames: map[string]string{"VLT_OLD__KEY": "VLT_MINE__KEY"}},
+		{VaultID: "v-team", Mode: "company", SecretRenames: map[string]string{"VLT_TEAM__TOKEN": "TOKEN"}},
+	}
+	if err := s.ConvertPersonVaults("w", plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.groups["v-old"]; ok || s.connectors["c-old"].VaultID != "v-mine" || !s.VaultConnectorOwnedBy("alice", "v-mine", "c-old") || s.secretResources["VLT_MINE__KEY"].VaultID != "v-mine" {
+		t.Fatal("the solely owned vault did not merge into the personal vault")
+	}
+	if mine, _ := s.EnsurePersonalVault("w", "alice", "v-new"); mine != "v-mine" {
+		t.Fatalf("the merged personal vault is not the one used afterwards: %s", mine)
+	}
+	team := s.groups["v-team"]
+	if team.IsVault() || len(team.Owners) != 0 || !s.members["v-team"]["bob"] || s.connectors["c-team"].VaultID != "" || !s.groupServers["v-team"]["c-team"] || !s.secretGrants["v-team"]["TOKEN"] {
+		t.Fatal("the shared vault did not become a group with the same members, connection and secret")
+	}
+	if err := s.EnsurePlatformGroup("w"); err != nil {
+		t.Fatal(err)
+	}
+	pid := PlatformGroupID("w")
+	if s.groupServers[pid]["c-team"] || s.secretGrants[pid]["TOKEN"] {
+		t.Fatal("a converted group's connection or secret reached everyone")
+	}
+}

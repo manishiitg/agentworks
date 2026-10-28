@@ -80,6 +80,31 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]string{"id": id})
 	})
+	// One-off conversion of person-created vaults (PLAT-856-400), for the administrator: list them, then apply a plan.
+	mux.HandleFunc("/api/admin/person-vaults", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Platform-User") == "1" {
+			writeErr(w, http.StatusForbidden, errors.New("administrator only"))
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, 200, map[string]any{"vaults": a.Store.PersonVaults(a.WorkspaceID)})
+		case http.MethodPost:
+			var in struct {
+				Plan []store.VaultConversion `json:"plan"`
+			}
+			if !decode(w, r, &in) {
+				return
+			}
+			if err := a.Store.ConvertPersonVaults(a.WorkspaceID, in.Plan); err != nil {
+				writeErr(w, 400, err)
+				return
+			}
+			writeJSON(w, 200, map[string]any{"converted": len(in.Plan)})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
 	route("/api/vaults", func(w http.ResponseWriter, r *http.Request, actor string) {
 		switch r.Method {
 		case http.MethodGet:
