@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"log"
 	"os"
@@ -570,6 +571,17 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	// denies the crew path with ACCESS DENIED in every Builder session.
 	if err := createWorkspaceFolder(ctx, filepath.ToSlash(filepath.Join(workspacePath, "code"))); err != nil {
 		return CreatedCrew{}, fmt.Errorf("initialize crew code folder: %w", err)
+	}
+	// Every new Crew starts with one reply-card command and the marker that keeps it deleted once removed.
+	commandDir := filepath.ToSlash(filepath.Join(workspacePath, commands.CustomCommandsSubPath))
+	if err := createWorkspaceFolder(ctx, commandDir+"/"+commands.DefaultCardCommandName); err != nil {
+		return CreatedCrew{}, fmt.Errorf("initialize crew commands: %w", err)
+	}
+	if err := writeRawFileToWorkspace(ctx, commandDir+"/"+commands.DefaultCardCommandName+"/"+commands.CommandFileName, commands.DefaultCardCommandContent()); err != nil {
+		return CreatedCrew{}, fmt.Errorf("write default crew command: %w", err)
+	}
+	if err := writeRawFileToWorkspace(ctx, commandDir+"/"+commands.CardDefaultMarker, "seeded\n"); err != nil {
+		return CreatedCrew{}, fmt.Errorf("write default crew command marker: %w", err)
 	}
 	// A Crew at the shared root gets its owner's slot group (the owner's tree gave that implicitly).
 	if folder, shared := workspaceref.MustParse(filepath.ToSlash(workspacePath)).SharedProject(); shared {

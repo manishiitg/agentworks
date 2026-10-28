@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -163,6 +164,14 @@ func TestCreateCrewProjectWritesUILayout(t *testing.T) {
 	}
 	if !mock.hasFolder(created.WorkspacePath + "/code") {
 		t.Fatal("code/ folder was not created")
+	}
+	// A new Crew starts with the flagged "Check this change" command and the marker that keeps it deleted once removed.
+	commandDir := created.WorkspacePath + "/commands/custom"
+	if got := mock.files[commandDir+"/check-this-change/COMMAND.md"]; got != commands.DefaultCardCommandContent() || !strings.Contains(got, "show_on_card: true") {
+		t.Fatalf("default card command = %q", got)
+	}
+	if _, ok := mock.files[commandDir+"/"+commands.CardDefaultMarker]; !ok {
+		t.Fatal("default card command marker was not written")
 	}
 }
 

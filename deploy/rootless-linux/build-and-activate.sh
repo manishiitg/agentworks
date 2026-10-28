@@ -106,6 +106,7 @@ install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/m
 install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
 install -m 0755 "$REPO_ROOT/scripts/migrate-project-schedules.py" "$BUILD_DIR/migrations/migrate-project-schedules.py"
 install -m 0755 "$REPO_ROOT/scripts/migrate-browser-modes.py" "$BUILD_DIR/migrations/migrate-browser-modes.py"
+install -m 0755 "$REPO_ROOT/scripts/migrate-card-default-command.py" "$BUILD_DIR/migrations/migrate-card-default-command.py"
 install -m 0755 "$REPO_ROOT/scripts/repair-workflow-builder-tabs.py" "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py"
 install -m 0755 "$REPO_ROOT/scripts/migrate-saved-platform-references.py" "$BUILD_DIR/migrations/migrate-saved-platform-references.py"
 for grouped_tool_catalog in "$REPO_ROOT/agent_go/pkg/platformtools/catalog/"*-actions.json; do
@@ -499,6 +500,7 @@ fi
 # PLAT-871-15 runs last, with the old agent stopped and all prior shape hooks complete.
 python3 "$BUILD_DIR/migrations/migrate-project-schedules.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/project-schedules-$(date -u +%Y%m%dT%H%M%SZ)"
 python3 "$BUILD_DIR/migrations/migrate-browser-modes.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/browser-modes-$RELEASE_ID" --state-root "$REMOTE_APP/state" --deployment-mode server
+python3 "$BUILD_DIR/migrations/migrate-card-default-command.py" --workspace-dir "$REMOTE_APP/data/docs"
 python3 "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/workflow-builder-tabs-$(date -u +%Y%m%dT%H%M%SZ)"
 python3 "$BUILD_DIR/migrations/migrate-saved-platform-references.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/saved-platform-references-$RELEASE_ID" --catalog-dir "$BUILD_DIR/migrations" --workspace-api-url "http://127.0.0.1:$WORKSPACE_PORT" --workspace-env-file "$REMOTE_APP/.env"
 # Convert only platform records after older one-off hooks, with every writer stopped.

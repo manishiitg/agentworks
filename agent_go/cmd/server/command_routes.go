@@ -34,11 +34,6 @@ func listCommandsHandler(workspaceAPIURL string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		// Crew and project scopes start with the default reply-card command
-		// (once; deleting it sticks). Personal and workflow scopes do not.
-		if wp := strings.Trim(r.URL.Query().Get("workspace_path"), "/ "); wp != "" && !strings.HasPrefix(wp, "Workflow/") {
-			commands.EnsureDefaultCardCommand(workspaceAPIURL, commandsPath)
-		}
 		cmdList, err := commands.DiscoverCommandsAt(workspaceAPIURL, commandsPath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

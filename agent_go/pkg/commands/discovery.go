@@ -230,29 +230,18 @@ func isValidNameChar(c rune) bool {
 }
 
 // Every Crew starts with one flagged command. It is a normal command: it can
-// be renamed or removed, and once the marker exists it is never added again.
+// be renamed or removed. Crew creation and the one-off deploy migration add it
+// (alongside CardDefaultMarker, so a deleted default is never added again);
+// listing never writes.
 const (
 	DefaultCardCommandName    = "check-this-change"
 	DefaultCardCommandMessage = "Look over the files you changed in this reply. Point out anything that looks wrong or risky, anything you missed, and what I should test."
-	cardDefaultMarker         = ".card-default-seeded"
+	CardDefaultMarker         = ".card-default-seeded"
 )
 
-// EnsureDefaultCardCommand adds the default "Check this change" card command
-// once per Crew commands folder (new and existing Crews alike, on first read).
-// Best effort: a failure leaves the list unchanged and is retried next time.
-func EnsureDefaultCardCommand(workspaceAPIURL, commandsPath string) {
-	client := skills.NewWorkspaceAPIClient(workspaceAPIURL)
-	markerPath := path.Join(commandsPath, cardDefaultMarker)
-	if _, err := client.ReadFile(markerPath); err == nil {
-		return
-	}
+// DefaultCardCommandContent is the COMMAND.md text of the default card command.
+func DefaultCardCommandContent() string {
 	fm := &CommandFrontmatter{Name: DefaultCardCommandName, Description: "Check this change", Icon: "eye", Modes: []string{"multi-agent"}, ShowOnCard: true}
-	content, err := SerializeCommandFile(fm, DefaultCardCommandMessage)
-	if err != nil {
-		return
-	}
-	if _, err := CreateCommandAt(workspaceAPIURL, commandsPath, DefaultCardCommandName, content); err != nil && !strings.Contains(err.Error(), "already exists") {
-		return
-	}
-	_ = client.WriteFile(markerPath, "seeded\n")
+	content, _ := SerializeCommandFile(fm, DefaultCardCommandMessage)
+	return EnsureContextPlaceholder(content)
 }

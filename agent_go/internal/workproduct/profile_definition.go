@@ -122,7 +122,6 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 				action, _ := args["action"].(string)
 				name, _ := args["name"].(string)
 				name = customCommandSlug(name)
-				commands.EnsureDefaultCardCommand(workspaceAPIURL, commandsPath)
 				if action == "list" {
 					items, err := commands.DiscoverCommandsAt(workspaceAPIURL, commandsPath)
 					if err != nil {

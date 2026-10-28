@@ -96,6 +96,16 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 		requireRemoteSuccess(t, result, externalCrewCommandsTool)
 		return marshalStructured(t, result)
 	}
+	// Listing never writes: a Crew without the default stays without it.
+	if listed := call(map[string]any{"action": "list"}); strings.Contains(listed, commands.DefaultCardCommandName) {
+		t.Fatalf("list added the default command: %s", listed)
+	}
+	if _, err := os.Stat(filepath.Join(f.docs, externalCommandCrewRoot, "commands")); !os.IsNotExist(err) {
+		t.Fatalf("listing wrote files: %v", err)
+	}
+	// What Crew creation writes: the flagged default plus its marker.
+	f.write(t, externalCommandCrewRoot+"/commands/custom/"+commands.DefaultCardCommandName+"/COMMAND.md", commands.DefaultCardCommandContent())
+	f.write(t, externalCommandCrewRoot+"/commands/custom/"+commands.CardDefaultMarker, "seeded\n")
 	call(map[string]any{"action": "create", "name": "review", "description": "Review work", "prompt": "Review this work.", "icon": "zap"})
 	commandPath := externalCommandCrewRoot + "/commands/custom/review/COMMAND.md"
 	if saved := f.read(t, commandPath); !strings.Contains(saved, "{{context}}") || !strings.Contains(saved, "Review this work.") {
@@ -111,7 +121,7 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &menu); err != nil || w.Code != 200 || menu.Total != 2 {
 		t.Fatalf("app slash menu = %d %s (%v)", w.Code, w.Body.String(), err)
 	}
-	// A new Crew starts with one flagged default; commands created by hand stay off the card.
+	// The created Crew has one flagged default; commands created by hand stay off the card.
 	for _, c := range menu.Commands {
 		wantOn := c.Frontmatter.Name == commands.DefaultCardCommandName
 		if c.Frontmatter.ShowOnCard != wantOn || (wantOn && c.Content != commands.DefaultCardCommandMessage+"\n\n{{context}}") {
