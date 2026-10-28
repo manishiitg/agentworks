@@ -311,7 +311,11 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		if name == "compare_crew_snapshot" {
 			op = "snapshot_compare"
-			if side := str("side"); side != "" {
+			if str("group_by") == "repository" {
+				// One reply's changes grouped by Git checkout, with branch and pull request status.
+				op = "snapshot_groups"
+			}
+			if side := str("side"); side != "" && op == "snapshot_compare" {
 				if str("line") == "" {
 					op = "snapshot_file"
 				}

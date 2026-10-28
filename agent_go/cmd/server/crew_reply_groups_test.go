@@ -1,0 +1,62 @@
+package server
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
+)
+
+// The Crew owner's connected GitHub account decides PR status: merged,
+// failing checks and a requested change map to the card's fields, and the
+// token travels only in the request header.
+func TestReplyGroupPullRequestStatusFromOwnersConnection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer owner-token" {
+			w.WriteHeader(401)
+			return
+		}
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pulls"):
+			if r.URL.Query().Get("head") != "acme:feature-x" {
+				t.Errorf("head = %q", r.URL.Query().Get("head"))
+			}
+			w.Write([]byte(`[{"number":7,"html_url":"https://github.com/acme/app/pull/7","state":"closed","merged_at":"2026-01-01T00:00:00Z","head":{"sha":"abc"}}]`))
+		case strings.HasSuffix(r.URL.Path, "/check-runs"):
+			w.Write([]byte(`{"check_runs":[{"status":"completed","conclusion":"success"},{"status":"completed","conclusion":"failure"}]}`))
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			w.Write([]byte(`{"state":"success","total_count":0}`))
+		case strings.HasSuffix(r.URL.Path, "/reviews"):
+			w.Write([]byte(`[{"state":"APPROVED","user":{"login":"a"}},{"state":"CHANGES_REQUESTED","user":{"login":"b"}},{"state":"COMMENTED","user":{"login":"c"}}]`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	old := githubAPIURL
+	githubAPIURL = srv.URL
+	defer func() { githubAPIURL = old }()
+
+	groups := []filesnapshots.Group{{Kind: "repo", Branch: "feature-x", GitHubRepo: "acme/app"}, {Kind: "crew_files"}}
+	attachPullRequests(context.Background(), groups, "owner-token", true)
+	pr := groups[0].PR
+	if pr == nil || pr.Number != 7 || pr.State != "merged" || pr.Checks != "failing" || pr.Review != "changes_requested" {
+		t.Fatalf("pr = %+v", pr)
+	}
+	if groups[1].PR != nil {
+		t.Fatal("non-Git group must not get a PR")
+	}
+}
+
+// Without a GitHub connection for the Crew owner the server's own login is
+// never used: the group says to connect GitHub.
+func TestReplyGroupWithoutOwnerConnectionAsksToConnectGitHub(t *testing.T) {
+	groups := []filesnapshots.Group{{Kind: "repo", Branch: "feature-x", GitHubRepo: "acme/app"}}
+	attachPullRequests(context.Background(), groups, "", false)
+	if groups[0].PR == nil || groups[0].PR.State != "connect_github" {
+		t.Fatalf("pr = %+v", groups[0].PR)
+	}
+}

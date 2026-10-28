@@ -251,7 +251,7 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		return
 	}
 	if r.URL.Query().Get("session_id") != "" {
-		api.serveChatFileReview(w, r, roots.Virtual, prefix, op, id, file, store, allow)
+		api.serveChatFileReview(w, r, roots, prefix, op, id, file, store, allow)
 		return
 	}
 	if op == "snapshots" {
@@ -272,8 +272,8 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		externalJSON(w, map[string]any{"snapshots": records, "note": "File comparisons cover changes observed during a turn. Other chats or editors may contribute. Undo is not available.", "limits": map[string]any{"max_file_bytes": filesnapshots.MaxFileBytes, "retained_turns": 50, "retained_days": 14}})
 		return
 	}
-	if op != "snapshot_compare" && op != "snapshot_file" {
-		externalError(w, 400, "invalid_action", "Choose snapshots, snapshot_compare or snapshot_file.")
+	if op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" {
+		externalError(w, 400, "invalid_action", "Choose snapshots, snapshot_compare, snapshot_groups or snapshot_file.")
 		return
 	}
 	if prefix != "" && file != "" {
@@ -300,6 +300,10 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		return
 	}
 	comparison.Record.ExecutionID = ""
+	if op == "snapshot_groups" {
+		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow)})
+		return
+	}
 	for i := range comparison.Changes {
 		comparison.Changes[i].Path = prefix + comparison.Changes[i].Path
 	}

@@ -15,6 +15,7 @@ import (
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	agentevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -119,7 +120,8 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, sessionID, r
 
 // The file route already authorizes the Crew and current paths. Chat history
 // has its own read rule; sharing files alone does not grant a private chat.
-func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Request, root, prefix, op, id, file string, store filesnapshots.Store, allow func(string) bool) {
+func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Request, roots crewroot.Roots, prefix, op, id, file string, store filesnapshots.Store, allow func(string) bool) {
+	root := roots.Virtual
 	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
 	if api.eventStore == nil {
 		externalError(w, 404, "not_found", "This chat has no saved file history.")
@@ -144,7 +146,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		api.markChatFilesReviewed(w, r, sessionID, store, history, id)
 		return
 	}
-	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" {
+	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" {
 		externalError(w, 400, "invalid_action", "Choose a saved file comparison.")
 		return
 	}
@@ -256,6 +258,11 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		externalJSON(w, map[string]any{"context": fmt.Sprintf("In %s, %s line %d of the saved file comparison from %s through %s:\n%s", prefix+file, side, line, comparison.Record.StartedAt.UTC().Format("2006-01-02 15:04:05 UTC"), comparison.Record.CompletedAt.UTC().Format("2006-01-02 15:04:05 UTC"), anchor)})
+		return
+	}
+	if op == "snapshot_groups" {
+		comparison.Record.Skipped = nil
+		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow)})
 		return
 	}
 	summary := reviewSummary(comparison)

@@ -15,6 +15,7 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	agentevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -58,7 +59,7 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 		req := httptest.NewRequest("GET", "/?"+params.Encode(), nil)
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
 		w := httptest.NewRecorder()
-		api.serveChatFileReview(w, req, "", "", "snapshot_compare", params.Get("snapshot_id"), params.Get("file"), store, func(string) bool { return allow })
+		api.serveChatFileReview(w, req, crewroot.Roots{}, "", "snapshot_compare", params.Get("snapshot_id"), params.Get("file"), store, func(string) bool { return allow })
 		return w.Code, w.Body.String()
 	}
 	pageParams := url.Values{"session_id": {"chat-a"}}
@@ -118,7 +119,7 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 		req := httptest.NewRequest(method, "/?session_id=chat-a", nil)
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, AccessToken: token}))
 		w := httptest.NewRecorder()
-		api.serveChatFileReview(w, req, "", "", "snapshot_review", id, "", store, func(string) bool { return true })
+		api.serveChatFileReview(w, req, crewroot.Roots{}, "", "snapshot_review", id, "", store, func(string) bool { return true })
 		return w.Code, w.Body.String()
 	}
 	reader := &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}
