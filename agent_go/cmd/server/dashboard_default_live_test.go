@@ -119,8 +119,8 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			}
 			if published {
 				record := &publishedProject{Root: root, WorkspaceID: "team", ProfileID: "work", OwnerID: "owner", PublisherID: "owner", ProjectID: "laptop", Revision: "published-functions", SourcePaths: []string{"functions.json"}}
-				f.write(t, record.sourceRoot()+"/functions.json", `{"functions":[{"name":"published_reply","description":"Published reply","instructions":"Return the reply."}]}`)
-				f.write(t, root+"/functions.json", `{"functions":[{"name":"unpublished_reply","description":"Draft reply","instructions":"Not published."}]}`)
+				f.write(t, record.sourceRoot()+"/functions.json", `{"functions":[{"id":"published-reply","name":"published_reply","description":"Published reply","enabled":true,"action":{"type":"message"},"input":{"messages":["Return the reply."]}}]}`)
+				f.write(t, root+"/functions.json", `{"functions":[{"id":"unpublished-reply","name":"unpublished_reply","description":"Draft reply","enabled":true,"action":{"type":"message"},"input":{"messages":["Not published."]}}]}`)
 				if err := savePublishedProject(record); err != nil {
 					t.Fatal(err)
 				}
@@ -135,7 +135,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			}
 			feed := livefeed.Default.Subscribe()
 			defer livefeed.Default.Unsubscribe(feed)
-			write(`{"functions":[{"name":"draft_reply","description":"Draft a reply","instructions":"Return the reply."}]}`)
+			write(`{"functions":[{"id":"draft-reply","name":"draft_reply","description":"Draft a reply","enabled":true,"action":{"type":"message"},"input":{"messages":["Return the reply."]}}]}`)
 			notices, _ := feed.Drain()
 			found := false
 			for _, notice := range notices {
@@ -178,7 +178,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			custom = strings.Replace(custom, "</body>", marker+"\n</body>", 1)
 			updated := op("update", map[string]any{"expected_revision": before.Dashboard.Revision, "files": map[string]string{"index.html": custom}})
 			op("publish", map[string]any{"expected_revision": updated.Dashboard.Revision})
-			write(`{"functions":[{"name":"later_function","description":"Later action","instructions":"Return a result."}]}`)
+			write(`{"functions":[{"id":"later-function","name":"later_function","description":"Later action","enabled":true,"action":{"type":"message"},"input":{"messages":["Return a result."]}}]}`)
 			if w := read(live, reader); w.Code != 200 || w.Body.String() != custom {
 				t.Fatalf("a custom dashboard was changed: %d %s", w.Code, w.Body.String())
 			}
