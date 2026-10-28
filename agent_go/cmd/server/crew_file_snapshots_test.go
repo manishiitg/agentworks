@@ -81,8 +81,8 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	if err := os.WriteFile(modeFile, []byte(`{"mode":"dev"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	// A cold file-hash cache defers the send-path capture (PLAT-746-163);
-	// warm it as the background warm-up does.
+	// A Crew with no private index defers the send-path capture
+	// (PLAT-746-163); build it as the background index build does.
 	roots, found, err := crewStorageRoots(linkBetaPath)
 	if err != nil || !found {
 		t.Fatalf("Crew roots: %v %v", found, err)

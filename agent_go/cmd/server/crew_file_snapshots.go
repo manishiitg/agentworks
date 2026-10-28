@@ -27,10 +27,11 @@ import (
 const crewSnapshotTimeout = 15 * time.Second
 
 // The before-capture runs on the message send path: gate wait plus capture
-// never exceed this. A cold cache (after a restart) or a capture that runs out
-// of time leaves that reply without a snapshot and warms the per-Crew file-hash
-// cache in the background instead (PLAT-746-163: a 15 s cold capture on the
-// send path made every first message after a restart fail to deliver).
+// never exceed this. A Crew with no private index yet, or a capture that runs
+// out of time, leaves that reply without a snapshot (never a later baseline)
+// and builds the Crew's private index in the background instead (PLAT-746-163:
+// a 15 s cold capture on the send path made every first message after a
+// restart fail to deliver).
 const crewSnapshotBeforeBudget = 2 * time.Second
 const crewSnapshotWarmLimit = 2 * time.Minute
 
@@ -115,8 +116,9 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	}
 }
 
-// warmCrewSnapshotCache fills a Crew's file-hash cache off the send path. Its
-// own context, not the request's; one per Crew (the store refuses a second).
+// warmCrewSnapshotCache builds a Crew's persisted private index off the send
+// path. Its own context, not the request's; one per Crew (the store refuses a
+// second).
 func warmCrewSnapshotCache(store filesnapshots.Store, sessionID, executionID string) {
 	started := time.Now()
 	stats, err := store.Warm(crewSnapshotWarmLimit)

@@ -308,10 +308,11 @@ func TestSnapshotLockWaitHonorsSendDeadline(t *testing.T) {
 }
 
 // PLAT-746-163: a cold capture on the send path held every first message after
-// a restart for 15 s and the message was then marked not delivered. A cold cache
-// is never read on the send path: the reply is unavailable at once, a background
-// Warm fills the cache, and the next send captures within budget reusing it.
-// While a warm-up runs, a send skips instead of waiting. Readers take no gate.
+// a restart for 15 s and the message was then marked not delivered. A Crew with
+// no private index is never read on the send path: the reply is unavailable at
+// once, a background Warm builds the index, and the next send captures within
+// budget reusing it. While the build runs, a send skips instead of waiting.
+// Readers take no gate.
 func TestColdBeforeCaptureBudgetAndLockFreeReads(t *testing.T) {
 	s := Store{Root: t.TempDir(), Private: t.TempDir()}
 	if err := os.WriteFile(filepath.Join(s.Root, "a.txt"), []byte("a"), 0600); err != nil {
@@ -844,7 +845,7 @@ func TestIndexReconcilesDeletedIgnoredTrackedIgnoredAndBudgetSkipped(t *testing.
 	f.put("app/tracked.txt", "tracked, edited\n")
 	for round := 0; round < 2; round++ {
 		stats, state := CaptureStats{}, map[string]string{}
-		commit, skipped, _, err := f.s.captureWithin(t.Context(), fmt.Sprintf("refs/turns/budget%d/before", round), "", &stats, state, 1)
+		commit, skipped, _, err := f.s.capture(t.Context(), fmt.Sprintf("refs/turns/budget%d/before", round), "", &stats, state, 1)
 		if err != nil {
 			t.Fatal(err)
 		}

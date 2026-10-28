@@ -350,10 +350,10 @@ type pending struct {
 	size       int64
 }
 
-// captureWithin captures the Crew into ref, importing at most budget bytes of
+// capture captures the Crew into ref, importing at most budget bytes of
 // new contents. Paths skipped for size, budget or read errors are left out of
 // the tree and out of every index, so no older blob stands in for them.
-func (s Store) captureWithin(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string, budget int64) (string, []string, []string, error) {
+func (s Store) capture(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string, budget int64) (string, []string, []string, error) {
 	s.cleanStale()
 	if err := os.MkdirAll(s.indexDir(), 0700); err != nil {
 		return "", nil, nil, err

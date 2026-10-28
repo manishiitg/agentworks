@@ -27,7 +27,17 @@ import (
 )
 
 const MaxFileBytes = 25 << 20
-const maxCaptureBytes = 256 << 20
+
+// maxImportBytes bounds the new contents one capture reads and imports;
+// files reused from the persisted index cost nothing. It keeps a capture whose
+// turn wrote a lot (generated assets, dumps) inside its deadline (15 s for an
+// after-capture) as an honest partial record with BudgetSkipped files instead
+// of a timeout that saves nothing, bounds what one turn adds to the private
+// store, and is the batch size of the resumable initial index build (Warm),
+// so a build stopped by its limit keeps each finished batch. Measured on a
+// 67k-file, 17-repo Crew: a cold 256 MiB batch of about 50k files took 16.7 s,
+// mostly per-file cost; a warm capture's changed set is far below it.
+const maxImportBytes = 256 << 20
 const maxDiffBytes = 1 << 20
 const keepTurns = 50
 
@@ -64,9 +74,9 @@ type CaptureStats struct {
 	Removed       int `json:"removed"`
 	IndexesReused int `json:"indexes_reused"`
 	IndexesNew    int `json:"indexes_new"`
-	Batches       int `json:"batches,omitempty"` // background initial import rounds
-	// Deferred names why a send-path capture was left to a background cache
-	// warm-up: "cold" (not attempted) or "budget" (ran out of time).
+	Batches       int `json:"batches,omitempty"` // background initial index build rounds
+	// Deferred names why a send-path capture was left to the background index
+	// build (Warm): "cold" (not attempted) or "budget" (ran out of time).
 	Deferred      string `json:"deferred,omitempty"`
 	BudgetSkipped int    `json:"budget_skipped"`
 	ReadSkipped   int    `json:"read_skipped"`
@@ -112,9 +122,9 @@ type storeState struct {
 	warming atomic.Bool
 }
 
-// ErrWarming means a background cache warm-up holds this Crew's gate; a
-// send-path capture is skipped rather than waiting for it.
-var ErrWarming = errors.New("file snapshot cache warm-up in progress")
+// ErrWarming means the background index build (Warm) holds this Crew's gate;
+// a send-path capture is skipped rather than waiting for it.
+var ErrWarming = errors.New("file snapshot index build in progress")
 
 var states sync.Map
 
@@ -380,11 +390,6 @@ func (s Store) vanishedOnDisk(ctx context.Context, root *os.Root, prior string, 
 	return res
 }
 
-// capture records the Crew's eligible files into ref within the normal
-// import budget (see captureWithin).
-func (s Store) capture(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string) (string, []string, []string, error) {
-	return s.captureWithin(ctx, ref, prior, stats, skippedState, maxCaptureBytes)
-}
 func (s Store) read(id string) (Record, error) {
 	if !validID(id) {
 		return Record{}, errors.New("invalid snapshot")
@@ -458,7 +463,7 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 		r.BeforeCapture.Deferred = "cold"
 		return r, s.save(r)
 	}
-	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState)
+	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 		if sendPath && ctx.Err() != nil {
@@ -472,17 +477,19 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 	return r, saveErr
 }
 
-// Warm is the resumable initial import: it fills the Crew's persisted private
-// indexes off the send path, in batches of at most the normal import budget,
-// without a reply record, so later send-path captures reuse them and fit their
-// budget. Each batch is committed (indexes plus headRef) before the next
-// starts, so a warm-up stopped by limit keeps every finished batch and the
-// next one continues from there. One runs at a time per Crew (ErrWarming).
-// Its state is never a reply's before-boundary.
+// Warm is the resumable initial index build: it fills the Crew's persisted
+// private indexes off the send path, in batches of maxImportBytes, without a
+// reply record, so later send-path captures reuse them and fit their budget.
+// It stays separate from replies: a cold Crew (67k files) cannot be read in
+// the send path's 2 s, and a capture still running when the message is
+// delivered must never become that reply's before-state (PLAT-746-158).
+// Each batch is committed (indexes plus headRef) before the next starts, so a
+// build stopped by limit keeps every finished batch and the next continues
+// from there. One runs at a time per Crew (ErrWarming).
 func (s Store) Warm(limit time.Duration) (CaptureStats, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
-	return s.warm(ctx, maxCaptureBytes, nil)
+	return s.warm(ctx, maxImportBytes, nil)
 }
 
 func (s Store) warm(ctx context.Context, batch int64, afterBatch func(CaptureStats)) (CaptureStats, error) {
@@ -499,19 +506,15 @@ func (s Store) warm(ctx context.Context, batch int64, afterBatch func(CaptureSta
 	if err := s.init(ctx); err != nil {
 		return CaptureStats{}, err
 	}
-	// Refs of the earlier in-memory cache warm-up; the indexes replace them.
-	if refs, err := s.command(ctx, "for-each-ref", "--format=%(refname)", "refs/warm/").Output(); err == nil {
-		for _, name := range strings.Fields(string(refs)) {
-			_ = s.command(ctx, "update-ref", "-d", name).Run()
-		}
-	}
 	total := CaptureStats{Cold: !s.hasIndexes()}
 	for {
 		stats := CaptureStats{}
-		_, _, _, err := s.captureWithin(ctx, headRef, "", &stats, map[string]string{}, batch)
-		cold, imported, changed, batches := total.Cold, total.ImportedBytes+stats.ImportedBytes, total.Changed+stats.Changed, total.Batches+1
+		_, _, _, err := s.capture(ctx, headRef, "", &stats, map[string]string{}, batch)
+		// The last batch's counts describe the index; bytes, changes and
+		// batches add up over the whole build.
+		sum := total
 		total = stats
-		total.Cold, total.ImportedBytes, total.Changed, total.Batches = cold, imported, changed, batches
+		total.Cold, total.ImportedBytes, total.Changed, total.Batches = sum.Cold, sum.ImportedBytes+stats.ImportedBytes, sum.Changed+stats.Changed, sum.Batches+1
 		if err != nil {
 			return total, err
 		}
@@ -536,8 +539,8 @@ func (s Store) Failed(id string) bool {
 }
 func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	// A reply with no before-state (deferred or failed capture) has no card and
-	// no use for an after-capture: return without waiting on the gate, which a
-	// background warm-up may hold for minutes. Reads take no gate.
+	// no use for an after-capture: return without waiting on the gate, which
+	// the background index build may hold for minutes. Reads take no gate.
 	if r, err := s.read(ID(execution)); err != nil || r.Status != "capturing" {
 		return r, err
 	}
@@ -555,7 +558,7 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	}
 	var skipped, omitted []string
 	r.AfterSkippedState = map[string]string{}
-	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after", r.Before, &r.AfterCapture, r.AfterSkippedState)
+	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after", r.Before, &r.AfterCapture, r.AfterSkippedState, maxImportBytes)
 	r.Skipped = append(r.Skipped, skipped...)
 	r.Omitted = append(r.Omitted, omitted...)
 	now := time.Now().UTC()
