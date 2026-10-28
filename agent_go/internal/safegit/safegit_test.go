@@ -212,7 +212,7 @@ func TestIncludedConfigSymlinkedGitDirAndBadConfigDoNotRunCommands(t *testing.T)
 		root := t.TempDir()
 		repo := filepath.Join(root, "r")
 		mk(repo)
-		inc := filepath.Join(root, "extra.inc")
+		inc := filepath.Join(repo, ".git", "extra.inc")
 		marker := hostile(inc, filepath.Join(repo, ".git", "info", "attributes"))
 		cmd := exec.Command("git", "-C", repo, "config", "include.path", inc)
 		if out, err := cmd.CombinedOutput(); err != nil {
