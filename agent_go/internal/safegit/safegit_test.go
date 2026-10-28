@@ -199,9 +199,11 @@ func TestIncludedConfigSymlinkedGitDirAndBadConfigDoNotRunCommands(t *testing.T)
 		return marker
 	}
 	plain := func(dir string) {
-		cmd := exec.Command("git", "-C", dir, "status", "--porcelain")
-		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull}
-		cmd.Run()
+		for _, args := range [][]string{{"status", "--porcelain"}, {"diff", "HEAD"}} {
+			cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull}
+			cmd.Run()
+		}
 	}
 	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
 	dirty := func(dir string) { os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\ntwo changed\n"), 0o600) }
@@ -223,6 +225,9 @@ func TestIncludedConfigSymlinkedGitDirAndBadConfigDoNotRunCommands(t *testing.T)
 		}
 		os.Remove(marker)
 		if err := Command(ctx, repo, nil, "status", "--porcelain").Run(); err != nil {
+			t.Fatal(err)
+		}
+		if err := Command(ctx, repo, nil, "diff", "HEAD").Run(); err != nil {
 			t.Fatal(err)
 		}
 		if exists(marker) {
