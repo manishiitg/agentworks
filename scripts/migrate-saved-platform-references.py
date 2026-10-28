@@ -32,14 +32,27 @@ def catalog(directory):
         actions.extend(json.loads(path.read_text()))
     if not actions:
         raise ValueError("catalog directory contains no action definitions")
+    selected = collections.defaultdict(dict)
     for action in actions:
         families.add(action["family"])
         value = (action["family"], action["name"], action.get("scope", ""))
         for name in [action.get("member"), action.get("source")] + action.get("aliases", []):
             if name:
                 choices[name].add(value)
-    return {name: next(iter(values)) for name, values in choices.items()
-            if name not in families and len(values) == 1}, set(choices) - families
+        if action.get("source") and action.get("source_action"):
+            key = (action.get("source_key") or "action", action["source_action"])
+            selected[action["source"]].setdefault(key, set()).add(value)
+    mapping = {name: next(iter(values)) for name, values in choices.items()
+               if name not in families and len(values) == 1}
+    # A source tool shared by several actions (brain_read: read/search/diff)
+    # is resolved per call from the selector the saved payload already passes.
+    for name, keys in selected.items():
+        if name in families or name in mapping or len({key for key, _ in keys}) != 1:
+            continue
+        mapping[name] = {"key": next(iter(keys))[0],
+                         "actions": {value: next(iter(targets)) for (_, value), targets in keys.items()
+                                     if len(targets) == 1}}
+    return mapping, set(choices) - families
 
 
 def positions(source):
@@ -123,7 +136,18 @@ def python_calls(source, mapping):
         if body is None:
             unsupported.append("payload:" + name + ":" + str(node.lineno))
             continue
-        family, action, selector_scope = mapping[name]
+        target = mapping[name]
+        if isinstance(target, dict):
+            chosen = None
+            if isinstance(body, ast.Dict):
+                chosen = next((target["actions"].get(value.value) for key, value in zip(body.keys, body.values)
+                               if isinstance(key, ast.Constant) and key.value == target["key"]
+                               and isinstance(value, ast.Constant) and isinstance(value.value, str)), None)
+            if chosen is None:
+                unsupported.append("payload_selector:" + name + ":" + str(node.lineno))
+                continue
+            target = chosen
+        family, action, selector_scope = target
         fields = {"action": action}
         if selector_scope:
             fields["scope"] = selector_scope
@@ -154,7 +178,7 @@ def shell_calls(source, mapping):
     # Only a single literal endpoint paired with a literal JSON body. Variable
     # bodies, several endpoints and documentation-only URLs remain reported.
     endpoints = list(re.finditer(r"(?P<prefix>(?:/custom/|MCP_CUSTOM[}\"']?/))(?P<name>[a-zA-Z_][a-zA-Z_0-9]*)", source))
-    endpoints = [m for m in endpoints if m["name"] in mapping]
+    endpoints = [m for m in endpoints if isinstance(mapping.get(m["name"]), tuple)]
     data = list(re.finditer(r"(?:--json|--data(?:-raw)?|-d)\s+(['\"])(\{[^\n]*?\})\1", source))
     if not endpoints:
         return source, 0
