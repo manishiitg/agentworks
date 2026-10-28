@@ -30,7 +30,8 @@ func crewChatUsesPersonalAccountScope(ctx context.Context, userID, sessionID str
 		return false, nil
 	}
 	own := doc.Agents[key]
-	if own.Engine == "" || own.ConnectionID == "" {
+	// An empty account in a saved tab choice is the company (server) account.
+	if own.Engine == "" {
 		return false, nil
 	}
 	option, offered := findProviderOptionByID(profile.Definition.Runtime.ProviderOptions, own.Engine)

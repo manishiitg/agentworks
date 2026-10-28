@@ -213,7 +213,7 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[AGENT_MODEL] %s set chat %s to engine=%q model=%q effort=%q", identity.UpdatedBy, entryKey, identity.Engine, identity.ModelID, identity.ReasoningEffort)
+	log.Printf("[AGENT_MODEL] %s set chat %s to engine=%q model=%q effort=%q connection_id=%q", identity.UpdatedBy, entryKey, identity.Engine, identity.ModelID, identity.ReasoningEffort, identity.ConnectionID)
 	return identity, nil
 }
 
