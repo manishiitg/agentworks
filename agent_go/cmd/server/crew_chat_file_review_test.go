@@ -109,7 +109,13 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 	params.Del("line")
 	params.Del("side")
 	// A late reference must still identify the original before-boundary.
-	history, err := api.chatFileReviewHistory(t.Context(), "chat-a", "")
+	// PLAT-746-163: an older reply whose capture failed (unavailable record) must
+	// not become the start of the whole-chat comparison.
+	cancelled, stop := context.WithCancel(t.Context())
+	stop()
+	_, _ = store.Begin(cancelled, "broken")
+	ref("broken", 0, 1)
+	history, err := api.chatFileReviewHistory(t.Context(), store, "chat-a", "")
 	if err != nil || history.First != filesnapshots.ID("first") {
 		t.Fatalf("late reference reordered start: %v %+v", err, history)
 	}
@@ -143,7 +149,7 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 			t.Fatalf("mark %s %s: %d %s", tc.user, tc.method, code, body)
 		}
 	}
-	history, err = api.chatFileReviewHistory(t.Context(), "chat-a", "")
+	history, err = api.chatFileReviewHistory(t.Context(), store, "chat-a", "")
 	if err != nil || len(history.Reviews) != 1 || history.Baseline != filesnapshots.ID("first") {
 		t.Fatalf("durable idempotent review: %v %+v", err, history)
 	}

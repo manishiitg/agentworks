@@ -81,7 +81,13 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		return
 	}
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeTimeout)
+	// The first capture of a large Crew imports every file; a short budget
+	// breaks it and leaves no usable record (PLAT-746-163).
+	budget := crewSnapshotBeforeTimeout
+	if !snapshot.store.HasCapture() {
+		budget = crewSnapshotTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	record, err := snapshot.store.Begin(ctx, executionID)
 	log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v capture=%+v", sessionID, executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err, record.BeforeCapture)

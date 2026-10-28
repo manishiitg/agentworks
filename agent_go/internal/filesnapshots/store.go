@@ -487,6 +487,24 @@ func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
 	}
 	return r, saveErr
 }
+
+// HasCapture reports whether any earlier capture finished its before-state.
+func (s Store) HasCapture() bool {
+	records, _ := s.List()
+	for _, r := range records {
+		if r.Before != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// Failed reports whether a retained reply's capture failed, so it saved no
+// before or after state. A record that is gone (retention) is not Failed.
+func (s Store) Failed(id string) bool {
+	r, err := s.read(id)
+	return err == nil && r.Status == "unavailable"
+}
 func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	unlock, err := s.lock(ctx)
 	if err != nil {

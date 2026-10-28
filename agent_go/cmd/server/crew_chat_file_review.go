@@ -61,7 +61,7 @@ type chatFileReview struct {
 	Note      string                  `json:"note,omitempty"`
 }
 
-func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, sessionID, root string) (chatFileReview, error) {
+func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesnapshots.Store, sessionID, root string) (chatFileReview, error) {
 	out := chatFileReview{Replies: []chatSnapshotReference{}, Reviews: []chatReviewPoint{}, Baseline: "start"}
 	history, err := api.eventStore.ReadChatFileHistory(ctx, sessionID)
 	if err != nil {
@@ -104,6 +104,16 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, sessionID, r
 	}
 	sort.Slice(out.Reviews, func(i, j int) bool { return out.Reviews[i].End < out.Reviews[j].End })
 	sort.Slice(out.Replies, func(i, j int) bool { return out.Replies[i].End < out.Replies[j].End })
+	// A reply whose capture failed has no saved before/after; it must not be
+	// the start of the comparison (PLAT-746-163). A record removed by
+	// retention stays listed, so its missing start is still refused.
+	usable := out.Replies[:0]
+	for _, ref := range out.Replies {
+		if !store.Failed(ref.ID) {
+			usable = append(usable, ref)
+		}
+	}
+	out.Replies = usable
 	if len(out.Replies) > 0 {
 		first, last := out.Replies[0], out.Replies[len(out.Replies)-1]
 		out.First, out.Last, out.Latest = first.ID, last.ID, last.ID
@@ -133,7 +143,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), crewSnapshotTimeout)
 	defer cancel()
-	history, err := api.chatFileReviewHistory(ctx, sessionID, root)
+	history, err := api.chatFileReviewHistory(ctx, store, sessionID, root)
 	if err != nil {
 		externalError(w, 404, "not_found", "This chat has no saved file history.")
 		return

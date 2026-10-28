@@ -50,7 +50,7 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), crewSnapshotTimeout*2)
 	defer cancel()
-	history, err := api.chatFileReviewHistory(ctx, sessionID, root)
+	history, err := api.chatFileReviewHistory(ctx, store, sessionID, root)
 	if err != nil {
 		externalError(w, 404, "not_found", "This chat has no saved file history.")
 		return
