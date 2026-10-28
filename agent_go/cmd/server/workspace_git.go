@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
@@ -221,37 +222,11 @@ func workspaceGitExcludesFile() string {
 }
 
 func workspaceGitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	config := []string{}
+	var config []string
 	if excludes := workspaceGitExcludesFile(); excludes != "" {
-		config = append(config, "-c", "core.excludesFile="+excludes)
+		config = append(config, "core.excludesFile="+excludes)
 	}
-	full := append(append(config, []string{
-		"--no-optional-locks",
-		"-c", "core.fsmonitor=false",
-		"-c", "core.hooksPath=/dev/null",
-		"-c", "core.pager=cat",
-		"-c", "core.quotepath=off",
-		"-c", "safe.directory=" + dir,
-		"-c", "protocol.allow=never",
-		"-c", "diff.external=",
-		"-c", "gc.auto=0",
-		// Explicit git dir and work tree: a repo's own config (core.worktree)
-		// or a .git file (gitdir: elsewhere) cannot redirect git outside it.
-		"--git-dir", filepath.Join(dir, ".git"),
-		"--work-tree", dir,
-	}...), args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Dir = dir
-	cmd.Env = []string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + os.TempDir(),
-		"GIT_CONFIG_NOSYSTEM=1",
-		"GIT_CONFIG_GLOBAL=/dev/null",
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_OPTIONAL_LOCKS=0",
-		"LC_ALL=C",
-	}
-	return cmd
+	return safegit.Command(ctx, dir, config, args...)
 }
 
 // workspaceGitIsRepo reports whether dir holds a plain .git directory. A .git

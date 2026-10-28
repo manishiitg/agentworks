@@ -3,6 +3,7 @@ package filesnapshots
 import (
 	"bytes"
 	"context"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
 	"os"
 	"os/exec"
 	"path"
@@ -39,14 +40,9 @@ type Group struct {
 	PR          *PullRequest `json:"pr,omitempty"`
 }
 
-// gitIn runs read-only Git in a user checkout. The checkout is untrusted:
-// hooks, fsmonitor, external diff/textconv and user/system config are off.
+// gitIn runs read-only Git in a user checkout through the shared hardened helper.
 func gitIn(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	flags := []string{"-c", "safe.directory=*", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "protocol.allow=never", "--no-optional-locks"}
-	cmd := exec.CommandContext(ctx, "git", append(flags, args...)...)
-	cmd.Dir = dir
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
-	return cmd
+	return safegit.Command(ctx, dir, nil, args...)
 }
 
 // checkoutRoot returns the deepest folder at or above file (inside root) that
