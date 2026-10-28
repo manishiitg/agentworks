@@ -101,7 +101,7 @@ export function SlackManifestSetup({ defaultName, finalStep, directMessagesOnly 
       </div>
       <div className="relative">
         <pre aria-label="Slack app manifest" className="max-h-64 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-[11px] leading-snug text-foreground">{json}</pre>
-        <Button variant="outline" size="xs" onClick={() => void copyJSON()} className="absolute right-2 top-2">
+        <Button type="button" variant="outline" size="xs" onClick={() => void copyJSON()} className="absolute right-2 top-2">
           {copy === 'copied' ? <><Check className="h-3 w-3" />Copied</> : <><Copy className="h-3 w-3" />{copy === 'failed' ? 'Copy failed' : 'Copy'}</>}
         </Button>
       </div>
