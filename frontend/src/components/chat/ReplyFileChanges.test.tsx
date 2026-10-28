@@ -26,10 +26,10 @@ import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '
 import { ReplyFileChanges } from './ReplyFileChanges'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-async function render(canBuild: boolean, total = 2) {
+async function render(canBuild: boolean, total = 2, latestSnapshotId?: string) {
   state.canBuild = canBuild; state.total = total
   const host = document.createElement('div'); document.body.append(host)
-  await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a' }} />))
+  await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId }} />))
   return host
 }
 const button = (host: HTMLElement, text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text))
@@ -78,5 +78,22 @@ describe('reply card groups', () => {
     const host = await render(false)
     expect(button(host, 'Undo this reply')).toBeUndefined()
     expect(button(host, '+ Add button')).toBeUndefined()
+  })
+  it('shows totals and every action in the header; the latest reply is open, an older one is collapsed', async () => {
+    const latest = await render(true)
+    expect(latest.textContent).toContain('Files changed during this reply · 2 files')
+    expect(latest.textContent).toContain('+4')
+    for (const text of ['Review changes', 'Compare', 'Undo this reply', 'Check this change', '+ Add button']) expect(button(latest, text)).toBeDefined()
+    expect(latest.textContent).toContain('PR #305')
+    const older = await render(true, 2, 'newer')
+    expect(older.textContent).not.toContain('PR #305')
+    expect(button(older, 'Check this change')).toBeDefined()
+    expect(button(older, 'Undo this reply')).toBeDefined()
+  })
+  it('a Run person sees only Review changes and Compare in the header', async () => {
+    const host = await render(false)
+    expect(button(host, 'Review changes')).toBeDefined()
+    expect(button(host, 'Compare')).toBeDefined()
+    expect(button(host, 'Mark as reviewed')).toBeUndefined()
   })
 })
