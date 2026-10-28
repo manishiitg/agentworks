@@ -39,6 +39,17 @@ func TestExternalBuilderManagedFileTools(t *testing.T) {
 	if len(reg.tools) != 4 {
 		t.Fatalf("file tools missing: %+v", reg.tools)
 	}
+	// Reading is basic in every in-app chat on a workflow (PLAT-856-397: a Goals
+	// Builder had no files action=read); writing stays with the MCP Builder.
+	web := &recordingRegistrar{}
+	if err := api.registerExternalBuilderWorkspaceTools(web, "Workflow/test", &UserClaims{UserID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"builder", "run"} {
+		if web.tools["read_file"].exec == nil || web.tools["write_file"].exec != nil || !newAgentWorksChatToolGate(mode).Admit("read_file") {
+			t.Fatalf("%s chat: read_file must be registered and admitted, write_file not registered: %+v", mode, web.tools)
+		}
+	}
 	call := func(name string, args map[string]interface{}) wf.Result {
 		t.Helper()
 		raw, err := reg.tools[name].exec(ctx, args)

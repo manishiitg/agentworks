@@ -18,11 +18,19 @@ import (
 // File edits from this origin deliberately use a small managed surface, rather
 // than shell commands or the generic diff endpoint. These read helpers already
 // reject symlinks and private runtime files, locally and on remote deployments.
+//
+// Reading is basic: every chat on a workflow folder gets files action=read,
+// list and search, so an agent whose CLI file tools fail still reads
+// variables/variables.json (PLAT-856-397). Writes stay with the MCP Builder;
+// the website Builder edits through its native tools and files action=patch.
 func (api *StreamingAPI) registerExternalBuilderWorkspaceTools(registrar definitionToolRegistrar, workspace string, claims *UserClaims) error {
-	if claims == nil || claims.ExternalBuilderOperationID == "" {
+	names := []string{"read_file", "list_files", "search_files"}
+	if claims != nil && claims.ExternalBuilderOperationID != "" {
+		names = append(names, "write_file")
+	} else if root, err := wf.CleanRelative(workspace); err != nil || len(strings.Split(root, "/")) != 2 || !strings.HasPrefix(root, "Workflow/") {
 		return nil
 	}
-	for _, name := range []string{"read_file", "list_files", "search_files", "write_file"} {
+	for _, name := range names {
 		tool := name
 		props := map[string]interface{}{"path": map[string]interface{}{"type": "string", "description": "Path relative to this workflow, for example code/task.py. Other workflows, private runtime storage, and databases are inaccessible."}}
 		required := []string{"path"}
