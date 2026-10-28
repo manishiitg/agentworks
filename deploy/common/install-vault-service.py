@@ -62,6 +62,7 @@ def render(app, docs, product, agent_port, vault_port, unit_dir):
         raise ValueError('VAULT_AUDIT_PROVIDER must be sqlite or off')
     state = app / 'state' / 'vault'
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    (app / 'logs').mkdir(parents=True, exist_ok=True, mode=0o750)
     if state.resolve().is_relative_to(docs.resolve()):
         raise ValueError('Vault credential state resolves inside workspace documents')
     state.chmod(0o700)
@@ -101,6 +102,9 @@ Before={product}-agent.service
 EnvironmentFile={state}/service.env
 WorkingDirectory={app}/current
 ExecStart="{app}/current/bin/agentworks-vault"
+# Its startup and repair lines go to logs/ like the other services: an unprivileged account cannot read the journal.
+StandardOutput=append:{app}/logs/vault.log
+StandardError=append:{app}/logs/vault.log
 UMask=0077
 NoNewPrivileges=true
 Restart=on-failure
