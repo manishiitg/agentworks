@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTheme } from '../../hooks/useTheme'
+import { useMobileViewport } from '../../hooks/useMobileViewport'
 
 export type DiffLineAnchor = { side: 'before' | 'after'; line: number }
 
@@ -22,8 +23,12 @@ type DiffLineKind =
 interface ParsedDiffLine {
   content: string
   kind: DiffLineKind
+  before?: number
+  after?: number
   anchor?: DiffLineAnchor
 }
+
+type SplitRow = { full: ParsedDiffLine } | { left?: ParsedDiffLine; right?: ParsedDiffLine }
 
 interface DiffPalette {
   container: string
@@ -121,6 +126,60 @@ const darkPalette: DiffPalette = {
   },
 }
 
+const parseDiff = (content: string): ParsedDiffLine[] => {
+  let before = 0, after = 0
+  return content.split('\n').map(content => {
+    const kind = classifyDiffLine(content)
+    const hunk = content.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+    if (hunk) { before = Number(hunk[1]); after = Number(hunk[2]) }
+    if (kind === 'deletion' && before > 0) { const line = before++; return { content, kind, before: line, anchor: { side: 'before', line } } }
+    if (kind === 'addition' && after > 0) { const line = after++; return { content, kind, after: line, anchor: { side: 'after', line } } }
+    if (kind === 'context' && after > 0) { const line = after++; return { content, kind, before: before++, after: line, anchor: { side: 'after', line } } }
+    return { content, kind }
+  })
+}
+
+const withoutWhitespace = (line: ParsedDiffLine) => line.content.slice(1).replace(/\s+/g, '')
+
+/** Like `git diff -w`: a block of removed lines replaced by the same lines with
+ * only whitespace changed is shown as unchanged (new side text and numbers). */
+const hideWhitespaceChanges = (lines: ParsedDiffLine[]): ParsedDiffLine[] => {
+  const result: ParsedDiffLine[] = []
+  for (let i = 0; i < lines.length;) {
+    if (lines[i].kind !== 'deletion') { result.push(lines[i++]); continue }
+    let mid = i
+    while (mid < lines.length && lines[mid].kind === 'deletion') mid++
+    let end = mid
+    while (end < lines.length && lines[end].kind === 'addition') end++
+    const removed = lines.slice(i, mid), added = lines.slice(mid, end)
+    if (removed.length === added.length && removed.every((line, n) => withoutWhitespace(line) === withoutWhitespace(added[n]))) {
+      added.forEach((line, n) => result.push({ ...line, content: ` ${line.content.slice(1)}`, kind: 'context', before: removed[n].before }))
+    } else result.push(...removed, ...added)
+    i = end
+  }
+  return result
+}
+
+/** Side by side: removed lines pair with the added lines that follow them. */
+const toSplitRows = (lines: ParsedDiffLine[]): SplitRow[] => {
+  const rows: SplitRow[] = []
+  for (let i = 0; i < lines.length;) {
+    const line = lines[i]
+    if (line.kind === 'context') { rows.push({ left: line, right: line }); i++; continue }
+    if (line.kind !== 'deletion' && line.kind !== 'addition') { rows.push({ full: line }); i++; continue }
+    const removed: ParsedDiffLine[] = [], added: ParsedDiffLine[] = []
+    while (i < lines.length && lines[i].kind === 'deletion') removed.push(lines[i++])
+    while (i < lines.length && lines[i].kind === 'addition') added.push(lines[i++])
+    for (let n = 0; n < Math.max(removed.length, added.length); n++) rows.push({ left: removed[n], right: added[n] })
+  }
+  return rows
+}
+
+const readChoice = (key: string) => { try { return localStorage.getItem(key) === '1' } catch { return false } }
+const saveChoice = (key: string, value: boolean) => { try { localStorage.setItem(key, value ? '1' : '0') } catch { /* per-browser convenience only */ } }
+const SPLIT_KEY = 'diff-view:split'
+const WHITESPACE_KEY = 'diff-view:hide-whitespace'
+
 export function DiffRenderer({
   content,
   onSelectLine,
@@ -128,19 +187,13 @@ export function DiffRenderer({
   maxHeightClassName = 'max-h-[70vh]',
 }: DiffRendererProps) {
   const { theme } = useTheme()
-  const lines = useMemo<ParsedDiffLine[]>(() => {
-    let before = 0, after = 0
-    return content.split('\n').map(content => {
-      const kind = classifyDiffLine(content)
-      const hunk = content.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-      if (hunk) { before = Number(hunk[1]); after = Number(hunk[2]) }
-      let anchor: DiffLineAnchor | undefined
-      if (kind === 'deletion' && before > 0) anchor = { side: 'before', line: before++ }
-      if (kind === 'addition' && after > 0) anchor = { side: 'after', line: after++ }
-      if (kind === 'context' && after > 0) { anchor = { side: 'after', line: after++ }; before++ }
-      return { content, kind, anchor }
-    })
-  }, [content])
+  const phone = useMobileViewport()
+  const [splitChoice, setSplitChoice] = useState(() => readChoice(SPLIT_KEY))
+  const [hideWhitespace, setHideWhitespace] = useState(() => readChoice(WHITESPACE_KEY))
+  const split = splitChoice && !phone
+  const parsed = useMemo(() => parseDiff(content), [content])
+  const lines = useMemo(() => hideWhitespace ? hideWhitespaceChanges(parsed) : parsed, [parsed, hideWhitespace])
+  const splitRows = useMemo(() => split ? toSplitRows(lines) : [], [lines, split])
   const palette = theme === 'dark' ? darkPalette : lightPalette
 
   const stats = useMemo(() => {
@@ -152,9 +205,21 @@ export function DiffRenderer({
     }, { additions: 0, deletions: 0, hunks: 0 })
   }, [lines])
 
+  const toggle = (key: string, value: boolean, set: (value: boolean) => void) => { set(value); saveChoice(key, value) }
+  const toggleClass = (on: boolean) => `rounded border px-2 py-0.5 ${on ? 'border-current font-medium' : `${palette.markerBorder} opacity-70`}`
+  const lineNumber = (line: ParsedDiffLine, side: 'before' | 'after') => onSelectLine && line.anchor?.side === side
+    ? <button type="button" aria-label={`Comment on ${side} line ${line.anchor.line}`} className="underline" onClick={() => onSelectLine(line.anchor!)}>{line.anchor.line}</button>
+    : line[side]
+  const cell = (line: ParsedDiffLine | undefined, side: 'before' | 'after') => line
+    ? <div className={`grid min-w-0 grid-cols-[3rem_1fr] ${palette.lineClasses[line.kind]}`}>
+      <div className={`select-none border-r px-2 py-1 text-right ${palette.markerBorder} ${palette.markerClasses[line.kind]}`}>{lineNumber(line, side)}</div>
+      <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-1 leading-5">{line.content.slice(1)}</pre>
+    </div>
+    : <div className={palette.lineClasses.meta} />
+
   return (
     <div className={`flex flex-col rounded-lg border ${palette.container} ${className}`}>
-      <div className={`flex items-center gap-2 border-b px-3 py-2 text-xs ${palette.toolbar}`}>
+      <div className={`flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs ${palette.toolbar}`}>
         <span className={`rounded px-2 py-0.5 font-medium ${palette.stats.additions}`}>
           +{stats.additions}
         </span>
@@ -164,11 +229,21 @@ export function DiffRenderer({
         <span className={`rounded px-2 py-0.5 font-medium ${palette.stats.hunks}`}>
           {stats.hunks} sections
         </span>
+        <span className="ml-auto flex gap-2">
+          {!phone && <button type="button" aria-pressed={splitChoice} className={toggleClass(splitChoice)} onClick={() => toggle(SPLIT_KEY, !splitChoice, setSplitChoice)}>Side by side</button>}
+          <button type="button" aria-pressed={hideWhitespace} className={toggleClass(hideWhitespace)} onClick={() => toggle(WHITESPACE_KEY, !hideWhitespace, setHideWhitespace)}>Hide whitespace</button>
+        </span>
       </div>
 
       <div className={`min-h-0 flex-1 overflow-auto ${maxHeightClassName}`}>
         <div className="min-w-full font-mono text-xs">
-          {lines.map((line, index) => {
+          {split ? splitRows.map((row, index) => 'full' in row
+            ? <div key={index} className={`border-b px-3 py-1 ${palette.rowBorder} ${palette.lineClasses[row.full.kind]}`}><pre className="whitespace-pre-wrap break-words leading-5">{row.full.content}</pre></div>
+            : <div key={index} data-split-row className={`grid grid-cols-2 border-b ${palette.rowBorder}`}>
+              <div className={`min-w-0 border-r ${palette.markerBorder}`}>{cell(row.left, 'before')}</div>
+              {cell(row.right, 'after')}
+            </div>)
+          : lines.map((line, index) => {
             const marker = line.content.length > 0 ? line.content[0] : ' '
 
             return (
