@@ -14,15 +14,13 @@ import (
 )
 
 func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
-	for _, origin := range []string{"work", "code"} {
+	// Code routing was retired (8106ccb9d); only a Crew moved from its owner's old tree is left to discover.
+	for _, origin := range []string{"work"} {
 		t.Run(origin, func(t *testing.T) {
 			f := newMultiUserFixture(t, legacyIdentityLayout())
 			profile, folder, id := f.Crew, fixtureCrewFolder, fixtureCrewID
-			if origin == "code" {
-				profile, folder, id = f.Code, fixtureCodeFolder, fixtureCodeID
-			}
 			product, _ := projectProductForProfile(origin)
-			old := workspaceref.PhysicalPathOf(fixtureUserA, product.ProjectsRoot, folder)
+			old := f.Layout.CrewPhysical(fixtureUserA, folder)
 			current := workspaceref.SharedProjectPath(folder)
 			if err := os.MkdirAll(filepath.Join(f.Docs, "Crew"), 0755); err != nil {
 				t.Fatal(err)
@@ -41,7 +39,10 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			}
 			if err := defaultProjectOwners().modify(func(all map[string]projectOwnerRecord) (bool, error) {
 				key := projectOwnerKey(origin, folder)
+				// Crews are discovered only from the owner registry (listSharedCrewEntries), so the move's record
+				// carries the Crew's full identity, as registerTestCrew and real creation write it.
 				rec := all[key]
+				rec.Product, rec.Folder, rec.OwnerID, rec.ProjectID = origin, folder, fixtureUserA, id
 				rec.CanonicalRoot, rec.Shared, rec.BindingRoot, rec.Aliases = current, true, old, []string{old}
 				all[key] = rec
 				return true, nil
@@ -83,15 +84,13 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			if count != 1 {
 				t.Fatalf("MCP listed project %d times: %s", count, w)
 			}
-			// The sidebar uses this same list, with the registered old spelling
-			// supplied only to the signed-in app for grouping existing chats.
+			// The sidebar uses this same list.
 			nav := httptest.NewRecorder()
 			f.API.handleWorkspaces(nav, httptest.NewRequest("POST", "/api/workspaces", strings.NewReader(`{"action":"list","detail":"navigation"}`)).WithContext(ctx))
 			var navigation struct {
 				Workspaces []struct {
-					WorkspaceID string   `json:"workspace_id"`
-					Path        string   `json:"workspace_path"`
-					Aliases     []string `json:"aliases"`
+					WorkspaceID string `json:"workspace_id"`
+					Path        string `json:"workspace_path"`
 				} `json:"workspaces"`
 			}
 			if nav.Code != 200 || json.Unmarshal(nav.Body.Bytes(), &navigation) != nil {
@@ -101,7 +100,8 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			for _, item := range navigation.Workspaces {
 				if item.WorkspaceID == origin+":"+id {
 					count++
-					if item.Path != current || len(item.Aliases) != 1 || item.Aliases[0] != canonicalChatHistoryWorkspacePath(fixtureUserA, old) {
+					// Navigation stopped carrying the old spelling as aliases (8106ccb9d).
+					if item.Path != current {
 						t.Fatalf("wrong navigation identity: %+v", item)
 					}
 				}
@@ -117,23 +117,17 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			if got, err := resolveProductProjectBinding(ctx, fixtureUserA, profile, id); err == nil {
 				t.Fatalf("resolved retired root: %+v", got)
 			}
-			if err := os.RemoveAll(filepath.Join(f.Docs, current)); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := os.Lstat(filepath.Join(f.Docs, old)); !os.IsNotExist(err) {
-				t.Fatalf("old link remains after deletion: %v", err)
-			}
+			// Removing the old link after deletion was retired with removeDeletedProjectLinks (8106ccb9d).
 		})
 	}
 }
 
 // Owner navigation includes Local projects; publishing/reference discovery still
 // excludes them, and a token cannot opt into the app's routing metadata.
-func TestWorkspaceNavigationKeepsOwnerLocalAndRejectsTokenDetail(t *testing.T) {
-	f := newMultiUserFixture(t, legacyIdentityLayout())
-	root := legacyIdentityLayout().CodePhysical(fixtureUserA, fixtureCodeFolder)
-	raw := strings.Replace(f.Mock.files[root+"/product.json"], `"product":"code"`, `"mode":"local","product":"code"`, 1)
-	f.put(root+"/product.json", raw)
+func TestWorkspaceNavigationListsOnlyTheOwnersCrewsAndRejectsTokenDetail(t *testing.T) {
+	// The Local Code project this used was retired with Code routing (8106ccb9d); the rule now holds for the
+	// owner's Crew at the shared root: navigation lists only work the caller builds and is app-only.
+	f := newMultiUserFixture(t, sharedIdentityLayout())
 	request := func(claims *UserClaims, body string) *httptest.ResponseRecorder {
 		out := httptest.NewRecorder()
 		ctx := context.WithValue(context.Background(), UserContextKey, claims)
@@ -141,12 +135,12 @@ func TestWorkspaceNavigationKeepsOwnerLocalAndRejectsTokenDetail(t *testing.T) {
 		return out
 	}
 	owner := request(f.Claims(fixtureUserA), `{"action":"list","detail":"navigation"}`)
-	if owner.Code != 200 || !strings.Contains(owner.Body.String(), `"workspace_id":"code:`+fixtureCodeID+`"`) || owner.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("owner Local navigation: %d %s", owner.Code, owner.Body.String())
+	if owner.Code != 200 || !strings.Contains(owner.Body.String(), `"workspace_id":"work:`+fixtureCrewID+`"`) || owner.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("owner navigation: %d %s", owner.Code, owner.Body.String())
 	}
 	other := request(f.Claims(fixtureUserB), `{"action":"list","detail":"navigation"}`)
-	if other.Code != 200 || strings.Contains(other.Body.String(), fixtureCodeID) {
-		t.Fatalf("other account saw Local: %d %s", other.Code, other.Body.String())
+	if other.Code != 200 || strings.Contains(other.Body.String(), fixtureCrewID) {
+		t.Fatalf("other account's navigation listed the owner's Crew: %d %s", other.Code, other.Body.String())
 	}
 	token := f.Claims(fixtureUserA)
 	token.AccessToken = &accesstokens.Token{Scopes: []string{"code:run", "crews:read"}, AllCrews: true}

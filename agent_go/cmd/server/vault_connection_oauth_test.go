@@ -97,6 +97,14 @@ func TestVaultConnectionOAuthAccountsAreIsolated(t *testing.T) {
 	for _, id := range []string{one, two} {
 		connections[id] = vaultOAuthConnection{ID: id, OAuthServer: "Test", OAuthCredentialID: id, UpstreamURL: "https://example.com/mcp", Label: id, Status: "authentication_required"}
 	}
+	// Completing a sign-in marks MCP URL sign-ins in the MCP OAuth store (422a9a91c). Creating that SQLite store for
+	// the first time took over 10s on the build host, longer than the completion wait below; create it up front as an
+	// installed server already has it.
+	if store, err := openMCPURLSignIns(); err != nil {
+		t.Fatal(err)
+	} else {
+		store.Close()
+	}
 	eventStore := events.NewEventStore(20)
 	defer eventStore.Stop()
 	eventStore.SetSessionOwner("vault-fixture-chat", "default")
@@ -115,7 +123,7 @@ func TestVaultConnectionOAuthAccountsAreIsolated(t *testing.T) {
 		flow := oauthFlows[start.State]
 		oauthFlowsMu.RUnlock()
 		flow.CodeChan <- code
-		until := time.Now().Add(3 * time.Second)
+		until := time.Now().Add(15 * time.Second)
 		for time.Now().Before(until) {
 			oauthFlowsMu.RLock()
 			done := flow.Outcome

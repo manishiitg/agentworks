@@ -17,6 +17,10 @@ import (
 func TestVaultChatCreatesMissingUserWorkspaceBeforeCLILaunch(t *testing.T) {
 	root := t.TempDir()
 	docs := filepath.Join(root, "docs")
+	// A server always has its docs root; workspace paths refuse to resolve under a missing one (705503ecf).
+	if err := os.MkdirAll(docs, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(root, "state"))
 	t.Setenv("MULTI_USER_MODE", "true")

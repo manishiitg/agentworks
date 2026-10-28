@@ -21,7 +21,7 @@ func TestVaultOAuthIndividualIdentityRefreshAndRevocation(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL", "")
 	t.Setenv("AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES", "")
-	directory := withMemoryUserDirectory(t, `{"users":[{"id":"alice","role":"viewer","products":["mcp-gateway"]},{"id":"bob","role":"viewer","products":["mcp-gateway"]},{"id":"outsider","role":"viewer","products":["code"]}]}`)
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"alice","role":"viewer","products":["mcp-gateway"]},{"id":"bob","role":"viewer","products":["mcp-gateway"]},{"id":"outsider","role":"viewer","products":["code"]},{"id":"former","role":"viewer","products":["mcp-gateway"],"disabled":true}]}`)
 	var calls []string
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/admin/runtime/external-mcp" || r.Header.Get("Authorization") != "Bearer service-test-private-token-at-least-32-characters" || r.Header.Get("X-Vault-Platform-User") != "1" || !strings.HasPrefix(r.Header.Get("X-Vault-OAuth-Client"), "mcp_client_") || r.Header.Get("Cookie") != "" || r.Header.Get("X-Vault-Connector") != "" || r.URL.RawQuery != "" {
@@ -146,8 +146,13 @@ func TestVaultOAuthIndividualIdentityRefreshAndRevocation(t *testing.T) {
 	if w := request("POST", start(), `{"decision":"approve"}`, alice["access_token"].(string)); w.Code == 200 {
 		t.Fatal("MCP token approved consent")
 	}
-	if w := request("POST", start(), `{"decision":"approve"}`, login("outsider")); w.Code != 403 {
-		t.Fatal("non-Vault account approved consent")
+	// Vault belongs to every active account (PLAT-746-117, decisions log 2026-10-24): product assignment no longer
+	// gates consent, but a disabled account is still refused.
+	if w := request("POST", start(), `{"decision":"approve"}`, login("outsider")); w.Code != 200 {
+		t.Fatal("active account without product assignment was refused Vault consent", w.Code, w.Body.String())
+	}
+	if w := request("POST", start(), `{"decision":"approve"}`, login("former")); w.Code != 403 {
+		t.Fatal("disabled account approved consent")
 	}
 	*directory = `{"users":[{"id":"alice","role":"viewer","products":["mcp-gateway"],"disabled":true},{"id":"bob","role":"viewer","products":["mcp-gateway"]}]}`
 	invalidateUserDirectoryCache()
@@ -162,16 +167,7 @@ func TestVaultOAuthIndividualIdentityRefreshAndRevocation(t *testing.T) {
 	if w := refresh(alice, resource); w.Code != 400 {
 		t.Fatal("disabled account refreshed")
 	}
-	*directory = `{"users":[{"id":"alice","role":"viewer","products":["mcp-gateway"],"disabled":true},{"id":"bob","role":"viewer","products":["code"]}]}`
-	invalidateUserDirectoryCache()
-	if w := request("POST", vaultMCPPath, `{}`, bob["access_token"].(string)); w.Code != 401 {
-		t.Fatal("removed Vault entitlement reached backend")
-	}
-	if w := refresh(bob, resource); w.Code != 400 {
-		t.Fatal("removed Vault entitlement refreshed")
-	}
-	*directory = `{"users":[{"id":"alice","role":"viewer","products":["mcp-gateway"],"disabled":true},{"id":"bob","role":"viewer","products":["mcp-gateway"]}]}`
-	invalidateUserDirectoryCache()
+	// Removing a product assignment no longer revokes Vault (PLAT-746-117); disabling the account above does.
 	if w := refresh(bob, "https://evil.example/mcp"); w.Code != 400 {
 		t.Fatal("wrong audience accepted")
 	}

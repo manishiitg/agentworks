@@ -66,9 +66,11 @@ func TestVaultBuilderAuthorityIsBoundToAdminProfileAndRevokedLive(t *testing.T) 
 	if len(inventory.Users) != 2 || inventory.Users[1].ID != "member" || inventory.Users[1].Email != "member@example.com" {
 		t.Fatal("builder lacks the active platform directory", inventory.Users)
 	}
-	listing, err := api.mcpConnectionTool(ctx, "admin", "list_mcp_servers", nil)
-	if err != nil || !strings.Contains(listing, `"vault_users"`) || !strings.Contains(listing, "member@example.com") || strings.Contains(listing, "disabled@example.com") {
-		t.Fatal("shared builder tool lacks active emails", listing, err)
+	// The Vault builder reads the directory through its own setup inventory (list_vault_mcp_servers); the shared
+	// list_mcp_servers stopped carrying vault_users when Vault became the only MCP store (ee0e8ef83).
+	listing, err := vaultManagementMCP(ctx, "admin", "list_vault_mcp_servers", nil)
+	if err != nil || !strings.Contains(listing, `"users"`) || !strings.Contains(listing, "member@example.com") || strings.Contains(listing, "disabled@example.com") {
+		t.Fatal("Vault builder inventory lacks active emails", listing, err)
 	}
 	// Automatic defaults retain the existing raw admin builder authority;
 	// ordinary product sessions below still use group-scoped inventory.

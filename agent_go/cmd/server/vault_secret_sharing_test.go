@@ -5,15 +5,42 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// sharingTestVault fakes the Vault service. Since PLAT-856 (ee0e8ef83) a project's own secrets live in its project
+// vault, owned by the workflow's registered owner (a1), so the source secret is read through that owner's vault while
+// the administrator (admin) shares the copy.
 func sharingTestVault(t *testing.T, failGrants bool) *int {
 	t.Helper()
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
+	registerWorkflowOwner(sharedSecretsTestWorkflow, "a1")
 	writes := new(int)
+	projectSecrets := []string{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-CapLayer-Actor") != "admin" || r.Header.Get("Authorization") != "Bearer "+strings.Repeat("s", 32) {
+		if r.Header.Get("Authorization") != "Bearer "+strings.Repeat("s", 32) {
+			w.WriteHeader(401)
+			return
+		}
+		if r.Header.Get("X-CapLayer-Actor") == "a1" {
+			switch r.URL.Path {
+			case "/api/project-vaults":
+				w.Write([]byte(`{"id":"v-123456"}`))
+			case "/api/vaults/v-123456/secrets":
+				var in struct{ Name string }
+				json.NewDecoder(r.Body).Decode(&in)
+				projectSecrets = append(projectSecrets, in.Name)
+				w.Write([]byte(`{}`))
+			case "/api/vaults/v-123456":
+				json.NewEncoder(w).Encode(map[string]any{"secret_names": projectSecrets})
+			default:
+				w.WriteHeader(404)
+			}
+			return
+		}
+		if r.Header.Get("X-CapLayer-Actor") != "admin" {
 			w.WriteHeader(401)
 			return
 		}
@@ -52,19 +79,24 @@ func TestVaultSecretSharingKeepsSource(t *testing.T) {
 	if err := api.upsertSharedWorkflowSecret(ctx, sharedSecretsTestWorkflow, "PROJECT_KEY", "private-sharing-value"); err != nil {
 		t.Fatal(err)
 	}
-	before, _ := api.ensureSharedWorkflowSecrets(ctx, sharedSecretsTestWorkflow, "admin")
 	if err := api.shareWorkflowSecretToVault(ctx, "admin", sharedSecretsTestWorkflow, "PROJECT_KEY", "TEAM_KEY", []string{"platform", "finance"}, false); err != nil {
 		t.Fatalf("sharing: %v", err)
 	}
 	after, _ := api.ensureSharedWorkflowSecrets(ctx, sharedSecretsTestWorkflow, "admin")
-	if len(after) != 1 || before[0].EncryptedValue != after[0].EncryptedValue {
+	if len(after) != 1 || after[0].Name != "PROJECT_KEY" || managedGlobals[after[0].VaultName] != "private-sharing-value" {
 		t.Fatal("source changed")
 	}
 	stored, err := api.chatStore.ListUserSecrets(ctx, managedGlobalSecretsUserID)
-	if err != nil || len(stored) != 1 || stored[0].Name != "TEAM_KEY" || strings.Contains(stored[0].EncryptedValue, "private-sharing-value") {
+	var copied string
+	for _, row := range stored {
+		if row.Name == "TEAM_KEY" {
+			copied = row.EncryptedValue
+		}
+	}
+	if err != nil || copied == "" || strings.Contains(copied, "private-sharing-value") {
 		t.Fatal("not encrypted")
 	}
-	if value, err := decryptSecretValueWithAAD(stored[0].EncryptedValue, managedGlobalAAD("TEAM_KEY")); err != nil || value != "private-sharing-value" {
+	if value, err := decryptSecretValueWithAAD(copied, managedGlobalAAD("TEAM_KEY")); err != nil || value != "private-sharing-value" {
 		t.Fatal("copy cannot decrypt")
 	}
 	if *grants != 1 {
@@ -91,7 +123,7 @@ func TestVaultSecretSharingRejectsUnauthorizedInvalidAndConflictingRequests(t *t
 			t.Fatalf("accepted %+v", tc)
 		}
 	}
-	if len(managedGlobals) != 0 || *writes != 0 {
+	if _, copied := managedGlobals["TEAM_KEY"]; copied || *writes != 0 {
 		t.Fatal("invalid request wrote data")
 	}
 	api.saveManagedGlobalSecret(ctx, "admin", "TEAM_KEY", "existing", true)
