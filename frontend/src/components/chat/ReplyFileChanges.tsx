@@ -15,6 +15,7 @@ import type { UserCommand } from '../../types/commands'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../../utils/chatIdentity'
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
 import { FileDiffIcon, GitCommitIcon, GitPullRequestIcon } from '../icons/octicons'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 
 type PullRequest = { number?: number; url?: string; state: string; checks?: string; review?: string }
 type FileGroup = { kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; new_checkout: boolean; files: FileChange[]; total_files: number; more_count: number; pr?: PullRequest }
@@ -44,8 +45,14 @@ export const cardContext = (groups: FileGroup[]) => {
 }
 const iconButton = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 [&_svg]:h-4 [&_svg]:w-4'
 const Divider = () => <span className="mx-1.5 h-4 w-px bg-border" aria-hidden />
-function IconButton({ label, onClick, disabled, strong, children }: { label: string; onClick: () => void; disabled?: boolean; strong?: boolean; children: ReactNode }) {
-  return <button type="button" title={label} aria-label={label} disabled={disabled} className={`${iconButton}${strong ? ' text-foreground' : ''}`} onClick={onClick}>{children}</button>
+// Hover or keyboard focus shows the name and one plain line; touch taps go straight to the button.
+function IconButton({ label, name = label, hint, onClick, disabled, strong, children }: { label: string; name?: string; hint: string; onClick: () => void; disabled?: boolean; strong?: boolean; children: ReactNode }) {
+  return <Tooltip>
+    <TooltipTrigger asChild>
+      <button type="button" aria-label={label} disabled={disabled} className={`${iconButton}${strong ? ' text-foreground' : ''}`} onClick={onClick}>{children}</button>
+    </TooltipTrigger>
+    <TooltipContent className="max-w-xs text-xs"><p className="font-semibold">{name}</p><p className="text-muted-foreground">{hint}</p></TooltipContent>
+  </Tooltip>
 }
 const addButtonStarter = 'Add a button called ___ that sends: ___'
 
@@ -137,19 +144,19 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           <span className="text-xs font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
           {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
         </button>
-        <div className="flex shrink-0 items-center gap-0.5">
-          <IconButton strong label="Review changes" onClick={() => openChatFiles(reference.sessionId)}><FileDiffIcon /></IconButton>
+        <TooltipProvider delayDuration={150}><div className="flex shrink-0 items-center gap-0.5">
+          <IconButton strong label="Review changes" hint="See every file this reply changed, line by line." onClick={() => openChatFiles(reference.sessionId)}><FileDiffIcon /></IconButton>
           {canEdit && repoGroups.length > 0 && <>
-            <IconButton label="Commit on the current branch" onClick={() => void ask('commit:reply', repoGroups.map(commitRequest).join('\n\n'))}><GitCommitIcon /></IconButton>
-            <IconButton label="Push to a branch and open a PR" onClick={() => void ask('push:reply', repoGroups.map(pushRequest).join('\n\n'))}><GitPullRequestIcon /></IconButton>
+            <IconButton label="Commit on the current branch" hint={`Ask the agent to commit these files on ${repoGroups.length === 1 ? repoGroups[0].branch : 'their current branches'}. Nothing is pushed.`} onClick={() => void ask('commit:reply', repoGroups.map(commitRequest).join('\n\n'))}><GitCommitIcon /></IconButton>
+            <IconButton label="Push to a branch and open a PR" hint="Ask the agent to push a branch and open a pull request with a full description." onClick={() => void ask('push:reply', repoGroups.map(pushRequest).join('\n\n'))}><GitPullRequestIcon /></IconButton>
           </>}
           {canEdit && <Divider />}
           {canEdit && commands.map(command => {
             const name = command.frontmatter.name
-            return <IconButton key={name} label={command.frontmatter.description || name} onClick={() => void ask(`command:${name}`, renderCommandPrompt(command.content, cardContext(groups)))}>{name === 'check-this-change' ? <Play /> : <Zap />}</IconButton>
+            return <IconButton key={name} label={command.frontmatter.description || name} name={name} hint={command.frontmatter.description || `Runs your ${name} command in this chat.`} onClick={() => void ask(`command:${name}`, renderCommandPrompt(command.content, cardContext(groups)))}>{name === 'check-this-change' ? <Play /> : <Zap />}</IconButton>
           })}
-          {canEdit && <IconButton label="Add button" onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}><Plus /></IconButton>}
-        </div>
+          {canEdit && <IconButton label="Add button" hint="Add your own button to this card." onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}><Plus /></IconButton>}
+        </div></TooltipProvider>
       </div>
       {(asked === 'commit:reply' || asked === 'push:reply' || commands.some(command => asked === `command:${command.frontmatter.name}`)) && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
       {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-diff-add">+{result.since_review.added}</span> <span className="text-diff-del">−{result.since_review.removed}</span></p>}
