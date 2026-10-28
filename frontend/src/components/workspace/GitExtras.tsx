@@ -125,7 +125,7 @@ export function StashSection({ workspacePath, repo, run, busy, reloadKey }: { wo
   const [dropping, setDropping] = useState<string | null>(null)
   const stashes = useLoaded<GitStash[]>(() => git.api.stashes(workspacePath, repo.root), [workspacePath, repo.root, repo.files.length, reloadKey], [])
   const hasChanges = repo.files.length > 0
-  if (!hasChanges && stashes.value.length === 0) return null
+  if (stashes.value.length === 0) return null
   return (
     <div className="border-t border-border">
       <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} className="flex h-7 w-full items-center gap-1 px-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">

@@ -46,6 +46,8 @@ afterEach(() => { useWorkspaceGitStore.getState().clear() })
 
 describe('FileWorkspacePane git bar', () => {
   it('shows the branch, ahead count and Changes button once the folder holds a repo', async () => {
+    const { workspaceGitApi } = await import('../services/workspaceGit')
+    vi.mocked(workspaceGitApi.stashes).mockResolvedValueOnce([])
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
@@ -62,12 +64,17 @@ describe('FileWorkspacePane git bar', () => {
       expect(view.textContent).toContain('staged.ts')
       expect(view.textContent).toContain('a.ts')
       expect(view.textContent).toContain('Commit 1 staged')
-      // The Graph lists recent commits with their branch badges.
+      // History starts folded; empty stashes stay hidden even with working changes.
+      expect(view.textContent).not.toContain('Stashes')
+      const history = Array.from(view.querySelectorAll('button')).find(item => item.textContent?.startsWith('Commit history'))!
+      expect(history.getAttribute('aria-expanded')).toBe('false')
+      expect(view.textContent).not.toContain('newest commit')
+      await act(async () => history.click())
+      expect(history.getAttribute('aria-expanded')).toBe('true')
       expect(view.textContent).toContain('newest commit')
       expect(view.textContent).toContain('origin/main')
 
       // Commit needs a message; then it sends the commit action and refreshes.
-      const { workspaceGitApi } = await import('../services/workspaceGit')
       const commitButton = Array.from(view.querySelectorAll('button')).find(item => item.textContent?.startsWith('Commit 1 staged'))!
       expect(commitButton.hasAttribute('disabled')).toBe(true)
       const box = view.querySelector('textarea')!

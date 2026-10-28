@@ -142,8 +142,8 @@ function FileRow({ repo, file, staged, workspacePath, busy, run }: {
   )
 }
 
-function Section({ title, count, action, children }: { title: string; count: number; action?: ReactNode; children: ReactNode }) {
-  const [open, setOpen] = useState(true)
+function Section({ title, count, action, children, defaultOpen = true }: { title: string; count: number; action?: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
   if (count === 0) return null
   return (
     <div>
@@ -173,7 +173,7 @@ function GitGraph({ workspacePath, repo, reloadKey }: { workspacePath: string; r
   const commits = useAsync(() => git.api.log(workspacePath, repo.root), [workspacePath, repo.root, repo.branch, repo.ahead, repo.behind, reloadKey])
   const list = commits.value ?? []
   return (
-    <Section title="Graph" count={list.length}>
+    <Section title="Commit history" count={list.length} defaultOpen={false}>
       {commits.loading && list.length === 0 ? <Loading />
         : commits.error ? <p className="px-3 py-1 text-xs text-destructive">{commits.error}</p>
           : list.length === 0 ? <p className="px-3 py-1 text-xs text-muted-foreground">No commits yet.</p>
