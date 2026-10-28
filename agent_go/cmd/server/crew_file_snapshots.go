@@ -24,7 +24,12 @@ import (
 )
 
 const crewSnapshotTimeout = 15 * time.Second
-const crewSnapshotBeforeTimeout = 2 * time.Second
+
+// The before-capture of a warm Crew reuses cached file hashes and must not delay a
+// send; a cold one (after a restart or the first capture) reads every file and
+// needs the full budget (PLAT-746-163). Waiting for the Crew gate is separate.
+const crewSnapshotBeforeWarm = 2 * time.Second
+const crewSnapshotLockWait = 10 * time.Second
 
 // PLAT-746-158: file review belongs to Studio. Read the server-owned project
 // metadata before touching the snapshot store; browser mode is not the switch.
@@ -68,6 +73,15 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		folder = api.lastQueryRequests[sessionID].SelectedFolder
 		api.lastQueryMu.RUnlock()
 	}
+	if folder == "" {
+		// After a restart the last query is gone; the session's recorded
+		// project (rehydrated from the chat journal) still names the Crew.
+		folder = api.projectRootForSession(sessionID)
+	}
+	if folder == "" {
+		log.Printf("[FILE_SNAPSHOT] phase=skipped session=%s execution=%s reason=no_folder", sessionID, executionID)
+		return
+	}
 	roots, found, err := crewStorageRoots(folder)
 	if err != nil || !found {
 		return
@@ -81,15 +95,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		return
 	}
 	started := time.Now()
-	// The first capture of a large Crew imports every file; a short budget
-	// breaks it and leaves no usable record (PLAT-746-163).
-	budget := crewSnapshotBeforeTimeout
-	if !snapshot.store.HasCapture() {
-		budget = crewSnapshotTimeout
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
-	defer cancel()
-	record, err := snapshot.store.Begin(ctx, executionID)
+	record, err := snapshot.store.BeginWithin(crewSnapshotLockWait, crewSnapshotBeforeWarm, crewSnapshotTimeout, executionID)
 	log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v capture=%+v", sessionID, executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err, record.BeforeCapture)
 	if err != nil && record.ID == "" {
 		api.crewTurnSnapshots.Delete(executionID)

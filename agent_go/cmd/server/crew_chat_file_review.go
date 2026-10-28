@@ -245,7 +245,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		history.Available = false
-		history.Note = "A saved boundary is no longer available. Choose another retained reply."
+		history.Note = "The earliest saved changes of this chat were removed to save space. Open a recent reply's changes from the chat instead."
 		externalJSON(w, map[string]any{"history": history, "changes": []any{}})
 		return
 	}

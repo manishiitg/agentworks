@@ -201,6 +201,37 @@ func TestSnapshotLockWaitHonorsSendDeadline(t *testing.T) {
 	}
 }
 
+// PLAT-746-163: after a restart no file hashes are cached, so the before-capture
+// gets the cold budget (not the warm one); a reader never waits for the gate.
+func TestColdBeforeCaptureBudgetAndLockFreeReads(t *testing.T) {
+	s := Store{Root: t.TempDir(), Private: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(s.Root, "a.txt"), []byte("a"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if captureBudget(true, time.Nanosecond, time.Minute) != time.Minute || captureBudget(false, time.Nanosecond, time.Minute) != time.Nanosecond {
+		t.Fatal("budget must follow cache state")
+	}
+	// Cold: the warm budget (already expired) is not applied.
+	first, err := s.BeginWithin(time.Second, time.Nanosecond, time.Minute, "cold")
+	if err != nil || !first.BeforeCapture.Cold {
+		t.Fatalf("cold capture used the warm budget: %v %+v", err, first)
+	}
+	done, err := s.Finish(t.Context(), "cold")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := s.lock(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	if _, err := s.Compare(ctx, done.ID, "", func(string) bool { return true }); err != nil {
+		t.Fatalf("a read waited for the Crew gate: %v", err)
+	}
+}
+
 // Size omissions cannot masquerade as a deletion, and failed delivery cannot
 // produce a fabricated after-snapshot (PLAT-746-158).
 func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
@@ -266,6 +297,10 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 	warning, err := s.Compare(t.Context(), changed.ID, "", func(string) bool { return true })
 	if err != nil || warning.UncapturedChanges != 1 || warning.SkippedCount != 61 {
 		t.Fatalf("changed skipped file lost warning: %v %+v", err, warning)
+	}
+	// PLAT-746-163: a reply whose only edit is an uncaptured file still gets a card.
+	if s.Unchanged(t.Context(), changed) || !s.Unchanged(t.Context(), many) {
+		t.Fatal("Unchanged must follow edits to uncaptured files")
 	}
 	hidden, err := s.Compare(t.Context(), changed.ID, "", func(path string) bool { return path != "asset.bin" })
 	if err != nil || hidden.UncapturedChanges != 0 {

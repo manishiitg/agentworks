@@ -55,6 +55,7 @@ type CaptureStats struct {
 	Reused        int   `json:"reused"`
 	ImportedBytes int64 `json:"imported_bytes"`
 	SizeSkipped   int   `json:"size_skipped"`
+	Cold          bool  `json:"cold,omitempty"` // no file hashes were cached: every file was read
 	BudgetSkipped int   `json:"budget_skipped"`
 	ReadSkipped   int   `json:"read_skipped"`
 }
@@ -134,6 +135,14 @@ func (s Store) command(ctx context.Context, args ...string) *exec.Cmd {
 func (s Store) Unchanged(ctx context.Context, r Record) bool {
 	if r.Before == "" || r.After == "" {
 		return false
+	}
+	// A file left uncaptured (too large, over budget) with a different size/time
+	// on each side is a change the trees cannot show; the card reports it.
+	for _, p := range r.Skipped {
+		before, after := r.BeforeSkippedState[p], r.AfterSkippedState[p]
+		if before != "" && after != "" && before != after {
+			return false
+		}
 	}
 	if r.Before == r.After {
 		return true
@@ -463,7 +472,21 @@ func (s Store) save(r Record) error {
 	return os.Rename(tmp, p)
 }
 func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
-	unlock, err := s.lock(ctx)
+	return s.begin(ctx, ctx, execution, 0, 0)
+}
+
+// BeginWithin waits up to lockWait for the Crew gate, then captures within a
+// budget chosen by cache state: cold when no file hashes are cached (after a
+// restart or the first capture, every file is read), warm otherwise. The wait
+// does not use up the capture budget.
+func (s Store) BeginWithin(lockWait, warm, cold time.Duration, execution string) (Record, error) {
+	lockCtx, cancel := context.WithTimeout(context.Background(), lockWait)
+	defer cancel()
+	return s.begin(lockCtx, context.Background(), execution, warm, cold)
+}
+
+func (s Store) begin(lockCtx, ctx context.Context, execution string, warm, cold time.Duration) (Record, error) {
+	unlock, err := s.lock(lockCtx)
 	if err != nil {
 		return Record{}, err
 	}
@@ -477,6 +500,12 @@ func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
 	}
 	r := Record{ID: id, ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing"}
 	r.BeforeSkippedState = map[string]string{}
+	r.BeforeCapture.Cold = len(s.state().files) == 0
+	if budget := captureBudget(r.BeforeCapture.Cold, warm, cold); budget > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, budget)
+		defer cancel()
+	}
 	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", &r.BeforeCapture, r.BeforeSkippedState)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
@@ -488,15 +517,11 @@ func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
 	return r, saveErr
 }
 
-// HasCapture reports whether any earlier capture finished its before-state.
-func (s Store) HasCapture() bool {
-	records, _ := s.List()
-	for _, r := range records {
-		if r.Before != "" {
-			return true
-		}
+func captureBudget(isCold bool, warm, cold time.Duration) time.Duration {
+	if isCold {
+		return cold
 	}
-	return false
+	return warm
 }
 
 // Failed reports whether a retained reply's capture failed, so it saved no
@@ -614,12 +639,11 @@ func (w *limitedOutput) Write(p []byte) (int, error) {
 	_, _ = w.Buffer.Write(p)
 	return n, nil
 }
+
+// Compare, CompareBoundaries and the file reads take no gate: a record is
+// replaced by atomic rename and its Git refs are immutable until prune removes
+// them, which makes a concurrent read fail cleanly instead of blocking a reply.
 func (s Store) Compare(ctx context.Context, id, file string, allow func(string) bool) (Comparison, error) {
-	unlock, err := s.lock(ctx)
-	if err != nil {
-		return Comparison{}, err
-	}
-	defer unlock()
 	r, err := s.read(id)
 	if err != nil {
 		return Comparison{}, err
@@ -751,11 +775,6 @@ func (s Store) KeepReviewBoundaries(ctx context.Context, ids ...string) error {
 
 // CompareBoundaries also permits an accepted after-state as the next baseline.
 func (s Store) CompareBoundaries(ctx context.Context, first, last, firstSide, file string, allow func(string) bool) (Comparison, error) {
-	unlock, err := s.lock(ctx)
-	if err != nil {
-		return Comparison{}, err
-	}
-	defer unlock()
 	before, err := s.read(first)
 	if err != nil {
 		return Comparison{}, err
@@ -779,8 +798,10 @@ func (s Store) CompareBoundaries(ctx context.Context, first, last, firstSide, fi
 	after.Before = before.Before
 	after.BeforeSkippedState = before.BeforeSkippedState
 	after.StartedAt = before.StartedAt
-	after.Skipped = append(after.Skipped, before.Skipped...)
-	after.Omitted = append(after.Omitted, before.Omitted...)
+	if first != last {
+		after.Skipped = append(after.Skipped, before.Skipped...)
+		after.Omitted = append(after.Omitted, before.Omitted...)
+	}
 	if before.Status == "partial" {
 		after.Status = "partial"
 	}
