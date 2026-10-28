@@ -954,6 +954,9 @@ type QueryRequest struct {
 	// Auto-notification flag: when true, this is a background agent completion notification
 	// (not user-initiated). Backend treats it as a synthetic turn so frontend doesn't block input.
 	IsAutoNotification bool `json:"is_auto_notification,omitempty"`
+	// AgentMessageInbox marks another agent's message delivered into this chat (agent_messaging.go). It survives
+	// the turn queue, and makes the turn attended: the tab shows question cards (codingAgentTurnAttended).
+	AgentMessageInbox string `json:"agent_message_inbox,omitempty"`
 	// Internal/system callers can force a real server-tracked turn instead of the
 	// retained coding-CLI live-input shortcut. Scheduler sequences rely on this so
 	// the next cron message waits for turn completion instead of racing a tmux
@@ -3568,7 +3571,7 @@ func (api *StreamingAPI) corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		// X-User-ID: the workspace client sends it on /api/wp calls; the gateway overwrites it with
 		// the signed-in user (workspace_proxy.go), so allowing it only lets the preflight pass.
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-AgentWorks-Attended-Chat, X-User-ID")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-User-ID")
 		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing, X-Queued-Steer-Unavailable, X-Renewed-Token")
 		if originAllowed {
 			w.Header().Set("Timing-Allow-Origin", origin)
@@ -6069,9 +6072,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if crewAskClarification {
 			toolGate.Declare("request_clarification")
 		}
-		clarificationAvailable := crewAskClarification || requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID) &&
-			!currentUserIsReadOnly && (!isWorkflowPhase || isWorkflowBuilderPhase) && !relayChat &&
-			req.ExternalBuilderOperationID == "" && isCodingAgentProvider(finalProvider, finalModelID) && toolGate.Admit("request_clarification")
+		// Every website tab shows the agent's questions and waits for the person; the server decides from the
+		// turn's origin (codingAgentTurnAttended). The card is a platform capability of that tab, not a product
+		// tool, so it is declared on every product's surface. Run people keep their own Ask path above.
+		attendedTurn := codingAgentTurnAttended(GetUserFromContext(r.Context()), &req, sessionID) && !currentUserIsReadOnly &&
+			isCodingAgentProvider(finalProvider, finalModelID)
+		if attendedTurn {
+			toolGate.Declare("request_clarification")
+		}
+		attendedTurn = attendedTurn && toolGate.Admit("request_clarification")
+		log.Printf("[QUESTIONS] session=%s attended=%t trigger=%q agent_message=%t provider=%s", sessionID, attendedTurn, req.TriggeredBy, req.AgentMessageInbox != "", finalProvider)
+		clarificationAvailable := crewAskClarification || attendedTurn
 		if clarificationAvailable {
 			platformBridgeTools = append(platformBridgeTools, "request_clarification")
 			streamCtx = llmtypes.WithCodingAgentQuestionHandler(streamCtx, finalProvider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
@@ -6152,7 +6163,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			PiPersistentInteractiveSession:         piPersistentInteractive,
 			MusePersistentInteractiveSession:       musePersistentInteractive,
 			AgyPersistentInteractiveSession:        agyPersistentInteractive,
-			CodingAgentUserAnswersNativeQuestions:  requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID),
+			CodingAgentUserAnswersNativeQuestions:  attendedTurn,
 			ClaudeCodeTransport:                    claudeCodeTransport,
 			ForceStructuredCodingAgent:             forceStructuredCodingAgent,
 			CodingAgentWorkingDir:                  chatWorkingDir,

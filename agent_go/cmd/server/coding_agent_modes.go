@@ -1,7 +1,6 @@
 package server
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -58,47 +57,48 @@ func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest) bool {
 	return strings.TrimSpace(req.SessionKind) == ""
 }
 
-// codingAgentRequestHasAttendingUser reports whether a person is watching this
-// chat in AgentWorks and can answer a coding CLI's native multiple-choice
-// question (PLAT-354). This is narrower than persistence: a scheduler keeps the
-// native session alive (KeepNativeSessionAlive) but nobody is there to answer,
-// so its questions must be auto-answered or the run waits forever. Bot
-// conversations are excluded too: the question card is only in AgentWorks,
-// not in the Slack or WhatsApp thread.
-// attendedChatHeader is sent only by the builder chat composer when a
-// person submits a message. It is an allow-list: schedules, bots, webhooks,
-// Crew calls, workflow runs and API clients never send it, so any new
-// automated path auto-answers native questions by default.
-const attendedChatHeader = "X-AgentWorks-Attended-Chat"
-
-func requestFromAttendedChat(r *http.Request) bool {
-	return r != nil && strings.TrimSpace(r.Header.Get(attendedChatHeader)) == "1"
-}
-
-func codingAgentRequestHasAttendingUser(req *QueryRequest, sessionID string) bool {
+// codingAgentTurnAttended reports whether this turn runs in a website chat tab,
+// where a coding agent's native questions, plan approvals and command approvals
+// show as cards and wait for the person (owner, 2026-10-28: "all tabs on
+// website... except schedules/whatsapp/slack etc need to have this decision
+// thing"). The server decides from the turn's origin, not from a browser header:
+// a person's message, a queued or steered follow-up and a message from another
+// agent delivered into the tab are attended, whoever started the turn.
+// Schedules, webhooks, Slack, WhatsApp, MCP and API callers, child sessions and
+// background completions have nobody at a card, so their questions are
+// auto-answered and never hold the run.
+func codingAgentTurnAttended(claims *UserClaims, req *QueryRequest, sessionID string) bool {
 	if req == nil {
 		return false
 	}
-	if strings.TrimSpace(req.ParentSessionID) != "" || strings.TrimSpace(req.SessionKind) != "" || req.IsAutoNotification {
+	if strings.TrimSpace(req.ParentSessionID) != "" || strings.TrimSpace(req.SessionKind) != "" {
 		return false
 	}
-	if strings.TrimSpace(req.BotPlatform) != "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.TriggeredBy)), "bot:") {
+	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
+	if strings.TrimSpace(req.BotPlatform) != "" || strings.HasPrefix(trigger, "bot:") {
 		return false
 	}
-	// The builder chat and Crew chats show question cards (owner, 2026-10-28:
-	// "crew should get"). Other product chats run on a server-stamped agent
-	// profile and auto-answer like every automated path.
-	if profile := strings.TrimSpace(req.AgentProfileID); profile != "" && !isProjectProfileID(profile) {
-		return false
-	}
-	// "Make interactive" hands a schedule session to the user on purpose.
+	// "Make interactive" hands a schedule session to the person on purpose.
 	if req.UserInteractiveContinuation {
 		return true
 	}
-	if req.KeepNativeSessionAlive {
+	if req.KeepNativeSessionAlive || isScheduledSessionIdentity(sessionID, req.TriggeredBy) {
 		return false
 	}
-	return !isScheduledSessionIdentity(sessionID, req.TriggeredBy)
+	if strings.TrimSpace(req.ExternalBuilderOperationID) != "" ||
+		claims != nil && (claims.AccessToken != nil || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "") {
+		return false
+	}
+	// Another agent's message delivered into a tab (agent_messaging.go) runs as the tab's owner.
+	if strings.TrimSpace(req.AgentMessageInbox) != "" {
+		return true
+	}
+	if req.IsAutoNotification {
+		return false
+	}
+	// The website sends no trigger; "interactive" marks its queued and live follow-ups. Every other trigger
+	// (manual schedule runs, external, chat_tool, webhook, cron, product jobs) auto-answers.
+	return trigger == "" || trigger == "interactive"
 }
 
 func codingAgentClaudeCodeChatTransport(provider string) string {

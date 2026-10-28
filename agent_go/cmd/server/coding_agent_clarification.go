@@ -145,6 +145,29 @@ func (api *StreamingAPI) emitCodingAgentClarification(p *pendingCodingAgentClari
 	})
 }
 
+// pendingCodingAgentQuestion reports a question, plan or command approval that is waiting for the person in this
+// chat. It is the live waiter itself, so the tab and sidebar show "Needs you" for as long as the agent is really
+// stopped on it, whoever started the turn. External Ask questions belong to their asking connection, not the tab.
+func (api *StreamingAPI) pendingCodingAgentQuestion(sessionID string) (time.Time, string, bool) {
+	if api == nil || sessionID == "" {
+		return time.Time{}, "", false
+	}
+	api.codingAgentClarificationsMu.Lock()
+	defer api.codingAgentClarificationsMu.Unlock()
+	p := api.codingAgentClarifications[sessionID]
+	if p == nil || p.ask != nil {
+		return time.Time{}, "", false
+	}
+	message := ""
+	if len(p.questions) > 0 {
+		message = p.questions[0].Question
+		if runes := []rune(message); len(runes) > 160 {
+			message = string(runes[:157]) + "..."
+		}
+	}
+	return p.askedAt, message, true
+}
+
 func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, sessionID, provider string, args map[string]interface{}) (string, error) {
 	questions, err := parseCodingAgentClarification(args)
 	if err != nil {

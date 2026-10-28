@@ -392,6 +392,20 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       .filter(Boolean)
       .join(' · ')
     const canClose = !!tab && canCloseWorkspaceChatTab(tab, tabs)
+    // One fixed slot at the row's right edge for every row, so spinners and dots line up; on hover-capable
+    // devices the close x takes the same slot (phones never show it).
+    const status = opening === row.id || (row.group === 'Running' && !row.waiting) ? (
+      <Loader2 aria-label="Running" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
+    ) : row.waiting ? (
+      <span
+        aria-label="Needs input"
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse"
+      />
+    ) : unseenFailed ? (
+      <span aria-label="Failed" title="Failed" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--destructive))]" />
+    ) : tab?.hasUnreadCompletion && !selected ? (
+      <span aria-label="Completed" title="Completed" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--success))]" />
+    ) : null
     return (
       <div key={row.id}>
       <div className="group relative">
@@ -405,7 +419,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               useChatStore.getState().addToast('Could not open this chat.', 'error')
             )
           }}
-          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose || disclosure ? 'pr-9' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'text-foreground/75 [@media(hover:hover)]:hover:bg-muted [@media(hover:hover)]:hover:text-foreground'}`}
+          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${disclosure ? 'pr-14' : 'pr-9'} ${selected ? 'bg-foreground/[0.08] text-foreground shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'text-foreground/75 [@media(hover:hover)]:hover:bg-muted [@media(hover:hover)]:hover:text-foreground'}`}
         >
           {workspaceEntry && <span className="shrink-0" title={sourceLabel} aria-hidden="true">
             <ProjectIcon icon={workspaceEntry.icon} title={workspaceEntry.title} surface={row.surface} />
@@ -421,19 +435,14 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               </span>
             )}
           </span>
-          {opening === row.id || (row.group === 'Running' && !row.waiting) ? (
-            <Loader2 aria-label="Running" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
-          ) : row.waiting ? (
-            <span
-              aria-label="Needs input"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse"
-            />
-          ) : unseenFailed ? (
-            <span aria-label="Failed" title="Failed" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--destructive))]" />
-          ) : tab?.hasUnreadCompletion && !selected ? (
-            <span aria-label="Completed" title="Completed" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--success))]" />
-          ) : null}
         </button>
+        {status && (
+          <span
+            className={`pointer-events-none absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center ${canClose ? '[@media(hover:hover)]:group-hover:invisible [@media(hover:hover)]:group-focus-within:invisible' : ''}`}
+          >
+            {status}
+          </span>
+        )}
         {disclosure && (
           <button
             type="button"
@@ -442,7 +451,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             aria-controls={disclosure.panelId}
             title={disclosure.expanded ? 'Collapse steps' : 'Show steps'}
             onClick={disclosure.onToggle}
-            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronDown aria-hidden="true" className={`h-3 w-3 transition-transform ${disclosure.expanded ? '' : '-rotate-90'}`} />
           </button>
@@ -453,7 +462,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             aria-label={`Close ${title}`}
             disabled={closing === row.id}
             title={tab?.metadata?.isViewOnly ? 'Close tab · the run continues' : 'Close chat'}
-            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hidden hover:bg-background hover:text-foreground [@media(hover:hover)]:block [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hidden hover:bg-background [@media(hover:hover)]:flex hover:text-foreground [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => {
               if (!row.tabId) return
               setClosing(row.id)

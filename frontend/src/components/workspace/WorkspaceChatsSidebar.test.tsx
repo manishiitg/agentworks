@@ -290,7 +290,7 @@ it('shows no Recent chats list and keeps ordinary named chats free of repeated s
     expect(host.textContent).not.toContain('Previous report')
     const chat = host.querySelector<HTMLButtonElement>('[title="Monthly analysis · Crew"]')!
     expect(chat.textContent).toBe('Monthly analysis')
-    expect(chat.querySelector('[aria-label="Running"]')).not.toBeNull()
+    expect(chat.parentElement!.querySelector('[aria-label="Running"]')).not.toBeNull()
   })
 })
 
