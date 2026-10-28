@@ -3,6 +3,8 @@ import { agentApi } from '../services/api'
 export type VaultItemKind = 'mcp' | 'project_secret' | 'shared_secret' | 'google' | 'slack' | 'computer'
 export interface ProjectVaultItem {
   id: string; name: string; kind: VaultItemKind; provider?: string; owner?: string
+  /** Whose it is, in plain words: "you", a Company group's name, "this project" or "the project's owner". */
+  source?: string
   status: 'connected' | 'needs_attention' | 'stored' | 'online' | 'offline'
   selected: boolean; can_select: boolean
 }

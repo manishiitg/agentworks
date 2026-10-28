@@ -12,7 +12,7 @@ slack-bot target for Crew and slack for Goal. Opening changes presentation only.
 
 MCPs includes its tool lists, catalog and account setup in chat. Secrets shows one list of project and shared names with their source,
 plus project add/replace/remove controls; shared values stay hidden and project_select owns the ticks.
-Add and Sharing use the panel header, alongside contextual Ask AI. There is no second account/sharing list below MCPs or Secrets. Sharing is managed from the visible chat with existing tools. Google/Slack sign-in, reconnection
+Add uses the panel header, alongside contextual Ask AI. Items are grouped as Yours, Company and This project only, each named with whose it is. A project uses its owner's apps and secrets; there is no sharing of personal accounts with someone else. Company-wide sharing is an administrator's Company groups. Google/Slack sign-in, reconnection
 and permissions are under that provider’s Connect or manage accounts. Company
 OAuth setup remains administrator-only on that provider panel. Slack bot keeps
 its bot editor, setup/test controls and administrator-only company bot. Local
@@ -20,8 +20,8 @@ laptop includes connection instructions and project folder/command settings.
 No connection selection, grant or execution rule changes with this navigation.
 
 Start with settings action=get for this project, or vault
-action=mine_project with its workspace_path. The names-only vault snapshot reports
-actual selections, sharing counts and connection status. Never infer a secret
+action=mine_project (workspace_path defaults to this chat's project). The names-only vault snapshot reports
+actual selections, whose each item is (source) and connection status. Never infer a secret
 value or credentials from this inventory.
 
 Company Google accounts also appear here using the same project-scoped list as
@@ -38,9 +38,9 @@ terminal selects or removes its computer. mcp_servers.replace is an
 exact selection; `use_all_vault_apps` false uses only the Vault apps listed there,
 true uses every permitted Vault app. It never disconnects or deletes an account.
 
-Account setup and sharing requests stay in this visible chat. Use vault list/apps,
-create, connect, sign_in, sync, set_secret/remove_secret, member/owner operations
-or remove_connection as requested. Reuse saved accounts; a provider sign-in may
+Account setup requests stay in this visible chat. Use vault mine_apps, mine_connect,
+mine_sign_in, mine_sync, mine_set_secret/mine_remove_secret or mine_remove_connection
+as requested; they always act on the person's own Vault. Reuse saved accounts; a provider sign-in may
 require the person to open its link. Personal Google and Slack tools can inspect,
 connect, reconnect and disconnect the caller's account. Check the applicable
 panel-channels procedure for those operations.

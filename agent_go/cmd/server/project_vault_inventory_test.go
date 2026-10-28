@@ -46,8 +46,10 @@ func TestProjectVaultShowsCompanyGoogleWithoutPrivateAccounts(t *testing.T) {
 	}
 	var accounts []projectVaultItem
 	for _, group := range inventory.Vaults {
-		if group.ID == "company-google" {
-			accounts = group.Items
+		for _, item := range group.Items {
+			if group.ID == "company" && item.Source == "Company Google" {
+				accounts = append(accounts, item)
+			}
 		}
 	}
 	if len(accounts) != 2 || accounts[0].ID != "company" || accounts[0].Status != "connected" || !accounts[0].Selected || accounts[0].CanSelect || accounts[1].Status != "needs_attention" {
@@ -149,9 +151,6 @@ func TestVaultComputerNamesStayPersonalWhenOffline(t *testing.T) {
 	rememberVaultComputer("other", "other-laptop")
 	if got := knownVaultComputers("owner"); !slices.Equal(got, []string{"laptop-one"}) {
 		t.Fatal(got)
-	}
-	if vaultSharingLabel(1) != "Only you" || vaultSharingLabel(2) != "You + 1 person" {
-		t.Fatal("sharing count changed")
 	}
 }
 

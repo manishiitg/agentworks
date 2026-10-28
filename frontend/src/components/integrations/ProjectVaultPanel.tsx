@@ -79,7 +79,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
             <Checkbox aria-label={`Use ${item.name || item.provider} from ${groupName}`} checked={item.selected} disabled={disabled || busy || !item.can_select} onCheckedChange={() => { void toggle(item) }} />
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <button type="button" disabled={disabled} onClick={() => { void setup.open(vaultItemDraft(item, groupName)) }} className={`min-w-0 flex-1 truncate text-left hover:underline ${secret ? 'font-mono text-xs' : ''}`} title={item.name || item.provider}>{item.name || item.provider}</button>
-            {flat&&<span className="text-xs text-muted-foreground">{item.kind==='project_secret'?'This project':groupName}</span>}
+            {(flat||item.source)&&<span className="text-xs text-muted-foreground">{flat?(item.kind==='project_secret'?'This project':item.source||groupName):`(${item.source})`}</span>}
             {renderItemActions?.(item)}
             {!secret && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={status}><span aria-label={status} className={`h-2 w-2 rounded-full ${healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />{status}</span>}
           </div>
@@ -87,7 +87,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
   const seen = new Set<string>()
   const flatRows = groups?.flatMap(group => group.items.map(item=>({item,groupName:group.name}))).filter(({item})=>{const key=`${item.kind}:${item.id}`;if(seen.has(key))return false;seen.add(key);return true})
   return <section aria-label={title || (secretsOnly ? "Shared secrets" : "Integrations")} className="space-y-4 text-sm">
-    <p className="text-xs text-muted-foreground">{secretsOnly ? 'Choose the secrets this project can use. Their source is shown beside each name; saved values stay hidden.' : 'Tick what this project uses. Ask in chat to connect apps, add secrets or share an account.'}</p>
+    <p className="text-xs text-muted-foreground">{secretsOnly ? 'Choose the secrets this project can use. Their source is shown beside each name; saved values stay hidden.' : 'Tick what this project uses. Ask in chat to connect an app or add a secret.'}</p>
     {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
     {!data && !error && <p role="status" className="text-muted-foreground">Loading integrations…</p>}
     {data && !secretsOnly && <label className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
@@ -95,7 +95,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
       <span className="min-w-0 flex-1"><span className="block font-medium">Use all my apps automatically</span><span className="block text-xs text-muted-foreground">{data.use_all_vault_apps ? 'This project can use every Vault app you can use. Untick an app below to choose them yourself.' : 'This project uses only the apps ticked below.'}</span></span>
     </label>}
     {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
-    {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or share an account.'}</p>}
+    {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app.'}</p>}
     {flat?<div className="divide-y divide-border rounded-lg border border-border" aria-label="Secret list">{flatRows?.map(({item,groupName})=>row(item,groupName))}</div>:groups?.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">
       <summary className="cursor-pointer px-3 py-2.5"><span className="font-medium">{vault.name}</span><span className="ml-2 text-xs text-muted-foreground">{vault.sharing}</span></summary>
       <div className="divide-y divide-border border-t border-border">
