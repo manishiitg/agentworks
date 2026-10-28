@@ -69,3 +69,52 @@ func TestGitHubRepoDropsCredentialsAndOtherHosts(t *testing.T) {
 		}
 	}
 }
+
+// The card's one Git step comes from the checkout itself: nothing to do once
+// everything is pushed, share or update the PR when work is not on GitHub yet,
+// and get the latest first when the branch is behind its remote.
+func TestNextStepFollowsTheCheckout(t *testing.T) {
+	base := t.TempDir()
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	upstream, other, root := filepath.Join(base, "up.git"), filepath.Join(base, "other"), filepath.Join(base, "crew")
+	repo := filepath.Join(root, "app")
+	git(base, "init", "--quiet", "--bare", "-b", "main", upstream)
+	git(base, "clone", "--quiet", upstream, repo)
+	git(repo, "checkout", "--quiet", "-b", "feature")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\n"), 0o600)
+	git(repo, "add", ".")
+	git(repo, "commit", "--quiet", "-m", "one")
+	git(repo, "push", "--quiet", "-u", "origin", "feature")
+	git(repo, "remote", "set-url", "origin", "https://github.com/acme/app.git")
+	step := func(pr *PullRequest) string {
+		groups := GroupChanges(context.Background(), root, []Change{{Path: "app/a.txt", Status: "M"}}, func(string) bool { return true })
+		groups[0].PR = pr
+		return NextStep(groups[0])
+	}
+	if got := step(nil); got != "none" {
+		t.Fatalf("pushed and clean: %q", got)
+	}
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\ntwo\n"), 0o600)
+	if got := step(nil); got != "share_pr" {
+		t.Fatalf("edited, no PR: %q", got)
+	}
+	git(repo, "commit", "--quiet", "-am", "two")
+	if got := step(&PullRequest{State: "open"}); got != "update_pr" {
+		t.Fatalf("unpushed commit, open PR: %q", got)
+	}
+	git(base, "clone", "--quiet", "-b", "feature", upstream, other)
+	os.WriteFile(filepath.Join(other, "b.txt"), []byte("b\n"), 0o600)
+	git(other, "add", ".")
+	git(other, "commit", "--quiet", "-m", "b")
+	git(other, "push", "--quiet", "origin", "feature")
+	git(repo, "fetch", "--quiet", upstream, "feature:refs/remotes/origin/feature")
+	if got := step(&PullRequest{State: "open"}); got != "get_latest" {
+		t.Fatalf("behind its remote: %q", got)
+	}
+}

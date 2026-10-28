@@ -15,6 +15,7 @@ import (
 )
 
 const replyGroupMaxPRLookups = 5
+const replyGroupMaxFailingChecks = 10
 
 // replyFileGroups groups a reply's changes by Git checkout and adds pull
 // request status from the Crew owner's connected GitHub account. The server's
@@ -28,6 +29,9 @@ func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, c
 	}
 	attachPullRequests(ctx, groups, token, connected)
 	for i := range groups {
+		if groups[i].Kind == "repo" {
+			groups[i].NextStep = filesnapshots.NextStep(groups[i])
+		}
 		if groups[i].Root != "" {
 			groups[i].Root = prefix + groups[i].Root
 		}
@@ -101,6 +105,7 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 	}
 	var runs struct {
 		CheckRuns []struct {
+			Name       string `json:"name"`
 			Status     string `json:"status"`
 			Conclusion string `json:"conclusion"`
 		} `json:"check_runs"`
@@ -108,6 +113,15 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 	var combined struct {
 		State      string `json:"state"`
 		TotalCount int    `json:"total_count"`
+		Statuses   []struct {
+			Context string `json:"context"`
+			State   string `json:"state"`
+		} `json:"statuses"`
+	}
+	failed := func(name string) {
+		if len(pr.FailingChecks) < replyGroupMaxFailingChecks {
+			pr.FailingChecks = append(pr.FailingChecks, name)
+		}
 	}
 	failing, pending, seen := false, false, false
 	if githubGET(ctx, token, "/repos/"+repo+"/commits/"+p.Head.SHA+"/check-runs?per_page=100", &runs) {
@@ -118,6 +132,7 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 				pending = true
 			case run.Conclusion == "failure" || run.Conclusion == "timed_out" || run.Conclusion == "cancelled" || run.Conclusion == "action_required" || run.Conclusion == "startup_failure":
 				failing = true
+				failed(run.Name)
 			}
 		}
 	}
@@ -128,6 +143,11 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 			failing = true
 		case "pending":
 			pending = true
+		}
+		for _, status := range combined.Statuses {
+			if status.State == "failure" || status.State == "error" {
+				failed(status.Context)
+			}
 		}
 	}
 	switch {
@@ -160,6 +180,13 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 				pr.Review = "approved"
 			}
 		}
+	}
+	// Only the single-PR read says whether it can merge; "dirty" means conflicts.
+	var detail struct {
+		MergeableState string `json:"mergeable_state"`
+	}
+	if pr.State == "open" && githubGET(ctx, token, "/repos/"+repo+"/pulls/"+strconv.Itoa(p.Number), &detail) {
+		pr.Conflicts = detail.MergeableState == "dirty"
 	}
 	return pr
 }

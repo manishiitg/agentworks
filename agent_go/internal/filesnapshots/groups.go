@@ -24,6 +24,10 @@ type PullRequest struct {
 	State  string `json:"state"`
 	Checks string `json:"checks,omitempty"`
 	Review string `json:"review,omitempty"`
+	// FailingChecks names the failing checks (bounded); Conflicts is true when
+	// GitHub says the open PR cannot merge because of conflicts.
+	FailingChecks []string `json:"failing_checks,omitempty"`
+	Conflicts     bool     `json:"conflicts,omitempty"`
 }
 
 // Group is one repository (or the non-Git Crew files) in a reply's changes.
@@ -38,6 +42,44 @@ type Group struct {
 	TotalFiles  int          `json:"total_files"`
 	MoreCount   int          `json:"more_count"`
 	PR          *PullRequest `json:"pr,omitempty"`
+	// NextStep is the one Git step the card offers: share_pr, update_pr,
+	// get_latest or none. Set by the caller with NextStep once PR is known.
+	NextStep string `json:"next_step,omitempty"`
+
+	dirty    bool // files differ from HEAD now
+	unpushed int  // commits on HEAD that are on no remote branch
+	behind   int  // commits on the upstream branch not in HEAD (as of the last fetch)
+}
+
+// NextStep decides the single next Git step for a repo group: first get the
+// latest when the branch is behind its remote, then update the open pull
+// request or share a new one when there is work no remote has yet.
+func NextStep(g Group) string {
+	if g.Kind != "repo" || g.GitHubRepo == "" || g.Branch == "" || strings.HasPrefix(g.Branch, "detached@") {
+		return "none"
+	}
+	if g.behind > 0 {
+		return "get_latest"
+	}
+	if !g.dirty && g.unpushed == 0 {
+		return "none"
+	}
+	switch {
+	case g.PR == nil || g.PR.State == "merged" || g.PR.State == "closed":
+		return "share_pr"
+	case g.PR.State == "open":
+		return "update_pr"
+	}
+	return "none" // PR state unknown (GitHub not connected or unavailable)
+}
+
+func gitCount(ctx context.Context, root, abs string, args ...string) int {
+	out, err := gitIn(ctx, root, abs, append([]string{"rev-list", "--count"}, args...)...).Output()
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	return n
 }
 
 // gitIn runs read-only Git in a user checkout through the shared hardened helper.
@@ -154,6 +196,9 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 		g.GitHubRepo = GitHubRepo(string(out))
 	}
 	files, ok := workingTreeEdits(ctx, root, abs, dir, allow)
+	g.dirty = ok && len(files) > 0
+	g.unpushed = gitCount(ctx, root, abs, "HEAD", "--not", "--remotes")
+	g.behind = gitCount(ctx, root, abs, "HEAD..@{upstream}")
 	switch {
 	case ok && (len(files) > 0 || g.NewCheckout):
 		g.Files = files

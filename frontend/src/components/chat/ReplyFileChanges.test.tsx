@@ -2,15 +2,16 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ canBuild: true, total: 2, undoError: '' }))
-const group = { kind: 'repo', root: 'app', name: 'app', branch: 'fix-tts', new_checkout: true, total_files: 696, more_count: 3, files: [{ path: 'app/tts.py', status: 'M', added: 4, removed: 1 }], pr: { number: 305, url: 'https://github.com/o/r/pull/305', state: 'open', checks: 'passing', review: 'none' } }
+const state = vi.hoisted(() => ({ canBuild: true, total: 2, undoError: '', extraCommands: [] as string[], pr: {} as Record<string, unknown>, nextStep: 'none' }))
+const group = { kind: 'repo', root: 'app', name: 'app', branch: 'fix-tts', github_repo: 'o/r', new_checkout: true, total_files: 696, more_count: 3, files: [{ path: 'app/tts.py', status: 'M', added: 4, removed: 1 }], pr: { number: 305, url: 'https://github.com/o/r/pull/305', state: 'open', checks: 'passing', review: 'none' } }
 vi.mock('../../api/commands', () => ({ commandsApi: { listCommands: vi.fn(async () => ({ commands: [
   { frontmatter: { name: 'check-this-change', description: 'Check this change', show_on_card: true }, content: 'Look over the files.\n{{context}}' },
-  { frontmatter: { name: 'other', description: 'Hidden one', show_on_card: false }, content: 'x' }] })) } }))
+  { frontmatter: { name: 'other', description: 'Hidden one', show_on_card: false }, content: 'x' },
+  ...state.extraCommands.map(name => ({ frontmatter: { name, description: `Run ${name}`, show_on_card: true }, content: name }))] })) } }))
 vi.mock('../../services/api', () => ({ default: { post: vi.fn(async () => { if (state.undoError) throw { response: { data: { error: { message: state.undoError } } } }; return { data: { undo: { restore: [{ path: 'app/tts.py' }], skipped: [] } } } }), get: vi.fn(async (path: string, options: { params: Record<string, unknown> }) => {
   if (options.params.op === 'snapshot_undo_preview') return { data: { undo: { restore: [{ path: 'app/tts.py', status: 'M', action: 'restore' }], skipped: [{ path: 'app/x.py', status: 'M', action: 'restore', reason: 'changed_later' }] } } }
   if (path === '/api/workspace-access') return { data: { can_build: state.canBuild } }
-  if (options.params.op === 'snapshot_groups') return { data: { groups: [{ kind: 'crew_files', root: '', name: 'Crew', new_checkout: false, total_files: 1, more_count: 0, files: [{ path: 'notes.md', status: 'A', added: 2, removed: 0 }] }, group] } }
+  if (options.params.op === 'snapshot_groups') return { data: { groups: [{ kind: 'crew_files', root: '', name: 'Crew', new_checkout: false, total_files: 1, more_count: 0, files: [{ path: 'notes.md', status: 'A', added: 2, removed: 0 }] }, { ...group, pr: { ...group.pr, ...state.pr }, next_step: state.nextStep }] } }
   return { data: { history: { replies: [], reviews: [], available: true, last_snapshot_id: 's', latest_snapshot_id: 's', baseline_snapshot_id: 'x', can_review: true }, total_changes: state.total, comparison: { changes: state.total ? [{ path: 'app/tts.py', status: 'M' }] : [], snapshot: { status: 'complete' }, note: '', skipped_count: 0, uncaptured_changes: 0 } } }
 }) } }))
 vi.mock('../../products/work/codeLocalFiles', () => ({ useProjectMode: () => 'dev' }))
@@ -25,6 +26,7 @@ vi.mock('../workspace/chatFileReview', () => ({ markFilesReviewed: vi.fn(), useR
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { ReplyFileChanges } from './ReplyFileChanges'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+HTMLElement.prototype.scrollIntoView ??= () => {}
 
 async function render(canBuild: boolean, total = 2, latestSnapshotId?: string) {
   state.canBuild = canBuild; state.total = total
@@ -32,6 +34,8 @@ async function render(canBuild: boolean, total = 2, latestSnapshotId?: string) {
   await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId }} />))
   return host
 }
+const openMore = async (host: HTMLElement) => act(async () => { const trigger = button(host, 'More actions')!; trigger.focus(); trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
+const menuItem = (text: string) => Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent?.includes(text)) as HTMLElement | undefined
 const button = (host: HTMLElement, text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text) || item.getAttribute('aria-label')?.includes(text))
 
 describe('reply card groups', () => {
@@ -98,5 +102,30 @@ describe('reply card groups', () => {
     const host = await render(false)
     expect(button(host, 'Review changes')).toBeDefined()
     expect(button(host, 'Commit on the current branch')).toBeUndefined()
+  })
+  it('keeps two of the person\'s buttons in the row and the rest, with the next Git step first, under More', async () => {
+    state.extraCommands = ['second', 'third', 'fourth']; state.nextStep = 'update_pr'
+    const host = await render(true)
+    vi.mocked(sendWorkspacePaneMessageToChat).mockClear()
+    expect(button(host, 'Run second')).toBeDefined()
+    expect(button(host, 'Run third')).toBeUndefined()
+    await openMore(host)
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent)
+    expect(items).toEqual(['Update the pull request', 'third', 'fourth'])
+    await act(async () => menuItem('fourth')!.click())
+    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toContain('fourth')
+    state.extraCommands = []; state.nextStep = 'none'
+  })
+  it('a PR with failing checks offers Fix failing checks with the check names, on the PR line and under More', async () => {
+    state.pr = { checks: 'failing', failing_checks: ['build', 'lint'] }
+    const host = await render(true)
+    vi.mocked(sendWorkspacePaneMessageToChat).mockClear()
+    expect(button(host, 'Address review comments')).toBeUndefined()
+    await act(async () => button(host, 'Fix failing checks')!.click())
+    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toBe('PR #305 in o/r has failing checks: build, lint. Open the failing runs, fix the cause on branch fix-tts, push, and tell me what you changed.')
+    await openMore(host)
+    expect(menuItem('Fix failing checks')).toBeDefined()
+    expect(button(await render(false), 'Fix failing checks')).toBeUndefined()
+    state.pr = {}
   })
 })

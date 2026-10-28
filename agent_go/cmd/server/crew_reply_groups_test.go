@@ -26,7 +26,7 @@ func TestReplyGroupPullRequestStatusFromOwnersConnection(t *testing.T) {
 			}
 			w.Write([]byte(`[{"number":7,"html_url":"https://github.com/acme/app/pull/7","state":"closed","merged_at":"2026-01-01T00:00:00Z","head":{"sha":"abc"}}]`))
 		case strings.HasSuffix(r.URL.Path, "/check-runs"):
-			w.Write([]byte(`{"check_runs":[{"status":"completed","conclusion":"success"},{"status":"completed","conclusion":"failure"}]}`))
+			w.Write([]byte(`{"check_runs":[{"status":"completed","conclusion":"success"},{"name":"build","status":"completed","conclusion":"failure"}]}`))
 		case strings.HasSuffix(r.URL.Path, "/status"):
 			w.Write([]byte(`{"state":"success","total_count":0}`))
 		case strings.HasSuffix(r.URL.Path, "/reviews"):
@@ -43,7 +43,7 @@ func TestReplyGroupPullRequestStatusFromOwnersConnection(t *testing.T) {
 	groups := []filesnapshots.Group{{Kind: "repo", Branch: "feature-x", GitHubRepo: "acme/app"}, {Kind: "crew_files"}}
 	attachPullRequests(context.Background(), groups, "owner-token", true)
 	pr := groups[0].PR
-	if pr == nil || pr.Number != 7 || pr.State != "merged" || pr.Checks != "failing" || pr.Review != "changes_requested" {
+	if pr == nil || pr.Number != 7 || pr.State != "merged" || pr.Checks != "failing" || pr.Review != "changes_requested" || len(pr.FailingChecks) != 1 || pr.FailingChecks[0] != "build" {
 		t.Fatalf("pr = %+v", pr)
 	}
 	if groups[1].PR != nil {
