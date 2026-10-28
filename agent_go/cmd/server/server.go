@@ -11223,6 +11223,10 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 		// A message the coding agent has not taken is logged while it waits, so a stalled delivery is visible in the log
 		// (no message text): one line each at these waits.
 		handled := waitForLiveInputDelivery(done, sessionID, queryID, liveInputFastResponseWindow)
+		if !handled {
+			// This late path starts its turn under another ID; the snapshot prepared for queryID has no turn.
+			api.discardUnstartedCrewSnapshot(queryID)
+		}
 		if !handled && len(pending) > 0 {
 			handled = api.startNextTurnFromLiveInput(recorded, detached, sessionID, strings.Join(append(pending, message), "\n\n"), nil)
 		}
@@ -11277,8 +11281,14 @@ func copyInternalResponse(w http.ResponseWriter, recorded *internalResponseCaptu
 
 // deliverQueryAsLiveInputNow performs the delivery synchronously; see
 // tryDeliverQueryAsLiveInput for the response-time bound around it.
-func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) bool {
-	defer api.discardUnstartedCrewSnapshot(queryID)
+func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) (handled bool) {
+	// Not delivered: the caller starts a new turn under the same query ID, and that turn keeps the before-snapshot
+	// prepared here. Abandoning it marked every such turn's snapshot unavailable (server B 2026-10-28, PLAT-746-158).
+	defer func() {
+		if handled {
+			api.discardUnstartedCrewSnapshot(queryID)
+		}
+	}()
 	if isQueuedMessageSteer(r.Context()) {
 		// The asynchronous fast-response path can outlive the route's earlier
 		// eligibility check. Refuse before attempting any provider delivery.
