@@ -2,6 +2,7 @@ import { ReplyFileChanges } from './chat/ReplyFileChanges'
 import { replyFileChangesByMessage } from '../utils/replyFileChanges'
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { WorkingStatus } from './chat/WorkingStatus'
+import { useMobileViewport } from '../hooks/useMobileViewport'
 import { formatElapsed } from './chat/workingWords'
 import { currentTurnActivity, currentTurnPhase, type TurnPhase } from '../utils/turnStart'
 import { Activity, AlertCircle, Bell, Check, Loader2, Sparkles, Wrench } from 'lucide-react'
@@ -136,6 +137,7 @@ export function CleanConversationSurface({
 }: CleanConversationSurfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [retryingFailureId, setRetryingFailureId] = useState<string | null>(null)
+  const phone = useMobileViewport()
   const [showWorkingIndicator, setShowWorkingIndicator] = useState(isStreaming)
   const items = useMemo(() => buildCleanConversationItems(events), [events])
   const fileChanges = useMemo(() => replyFileChangesByMessage(events, new Set(items.filter(item => item.role === 'assistant').map(item => item.id))), [events, items])
@@ -311,7 +313,7 @@ export function CleanConversationSurface({
 
         {trailingActivity ? <ProductionActivityDetails turn={trailingActivity} live={isStreaming} phase={currentTurnPhase(events)} /> : null}
 
-        {showWorkingIndicator && !streamingText.trim() ? (
+        {showWorkingIndicator && !streamingText.trim() && !(phone && trailingActivity) ? (
           <div className="flex items-center gap-2 text-xs text-slate-400" data-testid="clean-working-indicator">
             <WorkingStatus startedAt={turnActivity?.turnStartedAt} lastOutputAt={turnActivity?.lastActivityAt} phase={currentTurnPhase(events)} />
           </div>

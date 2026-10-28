@@ -107,8 +107,8 @@ export function WorkspacePanelAssistantButton({ workspacePath, view, panelScope,
       if (current()) setError(cause instanceof Error ? cause.message : 'Could not open chat.')
     } finally { if (current()) setBusy(false) }
   }
-  return <div className="relative shrink-0">
-    <button type="button" aria-label="Ask AI about this page" title="Ask about this page · Opens a draft in chat" disabled={busy} onClick={() => { void openDraft() }} className={`${inMenu ? 'flex min-h-10 w-full gap-2.5 px-3 text-left text-sm text-foreground' : 'inline-flex h-8 gap-1.5 px-2 text-xs text-muted-foreground'} items-center rounded-md font-medium hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50`}><MessageCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Ask AI</button>
+  return <div className="relative shrink-0 max-md:order-3">
+    <button type="button" aria-label="Ask AI about this page" title="Ask about this page · Opens a draft in chat" disabled={busy} onClick={() => { void openDraft() }} className={`${inMenu ? 'flex min-h-10 w-full gap-2.5 px-3 text-left text-sm text-foreground' : 'inline-flex h-8 gap-1.5 px-2 text-xs text-muted-foreground max-md:w-8 max-md:justify-center max-md:px-0'} items-center rounded-md font-medium hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50`}><MessageCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span className={inMenu ? undefined : 'max-md:sr-only'}>Ask AI</span></button>
     {error && <p role="alert" className={inMenu ? 'px-3 pb-2 text-xs text-destructive' : 'absolute right-0 top-full z-50 mt-2 w-64 rounded-md border border-border bg-popover p-3 text-xs text-destructive shadow-lg'}>{error}</p>}
   </div>
 }

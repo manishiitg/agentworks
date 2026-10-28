@@ -49,7 +49,7 @@ export function ProductWorkspaceShell({
       <PanelLeftOpen className="h-4 w-4" /><span className="[writing-mode:vertical-rl] text-[10px] font-semibold uppercase tracking-wider">Chat</span>
     </button>}
     <div ref={splitRef} className={layout.gridClassName} style={layout.gridStyle}>
-      <WorkspaceTopToolbar className={layout.toolbarClassName} navigationActive={navigationActive}>
+      <WorkspaceTopToolbar className={`${layout.toolbarClassName}${mobilePane === 'workspace' && panelOpen ? ' max-md:hidden' : ''}`} navigationActive={navigationActive}>
         {tabs}{layout.showPanel || toolbarWhenPanelClosed ? toolbar : null}
       </WorkspaceTopToolbar>
       <WorkspacePanelReopen />

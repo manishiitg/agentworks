@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, MessagesSquare, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -15,24 +15,34 @@ import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
+import { useMobileViewport } from '../../hooks/useMobileViewport'
 
-function AgentMenuActivity({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
+type AgentMenuState = 'waiting' | 'running' | 'failed' | 'done' | null
+const AGENT_STATE_WORD = { waiting: 'Needs you', running: 'Working', failed: 'Stopped with an error', done: 'Finished' } as const
+
+function useAgentMenuState(tabId: string, workspaceActivity?: 'running' | 'waiting' | null): AgentMenuState {
   const activity = useChatRuntimeActivity(tabId)
   const failed = useChatStore(state => {
     const tab = state.chatTabs[tabId]
-    return !!tab?.sessionId && state.activeTabId !== tabId &&
-      runtimeTurnFailedUnseen(state.activeSessionsCache.find(session => session.session_id === tab.sessionId), tab.lastAccessedAt)
+    return !!tab?.sessionId && state.activeTabId !== tabId && runtimeTurnFailedUnseen(state.activeSessionsCache.find(session => session.session_id === tab.sessionId), tab.lastAccessedAt)
   })
-  if (activity.state === 'waiting' || workspaceActivity === 'waiting') {
-    return <span role="img" aria-label="Needs you" title="Needs you" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" />
-  }
-  if (activity.state === 'running' || workspaceActivity === 'running') {
-    return <Loader2 role="img" aria-label="Working" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
-  }
-  if (failed) {
-    return <span role="img" aria-label="Failed" title="Failed" className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
-  }
+  const done = useChatStore(state => state.activeTabId !== tabId && !!state.chatTabs[tabId]?.hasUnreadCompletion)
+  if (activity.state === 'waiting' || workspaceActivity === 'waiting') return 'waiting'
+  if (activity.state === 'running' || workspaceActivity === 'running') return 'running'
+  return failed ? 'failed' : done ? 'done' : null
+}
+
+function AgentMenuActivity({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
+  const state = useAgentMenuState(tabId, workspaceActivity)
+  if (state === 'waiting') return <span role="img" aria-label="Needs you" title="Needs you" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" />
+  if (state === 'running') return <Loader2 role="img" aria-label="Working" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
+  if (state === 'failed') return <span role="img" aria-label="Failed" title="Failed" className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
   return null
+}
+
+function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
+  const state = useAgentMenuState(tabId, workspaceActivity)
+  return state ? <span className="ml-auto shrink-0 pl-2 text-[10px] font-normal text-muted-foreground">{AGENT_STATE_WORD[state]}</span> : null
 }
 
 /** One tab-management view; each product supplies its existing server operations. */
@@ -53,6 +63,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
+  const phone = useMobileViewport()
   const phoneNavigation = useContext(MobileWorkspaceNavigationContext)
   const selectTab = (tabId: string) => { onSelectTab(tabId); phoneNavigation?.onChange('chat') }
   const closeProjectTab = onCloseTab
@@ -205,7 +216,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   }, [activeTabId, tabs.length])
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      <ProjectWorkspaceTitle name={projectName} surface={surface} />
+      {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       <div ref={stripRef} className="hidden min-w-[84px] items-center gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
@@ -235,20 +246,23 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       />{renderAfterTab?.(tab)}</div>
       })}
       </div>
-      {tabs.length > 1 && (
-        <div ref={moreRef} className="relative shrink-0">
+      {(tabs.length > 1 || phone) && (
+        <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
             onClick={() => setMoreOpen(open => !open)}
             aria-expanded={moreOpen}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-full max-md:justify-center max-md:gap-2 max-md:px-2 max-md:text-sm max-md:font-semibold max-md:text-foreground"
             title="Switch agent"
             aria-label={`Agents: switch, reorder or close (${agentCount})`}
             aria-haspopup="dialog"
             data-testid="work-more-tabs"
           >
-            <MessagesSquare className="h-4 w-4 md:hidden" aria-hidden="true" />
-            <ChevronDown className="hidden h-3.5 w-3.5 md:block" aria-hidden="true" />
+            {phone && activeTab ? <>
+              <AgentMenuActivity tabId={activeTab.tabId} workspaceActivity={activeTab.tabId === canonicalTabId ? projectActivity : undefined} />
+              <span className="truncate">{tabLabel(activeTab)}</span>
+              <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${moreOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
           {moreOpen && createPortal(
             <div ref={menuRef} style={menuPosition} className="fixed z-[100] flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
@@ -290,7 +304,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                     title={[label, tab.metadata?.agentProfileTabOwnerName].filter(Boolean).join(' · ')}
                     className={`min-w-0 flex-1 rounded py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-foreground/85'}`}
                   >
-                    <span className="flex min-w-0 items-center gap-2"><AgentMenuActivity tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} /><span className="truncate">{label}</span></span>
+                    <span className="flex min-w-0 items-center gap-2"><AgentMenuActivity tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} /><span className="truncate">{label}</span>{phone && <AgentMenuStateWord tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} />}</span>
                     {!isAgentTab(tab) && <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>}
                   </button>}
                   {reordering && key ? <div className="flex shrink-0 items-center">
@@ -314,6 +328,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                 </div>
               })}
               </div>
+              {phone && allowSideChats && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
+                className="mt-1 flex min-h-11 shrink-0 items-center gap-2 border-t border-border px-2 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New tab</button>}
             </div>, document.body
           )}
         </div>
@@ -344,7 +360,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
           type="button"
           onClick={() => setNewTabName('')}
           disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT}
-          className={`ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
+          className={`max-md:hidden ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New agent"
           title={ownedListed.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} agents per project`

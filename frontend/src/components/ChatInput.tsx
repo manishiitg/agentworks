@@ -3609,12 +3609,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
                       {/* A visible Stop while the turn runs; the menus kept it out of sight (owner pressed Escape looking for it). */}
-                      {showStopButton && foregroundTurnActive && <Button type="button" variant="ghost" size="icon" onClick={onStopStreaming}
+                      {showStopButton && foregroundTurnActive && <Button type="button" variant="destructive" size="icon" onClick={onStopStreaming}
                         aria-label="Stop the current turn" title="Stop the current turn (Esc)" data-testid="chat-stop-button"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                        className="h-7 w-7 rounded-full p-0">
                         <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />
                       </Button>}
-                      {!nativeTerminalTools && micEl}
+                      {!nativeTerminalTools && <span className={showStopButton && foregroundTurnActive ? 'max-md:hidden' : 'contents'}>{micEl}</span>}
                       {/* Chat and task actions share the popup; Enter follows the selected delivery mode. */}
                       {(!compactComposerActions || hasValidQuery) && <Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
                         {!compactComposerActions && deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}

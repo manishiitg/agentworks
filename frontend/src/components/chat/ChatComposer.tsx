@@ -20,7 +20,7 @@ export function ChatComposerArea({ product = false, className, ...props }: HTMLA
   return <div
     data-tour="chat-input-area"
     data-testid="tour-chat-input-area"
-    className={cn('min-w-0 px-2 sm:px-3 pb-[env(safe-area-inset-bottom)]', product ? 'py-1.5' : 'pt-1 pb-2', className)}
+    className={cn('min-w-0 px-2 sm:px-3 pb-[env(safe-area-inset-bottom)]', product ? 'py-1.5' : 'pt-1 pb-2', 'max-md:pb-[calc(env(safe-area-inset-bottom)+0.5rem)]', className)}
     {...props}
   />
 }

@@ -473,7 +473,7 @@ const AssistantTurnHeader = memo(function AssistantTurnHeader({ label = 'Agent' 
 // server's own (the reply event's duration and timestamp); with no duration only "done 8:05 PM" is shown. The word is
 // fixed per turn (from its event id), so it never changes on a redraw.
 const TurnDoneSummary = memo(function TurnDoneSummary({ done }: { done: TurnDone }) {
-  const finished = new Date(done.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const finished = new Date(done.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const text = done.durationNs > 0
     ? `${turnDoneWord(done.key)} for ${formatElapsed(done.durationNs / 1_000_000)} · done ${finished}`
     : `done ${finished}`
@@ -1435,7 +1435,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           // One block per agent turn: the header once at the top, then every
           // tool batch, thought and reply of that turn on the same rail.
           return (
-            <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 ${matchStyle}`}>
+            <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 max-md:px-3 ${matchStyle}`}>
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
                 {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
                 <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>

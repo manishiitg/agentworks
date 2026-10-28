@@ -1,4 +1,5 @@
 import { Suspense, lazy, useContext, useEffect, useRef, useState } from 'react'
+import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { WorkingTipsContext } from './workingTipsContext'
 import { WORKING_ACCESSIBLE_LABEL, WORKING_GLYPH_FRAMES, WORKING_GLYPH_INTERVAL_MS, WORKING_GLYPH_STATIC, WORKING_WORDS, WORKING_WORD_INTERVAL_MS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
 
@@ -34,6 +35,7 @@ function WorkingGlyph({ reduced }: { reduced: boolean }) {
 // Announce meaningful server state changes, never the playful words or elapsed clock.
 export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, className }: { realStatus?: string; startedAt?: number; lastOutputAt?: number; phase?: { phase: string; text: string; since: number }; className?: string }) {
   const reduced = usePrefersReducedMotion()
+  const phone = useMobileViewport()
   const tipsAllowed = useContext(WorkingTipsContext)
   const recent = useRef<number[]>([])
   const [word, setWord] = useState(() => ({ index: nextWorkingWordIndex([]) }))
@@ -56,7 +58,7 @@ export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, clas
   // output/tool time as server inactivity handling, never the phase start.
   // Any server text wins: a launch not yet running, a retry, or the tool the agent is running right now.
   const notYetRunning = phase !== undefined && phase.text !== ''
-  const resolved = resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
+  const resolved = resolveWorkingLabel(realStatus, phone ? 'Working' : WORKING_WORDS[reduced ? 0 : word.index])
   const text = notYetRunning ? phase.text : resolved.text
   const accessibleText = notYetRunning ? phase.text : resolved.real ? resolved.text : WORKING_ACCESSIBLE_LABEL
   const elapsed = phase?.phase === 'waiting_for_you' || phase?.phase === 'quiet' || lastOutputAt === undefined || now < lastOutputAt

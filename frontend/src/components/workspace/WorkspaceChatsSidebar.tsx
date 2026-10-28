@@ -405,7 +405,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               useChatStore.getState().addToast('Could not open this chat.', 'error')
             )
           }}
-          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose || disclosure ? 'pr-9' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
+          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose || disclosure ? 'pr-9' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'text-foreground/75 [@media(hover:hover)]:hover:bg-muted [@media(hover:hover)]:hover:text-foreground'}`}
         >
           {workspaceEntry && <span className="shrink-0" title={sourceLabel} aria-hidden="true">
             <ProjectIcon icon={workspaceEntry.icon} title={workspaceEntry.title} surface={row.surface} />
@@ -453,7 +453,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             aria-label={`Close ${title}`}
             disabled={closing === row.id}
             title={tab?.metadata?.isViewOnly ? 'Close tab · the run continues' : 'Close chat'}
-            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hidden hover:bg-background hover:text-foreground [@media(hover:hover)]:block [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => {
               if (!row.tabId) return
               setClosing(row.id)

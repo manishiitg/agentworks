@@ -99,10 +99,10 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     <TooltipProvider delayDuration={150}>
       {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
     </TooltipProvider>
-    <ShareDashboardButton workspacePath={workspacePath} tabId={tabId} onAsk={tabId ? async message => {
+    <span className="max-md:hidden"><ShareDashboardButton workspacePath={workspacePath} tabId={tabId} onAsk={tabId ? async message => {
       await openWorkspacePaneChatWithDraft({ tabId, message })
       onOpenChat?.()
-    } : undefined} />
+    } : undefined} /></span>
   </div>
 })
 
