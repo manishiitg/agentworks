@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -57,7 +56,15 @@ type CaptureStats struct {
 	Reused        int   `json:"reused"`
 	ImportedBytes int64 `json:"imported_bytes"`
 	SizeSkipped   int   `json:"size_skipped"`
-	Cold          bool  `json:"cold,omitempty"` // no file hashes were cached: every file was read
+	Cold          bool  `json:"cold,omitempty"` // no persisted index existed: every file was read
+	// Changed counts files read and imported this capture; Removed counts index
+	// entries dropped (deleted, excluded or skipped). IndexesReused/IndexesNew
+	// count checkouts whose persisted private index was reused or created.
+	Changed       int `json:"changed"`
+	Removed       int `json:"removed"`
+	IndexesReused int `json:"indexes_reused"`
+	IndexesNew    int `json:"indexes_new"`
+	Batches       int `json:"batches,omitempty"` // background initial import rounds
 	// Deferred names why a send-path capture was left to a background cache
 	// warm-up: "cold" (not attempted) or "budget" (ran out of time).
 	Deferred      string `json:"deferred,omitempty"`
@@ -100,13 +107,8 @@ type Comparison struct {
 }
 type Store struct{ Root, Private string }
 
-type cachedFile struct {
-	info os.FileInfo
-	blob string
-}
 type storeState struct {
 	gate    chan struct{}
-	files   map[string]cachedFile
 	warming atomic.Bool
 }
 
@@ -117,11 +119,18 @@ var ErrWarming = errors.New("file snapshot cache warm-up in progress")
 var states sync.Map
 
 func (s Store) state() *storeState {
-	value, _ := states.LoadOrStore(s.Private, &storeState{gate: make(chan struct{}, 1), files: map[string]cachedFile{}})
+	value, _ := states.LoadOrStore(s.Private, &storeState{gate: make(chan struct{}, 1)})
 	return value.(*storeState)
 }
 func (s Store) lock(ctx context.Context) (func(), error) {
 	gate := s.state().gate
+	// A free gate is taken even when ctx is already done, so the caller can
+	// still save its record (select picks randomly between ready cases).
+	select {
+	case gate <- struct{}{}:
+		return func() { <-gate }, nil
+	default:
+	}
 	select {
 	case gate <- struct{}{}:
 		return func() { <-gate }, nil
@@ -170,14 +179,24 @@ func (s Store) init(ctx context.Context) error {
 	if err := os.MkdirAll(filepath.Join(s.dir(), "turns"), 0700); err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(s.gitDir(), "HEAD")); err == nil {
-		return nil
+	if _, err := os.Stat(filepath.Join(s.gitDir(), "HEAD")); err != nil {
+		cmd := s.command(ctx)
+		// Bare initialization has no work tree; later operations explicitly bind it.
+		cmd.Args = []string{"git", "init", "--bare", "--quiet", "--template=", s.gitDir()}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("initialize snapshot Git: %w (%s)", err, out)
+		}
 	}
-	cmd := s.command(ctx)
-	// Bare initialization has no work tree; later operations explicitly bind it.
-	cmd.Args = []string{"git", "init", "--bare", "--quiet", "--template=", s.gitDir()}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("initialize snapshot Git: %w (%s)", err, out)
+	// Highest-precedence attributes: no EOL, ident, encoding or filter
+	// conversion of any path, whatever the work tree's .gitattributes say.
+	attributes := filepath.Join(s.gitDir(), "info", "attributes")
+	if current, err := os.ReadFile(attributes); err != nil || string(current) != privateAttributes {
+		if err := os.MkdirAll(filepath.Dir(attributes), 0700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(attributes, []byte(privateAttributes), 0600); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -235,13 +254,15 @@ func (s Store) listRepo(ctx context.Context, dir string) (entries []string, isRe
 	return entries, true, ""
 }
 
-// candidates returns the files to capture and the ignored paths omitted from
-// comparisons. Checkouts list their own files (listRepo); everything else is
-// walked and filtered with the private ignore check, as before. Secret and
-// publication exclusions apply to both kinds after enumeration.
-func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]string, []string, error) {
-	paths := []string{}     // walked files, still to be ignore-filtered
-	repoFiles := []string{} // already filtered by their repo's own ignore rules
+// candidates returns the files to capture, grouped by checkout, and the
+// ignored paths omitted from comparisons. Checkouts list their own files
+// (listRepo); everything else is walked and filtered with the private ignore
+// check, as before, and forms the last, loose group. Secret and publication
+// exclusions apply to both kinds after enumeration. This validated list is
+// the only thing that decides what a capture holds.
+func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]*checkout, []string, error) {
+	paths := []string{} // walked files, still to be ignore-filtered
+	repos := []*checkout{}
 	var walk func(dir string) error
 	walk = func(dir string) error {
 		return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -273,20 +294,22 @@ func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]string, [
 					return nil // walk this checkout
 				}
 				stats.Repos++
+				repo := &checkout{dir: path, key: checkoutKey(rel, path)}
+				if rel != "." {
+					repo.prefix = rel
+				}
 				var nested []string
 				for _, e := range entries {
-					full := e
-					if rel != "." {
-						full = rel + "/" + e
-					}
 					if strings.HasSuffix(e, "/") {
 						nested = append(nested, filepath.Join(path, filepath.FromSlash(strings.TrimSuffix(e, "/"))))
 						continue
 					}
-					if !excluded(full, false) {
-						repoFiles = append(repoFiles, full)
+					if !excluded(repo.full(e), false) {
+						repo.files = append(repo.files, e)
 					}
 				}
+				stats.RepoFiles += len(repo.files)
+				repos = append(repos, repo)
 				for _, n := range nested {
 					if err := walk(n); err != nil {
 						return err
@@ -304,9 +327,11 @@ func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]string, [
 	if err := walk(s.Root); err != nil {
 		return nil, nil, err
 	}
-	stats.RepoFiles, stats.WalkedFiles = len(repoFiles), len(paths)
+	stats.WalkedFiles = len(paths)
+	loose := &checkout{dir: s.Root, key: "loose", loose: true}
+	repos = append(repos, loose)
 	if len(paths) == 0 {
-		return repoFiles, nil, nil
+		return repos, nil, nil
 	}
 	cmd := s.command(ctx, "check-ignore", "--no-index", "-z", "--stdin")
 	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
@@ -319,16 +344,15 @@ func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]string, [
 	for _, p := range bytes.Split(out, []byte{0}) {
 		ignored[string(p)] = true
 	}
-	kept := repoFiles
 	omitted := []string{}
 	for _, p := range paths {
 		if !ignored[p] {
-			kept = append(kept, p)
+			loose.files = append(loose.files, p)
 		} else {
 			omitted = append(omitted, p)
 		}
 	}
-	return kept, omitted, nil
+	return repos, omitted, nil
 }
 
 // vanishedOnDisk lists paths saved in the prior (before) state that are not
@@ -356,209 +380,10 @@ func (s Store) vanishedOnDisk(ctx context.Context, root *os.Root, prior string, 
 	return res
 }
 
-// capture streams eligible files into Git's standard importer. Rooted reads
-// cannot follow a replaced ancestor symlink outside the Crew. Git owns object
-// hashing/deduplication; no user Git config, attributes or clean filters run.
+// capture records the Crew's eligible files into ref within the normal
+// import budget (see captureWithin).
 func (s Store) capture(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string) (string, []string, []string, error) {
-	paths, omitted, err := s.candidates(ctx, stats)
-	if err != nil {
-		return "", nil, nil, err
-	}
-	root, err := os.OpenRoot(s.Root)
-	if err != nil {
-		return "", nil, nil, err
-	}
-	defer root.Close()
-	stats.Eligible = len(paths)
-	if prior != "" {
-		omitted = append(omitted, s.vanishedOnDisk(ctx, root, prior, paths)...)
-	}
-	// A large asset encountered first must not starve ordinary source files.
-	// Stat through the confined root; recheck each file before reading below.
-	skipped := []string{}
-	// Metadata is evidence of an observed change, not a captured blob. Keep it
-	// only for skipped regular files; unreadable/non-regular paths stay unknown.
-	rememberSkipped := func(path string, info os.FileInfo) {
-		if info.Mode().IsRegular() {
-			skippedState[path] = fmt.Sprintf("%d:%d:%d", info.Size(), info.ModTime().UnixNano(), info.Mode())
-		}
-	}
-	// Concurrent deletes are ordinary working-tree changes. An unreadable path
-	// is omitted on both sides of the comparison, never shown as a deletion.
-	skipRead := func(path string, err error) {
-		if !errors.Is(err, fs.ErrNotExist) {
-			skipped = append(skipped, path)
-			stats.ReadSkipped++
-		}
-	}
-	sizes := make(map[string]int64, len(paths))
-	present := paths[:0]
-	for _, path := range paths {
-		if err := ctx.Err(); err != nil {
-			return "", nil, nil, err
-		}
-		info, err := root.Lstat(path)
-		if err != nil {
-			skipRead(path, err)
-			continue
-		}
-		sizes[path] = info.Size()
-		present = append(present, path)
-	}
-	paths = present
-	sort.Slice(paths, func(i, j int) bool {
-		if sizes[paths[i]] == sizes[paths[j]] {
-			return paths[i] < paths[j]
-		}
-		return sizes[paths[i]] < sizes[paths[j]]
-	})
-	cmd := s.command(ctx, "fast-import", "--quiet", "--done", "--date-format=raw")
-	input, err := cmd.StdinPipe()
-	if err != nil {
-		return "", nil, nil, err
-	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err = cmd.Start(); err != nil {
-		return "", nil, nil, err
-	}
-	// Each checkpoint is independent, so deleting an old ref permits Git GC.
-	_, err = fmt.Fprintf(input, "commit %s\ncommitter AgentWorks <snapshot@example.com> %d +0000\ndata 14\nFile snapshot\n\ndeleteall\n", ref, time.Now().Unix())
-	captured := map[string]os.FileInfo{}
-	cache := s.state().files
-	var total int64
-	writeData := func(mode, path string, data []byte) error {
-		if _, e := fmt.Fprintf(input, "M %s inline %s\ndata %d\n", mode, strconv.Quote(path), len(data)); e != nil {
-			return e
-		}
-		if _, e := input.Write(data); e != nil {
-			return e
-		}
-		_, e := io.WriteString(input, "\n")
-		return e
-	}
-	for _, path := range paths {
-		if err != nil {
-			break
-		}
-		if err = ctx.Err(); err != nil {
-			break
-		}
-		info, e := root.Lstat(path)
-		if e != nil {
-			skipRead(path, e)
-			continue
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			target, e := root.Readlink(path)
-			if e != nil {
-				skipRead(path, e)
-				continue
-			}
-			err = writeData("120000", path, []byte(target))
-			stats.Captured++
-			continue
-		}
-		if !info.Mode().IsRegular() || info.Size() > MaxFileBytes {
-			rememberSkipped(path, info)
-			skipped = append(skipped, path)
-			stats.SizeSkipped++
-			continue
-		}
-		if previous, ok := cache[path]; ok && os.SameFile(info, previous.info) && info.Size() == previous.info.Size() && info.ModTime() == previous.info.ModTime() && info.Mode() == previous.info.Mode() {
-			mode := "100644"
-			if info.Mode()&0111 != 0 {
-				mode = "100755"
-			}
-			_, err = fmt.Fprintf(input, "M %s %s %s\n", mode, previous.blob, strconv.Quote(path))
-			// Stored blobs cost no read/import bytes, even once the budget is full.
-			stats.Reused++
-			stats.Captured++
-			captured[path] = info
-			continue
-		}
-		if total+info.Size() > maxCaptureBytes {
-			rememberSkipped(path, info)
-			skipped = append(skipped, path)
-			stats.BudgetSkipped++
-			continue
-		}
-		f, e := root.Open(path)
-		if e != nil {
-			skipRead(path, e)
-			continue
-		}
-		// The open handle's size/type is authoritative if the file changed during enumeration.
-		actual, e := f.Stat()
-		if e != nil {
-			f.Close()
-			skipRead(path, e)
-			continue
-		}
-		if !actual.Mode().IsRegular() || actual.Size() > MaxFileBytes {
-			rememberSkipped(path, actual)
-			f.Close()
-			stats.SizeSkipped++
-			skipped = append(skipped, path)
-			continue
-		}
-		data, e := io.ReadAll(io.LimitReader(f, MaxFileBytes+1))
-		f.Close()
-		if e != nil {
-			skipRead(path, e)
-			continue
-		}
-		if len(data) > MaxFileBytes || total+int64(len(data)) > maxCaptureBytes {
-			rememberSkipped(path, actual)
-			if len(data) > MaxFileBytes {
-				stats.SizeSkipped++
-			} else {
-				stats.BudgetSkipped++
-			}
-			skipped = append(skipped, path)
-			continue
-		}
-		total += int64(len(data))
-		stats.ImportedBytes = total
-		stats.Captured++
-		mode := "100644"
-		if actual.Mode()&0111 != 0 {
-			mode = "100755"
-		}
-		err = writeData(mode, path, data)
-		captured[path] = actual
-	}
-	if err == nil {
-		_, err = io.WriteString(input, "\ndone\n")
-	}
-	input.Close()
-	if err != nil {
-		_ = cmd.Process.Kill()
-	}
-	waitErr := cmd.Wait()
-	if err != nil {
-		return "", nil, nil, err
-	}
-	if waitErr != nil {
-		return "", nil, nil, fmt.Errorf("snapshot import failed: %w", waitErr)
-	}
-	out, err := s.command(ctx, "rev-parse", "--verify", ref).Output()
-	commit := strings.TrimSpace(string(out))
-	if err == nil {
-		tree, treeErr := s.command(ctx, "ls-tree", "-r", "-z", commit).Output()
-		if treeErr == nil {
-			next := map[string]cachedFile{}
-			for _, entry := range bytes.Split(tree, []byte{0}) {
-				meta, path, ok := strings.Cut(string(entry), "\t")
-				fields := strings.Fields(meta)
-				if info, found := captured[path]; ok && found && len(fields) == 3 {
-					next[path] = cachedFile{info: info, blob: fields[2]}
-				}
-			}
-			s.state().files = next
-		}
-	}
-	return commit, skipped, omitted, err
+	return s.captureWithin(ctx, ref, prior, stats, skippedState, maxCaptureBytes)
 }
 func (s Store) read(id string) (Record, error) {
 	if !validID(id) {
@@ -598,8 +423,8 @@ func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
 
 // BeginWithin is the send-path before-capture: waiting for the Crew gate and
 // capturing together never take longer than budget, so a message is never held
-// behind a capture. A cold cache (after a restart or the first capture) reads
-// every file, which a large Crew cannot do in that time, so it is not tried;
+// behind a capture. A cold Crew (no persisted private index yet) reads every
+// file, which a large Crew cannot do in that time, so it is not tried;
 // it and a warm capture that runs out of time are saved unavailable with
 // BeforeCapture.Deferred set, and the caller runs Warm in the background.
 // While Warm holds the gate this returns ErrWarming at once.
@@ -627,7 +452,7 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 	}
 	r := Record{ID: id, ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing"}
 	r.BeforeSkippedState = map[string]string{}
-	r.BeforeCapture.Cold = len(s.state().files) == 0
+	r.BeforeCapture.Cold = !s.hasIndexes()
 	if sendPath && r.BeforeCapture.Cold {
 		r.Status = "unavailable"
 		r.BeforeCapture.Deferred = "cold"
@@ -647,19 +472,25 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 	return r, saveErr
 }
 
-// Warm reads the Crew's files into the file-hash cache without a reply record,
-// so the next send-path capture reuses them and fits its budget. One runs at a
-// time per Crew (ErrWarming otherwise). Its import keeps a ref so a later
-// cleanup cannot remove blobs the cache points to. A warm-up stopped by limit
-// leaves the cache as it was (what it read is not kept).
+// Warm is the resumable initial import: it fills the Crew's persisted private
+// indexes off the send path, in batches of at most the normal import budget,
+// without a reply record, so later send-path captures reuse them and fit their
+// budget. Each batch is committed (indexes plus headRef) before the next
+// starts, so a warm-up stopped by limit keeps every finished batch and the
+// next one continues from there. One runs at a time per Crew (ErrWarming).
+// Its state is never a reply's before-boundary.
 func (s Store) Warm(limit time.Duration) (CaptureStats, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	return s.warm(ctx, maxCaptureBytes, nil)
+}
+
+func (s Store) warm(ctx context.Context, batch int64, afterBatch func(CaptureStats)) (CaptureStats, error) {
 	state := s.state()
 	if !state.warming.CompareAndSwap(false, true) {
 		return CaptureStats{}, ErrWarming
 	}
 	defer state.warming.Store(false)
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
-	defer cancel()
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return CaptureStats{}, err
@@ -668,19 +499,33 @@ func (s Store) Warm(limit time.Duration) (CaptureStats, error) {
 	if err := s.init(ctx); err != nil {
 		return CaptureStats{}, err
 	}
-	stats := CaptureStats{Cold: len(state.files) == 0}
-	ref := "refs/warm/" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	_, _, _, err = s.capture(ctx, ref, "", &stats, map[string]string{})
-	// Keep only the newest successful warm-up ref: the cache points at its blobs.
-	refs, listErr := s.command(context.Background(), "for-each-ref", "--format=%(refname)", "refs/warm/").Output()
-	if listErr == nil {
+	// Refs of the earlier in-memory cache warm-up; the indexes replace them.
+	if refs, err := s.command(ctx, "for-each-ref", "--format=%(refname)", "refs/warm/").Output(); err == nil {
 		for _, name := range strings.Fields(string(refs)) {
-			if (err == nil && name != ref) || (err != nil && name == ref) {
-				_ = s.command(context.Background(), "update-ref", "-d", name).Run()
-			}
+			_ = s.command(ctx, "update-ref", "-d", name).Run()
 		}
 	}
-	return stats, err
+	total := CaptureStats{Cold: !s.hasIndexes()}
+	for {
+		stats := CaptureStats{}
+		_, _, _, err := s.captureWithin(ctx, headRef, "", &stats, map[string]string{}, batch)
+		cold, imported, changed, batches := total.Cold, total.ImportedBytes+stats.ImportedBytes, total.Changed+stats.Changed, total.Batches+1
+		total = stats
+		total.Cold, total.ImportedBytes, total.Changed, total.Batches = cold, imported, changed, batches
+		if err != nil {
+			return total, err
+		}
+		if afterBatch != nil {
+			afterBatch(stats)
+		}
+		// Done, or no file fits a batch (each is at most MaxFileBytes).
+		if stats.BudgetSkipped == 0 || stats.Changed == 0 {
+			return total, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+	}
 }
 
 // Failed reports whether a retained reply's capture failed, so it saved no

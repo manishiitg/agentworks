@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // Command builds a hardened git call in dir (a checkout whose .git is a
@@ -132,6 +133,86 @@ func CommandIn(ctx context.Context, root, dir string, extraConfig []string, args
 	cmd.Dir = dir
 	cmd.Env = env()
 	return cmd
+}
+
+// PrivateStore runs Git on a server-private repository (gitDir, kept outside
+// every shared folder) with workTree, a folder inside root, as the work tree
+// and indexFile as the index. The checkout's own .git (config, hooks,
+// info/exclude, index, HEAD, refs) is never read or written: Git sees only
+// gitDir. Pathspecs are literal, no fsmonitor, hooks, pager, SSH or
+// protocol runs, and the store's own filter/diff drivers are blanked as in
+// CommandIn. Content conversions are off (autocrlf, safecrlf, the global
+// attributes file); the caller's store keeps an info/attributes that unsets
+// text, eol, ident, filter and working-tree-encoding for every path, which
+// takes precedence over the work tree's .gitattributes.
+func PrivateStore(ctx context.Context, root, gitDir, workTree, indexFile string, args ...string) *exec.Cmd {
+	tree, ok := confined(root, workTree)
+	if !ok {
+		return refused(ctx)
+	}
+	overrides, ok := privateDriverOverrides(ctx, gitDir)
+	if !ok {
+		return refused(ctx)
+	}
+	full := []string{
+		"--no-optional-locks",
+		"--literal-pathspecs",
+		"-c", "core.fsmonitor=false",
+		"-c", "core.hooksPath=/dev/null",
+		"-c", "core.pager=cat",
+		"-c", "core.quotepath=off",
+		"-c", "core.sshCommand=",
+		"-c", "safe.directory=" + gitDir,
+		"-c", "safe.directory=" + tree,
+		"-c", "protocol.allow=never",
+		"-c", "diff.external=",
+		"-c", "gc.auto=0",
+		"-c", "core.bare=false",
+		"-c", "core.autocrlf=false",
+		"-c", "core.safecrlf=false",
+		"-c", "core.attributesFile=" + os.DevNull,
+		"-c", "core.excludesFile=" + os.DevNull,
+		"-c", "core.untrackedCache=false",
+		"-c", "core.splitIndex=false",
+		"-c", "core.symlinks=true",
+		"-c", "core.fileMode=true",
+		"-c", "core.trustctime=true",
+		"-c", "core.checkStat=default",
+		"-c", "core.ignoreCase=false",
+		// Paths come from our own listing and are never checked out, so the
+		// Windows/macOS checkout name guards would only refuse valid files.
+		"-c", "core.protectNTFS=false",
+		"-c", "core.protectHFS=false",
+		"--git-dir", gitDir,
+		"--work-tree", tree,
+	}
+	for _, c := range overrides {
+		full = append(full, "-c", c)
+	}
+	cmd := exec.CommandContext(ctx, "git", append(full, args...)...)
+	cmd.Dir = tree
+	cmd.Env = append(env(), "GIT_INDEX_FILE="+indexFile)
+	return cmd
+}
+
+// privateConfigs caches a private store's driver overrides by its config
+// contents, so each call does not start a second git process.
+var privateConfigs sync.Map
+
+func privateDriverOverrides(ctx context.Context, gitDir string) ([]string, bool) {
+	raw, err := os.ReadFile(filepath.Join(gitDir, "config"))
+	key := gitDir + "\x00" + string(raw)
+	if err == nil {
+		if cached, ok := privateConfigs.Load(key); ok {
+			return cached.([]string), true
+		}
+	}
+	// The private store's config lives in gitDir, so includes must stay there.
+	overrides, ok := driverOverrides(ctx, gitDir, gitDir, gitDir)
+	if ok && err == nil && !strings.Contains(strings.ToLower(string(raw)), "include") {
+		privateConfigs.Store(key, overrides)
+	}
+	return overrides, ok
 }
 
 func env() []string {

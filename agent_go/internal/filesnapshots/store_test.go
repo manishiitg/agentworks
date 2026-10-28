@@ -316,6 +316,7 @@ func TestColdBeforeCaptureBudgetAndLockFreeReads(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(s.Root, "a.txt"), []byte("a"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	backdate(t, filepath.Join(s.Root, "a.txt"))
 	started := time.Now()
 	cold, err := s.BeginWithin(time.Minute, "cold")
 	if err != nil || cold.Status != "unavailable" || cold.BeforeCapture.Deferred != "cold" || cold.BeforeCapture.Captured != 0 || time.Since(started) > 5*time.Second {
@@ -498,6 +499,8 @@ func TestLargeAssetsDoNotStarveSourceOrChargeCachedBlobs(t *testing.T) {
 	if err := os.WriteFile(source, []byte("before\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	assets, _ := filepath.Glob(filepath.Join(s.Root, "asset-*.bin"))
+	backdate(t, assets...)
 	before, err := s.Begin(t.Context(), "first")
 	if err != nil {
 		t.Fatal(err)
@@ -518,11 +521,12 @@ func TestLargeAssetsDoNotStarveSourceOrChargeCachedBlobs(t *testing.T) {
 	}
 	// The after capture filled previously skipped assets. A warm before must
 	// represent all files even though the tree is larger than the import budget.
+	// Only the source edited just before Finish may be re-read (racily clean).
 	warm, err := s.Begin(t.Context(), "warm")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(warm.Skipped) != 0 || warm.BeforeCapture.ImportedBytes != 0 || warm.BeforeCapture.Reused != 12 {
+	if c := warm.BeforeCapture; len(warm.Skipped) != 0 || c.ImportedBytes > int64(len("after\n")) || c.Reused < 11 || c.Reused+c.Changed != 12 {
 		t.Fatalf("cached blobs charged or dropped: %+v", warm)
 	}
 	if _, err := s.Finish(t.Context(), "warm"); err != nil {
@@ -605,5 +609,393 @@ func TestUndoRestoresReplyChangesAndSkipsLaterEdits(t *testing.T) {
 	write("edited.txt", "edited after\n")
 	if plan, err = s.PlanUndo(ctx, id, all, func(p string) bool { return p != "edited.txt" }); err != nil || len(plan.Restore) != 0 || plan.Skipped[0].Reason == "" {
 		t.Fatalf("write guard: %v %+v", err, plan)
+	}
+}
+
+// backdate moves files out of the current timestamp tick. Git correctly
+// re-reads an entry written in the same tick as its index (racily clean),
+// which would make exact reuse counts depend on timing.
+func backdate(t *testing.T, paths ...string) {
+	t.Helper()
+	old := time.Now().Add(-time.Hour)
+	for _, p := range paths {
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+type crewFixture struct {
+	t *testing.T
+	s Store
+}
+
+func newCrew(t *testing.T) crewFixture {
+	base := t.TempDir()
+	return crewFixture{t: t, s: Store{Root: filepath.Join(base, "files"), Private: filepath.Join(base, "private")}}
+}
+
+func (f crewFixture) put(rel, data string) string {
+	f.t.Helper()
+	p := filepath.Join(f.s.Root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(data), 0600); err != nil {
+		f.t.Fatal(err)
+	}
+	return p
+}
+
+func (f crewFixture) git(dir string, args ...string) {
+	f.t.Helper()
+	cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"}, args...)...)
+	cmd.Dir = filepath.Join(f.s.Root, filepath.FromSlash(dir))
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		f.t.Fatalf("git %v: %v %s", args, err, out)
+	}
+}
+
+// repo makes dir a checkout with one commit of the given files.
+func (f crewFixture) repo(dir string, files map[string]string) {
+	f.t.Helper()
+	for name, data := range files {
+		f.put(dir+"/"+name, data)
+	}
+	f.git(dir, "init", "--quiet")
+	f.git(dir, "add", "-A")
+	f.git(dir, "commit", "--quiet", "-m", "init")
+}
+
+func (f crewFixture) backdateAll() {
+	f.t.Helper()
+	var paths []string
+	_ = filepath.WalkDir(f.s.Root, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && !strings.Contains(p, string(filepath.Separator)+".git"+string(filepath.Separator)) {
+			paths = append(paths, p)
+		}
+		return nil
+	})
+	backdate(f.t, paths...)
+}
+
+// tree lists a saved capture as path -> contents.
+func (f crewFixture) tree(commit string) map[string]string {
+	f.t.Helper()
+	out, err := f.s.command(context.Background(), "ls-tree", "-r", "-z", "--name-only", commit).Output()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	files := map[string]string{}
+	for _, p := range bytes.Split(out, []byte{0}) {
+		if len(p) > 0 {
+			data, err := f.s.command(context.Background(), "cat-file", "blob", commit+":"+string(p)).Output()
+			if err != nil {
+				f.t.Fatal(err)
+			}
+			files[string(p)] = string(data)
+		}
+	}
+	return files
+}
+
+func (f crewFixture) changes(id string) map[string]string {
+	f.t.Helper()
+	c, err := f.s.Compare(context.Background(), id, "", func(string) bool { return true })
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, ch := range c.Changes {
+		got[ch.Path] = ch.Status
+	}
+	return got
+}
+
+// Git-native capture: after a restart the persisted private index makes a
+// no-change capture read nothing; Git's racy-clean and ctime checks still
+// catch same-size edits (one with the old mtime put back, which the earlier
+// size+mtime cache missed); an edit between replies belongs to the next
+// reply's before; the user's own index, HEAD, refs and config are untouched.
+func TestPersistentIndexReuseAfterRestartAndSameSizeEdits(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "aaaa\n", "b.txt": "bbbb\n"})
+	f.put("notes.md", "notes\n")
+	f.backdateAll()
+	userFiles := []string{"app/.git/index", "app/.git/HEAD", "app/.git/config", "app/.git/refs/heads/main"}
+	type state struct {
+		data []byte
+		mod  time.Time
+	}
+	snapshot := func() map[string]state {
+		m := map[string]state{}
+		for _, rel := range userFiles {
+			p := filepath.Join(f.s.Root, filepath.FromSlash(rel))
+			data, err := os.ReadFile(p)
+			info, statErr := os.Stat(p)
+			if err != nil || statErr != nil {
+				t.Fatalf("user Git file %s: %v %v", rel, err, statErr)
+			}
+			m[rel] = state{data, info.ModTime()}
+		}
+		return m
+	}
+	userBefore := snapshot()
+	if _, err := f.s.Begin(t.Context(), "first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.Finish(t.Context(), "first"); err != nil {
+		t.Fatal(err)
+	}
+	states.Delete(f.s.Private) // a server restart drops all in-memory state
+	started := time.Now()
+	warm, err := f.s.BeginWithin(5*time.Second, "after-restart")
+	if c := warm.BeforeCapture; err != nil || warm.Status != "capturing" || c.Cold || c.Deferred != "" || c.Changed != 0 || c.ImportedBytes != 0 || c.Reused != 3 || c.IndexesReused != 2 || c.IndexesNew != 0 {
+		t.Fatalf("restarted no-change capture did not reuse the persisted index: %v %+v", err, warm)
+	}
+	t.Logf("restarted no-change capture took %v", time.Since(started))
+	if done, err := f.s.Finish(t.Context(), "after-restart"); err != nil || !f.s.Unchanged(t.Context(), done) {
+		t.Fatalf("no-change reply: %v %+v", err, done)
+	}
+	a := filepath.Join(f.s.Root, "app", "a.txt")
+	for i, restoreMtime := range []bool{false, true} {
+		id := fmt.Sprintf("same-size-%d", i)
+		if _, err := f.s.Begin(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+		recorded, err := os.Stat(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.put("app/a.txt", fmt.Sprintf("edit%d", i)) // same size as "aaaa\n"
+		if restoreMtime {
+			// Same size and the exact mtime the index recorded: only ctime differs.
+			if err := os.Chtimes(a, recorded.ModTime(), recorded.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := f.s.Finish(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+		if got := f.changes(ID(id)); len(got) != 1 || got["app/a.txt"] != "M" {
+			t.Fatalf("same-size edit (mtime restored=%t) missed: %+v", restoreMtime, got)
+		}
+	}
+	// The person edits between replies: the next reply starts from that edit.
+	f.put("app/b.txt", "between\n")
+	next, err := f.s.Begin(t.Context(), "next")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.tree(next.Before)["app/b.txt"]; got != "between\n" {
+		t.Fatalf("between-reply edit not in the next before: %q", got)
+	}
+	if _, err := f.s.Finish(t.Context(), "next"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.changes(ID("next")); len(got) != 0 {
+		t.Fatalf("person's edit attributed to the next reply: %+v", got)
+	}
+	userAfter := snapshot()
+	for _, rel := range userFiles {
+		if !bytes.Equal(userBefore[rel].data, userAfter[rel].data) || !userBefore[rel].mod.Equal(userAfter[rel].mod) {
+			t.Fatalf("user Git file changed: %s", rel)
+		}
+	}
+}
+
+// The persisted index follows the validated candidate list: deleted and newly
+// ignored files leave it (the newly ignored one is not shown as deleted), a
+// tracked file the repo also ignores stays captured, and a file skipped for
+// budget is neither in the tree nor kept as an older blob.
+func TestIndexReconcilesDeletedIgnoredTrackedIgnoredAndBudgetSkipped(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{".gitignore": "*.log\n", "tracked.txt": "tracked\n", "gone.txt": "gone\n"})
+	f.put("app/keep.log", "kept\n")
+	f.git("app", "add", "-f", "keep.log")
+	f.git("app", "commit", "--quiet", "-m", "tracked but ignored")
+	f.put("app/scratch.txt", "scratch\n")
+	f.put("loose.txt", "loose\n")
+	f.backdateAll()
+	first, err := f.s.Begin(t.Context(), "reconcile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree := f.tree(first.Before); tree["app/keep.log"] != "kept\n" || tree["app/scratch.txt"] != "scratch\n" || tree["loose.txt"] != "loose\n" {
+		t.Fatalf("before tree: %+v", tree)
+	}
+	if err := os.Remove(filepath.Join(f.s.Root, "app", "gone.txt")); err != nil {
+		t.Fatal(err)
+	}
+	f.put("app/.gitignore", "*.log\nscratch.txt\n")
+	f.put("app/keep.log", "kept and edited\n")
+	done, err := f.s.Finish(t.Context(), "reconcile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.changes(done.ID); len(got) != 3 || got["app/gone.txt"] != "D" || got["app/keep.log"] != "M" || got["app/.gitignore"] != "M" {
+		t.Fatalf("reconciled changes: %+v", got)
+	}
+	if tree := f.tree(done.After); tree["app/scratch.txt"] != "" || tree["app/gone.txt"] != "" {
+		t.Fatalf("removed paths kept in the after tree: %+v", tree)
+	}
+	f.put("app/tracked.txt", "tracked, edited\n")
+	for round := 0; round < 2; round++ {
+		stats, state := CaptureStats{}, map[string]string{}
+		commit, skipped, _, err := f.s.captureWithin(t.Context(), fmt.Sprintf("refs/turns/budget%d/before", round), "", &stats, state, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tree := f.tree(commit)
+		if _, kept := tree["app/tracked.txt"]; kept || stats.BudgetSkipped == 0 || state["app/tracked.txt"] == "" || !strings.Contains(strings.Join(skipped, "\n"), "app/tracked.txt") {
+			t.Fatalf("round %d: budget-skipped file kept an old blob or lost its skip record: %+v %+v %v", round, tree, stats, skipped)
+		}
+	}
+	full, err := f.s.Begin(t.Context(), "full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.tree(full.Before)["app/tracked.txt"]; got != "tracked, edited\n" {
+		t.Fatalf("capture after budget skip: %q", got)
+	}
+}
+
+// Each checkout has its own private index; trees are assembled under their
+// Crew-relative prefixes with the loose files, so equal relative names never
+// collide, a renamed checkout gets a fresh index, and a Crew root that is
+// itself a checkout keeps loose files of a nested fallback checkout.
+func TestCheckoutsComposeUnderPrefixesWithLooseFiles(t *testing.T) {
+	f := newCrew(t)
+	f.repo("one", map[string]string{"same.txt": "one\n"})
+	f.repo("two", map[string]string{"same.txt": "two\n"})
+	f.put("same.txt", "loose\n")
+	if _, err := f.s.Begin(t.Context(), "pair"); err != nil {
+		t.Fatal(err)
+	}
+	f.put("two/same.txt", "two, edited\n")
+	done, err := f.s.Finish(t.Context(), "pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.changes(done.ID); len(got) != 1 || got["two/same.txt"] != "M" {
+		t.Fatalf("changes across same-named files: %+v", got)
+	}
+	tree := f.tree(done.After)
+	if len(tree) != 3 || tree["one/same.txt"] != "one\n" || tree["two/same.txt"] != "two, edited\n" || tree["same.txt"] != "loose\n" {
+		t.Fatalf("composed tree: %+v", tree)
+	}
+	if err := os.Rename(filepath.Join(f.s.Root, "two"), filepath.Join(f.s.Root, "three")); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := f.s.Begin(t.Context(), "moved")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := moved.BeforeCapture; c.IndexesNew != 1 || c.IndexesReused != 2 {
+		t.Fatalf("renamed checkout reused an index: %+v", c)
+	}
+	if tree := f.tree(moved.Before); len(tree) != 3 || tree["three/same.txt"] != "two, edited\n" {
+		t.Fatalf("tree after rename: %+v", tree)
+	}
+	if idx, _ := filepath.Glob(filepath.Join(f.s.indexDir(), "*.idx")); len(idx) != 3 {
+		t.Fatalf("stale index kept for the removed checkout: %v", idx)
+	}
+
+	g := newCrew(t)
+	g.repo(".", map[string]string{"main.go": "package main\n"})
+	g.put("sub/x.txt", "x\n")
+	g.git("sub", "init", "--quiet") // no commits: walked as loose files
+	if _, err := g.s.Begin(t.Context(), "rooted"); err != nil {
+		t.Fatal(err)
+	}
+	g.put("sub/x.txt", "x, edited\n")
+	rooted, err := g.s.Finish(t.Context(), "rooted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := g.changes(rooted.ID); len(got) != 1 || got["sub/x.txt"] != "M" {
+		t.Fatalf("root checkout with loose files: %+v", got)
+	}
+	if tree := g.tree(rooted.After); tree["main.go"] != "package main\n" || tree["sub/x.txt"] != "x, edited\n" {
+		t.Fatalf("root checkout tree: %+v", tree)
+	}
+}
+
+// Snapshots store exactly the bytes on disk whatever the work tree's
+// .gitattributes ask for, inside a checkout and as loose files, and Git's
+// re-hash agrees with those bytes, so the next capture reuses them.
+func TestRawBytesIgnoreEOLIdentEncodingAndFilterAttributes(t *testing.T) {
+	f := newCrew(t)
+	attributes := "* text=auto eol=crlf\n*.txt ident\nu16.txt working-tree-encoding=UTF-16LE\n*.bin filter=lfs diff=lfs merge=lfs -text\n"
+	files := map[string]string{
+		"crlf.txt": "one\r\ntwo\r\n",
+		"lf.txt":   "one\ntwo\n",
+		"id.txt":   "$Id: 0123456789abcdef $\n",
+		"u16.txt":  "h\x00i\x00\n\x00",
+		"lfs.bin":  "version https://git-lfs.github.com/spec/v1\noid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\nsize 12345\n",
+	}
+	f.repo("app", map[string]string{".gitattributes": attributes})
+	f.put(".gitattributes", attributes)
+	for name, data := range files {
+		f.put("app/"+name, data)
+		f.put(name, data)
+	}
+	f.backdateAll()
+	first, err := f.s.Begin(t.Context(), "raw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := f.tree(first.Before)
+	for name, data := range files {
+		for _, p := range []string{name, "app/" + name} {
+			if tree[p] != data {
+				t.Errorf("%s stored %q, disk has %q", p, tree[p], data)
+			}
+		}
+	}
+	if _, err := f.s.Finish(t.Context(), "raw"); err != nil {
+		t.Fatal(err)
+	}
+	again, err := f.s.Begin(t.Context(), "raw-again")
+	if c := again.BeforeCapture; err != nil || c.Changed != 0 || c.Reused != c.Eligible {
+		t.Fatalf("Git's re-hash disagreed with the raw bytes: %v %+v", err, c)
+	}
+}
+
+// The background initial import commits each batch: cancelled after one
+// batch (and with a killed run's temporary files and locks left behind), the
+// next warm-up keeps that batch and finishes the rest.
+func TestInitialImportResumesAfterCancel(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"seed.txt": strings.Repeat("s", 99) + "\n"})
+	for i := 0; i < 9; i++ {
+		f.put(fmt.Sprintf("app/f%d.txt", i), strings.Repeat("a", 99)+"\n")
+		f.put(fmt.Sprintf("loose%d.txt", i), strings.Repeat("b", 99)+"\n")
+	}
+	f.backdateAll()
+	ctx, cancel := context.WithCancel(t.Context())
+	var firstBatch CaptureStats
+	_, err := f.s.warm(ctx, 500, func(st CaptureStats) { firstBatch = st; cancel() })
+	if !errors.Is(err, context.Canceled) || firstBatch.Changed != 5 || firstBatch.BudgetSkipped != 14 {
+		t.Fatalf("first batch: %v %+v", err, firstBatch)
+	}
+	// What a killed batch leaves: a temporary index, a pack, a ref lock.
+	for _, p := range []string{filepath.Join(f.s.indexDir(), "x.idx.tmp"), filepath.Join(f.s.gitDir(), "objects", "pack", "tmp_pack_x"), filepath.Join(f.s.gitDir(), "refs", "snapshot-index", "head.lock")} {
+		if err := os.WriteFile(p, []byte("partial"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var resumed []CaptureStats
+	total, err := f.s.warm(t.Context(), 500, func(st CaptureStats) { resumed = append(resumed, st) })
+	if err != nil || len(resumed) != 3 || resumed[0].Reused != 5 || total.Batches != 3 || total.BudgetSkipped != 0 || total.Captured != 19 {
+		t.Fatalf("resumed import: %v %+v %+v", err, total, resumed)
+	}
+	if left, _ := filepath.Glob(filepath.Join(f.s.indexDir(), "*.tmp")); len(left) != 0 {
+		t.Fatalf("temporary files left: %v", left)
+	}
+	r, err := f.s.BeginWithin(5*time.Second, "after-import")
+	if c := r.BeforeCapture; err != nil || r.Status != "capturing" || c.Cold || c.Changed != 0 || c.Reused != 19 {
+		t.Fatalf("send after import: %v %+v", err, r)
 	}
 }
