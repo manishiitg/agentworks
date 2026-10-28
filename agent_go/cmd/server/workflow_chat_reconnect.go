@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -201,7 +203,16 @@ func buildCodingAgentContinuityNotice(conversationPath, workspacePath string, hi
 	} else if workspacePath != "" && strings.HasPrefix(conversationPath, workspacePath+"/") {
 		conversationPath = strings.TrimPrefix(conversationPath, workspacePath+"/")
 	}
-	archive := fmt.Sprintf("The complete conversation is saved at %[1]s (relative to the project workspace): JSON whose conversation_history array stores each turn's role in Role and its text in Parts[].Text. This command prints its last 10 dialogue turns:\n  jq -r '%[2]s' '%[1]s'\n", conversationPath, continuityRecentTurnsJQ)
+	location := "relative to the project workspace"
+	// A Crew's logical builder path is routed into private storage by the
+	// platform. Native file/shell tools do not perform that routing. Resolve
+	// this already-authorized archive, without changing any sandbox grants.
+	if physical, bound, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), normalizedConversationPath); bound && err == nil {
+		conversationPath = physical
+		location = "absolute path to this conversation's private archive; use exactly this path"
+	}
+	quotedPath := "'" + strings.ReplaceAll(conversationPath, "'", "'\"'\"'") + "'"
+	archive := fmt.Sprintf("The complete conversation is saved at %s (%s): JSON whose conversation_history array stores each turn's role in Role and its text in Parts[].Text. This command prints its last 10 dialogue turns:\n  jq -r '%s' %s\n", conversationPath, location, continuityRecentTurnsJQ, quotedPath)
 	recent := ""
 	if lines := continuityExcerpt(history); len(lines) > 0 {
 		recent = fmt.Sprintf("Recent conversation (the last %d text turns, oldest first, long turns shortened, tool output left out):\n%s\n[end of recent conversation]\nThis is only the tail of the chat. For anything older or cut here (earlier work, counts, dates, exact wording, tool results), read the archive below before answering; do not guess from this excerpt.\n", len(lines), strings.Join(lines, "\n"))

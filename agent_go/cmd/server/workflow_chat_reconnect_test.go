@@ -2,12 +2,60 @@ package server
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
+
+func TestContinuityArchiveCommandReadsPrivateCrewStorage(t *testing.T) {
+	docs := filepath.Join(t.TempDir(), "owner's workspace")
+	if err := os.MkdirAll(docs, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("LOCAL_MODE", "false")
+	root := registerTestCrew(t, "example", "owner", false)
+	logical := root + "/builder/conversation/2026-10-28/session-example-conversation.json"
+	physical, bound, err := crewroot.Resolve(docs, logical)
+	if err != nil || !bound {
+		t.Fatalf("resolve archive: %t %v", bound, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(physical), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(physical, []byte(`{"conversation_history":[{"Role":"human","Parts":[{"Text":"Earlier question"}]}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(docs, filepath.FromSlash(logical))); !os.IsNotExist(err) {
+		t.Fatal("fixture must reproduce an absent physical logical path")
+	}
+	notice := buildCodingAgentContinuityNotice(logical, root, nil)
+	if !strings.Contains(notice, physical) || !strings.Contains(notice, "absolute path") {
+		t.Fatal("archive instruction retained a virtual path")
+	}
+	var command string
+	for _, line := range strings.Split(notice, "\n") {
+		if strings.HasPrefix(line, "  jq -r ") {
+			command = strings.TrimSpace(line)
+		}
+	}
+	if command == "" {
+		t.Fatal("archive command missing")
+	}
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Dir = t.TempDir()
+	out, err := cmd.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "human: Earlier question" {
+		t.Fatalf("archive recipe failed from unrelated cwd: %s %v", out, err)
+	}
+}
 
 func reconnectMessage(role llmtypes.ChatMessageType, text string) llmtypes.MessageContent {
 	return llmtypes.MessageContent{Role: role, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: text}}}
