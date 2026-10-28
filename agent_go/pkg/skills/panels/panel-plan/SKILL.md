@@ -33,7 +33,7 @@ metadata:
 
 Build or change a Goal plan, Crew instructions or Flow. Choose the product procedure before editing.
 
-Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name and path; over MCP use `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
+Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Goal plan: read `references/goal-plan/SKILL.md` when needed.
 - Crew plan: read `references/crew-plan/SKILL.md` when needed.

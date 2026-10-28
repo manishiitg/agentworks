@@ -28,7 +28,7 @@ func TestRunPromptCoversKnowledgeAndRouteSelection(t *testing.T) {
 		"learnings/<step-id>/",
 		"Attached knowledge bases",
 		"route_selections",
-		"run_full_workflow` `variables`",
+		"runs action=start` `variables`",
 		"ask for exactly that value",
 		"your reply is the answer",
 		"Do not answer with \"see report.md\"",

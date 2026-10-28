@@ -108,7 +108,7 @@ metadata:
 
 Share a product, select accounts, secrets and connections, or contact agents. Use existing access and keep personal information private.
 
-Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name and path; over MCP use `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
+Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Sharing: read `references/sharing/SKILL.md` when needed.
 - Owners: read `references/owners/SKILL.md` when needed.

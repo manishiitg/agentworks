@@ -72,7 +72,7 @@ func TestAssembledWorkflowPrompt(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						for _, mutation := range []string{"## Plan Modification", "## Step Config & Analysis", "install_skill", "set_workflow_secret"} {
+						for _, mutation := range []string{"## Plan Modification", "## Step Config & Analysis", "install_skill", "set_workflow_secret", `skills(action="install"`, "vault action=set", `vault(action="set"`} {
 							if strings.Contains(runTools, mutation) {
 								t.Errorf("Run skill still advertises mutation: %s", mutation)
 							}

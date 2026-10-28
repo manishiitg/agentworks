@@ -53,7 +53,7 @@ metadata:
 
 Change project settings or models, inspect usage, or use the browser, terminal and a connected computer.
 
-Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name and path; over MCP use `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
+Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Settings: read `references/settings/SKILL.md` when needed.
 - Models: read `references/models/SKILL.md` when needed.

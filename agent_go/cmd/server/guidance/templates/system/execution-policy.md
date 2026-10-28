@@ -5,7 +5,7 @@ concurrency is a separate policy documented in `references/schedules.md`.
 Scheduled occurrences use their server-bound immutable `iteration-N-sched`
 folder; they do not rotate or share Builder's `iteration-0` output slot.
 
-When calling `run_full_workflow` for a multi-group workflow, **default
+When calling `runs action=start` for a multi-group workflow, **default
 to sequential per-group execution** — pass
 `group_name="<single-group>"` and wait for that group to finish before
 starting the next. Only run groups in parallel when the user explicitly
@@ -36,8 +36,8 @@ it does not authorize parallel execution.
 ```
 1. Read variables/variables.json → list of enabled group names.
 2. for each group in groups:
-     run_full_workflow(group_name="{group}")
-     wait for completion via the system's [AUTO-NOTIFICATION] completion message; use list_executions / query_step only for one-off ambiguity checks, never as a sleep/poll loop
+     runs(action="start", group_name="{group}")
+     wait for completion via the system's [AUTO-NOTIFICATION] completion message; use `runs action=active` / `runs action=step_status` only for one-off ambiguity checks, never as a sleep/poll loop
      if the user asked for reliability repair or optimization, switch to Workshop mode
 3. After all groups: summarize.
 ```

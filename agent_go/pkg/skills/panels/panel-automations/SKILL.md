@@ -16,7 +16,7 @@ metadata:
 
 Schedules say when, webhooks receive HTTP events, and Watchers check for a condition. Reusable work belongs to functions. List the current project’s callers first and inspect saved status or run evidence after a change.
 
-Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name and path; over MCP use `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
+Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Schedules: read `references/schedules/SKILL.md` when needed.
 - Webhooks: read `references/webhooks/SKILL.md` when needed.
