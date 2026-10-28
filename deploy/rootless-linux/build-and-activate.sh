@@ -432,7 +432,7 @@ systemctl --user stop "$PRODUCT-agent"
 # Retire product-wide account grants before the new server reads its policy.
 # On failure, cleanup_build restarts the old agent (current has not moved).
 python3 "$BUILD_DIR/migrations/account-availability.py" --workspace-dir "$REMOTE_APP/data/docs" --env-file "$REMOTE_APP/.env" --backup-dir "$REMOTE_APP/state/migration-backups/account-audiences-$(date -u +%Y%m%dT%H%M%SZ)"
-# Replace the saved NO_SERVERS marker with "Use all my Vault apps automatically" (PLAT-856-394); runs once.
+# Replace the saved NO_SERVERS marker with "Use all my apps automatically" (PLAT-856-394); runs once.
 python3 "$BUILD_DIR/migrations/vault-apps-setting.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/vault-apps-setting-$(date -u +%Y%m%dT%H%M%SZ)" --done-file "$REMOTE_APP/state/migrations/vault-apps-setting.done"
 # One sharing model (PLAT-856-393): Goal editors become owners, Flow editors people who can use it.
 python3 "$BUILD_DIR/migrations/one-sharing-model.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/one-sharing-model-$(date -u +%Y%m%dT%H%M%SZ)"

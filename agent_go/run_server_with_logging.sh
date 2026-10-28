@@ -1627,7 +1627,7 @@ python3 "$SCRIPT_DIR/../scripts/migrations/account-availability.py" \
     --workspace-dir "$WORKSPACE_DOCS_PATH" \
     --backup-dir "$account_audience_backup" \
     "${account_audience_args[@]}" || exit 1
-# Replace the saved NO_SERVERS marker with "Use all my Vault apps automatically" (PLAT-856-394); runs once.
+# Replace the saved NO_SERVERS marker with "Use all my apps automatically" (PLAT-856-394); runs once.
 vault_apps_state="${AGENTWORKS_STATE_ROOT:-$HOME/.config/agentworks/state}"
 python3 "$SCRIPT_DIR/../scripts/migrations/vault-apps-setting.py" \
     --workspace-dir "$WORKSPACE_DOCS_PATH" \

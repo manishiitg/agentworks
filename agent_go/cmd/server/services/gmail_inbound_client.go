@@ -28,7 +28,7 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	}
 	saved, err := svc.AgentInboxConnection(c.OwnerID)
 	if err != nil || saved.ID != c.ConnectionID {
-		return nil, fmt.Errorf("Reconnect your selected inbox account in My Vault")
+		return nil, fmt.Errorf("Reconnect your selected inbox account in your project's Vault panel or in chat")
 	}
 	scope := GmailUseScope{inboxOwner: c.OwnerID, UserID: c.OwnerID, ReadOnly: true}
 	conn, e := svc.ConnectionForScope(c.ConnectionID, scope)
@@ -44,7 +44,7 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	}
 
 	if status.Email != "" && !strings.EqualFold(status.Email, conn.Email) {
-		return nil, fmt.Errorf("Inbox account identity changed; reconnect in My Vault")
+		return nil, fmt.Errorf("Inbox account identity changed; reconnect in your project's Vault panel or in chat")
 	}
 	access, e := svc.GoogleCLIAccessForConnectionIn(ctx, c.ConnectionID, scope)
 	if e != nil {
@@ -79,7 +79,7 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 		if strings.Contains(stderr.String(), "404") {
 			return nil, gmailinbound.ErrMessageGone
 		}
-		return nil, fmt.Errorf("Gmail connection needs attention; reconnect your inbox account in My Vault")
+		return nil, fmt.Errorf("Gmail connection needs attention; reconnect your inbox account in your project's Vault panel or in chat")
 	}
 	if out.overflow {
 		return nil, fmt.Errorf("Gmail response exceeds 30 MiB")

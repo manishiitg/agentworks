@@ -57,7 +57,7 @@ func (g *GmailService) SelectPersonalConnection(ctx context.Context, id, workspa
 func (g *GmailService) ResolvePersonalGoogleIdentity(ctx context.Context, id, email string) (GmailConnection, error) {
 	pending, ok := g.GetConnection(id)
 	if !ok {
-		return GmailConnection{}, fmt.Errorf("This Google connection no longer exists. Connect again in My Vault.")
+		return GmailConnection{}, fmt.Errorf("This Google connection no longer exists. Connect again in your project's Vault panel or in chat.")
 	}
 	if !pending.IsPrivate() || pending.Email != "" {
 		return pending, nil
@@ -71,7 +71,7 @@ func (g *GmailService) ResolvePersonalGoogleIdentity(ctx context.Context, id, em
 			if err := g.DeleteConnection(ctx, id); err != nil {
 				return GmailConnection{}, err
 			}
-			return GmailConnection{}, fmt.Errorf("This Google account is already saved with another sign-in app. Use its saved account or Change access in My Vault.")
+			return GmailConnection{}, fmt.Errorf("This Google account is already saved with another sign-in app. Use its saved account or Change access in your project's Vault panel or in chat.")
 		}
 		for _, workspace := range pending.Workspaces {
 			if err := g.SelectPersonalConnection(ctx, saved.ID, workspace, true); err != nil {

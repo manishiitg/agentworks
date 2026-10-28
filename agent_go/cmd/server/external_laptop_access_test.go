@@ -218,7 +218,7 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 				return body
 			}
 			if computers := call("terminal", map[string]any{"action": "laptop_devices"}, 200, false); !strings.Contains(string(computers), "mcp-laptop") {
-				t.Fatalf("MCP My Vault computers: %s", computers)
+				t.Fatalf("MCP connected computers: %s", computers)
 			}
 			call("terminal", map[string]any{"action": "laptop_get"}, 400, false)
 			folders := []any{map[string]any{"id": "files", "path": folder, "access": "read"}}

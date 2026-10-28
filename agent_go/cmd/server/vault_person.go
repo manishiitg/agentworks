@@ -79,7 +79,7 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
 			"operation":      map[string]interface{}{"type": "string", "enum": []string{"list", "project", "project_select", "laptops", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection", "delete"}},
-			"kind":           str("project_select: mcp, project_secret, shared_secret, google, slack or computer; all_vault_apps with selected true/false turns 'Use all my Vault apps automatically' on or off."),
+			"kind":           str("project_select: mcp, project_secret, shared_secret, google, slack or computer; all_vault_apps with selected true/false turns 'Use all my apps automatically' on or off."),
 			"item_id":        str("project_select: exact item ID from project inventory."),
 			"selected":       map[string]interface{}{"type": "boolean", "description": "project_select: whether this project uses the item."},
 			"workspace_path": str("project: the active Crew or Goal folder, from this chat; access is rechecked."),
@@ -147,7 +147,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 	}
 	if argString(args, "operation") == "laptops" {
 		if !personVaultActive(person) {
-			return "", errors.New("Your account cannot manage My Vault")
+			return "", errors.New("Your account cannot manage your own Vault items")
 		}
 		data, err := json.Marshal(api.personalLaptopConnections(&UserClaims{UserID: person}))
 		return string(data), err

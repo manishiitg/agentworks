@@ -53,7 +53,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"expected_version":   externalString("Version from settings action=get; the update is refused if the settings changed since."),
 		"models":             map[string]any{"type": "object", "description": "The models object from settings action=get with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
 		"mcp_servers":        map[string]any{"type": "object", "additionalProperties": false, "description": "Attach/detach apps (MCP servers and Vault apps), or replace the complete selection.", "properties": map[string]any{"add": names, "remove": names, "replace": names}},
-		"use_all_vault_apps": map[string]any{"type": "boolean", "description": "Use all my Vault apps automatically. On: every Vault app the owner may use is available. Off: only the Vault apps listed in mcp_servers."},
+		"use_all_vault_apps": map[string]any{"type": "boolean", "description": "Use all my apps automatically. On: every Vault app the owner may use is available. Off: only the Vault apps listed in mcp_servers."},
 		"tools":              addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
 		"skills":             addRemove("Installed or built-in skills to use or stop using."),
 		"secrets": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
@@ -95,7 +95,7 @@ type externalSettingsState struct {
 	ChatInstructions string                         `json:"chat_instructions,omitempty"`
 	LLMConfig        *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 	Servers          []string                       `json:"selected_servers,omitempty"`
-	// ChosenVaultAppsOnly is "Use all my Vault apps automatically" off (PLAT-856-394).
+	// ChosenVaultAppsOnly is "Use all my apps automatically" off (PLAT-856-394).
 	ChosenVaultAppsOnly bool      `json:"chosen_vault_apps_only,omitempty"`
 	Tools               []string  `json:"selected_tools,omitempty"`
 	Skills              []string  `json:"selected_skills,omitempty"`

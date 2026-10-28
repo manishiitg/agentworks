@@ -38,7 +38,7 @@ starting it grants no folder automatically.
 Then tell your own MCP agent, for example: “Connect my Reports folder to this
 Crew with Read access” or “Allow commands in my project folder.” It can list
 your connected computer, browse folder names, and save the same permissions as
-the website with `terminal` (`laptop_get`, `laptop_set` and the other `laptop_` actions). Connect once in My Vault. For a Goal, pass its `workflow_id` from `workflow action=list`; for a Crew, its `workspace_id` comes from
+the website with `terminal` (`laptop_get`, `laptop_set` and the other `laptop_` actions). Connect once in your project's Vault panel or in chat. For a Goal, pass its `workflow_id` from `workflow action=list`; for a Crew, its `workspace_id` comes from
 `workspace action=list`. Read allows listing and copying files; Read & write also permits
 writing files. Commands are a separate switch (`commands`). Removing access takes effect on subsequent calls, including while
 the computer is offline.
@@ -934,4 +934,4 @@ CLI update and stop/start preserve and reconnect still-live approved attachments
 
 Terminal attach/detach refuse coding-agent process ancestry even through a PTY; the person uses the in-chat hook instead. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.
 
-My Vault computers can also be listed over MCP with `terminal` and `action: "laptop_devices"`, without a project selector. Then choose the computer and its grants in a Goal or Crew. Goal steps and schedules stay on the server; their Gmail and Slack settings remain independent.
+Your connected computers can also be listed over MCP with `terminal` and `action: "laptop_devices"`, without a project selector. Then choose the computer and its grants in a Goal or Crew. Goal steps and schedules stay on the server; their Gmail and Slack settings remain independent.

@@ -40,7 +40,7 @@ func GmailOAuthRoutes(router *mux.Router, api *StreamingAPI) {
 				return
 			}
 			if c, ok := svc.GetConnection(mux.Vars(r)["id"]); ok && c.IsPrivate() {
-				http.Error(w, "Reconnect personal accounts in My Vault.", http.StatusForbidden)
+				http.Error(w, "Reconnect personal accounts in your project's Vault panel or in chat.", http.StatusForbidden)
 				return
 			}
 			startGmailOAuthHandler(api)(w, r)

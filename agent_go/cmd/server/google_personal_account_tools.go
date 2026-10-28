@@ -86,7 +86,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 		if input.ClientName == "" {
 			clientID, clientSecret, ok := platformGoogleApp()
 			if !ok {
-				return nil, fmt.Errorf("Ask an administrator to set up Google sign-in, or choose your own Google app in My Vault.")
+				return nil, fmt.Errorf("Ask an administrator to set up Google sign-in, or choose your own Google app in your project's Vault panel or in chat.")
 			}
 			if _, err := services.EnsurePlatformOAuthClient(r.Context(), clientID, clientSecret); err != nil {
 				return nil, err
@@ -106,7 +106,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 	}
 	c, ok := svc.GetConnection(id)
 	if !ok || !canManageGoogleAccount(r, c) {
-		return nil, fmt.Errorf("Ask the account owner to manage this connection in My Vault.")
+		return nil, fmt.Errorf("Ask the account owner to manage this connection in your project's Vault panel or in chat.")
 	}
 	if action == "set_inbox_account" {
 		if IsLocalMode() {
@@ -114,7 +114,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 		}
 		if !c.Personal || c.OwnerID != actor {
 			log.Printf("[GOOGLE_ACCOUNTS] actor=%q connection=%s account_owner=%q personal=%t claims_present=%t reason=inbox_owner_mismatch", actor, id, c.OwnerID, c.Personal, GetUserFromContext(r.Context()) != nil)
-			return nil, fmt.Errorf("Choose a Gmail account you own. Ask me to list your saved accounts, or choose one in My Vault.")
+			return nil, fmt.Errorf("Choose a Gmail account you own. Ask me to list your saved accounts, or choose one in your project's Vault panel or in chat.")
 		}
 		status, _ := svc.AuthStatusForConnectionBlocking(r.Context(), c.ID)
 		if !status.Authenticated || !services.GoogleScopesGrant(status.Scopes, services.GmailReadonlyScope) {
@@ -134,7 +134,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 		return map[string]any{"message": "Google account disconnected everywhere."}, nil
 	}
 	if c.IsPrivate() && c.OwnerID != actor {
-		return nil, fmt.Errorf("Only the account owner can sign in again. Ask them to reconnect in My Vault.")
+		return nil, fmt.Errorf("Only the account owner can sign in again. Ask them to reconnect in your project's Vault panel or in chat.")
 	}
 	if action == "reconnect" {
 		var update GoogleAppConnectRequest
@@ -162,7 +162,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 	}
 	auth := started.AuthURL
 	log.Printf("[GOOGLE_ACCOUNTS] actor=%s connection=%s reason=%s", actor, id, action)
-	return map[string]any{"connection_id": c.ID, "auth_url": auth, "next": "Finish signing in with Google, then return to My Vault. Use here adds this account to an item.", "notice": googleAccountSharingNotice}, nil
+	return map[string]any{"connection_id": c.ID, "auth_url": auth, "next": "Finish signing in with Google, then come back to this chat or your project's Vault panel. Use here adds this account to an item.", "notice": googleAccountSharingNotice}, nil
 }
 
 func (api *StreamingAPI) handlePersonalGoogleAccounts(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +189,7 @@ func (api *StreamingAPI) handlePersonalGoogleAccounts(w http.ResponseWriter, r *
 
 func (api *StreamingAPI) registerPersonalGoogleAccountTool(reg definitionToolRegistrar, workspace string) error {
 	return reg.RegisterCustomTool("manage_google_account",
-		"Manage personal Google accounts saved in My Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. Website account management is in My Vault. Only the account owner signs in; existing Builder and account-management permissions apply. Personal Google connections use gog. On servers, set_inbox_account selects one of your own connected Gmail accounts with read access for Crew inboxes. Receiving is on by default on servers; selecting the account starts receiving for Crews unless explicitly turned off. The owner uses configure_agent_inbox to turn one Crew off or back on. Personal Gmail Watchers remain explicitly enabled. It does not lend general mailbox access to Crews or start work. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
+		"Manage personal Google accounts saved in your Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. On the website, accounts are managed in each project's Vault panel. Only the account owner signs in; existing Builder and account-management permissions apply. Personal Google connections use gog. On servers, set_inbox_account selects one of your own connected Gmail accounts with read access for Crew inboxes. Receiving is on by default on servers; selecting the account starts receiving for Crews unless explicitly turned off. The owner uses configure_agent_inbox to turn one Crew off or back on. Personal Gmail Watchers remain explicitly enabled. It does not lend general mailbox access to Crews or start work. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
 		map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 			"action":                   map[string]interface{}{"type": "string", "enum": []string{"list_saved", "connect", "attach", "detach", "disconnect", "reconnect", "set_inbox_account"}},
 			"connection_id":            map[string]interface{}{"type": "string"},
@@ -202,7 +202,7 @@ func (api *StreamingAPI) registerPersonalGoogleAccountTool(reg definitionToolReg
 			if action, _ := args["action"].(string); action == "connect" || action == "reconnect" {
 				target = strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/")
 				if target == "" {
-					return "", fmt.Errorf("Open My Vault on the website to finish Google sign-in.")
+					return "", fmt.Errorf("Open your project's Vault panel on the website to finish Google sign-in.")
 				}
 			}
 			req := httptest.NewRequest(http.MethodPost, target, nil).WithContext(ctx)

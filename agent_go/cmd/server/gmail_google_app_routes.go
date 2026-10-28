@@ -85,7 +85,7 @@ func googleAppConnectHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 		if scope.Workspace != "" {
-			http.Error(w, "Manage personal accounts in My Vault, then choose Use here in the product.", http.StatusForbidden)
+			http.Error(w, "Manage personal accounts in your project's Vault panel or in chat, then choose Use here in the product.", http.StatusForbidden)
 			return
 		}
 		if _, err := services.EnsurePlatformOAuthClient(r.Context(), clientID, clientSecret); err != nil {

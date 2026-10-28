@@ -17,7 +17,7 @@ import (
 func userInboxClient(owner string) (services.GmailInboundClient, string, error) {
 	svc := services.GetGmailService()
 	if svc == nil {
-		return services.GmailInboundClient{}, "", fmt.Errorf("Connect Gmail in My Vault and choose Use for Crew inboxes")
+		return services.GmailInboundClient{}, "", fmt.Errorf("Connect Gmail in your project's Vault panel or in chat and choose Use for Crew inboxes")
 	}
 	conn, err := svc.AgentInboxConnection(owner)
 	if err != nil {
@@ -91,7 +91,7 @@ func inboundAddress(account, id string) (string, error) {
 	suffix := strings.ReplaceAll(id, "-", "")[:16]
 	local := base + "+agent-" + suffix
 	if len(local) > 64 {
-		return "", fmt.Errorf("Choose a shorter Gmail address in My Vault for Crew inboxes")
+		return "", fmt.Errorf("Choose a shorter Gmail address in your project's Vault panel or in chat for Crew inboxes")
 	}
 	return local + "@" + parts[1], nil
 }

@@ -100,7 +100,7 @@ esac
 		}
 	}
 
-	// My Vault has no product selection and no shared-vault dependency.
+	// The personal account list has no product selection and no shared-vault dependency.
 	t.Setenv("GMAIL_OAUTH_CLIENTS_DIR", t.TempDir())
 	restoreClientStore := services.SetGogClientStore(services.StoreGogClientForTest)
 	t.Cleanup(restoreClientStore)
@@ -115,7 +115,7 @@ esac
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, googleAppRequest(http.MethodPost, "http://localhost:8000/api/integrations/google/accounts", body, user))
 		if rec.Code != want {
-			t.Fatalf("My Vault %s: %d %s", user, rec.Code, rec.Body.String())
+			t.Fatalf("personal accounts %s: %d %s", user, rec.Code, rec.Body.String())
 		}
 		var out map[string]any
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
@@ -146,7 +146,7 @@ esac
 	list := centralCall(`{"action":"list_saved"}`, "editor", 200)
 	listJSON, _ := json.Marshal(list)
 	if strings.Contains(string(listJSON), `"id":"other"`) || strings.Contains(string(listJSON), `"id":"company"`) {
-		t.Fatal("My Vault exposed another person's account")
+		t.Fatal("personal accounts exposed another person's account")
 	}
 	centralCall(body, "runner", 403)
 	centralCall(`{"action":"reconnect","connection_id":"mine"}`, "builder", 403)

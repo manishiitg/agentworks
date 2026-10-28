@@ -415,7 +415,7 @@ func productAppSelectionRecord(ctx context.Context, profileID, workspacePath str
 	return savedAppSelection(names), chosenOnly, true, nil
 }
 
-// updateProductSelectedServers saves a Crew's app list; chosenOnly, when given, sets "Use all my Vault apps
+// updateProductSelectedServers saves a Crew's app list; chosenOnly, when given, sets "Use all my apps
 // automatically" off (true) or on (false).
 func updateProductSelectedServers(ctx context.Context, profileID, workspacePath string, mutate func([]string) []string, chosenOnly ...bool) error {
 	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, profileID, workspacePath)

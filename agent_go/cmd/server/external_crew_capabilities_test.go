@@ -108,7 +108,7 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	// Discovery is limited to the Vault apps this Crew uses (not the retired place attachments).
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "discover", "name": "vault_c-0123456789ab"}, 403)
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "discover", "name": connection}, 200)
-	// With "Use all my Vault apps automatically" on, the Crew gate accepts any Vault app ID; the discover
+	// With "Use all my apps automatically" on, the Crew gate accepts any Vault app ID; the discover
 	// operation itself still refuses a connection the caller can neither use nor manage.
 	raw, _, err := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json")
 	var manifest map[string]any

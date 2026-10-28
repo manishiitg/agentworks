@@ -238,7 +238,7 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		}
 	}
 	if group == "crew_mcp" && action == "discover" {
-		// Only a Vault app this Crew uses (its "Use all my Vault apps automatically" setting, or its chosen apps). The
+		// Only a Vault app this Crew uses (its "Use all my apps automatically" setting, or its chosen apps). The
 		// retired place attachments (PLAT-856-217) are no longer consulted.
 		selected, chosenOnly, err := projectAppSelection(r.Context(), root)
 		id := strings.TrimPrefix(strings.TrimSpace(externalArg(args, "name")), "vault_")

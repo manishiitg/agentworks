@@ -283,7 +283,7 @@ func (a *Admin) addConnectorFromCatalogFor(ctx context.Context, vaultID, provide
 	// A Slack sign-in reads that person's DMs and private channels: it is a personal account and lives only in the
 	// person's own vault, never in the company Vault that is shared with everyone.
 	if p.Key == catalog.Key("Slack") && vaultID == "" {
-		return store.Connector{}, errors.New("Slack is a personal account: connect it in your own vault (My Vault), not the company Vault")
+		return store.Connector{}, errors.New("Slack is a personal account: connect it as your own account from a project's Vault panel or in chat, not in the company Vault")
 	}
 	if p.OAuth && (a.Gateway == nil || !a.Gateway.HasSharedOAuth()) {
 		return store.Connector{}, errors.New("this provider requires upstream OAuth; configure the shared product OAuth service")
@@ -357,7 +357,7 @@ func (a *Admin) addConnectorCustomFor(ctx context.Context, vaultID, provider, la
 		return store.Connector{}, err
 	}
 	if u, err := url.Parse(upstreamURL); vaultID == "" && err == nil && (strings.EqualFold(u.Hostname(), "slack.com") || strings.HasSuffix(strings.ToLower(u.Hostname()), ".slack.com")) {
-		return store.Connector{}, errors.New("Slack is a personal account: connect it in your own vault (My Vault), not the company Vault")
+		return store.Connector{}, errors.New("Slack is a personal account: connect it as your own account from a project's Vault panel or in chat, not in the company Vault")
 	}
 	c, err := a.addConnectorRowFor(vaultID, key, label, slug, upstreamURL)
 	if err != nil {

@@ -13,7 +13,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 )
 
-// My Vault manages the existing encrypted registry. A product stores only a
+// Saved Slack bots live in the existing encrypted registry. A product stores only a
 // selected connection ID; ownership still comes from the original scope.
 type slackVaultBot struct {
 	ID         string                    `json:"id"`
@@ -181,7 +181,7 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 	}
 	if action == "select" {
 		if workspace == "" {
-			return nil, fmt.Errorf("Open the Crew or Goal's Slack page to choose a bot from My Vault.")
+			return nil, fmt.Errorf("Open the Crew or Goal's Slack page to choose a bot from your project's Vault panel.")
 		}
 		ref, allowed, err := api.slackVaultTarget(r, workspace)
 		if err != nil {
@@ -199,7 +199,7 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 		}
 		conn, found := svc.GetConnection(id)
 		if !found {
-			return nil, fmt.Errorf("Choose an existing bot from My Vault.")
+			return nil, fmt.Errorf("Choose an existing bot from your project's Vault panel.")
 		}
 		if conn.WorkspacePath != "" {
 			if err := requireSlackConnectionAccess(r, api, conn); err != nil {
@@ -210,7 +210,7 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 		if conn.WorkspacePath == "" {
 			_, platform, available := slackPlatformBot()
 			if !available || platform.ID != id {
-				return nil, fmt.Errorf("The company bot is not available. Ask an administrator to check My Vault.")
+				return nil, fmt.Errorf("The company bot is not available. Ask an administrator to check the Company Vault.")
 			}
 		} else if !currentSlackRef(services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}).Same(currentSlackRef(ref)) {
 			status, body := scheduleHandler(r, putSlackConnectionTargetHandler(api), http.MethodPut, "/api/human-feedback/slack/connections/"+id+"/targets", map[string]string{"id": id}, nil, payload)
@@ -245,7 +245,7 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 	if id != "" {
 		conn, found := svc.GetConnection(id)
 		if !found {
-			return nil, fmt.Errorf("Choose a saved bot in My Vault.")
+			return nil, fmt.Errorf("Choose a saved bot in your project's Vault panel or in chat.")
 		}
 		if err := requireSlackConnectionAccess(r, api, conn); err != nil {
 			return nil, err
@@ -256,7 +256,7 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 				return nil, err
 			}
 			if !currentSlackRef(ref).Same(currentSlackRef(services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID})) {
-				return nil, fmt.Errorf("This connection is outside the selected item's bot management scope. Open My Vault to manage it.")
+				return nil, fmt.Errorf("This connection is outside the selected item's bot management scope. Open your project's Vault panel, or ask in chat, to manage it.")
 			}
 		}
 	}
@@ -345,12 +345,12 @@ func (api *StreamingAPI) handleSlackVaultBots(w http.ResponseWriter, r *http.Req
 	writeAgentProfileJSON(w, 200, result)
 }
 func (api *StreamingAPI) registerSlackVaultBotTool(reg definitionToolRegistrar, workspace string) error {
-	return reg.RegisterCustomTool("manage_slack_bot", "Choose a saved My Vault bot for this Crew or Goal, using the same server action as its Slack page. list_saved shows available bots and the current selection. select uses a listed connection_id without copying credentials. Flows support Act in Slack only; use manage_slack_account there. Bot credentials are managed in My Vault with existing owner/admin permissions. Preserve existing channel routes and personal account permissions.", map[string]any{"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]any{
+	return reg.RegisterCustomTool("manage_slack_bot", "Choose a saved Slack bot for this Crew or Goal, using the same server action as its Slack page. list_saved shows available bots and the current selection. select uses a listed connection_id without copying credentials. Flows support Act in Slack only; use manage_slack_account there. Bot credentials are managed in your project's Vault panel or in chat with existing owner/admin permissions. Preserve existing channel routes and personal account permissions.", map[string]any{"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{"list_saved", "select"}}, "connection_id": map[string]any{"type": "string", "description": "Existing bot ID returned by list_saved."},
 	}}, func(ctx context.Context, args map[string]any) (string, error) {
 		action, _ := args["action"].(string)
 		if action != "list_saved" && action != "select" {
-			return "", fmt.Errorf("Choose list_saved or select. Manage credentials in My Vault.")
+			return "", fmt.Errorf("Choose list_saved or select. Manage credentials in your project's Vault panel or in chat.")
 		}
 		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 		result, err := api.slackVaultBotOperation(r, workspace, args)

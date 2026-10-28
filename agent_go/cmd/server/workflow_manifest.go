@@ -269,7 +269,7 @@ type WorkflowPublishDestination struct {
 // WorkflowCapabilities stores workflow-wide agent and tool configuration.
 type WorkflowCapabilities struct {
 	SelectedServers []string `json:"selected_servers"`
-	// ChosenVaultAppsOnly is "Use all my Vault apps automatically" switched off: only the Vault apps in SelectedServers
+	// ChosenVaultAppsOnly is "Use all my apps automatically" switched off: only the Vault apps in SelectedServers
 	// are used. Off (the default) means every Vault app the person may use (owner decision 2026-10-27, PLAT-856-394).
 	ChosenVaultAppsOnly       bool                           `json:"chosen_vault_apps_only,omitempty"`
 	SelectedTools             []string                       `json:"selected_tools"`
@@ -1630,7 +1630,7 @@ func (c WorkflowCapabilities) RuntimeServers() []string {
 	return runtimeAppSelection(c.SelectedServers, c.ChosenVaultAppsOnly)
 }
 
-// runtimeAppSelection turns a saved app list and its "Use all my Vault apps automatically" setting into the agent
+// runtimeAppSelection turns a saved app list and its "Use all my apps automatically" setting into the agent
 // runtime's list. With every Vault app on, hand-picked Vault apps are dropped because the runtime adds them all; with
 // chosen apps only, the agent library's internal no-automatic-apps sentinel is added. People and saved settings never
 // carry the sentinel.

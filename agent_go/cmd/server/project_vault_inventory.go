@@ -35,7 +35,7 @@ func (api *StreamingAPI) selectProjectVaultItem(ctx context.Context, person, wor
 	if err != nil {
 		return before, err
 	}
-	// "Use all my Vault apps automatically" (PLAT-856-394): one project switch, the same Builder check as one app.
+	// "Use all my apps automatically" (PLAT-856-394): one project switch, the same Builder check as one app.
 	if kind == "all_vault_apps" {
 		if before.UseAllVaultApps == selected {
 			return before, nil
@@ -154,7 +154,7 @@ type projectVaultInventory struct {
 	Vaults  []projectVaultGroup `json:"vaults"`
 	Notices []string            `json:"notices"`
 	Servers []string            `json:"selected_servers"`
-	// UseAllVaultApps is "Use all my Vault apps automatically" (PLAT-856-394).
+	// UseAllVaultApps is "Use all my apps automatically" (PLAT-856-394).
 	UseAllVaultApps bool               `json:"use_all_vault_apps"`
 	Secrets         []string           `json:"selected_secrets"`
 	Shared          []string           `json:"selected_global_secret_names"`

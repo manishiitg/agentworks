@@ -128,17 +128,17 @@ func personalConnectionAccess(r *http.Request, owner, workspace string, selected
 func personalAccountManagementScope(r *http.Request, workspace string, write bool) error {
 	actor := personalConnectionActor(r.Context())
 	if actor == "" || !canManagePersonalConnection(r, actor) {
-		return fmt.Errorf("Sign in to manage your accounts in My Vault.")
+		return fmt.Errorf("Sign in to manage your accounts in your project's Vault panel or in chat.")
 	}
 	if workspace != "" {
 		_, err := personalConnectionItemScope(r, workspace, write, "personal", "Connections")
 		return err
 	}
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil && (claims.AccessToken.FileGuard != nil || claims.AccessToken.ProjectID != "" || !claims.AccessToken.FullBuilderAccess()) {
-		return fmt.Errorf("Open an item you build to manage its selected accounts, or use My Vault on the website.")
+		return fmt.Errorf("Open an item you build to manage its selected accounts, or use your project's Vault panel on the website.")
 	}
 	if write && !userAccessForClaims(GetUserFromContext(r.Context())).CanEdit {
-		return fmt.Errorf("Ask an administrator for Builder access before connecting an account in My Vault.")
+		return fmt.Errorf("Ask an administrator for Builder access before connecting an account in your project's Vault panel or in chat.")
 	}
 	return nil
 }

@@ -4,7 +4,7 @@ Use familiar product menu entries: MCPs, Secrets, Google apps, Slack account,
 Slack bot and Local laptop. Each opens its native panel directly in the current
 Crew or Goal workspace; Flows retain their existing exclusions. Vault remains
 the backend account/secret store, not a destination people need to learn.
-There is no My Vault page, tab or menu entry.
+There is no separate personal Vault page, tab or menu entry.
 
 Use admitted ui with view=mcp, action=open and target=connected,
 available, secrets, gmail, slack-account or laptop. Slack bot uses the existing

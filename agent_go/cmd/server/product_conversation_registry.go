@@ -1072,7 +1072,7 @@ type productProjectManifest struct {
 	Capabilities         struct {
 		LLMConfig       *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 		SelectedServers []string                       `json:"selected_servers,omitempty"`
-		// ChosenVaultAppsOnly is "Use all my Vault apps automatically" off (PLAT-856-394).
+		// ChosenVaultAppsOnly is "Use all my apps automatically" off (PLAT-856-394).
 		ChosenVaultAppsOnly bool     `json:"chosen_vault_apps_only,omitempty"`
 		SelectedSkills      []string `json:"selected_skills,omitempty"`
 		// Pointer preserves the contract's three relevant states when schedule

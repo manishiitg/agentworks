@@ -134,7 +134,7 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, chosenOnly, _ = projectAppSelection(ctx, externalCommandCrewRoot); chosenOnly {
-		t.Fatal("Use all my Vault apps automatically did not switch back on")
+		t.Fatal("Use all my apps automatically did not switch back on")
 	}
 	// Project ticks cannot write into a project the caller only uses.
 	if _, err := f.api.projectVaultInventory(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "stranger"}), "stranger", externalCommandCrewRoot); err == nil {

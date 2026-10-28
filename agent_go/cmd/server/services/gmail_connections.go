@@ -1157,12 +1157,12 @@ func (g *GmailService) AgentInboxConnection(owner string) (GmailConnection, erro
 	for _, c := range g.ListConnections() {
 		if c.Personal && c.OwnerID == owner && c.AgentInbox {
 			if !c.Enabled || !c.AllowReadAccess || c.Email == "" {
-				return GmailConnection{}, fmt.Errorf("Reconnect your inbox account with Gmail read access in My Vault")
+				return GmailConnection{}, fmt.Errorf("Reconnect your inbox account with Gmail read access in your project's Vault panel or in chat")
 			}
 			return c, nil
 		}
 	}
-	return GmailConnection{}, fmt.Errorf("Choose your Gmail inbox account in My Vault to give your Crews email addresses")
+	return GmailConnection{}, fmt.Errorf("Choose your Gmail inbox account in your project's Vault panel or in chat to give your Crews email addresses")
 }
 
 // SetAgentInboxAccount uses the same encrypted connection store, without a second login.
@@ -1170,7 +1170,7 @@ func (g *GmailService) SetAgentInboxAccount(ctx context.Context, owner, id strin
 	cfg := g.GetConfig()
 	c, ok := findGmailConnection(cfg, id)
 	if !ok || !c.Personal || c.OwnerID != owner {
-		return fmt.Errorf("Choose your own Gmail account in My Vault")
+		return fmt.Errorf("Choose your own Gmail account in your project's Vault panel or in chat")
 	}
 	if !c.Enabled || !c.AllowReadAccess || c.Email == "" {
 		return fmt.Errorf("Enable Gmail read access and complete sign-in before choosing this inbox account")

@@ -91,8 +91,8 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
     {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
     {!data && !error && <p role="status" className="text-muted-foreground">Loading integrations…</p>}
     {data && !secretsOnly && <label className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
-      <Checkbox aria-label="Use all my Vault apps automatically" checked={data.use_all_vault_apps} disabled={disabled || busy} onCheckedChange={() => { void toggle('all_vault_apps') }} />
-      <span className="min-w-0 flex-1"><span className="block font-medium">Use all my Vault apps automatically</span><span className="block text-xs text-muted-foreground">{data.use_all_vault_apps ? 'This project can use every Vault app you can use. Untick an app below to choose them yourself.' : 'This project uses only the apps ticked below.'}</span></span>
+      <Checkbox aria-label="Use all my apps automatically" checked={data.use_all_vault_apps} disabled={disabled || busy} onCheckedChange={() => { void toggle('all_vault_apps') }} />
+      <span className="min-w-0 flex-1"><span className="block font-medium">Use all my apps automatically</span><span className="block text-xs text-muted-foreground">{data.use_all_vault_apps ? 'This project can use every Vault app you can use. Untick an app below to choose them yourself.' : 'This project uses only the apps ticked below.'}</span></span>
     </label>}
     {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
     {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or share an account.'}</p>}

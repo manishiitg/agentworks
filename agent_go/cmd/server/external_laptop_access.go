@@ -59,7 +59,7 @@ func (api *StreamingAPI) externalLaptopToolCall(w http.ResponseWriter, r *http.R
 	}
 	settings, err := readLaptopSettings(c.UserID, root)
 	if err != nil || settings.DeviceID == "" || len(settings.Folders) == 0 {
-		externalError(w, 400, "laptop_unavailable", "Choose your computer and folders with manage_laptop_access, or connect a computer in My Vault and select it in the project’s Local laptop panel.")
+		externalError(w, 400, "laptop_unavailable", "Choose your computer and folders with manage_laptop_access, or connect a computer in the project's Local laptop panel or in chat and select it in the project’s Local laptop panel.")
 		return
 	}
 	check := func(ctx context.Context) (*UserClaims, error) {
@@ -122,12 +122,12 @@ func isExternalLaptopFileTool(name string) bool {
 
 func externalLaptopAccessDefinition(register func(string, string, bool, bool, map[string]any, ...string)) {
 	add := func(name, description string, mutation, workflow bool, properties map[string]any, required ...string) {
-		properties["workflow_id"] = externalString("Goal ID from workflow action=list. For a project pass this or workspace_id, exactly one. Only action=devices may omit both for your My Vault computers.")
+		properties["workflow_id"] = externalString("Goal ID from workflow action=list. For a project pass this or workspace_id, exactly one. Only action=devices may omit both for your connected computers.")
 		properties["workspace_id"] = externalString("Crew workspace_id from workspace action=list. For a project pass this or workflow_id, exactly one. Only action=devices may omit both.")
 		properties["crew_id"] = externalString("Crew ID, the same Crew as workspace_id; pass one of them.")
 		register(name, description, mutation, workflow, properties, required...)
 	}
-	add("manage_laptop_access", "Manage the shared laptop connection and folders of a Goal or Crew you build. get returns the saved access and setup steps; devices with no project lists your own My Vault computers and setup steps; with a project it also includes that project's selected computer; browse lists folder names; set saves the complete folder selection with Read or Read & write; remove disconnects the project. Uses the same settings as My Vault and project Local laptop settings. Install and sign in to AgentWorks on that computer once, then keep it running. Folders cover files (terminal action=local_files, terminal action=local_copy, and terminal action=local_write for Read & write); commands (terminal action=local_execute) need the separate commands switch.", true, false, map[string]any{
+	add("manage_laptop_access", "Manage the shared laptop connection and folders of a Goal or Crew you build. get returns the saved access and setup steps; devices with no project lists your own connected computers and setup steps; with a project it also includes that project's selected computer; browse lists folder names; set saves the complete folder selection with Read or Read & write; remove disconnects the project. Uses the same settings as the project's Local laptop panel. Install and sign in to AgentWorks on that computer once, then keep it running. Folders cover files (terminal action=local_files, terminal action=local_copy, and terminal action=local_write for Read & write); commands (terminal action=local_execute) need the separate commands switch.", true, false, map[string]any{
 		"action":       map[string]any{"type": "string", "enum": []any{"get", "devices", "browse", "set", "remove"}},
 		"workspace_id": externalString("Your Crew's stable workspace_id from workspace action=list."),
 		"device_id":    externalString("Your connected computer from action=devices; required for browse or set with folders."),
@@ -158,7 +158,7 @@ func externalLaptopAccessDefinition(register func(string, string, bool, bool, ma
 func (api *StreamingAPI) externalLaptopAccessCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	c := GetUserFromContext(r.Context())
 	if !personalLaptopSettingsClaims(c) {
-		externalError(w, 403, "forbidden", "Use your own Builder connection to manage laptop access, or connect a computer in My Vault and select it in the project’s Local laptop panel.")
+		externalError(w, 403, "forbidden", "Use your own Builder connection to manage laptop access, or connect a computer in the project's Local laptop panel or in chat and select it in the project’s Local laptop panel.")
 		return
 	}
 	if externalArg(args, "action") == "devices" && externalArg(args, "workspace_id") == "" && externalArg(args, "crew_id") == "" && externalArg(args, "workflow_id") == "" {
@@ -195,14 +195,14 @@ func (api *StreamingAPI) laptopAccessAction(w http.ResponseWriter, r *http.Reque
 	switch externalArg(args, "action") {
 	case "devices":
 		devices := api.localDeviceListForProject(r.Context(), c, root)
-		externalJSON(w, map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Choose your computer, browse its folders, then save Read or Read & write access. If none is connected, open My Vault and project Local laptop settings for the download and sign-in steps. Install once on that computer, sign in and keep AgentWorks running (agentworks start for CLI users). The same app also connects AgentBridge."})
+		externalJSON(w, map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Choose your computer, browse its folders, then save Read or Read & write access. If none is connected, open the project's Local laptop panel for the download and sign-in steps. Install once on that computer, sign in and keep AgentWorks running (agentworks start for CLI users). The same app also connects AgentBridge."})
 	case "get":
 		settings, err := readLaptopSettings(c.UserID, root)
 		if err != nil {
 			externalError(w, 500, "settings_unavailable", "Laptop settings could not be read.")
 			return
 		}
-		externalJSON(w, map[string]any{"settings": settings, "next": "Use devices, browse and set to choose laptop folders. For the first connection, open My Vault and project Local laptop settings for the download/sign-in steps. Install once on that computer and keep AgentWorks running (agentworks start for CLI users); no folder is granted automatically. Normal project work stays on the server. Each folder is Read (list and copy files into the project) or Read & write (also write files). Terminal commands are a separate switch (commands) and also need a Read & write folder; they run under your computer's existing permissions."})
+		externalJSON(w, map[string]any{"settings": settings, "next": "Use devices, browse and set to choose laptop folders. For the first connection, open the project's Local laptop panel for the download/sign-in steps. Install once on that computer and keep AgentWorks running (agentworks start for CLI users); no folder is granted automatically. Normal project work stays on the server. Each folder is Read (list and copy files into the project) or Read & write (also write files). Terminal commands are a separate switch (commands) and also need a Read & write folder; they run under your computer's existing permissions."})
 	case "browse":
 		ctx, cancel := contextWithLaptopTimeout(r)
 		defer cancel()

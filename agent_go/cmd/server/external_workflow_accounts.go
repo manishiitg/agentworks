@@ -29,7 +29,7 @@ func externalWorkflowAccountDefinitions(add func(string, string, bool, bool, map
 		return err
 	}
 	tool := reg["manage_slack_bot"]
-	add("workflow_slack_bot", "Choose a My Vault bot for this Goal with the same operation as its Slack page. Flows support Act in Slack only. "+tool.description, true, true, tool.schema["properties"].(map[string]any), "action")
+	add("workflow_slack_bot", "Choose a saved Slack bot for this Goal with the same operation as its Slack page. Flows support Act in Slack only. "+tool.description, true, true, tool.schema["properties"].(map[string]any), "action")
 	return nil
 }
 

@@ -124,14 +124,14 @@ func projectSelectedServers(ctx context.Context, workspace string) ([]string, er
 	return runtimeAppSelection(servers, chosenOnly), nil
 }
 
-// projectVaultAppInUse reports whether a project uses one Vault app: all of them when "Use all my Vault apps
+// projectVaultAppInUse reports whether a project uses one Vault app: all of them when "Use all my apps
 // automatically" is on, else only the chosen ones.
 func projectVaultAppInUse(servers []string, chosenOnly bool, connectionID string) bool {
 	return !chosenOnly || containsExactString(servers, vaultServerName(connectionID))
 }
 
 // setProjectSelectedServers rewrites the project's saved app list through the same writers the app's panels use;
-// chosenOnly, when given, sets "Use all my Vault apps automatically" off (true) or on (false).
+// chosenOnly, when given, sets "Use all my apps automatically" off (true) or on (false).
 func (api *StreamingAPI) setProjectSelectedServers(ctx context.Context, workspace string, mutate func([]string) []string, chosenOnly ...bool) error {
 	if isProjectWorkspacePath(workspace) {
 		return updateProductSelectedServers(ctx, "work", workspace, mutate, chosenOnly...)
@@ -213,14 +213,14 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 	ctx := r.Context()
 	actor := personalConnectionActor(ctx)
 	if actor == "" || !canManagePersonalConnection(r, actor) {
-		return out, fmt.Errorf("Sign in to manage your Slack accounts in My Vault.")
+		return out, fmt.Errorf("Sign in to manage your Slack accounts in your project's Vault panel or in chat.")
 	}
 	if workspace == "" {
 		if err := personalAccountManagementScope(r, workspace, false); err != nil {
 			return out, err
 		}
 	}
-	_, buildErr := personalConnectionItemScope(r, workspace, true, "Slack", "My Vault")
+	_, buildErr := personalConnectionItemScope(r, workspace, true, "Slack", "your project's Vault panel")
 	out.CanConnect = personalAccountManagementScope(r, workspace, true) == nil && personVaultActive(actor)
 	out.SignInReady = api.slackSignInReady()
 	selectedNames := map[string]bool{}
@@ -233,7 +233,7 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 	}
 	row := func(owner, label string, c personalSlackConnection) slackAccountRow {
 		selected := selectedNames[vaultServerName(c.ID)]
-		out := slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "My Vault"),
+		out := slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "your project's Vault panel"),
 			ID: c.ID, Owner: owner, Label: label, Selected: selected, Connected: c.Status == "active", Mine: owner == actor}
 		if c.Status != "active" {
 			if outcome, ok := vaultSignInOutcomes.Load(c.ID); ok {
@@ -272,7 +272,7 @@ func (api *StreamingAPI) personalSlackSignIn(r *http.Request, actor, connectionI
 		return nil, err
 	}
 	if discovery != nil {
-		return map[string]any{"connection_id": connectionID, "status": discovery.Status, "message": "Ask an administrator to set up the Slack sign-in app in My Vault. Then choose Sign in again. " + discovery.Message, "notice": slackAccountNotice}, nil
+		return map[string]any{"connection_id": connectionID, "status": discovery.Status, "message": "Ask an administrator to set up the Slack sign-in app in the Company Vault. Then choose Sign in again. " + discovery.Message, "notice": slackAccountNotice}, nil
 	}
 	return map[string]any{"connection_id": connectionID, "auth_url": start.AuthURL, "next": "Open this link and sign in with Slack, then return here. This account is used only in the items you explicitly add it to.", "notice": slackAccountNotice}, nil
 }
@@ -282,7 +282,7 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 	ctx := r.Context()
 	actor := personalConnectionActor(ctx)
 	if actor == "" || !canManagePersonalConnection(r, actor) {
-		return nil, fmt.Errorf("Sign in to manage your Slack accounts in My Vault.")
+		return nil, fmt.Errorf("Sign in to manage your Slack accounts in your project's Vault panel or in chat.")
 	}
 	action, _ := args["action"].(string)
 	if action == "list_saved" {
@@ -360,18 +360,18 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 			selected = slices.Contains(servers, vaultServerName(id))
 		}
 	}
-	permissions := personalConnectionAccess(r, owner, workspace, selected, "Slack", "My Vault")
+	permissions := personalConnectionAccess(r, owner, workspace, selected, "Slack", "your project's Vault panel")
 	switch action {
 	case "attach":
 		if !permissions.CanAdd {
-			return nil, fmt.Errorf("Add your own saved Slack account to an item you build, from My Vault.")
+			return nil, fmt.Errorf("Add your own saved Slack account to an item you build, from your project's Vault panel.")
 		}
 		if err := api.selectVaultServer(ctx, actor, workspace, id, true); err != nil {
 			return nil, err
 		}
 	case "detach":
 		if !permissions.CanDetach {
-			return nil, fmt.Errorf("Ask this item's Builder or the account owner to remove it in My Vault.")
+			return nil, fmt.Errorf("Ask this item's Builder or the account owner to remove it in your project's Vault panel or in chat.")
 		}
 		if err := api.selectVaultServer(ctx, actor, workspace, id, false); err != nil {
 			return nil, err
@@ -391,7 +391,7 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 		mutex.Unlock()
 	case "reconnect":
 		if !permissions.CanReconnect {
-			return nil, fmt.Errorf("Only the account owner can sign in again. Ask them to reconnect this saved Slack account in My Vault.")
+			return nil, fmt.Errorf("Only the account owner can sign in again. Ask them to reconnect this saved Slack account in your project's Vault panel or in chat.")
 		}
 		return api.personalSlackSignIn(r, actor, id)
 	default:

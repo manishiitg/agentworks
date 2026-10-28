@@ -86,7 +86,7 @@ func (c Config) Validate() error {
 		return errors.New("email_source requires check_mode=inbox")
 	}
 	if c.PersonalGmail() && c.EmailAccountID == "" {
-		return errors.New("choose your Gmail inbox account in My Vault before creating this Watcher")
+		return errors.New("choose your Gmail inbox account in your project's Vault panel or in chat before creating this Watcher")
 	}
 
 	switch c.CheckMode {
