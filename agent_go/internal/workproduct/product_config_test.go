@@ -190,7 +190,7 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 	for _, file := range dashboard.SupportingFiles {
 		sources[file.RelPath] = len(file.Content) > 0
 	}
-	if !sources["references/authoring.md"] || !sources["references/motion-guide.md"] {
+	if !sources["references/dashboard/references/authoring.md"] || !sources["references/dashboard/references/motion-guide.md"] {
 		t.Fatal("shared dashboard authoring and motion sources must be available through read_skill")
 	}
 }
