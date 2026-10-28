@@ -6,6 +6,7 @@ import type { PlannerFile } from '../services/api-types'
 import PlannerFileList from './workspace/PlannerFileList'
 import { SessionInstructions } from './workspace/SessionInstructions'
 import { openWorkspaceFile } from '../utils/openWorkspaceFile'
+import { ContentSearchResults, type ContentSearchMatch } from './workspace/ContentSearchResults'
 import CreateFolderDialog from './workspace/CreateFolderDialog'
 import CreateFileDialog from './workspace/CreateFileDialog'
 import { createNewFile } from '../utils/editRawFile'
@@ -156,6 +157,12 @@ export default function Workspace({
 
   // Whole-workspace filename search, independent of loaded branches.
   const [serverSearchLoading, setServerSearchLoading] = useState(false)
+  // "Search in files": the same box searches the text inside files instead of names.
+  const [searchInFiles, setSearchInFiles] = useState(false)
+  const [searchOptions, setSearchOptions] = useState({ match_case: false, whole_word: false, regex: false })
+  const searchOptionsKey = JSON.stringify(searchOptions)
+  const [contentMatches, setContentMatches] = useState<ContentSearchMatch[]>([])
+  const [contentTruncated, setContentTruncated] = useState(false)
   const [showHiddenFiles, setShowHiddenFiles] = useState(false)
 
   // Multi-file upload state
@@ -384,25 +391,36 @@ export default function Workspace({
   const folderLoads = useWorkspaceStore(state => state.folderLoads)
   useEffect(() => {
     const query = searchQuery.trim()
-    setSearchFiles(null); setSearchError(null); setSearchCount(0)
+    setSearchFiles(null); setSearchError(null); setSearchCount(0); setContentMatches([]); setContentTruncated(false)
     if (!query) { setServerSearchLoading(false); return }
     const controller = new AbortController()
     let active = true
     setServerSearchLoading(true)
     const timer = window.setTimeout(() => {
-      void agentApi.searchDocuments({ query, search_type: 'filename', folder: activeFolder, limit: 500 }, visibility, controller.signal)
+      const request = searchInFiles
+        ? { query, search_type: 'content' as const, folder: activeFolder, limit: 200, ...searchOptions }
+        : { query, search_type: 'filename' as const, folder: activeFolder, limit: 500 }
+      void agentApi.searchDocuments(request, visibility, controller.signal)
         .then(response => {
           if (!active) return
           if (!response.success) throw new Error(response.message || 'Could not search files')
           const results = response.data?.results ?? []
+          if (searchInFiles) {
+            setContentMatches(results); setContentTruncated(!!response.data?.truncated); setSearchCount(results.length)
+            return
+          }
           const name = activeFolder ? useWorkspaceStore.getState().fileIndex.get(activeFolder)?.display_name : undefined
           setSearchFiles(fileSearchTree(results, activeFolder, name)); setSearchCount(results.length)
         })
-        .catch(cause => { if (active) setSearchError(cause instanceof Error ? cause.message : 'Could not search files') })
+        .catch(cause => {
+          if (!active) return
+          const serverMessage = (cause as { response?: { data?: { message?: string } } })?.response?.data?.message
+          setSearchError(serverMessage || (cause instanceof Error ? cause.message : 'Could not search files'))
+        })
         .finally(() => { if (active) setServerSearchLoading(false) })
     }, 250)
     return () => { active = false; window.clearTimeout(timer); controller.abort() }
-  }, [searchQuery, activeFolder, visibilityKey, files])
+  }, [searchQuery, activeFolder, visibilityKey, files, searchInFiles, searchOptionsKey])
 
   // Raw workspace axios instance
   const wsRawApi = workspaceApi
@@ -1815,7 +1833,7 @@ export default function Workspace({
               </div>
               <input
                 type="text"
-                placeholder="Filter files"
+                placeholder={searchInFiles ? 'Search in files' : 'Filter files'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="block w-full rounded-md border border-input bg-transparent py-1 pl-8 pr-8 text-xs leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -1838,6 +1856,39 @@ export default function Workspace({
                 </div>
               )}
             </div>
+            <div className="mt-1 flex items-center gap-1 text-xs">
+              <div role="group" aria-label="What to search" className="flex rounded-md border border-input p-0.5">
+                {([[false, 'Names'], [true, 'Text in files']] as const).map(([inFiles, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={searchInFiles === inFiles}
+                    onClick={() => setSearchInFiles(inFiles)}
+                    className={`rounded px-1.5 py-0.5 ${searchInFiles === inFiles ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {searchInFiles && ([['match_case', 'Aa', 'Match case'], ['whole_word', 'ab', 'Whole word'], ['regex', '.*', 'Use a pattern (regular expression)']] as const).map(([key, mark, label]) => (
+                <Tooltip key={key}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={label}
+                      aria-pressed={searchOptions[key]}
+                      onClick={() => setSearchOptions(options => ({ ...options, [key]: !options[key] }))}
+                      className={`rounded border px-1.5 py-0.5 font-mono ${searchOptions[key] ? 'border-primary bg-primary/10 text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'} ${key === 'whole_word' ? 'underline' : ''}`}
+                    >
+                      {mark}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{label}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
           </div>
           {/* Folder Structure - Full Width */}
           <div ref={workspaceScrollRef} className="min-h-0 flex-1 overflow-y-auto">
@@ -1859,6 +1910,13 @@ export default function Workspace({
               {showHiddenFiles && canShowManagedFiles && instructionSessionId && (!searchQuery.trim() || 'agents.md system prompt'.includes(searchQuery.trim().toLowerCase())) && (
                 <SessionInstructions sessionId={instructionSessionId} />
               )}
+              {searchInFiles && searchQuery.trim() ? (
+                <ContentSearchResults
+                  matches={contentMatches}
+                  rootPath={visibility.viewRoot}
+                  onOpen={(filepath, line) => void openWorkspaceFile(filepath, line)}
+                />
+              ) : (
               <PlannerFileList
                 protectedRootPath={protectedRootPath}
                 files={filteredFiles}
@@ -1896,9 +1954,12 @@ export default function Workspace({
                 forceExpandFolders={!!searchQuery.trim()}
                 scrollContainerRef={workspaceScrollRef}
               />
+              )}
 
               {searchQuery.trim() && <p role={searchError ? 'alert' : 'status'} className="px-2 py-2 text-xs text-muted-foreground">
-                {searchError || (serverSearchLoading ? 'Searching all files…' : searchCount >= 500 ? 'Showing the first 500 matches. Narrow your search for more.' : `${searchCount} matches across this workspace`)}
+                {searchError || (serverSearchLoading ? (searchInFiles ? 'Searching inside files…' : 'Searching all files…')
+                  : searchInFiles ? (contentTruncated ? `Showing the first ${searchCount} matching lines. Narrow your search for more.` : searchCount === 0 ? 'No file contains this text.' : `${searchCount} matching lines`)
+                  : searchCount >= 500 ? 'Showing the first 500 matches. Narrow your search for more.' : `${searchCount} matches across this workspace`)}
               </p>}
             </div>
           </div>

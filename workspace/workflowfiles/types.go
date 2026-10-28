@@ -21,6 +21,9 @@ type Request struct {
 	Operation string `json:"operation"`
 	Path      string `json:"path,omitempty"`
 	Query     string `json:"query,omitempty"`
+	MatchCase bool   `json:"match_case,omitempty"`
+	WholeWord bool   `json:"whole_word,omitempty"`
+	Regex     bool   `json:"regex,omitempty"`
 	Glob      string `json:"glob,omitempty"`
 	Offset    int    `json:"offset,omitempty"`
 	Limit     int    `json:"limit,omitempty"`

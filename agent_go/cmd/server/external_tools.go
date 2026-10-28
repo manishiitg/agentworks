@@ -94,7 +94,8 @@ func externalTools() ([]externalTool, error) {
 			p["glob"] = externalString("Optional file path glob relative to path, e.g. **/*.py. ** matches directories recursively. Filters results before pagination and content search.")
 			required := []string{}
 			if name == "search_files" {
-				p["query"] = externalString("Case-insensitive literal text to find.")
+				p["query"] = externalString("Text to find; case-insensitive literal text unless match_case or regex is set.")
+				externalTextSearchSchema(p)
 				required = append(required, "query")
 			}
 			add(name, "Browse or search workflow files. Search matches file contents and file or folder names (case-insensitive), and says how many files it read and whether folders were skipped for depth. Private paths and symbolic links are excluded. Results are bounded and paginated.", false, true, p, required...)
@@ -208,12 +209,13 @@ func externalTools() ([]externalTool, error) {
 			p["depth"] = externalInteger(1, 8)
 			p["glob"] = externalString("Optional path glob relative to path; use it to find files by name, e.g. **/*ForgotPassword*. ** matches directories recursively.")
 			if search {
-				p["query"] = externalString("Case-insensitive literal text to find inside files.")
+				p["query"] = externalString("Text to find inside files; case-insensitive literal text unless match_case or regex is set.")
+				externalTextSearchSchema(p)
 			}
 			return crewID(p)
 		}
 		add("list_crew_files", "List a Crew's project files (crew-relative paths), paginated. Start from a folder with path, go deeper with depth (up to 8), and find files by name with glob (e.g. **/*Login*). Private areas (chat transcripts under builder/, db/, the Crew's manifests, hidden folders) are never listed. Requires crews:read.", false, false, crewFiles(false), "crew_id")
-		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
+		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive by default; match_case, whole_word and regex options), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
 		add("list_crew_snapshots", "List saved file comparisons for this Crew's turns. Pass session_id to list this authorized chat’s saved replies. No prompts are included; incomplete captures are marked. Requires crews:read.", false, false, crewID(map[string]any{"session_id": externalString("Optional chat session to list its saved replies.")}), "crew_id")
 		add("compare_crew_snapshot", "Compare saved Studio file changes. Pass session_id for changes since the last review, or the whole chat before any review; snapshot_id selects one reply. Without session_id, snapshot_id selects one Crew turn. Missing initial capture is reported as unavailable. Optional file returns a diff; side (before/after) returns saved bytes. With session_id, file, side and line, return a validated historical line context for an ordinary message to that same chat. through_snapshot_id pins the shown end boundary. Current chat and file access apply. No undo or GitHub approval.", false, false, crewID(map[string]any{"group_by": externalString("Set to repository (with snapshot_id) to group one reply's changes by Git checkout, with branch, edited files and pull request status."), "snapshot_id": externalString("Optional saved reply ID."), "session_id": externalString("Chat session to compare; omit snapshot_id for the net result."), "through_snapshot_id": externalString("Optional end snapshot ID returned by this chat comparison."), "baseline_snapshot_id": externalString("Pinned baseline_snapshot_id returned by a chat comparison, including start."), "review_id": externalString("Optional review point ID to see changes accepted at that review."), "offset": externalString("Optional next_offset returned by a paged chat comparison."), "file": externalString("Optional path returned by this comparison."), "side": externalString("before or after, with file, to read its saved contents or line."), "line": externalString("Optional positive line number, with session_id, file and side, to validate a comment anchor.")}), "crew_id")
 		add("review_crew_snapshot", "Mark the displayed saved reply as reviewed in a Studio chat you can write in. Future changes compare from that exact saved state. No Git commit. Requires crews:run and current chat control.", true, false, crewID(map[string]any{"session_id": externalString("Chat session from the comparison."), "snapshot_id": externalString("Exact displayed snapshot_id to mark as reviewed.")}), "crew_id", "session_id", "snapshot_id")
@@ -1213,6 +1215,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 		req.Operation = "list"
 	case "search_files":
 		req.Operation = "search"
+		externalTextSearchArgs(&req, args)
 	case "list_runs":
 		req.Operation = "list"
 		req.Path = "runs"

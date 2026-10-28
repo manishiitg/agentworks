@@ -23,4 +23,7 @@ type SearchResponse struct {
 	Results []SearchResult `json:"results"`
 	Total   int            `json:"total"`
 	Method  string         `json:"method"`
+	// Truncated means a content search stopped at its match cap or time
+	// budget, so more matches may exist.
+	Truncated bool `json:"truncated,omitempty"`
 }

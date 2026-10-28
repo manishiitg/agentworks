@@ -223,6 +223,9 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
     && !fileContent.startsWith('data:') && !NON_TEXT_EXTENSIONS.test(selectedFile.path) && !isViewableBinaryFile(selectedFile.name)
   const markdownContentRef = useRef<HTMLDivElement>(null)
   const selectedFilePathLower = selectedFile?.path?.toLowerCase() || ''
+  // A "Search in files" result opens the saved text at its line.
+  const selectedLine = selectedFile && 'line' in selectedFile ? selectedFile.line : undefined
+  const atLine = selectedLine && !binaryFileData && !fileContent.startsWith('data:') ? selectedLine : undefined
   // Parsed once per render: the dispatch below used to re-parse the whole
   // file up to four times (search gate, conversation check, JSON check).
   const parsedJsonContent: unknown = useMemo(() => {
@@ -238,6 +241,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
     !!fileContent &&
     !fileContent.startsWith('data:image/') &&
     !isCodeFile(selectedFile?.path || '') &&
+    !atLine &&
     !binaryFileData &&
     !selectedFilePathLower.endsWith('.csv') &&
     !selectedFilePathLower.endsWith('.html') &&
@@ -498,13 +502,14 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                     />
                   </Suspense>
                 </div>
-              ) : (selectedFile?.path && isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path)) ? (
+              ) : (selectedFile?.path && (atLine || isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path))) ? (
                 <div className="h-full overflow-hidden">
                   <Suspense fallback={<FileSurfaceFallback />}>
                     <FileEditor
                       value={fileContent}
                       filepath={selectedFile.path}
                       lineChanges={gitLineChanges}
+                      revealLine={atLine}
                       height="100%"
                     />
                   </Suspense>

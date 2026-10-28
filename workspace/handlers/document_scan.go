@@ -18,6 +18,10 @@ type documentScanOptions struct {
 	visibility              models.FileTreeVisibility
 	userID, query           string
 	ctx                     context.Context
+	// file, when set, receives each visible file (its physical path and
+	// issued path) instead of the file being listed. Returning a non-nil
+	// error stops the scan with that error.
+	file func(path, issued string, info os.FileInfo) error
 }
 
 // Each listing gets one registry snapshot. Paths are still checked against
@@ -153,6 +157,9 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 				return nil
 			}
 			visited[real] = true
+		}
+		if opts.file != nil && !info.IsDir() {
+			return opts.file(path, issued, info)
 		}
 		relative, _ := filepath.Rel(searchPath, path)
 		matches := opts.query == "" || strings.Contains(strings.ToLower(filepath.ToSlash(relative)), strings.ToLower(opts.query))

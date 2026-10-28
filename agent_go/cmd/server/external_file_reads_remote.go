@@ -97,6 +97,13 @@ func externalRemoteListFiles(ctx context.Context, req wf.Request, p string) (wf.
 	if req.Operation == "search" && req.Query == "" {
 		return wf.Result{}, &externalUpstreamError{400, "query is required"}
 	}
+	matches := func(string) bool { return false }
+	if req.Operation == "search" {
+		var err error
+		if matches, err = wf.LineMatcher(req.Query, req.MatchCase, req.WholeWord, req.Regex); err != nil {
+			return wf.Result{}, &externalUpstreamError{400, err.Error()}
+		}
+	}
 	response, err := externalRemoteAssetCall(ctx, req.Root, p, "list")
 	if err != nil {
 		return wf.Result{}, err
@@ -165,7 +172,7 @@ func externalRemoteListFiles(ctx context.Context, req wf.Request, p string) (wf.
 			}
 			if file.Encoding == "utf-8" {
 				for lineNumber, line := range strings.Split(file.Content, "\n") {
-					if strings.Contains(strings.ToLower(line), strings.ToLower(req.Query)) {
+					if matches(line) {
 						match := entry
 						match.Line = lineNumber + 1
 						if len(line) > 1000 {

@@ -10,14 +10,15 @@ export function isViewableBinaryFile(fileName: string): boolean {
 
 /**
  * Load a workspace file (full workspace path) into the shared file viewer.
- * The one loader behind a tree click and a tab click.
+ * The one loader behind a tree click and a tab click. A line (from a
+ * "Search in files" result) shows the file as saved, scrolled to that line.
  */
-export async function openWorkspaceFile(fullFilePath: string): Promise<void> {
+export async function openWorkspaceFile(fullFilePath: string, line?: number): Promise<void> {
   const store = useWorkspaceStore.getState()
   const fileName = fullFilePath.split('/').pop() || fullFilePath
   try {
     store.setLoadingFileContent(true)
-    store.setSelectedFile({ name: fileName, path: fullFilePath })
+    store.setSelectedFile({ name: fileName, path: fullFilePath, ...(line ? { line } : {}) })
 
     // Viewable binary files load as raw bytes so the viewer can render them.
     if (isViewableBinaryFile(fileName)) {
@@ -47,7 +48,8 @@ export async function openWorkspaceFile(fullFilePath: string): Promise<void> {
     const raw = response.data.content ?? ''
     let content = typeof raw === 'string' ? raw : String(raw)
     // Images arrive as data URLs; everything else may carry escaped newlines.
-    if (!(response.data.is_image && content.startsWith('data:image/')) && content && !/\.py$/i.test(fullFilePath)) {
+    // Keep the saved text when opening at a line, so the line numbers match the search.
+    if (!line && !(response.data.is_image && content.startsWith('data:image/')) && content && !/\.py$/i.test(fullFilePath)) {
       // Detect JSON before unescaping: the \\n replacement corrupts JSON strings.
       const isJson = fullFilePath.toLowerCase().endsWith('.json') || isValidJSON(content)
       if (isJson) {

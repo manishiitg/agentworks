@@ -48,6 +48,8 @@ interface FileEditorProps {
   onMount?: (editor: editor.IStandaloneCodeEditor) => void
   /** Git change markers for the gutter (green added, blue modified, red deleted). */
   lineChanges?: GitLineChanges
+  /** Scroll to and select this 1-based line. */
+  revealLine?: number
 }
 
 export const FileEditor: React.FC<FileEditorProps> = ({
@@ -58,6 +60,7 @@ export const FileEditor: React.FC<FileEditorProps> = ({
   height = '100%',
   onMount,
   lineChanges,
+  revealLine,
 }) => {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const decorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null)
@@ -167,6 +170,14 @@ export const FileEditor: React.FC<FileEditorProps> = ({
     if (decorationsRef.current) decorationsRef.current.set(next)
     else decorationsRef.current = instance.createDecorationsCollection(next)
   }, [lineChanges, editorReady])
+
+  useEffect(() => {
+    const instance = editorRef.current
+    if (!instance || !editorReady || !revealLine) return
+    const line = Math.min(revealLine, instance.getModel()?.getLineCount() ?? revealLine)
+    instance.revealLineInCenter(line)
+    instance.setSelection({ startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: instance.getModel()?.getLineMaxColumn(line) ?? 1 })
+  }, [revealLine, editorReady, value])
 
   const handleChange: OnChange = (next) => {
     if (onChange && next !== undefined) onChange(next)

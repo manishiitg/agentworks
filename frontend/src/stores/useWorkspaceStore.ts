@@ -24,8 +24,9 @@ interface WorkspaceState {
   setSearchQuery: (query: string) => void
   
   // Selected file and content
-  selectedFile: {name: string, path: string} | null
-  setSelectedFile: (file: {name: string, path: string} | null) => void
+  /** line: open the viewer at this line (a "Search in files" result). */
+  selectedFile: {name: string, path: string, line?: number} | null
+  setSelectedFile: (file: {name: string, path: string, line?: number} | null) => void
   // Recently opened files, shown as viewer tabs (most recent last).
   openTabs: {name: string, path: string}[]
   closeTab: (path: string) => void

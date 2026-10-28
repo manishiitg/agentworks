@@ -333,6 +333,13 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 	if req.Operation == "search" && req.Query == "" {
 		return wf.Result{}, &externalUpstreamError{400, "query is required"}
 	}
+	var matches func(string) bool
+	if req.Operation == "search" {
+		var err error
+		if matches, err = wf.LineMatcher(req.Query, req.MatchCase, req.WholeWord, req.Regex); err != nil {
+			return wf.Result{}, &externalUpstreamError{400, err.Error()}
+		}
+	}
 	if _, err := root.Lstat(p); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return wf.Result{}, &externalUpstreamError{404, "path does not exist: " + p}
@@ -348,7 +355,6 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 	truncated := false
 	depthLimited := false
 	searchedFiles := 0
-	queryLower := strings.ToLower(req.Query)
 	err := fs.WalkDir(root.FS(), p, func(name string, d fs.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -403,7 +409,7 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		}
 		if req.Operation == "list" {
 			all = append(all, entry)
-		} else if strings.Contains(strings.ToLower(rel), queryLower) {
+		} else if matches(rel) {
 			// A search also finds files and folders by name, so "components"
 			// finds src/components, not only text inside files.
 			all = append(all, entry)
@@ -421,7 +427,7 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 			}
 			if f.Encoding == "utf-8" {
 				for lineNumber, line := range strings.Split(f.Content, "\n") {
-					if strings.Contains(strings.ToLower(line), strings.ToLower(req.Query)) {
+					if matches(line) {
 						match := entry
 						match.Line = lineNumber + 1
 						if len(line) > 1000 {
@@ -515,4 +521,18 @@ func withoutCrewCallerPrivate(result wf.Result) wf.Result {
 	}
 	result.Entries = kept
 	return result
+}
+
+// externalTextSearchSchema adds the Files panel's search options to a file
+// search tool, so the screen and chat share one matcher (wf.LineMatcher).
+func externalTextSearchSchema(p map[string]any) {
+	p["match_case"] = map[string]any{"type": "boolean", "description": "Match upper and lower case exactly. Off by default."}
+	p["whole_word"] = map[string]any{"type": "boolean", "description": "Match whole words only. Off by default."}
+	p["regex"] = map[string]any{"type": "boolean", "description": "Treat query as a regular expression (RE2 syntax). Off by default."}
+}
+
+func externalTextSearchArgs(req *wf.Request, args map[string]any) {
+	req.MatchCase, _ = args["match_case"].(bool)
+	req.WholeWord, _ = args["whole_word"].(bool)
+	req.Regex, _ = args["regex"].(bool)
 }

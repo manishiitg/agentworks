@@ -2187,7 +2187,7 @@ export const agentApi = {
     return response.data
   },
 
-  searchDocuments: async (params: { query: string; search_type?: string; folder?: string; limit?: number }, visibility?: FileTreeVisibility, signal?: AbortSignal) => {
+  searchDocuments: async (params: { query: string; search_type?: 'filename' | 'content'; folder?: string; limit?: number; match_case?: boolean; whole_word?: boolean; regex?: boolean }, visibility?: FileTreeVisibility, signal?: AbortSignal) => {
     const response = await workspaceApi.get('/api/search', { signal, params: { ...params, view_root: visibility?.viewRoot, hidden_entries: visibility?.hiddenEntries?.join(','), hide_dotfiles: visibility?.hideDotfiles ? 1 : undefined } })
     return response.data
   },
