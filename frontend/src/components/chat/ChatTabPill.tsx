@@ -5,7 +5,7 @@ import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
 import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
-import { runtimeNeedsUserInput, runtimeTurnFailed } from '../../utils/runtimeActivity'
+import { runtimeNeedsUserInput, runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
@@ -41,7 +41,7 @@ type TabStatus = 'waiting' | 'busy' | 'failed' | 'completed' | 'ready'
 const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
   waiting: { cls: 'bg-[hsl(var(--warning))] animate-pulse', label: 'Needs you' },
   busy: { cls: 'bg-[hsl(var(--info))]', label: 'Working' },
-  failed: { cls: 'bg-destructive', label: 'Failed' },
+  failed: { cls: 'bg-[hsl(var(--destructive))]', label: 'Failed' },
   completed: { cls: 'bg-[hsl(var(--success))]', label: 'Completed — open to mark as seen' },
   ready: { cls: 'bg-muted-foreground/60', label: 'Ready' },
 }
@@ -73,7 +73,9 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     if (!tab.sessionId) return false
     return runtimeNeedsUserInput(state.activeSessionsCache.find(session => session.session_id === tab.sessionId))
   })
-  const failed = useChatStore(state => !!tab.sessionId && runtimeTurnFailed(state.activeSessionsCache.find(session => session.session_id === tab.sessionId)))
+  // Red only until the person opens the chat (the same last-opened time that clears green).
+  const failed = useChatStore(state => !isActive && !!tab.sessionId &&
+    runtimeTurnFailedUnseen(state.activeSessionsCache.find(session => session.session_id === tab.sessionId), state.chatTabs[tab.tabId]?.lastAccessedAt))
   // The same busy signal as the chat header: a stored completion ends the spinner at once.
   const running = useChatStore(state => {
     const stored = state.chatTabs[tab.tabId]

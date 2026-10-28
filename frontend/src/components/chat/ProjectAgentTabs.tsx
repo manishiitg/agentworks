@@ -14,13 +14,14 @@ import { compactOwnerChatName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
-import { runtimeTurnFailed } from '../../utils/runtimeActivity'
+import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 
 function AgentMenuActivity({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
   const activity = useChatRuntimeActivity(tabId)
   const failed = useChatStore(state => {
-    const sessionId = state.chatTabs[tabId]?.sessionId
-    return !!sessionId && runtimeTurnFailed(state.activeSessionsCache.find(session => session.session_id === sessionId))
+    const tab = state.chatTabs[tabId]
+    return !!tab?.sessionId && state.activeTabId !== tabId &&
+      runtimeTurnFailedUnseen(state.activeSessionsCache.find(session => session.session_id === tab.sessionId), tab.lastAccessedAt)
   })
   if (activity.state === 'waiting' || workspaceActivity === 'waiting') {
     return <span role="img" aria-label="Needs you" title="Needs you" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" />

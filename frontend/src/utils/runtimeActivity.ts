@@ -42,6 +42,13 @@ export function runtimeTurnFailed(session?: Pick<ActiveSessionInfo, 'runtime_sta
   return session?.runtime_state?.phase === 'failed'
 }
 
+/** A failure the person has not looked at: it ended after they last opened this chat. */
+export function runtimeTurnFailedUnseen(session: Pick<ActiveSessionInfo, 'runtime_state' | 'last_activity'> | null | undefined, lastOpenedAt = 0): boolean {
+  if (!runtimeTurnFailed(session)) return false
+  const endedAt = Date.parse(session?.runtime_state?.completed_at || session?.last_activity || '')
+  return Number.isFinite(endedAt) && endedAt > lastOpenedAt
+}
+
 export function runtimeNeedsUserInput(session?: Pick<ActiveSessionInfo, 'runtime_state' | 'needs_user_input'> | null): boolean {
   if (!session) return false
   return session.runtime_state?.waiting_for_user ?? session.needs_user_input === true

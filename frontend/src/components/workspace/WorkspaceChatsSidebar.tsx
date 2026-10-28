@@ -32,6 +32,7 @@ import {
   type SidebarChat,
   type SidebarProject,
 } from '../../utils/sidebarChats'
+import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { openGlobalActivitySession, openGlobalTab } from '../../utils/globalProductNavigation'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { followAppLink } from '../../utils/appNavigation'
@@ -356,6 +357,8 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const tab = row.tabId ? tabs[row.tabId] : undefined
     const inspecting = tab?.metadata?.stepInspections?.items.some(item => inspectionKey(item) === tab.metadata?.stepInspections?.activeId)
     const selected = row.tabId === selectedTab && product === row.surface && !globalPageOpen && !providersOpen && !inspecting
+    // Red until the person opens the chat; open sets the tab's last-opened time.
+    const unseenFailed = !!tab && row.tabId !== selectedTab && runtimeTurnFailedUnseen(row.activity, tab.lastAccessedAt)
     const scheduled = row.scheduled || / · Scheduled run$/i.test(row.title)
     const title = workspaceEntry?.title || sidebarChatDisplayTitle({ ...row, scheduled }, workspaceTitle, genericChatNumber)
     const duplicateWorkspaceName = workspaceEntry && workspaces.filter(item => item.title === workspaceEntry.title).length > 1
@@ -425,6 +428,10 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               aria-label="Needs input"
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse"
             />
+          ) : unseenFailed ? (
+            <span aria-label="Failed" title="Failed" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--destructive))]" />
+          ) : tab?.hasUnreadCompletion && !selected ? (
+            <span aria-label="Completed" title="Completed" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--success))]" />
           ) : null}
         </button>
         {disclosure && (

@@ -5,6 +5,7 @@ import {
   reconcileTerminalRuntimeState,
   runtimeHasBackgroundAgents,
   runtimeNeedsUserInput,
+  runtimeTurnFailedUnseen,
   sessionRuntimeStatus,
   terminalConversationHasPendingWork,
   terminalTurnIsBusy,
@@ -252,5 +253,16 @@ describe('authoritative runtime activity selector', () => {
       active: false,
       state: 'completed',
     })
+  })
+})
+
+describe('runtimeTurnFailedUnseen', () => {
+  it('is red only until the chat is opened after the failure, and never for a stop', () => {
+    const at = '2026-10-28T10:00:00Z'
+    const failed = { last_activity: at, runtime_state: { phase: 'failed' } } as unknown as ActiveSessionInfo
+    const stopped = { last_activity: at, runtime_state: { phase: 'canceled' } } as unknown as ActiveSessionInfo
+    expect(runtimeTurnFailedUnseen(failed, Date.parse(at) - 1)).toBe(true)
+    expect(runtimeTurnFailedUnseen(failed, Date.parse(at) + 1)).toBe(false)
+    expect(runtimeTurnFailedUnseen(stopped, 0)).toBe(false)
   })
 })
