@@ -399,6 +399,13 @@ func (api *StreamingAPI) lookupAgentProfileDefinition(ctx context.Context, req *
 }
 
 func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *QueryRequest, userID, sessionID string) (*resolvedAgentProfile, error) {
+	// Admission and Crew lookups run in here; a slow one was invisible in the logs (PLAT-746-171), so say so.
+	started := time.Now()
+	defer func() {
+		if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
+			log.Printf("[PROFILE_RESOLVE] slow session=%s elapsed_ms=%d", sessionID, elapsed.Milliseconds())
+		}
+	}()
 	profileID := strings.TrimSpace(req.AgentProfileID)
 	if profileID == "" {
 		if req.AgentProfileVersion != 0 || strings.TrimSpace(req.AgentProfileContext.ProjectTitle) != "" || strings.TrimSpace(req.AgentProfileContext.WorkspaceDescription) != "" {
