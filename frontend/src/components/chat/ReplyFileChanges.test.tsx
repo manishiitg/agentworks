@@ -32,7 +32,7 @@ async function render(canBuild: boolean, total = 2, latestSnapshotId?: string) {
   await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId }} />))
   return host
 }
-const button = (host: HTMLElement, text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text))
+const button = (host: HTMLElement, text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text) || item.getAttribute('aria-label')?.includes(text))
 
 describe('reply card groups', () => {
   it('lists Git checkouts before Crew files and asks the same chat to commit only this reply, never main', async () => {
@@ -62,7 +62,7 @@ describe('reply card groups', () => {
     expect(button(host, 'Hidden one')).toBeUndefined()
     await act(async () => button(host, 'Check this change')!.click())
     expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toContain('Context: this reply changed these files: notes.md, app/tts.py in app on branch fix-tts; PR https://github.com/o/r/pull/305')
-    await act(async () => button(host, '+ Add button')!.click())
+    await act(async () => button(host, 'Add button')!.click())
     expect(openWorkspacePaneChatWithDraft).toHaveBeenCalledWith({ tabId: 'tab1', message: expect.stringContaining('Add a button called') })
   })
   it('undo shows what comes back and what stays, then shows the server error text as is', async () => {
@@ -77,13 +77,13 @@ describe('reply card groups', () => {
   it('shows no undo or card buttons to people who cannot edit the Crew', async () => {
     const host = await render(false)
     expect(button(host, 'Undo this reply')).toBeUndefined()
-    expect(button(host, '+ Add button')).toBeUndefined()
+    expect(button(host, 'Add button')).toBeUndefined()
   })
   it('shows totals and every action in the header; the latest reply is open, an older one is collapsed', async () => {
     const latest = await render(true)
     expect(latest.textContent).toContain('Files changed during this reply · 2 files')
     expect(latest.textContent).toContain('+4')
-    for (const text of ['Review changes', 'Compare', 'Undo this reply', 'Check this change', '+ Add button']) expect(button(latest, text)).toBeDefined()
+    for (const text of ['Review changes', 'Compare', 'Undo this reply', 'Check this change', 'Add button']) expect(button(latest, text)).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
     const older = await render(true, 2, 'newer')
     expect(older.textContent).not.toContain('PR #305')

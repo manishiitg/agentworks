@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { CheckCircle2, Eye, GitCompare, Play, Plus, Undo2, Zap } from 'lucide-react'
 import api from '../../services/api'
 import { markFilesReviewed, useReviewRevision, type FileChange, type ReviewResult } from '../workspace/chatFileReview'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
@@ -39,6 +40,11 @@ export const cardContext = (groups: FileGroup[]) => {
   const repo = groups.find(group => group.kind === 'repo' && group.branch)
   const pr = repo?.pr?.url
   return `Context: this reply changed these files: ${paths.join(', ')}${repo ? ` in ${repo.name} on branch ${repo.branch}` : ''}${pr ? `; PR ${pr}` : ''}`
+}
+const iconButton = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 [&_svg]:h-4 [&_svg]:w-4'
+const Divider = () => <span className="mx-1.5 h-4 w-px bg-border" aria-hidden />
+function IconButton({ label, onClick, disabled, strong, children }: { label: string; onClick: () => void; disabled?: boolean; strong?: boolean; children: ReactNode }) {
+  return <button type="button" title={label} aria-label={label} disabled={disabled} className={`${iconButton}${strong ? ' text-foreground' : ''}`} onClick={onClick}>{children}</button>
 }
 const addButtonStarter = 'Add a button called ___ that sends: ___'
 
@@ -125,23 +131,26 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   if (!comparison || (result?.total_changes ?? comparison.changes?.length ?? 0) === 0) return null
   return (
     <section className="my-3 rounded-lg border border-border px-3 py-2 text-sm" aria-label="Files changed during this reply">
-      <button type="button" className="flex w-full flex-wrap items-center gap-x-2 text-left font-medium" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>
-        <span aria-hidden>{isOpen ? '▾' : '▸'}</span>Files changed during this reply · {plural(total)}
-        <span className="text-xs font-normal"><span className="text-green-600">+{added}</span> <span className="text-red-500">−{removed}</span></span>
-      </button>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-        <button type="button" className="rounded border px-2 py-1" onClick={() => openChatFiles(reference.sessionId)}>Review changes</button>
-        {firstChange && <button type="button" className="rounded border px-2 py-1" onClick={() => openChatFiles(reference.sessionId, { reference, change: firstChange })}>Compare</button>}
-        {canEdit && latest && !reviewed && result?.history.can_review && <button type="button" disabled={reviewing} className="rounded border px-2 py-1" onClick={() => { setReviewing(true); setReviewError(''); void markFilesReviewed(reference.workspacePath,reference.sessionId,reference.snapshotId).catch(() => setReviewError('Could not save the review point. Try again.')).finally(() => setReviewing(false)) }}>Mark as reviewed</button>}
-        {latest && reviewed && <span className="text-muted-foreground">Reviewed up to here</span>}
-        {canEdit && undo === null && <button type="button" className="rounded border px-2 py-1" onClick={() => void startUndo()}>Undo this reply</button>}
-        {canEdit && <span className="text-muted-foreground" aria-hidden>|</span>}
-        {canEdit && commands.map(command => (
-          <button key={command.frontmatter.name} type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void ask(`command:${command.frontmatter.name}`, renderCommandPrompt(command.content, cardContext(groups)))}>{command.frontmatter.description || command.frontmatter.name}</button>
-        ))}
-        {canEdit && <button type="button" className="rounded border border-dashed px-2 py-1 text-xs" onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}>+ Add button</button>}
-        {commands.some(command => asked === `command:${command.frontmatter.name}`) && <span className="text-xs text-muted-foreground">Asked in this chat.</span>}
+      <div className="flex items-center gap-2">
+        <button type="button" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 text-left font-medium" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>
+          <span aria-hidden>{isOpen ? '▾' : '▸'}</span>Files changed during this reply · {plural(total)}
+          <span className="text-xs font-normal"><span className="text-green-600">+{added}</span> <span className="text-red-500">−{removed}</span></span>
+          {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
+        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <IconButton strong label="Review changes" onClick={() => openChatFiles(reference.sessionId)}><Eye /></IconButton>
+          {firstChange && <IconButton label="Compare" onClick={() => openChatFiles(reference.sessionId, { reference, change: firstChange })}><GitCompare /></IconButton>}
+          {canEdit && latest && !reviewed && result?.history.can_review && <IconButton label="Mark as reviewed" disabled={reviewing} onClick={() => { setReviewing(true); setReviewError(''); void markFilesReviewed(reference.workspacePath,reference.sessionId,reference.snapshotId).catch(() => setReviewError('Could not save the review point. Try again.')).finally(() => setReviewing(false)) }}><CheckCircle2 /></IconButton>}
+          {canEdit && undo === null && <><Divider /><IconButton label="Undo this reply" onClick={() => void startUndo()}><Undo2 /></IconButton></>}
+          {canEdit && (commands.length > 0 || undo === null) && <Divider />}
+          {canEdit && commands.map(command => {
+            const name = command.frontmatter.name
+            return <IconButton key={name} label={command.frontmatter.description || name} onClick={() => void ask(`command:${name}`, renderCommandPrompt(command.content, cardContext(groups)))}>{name === 'check-this-change' ? <Play /> : <Zap />}</IconButton>
+          })}
+          {canEdit && <IconButton label="Add button" onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}><Plus /></IconButton>}
+        </div>
       </div>
+      {commands.some(command => asked === `command:${command.frontmatter.name}`) && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
       {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-green-600">+{result.since_review.added}</span> <span className="text-red-500">−{result.since_review.removed}</span></p>}
       {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
       {canEdit && undo && <div className="mt-2 rounded border border-border p-2 text-xs" role="group" aria-label="Undo this reply">
@@ -161,16 +170,15 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
         {[...groups].sort((x, y) => Number(x.kind === 'crew_files') - Number(y.kind === 'crew_files')).map(group => (
           <div key={`${group.kind}:${group.root}`} className="mt-3 border-t border-border pt-2 first:mt-2 first:border-0 first:pt-0">
             <div className="flex flex-wrap items-center gap-2">
-              <b>{group.kind === 'crew_files' ? 'Crew files' : group.name}</b>
-              {group.kind === 'crew_files' && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">not in Git</span>}
+              {group.kind === 'crew_files' ? <span className="text-xs text-muted-foreground">Crew files · not in Git</span> : <b>{group.name}</b>}
               {group.new_checkout && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">new copy · {group.total_files} files</span>}
               {group.kind === 'repo' && group.branch && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">branch {group.branch}</span>}
             </div>
             <ul className="mt-1 space-y-1">
               {group.files.map(change => (
                 <li key={change.path} className="flex flex-wrap items-center gap-2">
-                  <button type="button" className="min-w-0 break-all text-left underline underline-offset-2" onClick={() => openChatFiles(reference.sessionId, { reference, change })}>{ownName(change.path, group.root)}</button>
-                  <span className="text-xs text-muted-foreground">{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : 'Changed'}</span>
+                  <button type="button" className="min-w-0 break-all text-left font-mono text-xs" onClick={() => openChatFiles(reference.sessionId, { reference, change })}>{ownName(change.path, group.root)}</button>
+                  <span className="text-xs text-muted-foreground">{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span>
                   {!change.binary && typeof change.added === 'number' && typeof change.removed === 'number'
                     && <span className="text-xs" aria-label={`${change.added} lines added, ${change.removed} lines removed`}><span className="text-green-600">+{change.added}</span> <span className="text-red-500">−{change.removed}</span></span>}
                 </li>
