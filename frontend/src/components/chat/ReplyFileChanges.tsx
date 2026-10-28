@@ -74,8 +74,8 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       setAsked(key)
     } catch (cause) { setReviewError(cause instanceof Error ? cause.message : 'Could not send this to the chat. Try again.') }
   }
-  if (!comparison?.changes?.length && !(latest && result?.history.can_review)) return null
-  if (!comparison) return null
+  // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
+  if (!comparison || (result?.total_changes ?? comparison.changes?.length ?? 0) === 0) return null
   return (
     <section className="my-3 rounded-lg border border-border px-3 py-2 text-sm" aria-label="Files changed during this reply">
       <details>

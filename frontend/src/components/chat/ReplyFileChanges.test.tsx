@@ -2,12 +2,12 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ canBuild: true }))
+const state = vi.hoisted(() => ({ canBuild: true, total: 2 }))
 const group = { kind: 'repo', root: 'app', name: 'app', branch: 'fix-tts', new_checkout: true, total_files: 696, more_count: 3, files: [{ path: 'app/tts.py', status: 'M', added: 4, removed: 1 }], pr: { number: 305, url: 'https://github.com/o/r/pull/305', state: 'open', checks: 'passing', review: 'none' } }
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (path: string, options: { params: Record<string, unknown> }) => {
   if (path === '/api/workspace-access') return { data: { can_build: state.canBuild } }
   if (options.params.op === 'snapshot_groups') return { data: { groups: [{ kind: 'crew_files', root: '', name: 'Crew', new_checkout: false, total_files: 1, more_count: 0, files: [{ path: 'notes.md', status: 'A', added: 2, removed: 0 }] }, group] } }
-  return { data: { history: { replies: [], reviews: [], available: true, last_snapshot_id: 's', latest_snapshot_id: 's', baseline_snapshot_id: 'x', can_review: true }, total_changes: 2, comparison: { changes: [{ path: 'app/tts.py', status: 'M' }], snapshot: { status: 'complete' }, note: '', skipped_count: 0, uncaptured_changes: 0 } } }
+  return { data: { history: { replies: [], reviews: [], available: true, last_snapshot_id: 's', latest_snapshot_id: 's', baseline_snapshot_id: 'x', can_review: true }, total_changes: state.total, comparison: { changes: state.total ? [{ path: 'app/tts.py', status: 'M' }] : [], snapshot: { status: 'complete' }, note: '', skipped_count: 0, uncaptured_changes: 0 } } }
 }) } }))
 vi.mock('../../products/work/codeLocalFiles', () => ({ useProjectMode: () => 'dev' }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: 'u' } }) }))
@@ -22,8 +22,8 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { ReplyFileChanges } from './ReplyFileChanges'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-async function render(canBuild: boolean) {
-  state.canBuild = canBuild
+async function render(canBuild: boolean, total = 2) {
+  state.canBuild = canBuild; state.total = total
   const host = document.createElement('div'); document.body.append(host)
   await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a' }} />))
   return host
@@ -47,5 +47,9 @@ describe('reply card groups', () => {
     expect(host.textContent).toContain('tts.py')
     expect(button(host, 'Commit')).toBeUndefined()
     expect(button(host, 'Push')).toBeUndefined()
+  })
+  it('shows no card at all for a reply that changed 0 files', async () => {
+    const host = await render(true, 0)
+    expect(host.querySelector('section')).toBeNull()
   })
 })
