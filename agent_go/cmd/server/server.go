@@ -11281,6 +11281,7 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 				receiptID = queryID
 			}
 			api.recordLiveInputConfirmed(sessionID, "late-delivery-"+receiptID, string(llmtypes.DurableAckFailed), "", "", 0, clientMessageID)
+			api.endLateDeliveryWorkingState(sessionID, queryID, submission.ID, clientMessageID)
 			return
 		}
 		submission.handle.resolveLate(status, body)
@@ -11290,14 +11291,22 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 }
 
 // startTurnAfterLateNoTarget starts the normal new turn for a /query whose live-input delivery, already answered
-// 202, found no live target. It replays the request handleQuery validated (retainedQueueInputKey) with live input
-// off, so it cannot come back here; the chat submission in the context is reused when the message is unchanged.
+// 202, found no live target (handled=false: nothing was sent). It replays the request handleQuery validated
+// (retainedQueueInputKey), or the session's last query, with live input off: never a second provider send, and it
+// cannot come back here. The chat submission in the context is reused when the message is unchanged.
 func (api *StreamingAPI) startTurnAfterLateNoTarget(w http.ResponseWriter, r *http.Request, sessionID, message string) bool {
 	input, known := r.Context().Value(retainedQueueInputKey{}).(retainedQueueInput)
-	if !known {
-		return api.startNextTurnFromLiveInput(w, r, sessionID, message, nil)
-	}
 	req := input.Request
+	if !known {
+		api.lastQueryMu.RLock()
+		req, known = api.lastQueryRequests[sessionID]
+		api.lastQueryMu.RUnlock()
+	}
+	if !known {
+		// No base request to start the turn from: the message stays uncertain.
+		log.Printf("[QUERY->LIVE] Late no-target delivery for session %s has no base request; leaving it uncertain", sessionID)
+		return false
+	}
 	req.Query, req.Message = message, message
 	req.DisableLiveInputDelivery = true
 	req.IsAutoNotification = false
@@ -11322,6 +11331,32 @@ func (api *StreamingAPI) startTurnAfterLateNoTarget(w http.ResponseWriter, r *ht
 		api.handleQuery(w, next)
 	}
 	return true
+}
+
+// endLateDeliveryWorkingState ends the browser's working state that this failed submission's 202 started. It is
+// scoped to that submission: it runs only when no turn of any kind is running in the chat (a live turn there
+// keeps its own state), and the terminal event names this query and message.
+func (api *StreamingAPI) endLateDeliveryWorkingState(sessionID, queryID, submissionID, clientMessageID string) {
+	if api == nil || api.eventStore == nil {
+		return
+	}
+	if api.hasActiveTurnCancel(sessionID) || api.isSessionBusy(sessionID) || api.retainedMainTurnTracked(sessionID) {
+		log.Printf("[QUERY->LIVE] Late delivery failed for session %s query_id=%s; a turn is running, its working state stays", sessionID, queryID)
+		return
+	}
+	now := time.Now()
+	failure := unifiedevents.NewUnifiedCompletionEventWithError("server", "chat", "", "Your message was not delivered. Please send it again.", 0, 0)
+	failure.Metadata["source"] = "late_delivery_failed"
+	failure.Metadata["query_id"] = queryID
+	failure.Metadata["submission_id"] = submissionID
+	failure.Metadata["client_message_id"] = clientMessageID
+	agentEvent := unifiedevents.NewAgentEvent(failure)
+	agentEvent.SessionID = sessionID
+	api.eventStore.AddEvent(sessionID, events.Event{
+		ID: "late-delivery-failed-" + queryID, Type: string(unifiedevents.EventTypeUnifiedCompletion), Timestamp: now,
+		SessionID: sessionID, ExecutionID: queryID, ExecutionKind: "main_agent", TerminalOwnerID: "main:" + sessionID, Data: agentEvent,
+	})
+	log.Printf("[QUERY->LIVE] Late delivery failed for idle session %s query_id=%s submission=%s; ended its working state", sessionID, queryID, submissionID)
 }
 
 // liveInputFastResponseWindow bounds how long a /query waits on live-input
@@ -11383,15 +11418,15 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			// Continue through cold-terminal compatibility and then the normal
 			// new-turn path. No send was attempted, so delivery is not uncertain.
 		} else {
-			sessionInputCtx, sessionInputCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 			deliveryStartedAt := time.Now()
 			if api.queueIdleRetainedInput(w, r, sessionID, retainedSession.ActiveTurnID() != "") {
-				sessionInputCancel()
 				return true
 			}
 			if retainedSession.ActiveTurnID() == "" {
 				api.prepareCrewTurnSnapshot(queryID, sessionID, QueryRequest{})
 			}
+			// The capture is bounded on its own; it must not use up the delivery time.
+			sessionInputCtx, sessionInputCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 			// The message's identity goes with it: if it has to wait for the turn's next step, the turn records it
 			// once under this identity, matching the person's bubble (PLAT-872-59).
 			delivery, err := retainedSession.SendIdentified(sessionInputCtx, withSessionMode(sessionModeFromContext(r.Context()), message),
@@ -11439,14 +11474,13 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		// previous server process can outlive the in-memory Session registry. It
 		// also recovers a stale/closed warm Session without paying for full Agent
 		// reconstruction, preserving PLAT-102's latency guarantee.
-		fallbackCtx, fallbackCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 		if api.conversationTurnHasBacklog(GetUserIDFromContext(r.Context()), sessionID) && api.queueIdleRetainedInput(w, r, sessionID, !retainedCLIAtPrompt(api, sessionID)) {
-			fallbackCancel()
 			return true
 		}
 		if !api.isSessionBusy(sessionID) {
 			api.prepareCrewTurnSnapshot(queryID, sessionID, QueryRequest{})
 		}
+		fallbackCtx, fallbackCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 		retainedProvider, handled, err := api.deliverRetainedMainTerminalInput(fallbackCtx, sessionID, withSessionMode(sessionModeFromContext(r.Context()), message))
 		fallbackCancel()
 		if handled {
@@ -11492,14 +11526,14 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		return false
 	}
 
-	inputCtx, cancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
-	defer cancel()
 	// The message's identity exists before delivery: a queued message keeps it and is recorded once, where
 	// the agent takes it, so the chat matches the person's bubble instead of adding a second (PLAT-872).
 	messageID := newSteerMessageID()
 	if !hasActiveForegroundTurn {
 		api.prepareCrewTurnSnapshot(queryID, sessionID, QueryRequest{})
 	}
+	inputCtx, cancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
+	defer cancel()
 	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
 		SessionID:       sessionID,
 		Message:         message,
@@ -11719,15 +11753,15 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 			// Continue through cold-terminal compatibility and then start the
 			// resumed turn. No provider delivery was attempted.
 		} else {
-			sessionInputCtx, sessionInputCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 			deliveryStartedAt := time.Now()
 			if api.queueIdleRetainedInput(w, r, sessionID, retainedSession.ActiveTurnID() != "") {
-				sessionInputCancel()
 				return
 			}
 			if retainedSession.ActiveTurnID() == "" {
 				api.prepareCrewTurnSnapshot(snapshotExecutionID, sessionID, policyRequest)
 			}
+			// The capture is bounded on its own; it must not use up the delivery time.
+			sessionInputCtx, sessionInputCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 			delivery, err := retainedSession.SendIdentified(sessionInputCtx, req.Message,
 				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
@@ -11760,14 +11794,13 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	}
 	if tryColdRetainedFallback {
 		// Same cold-restart/stale-session compatibility as /api/query above.
-		fallbackCtx, fallbackCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 		if api.conversationTurnHasBacklog(GetUserIDFromContext(r.Context()), sessionID) && api.queueIdleRetainedInput(w, r, sessionID, !retainedCLIAtPrompt(api, sessionID)) {
-			fallbackCancel()
 			return
 		}
 		if !api.isSessionBusy(sessionID) {
 			api.prepareCrewTurnSnapshot(snapshotExecutionID, sessionID, policyRequest)
 		}
+		fallbackCtx, fallbackCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 		retainedProvider, handled, err := api.deliverRetainedMainTerminalInput(fallbackCtx, sessionID, req.Message)
 		fallbackCancel()
 		if handled {
@@ -11835,12 +11868,12 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	inputCtx, cancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
-	defer cancel()
 	messageID := newSteerMessageID()
 	if !hasActiveForegroundTurn {
 		api.prepareCrewTurnSnapshot(snapshotExecutionID, sessionID, policyRequest)
 	}
+	inputCtx, cancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
+	defer cancel()
 	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
 		SessionID:       sessionID,
 		Message:         req.Message,

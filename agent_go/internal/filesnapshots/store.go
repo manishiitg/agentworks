@@ -690,6 +690,12 @@ func (s Store) Failed(id string) bool {
 	return err == nil && r.Status == "unavailable"
 }
 func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
+	// A reply with no before-state (deferred or failed capture) has no card and
+	// no use for an after-capture: return without waiting on the gate, which a
+	// background warm-up may hold for minutes. Reads take no gate.
+	if r, err := s.read(ID(execution)); err != nil || r.Status != "capturing" {
+		return r, err
+	}
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Record{}, err
@@ -699,7 +705,7 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	if err != nil {
 		return r, err
 	}
-	if r.Status != "capturing" && !(r.Status == "unavailable" && r.Before == "") {
+	if r.Status != "capturing" {
 		return r, nil
 	}
 	var skipped, omitted []string

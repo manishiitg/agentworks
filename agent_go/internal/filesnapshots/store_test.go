@@ -326,6 +326,15 @@ func TestColdBeforeCaptureBudgetAndLockFreeReads(t *testing.T) {
 		t.Fatalf("send waited for a running warm-up: %v", err)
 	}
 	s.state().warming.Store(false)
+	// The deferred reply's Finish neither waits on a held gate nor captures.
+	held, err := s.lock(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := s.Finish(t.Context(), "cold"); err != nil || r.Status != "unavailable" || r.After != "" || r.AfterCapture.Captured != 0 {
+		t.Fatalf("finish of a deferred reply captured: %v %+v", err, r)
+	}
+	held()
 	if stats, err := s.Warm(time.Minute); err != nil || stats.Captured != 1 {
 		t.Fatalf("warm-up failed: %v %+v", err, stats)
 	}
@@ -333,9 +342,15 @@ func TestColdBeforeCaptureBudgetAndLockFreeReads(t *testing.T) {
 	if err != nil || warm.Status != "capturing" || warm.BeforeCapture.Cold || warm.BeforeCapture.Reused != 1 {
 		t.Fatalf("send after warm-up did not reuse the cache: %v %+v", err, warm)
 	}
-	done, err := s.Finish(t.Context(), "warm")
-	if err != nil {
+	if err := os.WriteFile(filepath.Join(s.Root, "a.txt"), []byte("changed"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	done, err := s.Finish(t.Context(), "warm")
+	if err != nil || done.Status != "complete" {
+		t.Fatalf("warm reply after-capture failed: %v %+v", err, done)
+	}
+	if changed, err := s.Compare(t.Context(), done.ID, "", func(string) bool { return true }); err != nil || len(changed.Changes) != 1 {
+		t.Fatalf("warm reply does not show its edit: %v %+v", err, changed)
 	}
 	unlock, err := s.lock(t.Context())
 	if err != nil {

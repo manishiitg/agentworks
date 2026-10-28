@@ -109,7 +109,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		api.crewTurnSnapshots.Delete(executionID)
 	}
 	if reason := record.BeforeCapture.Deferred; reason != "" {
-		log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s deferred=background reason=%s", sessionID, executionID, reason)
+		log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s deferred=background reason=%s baseline=none", sessionID, executionID, reason)
 		go warmCrewSnapshotCache(snapshot.store, sessionID, executionID)
 	}
 }
