@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { CheckCircle2, Eye, GitCompare, Play, Plus, Undo2, Zap } from 'lucide-react'
+import { CheckCircle2, Eye, GitCommitHorizontal, GitCompare, Play, Plus, Undo2, Zap } from 'lucide-react'
 import api from '../../services/api'
 import { markFilesReviewed, useReviewRevision, type FileChange, type ReviewResult } from '../workspace/chatFileReview'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
@@ -126,6 +126,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const added = sum('added'), removed = sum('removed')
   const firstChange = comparison?.changes?.[0]
+  const repoGroups = groups.filter(group => group.kind === 'repo' && group.branch)
   const isOpen = open ?? latest
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
   if (!comparison || (result?.total_changes ?? comparison.changes?.length ?? 0) === 0) return null
@@ -141,6 +142,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           <IconButton strong label="Review changes" onClick={() => openChatFiles(reference.sessionId)}><Eye /></IconButton>
           {firstChange && <IconButton label="Compare" onClick={() => openChatFiles(reference.sessionId, { reference, change: firstChange })}><GitCompare /></IconButton>}
           {canEdit && latest && !reviewed && result?.history.can_review && <IconButton label="Mark as reviewed" disabled={reviewing} onClick={() => { setReviewing(true); setReviewError(''); void markFilesReviewed(reference.workspacePath,reference.sessionId,reference.snapshotId).catch(() => setReviewError('Could not save the review point. Try again.')).finally(() => setReviewing(false)) }}><CheckCircle2 /></IconButton>}
+          {canEdit && repoGroups.length > 0 && <IconButton label="Commit these changes" onClick={() => void ask('commit:reply', repoGroups.map(commitRequest).join('\n\n'))}><GitCommitHorizontal /></IconButton>}
           {canEdit && undo === null && <><Divider /><IconButton label="Undo this reply" onClick={() => void startUndo()}><Undo2 /></IconButton></>}
           {canEdit && (commands.length > 0 || undo === null) && <Divider />}
           {canEdit && commands.map(command => {
@@ -150,7 +152,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           {canEdit && <IconButton label="Add button" onClick={() => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }}><Plus /></IconButton>}
         </div>
       </div>
-      {commands.some(command => asked === `command:${command.frontmatter.name}`) && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
+      {(asked === 'commit:reply' || commands.some(command => asked === `command:${command.frontmatter.name}`)) && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
       {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-diff-add">+{result.since_review.added}</span> <span className="text-diff-del">−{result.since_review.removed}</span></p>}
       {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
       {canEdit && undo && <div className="mt-2 rounded border border-border p-2 text-xs" role="group" aria-label="Undo this reply">

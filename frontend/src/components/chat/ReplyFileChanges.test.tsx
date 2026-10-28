@@ -83,7 +83,7 @@ describe('reply card groups', () => {
     const latest = await render(true)
     expect(latest.textContent).toContain('Files changed during this reply · 2 files')
     expect(latest.textContent).toContain('+4')
-    for (const text of ['Review changes', 'Compare', 'Undo this reply', 'Check this change', 'Add button']) expect(button(latest, text)).toBeDefined()
+    for (const text of ['Review changes', 'Compare', 'Commit these changes', 'Undo this reply', 'Check this change', 'Add button']) expect(button(latest, text)).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
     const older = await render(true, 2, 'newer')
     expect(older.textContent).not.toContain('PR #305')
