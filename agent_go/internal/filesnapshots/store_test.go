@@ -14,6 +14,48 @@ import (
 	"time"
 )
 
+// A large worktree must reach ignore filtering and still compare real edits.
+func TestLargeTreeReachesIgnoreFilteringAndCapturesChanges(t *testing.T) {
+	s := Store{Root: t.TempDir(), Private: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(s.Root, ".gitignore"), []byte("generated/\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	generated := filepath.Join(s.Root, "generated")
+	if err := os.Mkdir(generated, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20001; i++ {
+		if err := os.WriteFile(filepath.Join(generated, fmt.Sprintf("%05d.txt", i)), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file := filepath.Join(s.Root, "source.txt")
+	if err := os.WriteFile(file, []byte("before\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.Begin(t.Context(), "large-tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.BeforeCapture.Eligible != 2 {
+		t.Fatalf("ignore filtering did not precede capture: %+v", before.BeforeCapture)
+	}
+	if err := os.WriteFile(file, []byte("after\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.Finish(t.Context(), "large-tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparison, err := s.Compare(t.Context(), after.ID, "", func(string) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comparison.Changes) != 1 || comparison.Changes[0].Path != "source.txt" {
+		t.Fatalf("real change missing: %+v", comparison.Changes)
+	}
+}
+
 // PLAT-746-158: nested repositories must be file blobs, and later turns must
 // not change a historical comparison or the user's Git index/branches.
 func TestNestedRepositoriesKeepHistoricalComparisons(t *testing.T) {

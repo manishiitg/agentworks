@@ -26,7 +26,6 @@ import (
 
 const MaxFileBytes = 25 << 20
 const maxCaptureBytes = 256 << 20
-const maxFiles = 20000
 const maxDiffBytes = 1 << 20
 const keepTurns = 50
 
@@ -205,10 +204,10 @@ func (s Store) candidates(ctx context.Context) ([]string, []string, error) {
 			return nil
 		}
 		if !d.IsDir() {
+			// Count only after Git's ignore filtering. Large folders with several
+			// worktrees can have more than 20,000 source files; capture already
+			// bounds imported bytes, individual files and elapsed time.
 			paths = append(paths, rel)
-			if len(paths) > maxFiles {
-				return errors.New("snapshot file limit exceeded")
-			}
 		}
 		return nil
 	})
