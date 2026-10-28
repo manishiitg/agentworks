@@ -415,18 +415,18 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             <span className="block truncate text-[13px] leading-5">{title}</span>
             {details && (
               <span
-                className={`mt-1 block truncate text-[10px] leading-3 ${row.waiting ? 'text-amber-500' : 'text-muted-foreground'}`}
+                className={`mt-1 block truncate text-[10px] leading-3 ${row.waiting ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'}`}
               >
                 {details}
               </span>
             )}
           </span>
           {opening === row.id || (row.group === 'Running' && !row.waiting) ? (
-            <Loader2 aria-label="Running" className="h-3 w-3 shrink-0 animate-spin text-primary" />
+            <Loader2 aria-label="Running" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
           ) : row.waiting ? (
             <span
               aria-label="Needs input"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse"
             />
           ) : null}
         </button>
@@ -518,7 +518,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           <span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span>
           {workspaces.filter(item => item.title === workspace.title).length > 1 && <span className="text-[10px] text-muted-foreground">{PRODUCT_SURFACE_LABELS[workspace.surface]}</span>}
           {hidden && (running > 0 || waiting > 0) && <span
-            className={`shrink-0 text-[10px] tabular-nums ${waiting ? 'text-amber-500' : running ? 'text-primary' : 'text-muted-foreground/60'}`}
+            className={`shrink-0 text-[10px] tabular-nums ${waiting ? 'text-[hsl(var(--warning))]' : running ? 'text-[hsl(var(--info))]' : 'text-muted-foreground/60'}`}
           >
             {[running ? `${running} working` : '', waiting ? `${waiting} needs you` : '']
               .filter(Boolean)
@@ -588,7 +588,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
                 onClick={() => toggleExpanded(key, true)}
                 className="mb-1 flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <span className="flex-1">{PRODUCT_SURFACE_LABELS[surface]}</span>
-                {!isOpen && (running > 0 || waiting > 0) && <span className={`text-[10px] tabular-nums ${waiting ? 'text-amber-500' : 'text-primary'}`}>
+                {!isOpen && (running > 0 || waiting > 0) && <span className={`text-[10px] tabular-nums ${waiting ? 'text-[hsl(var(--warning))]' : 'text-[hsl(var(--info))]'}`}>
                   {[running ? `${running} working` : '', waiting ? `${waiting} needs you` : ''].filter(Boolean).join(' · ')}
                 </span>}
                 <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} aria-hidden="true" />

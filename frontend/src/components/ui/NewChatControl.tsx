@@ -56,7 +56,7 @@ export default function NewChatControl({ engines, onStart, disabled }: NewChatCo
         // light regardless via its own variables), so a genuinely-dark <html>
         // class produced a black panel with illegible hover text over an
         // otherwise light chat. Same class of bug as MicButton's earlier fix.
-        <div className="new-chat-panel absolute bottom-full left-0 mb-2 w-48 rounded-xl border border-[#d7e0ec] dark:border-[#2a2d33] bg-white dark:bg-[#121418] p-2 shadow-lg z-50">
+        <div className="new-chat-panel absolute bottom-full left-0 mb-2 w-48 rounded-xl border border-[#d7e0ec] dark:border-border bg-white dark:bg-popover p-2 shadow-lg z-50">
           <div className="text-[11px] font-medium text-[#5f708d] dark:text-[#a2a7b0] px-1 pb-1">Start a new chat with</div>
           {engines.map((engine) => (
             <button
