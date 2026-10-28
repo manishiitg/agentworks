@@ -215,12 +215,10 @@ func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 	if !ok {
 		t.Fatal("workspace absent")
 	}
-	condition := def.InputSchema["allOf"].([]any)[0].(map[string]any)["then"].(map[string]any)
-	want := projectCreateDefinition().InputSchema
-	want["properties"].(map[string]any)["action"] = map[string]any{"type": "string", "enum": []any{"create"}}
-	want["required"] = append(want["required"].([]any), "action")
-	if !reflect.DeepEqual(condition, want) {
-		t.Fatal("MCP create action schema differs from native")
+	// The merged tool's schema stays flat; its action field says what create needs, from the native action.
+	action, _ := def.InputSchema["properties"].(map[string]any)["action"].(map[string]any)
+	if description, _ := action["description"].(string); !strings.Contains(description, "create: idempotency_key, kind, spec") {
+		t.Fatalf("MCP create action does not show the native required fields: %v", action)
 	}
 	for _, retired := range []string{"create_workflow", "create_crew", "create_relay"} {
 		result := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": retired, "arguments": map[string]any{}})

@@ -211,3 +211,42 @@ func TestExternalFunctionAuthoringHasOneFlatShape(t *testing.T) {
 		t.Fatalf("function fields lost or treated as project fields: %v", rest)
 	}
 }
+
+// Many MCP clients pass tool schemas straight to their model API, which rejects top-level allOf/anyOf/oneOf and
+// does not support if/then: one such schema can make a client drop or refuse the whole tool list. Every listed
+// external tool, as the full catalog and as an owner's narrowed view, keeps a flat object schema.
+func TestListedExternalToolSchemasAreFlat(t *testing.T) {
+	catalog, err := externalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	check := func(tool externalTool) {
+		for _, key := range []string{"allOf", "anyOf", "oneOf", "if", "then", "else", "not"} {
+			if _, found := tool.InputSchema[key]; found {
+				t.Errorf("listed tool %s has a top-level %s", tool.Name, key)
+			}
+		}
+	}
+	needs := map[string]string{}
+	for _, tool := range catalog {
+		if tool.hidden {
+			continue
+		}
+		check(tool)
+		if action, _ := tool.InputSchema["properties"].(map[string]any)["action"].(map[string]any); action != nil {
+			needs[tool.Name], _ = action["description"].(string)
+		}
+		if tool.actions != nil {
+			if narrowed, ok := externalMergedForClaims(owner, tool); ok {
+				check(narrowed)
+			}
+		}
+	}
+	// The required fields still reach clients, in the action description.
+	for tool, want := range map[string]string{"workspace": "create: idempotency_key, kind, spec", "schedules": "run_now: "} {
+		if !strings.Contains(needs[tool], want) {
+			t.Errorf("%s action description = %q, want %q", tool, needs[tool], want)
+		}
+	}
+}

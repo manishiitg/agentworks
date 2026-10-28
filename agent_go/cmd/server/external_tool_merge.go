@@ -101,6 +101,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		passThrough := false
 		actions := map[string]string{}
 		order := []string{}
+		membersOf := map[string][]externalTool{}
 		for _, pair := range merge.actions {
 			admitted := []string{}
 			for _, name := range externalMemberNames(pair[1]) {
@@ -119,6 +120,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 				// One name per job (the decisions log, PLAT-825): a merged member is
 				// reached only through its merged tool, never by its old name.
 				member.hidden, member.internalOnly = true, true
+				membersOf[pair[0]] = append(membersOf[pair[0]], *member)
 				for key, value := range member.InputSchema["properties"].(map[string]any) {
 					externalMergeProperty(props, key, value)
 				}
@@ -143,7 +145,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 				return catalog[i], true
 			})
 		}
-		props["action"] = map[string]any{"type": "string", "enum": stringsToAny(order)}
+		props["action"] = externalActionProperty(order, membersOf)
 		catalog = append(catalog, externalTool{
 			Name:        merge.name,
 			Description: merge.summary,
@@ -199,6 +201,7 @@ func externalMergedAllows(c *UserClaims, tool externalTool) bool {
 func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalTool, bool) {
 	allowed := []string{}
 	var lines []string
+	membersOf := map[string][]externalTool{}
 	props := map[string]any{}
 	passThrough := false
 	for _, action := range tool.actionOrder {
@@ -212,6 +215,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 			continue
 		}
 		allowed = append(allowed, action)
+		membersOf[action] = members
 		line := "- action=" + action + ": " + firstSentence(members[0].Description)
 		if len(members) == 1 {
 			required := []string{}
@@ -250,7 +254,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	if tool.Name == "functions" {
 		props = externalFunctionProperties(props, allowed, externalCatalogTool)
 	}
-	props["action"] = map[string]any{"type": "string", "enum": stringsToAny(allowed)}
+	props["action"] = externalActionProperty(allowed, membersOf)
 	out := tool
 	if len(allowed) > 1 {
 		out.Description = tool.Description + "\n" + strings.Join(lines, "\n")
@@ -469,4 +473,86 @@ func experienceTargetMember(names []string, args map[string]any) string {
 		}
 	}
 	return names[0]
+}
+
+// externalActionProperty is a merged tool's action selector. Its description says in plain words what each action
+// needs, from the members' own required fields: the schema stays flat, because many MCP clients pass it to model
+// APIs that reject top-level allOf/anyOf/oneOf and if/then (TestListedExternalToolSchemasAreFlat). The member's own
+// schema still validates the call after translation.
+func externalActionProperty(order []string, membersOf map[string][]externalTool) map[string]any {
+	property := map[string]any{"type": "string", "enum": stringsToAny(order)}
+	var needs []string
+	for _, action := range order {
+		var common []string
+		for i, member := range membersOf[action] {
+			fields := externalSchemaRequired(member.InputSchema, action)
+			if i == 0 {
+				common = fields
+				continue
+			}
+			common = slices.DeleteFunc(common, func(field string) bool { return !slices.Contains(fields, field) })
+		}
+		if len(common) > 0 {
+			needs = append(needs, action+": "+strings.Join(common, ", "))
+		}
+	}
+	if len(needs) > 0 {
+		property["description"] = "Required fields by action. " + strings.Join(needs, "; ") + "."
+	}
+	return property
+}
+
+// externalSchemaRequired lists the fields a member always requires, sorted: its own, those of every allOf branch
+// (a specialized source keeps its selected branch there) and those of its "if action is this action" rule.
+func externalSchemaRequired(schema map[string]any, action string) []string {
+	seen := map[string]bool{}
+	var collect func(map[string]any)
+	collect = func(schema map[string]any) {
+		// Schemas built in Go may hold []string and []map[string]any rather than decoded []any.
+		var fields []string
+		switch raw := schema["required"].(type) {
+		case []string:
+			fields = raw
+		case []any:
+			for _, field := range raw {
+				if name, ok := field.(string); ok {
+					fields = append(fields, name)
+				}
+			}
+		}
+		for _, name := range fields {
+			if name != "action" {
+				seen[name] = true
+			}
+		}
+		var rules []map[string]any
+		switch raw := schema["allOf"].(type) {
+		case []map[string]any:
+			rules = raw
+		case []any:
+			for _, entry := range raw {
+				if rule, ok := entry.(map[string]any); ok {
+					rules = append(rules, rule)
+				}
+			}
+		}
+		for _, rule := range rules {
+			if ifPart, conditional := rule["if"].(map[string]any); conditional {
+				props, _ := ifPart["properties"].(map[string]any)
+				if selector, _ := props["action"].(map[string]any); selector["const"] == action {
+					thenPart, _ := rule["then"].(map[string]any)
+					collect(thenPart)
+				}
+				continue
+			}
+			collect(rule)
+		}
+	}
+	collect(schema)
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
