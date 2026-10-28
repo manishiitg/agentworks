@@ -78,15 +78,16 @@ func codingAgentTurnAttended(claims *UserClaims, req *QueryRequest, sessionID st
 	if strings.TrimSpace(req.BotPlatform) != "" || strings.HasPrefix(trigger, "bot:") {
 		return false
 	}
+	// MCP and API callers come first: the fields below are plain request JSON they could set.
+	if strings.TrimSpace(req.ExternalBuilderOperationID) != "" ||
+		claims != nil && (claims.AccessToken != nil || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "") {
+		return false
+	}
 	// "Make interactive" hands a schedule session to the person on purpose.
 	if req.UserInteractiveContinuation {
 		return true
 	}
 	if req.KeepNativeSessionAlive || isScheduledSessionIdentity(sessionID, req.TriggeredBy) {
-		return false
-	}
-	if strings.TrimSpace(req.ExternalBuilderOperationID) != "" ||
-		claims != nil && (claims.AccessToken != nil || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "") {
 		return false
 	}
 	// Another agent's message delivered into a tab (agent_messaging.go) runs as the tab's owner.

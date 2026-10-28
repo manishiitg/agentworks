@@ -32,6 +32,7 @@ func TestCodingAgentTurnAttended(t *testing.T) {
 		{"background completion", nil, QueryRequest{IsAutoNotification: true}, tab, false},
 		{"child session", nil, QueryRequest{ParentSessionID: "parent"}, "child", false},
 		{"MCP or API caller", &UserClaims{UserID: "u", AccessToken: &accesstokens.Token{}}, QueryRequest{AgentMessageInbox: "inbox-1"}, tab, false},
+		{"API caller claiming make interactive", &UserClaims{UserID: "u", AccessToken: &accesstokens.Token{}}, QueryRequest{UserInteractiveContinuation: true}, tab, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
