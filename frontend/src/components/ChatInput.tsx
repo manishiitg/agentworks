@@ -3609,9 +3609,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
                       {/* A visible Stop while the turn runs; the menus kept it out of sight (owner pressed Escape looking for it). */}
-                      {showStopButton && foregroundTurnActive && <Button type="button" variant="destructive" size="icon" onClick={onStopStreaming}
+                      {showStopButton && foregroundTurnActive && <Button type="button" variant="ghost" size="icon" onClick={onStopStreaming}
                         aria-label="Stop the current turn" title="Stop the current turn (Esc)" data-testid="chat-stop-button"
-                        className="h-7 w-7 rounded-full p-0">
+                        className="h-7 w-7 rounded-full p-0 bg-diff-del/15 text-diff-del hover:bg-diff-del/25 hover:text-diff-del">
                         <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />
                       </Button>}
                       {!nativeTerminalTools && <span className={showStopButton && foregroundTurnActive ? 'max-md:hidden' : 'contents'}>{micEl}</span>}
