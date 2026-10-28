@@ -181,6 +181,54 @@ func TestCodingAgentClarificationCancellationClosesPendingPrompt(t *testing.T) {
 	}
 }
 
+// PLAT-746-184: a question in a turn another agent's message started gets the unattended answer when nobody replies
+// in time, and the tab stops showing "Needs you"; a question in a turn the person started keeps waiting.
+func TestCodingAgentQuestionUnansweredInAgentMessageTurn(t *testing.T) {
+	previous := agentMessageQuestionTimeout
+	agentMessageQuestionTimeout = 50 * time.Millisecond
+	defer func() { agentMessageQuestionTimeout = previous }()
+	api := &StreamingAPI{eventStore: events.NewEventStore(100)}
+	ask := func(session string, req *QueryRequest) (chan error, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			_, err := api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, codingAgentQuestionUnansweredAfter(req)), session, "claude-code", clarificationTestArgs())
+			done <- err
+		}()
+		pendingClarificationForTest(t, api, session)
+		return done, cancel
+	}
+
+	agentDone, cancelAgent := ask("agent-tab", &QueryRequest{AgentMessageInbox: "inbox-1"})
+	defer cancelAgent()
+	select {
+	case err := <-agentDone:
+		if err != errNoAttendingUser {
+			t.Fatalf("agent-delivered question got %v, want the unattended answer", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("agent-delivered question kept waiting")
+	}
+	if _, _, waiting := api.pendingCodingAgentQuestion("agent-tab"); waiting {
+		t.Fatal("tab still shows Needs you")
+	}
+	rows := api.eventStore.GetAllEventsRaw("agent-tab")
+	if len(rows) != 2 || rows[1].Data.Data.(*unifiedevents.CodingAgentQuestionEvent).Outcome != clarificationOutcomeUnanswered {
+		t.Fatal("card not settled as answered automatically")
+	}
+
+	personDone, cancelPerson := ask("person-tab", &QueryRequest{})
+	defer cancelPerson()
+	select {
+	case err := <-personDone:
+		t.Fatalf("person-started question stopped waiting: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if _, _, waiting := api.pendingCodingAgentQuestion("person-tab"); !waiting {
+		t.Fatal("person-started question no longer waiting")
+	}
+}
+
 func TestCodingAgentClarificationSelectionValidation(t *testing.T) {
 	questions, err := parseCodingAgentClarification(clarificationTestArgs())
 	if err != nil {

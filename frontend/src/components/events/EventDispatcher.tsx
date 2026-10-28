@@ -455,7 +455,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     return (
       <CompactWrapper compact={compact}>
         <div data-testid="coding-agent-question-event" className={`rounded-md border border-border bg-card text-card-foreground ${compact ? 'p-2 text-xs' : 'p-3 text-sm'}`}>
-          <span className="font-medium">{settled ? (data.outcome === 'answered' ? 'Clarification answered' : 'Clarification closed') : 'Clarification needed'}</span>
+          <span className="font-medium">{settled ? (data.outcome === 'answered' ? 'Clarification answered' : data.outcome === 'unanswered' ? 'Answered automatically: nobody replied in 5 minutes' : 'Clarification closed') : 'Clarification needed'}</span>
           {!settled && questions.length > 0 && (
             <ul className="mt-1 space-y-1">
               {questions.map((question, index) => {
@@ -476,7 +476,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
               ))}
             </ul>
           )}
-          {settled && answers.length === 0 && typeof data.outcome === 'string' && <p className="mt-1 opacity-80">{data.outcome}</p>}
+          {settled && answers.length === 0 && typeof data.outcome === 'string' && data.outcome !== 'unanswered' && <p className="mt-1 opacity-80">{data.outcome}</p>}
         </div>
       </CompactWrapper>
     )

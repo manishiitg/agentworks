@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -56,11 +57,12 @@ func codingAgentClarificationSchema() map[string]interface{} {
 // The platform bridge provides the same question/answer lifecycle to Claude,
 // Codex and Muse. Only the attended Builder turn registers this tool; it must
 // never leave an unattended workflow, bot or scheduled run waiting for a UI.
-func (api *StreamingAPI) registerCodingAgentClarificationTool(registrar definitionToolRegistrar, sessionID, provider string) error {
+// unansweredAfter is codingAgentQuestionUnansweredAfter for the turn: 0 waits for the person.
+func (api *StreamingAPI) registerCodingAgentClarificationTool(registrar definitionToolRegistrar, sessionID, provider string, unansweredAfter time.Duration) error {
 	return registrar.RegisterCustomToolWithTimeout("request_clarification",
 		"Ask the user to choose options in this chat and wait for their answers. Put related questions in a single call; give every question a unique id. Supports single choice, multi_select with selection bounds, and a custom text answer when allow_other is true. The user explicitly submits all answers together; subsequent calls create separate prompts. A cancelled or expired prompt returns an error, never an assumed answer. Wait for the result before doing anything else, and do not end your turn while the question is open; if you must end it, say that you will continue when the person answers.",
 		codingAgentClarificationSchema(), func(ctx context.Context, args map[string]interface{}) (string, error) {
-			return api.waitForCodingAgentClarification(ctx, sessionID, provider, args)
+			return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, unansweredAfter), sessionID, provider, args)
 		}, codingtimeout.LongRunningMCPToolTimeout(), "human_tools")
 }
 
@@ -168,6 +170,43 @@ func (api *StreamingAPI) pendingCodingAgentQuestion(sessionID string) (time.Time
 	return p.askedAt, message, true
 }
 
+// agentMessageQuestionTimeout bounds a question asked in a turn another agent's message started (owner, 2026-10-28:
+// "much faster like 5 min"). Nobody may be at the tab, so after this the question gets the unattended answer and the
+// chat stops showing "Needs you". A turn the person started keeps waiting until answered or stopped. Var for tests.
+var agentMessageQuestionTimeout = 5 * time.Minute
+
+// clarificationOutcomeUnanswered settles a card nobody answered in time; the chat says it was answered automatically.
+const clarificationOutcomeUnanswered = "unanswered"
+
+// errNoAttendingUser is the answer an unattended turn's question gets today (llmtypes.AskCodingAgentQuestion without
+// a handler): each provider then declines it, rejects the plan or denies the command, as in a schedule.
+var errNoAttendingUser = errors.New("no attending user; ask in your reply")
+
+// codingAgentQuestionUnansweredAfter is how long this turn's questions wait for the person: only a turn delivered by
+// another agent (AgentMessageInbox) is bounded.
+func codingAgentQuestionUnansweredAfter(req *QueryRequest) time.Duration {
+	if req != nil && strings.TrimSpace(req.AgentMessageInbox) != "" {
+		return agentMessageQuestionTimeout
+	}
+	return 0
+}
+
+type questionUnansweredAfterKey struct{}
+
+func withQuestionUnansweredAfter(ctx context.Context, after time.Duration) context.Context {
+	if after <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, questionUnansweredAfterKey{}, after)
+}
+
+func formatQuestionWait(d time.Duration) string {
+	if d > 0 && d%time.Minute == 0 {
+		return fmt.Sprintf("%dm", d/time.Minute)
+	}
+	return d.String()
+}
+
 func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, sessionID, provider string, args map[string]interface{}) (string, error) {
 	questions, err := parseCodingAgentClarification(args)
 	if err != nil {
@@ -203,7 +242,27 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 	if err != nil {
 		return "", err
 	}
+	var unanswered <-chan time.Time
+	after, _ := ctx.Value(questionUnansweredAfterKey{}).(time.Duration)
+	if after > 0 && ask == nil {
+		timer := time.NewTimer(after)
+		defer timer.Stop()
+		unanswered = timer.C
+	}
 	select {
+	case <-unanswered:
+		api.codingAgentClarificationsMu.Lock()
+		if api.codingAgentClarifications[sessionID] == p {
+			delete(api.codingAgentClarifications, sessionID)
+			_ = api.emitCodingAgentClarification(p, "settled", clarificationOutcomeUnanswered, nil)
+			api.codingAgentClarificationsMu.Unlock()
+			log.Printf("[QUESTIONS] auto-answered after=%s session=%s reason=unanswered agent_message=true prompt=%s provider=%s", formatQuestionWait(after), sessionID, p.promptID, provider)
+			return "", errNoAttendingUser
+		}
+		api.codingAgentClarificationsMu.Unlock()
+		answers := <-p.answers // The person's answer was recorded first.
+		result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})
+		return string(result), err
 	case answers := <-p.answers:
 		log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=consumed after_ms=%d", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds())
 		result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})

@@ -49,7 +49,7 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
   return <section className="w-full rounded-xl border border-border bg-card p-3 text-card-foreground" data-testid="coding-agent-question-card">
     <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
       {prompt.state === 'answered' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />}
-      {pending ? 'Clarification needed' : prompt.state === 'answered' ? 'Clarification answered' : 'Clarification closed'}
+      {pending ? 'Clarification needed' : prompt.state === 'answered' ? 'Clarification answered' : prompt.state === 'unanswered' ? 'Answered automatically' : 'Clarification closed'}
     </div>
     {prompt.questions.map((question) => <fieldset key={question.id} className="mb-3 space-y-1" disabled={!pending || submitting || !onAnswer}>
       <legend className="mb-1.5 whitespace-pre-wrap text-[13px] font-medium">{question.question}</legend>
@@ -96,7 +96,7 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
       <button type="button" onClick={() => void submit()} disabled={!ready || submitting || !onAnswer} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-50">{submitting ? 'Submitting…' : 'Send answer'}</button>
       <button type="button" onClick={() => void submit(true)} disabled={submitting || !onAnswer || prompt.questions.some(q => !q.options.length)} className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Use first options</button>
     </div>
-      : <p className="text-xs text-muted-foreground">{prompt.state === 'answered' ? 'Choice submitted' : 'Question interrupted'}</p>}
+      : <p className="text-xs text-muted-foreground">{prompt.state === 'answered' ? 'Choice submitted' : prompt.state === 'unanswered' ? 'Nobody replied in 5 minutes, so the agent went on without an answer.' : 'Question interrupted'}</p>}
     {pending && !onAnswer && <p className="mt-2 text-xs text-muted-foreground">This conversation cannot be changed.</p>}
     {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
   </section>

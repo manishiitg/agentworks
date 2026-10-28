@@ -87,7 +87,7 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !readOnly {
-			if err := api.registerCodingAgentClarificationTool(draft, "surface-e2e", "muse-cli"); err != nil {
+			if err := api.registerCodingAgentClarificationTool(draft, "surface-e2e", "muse-cli", 0); err != nil {
 				t.Fatal(err)
 			}
 		}

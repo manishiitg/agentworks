@@ -43,7 +43,7 @@ func TestCodingAgentClarificationThroughMCPBridge(t *testing.T) {
 			const session = "clarification-bridge-test"
 			api := &StreamingAPI{eventStore: events.NewEventStore(100), activeSessions: map[string]*ActiveSessionInfo{session: {SessionID: session, UserID: "owner"}}}
 			registrar := &singleToolCaptureRegistrar{}
-			if err := api.registerCodingAgentClarificationTool(registrar, session, provider); err != nil {
+			if err := api.registerCodingAgentClarificationTool(registrar, session, provider, 0); err != nil {
 				t.Fatal(err)
 			}
 			// PLAT-861-344: per-tool metadata must retain the existing human wait cap.

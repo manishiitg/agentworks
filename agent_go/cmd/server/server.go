@@ -6083,10 +6083,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		attendedTurn = attendedTurn && toolGate.Admit("request_clarification")
 		log.Printf("[QUESTIONS] session=%s attended=%t trigger=%q agent_message=%t provider=%s", sessionID, attendedTurn, req.TriggeredBy, req.AgentMessageInbox != "", finalProvider)
 		clarificationAvailable := crewAskClarification || attendedTurn
+		// A question in a turn another agent's message started gets the unattended answer after 5 minutes.
+		questionsUnansweredAfter := time.Duration(0)
+		if attendedTurn {
+			questionsUnansweredAfter = codingAgentQuestionUnansweredAfter(&req)
+		}
 		if clarificationAvailable {
 			platformBridgeTools = append(platformBridgeTools, "request_clarification")
 			streamCtx = llmtypes.WithCodingAgentQuestionHandler(streamCtx, finalProvider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
-				return api.waitForCodingAgentClarification(ctx, sessionID, finalProvider, questions)
+				return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, questionsUnansweredAfter), sessionID, finalProvider, questions)
 			})
 		}
 		if resolvedProfile != nil {
@@ -6850,7 +6855,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Add custom agent instructions based on agent mode
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 			if clarificationAvailable {
-				if err := api.registerCodingAgentClarificationTool(llmAgent, sessionID, finalProvider); err != nil {
+				if err := api.registerCodingAgentClarificationTool(llmAgent, sessionID, finalProvider, questionsUnansweredAfter); err != nil {
 					sendError(fmt.Sprintf("Failed to register clarification tool: %v", err), true)
 					return
 				}
