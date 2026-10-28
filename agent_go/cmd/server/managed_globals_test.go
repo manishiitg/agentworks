@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -13,6 +14,9 @@ import (
 func managedGlobalTestAPI(t *testing.T) *StreamingAPI {
 	t.Helper()
 	api, _ := sharedSecretsTestAPI(t)
+	// A project's own secrets live in a project Vault owned by the workflow's registered owner.
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
+	registerWorkflowOwner(sharedSecretsTestWorkflow, "a1")
 	withManagedVaultPermissions(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","admin":true,"can_create":true,"products":[]},{"id":"a1","username":"owner","can_create":true,"products":[]},{"id":"c3","username":"reader","can_create":false,"products":[]}]}`)
 	previous := managedGlobals
@@ -235,9 +239,36 @@ func withManagedVaultPermissions(t *testing.T) {
 		"admin": {"PROMOTED_TOKEN", "CROSS_WORKFLOW_TOKEN", "CREW_SHARED_TOKEN", "MANAGED_TOKEN", "TOOL_TOKEN"},
 		"a1":    {"PROMOTED_TOKEN", "CROSS_WORKFLOW_TOKEN"}, "c3": {"PROMOTED_TOKEN"},
 	}
+	projectSecrets := []string{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+token {
 			w.WriteHeader(401)
+			return
+		}
+		if r.Header.Get("X-CapLayer-Actor") == "a1" && !strings.HasPrefix(r.URL.Path, "/api/admin/") {
+			switch {
+			case r.URL.Path == "/api/project-vaults":
+				w.Write([]byte(`{"id":"v-123456"}`))
+			case r.URL.Path == "/api/vaults/v-123456/secrets":
+				var in struct{ Name string }
+				json.NewDecoder(r.Body).Decode(&in)
+				projectSecrets = append(projectSecrets, in.Name)
+				w.Write([]byte(`{}`))
+			case r.URL.Path == "/api/vaults/v-123456":
+				json.NewEncoder(w).Encode(map[string]any{"secret_names": projectSecrets})
+			case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/vaults/v-123456/secrets/"):
+				gone := strings.TrimPrefix(r.URL.Path, "/api/vaults/v-123456/secrets/")
+				kept := projectSecrets[:0]
+				for _, n := range projectSecrets {
+					if n != gone {
+						kept = append(kept, n)
+					}
+				}
+				projectSecrets = kept
+				w.WriteHeader(204)
+			default:
+				w.WriteHeader(404)
+			}
 			return
 		}
 		if r.URL.Path == "/api/admin/runtime/secrets" {
