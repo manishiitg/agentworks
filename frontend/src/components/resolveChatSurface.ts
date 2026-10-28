@@ -111,3 +111,12 @@ export function resolveWorkflowChatSurface(
     hasRestoredLiveContent: inputs.hasRestoredLiveContent || hasTerminalSurface,
   })
 }
+
+/**
+ * A tab with a session whose first history load has not finished and that has
+ * nothing to show yet must show the loading state, never the new-chat landing
+ * screen. A tab without a session id is a brand-new chat (landing at once).
+ */
+export function isHistoryPending(input: { sessionId?: string | null; historyLoaded: boolean; hasEvents: boolean; isStreaming: boolean }): boolean {
+  return !!input.sessionId && !input.historyLoaded && !input.hasEvents && !input.isStreaming
+}

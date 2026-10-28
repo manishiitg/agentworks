@@ -236,6 +236,19 @@ export function isInteractiveChatSession(sessionId: string): boolean {
 /** Load the canonical, bounded chat page from SQLite. */
 export async function hydrateTabEvents(
   sessionId: string,
+  options: Parameters<typeof loadTabEvents>[1] = {},
+): Promise<RuntimeSessionState> {
+  try {
+    return await loadTabEvents(sessionId, options)
+  } finally {
+    // Rows, empty or error: the first load is over, so the pane may decide
+    // between the conversation and the new-chat landing screen.
+    useChatStore.getState().markTabHistoryLoaded(sessionId)
+  }
+}
+
+async function loadTabEvents(
+  sessionId: string,
   options: {
     workspacePath?: string
     fallbackToChatHistory?: boolean

@@ -616,6 +616,8 @@ export interface ChatState extends StoreActions {
   // its own index; this cursor only applies to the formatted transcript's
   // older, persisted conversation pages.
   tabHistoryPagination: Record<string, { hasMore: boolean; nextOffset: number; compact?: boolean }>
+  // sessionId -> the first history load finished (rows, empty or error). Not persisted.
+  tabHistoryLoaded: Record<string, boolean>
   // Stash for the latest human message around Terminal view mode. This
   // remains as a fallback for optimistic input while Tree catches up from
   // poll-based backfill.
@@ -719,6 +721,7 @@ export interface ChatState extends StoreActions {
       setTabLastEventIndex: (sessionId: string, index: number) => void
       getTabHasMoreOlderEvents: (sessionId: string) => boolean
       setTabHasMoreOlderEvents: (sessionId: string, hasMore: boolean) => void
+      markTabHistoryLoaded: (sessionId: string) => void
       getTabHistoryPagination: (sessionId: string) => { hasMore: boolean; nextOffset: number; compact?: boolean } | undefined
       setTabHistoryPagination: (sessionId: string, pagination: { hasMore: boolean; nextOffset: number; compact?: boolean } | null) => void
   
@@ -1104,6 +1107,7 @@ export const useChatStore = create<ChatState>()(
       tabEventIndices: {},
       tabHasMoreOlderEvents: {},
       tabHistoryPagination: {},
+      tabHistoryLoaded: {},
       currentUserMessage: '',
       showUserMessage: true,
       sessionId: null,
@@ -1671,6 +1675,10 @@ export const useChatStore = create<ChatState>()(
         }))
       },
 
+      markTabHistoryLoaded: (sessionId) => {
+        if (get().tabHistoryLoaded[sessionId]) return
+        set((state) => ({ tabHistoryLoaded: { ...state.tabHistoryLoaded, [sessionId]: true } }))
+      },
       getTabHistoryPagination: (sessionId: string) => get().tabHistoryPagination[sessionId],
 
       setTabHistoryPagination: (sessionId, pagination) => {

@@ -44,6 +44,7 @@ async function restoreExecutionConversation(sessionId: string, workspacePath: st
   const chatStore = useChatStore.getState()
   const concurrent = chatStore.getTabEvents(sessionId).filter(event => event.id && !startingIDs.has(event.id))
   chatStore.setTabEvents(sessionId, events)
+  chatStore.markTabHistoryLoaded(sessionId)
   if (concurrent.length > 0) appendRestoredLiveTail(sessionId, concurrent)
   // Establish the volatile event cursor before connecting SSE, just like the
   // interactive restore. Otherwise every revisit starts another full restore.

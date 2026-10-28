@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveChatSurface, resolveWorkflowChatSurface, type ChatSurfaceInputs } from './resolveChatSurface'
+import { isHistoryPending, resolveChatSurface, resolveWorkflowChatSurface, type ChatSurfaceInputs } from './resolveChatSurface'
 
 // Baseline = a fresh New Chat: nothing loading, no content, no read-only run.
 const base: ChatSurfaceInputs = {
@@ -189,5 +189,20 @@ describe('resolveWorkflowChatSurface', () => {
 
   it('hides the previous workflow while the selected workflow tab is resolving', () => {
     expect(resolveWorkflowChatSurface({ ...base, hasContent: true }, false, false)).toBe('restoring')
+  })
+})
+
+describe('isHistoryPending (tab must not flash the new-chat landing while history loads)', () => {
+  const tab = { sessionId: 's1', historyLoaded: false, hasEvents: false, isStreaming: false }
+  it('session known, history not loaded yet, no events → pending (loading, not landing)', () => {
+    expect(isHistoryPending(tab)).toBe(true)
+    expect(resolveChatSurface({ ...base, isRestoring: isHistoryPending(tab) })).toBe('restoring')
+  })
+  it('loaded and empty → not pending, landing shows', () => {
+    expect(isHistoryPending({ ...tab, historyLoaded: true })).toBe(false)
+    expect(resolveChatSurface({ ...base, isRestoring: isHistoryPending({ ...tab, historyLoaded: true }) })).toBe('landing')
+  })
+  it('brand-new tab without a session id → landing at once', () => {
+    expect(isHistoryPending({ ...tab, sessionId: undefined })).toBe(false)
   })
 })

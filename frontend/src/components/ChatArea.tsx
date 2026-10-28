@@ -41,7 +41,7 @@ import { useAppStore, useLLMStore, useMCPStore, useChatStore, useGlobalPresetSto
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { useModeStore } from '../stores/useModeStore'
 import { PreviousChatHistoryPanel } from './PreviousChatHistoryPanel'
-import { resolveChatSurface, resolveWorkflowChatSurface } from './resolveChatSurface'
+import { isHistoryPending, resolveChatSurface, resolveWorkflowChatSurface } from './resolveChatSurface'
 import type { ChatTab } from '../stores/useChatStore'
 
 import { appendTimelineAndApplyConfirmations, hydrateTabEvents, restoreSession } from '../utils/sessionRestore'
@@ -1184,6 +1184,21 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // That transient 'landing' was what let the clear-on-landing effect fire and
   // cancel the resume (the 2-3-click flakiness). resumePending stays true until
   // content/stream arrives (→ 'active') or the give-up timer elapses (→ 'landing').
+  // The first history load for this tab's session has not finished (reload,
+  // restart, tab just opened): show the loading state, never the landing guide.
+  const activeHistoryLoaded = useChatStore(state => activeSessionId ? state.tabHistoryLoaded[activeSessionId] === true : false)
+  const activeHistoryPending = !activeTabIsExecution && isHistoryPending({
+    sessionId: activeSessionId,
+    historyLoaded: activeHistoryLoaded,
+    hasEvents: transcriptEvents.length > 0,
+    isStreaming: activeTabStreaming,
+  })
+  // Some tabs are never hydrated by their opener (a new side chat): load here
+  // so the pending state always ends. A duplicate request is version-guarded.
+  useEffect(() => {
+    if (!activeHistoryPending || !activeSessionId) return
+    void hydrateTabEvents(activeSessionId, { workspacePath: activeTab?.metadata?.agentProfileWorkspace }).catch(() => {})
+  }, [activeHistoryPending, activeSessionId, activeTab?.metadata?.agentProfileWorkspace])
   const resumePending =
     activeTabHasRestoredConversation &&
     !hasConversationContent &&
@@ -3507,7 +3522,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // when it has durable messages or a live turn; terminal presence is never a
   // product-visible state.
   const multiAgentSurface = resolveChatSurface({
-    isRestoring: isRestoringChatSessions,
+    isRestoring: isRestoringChatSessions || activeHistoryPending,
     // The resolver's resume-pending → 'restoring' input is now the SYNCHRONOUS
     // resumePending (computed in render), not the old effect-lagged state.
     resumeSettling: resumePending,
@@ -3647,7 +3662,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             events={transcriptEvents}
             isStreaming={activeTabBusy}
             // A tab whose history is still loading shows the loading state, not a blank pane (owner, 2026-10-28).
-            isRestoring={multiAgentSurface === 'restoring' || (isLoadingHistory && transcriptEvents.length === 0)}
+            isRestoring={multiAgentSurface === 'restoring' || activeHistoryPending || (isLoadingHistory && transcriptEvents.length === 0)}
             streamingText={activeStreamingText}
             streamingChatUIMode={streamingChatUIMode}
             streamingStatus={streamingStatus}
