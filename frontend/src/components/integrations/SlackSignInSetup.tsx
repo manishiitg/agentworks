@@ -64,7 +64,7 @@ export function SlackSignInSetup({ onSaved }: { onSaved: () => Promise<void> }) 
           {!!app.scopes?.length && <details><summary className="cursor-pointer text-muted-foreground">Required user permissions</summary><div className="mt-2 flex flex-wrap gap-1.5">{app.scopes.map(scope => <code key={scope} className="rounded bg-muted px-1.5 py-1 text-[11px]">{scope}</code>)}</div></details>}
         </div>
         <label className="block text-xs font-medium">Client ID<Input aria-label="Slack client ID" value={clientID} disabled={busy} onChange={event => setClientID(event.target.value)} autoComplete="off"/></label>
-        <SecretField label="Client secret" value={secret} onChange={setSecret} disabled={busy} hint={<>Find both values in your Slack app’s <b>Basic Information → App Credentials</b>. These are different from the bot and app tokens.</>}/>
+        <SecretField label="Client secret" value={secret} onChange={setSecret} disabled={busy} placeholder={app.configured ? 'Already saved; enter to update' : 'From App Credentials'} hint={<>Find both values in your Slack app’s <b>Basic Information → App Credentials</b>. These are different from the bot and app tokens.</>}/>
         <Button type="submit" size="sm" disabled={busy || !clientID.trim() || !secret.trim()}>{busy ? 'Saving…' : 'Save sign-in setup'}</Button>
       </form>
     </details>}
