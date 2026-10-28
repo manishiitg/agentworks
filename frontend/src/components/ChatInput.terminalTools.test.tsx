@@ -334,7 +334,8 @@ describe('terminal toolbar shared tools', () => {
       expect(host.querySelector('[data-testid="chat-background-activity"]')).toBeTruthy()
       expect(host.querySelector('[data-testid="background-work-pill"]')).toBeNull()
       expect(document.querySelector('[data-testid="chat-new-chat"]')).toBeNull()
-      expect(document.querySelector('[data-testid="chat-stop-button"]')).toBeNull()
+      // Stop sits in plain sight while the turn runs (owner pressed Escape looking for it inside the menu).
+      expect(host.querySelector('[data-testid="chat-stop-button"]')).toBeTruthy()
       const openMenu = async () => act(async () => {
         const trigger = host.querySelector<HTMLElement>('[aria-label="Add files and actions"]')!
         trigger.focus(); trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
@@ -362,11 +363,17 @@ describe('terminal toolbar shared tools', () => {
         const remaining = document.querySelector<HTMLElement>('[aria-label="Stop Step: refresh"]')!
         remaining.focus(); remaining.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
       })
-      await select(document.querySelector<HTMLElement>('[data-testid="chat-stop-button"]')!)
+      expect(document.querySelector('[role="menu"] [data-testid="chat-stop-button"]')).toBeNull()
+      await act(async () => {
+        const item = document.querySelector<HTMLElement>('[role="menu"] [role="menuitem"]')!
+        item.focus(); item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      })
+      expect(document.querySelector('[role="menu"]')).toBeNull()
+      await act(async () => host.querySelector<HTMLElement>('[data-testid="chat-stop-button"]')!.click())
       expect(stopTurn).toHaveBeenCalledOnce()
       expect(stopItem).toHaveBeenCalledTimes(1)
+      expect(host.querySelector('[data-testid="chat-stop-button"]')).toBeNull()
       await openMenu()
-      expect(document.querySelector('[data-testid="chat-stop-button"]')).toBeNull()
       await openTasks(1)
       expect(document.querySelector('[data-testid="background-work-item"]')?.textContent).toContain('Step: refresh')
       await act(async () => {

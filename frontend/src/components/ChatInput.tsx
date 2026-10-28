@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
-import { ArrowUp, Clock, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal } from 'lucide-react'
+import { ArrowUp, Clock, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Square } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
@@ -3201,7 +3201,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     busy: isStreaming || transcriptTurnActive,
                     onModeChange: mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) },
                     onNewChat: showNewChatAction ? onNewChat : undefined,
-                    onStop: showStopButton && foregroundTurnActive ? onStopStreaming : undefined,
                     backgroundWork,
                   }}
                 />}
@@ -3609,6 +3608,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
+                      {/* A visible Stop while the turn runs; the menus kept it out of sight (owner pressed Escape looking for it). */}
+                      {showStopButton && foregroundTurnActive && <Button type="button" variant="ghost" size="icon" onClick={onStopStreaming}
+                        aria-label="Stop the current turn" title="Stop the current turn (Esc)" data-testid="chat-stop-button"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                        <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />
+                      </Button>}
                       {!nativeTerminalTools && micEl}
                       {/* Chat and task actions share the popup; Enter follows the selected delivery mode. */}
                       {(!compactComposerActions || hasValidQuery) && <Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
@@ -3622,7 +3627,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onSend={handleSendButtonClick}
                         onOpenCommands={!compactComposerActions && productCommandsAvailable ? openCommandMenu : undefined}
                         onNewChat={showNewChatAction ? onNewChat : undefined}
-                        onStop={showStopButton && foregroundTurnActive ? onStopStreaming : undefined}
                         backgroundWork={backgroundWork}
                         onOpenChange={setSendOptionsOpen}
                         onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
