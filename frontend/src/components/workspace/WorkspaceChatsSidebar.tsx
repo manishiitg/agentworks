@@ -404,20 +404,17 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           }}
           className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose || disclosure ? 'pr-9' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
         >
-          {hasSourceIcon && <span className={`shrink-0 ${workspaceEntry ? '' : 'opacity-60'}`} title={sourceLabel} aria-hidden="true">
-            {workspaceEntry ? (
-              <ProjectIcon icon={workspaceEntry.icon} title={workspaceEntry.title} surface={row.surface} />
-            ) : (
-              <SourceIcon className="h-3.5 w-3.5" />
-            )}
+          {workspaceEntry && <span className="shrink-0" title={sourceLabel} aria-hidden="true">
+            <ProjectIcon icon={workspaceEntry.icon} title={workspaceEntry.title} surface={row.surface} />
           </span>}
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[13px] leading-5">{title}</span>
-            {details && (
+            {(details || (hasSourceIcon && !workspaceEntry)) && (
               <span
-                className={`mt-1 block truncate text-[10px] leading-3 ${row.waiting ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'}`}
+                className={`mt-1 flex items-center gap-1 truncate text-[10px] leading-3 ${row.waiting ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'}`}
               >
-                {details}
+                {hasSourceIcon && !workspaceEntry && <SourceIcon className="h-3 w-3 shrink-0" aria-label={sourceLabel} />}
+                <span className="truncate">{details}</span>
               </span>
             )}
           </span>
