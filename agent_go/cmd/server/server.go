@@ -14133,8 +14133,12 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	// Browser hints and automated callers never add a laptop connection.
 	req.LaptopConnection = nil
 	caller := GetUserFromContext(ctx)
+	// Why a turn has no laptop tools: on server B the tools came and went between turns, relaunching the CLI each
+	// time (2026-10-28), and the log could not say which check failed.
+	laptopWhy := fmt.Sprintf("read_only=%t website=%t builder_turn=%t project=%t", crewReadOnly, websiteDeviceClaims(caller), laptopBuilderTurn(*req, resolvedProfile), laptopProjectAllowed(ctx, caller, req.SelectedFolder))
 	if !crewReadOnly && websiteDeviceClaims(caller) && laptopBuilderTurn(*req, resolvedProfile) && laptopProjectAllowed(ctx, caller, req.SelectedFolder) {
 		settings, err := readLaptopSettings(currentUserID, req.SelectedFolder)
+		laptopWhy += fmt.Sprintf(" settings_err=%v device=%t folders=%d", err, (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid(), len(settings.Folders))
 		if err == nil && (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid() && len(settings.Folders) > 0 {
 			req.LaptopConnection = &laptopConnectionTarget{DeviceID: settings.DeviceID}
 			if err := api.validateLaptopConnection(caller, req.LaptopConnection); err != nil {
@@ -14147,7 +14151,7 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		}
 	}
 	if req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase || resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-		log.Printf("[LAPTOP_ACCESS] session=%s actor=%s project=%q local_tools=%t", sessionID, currentUserID, req.SelectedFolder, req.LaptopConnection != nil)
+		log.Printf("[LAPTOP_ACCESS] session=%s actor=%s project=%q local_tools=%t %s", sessionID, currentUserID, req.SelectedFolder, req.LaptopConnection != nil, laptopWhy)
 	}
 	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
