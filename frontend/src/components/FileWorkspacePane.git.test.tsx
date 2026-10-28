@@ -9,7 +9,10 @@ vi.mock('../stores/useWorkspaceStore', () => {
   const state = { showFileContent: false, files: [], selectedFile: null, pruneOpenTabs: () => undefined, scrollToFile: async () => undefined }
   return { useWorkspaceStore: Object.assign((selector: (s: typeof state) => unknown) => selector(state), { getState: () => state }) }
 })
-vi.mock('./Workspace', () => ({ default: () => <div>tree</div> }))
+vi.mock('./Workspace', async () => {
+  const { ExplorerHeader } = await import('./workspace/ExplorerHeader')
+  return { default: () => <><ExplorerHeader title="Workspace" toolbar={<button type="button" aria-label="New file">New file</button>} /><div>tree</div></> }
+})
 vi.mock('./FileContentViewer', () => ({ FileContentViewerBody: () => <div>viewer</div> }))
 vi.mock('../services/workspaceGit', () => ({
   workspaceGitApi: {
@@ -31,16 +34,22 @@ vi.mock('../services/workspaceGit', () => ({
     ], truncated: false })),
     diff: vi.fn(async () => ({ diff: '', truncated: false })),
     log: vi.fn(async () => [
-      { hash: 'aaaaaaa1', author: 'A', date: '2026-09-29T10:00:00Z', subject: 'newest commit', refs: ['HEAD -> main', 'origin/main'] },
+      { hash: 'aaaaaaa1', author: 'A', date: '2026-09-29T10:00:00Z', subject: 'newest commit', web_url: 'https://github.com/example/project/commit/aaaaaaa1', refs: ['HEAD -> main', 'origin/main'] },
       { hash: 'bbbbbbb2', author: 'A', date: '2026-09-28T10:00:00Z', subject: 'older commit', refs: [] },
     ]),
     show: vi.fn(async () => ({ diff: '', truncated: false })),
   },
 }))
+import { WorkspacePanelHeaderSlotsProvider, useWorkspacePanelHeaderSlots } from './workspace/WorkspacePanelHeaderSlots'
 import { FileWorkspacePane } from './FileWorkspacePane'
 import { useWorkspaceGitStore } from '../stores/useWorkspaceGitStore'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+
+function PanelHeader() {
+  const slots = useWorkspacePanelHeaderSlots()!
+  return <><div ref={slots.setHeading} data-testid="panel-heading" /><div ref={slots.setActions} data-testid="panel-actions" /></>
+}
 
 afterEach(() => { useWorkspaceGitStore.getState().clear() })
 
@@ -52,14 +61,18 @@ describe('FileWorkspacePane git bar', () => {
     document.body.append(host)
     const root = createRoot(host)
     try {
-      await act(async () => root.render(<FileWorkspacePane workspacePath="Chats/Code/projects/p1" />))
+      await act(async () => root.render(<WorkspacePanelHeaderSlotsProvider><PanelHeader /><FileWorkspacePane workspacePath="Chats/Code/projects/p1" /></WorkspacePanelHeaderSlotsProvider>))
       await act(async () => { await Promise.resolve() })
       expect(host.textContent).toContain('main')
       expect(host.querySelector('[aria-label="Source Control"]')).not.toBeNull()
+      expect(host.querySelector('[data-testid="panel-actions"] [aria-label="New file"]')).not.toBeNull()
       // The Changes toggle swaps the tree for the changed-file list.
       const button = Array.from(host.querySelectorAll('button')).find(item => item.getAttribute('aria-label') === 'Source Control')!
       await act(async () => button.click())
       const view = host.querySelector('[aria-label="Source control"]')!
+      expect(host.querySelector('[data-testid="panel-actions"] [aria-label="New file"]')).toBeNull()
+      expect(host.querySelector('[data-testid="panel-heading"]')?.textContent).toBe('Source Control')
+      expect(host.querySelector('[data-testid="panel-actions"] [aria-label="Refresh source control"]')).not.toBeNull()
       expect(view.textContent).toContain('Staged Changes')
       expect(view.textContent).toContain('staged.ts')
       expect(view.textContent).toContain('a.ts')
@@ -73,6 +86,10 @@ describe('FileWorkspacePane git bar', () => {
       expect(history.getAttribute('aria-expanded')).toBe('true')
       expect(view.textContent).toContain('newest commit')
       expect(view.textContent).toContain('origin/main')
+      const link = view.querySelector<HTMLAnchorElement>('[aria-label="Open commit aaaaaaa on GitHub"]')!
+      expect(link.href).toBe('https://github.com/example/project/commit/aaaaaaa1')
+      expect(link.target).toBe('_blank')
+      expect(view.querySelectorAll('a')).toHaveLength(1)
 
       // Commit needs a message; then it sends the commit action and refreshes.
       const commitButton = Array.from(view.querySelectorAll('button')).find(item => item.textContent?.startsWith('Commit 1 staged'))!
@@ -86,6 +103,8 @@ describe('FileWorkspacePane git bar', () => {
       // Stage all sends the stage action for the whole repo.
       await act(async () => (view.querySelector('button[aria-label="Stage all"]') as HTMLButtonElement).click())
       expect(workspaceGitApi.act).toHaveBeenCalledWith('Chats/Code/projects/p1', 'app', { op: 'stage', all: true })
+      await act(async () => (host.querySelector('[role="tab"][aria-label="Explorer"]') as HTMLButtonElement).click())
+      expect(host.querySelector('[data-testid="panel-actions"] [aria-label="New file"]')).not.toBeNull()
       // Studio-only file review: Cowork keeps its ordinary file tree, not Git controls.
       await act(async () => root.render(<FileWorkspacePane workspacePath="Chats/Code/projects/p1" showGit={false} />))
       expect(host.querySelector('[aria-label="Source Control"]')).toBeNull()
@@ -148,6 +167,8 @@ describe('FileWorkspacePane git bar', () => {
 
       // Stashes list with apply/pop.
       const stashToggle = Array.from(view.querySelectorAll('button')).find(item => item.textContent?.startsWith('Stashes'))!
+      expect(stashToggle.getAttribute('aria-expanded')).toBe('false')
+      expect(stashToggle.className).toContain('items-center')
       await act(async () => stashToggle.click())
       await act(async () => { await Promise.resolve() })
       expect(view.textContent).toContain('wip: two')

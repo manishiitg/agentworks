@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -42,6 +43,7 @@ const (
 )
 
 var workspaceGitCommitRe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+var workspaceGitHubPathRe = regexp.MustCompile(`^/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
 // Folders never searched for nested repos (dependency and build output).
 var workspaceGitSkipDirs = map[string]bool{
@@ -99,6 +101,7 @@ type workspaceGitBlameLine struct {
 }
 
 type workspaceGitCommit struct {
+	WebURL  string `json:"web_url,omitempty"`
 	Hash    string `json:"hash"`
 	Author  string `json:"author"`
 	Date    string `json:"date"`
@@ -106,6 +109,28 @@ type workspaceGitCommit struct {
 	// Refs are the branches and tags pointing at the commit ("HEAD -> main",
 	// "origin/main", "tag: v1").
 	Refs []string `json:"refs"`
+}
+
+// workspaceGitHubURL returns only the GitHub web identity; remote credentials,
+// query strings and SSH connection details are never sent to the browser.
+func workspaceGitHubURL(remote string) string {
+	remote = strings.TrimSpace(remote)
+	if strings.HasPrefix(remote, "git@github.com:") {
+		remote = "ssh://git@github.com/" + strings.TrimPrefix(remote, "git@github.com:")
+	}
+	u, err := url.Parse(remote)
+	if err != nil || u.Host != "github.com" || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "ssh") {
+		return ""
+	}
+	repo := strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), ".git")
+	if !workspaceGitHubPathRe.MatchString(repo) {
+		return ""
+	}
+	parts := strings.Split(strings.TrimPrefix(repo, "/"), "/")
+	if parts[0] == "." || parts[0] == ".." || parts[1] == "." || parts[1] == ".." {
+		return ""
+	}
+	return "https://github.com" + repo
 }
 
 // workspaceGitDocsRoot is the workspace docs directory on this host.
@@ -580,11 +605,20 @@ func serveWorkspaceGitRead(w http.ResponseWriter, r *http.Request, ctx context.C
 		}
 		out, err := workspaceGitCommand(ctx, repoDir, args...).Output()
 		commits := []workspaceGitCommit{}
+		commitBaseURL := ""
+		if err == nil && len(out) > 0 {
+			if remote, remoteErr := workspaceGitCommand(ctx, repoDir, "remote", "get-url", "origin").Output(); remoteErr == nil {
+				commitBaseURL = workspaceGitHubURL(string(remote))
+			}
+		}
 		if err == nil {
 			for _, record := range strings.Split(string(out), "\x1e") {
 				parts := strings.Split(strings.TrimSpace(record), "\x1f")
 				if len(parts) >= 4 {
 					commit := workspaceGitCommit{Hash: parts[0], Author: parts[1], Date: parts[2], Subject: parts[3], Refs: []string{}}
+					if commitBaseURL != "" && workspaceGitCommitRe.MatchString(commit.Hash) {
+						commit.WebURL = commitBaseURL + "/commit/" + commit.Hash
+					}
 					if len(parts) >= 5 && strings.TrimSpace(parts[4]) != "" {
 						for _, ref := range strings.Split(parts[4], ", ") {
 							if ref = strings.TrimSpace(ref); ref != "" {

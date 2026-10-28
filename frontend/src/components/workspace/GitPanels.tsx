@@ -1,13 +1,15 @@
 import { FileDiffView } from './FileDiffView'
 import { useFileGit, useFileGitStore } from './FileGitContext'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, FileText, Files, GitBranch, GitCommit, Loader2, Minus, Plus, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
+import { ArrowLeft, ArrowDown, ArrowUp, Check, ExternalLink, ChevronDown, ChevronRight, FileText, Files, GitBranch, GitCommit, Loader2, Minus, Plus, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
 import DiffRenderer from '../ui/DiffRenderer'
 import { gitActionError, type GitChangedFile, type GitCommit as GitCommitInfo, type GitRepo } from '../../services/workspaceGit'
 import { gitFullPath, type GitPanel } from '../../stores/useWorkspaceGitStore'
 import { FileTypeIcon } from './fileTypeIcon'
 import { BranchPicker, ConflictSection, GitBlamePanel, StashSection, type AskAgent, type RunAction } from './GitExtras'
 import { gitAgentPrompts } from '../../utils/gitAgentPrompts'
+import { GitSection } from './GitSection'
+import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
@@ -142,23 +144,6 @@ function FileRow({ repo, file, staged, workspacePath, busy, run }: {
   )
 }
 
-function Section({ title, count, action, children, defaultOpen = true }: { title: string; count: number; action?: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
-  if (count === 0) return null
-  return (
-    <div>
-      <div className="group/section flex h-7 items-center gap-1 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-1 text-left">
-          {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-          <span className="truncate">{title}</span>
-          <span className="rounded-full bg-muted px-1.5 text-[10px] font-medium normal-case leading-4 text-foreground">{count}</span>
-        </button>
-        <span className="hidden group-hover/section:flex group-focus-within/section:flex">{action}</span>
-      </div>
-      {open && children}
-    </div>
-  )
-}
 
 function refBadge(ref: string): { label: string; className: string } | null {
   const name = ref.replace(/^HEAD -> /, '')
@@ -173,7 +158,7 @@ function GitGraph({ workspacePath, repo, reloadKey }: { workspacePath: string; r
   const commits = useAsync(() => git.api.log(workspacePath, repo.root), [workspacePath, repo.root, repo.branch, repo.ahead, repo.behind, reloadKey])
   const list = commits.value ?? []
   return (
-    <Section title="Commit history" count={list.length} defaultOpen={false}>
+    <GitSection title="Commit history" count={list.length} defaultOpen={false}>
       {commits.loading && list.length === 0 ? <Loading />
         : commits.error ? <p className="px-3 py-1 text-xs text-destructive">{commits.error}</p>
           : list.length === 0 ? <p className="px-3 py-1 text-xs text-muted-foreground">No commits yet.</p>
@@ -186,13 +171,14 @@ function GitGraph({ workspacePath, repo, reloadKey }: { workspacePath: string; r
                       <span aria-hidden="true" className={`absolute left-[1.05rem] w-px bg-border ${index === 0 ? 'top-1/2' : 'top-0'} ${index === list.length - 1 ? 'bottom-1/2' : 'bottom-0'}`} />
                       <span aria-hidden="true" className={`relative z-10 h-2.5 w-2.5 shrink-0 rounded-full border-2 ${index === 0 ? 'border-primary bg-primary' : 'border-violet-400 bg-background'}`} />
                       <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{entry.subject}</span>
+                      {entry.web_url && <a href={entry.web_url} target="_blank" rel="noopener noreferrer" aria-label={`Open commit ${entry.hash.slice(0, 7)} on GitHub`} title="Open commit on GitHub" onClick={event => { if (window.electronAPI?.openExternal) { event.preventDefault(); window.electronAPI.openExternal(entry.web_url!) } }} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"><ExternalLink className="h-3.5 w-3.5" /></a>}
                       {badges.map(badge => <span key={badge.label} className={`shrink-0 truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>{badge.label}</span>)}
                     </li>
                   )
                 })}
               </ol>
             )}
-    </Section>
+    </GitSection>
   )
 }
 
@@ -326,14 +312,14 @@ function RepoSection({ repo, workspacePath, preferenceKey, onAsk, run, busy, err
         action={<button type="button" disabled={busy} title="Unstage all" aria-label="Unstage all" onClick={() => { void run(repo, { op: 'unstage', all: true }) }} className="rounded p-1 hover:bg-background hover:text-foreground"><Minus className="h-3.5 w-3.5" /></button>}
       >
         {staged.map(file => <FileRow key={`s:${file.path}`} repo={repo} file={file} staged workspacePath={workspacePath} busy={busy} run={run} />)}
-      </Section>
+      </GitSection>
       <Section
         title="Changes"
         count={unstaged.length}
         action={<button type="button" disabled={busy} title="Stage all" aria-label="Stage all" onClick={() => { void run(repo, { op: 'stage', all: true }) }} className="rounded p-1 hover:bg-background hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>}
       >
         {unstaged.map(file => <FileRow key={`u:${file.path}`} repo={repo} file={file} staged={false} workspacePath={workspacePath} busy={busy} run={run} />)}
-      </Section>
+      </GitSection>
       {repo.truncated && <p className="px-3 py-1 text-xs text-muted-foreground">Showing the first changes only.</p>}
       <StashSection workspacePath={workspacePath} repo={repo} run={run} busy={busy} reloadKey={graphKey + reloadKey} />
       <GitGraph workspacePath={workspacePath} repo={repo} reloadKey={graphKey + reloadKey} />
@@ -372,10 +358,7 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
 
   return (
     <div className="flex h-full min-h-0 flex-col text-[13px]" aria-label="Source control">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source Control</h3>
-        <button type="button" aria-label="Refresh source control" title="Refresh" onClick={() => { void refresh(workspacePath); setReloadKey(key => key + 1) }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><RefreshCw className="h-3.5 w-3.5" /></button>
-      </div>
+      <WorkspaceViewHeader title="Source Control" actions={<button type="button" aria-label="Refresh source control" title="Refresh" onClick={() => { void refresh(workspacePath); setReloadKey(key => key + 1) }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><RefreshCw className="h-3.5 w-3.5" /></button>} />
       <div className="min-h-0 flex-1 overflow-y-auto">
       {repos.map(repo => (
         <RepoSection

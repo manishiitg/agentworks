@@ -26,6 +26,8 @@ export interface GitRepo {
 }
 
 export interface GitCommit {
+  /** Server-provided GitHub page, with remote credentials removed. */
+  web_url?: string
   hash: string
   author: string
   date: string

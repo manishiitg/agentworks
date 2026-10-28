@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import type { ReadOnlyFileWorkspaceSource } from './workspace/fileWorkspaceSource'
+import { WorkspacePanelHeaderBoundary } from './workspace/WorkspacePanelHeaderSlots'
 import { ReadOnlyFileTree } from './workspace/ReadOnlyFileTree'
 import { FileContentViewerBody } from './FileContentViewer'
 import Workspace from './Workspace'
@@ -160,17 +161,19 @@ function FileWorkspacePaneBody({
               <div className="min-h-0 flex-1"><GitChangesList workspacePath={gitPath!} onAsk={onAsk} /></div>
             )}
             <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && hasRepos}>
-              {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
-                scopedWorkspacePath={workspacePath}
-                hiddenRootFolders={hiddenRootFolders}
-                hideAddToChat={hideAddToChat}
-                hideRootActions={hideRootActions}
-                editable={editable}
-                expandFirstLevelFolders={expandFirstLevelFolders}
-                hideManagedEntriesByDefault={hideManagedEntriesByDefault}
-                title={title}
-                headerAction={split ? undefined : headerAction}
-              />}
+              <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && hasRepos)}>
+                {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
+                  scopedWorkspacePath={workspacePath}
+                  hiddenRootFolders={hiddenRootFolders}
+                  hideAddToChat={hideAddToChat}
+                  hideRootActions={hideRootActions}
+                  editable={editable}
+                  expandFirstLevelFolders={expandFirstLevelFolders}
+                  hideManagedEntriesByDefault={hideManagedEntriesByDefault}
+                  title={title}
+                  headerAction={split ? undefined : headerAction}
+                />}
+              </WorkspacePanelHeaderBoundary>
             </div>
           </div>
         </div>

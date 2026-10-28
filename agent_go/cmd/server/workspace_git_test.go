@@ -273,3 +273,34 @@ func TestWorkspaceGitIgnoresPlatformPrivateFolder(t *testing.T) {
 		t.Fatalf("stage everything must still add real changes: %q", staged)
 	}
 }
+
+// The log exposes web links, never the credential-bearing remote itself.
+func TestWorkspaceGitCommitLinks(t *testing.T) {
+	_, repo := gitTestEnv(t)
+	for _, tc := range []struct {
+		remote string
+		linked bool
+	}{
+		{"git@github.com:example/project.git", true},
+		{"ssh://git@github.com/example/project.git", true},
+		{"https://user:synthetic-password@github.com/example/project.git?credential=synthetic", true},
+		{"https://github.com.example.com/example/project.git", false},
+		{"https://example.com/example/project.git", false},
+	} {
+		gitRun(t, repo, "config", "remote.origin.url", tc.remote)
+		code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"log"}, "repo": {"app"}})
+		commits, _ := body["commits"].([]any)
+		if code != http.StatusOK || len(commits) != 1 {
+			t.Fatal("log unavailable")
+		}
+		commit := commits[0].(map[string]any)
+		link, _ := commit["web_url"].(string)
+		if tc.linked {
+			if link != "https://github.com/example/project/commit/"+commit["hash"].(string) {
+				t.Fatal("expected canonical credential-free GitHub commit link")
+			}
+		} else if link != "" {
+			t.Fatal("non-GitHub remote returned a GitHub link")
+		}
+	}
+}

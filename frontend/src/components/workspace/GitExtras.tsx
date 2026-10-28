@@ -1,9 +1,10 @@
 import { useFileGit, useFileGitStore } from './FileGitContext'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, ChevronDown, Cloud, GitBranch as GitBranchIcon, Loader2, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Cloud, GitBranch as GitBranchIcon, Loader2, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
 import { type GitAction, type GitBlameLine, type GitBranch, type GitChangedFile, type GitRepo, type GitStash } from '../../services/workspaceGit'
 import { gitFullPath } from '../../stores/useWorkspaceGitStore'
 import { gitAgentPrompts } from '../../utils/gitAgentPrompts'
+import { GitSection } from './GitSection'
 import { FileTypeIcon } from './fileTypeIcon'
 
 export type RunAction = (repo: GitRepo, action: GitAction) => Promise<boolean>
@@ -120,47 +121,38 @@ export function BranchPicker({ workspacePath, repo, run, busy }: { workspacePath
 /** Stashed work: stash everything now, apply/pop/drop earlier stashes. */
 export function StashSection({ workspacePath, repo, run, busy, reloadKey }: { workspacePath: string; repo: GitRepo; run: RunAction; busy: boolean; reloadKey: number }) {
   const git = useFileGit()
-  const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [dropping, setDropping] = useState<string | null>(null)
   const stashes = useLoaded<GitStash[]>(() => git.api.stashes(workspacePath, repo.root), [workspacePath, repo.root, repo.files.length, reloadKey], [])
   const hasChanges = repo.files.length > 0
   if (stashes.value.length === 0) return null
   return (
-    <div className="border-t border-border">
-      <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} className="flex h-7 w-full items-center gap-1 px-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
-        <Archive aria-hidden="true" className="h-3.5 w-3.5" />
-        <span className="flex-1">Stashes</span>
-        {stashes.value.length > 0 && <span className="rounded-full bg-muted px-1.5 text-[10px] font-medium normal-case leading-4 text-foreground">{stashes.value.length}</span>}
-      </button>
-      {open && (
-        <div className="pb-2">
-          {hasChanges && (
-            <div className="flex items-center gap-1 px-2 pb-1">
-              <input value={message} onChange={event => setMessage(event.target.value)} placeholder="Stash message (optional)" aria-label="Stash message" className="min-w-0 flex-1 rounded border border-input bg-background px-2 py-1 text-xs text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" />
-              <button type="button" disabled={busy} onClick={() => { void run(repo, { op: 'stash', message: message.trim() || undefined }).then(ok => { if (ok) setMessage('') }) }} className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">Stash</button>
-            </div>
-          )}
-          {stashes.value.map(stash => dropping === stash.ref ? (
-            <div key={stash.ref} className="flex items-center gap-2 bg-destructive/10 px-3 py-1.5 text-xs">
-              <span className="min-w-0 flex-1 truncate">Drop {stash.ref}? This cannot be undone.</span>
-              <button type="button" disabled={busy} onClick={() => { setDropping(null); void run(repo, { op: 'stash_drop', ref: stash.ref }) }} className="rounded bg-destructive px-2 py-0.5 font-medium text-destructive-foreground">Drop</button>
-              <button type="button" onClick={() => setDropping(null)} className="rounded border border-border px-2 py-0.5">Cancel</button>
-            </div>
-          ) : (
-            <div key={stash.ref} className="group/stash flex h-7 items-center gap-1.5 px-3 text-[13px] hover:bg-muted" title={`${stash.ref} · ${new Date(stash.date).toLocaleString()}`}>
-              <span className="min-w-0 flex-1 truncate text-foreground">{stash.message.replace(/^On [^:]+: /, '') || stash.ref}</span>
-              <span className="hidden shrink-0 items-center group-hover/stash:flex">
-                <button type="button" disabled={busy} onClick={() => { void run(repo, { op: 'stash_apply', ref: stash.ref }) }} className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-background hover:text-foreground">Apply</button>
-                <button type="button" disabled={busy} onClick={() => { void run(repo, { op: 'stash_pop', ref: stash.ref }) }} className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-background hover:text-foreground">Pop</button>
-                <button type="button" disabled={busy} aria-label={`Drop ${stash.ref}`} onClick={() => setDropping(stash.ref)} className={iconButton}><Trash2 className="h-3.5 w-3.5" /></button>
-              </span>
-            </div>
-          ))}
-          {stashes.value.length === 0 && !stashes.loading && <p className="px-3 py-1 text-xs text-muted-foreground">No stashes yet.</p>}
-        </div>
-      )}
-    </div>
+    <GitSection title="Stashes" count={stashes.value.length} defaultOpen={false}>
+      <div className="pb-2">
+        {hasChanges && (
+          <div className="flex items-center gap-1 px-2 pb-1">
+            <input value={message} onChange={event => setMessage(event.target.value)} placeholder="Stash message (optional)" aria-label="Stash message" className="min-w-0 flex-1 rounded border border-input bg-background px-2 py-1 text-xs text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" />
+            <button type="button" disabled={busy} onClick={() => { void run(repo, { op: 'stash', message: message.trim() || undefined }).then(ok => { if (ok) setMessage('') }) }} className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">Stash</button>
+          </div>
+        )}
+        {stashes.value.map(stash => dropping === stash.ref ? (
+          <div key={stash.ref} className="flex items-center gap-2 bg-destructive/10 px-3 py-1.5 text-xs">
+            <span className="min-w-0 flex-1 truncate">Drop {stash.ref}? This cannot be undone.</span>
+            <button type="button" disabled={busy} onClick={() => { setDropping(null); void run(repo, { op: 'stash_drop', ref: stash.ref }) }} className="rounded bg-destructive px-2 py-0.5 font-medium text-destructive-foreground">Drop</button>
+            <button type="button" onClick={() => setDropping(null)} className="rounded border border-border px-2 py-0.5">Cancel</button>
+          </div>
+        ) : (
+          <div key={stash.ref} className="group/stash flex h-7 items-center gap-1.5 px-3 text-[13px] hover:bg-muted" title={`${stash.ref} · ${new Date(stash.date).toLocaleString()}`}>
+            <span className="min-w-0 flex-1 truncate text-foreground">{stash.message.replace(/^On [^:]+: /, '') || stash.ref}</span>
+            <span className="hidden shrink-0 items-center group-hover/stash:flex">
+              <button type="button" disabled={busy} onClick={() => { void run(repo, { op: 'stash_apply', ref: stash.ref }) }} className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-background hover:text-foreground">Apply</button>
+              <button type="button" disabled={busy} onClick={() => { void run(repo, { op: 'stash_pop', ref: stash.ref }) }} className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-background hover:text-foreground">Pop</button>
+              <button type="button" disabled={busy} aria-label={`Drop ${stash.ref}`} onClick={() => setDropping(stash.ref)} className={iconButton}><Trash2 className="h-3.5 w-3.5" /></button>
+            </span>
+          </div>
+        ))}
+      </div>
+    </GitSection>
   )
 }
 
