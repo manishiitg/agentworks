@@ -54,6 +54,69 @@ func TestLargeTreeReachesIgnoreFilteringAndCapturesChanges(t *testing.T) {
 	if len(comparison.Changes) != 1 || comparison.Changes[0].Path != "source.txt" {
 		t.Fatalf("real change missing: %+v", comparison.Changes)
 	}
+
+	// PLAT-746 repository-aware capture: a checkout lists its own files, so an
+	// ignored dependency tree is neither walked nor counted. A file the agent
+	// commits mid-reply still shows as added, a tracked edit as modified and a
+	// deleted file as deleted (the saved before/after trees are compared).
+	repo := Store{Root: t.TempDir(), Private: t.TempDir()}
+	app := filepath.Join(repo.Root, "app")
+	gitIn := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...)
+		cmd.Dir = app
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	put := func(rel, data string) {
+		t.Helper()
+		p := filepath.Join(app, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(".gitignore", "node_modules/\n")
+	put("tracked.txt", "before\n")
+	put("gone.txt", "bye\n")
+	for i := 0; i < 30; i++ {
+		put(fmt.Sprintf("node_modules/pkg/%02d.js", i), "x")
+	}
+	gitIn("init", "--quiet")
+	gitIn("add", ".gitignore", "tracked.txt", "gone.txt")
+	gitIn("commit", "--quiet", "-m", "init")
+	first, err := repo.Begin(t.Context(), "repo-turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := first.BeforeCapture; c.Eligible != 3 || c.Repos != 1 || c.WalkedFiles != 0 {
+		t.Fatalf("ignored tree was walked or counted: %+v", c)
+	}
+	put("tracked.txt", "after\n")
+	put("new.txt", "new\n")
+	gitIn("add", "new.txt")
+	gitIn("commit", "--quiet", "-m", "agent commit")
+	if err := os.Remove(filepath.Join(app, "gone.txt")); err != nil {
+		t.Fatal(err)
+	}
+	done, err := repo.Finish(t.Context(), "repo-turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmp, err := repo.Compare(t.Context(), done.ID, "", func(string) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, c := range cmp.Changes {
+		got[c.Path] = c.Status
+	}
+	if len(got) != 3 || got["app/tracked.txt"] != "M" || got["app/new.txt"] != "A" || got["app/gone.txt"] != "D" {
+		t.Fatalf("repo changes: %+v", got)
+	}
 }
 
 // PLAT-746-158: nested repositories must be file blobs, and later turns must

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
@@ -57,6 +59,13 @@ type CaptureStats struct {
 	Cold          bool  `json:"cold,omitempty"` // no file hashes were cached: every file was read
 	BudgetSkipped int   `json:"budget_skipped"`
 	ReadSkipped   int   `json:"read_skipped"`
+	// Where the candidate list came from: Git checkouts list their own files
+	// (RepoFiles); only paths outside any checkout, and checkouts that fell back,
+	// are walked (WalkedFiles, counted before ignore filtering).
+	Repos         int `json:"repos"`
+	RepoFiles     int `json:"repo_files"`
+	WalkedFiles   int `json:"walked_files"`
+	RepoFallbacks int `json:"repo_fallbacks"`
 }
 
 // diskRecord keeps Git object names private to the server.
@@ -180,39 +189,115 @@ func excluded(path string, dir bool) bool {
 	}
 	return publication.Excluded(path)
 }
-func (s Store) candidates(ctx context.Context) ([]string, []string, error) {
-	paths := []string{}
-	err := filepath.WalkDir(s.Root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+
+// listRepo lists a Git checkout's own non-ignored files (tracked and untracked)
+// through the hardened runner, so dependency trees the repo ignores are never
+// walked. Entries ending in "/" are nested checkouts. isRepo is false when dir
+// has no .git; a non-empty reason means "use the plain walk for this checkout".
+func (s Store) listRepo(ctx context.Context, dir string) (entries []string, isRepo bool, reason string) {
+	info, err := os.Lstat(filepath.Join(dir, ".git"))
+	if err != nil {
+		return nil, false, ""
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, true, "symlinked_git"
+	}
+	if _, err := os.Lstat(filepath.Join(dir, ".gitmodules")); err == nil {
+		return nil, true, "submodules"
+	}
+	git := func(args ...string) *exec.Cmd { return safegit.CommandIn(ctx, s.Root, dir, nil, args...) }
+	if out, _ := git("config", "--get", "core.sparseCheckout").Output(); strings.TrimSpace(string(out)) == "true" {
+		return nil, true, "sparse_checkout"
+	}
+	if git("rev-parse", "--verify", "-q", "HEAD").Run() != nil {
+		return nil, true, "no_commits"
+	}
+	// ls-files only reads the index; safegit adds --no-optional-locks and
+	// GIT_OPTIONAL_LOCKS=0, so the user's index is never refreshed or written.
+	out, err := git("ls-files", "-co", "--exclude-standard", "-z").Output()
+	if err != nil {
+		return nil, true, "ls_files_failed"
+	}
+	for _, e := range bytes.Split(out, []byte{0}) {
+		if len(e) > 0 {
+			entries = append(entries, string(e))
 		}
-		if err = ctx.Err(); err != nil {
-			return err
-		}
-		if path == s.Root {
-			return nil
-		}
-		rel, err := filepath.Rel(s.Root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		if excluded(rel, d.IsDir()) {
+	}
+	return entries, true, ""
+}
+
+// candidates returns the files to capture and the ignored paths omitted from
+// comparisons. Checkouts list their own files (listRepo); everything else is
+// walked and filtered with the private ignore check, as before. Secret and
+// publication exclusions apply to both kinds after enumeration.
+func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]string, []string, error) {
+	paths := []string{}     // walked files, still to be ignore-filtered
+	repoFiles := []string{} // already filtered by their repo's own ignore rules
+	var walk func(dir string) error
+	walk = func(dir string) error {
+		return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if err = ctx.Err(); err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(s.Root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+			if path != s.Root && excluded(rel, d.IsDir()) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			if d.IsDir() {
+				entries, isRepo, reason := s.listRepo(ctx, path)
+				if !isRepo {
+					return nil
+				}
+				if reason != "" {
+					stats.RepoFallbacks++
+					log.Printf("[FILE_SNAPSHOT] phase=repo_fallback repo=%q reason=%s", rel, reason)
+					return nil // walk this checkout
+				}
+				stats.Repos++
+				var nested []string
+				for _, e := range entries {
+					full := e
+					if rel != "." {
+						full = rel + "/" + e
+					}
+					if strings.HasSuffix(e, "/") {
+						nested = append(nested, filepath.Join(path, filepath.FromSlash(strings.TrimSuffix(e, "/"))))
+						continue
+					}
+					if !excluded(full, false) {
+						repoFiles = append(repoFiles, full)
+					}
+				}
+				for _, n := range nested {
+					if err := walk(n); err != nil {
+						return err
+					}
+				}
 				return filepath.SkipDir
 			}
-			return nil
-		}
-		if !d.IsDir() {
 			// Count only after Git's ignore filtering. Large folders with several
 			// worktrees can have more than 20,000 source files; capture already
 			// bounds imported bytes, individual files and elapsed time.
 			paths = append(paths, rel)
-		}
-		return nil
-	})
-	if err != nil || len(paths) == 0 {
-		return paths, nil, err
+			return nil
+		})
+	}
+	if err := walk(s.Root); err != nil {
+		return nil, nil, err
+	}
+	stats.RepoFiles, stats.WalkedFiles = len(repoFiles), len(paths)
+	if len(paths) == 0 {
+		return repoFiles, nil, nil
 	}
 	cmd := s.command(ctx, "check-ignore", "--no-index", "-z", "--stdin")
 	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
@@ -225,7 +310,7 @@ func (s Store) candidates(ctx context.Context) ([]string, []string, error) {
 	for _, p := range bytes.Split(out, []byte{0}) {
 		ignored[string(p)] = true
 	}
-	kept := []string{}
+	kept := repoFiles
 	omitted := []string{}
 	for _, p := range paths {
 		if !ignored[p] {
@@ -237,11 +322,36 @@ func (s Store) candidates(ctx context.Context) ([]string, []string, error) {
 	return kept, omitted, nil
 }
 
+// vanishedOnDisk lists paths saved in the prior (before) state that are not
+// candidates now but still exist: newly ignored or excluded files, which a
+// comparison must not report as deleted. Paths missing from disk are genuine
+// deletions and stay out, so the diff shows them as deleted.
+func (s Store) vanishedOnDisk(ctx context.Context, root *os.Root, prior string, have []string) []string {
+	out, err := s.command(ctx, "ls-tree", "-r", "--name-only", "-z", prior).Output()
+	if err != nil {
+		return nil
+	}
+	now := make(map[string]bool, len(have))
+	for _, p := range have {
+		now[p] = true
+	}
+	var res []string
+	for _, p := range bytes.Split(out, []byte{0}) {
+		if len(p) == 0 || now[string(p)] {
+			continue
+		}
+		if _, err := root.Lstat(string(p)); err == nil {
+			res = append(res, string(p))
+		}
+	}
+	return res
+}
+
 // capture streams eligible files into Git's standard importer. Rooted reads
 // cannot follow a replaced ancestor symlink outside the Crew. Git owns object
 // hashing/deduplication; no user Git config, attributes or clean filters run.
-func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats, skippedState map[string]string) (string, []string, []string, error) {
-	paths, omitted, err := s.candidates(ctx)
+func (s Store) capture(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string) (string, []string, []string, error) {
+	paths, omitted, err := s.candidates(ctx, stats)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -251,6 +361,9 @@ func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats, ski
 	}
 	defer root.Close()
 	stats.Eligible = len(paths)
+	if prior != "" {
+		omitted = append(omitted, s.vanishedOnDisk(ctx, root, prior, paths)...)
+	}
 	// A large asset encountered first must not starve ordinary source files.
 	// Stat through the confined root; recheck each file before reading below.
 	skipped := []string{}
@@ -505,7 +618,7 @@ func (s Store) begin(lockCtx, ctx context.Context, execution string, warm, cold 
 		ctx, cancel = context.WithTimeout(ctx, budget)
 		defer cancel()
 	}
-	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", &r.BeforeCapture, r.BeforeSkippedState)
+	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 	}
@@ -544,7 +657,7 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	}
 	var skipped, omitted []string
 	r.AfterSkippedState = map[string]string{}
-	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after", &r.AfterCapture, r.AfterSkippedState)
+	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after", r.Before, &r.AfterCapture, r.AfterSkippedState)
 	r.Skipped = append(r.Skipped, skipped...)
 	r.Omitted = append(r.Omitted, omitted...)
 	now := time.Now().UTC()
