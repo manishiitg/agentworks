@@ -224,9 +224,10 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 		if record.Project.Kind != "crew" || record.Project.ID != manifest.ID {
 			return fmt.Errorf("schedule project does not match its Crew")
 		}
-		owner := manifest.OwnerID
-		if owner == "" {
-			owner, _ = crewProjectOwnerID(root)
+		// The registry decides who owns a Crew, never its manifest (PLAT-449).
+		owner, registered := crewProjectOwnerID(root)
+		if !registered {
+			owner = manifest.OwnerID
 		}
 		if owner == "" && !IsMultiUserMode() {
 			owner = GetDefaultUserID()
@@ -248,19 +249,20 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 }
 
 func saveCrewTimerActions(ctx context.Context, root string, manifest productProjectManifest) error {
+	owner, registered := crewProjectOwnerID(root)
+	if !registered {
+		owner = manifest.OwnerID
+	}
 	var records []projectactions.Schedule
 	for _, s := range manifest.Schedules {
 		raw, err := json.Marshal(scheduleExecutionInput{Messages: s.Messages, Condition: s.Condition})
 		if err != nil {
 			return err
 		}
-		record := projectactions.Schedule{ID: s.ID, Name: s.Name, Enabled: s.Enabled, RunAs: manifest.OwnerID,
+		record := projectactions.Schedule{ID: s.ID, Name: s.Name, Enabled: s.Enabled, RunAs: owner,
 			Project: projectactions.Project{Kind: "crew", ID: manifest.ID}, Input: raw,
 			Action: projectactions.Action{Type: "message", Tab: s.ChatKey},
 			When:   projectactions.When{Cron: s.CronExpression, Timezone: scheduleTimezoneOrDefault(s.Timezone), Anchor: s.CreatedAt}}
-		if record.RunAs == "" {
-			record.RunAs, _ = crewProjectOwnerID(root)
-		}
 		if record.RunAs == "" && !IsMultiUserMode() {
 			record.RunAs = GetDefaultUserID()
 		}

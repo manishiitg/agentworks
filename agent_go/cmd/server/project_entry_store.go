@@ -423,9 +423,10 @@ func loadCrewEntryActions(ctx context.Context, root string, manifest *productPro
 		if record.Project.Kind != "crew" || record.Project.ID != manifest.ID {
 			return fmt.Errorf("webhook project does not match its Crew")
 		}
-		owner := manifest.OwnerID
-		if owner == "" {
-			owner, _ = crewProjectOwnerID(root)
+		// The registry decides who owns a Crew, never its manifest (PLAT-449).
+		owner, registered := crewProjectOwnerID(root)
+		if !registered {
+			owner = manifest.OwnerID
 		}
 		if owner == "" && !IsMultiUserMode() {
 			owner = GetDefaultUserID()
@@ -469,9 +470,9 @@ func saveCrewEntryActions(ctx context.Context, root string, manifest productProj
 		}
 	}
 	var hooks []projectWebhookDefinition
-	owner := manifest.OwnerID
-	if owner == "" {
-		owner, _ = crewProjectOwnerID(root)
+	owner, registered := crewProjectOwnerID(root)
+	if !registered {
+		owner = manifest.OwnerID
 	}
 	if owner == "" && !IsMultiUserMode() {
 		owner = GetDefaultUserID()

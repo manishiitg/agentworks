@@ -40,9 +40,12 @@ func TestSharedCrewSchedulesAndWebhooksAreDiscoveredByTheirOwner(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
 	f.WithSharing(true)
 	crewRoot := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
-	f.put(crewRoot+"/workflow.json", `{"schema_version":1,"id":"`+fixtureCrewID+`","label":"Alpha","capabilities":{},`+
-		`"schedules":[{"id":"daily","name":"Daily","enabled":true,"cron_expression":"0 8 * * *","timezone":"UTC","messages":["go"]}],`+
-		`"triggers":[{"id":"11111111-1111-4111-8111-111111111111","name":"Hook","enabled":true,"message":"hi","kind":"webhook"}]}`)
+	f.put(crewRoot+"/workflow.json", `{"schema_version":1,"id":"`+fixtureCrewID+`","label":"Alpha","capabilities":{}}`)
+	// Timers and webhooks are stored in schedules.json and webhooks.json (PLAT-871).
+	f.put(crewRoot+"/webhooks.json", `{"webhooks":[{"id":"11111111-1111-4111-8111-111111111111","name":"Hook","enabled":true,"path":"/api/hooks/11111111-1111-4111-8111-111111111111",`+
+		`"project":{"kind":"crew","id":"`+fixtureCrewID+`"},"action":{"type":"message"},"input":{"messages":["hi"]},"run_as":"`+fixtureUserA+`","auth":{"mode":"none"}}]}`)
+	f.put(crewRoot+"/schedules.json", `{"schedules":[{"id":"daily","name":"Daily","project":{"kind":"crew","id":"`+fixtureCrewID+`"},`+
+		`"when":{"cron":"0 8 * * *","timezone":"UTC"},"action":{"type":"message"},"input":{"messages":["go"]},"run_as":"`+fixtureUserA+`","enabled":true}]}`)
 	// The manifest claims B owns it: ignored.
 	f.put(crewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"`+fixtureCrewID+`","title":"Alpha","session_id":"work:project:`+fixtureCrewID+`","owner_id":"`+fixtureUserB+`"}`)
 

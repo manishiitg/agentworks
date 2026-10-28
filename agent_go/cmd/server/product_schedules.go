@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -393,7 +394,8 @@ func (s *ProjectActionDispatcher) projectJobsForUser(ctx context.Context, userID
 			} else if runtimeFound {
 				var runtimeManifest productProjectManifest
 				if err := json.Unmarshal([]byte(runtimeRaw), &runtimeManifest); err != nil {
-					return nil, fmt.Errorf("project %s runtime manifest: %w", manifest.ID, err)
+					log.Printf("[SCHEDULES] skipping project %s for %s: runtime manifest: %v", manifest.ID, userID, err)
+					continue
 				}
 				manifest.Schedules = runtimeManifest.Schedules
 				manifest.Triggers = runtimeManifest.Triggers
@@ -410,12 +412,15 @@ func (s *ProjectActionDispatcher) projectJobsForUser(ctx context.Context, userID
 			}
 		}
 		if isProjectProfileID(profile.ID) {
+			// One Crew's bad timers skip only that Crew, never the person's other schedules.
 			if err := loadCrewTimerActions(ctx, filepath.ToSlash(filepath.Dir(runtimePath)), &manifest); err != nil {
-				return nil, err
+				log.Printf("[SCHEDULES] skipping project %s for %s: %v", manifest.ID, userID, err)
+				continue
 			}
 		}
 		if err := productschedule.ValidateAll(manifest.Schedules); err != nil {
-			return nil, fmt.Errorf("project %s schedules: %w", manifest.ID, err)
+			log.Printf("[SCHEDULES] skipping project %s for %s: schedules: %v", manifest.ID, userID, err)
+			continue
 		}
 		for _, sched := range manifest.Schedules {
 			job := productScheduleJob{
