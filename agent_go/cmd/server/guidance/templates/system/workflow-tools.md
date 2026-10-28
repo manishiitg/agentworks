@@ -113,7 +113,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 
 ## Variables & Config
 
-- **`settings action=variables`** (name, value, description) — Add, update, or delete a variable.
+- **`settings action=variable_add`** (name, value, description), **`action=variable_update`** (existing_variable_name, then name, value or description) and **`action=variable_delete`** (existing_variable_name) — Add, change or delete a variable.
 - **`manage_group`** — Manage variable groups.
 - **MCP servers workflow**: before this — if the user is asking to connect a *new* service rather than one already configured, honor an explicit MCP request; otherwise consider CLI/skill/MCP in that order. See the `integration-discovery` reference.
   0. Not sure whether an MCP server exists for a service at all? `mcp(action="search", query)` checks our own catalog, GitHub's MCP Registry and the official MCP Registry. Public listings are discovery metadata; verify and prefer the provider's own documented endpoint. Do not use hosted Smithery replacements.

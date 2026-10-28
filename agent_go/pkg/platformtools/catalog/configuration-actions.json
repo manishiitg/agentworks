@@ -40,9 +40,27 @@
   },
   {
     "family": "settings",
-    "name": "variables",
-    "member": "update_variable",
-    "description": "Change this workflow’s declared variables."
+    "name": "variable_add",
+    "member": "update_variable__add",
+    "description": "Add a declared variable to this workflow (name, value, description).",
+    "source": "update_variable",
+    "source_action": "add"
+  },
+  {
+    "family": "settings",
+    "name": "variable_update",
+    "member": "update_variable__update",
+    "description": "Change one of this workflow's declared variables (existing_variable_name, then name, value or description).",
+    "source": "update_variable",
+    "source_action": "update"
+  },
+  {
+    "family": "settings",
+    "name": "variable_delete",
+    "member": "update_variable__delete",
+    "description": "Delete one of this workflow's declared variables (existing_variable_name).",
+    "source": "update_variable",
+    "source_action": "delete"
   },
   {
     "family": "models",

@@ -61,3 +61,33 @@ func TestNormalizeRequiredTurnsNullIntoEmptyList(t *testing.T) {
 		t.Fatal("the caller's schema was modified")
 	}
 }
+
+// PLAT-856-397: update_variable needs its own action (add/update/delete), which the settings group used to drop, so
+// no chat could change a workflow variable. Each settings variable action now reaches it with that action set.
+func TestSettingsVariableActionsReachUpdateVariableWithItsAction(t *testing.T) {
+	var got map[string]any
+	schema := map[string]any{"type": "object", "additionalProperties": false, "required": []any{"action"}, "properties": map[string]any{
+		"action": map[string]any{"type": "string", "enum": []any{"update", "add", "delete"}}, "name": map[string]any{"type": "string"},
+		"value": map[string]any{"type": "string"}, "existing_variable_name": map[string]any{"type": "string"}}}
+	jobs, err := Project([]mcpagent.ToolDefinition{{Name: "update_variable", InputSchema: schema,
+		Execute: func(_ context.Context, args map[string]any) (string, error) { got = args; return "ok", nil }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, job := range jobs {
+		if job.Name != "settings" {
+			continue
+		}
+		if _, err := job.Execute(t.Context(), map[string]any{"action": "variable_add", "name": "REGION", "value": "eu"}); err != nil {
+			t.Fatal(err)
+		}
+		if got["action"] != "add" || got["name"] != "REGION" {
+			t.Fatalf("update_variable got %v", got)
+		}
+		if _, err := job.Execute(t.Context(), map[string]any{"action": "variable_delete", "existing_variable_name": "REGION"}); err != nil || got["action"] != "delete" {
+			t.Fatalf("delete reached update_variable as %v (%v)", got, err)
+		}
+		return
+	}
+	t.Fatal("no settings group")
+}
