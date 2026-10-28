@@ -265,6 +265,7 @@ func externalTools() ([]externalTool, error) {
 			}
 		}
 		externalLaptopAccessDefinition(add)
+		externalMyVaultsDefinition(add)
 		for i := range defined {
 			if defined[i].Name == "manage_laptop_access" || isExternalLaptopFileTool(defined[i].Name) {
 				defined[i].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workspace_id"}}, map[string]any{"required": []any{"crew_id"}}, map[string]any{"required": []any{"workflow_id"}}}
@@ -727,6 +728,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == "manage_laptop_access" {
 		api.externalLaptopAccessCall(w, r, call.Arguments)
+		return
+	}
+	if tool.Name == "manage_my_vaults" {
+		api.externalMyVaultsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "workspace" {

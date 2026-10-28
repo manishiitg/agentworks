@@ -61,3 +61,38 @@ func (api *StreamingAPI) handleMyVaultsOp(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Cache-Control", "no-store")
 	writeUsersJSON(w, http.StatusOK, map[string]string{"result": result})
 }
+
+// externalMyVaultsDefinition offers the person's own Vault items over MCP (PLAT-856-400), the same operations as the
+// chat tool, so a person's own agent can do what the project's Vault panel does. The grouped vault tool presents
+// them as vault action=mine_*.
+func externalMyVaultsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
+	data, _ := json.Marshal(manageMyVaultsParameters())
+	var schema map[string]any
+	_ = json.Unmarshal(data, &schema)
+	add("manage_my_vaults", manageMyVaultsDescription, true, false, schema["properties"].(map[string]any), "operation")
+}
+
+// externalMyVaultsCall runs one operation for the signed-in person, with the website's checks.
+func (api *StreamingAPI) externalMyVaultsCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
+	c := GetUserFromContext(r.Context())
+	operation, _ := args["operation"].(string)
+	if !personalLaptopSettingsClaims(c) || !myVaultScreenOperations[operation] && operation != "set_secret" && operation != "promote_secret" {
+		externalError(w, 403, "forbidden", "Use your own sign-in to manage your own Vault items, or open the project's Vault panel.")
+		return
+	}
+	if (operation == "project" || operation == "project_select") && !activeMCPPerson(c.UserID) || operation != "project" && operation != "project_select" && !personVaultActive(c.UserID) {
+		externalError(w, 403, "forbidden", "Your account cannot keep its own Vault items. Ask an administrator for Builder access.")
+		return
+	}
+	result, err := api.myVaultsOperation(r.Context(), c.UserID, args)
+	if err != nil {
+		externalError(w, 400, "vault_operation_failed", err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	if json.Valid([]byte(result)) {
+		externalJSON(w, json.RawMessage(result))
+		return
+	}
+	externalJSON(w, map[string]string{"message": result})
+}

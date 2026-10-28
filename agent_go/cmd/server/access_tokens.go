@@ -427,6 +427,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if (isExternalCrewTool(tool.Name) || isExternalCodeReviewTool(tool.Name)) && !productEnabled(crewProfileID) {
 		return false
 	}
+	if tool.Name == "manage_my_vaults" {
+		return personalLaptopSettingsClaims(c) && personVaultActive(c.UserID)
+	}
 	if tool.Name == "manage_laptop_access" || isExternalLaptopFileTool(tool.Name) {
 		return personalLaptopSettingsClaims(c) && (externalWorkspaceAllowed(c) || externalFileAuthoringAllowed(c, nil))
 	}

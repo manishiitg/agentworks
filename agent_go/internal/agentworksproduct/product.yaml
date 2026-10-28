@@ -448,6 +448,7 @@ chat:
       - browser_connections
       - chat_preferences
       - manage_laptop_access
+      - manage_my_vaults
       - execute_local_shell_command
       - copy_local_file_to_project
       - list_local_files

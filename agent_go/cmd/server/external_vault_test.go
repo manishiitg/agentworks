@@ -125,7 +125,9 @@ func TestExternalVaultGroupsReuseIdentityBindingAndRejectPaths(t *testing.T) {
 	if w.Code != 400 || len(paths) != 2 {
 		t.Fatal("missing allowed should not change grants")
 	}
-	w = call("vault", map[string]any{"action": "shared_secrets", "value": "secret"})
+	// "value" belongs to vault action=mine_set_secret, so the merged tool drops it from other actions; a field no
+	// action takes is still refused before anything reaches Vault.
+	w = call("vault", map[string]any{"action": "shared_secrets", "secret_value": "secret"})
 	if w.Code != 400 || len(paths) != 2 {
 		t.Fatal("secret values accepted")
 	}
