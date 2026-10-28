@@ -49,7 +49,7 @@ func personalVaults(ctx context.Context, person string) (personalVaultList, erro
 	return list, nil
 }
 
-// ensurePersonalVault returns the vault that holds the person's own accounts, creating it the first time.
+// ensurePersonalVault returns the person's one personal vault; the Vault service creates it the first time.
 func ensurePersonalVault(ctx context.Context, person string) (string, error) {
 	list, err := personalVaults(ctx, person)
 	if err != nil {
@@ -60,14 +60,13 @@ func ensurePersonalVault(ctx context.Context, person string) (string, error) {
 			return v.Group.ID, nil
 		}
 	}
-	payload, _ := json.Marshal(map[string]string{"Name": personalVaultName, "Description": "Your own accounts, used only by you and the projects you build."})
-	data, err := vaultPersonRequest(ctx, person, http.MethodPost, "/api/vaults", payload)
+	data, err := vaultPersonRequest(ctx, person, http.MethodPost, "/api/vaults", []byte("{}"))
 	if err != nil {
 		return "", err
 	}
 	var made struct{ ID string }
 	if json.Unmarshal(data, &made) != nil || made.ID == "" {
-		return "", errors.New("Your vault was created but returned no ID.")
+		return "", errors.New("Your Vault returned no ID.")
 	}
 	return made.ID, nil
 }

@@ -244,12 +244,10 @@ func TestRunOnlyAccountCannotManageVaults(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"coder","role":"viewer","products":["work"]}]}`)
 	api := &StreamingAPI{}
-	for _, handler := range []http.HandlerFunc{api.handleMyVaultsOp, api.handleMyVaultSecret} {
-		w := httptest.NewRecorder()
-		handler(w, adminRequest("POST", "/api/my-vaults/op", `{"operation":"list"}`, &UserClaims{UserID: "coder"}, nil))
-		if w.Code != 403 {
-			t.Fatalf("Run-only direct Vault request: %d %s", w.Code, w.Body)
-		}
+	w := httptest.NewRecorder()
+	api.handleMyVaultsOp(w, adminRequest("POST", "/api/my-vaults/op", `{"operation":"laptops"}`, &UserClaims{UserID: "coder"}, nil))
+	if w.Code != 403 {
+		t.Fatalf("Run-only direct Vault request: %d %s", w.Code, w.Body)
 	}
 }
 

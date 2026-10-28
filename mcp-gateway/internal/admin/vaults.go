@@ -15,10 +15,10 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
-// Person-owned vaults (PLAT-507). These routes are service-only: the host calls them with the shared service
+// Vault routes (PLAT-507, PLAT-856-400). These routes are service-only: the host calls them with the shared service
 // credential and the person it already authenticated (X-CapLayer-Actor, with X-Vault-Platform-User: 1), exactly as the
 // runtime routes do. The administrator console cannot reach them. Every change is checked against the vault's owners
-// inside the store, so a caller can only act on a vault they own; members can only read.
+// inside the store, so a caller can only act on their own personal vault or a project vault they own.
 func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 	actorOf := func(r *http.Request) (string, error) {
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") || r.Header.Get("X-Vault-Platform-User") != "1" {
@@ -83,83 +83,37 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 	route("/api/vaults", func(w http.ResponseWriter, r *http.Request, actor string) {
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, 200, map[string]any{"vaults": a.Store.VaultsFor(a.WorkspaceID, actor), "max_owned": store.MaxVaultsPerOwner})
+			writeJSON(w, 200, map[string]any{"vaults": a.Store.VaultsFor(a.WorkspaceID, actor)})
 		case http.MethodPost:
-			var in struct{ Name, Description string }
-			if !decode(w, r, &in) {
-				return
-			}
+			// The person's one personal vault, created the first time; there are no other vaults to create.
 			var b [6]byte
 			if _, err := rand.Read(b[:]); err != nil {
 				writeErr(w, 500, err)
 				return
 			}
-			id := "v-" + hex.EncodeToString(b[:])
-			if err := a.Store.CreateVault(a.WorkspaceID, actor, id, in.Name, in.Description); err != nil {
+			id, err := a.Store.EnsurePersonalVault(a.WorkspaceID, actor, "v-"+hex.EncodeToString(b[:]))
+			if err != nil {
 				writeErr(w, 400, err)
 				return
 			}
-			writeJSON(w, 201, map[string]string{"id": id})
+			writeJSON(w, 200, map[string]string{"id": id})
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
 	route("/api/vaults/{id}", func(w http.ResponseWriter, r *http.Request, actor string) {
-		id := r.PathValue("id")
-		switch r.Method {
-		case http.MethodGet:
-			for _, v := range a.Store.VaultsFor(a.WorkspaceID, actor) {
-				if v.Group.ID == id {
-					writeJSON(w, 200, v)
-					return
-				}
-			}
-			writeErr(w, 404, errors.New("unknown vault"))
-		case http.MethodDelete:
-			if err := a.Store.DeleteVault(actor, id); err != nil {
-				writeErr(w, 400, err)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
-		default:
+		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
 		}
+		for _, v := range a.Store.VaultsFor(a.WorkspaceID, actor) {
+			if v.Group.ID == r.PathValue("id") {
+				writeJSON(w, 200, v)
+				return
+			}
+		}
+		writeErr(w, 404, errors.New("unknown vault"))
 	})
-	setPerson := func(owner bool) func(w http.ResponseWriter, r *http.Request, actor string) {
-		return func(w http.ResponseWriter, r *http.Request, actor string) {
-			var in struct {
-				UserID string `json:"user_id"`
-			}
-			target := r.PathValue("uid")
-			switch r.Method {
-			case http.MethodPost:
-				if !decode(w, r, &in) {
-					return
-				}
-				target = in.UserID
-			case http.MethodDelete:
-			default:
-				w.WriteHeader(http.StatusMethodNotAllowed)
-				return
-			}
-			add := r.Method == http.MethodPost
-			var err error
-			if owner {
-				err = a.Store.VaultSetOwner(actor, r.PathValue("id"), target, add)
-			} else {
-				err = a.Store.VaultSetMember(actor, r.PathValue("id"), target, add)
-			}
-			if err != nil {
-				writeErr(w, 400, err)
-				return
-			}
-			writeJSON(w, 200, map[string]string{"status": "ok"})
-		}
-	}
-	route("/api/vaults/{id}/members", setPerson(false))
-	route("/api/vaults/{id}/members/{uid}", setPerson(false))
-	route("/api/vaults/{id}/owners", setPerson(true))
-	route("/api/vaults/{id}/owners/{uid}", setPerson(true))
 
 	// A vault connection is created from the catalog only (a server that needs a sign-in cannot be created from a bare
 	// URL), through the same checks as a platform one, and is the vault's from the moment it exists.

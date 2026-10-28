@@ -1343,9 +1343,7 @@ export const agentApi = {
   },
 
   /** Types a secret's value into a vault the person owns; the value goes nowhere else. */
-  setMyVaultSecret: async (vaultId: string, name: string, value: string, replace: boolean): Promise<void> => {
-    await api.post(`/api/my-vaults/${encodeURIComponent(vaultId)}/secrets`, { name, value, replace })
-  },
+
 
   /** Where a new project is created: the shared root when the server has that switch on (it registers the owner), else shared=false. */
   reserveProject: async (profileId: string, title: string, mode?: string): Promise<{ shared: boolean; id?: string; workspace_path?: string }> => {

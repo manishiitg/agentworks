@@ -3,17 +3,15 @@ package store
 import (
 	"errors"
 	"sort"
-	"strings"
-	"unicode/utf8"
 )
 
-// Person-owned vaults (PLAT-507). A vault is a group with owners: a bundle of connections that its owners manage and its
-// members use. Only an owner adds, removes or updates what is in it and decides who may use it; a member cannot re-share.
-// The platform Vault stays an ordinary administrator-managed set of groups.
+// Vaults (PLAT-856-400). A vault is a group with owners. Each person has exactly one personal vault, named
+// PersonalVaultName, holding their own connections and secrets; nobody else is a member and nobody creates more.
+// Sharing with colleagues goes through ordinary administrator-managed groups. A project vault (ProjectRoot set) keeps
+// a project's secrets and follows the project's owner.
 const (
-	GroupKindVault = "vault"
-	// MaxVaultsPerOwner is how many vaults one person may own (owner decision, 2026-10-05).
-	MaxVaultsPerOwner = 5
+	GroupKindVault    = "vault"
+	PersonalVaultName = "My accounts"
 )
 
 func (g Group) IsVault() bool { return g.Kind == GroupKindVault }
@@ -47,38 +45,24 @@ type VaultSummary struct {
 	SecretNames []string          `json:"secret_names"`
 }
 
-// CreateVault makes a vault owned by ownerID, who is also its first member. A person owns at most MaxVaultsPerOwner.
-func (s *MemoryStore) CreateVault(workspace, ownerID, id, name, description string) error {
-	name, description = strings.TrimSpace(name), strings.TrimSpace(description)
-	if name == "" || utf8.RuneCountInString(name) > 100 {
-		return errors.New("a vault needs a name of 1 to 100 characters")
-	}
-	if utf8.RuneCountInString(description) > MaxGroupDescriptionLength {
-		return errors.New("vault description must be at most 1000 characters")
-	}
+// EnsurePersonalVault returns ownerID's personal vault, creating it under id the first time.
+func (s *MemoryStore) EnsurePersonalVault(workspace, ownerID, id string) (string, error) {
 	s.mu.Lock()
 	defer s.persistUnlock()
 	if u, ok := s.users[ownerID]; !ok || u.WorkspaceID != workspace {
-		return errors.New("unknown user")
+		return "", errors.New("unknown user")
 	}
-	if _, exists := s.groups[id]; exists {
-		return errors.New("vault exists")
-	}
-	owned := 0
 	for _, g := range s.groups {
-		if g.WorkspaceID == workspace && g.IsVault() && g.ProjectRoot == "" && g.HasOwner(ownerID) {
-			owned++
+		if g.WorkspaceID == workspace && g.IsVault() && g.ProjectRoot == "" && g.Name == PersonalVaultName && g.HasOwner(ownerID) {
+			return g.ID, nil
 		}
 	}
-	if owned >= MaxVaultsPerOwner {
-		return errors.New("you already own the maximum number of vaults (5)")
+	if _, exists := s.groups[id]; exists {
+		return "", errors.New("vault exists")
 	}
-	s.groups[id] = Group{ID: id, WorkspaceID: workspace, Name: name, Description: description, Kind: GroupKindVault, Owners: []string{ownerID}}
-	if s.members[id] == nil {
-		s.members[id] = map[string]bool{}
-	}
-	s.members[id][ownerID] = true
-	return nil
+	s.groups[id] = Group{ID: id, WorkspaceID: workspace, Name: PersonalVaultName, Description: "Your own accounts, used only by you and the projects you build.", Kind: GroupKindVault, Owners: []string{ownerID}}
+	s.members[id] = map[string]bool{ownerID: true}
+	return id, nil
 }
 
 // VaultsFor lists the vaults userID owns or belongs to.
@@ -143,87 +127,6 @@ func (s *MemoryStore) VaultOwnedBy(actor, vaultID string) bool {
 	return err == nil
 }
 
-// VaultSetMember adds or removes a member. Only an owner may; an owner stays a member while they own the vault.
-func (s *MemoryStore) VaultSetMember(actor, vaultID, userID string, add bool) error {
-	s.mu.Lock()
-	defer s.persistUnlock()
-	g, err := s.ownedVaultLocked(actor, vaultID)
-	if err != nil {
-		return err
-	}
-	if g.ProjectRoot != "" {
-		return errors.New("project Vault access follows the project; use its sharing settings")
-	}
-	if u, ok := s.users[userID]; !ok || u.WorkspaceID != g.WorkspaceID {
-		return errors.New("unknown user")
-	}
-	if add {
-		if s.members[vaultID] == nil {
-			s.members[vaultID] = map[string]bool{}
-		}
-		s.members[vaultID][userID] = true
-		return nil
-	}
-	if g.HasOwner(userID) {
-		return errors.New("remove them as an owner first")
-	}
-	delete(s.members[vaultID], userID)
-	return nil
-}
-
-// VaultSetOwner adds or removes an owner. Only an owner may; a vault always keeps at least one owner. A new owner is
-// also made a member. A person may not be made an owner of more than MaxVaultsPerOwner vaults.
-func (s *MemoryStore) VaultSetOwner(actor, vaultID, userID string, add bool) error {
-	s.mu.Lock()
-	defer s.persistUnlock()
-	g, err := s.ownedVaultLocked(actor, vaultID)
-	if err != nil {
-		return err
-	}
-	if g.ProjectRoot != "" {
-		return errors.New("project Vault access follows the project; use its sharing settings")
-	}
-	if u, ok := s.users[userID]; !ok || u.WorkspaceID != g.WorkspaceID {
-		return errors.New("unknown user")
-	}
-	if add {
-		if g.HasOwner(userID) {
-			return nil
-		}
-		owned := 0
-		for _, other := range s.groups {
-			if other.WorkspaceID == g.WorkspaceID && other.IsVault() && other.HasOwner(userID) {
-				owned++
-			}
-		}
-		if owned >= MaxVaultsPerOwner {
-			return errors.New("that person already owns the maximum number of vaults (5)")
-		}
-		g.Owners = append(append([]string{}, g.Owners...), userID)
-		s.groups[vaultID] = g
-		if s.members[vaultID] == nil {
-			s.members[vaultID] = map[string]bool{}
-		}
-		s.members[vaultID][userID] = true
-		return nil
-	}
-	if !g.HasOwner(userID) {
-		return nil
-	}
-	if len(g.Owners) <= 1 {
-		return errors.New("a vault must keep at least one owner")
-	}
-	remaining := make([]string, 0, len(g.Owners)-1)
-	for _, owner := range g.Owners {
-		if owner != userID {
-			remaining = append(remaining, owner)
-		}
-	}
-	g.Owners = remaining
-	s.groups[vaultID] = g
-	return nil
-}
-
 // VaultAttachConnector lets the vault's members use all tools of a connection that was created inside the vault (it
 // carries the vault's ID from the start, so it was never granted to everyone). A connection that is not already the
 // vault's is refused: an owner cannot take over an existing connection.
@@ -257,35 +160,6 @@ func (s *MemoryStore) VaultConnectorOwnedBy(actor, vaultID, connectorID string) 
 	}
 	c, ok := s.connectors[connectorID]
 	return ok && c.VaultID == vaultID
-}
-
-// DeleteVault removes an empty vault the actor owns: its connections must be removed first, so nothing keeps working
-// without an owner.
-func (s *MemoryStore) DeleteVault(actor, vaultID string) error {
-	s.mu.Lock()
-	defer s.persistUnlock()
-	if _, err := s.ownedVaultLocked(actor, vaultID); err != nil {
-		return err
-	}
-	if g, ok := s.groups[vaultID]; ok && g.ProjectRoot != "" {
-		return errors.New("project Vault access follows the project; use its sharing settings")
-	}
-
-	for _, c := range s.connectors {
-		if c.VaultID == vaultID {
-			return errors.New("remove this vault's connections first")
-		}
-	}
-	for _, secret := range s.secretResources {
-		if secret.VaultID == vaultID {
-			return errors.New("remove this vault's secrets first")
-		}
-	}
-	delete(s.groups, vaultID)
-	delete(s.members, vaultID)
-	delete(s.groupGrants, vaultID)
-	delete(s.groupServers, vaultID)
-	return nil
 }
 
 // VaultAddSecret records a secret's name as belonging to a vault the actor owns and lets the vault's members use it, and

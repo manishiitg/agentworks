@@ -14,7 +14,6 @@ refusal or connect another person's account without its existing Vault grant.
 2. Use `mcp action=install` with a catalog provider, or name and verified URL.
    A label creates a separate named account. Reconnect using the exact saved
    `vault_<connection ID>`, omitting label/catalog so it does not create a duplicate.
-   An optional `vault_id` selects a vault the person already owns.
 3. For a user-supplied API key, pass `api_key`, with `api_key_header` and
    `api_key_format` when required. For OAuth, return the real sign-in URL. The
    person signs in and approves at the provider; never ask for their password.

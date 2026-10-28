@@ -621,15 +621,6 @@
   },
   {
     "family": "vault",
-    "name": "mine_list",
-    "member": "manage_my_vaults__list",
-    "description": "Use the existing vault mine list operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "list",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
     "name": "mine_project",
     "member": "manage_my_vaults__project",
     "description": "Use the existing vault mine project operation with its current access.",
@@ -662,60 +653,6 @@
     "description": "Use the existing vault mine apps operation with its current access.",
     "source": "manage_my_vaults",
     "source_action": "apps",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
-    "name": "mine_create",
-    "member": "manage_my_vaults__create",
-    "description": "Use the existing vault mine create operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "create",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
-    "name": "mine_inspect",
-    "member": "manage_my_vaults__inspect",
-    "description": "Use the existing vault mine inspect operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "inspect",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
-    "name": "mine_add_member",
-    "member": "manage_my_vaults__add_member",
-    "description": "Use the existing vault mine add member operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "add_member",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
-    "name": "mine_remove_member",
-    "member": "manage_my_vaults__remove_member",
-    "description": "Use the existing vault mine remove member operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "remove_member",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
-    "name": "mine_add_owner",
-    "member": "manage_my_vaults__add_owner",
-    "description": "Use the existing vault mine add owner operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "add_owner",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
-    "name": "mine_remove_owner",
-    "member": "manage_my_vaults__remove_owner",
-    "description": "Use the existing vault mine remove owner operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "remove_owner",
     "source_key": "operation"
   },
   {
@@ -779,15 +716,6 @@
     "description": "Use the existing vault mine remove connection operation with its current access.",
     "source": "manage_my_vaults",
     "source_action": "remove_connection",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
-    "name": "mine_delete",
-    "member": "manage_my_vaults__delete",
-    "description": "Use the existing vault mine delete operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "delete",
     "source_key": "operation"
   },
   {

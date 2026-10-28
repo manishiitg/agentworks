@@ -22,7 +22,7 @@ Secrets are credentials (API keys, tokens, passwords). Keep project-specific cre
 
 ### Adding a secret value
 
-A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`set_workflow_secret`, the settings tool's `secrets.set` for a workflow or Crew owner<!-- product:relays --> or Flow owner<!-- /product --><!-- product:mcp-gateway -->, `manage_vault_secret_access` `set_value` for Vault, or `manage_my_vaults` `set_secret` for a vault you own<!-- /product -->), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
+A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`set_workflow_secret`, the settings tool's `secrets.set` for a workflow or Crew owner<!-- product:relays --> or Flow owner<!-- /product --><!-- product:mcp-gateway -->, `manage_vault_secret_access` `set_value` for Vault, or `manage_my_vaults` `set_secret` for your own Vault<!-- /product -->), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
 
 ### Safety rules
 

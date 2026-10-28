@@ -1,49 +1,25 @@
 package store
 
-import (
-	"fmt"
-	"strings"
-	"testing"
-)
+import "testing"
 
-// Pins the owner decisions for person-owned vaults (PLAT-507): at most 5 owned per person, only an owner changes
-// members, owners or connections, a vault keeps at least one owner, and deleting needs it empty.
-func TestVaultOwnershipRules(t *testing.T) {
+// One personal vault per person (PLAT-856-400): asking again returns the same one, each person gets their own, and
+// only its owner changes what is in it.
+func TestPersonalVaultRules(t *testing.T) {
 	s := NewMemoryStore()
 	s.AddWorkspace(Workspace{ID: "w1", Name: "w1"})
 	s.AddUser(User{ID: "alice", WorkspaceID: "w1", Email: "alice@example.com"})
 	s.AddUser(User{ID: "bob", WorkspaceID: "w1", Email: "bob@example.com"})
 	s.AddUser(User{ID: "carol", WorkspaceID: "w1", Email: "carol@example.com"})
 
-	for i := 0; i < MaxVaultsPerOwner; i++ {
-		if err := s.CreateVault("w1", "alice", fmt.Sprintf("v-%d", i), "Vault", ""); err != nil {
-			t.Fatalf("vault %d: %v", i, err)
-		}
+	mine, err := s.EnsurePersonalVault("w1", "alice", "v-1")
+	if err != nil || mine != "v-1" {
+		t.Fatalf("first personal vault: %q %v", mine, err)
 	}
-	if err := s.CreateVault("w1", "alice", "v-extra", "Vault", ""); err == nil || !strings.Contains(err.Error(), "maximum") {
-		t.Fatalf("a sixth owned vault must be refused, got %v", err)
+	if again, err := s.EnsurePersonalVault("w1", "alice", "v-other"); err != nil || again != "v-1" {
+		t.Fatalf("a person has one personal vault, got %q %v", again, err)
 	}
-
-	if err := s.VaultSetMember("bob", "v-0", "carol", true); err == nil {
-		t.Fatal("a non-owner must not add members")
-	}
-	if err := s.VaultSetMember("alice", "v-0", "bob", true); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.VaultSetMember("bob", "v-0", "carol", true); err == nil {
-		t.Fatal("a member must not re-share")
-	}
-	if err := s.VaultSetOwner("alice", "v-0", "alice", false); err == nil {
-		t.Fatal("the last owner must not be removable")
-	}
-	if err := s.VaultSetOwner("alice", "v-0", "bob", true); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.VaultSetOwner("bob", "v-0", "alice", false); err != nil {
-		t.Fatalf("a second owner can remove the first: %v", err)
-	}
-	if !s.VaultOwnedBy("bob", "v-0") || s.VaultOwnedBy("alice", "v-0") {
-		t.Fatal("ownership did not move")
+	if bobs, err := s.EnsurePersonalVault("w1", "bob", "v-2"); err != nil || bobs != "v-2" || s.VaultOwnedBy("bob", "v-1") {
+		t.Fatalf("bob got someone else's vault: %q %v", bobs, err)
 	}
 
 	s.AddConnector(Connector{ID: "c1", WorkspaceID: "w1", Provider: "notion", Status: StatusActive, VaultID: "v-1"})
@@ -53,21 +29,14 @@ func TestVaultOwnershipRules(t *testing.T) {
 	if err := s.VaultAttachConnector("alice", "v-2", "c1"); err == nil {
 		t.Fatal("a connection that belongs to another vault must not be taken over")
 	}
-	// Only an owner of the connection's vault may change or remove it (the Vault connector routes check this): a member
-	// of that vault, or the same owner through another vault, cannot. Replaces the retired personal-connection rule that
-	// one person's disconnect never removes another person's login.
-	if err := s.VaultSetMember("alice", "v-1", "bob", true); err != nil {
-		t.Fatal(err)
-	}
+	// Only the owner of the connection's vault may change or remove it (the Vault connector routes check this): another
+	// person, or the same person through another vault, cannot.
 	if !s.VaultConnectorOwnedBy("alice", "v-1", "c1") || s.VaultConnectorOwnedBy("bob", "v-1", "c1") || s.VaultConnectorOwnedBy("alice", "v-2", "c1") {
 		t.Fatal("someone other than the vault's owner could change or remove its connection")
 	}
 	s.AddConnector(Connector{ID: "c2", WorkspaceID: "w1", Provider: "linear", Status: StatusActive})
 	if err := s.VaultAttachConnector("alice", "v-1", "c2"); err == nil {
 		t.Fatal("a platform connection must not be taken over")
-	}
-	if err := s.DeleteVault("alice", "v-1"); err == nil {
-		t.Fatal("a vault with connections must not be deleted")
 	}
 	// A vault's connection and secret are never granted to the whole company, not even by the startup backfill.
 	if err := s.EnsurePlatformGroup("w1"); err != nil {
@@ -117,12 +86,6 @@ func TestProjectVaultPreservesProjectIsolationAndOwnership(t *testing.T) {
 	}
 	if s.SetSecretGrants("w", "VLT_12345678__KEY", "owner", []string{"v-12345678"}, true) == nil {
 		t.Fatal("project scope could be granted outside native project access")
-	}
-	if s.VaultSetMember("owner", "v-12345678", "other", true) == nil {
-		t.Fatal("project sharing bypassed")
-	}
-	if s.VaultSetOwner("owner", "v-12345678", "other", true) == nil {
-		t.Fatal("project ownership bypassed")
 	}
 	if err := s.EnsureProjectVault("w", "other", "v-12345678", "Workflow/example", "Example"); err != nil {
 		t.Fatal(err)
