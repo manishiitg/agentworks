@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"mime"
 	"net/http"
@@ -25,11 +26,13 @@ import (
 
 const crewSnapshotTimeout = 15 * time.Second
 
-// The before-capture of a warm Crew reuses cached file hashes and must not delay a
-// send; a cold one (after a restart or the first capture) reads every file and
-// needs the full budget (PLAT-746-163). Waiting for the Crew gate is separate.
-const crewSnapshotBeforeWarm = 2 * time.Second
-const crewSnapshotLockWait = 10 * time.Second
+// The before-capture runs on the message send path: gate wait plus capture
+// never exceed this. A cold cache (after a restart) or a capture that runs out
+// of time leaves that reply without a snapshot and warms the per-Crew file-hash
+// cache in the background instead (PLAT-746-163: a 15 s cold capture on the
+// send path made every first message after a restart fail to deliver).
+const crewSnapshotBeforeBudget = 2 * time.Second
+const crewSnapshotWarmLimit = 2 * time.Minute
 
 // PLAT-746-158: file review belongs to Studio. Read the server-owned project
 // metadata before touching the snapshot store; browser mode is not the switch.
@@ -95,11 +98,31 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		return
 	}
 	started := time.Now()
-	record, err := snapshot.store.BeginWithin(crewSnapshotLockWait, crewSnapshotBeforeWarm, crewSnapshotTimeout, executionID)
+	record, err := snapshot.store.BeginWithin(crewSnapshotBeforeBudget, executionID)
+	if errors.Is(err, filesnapshots.ErrWarming) {
+		log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s skipped=warming reason=cache_warmup_running", sessionID, executionID)
+		api.crewTurnSnapshots.Delete(executionID)
+		return
+	}
 	log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v capture=%+v", sessionID, executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err, record.BeforeCapture)
 	if err != nil && record.ID == "" {
 		api.crewTurnSnapshots.Delete(executionID)
 	}
+	if reason := record.BeforeCapture.Deferred; reason != "" {
+		log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s deferred=background reason=%s", sessionID, executionID, reason)
+		go warmCrewSnapshotCache(snapshot.store, sessionID, executionID)
+	}
+}
+
+// warmCrewSnapshotCache fills a Crew's file-hash cache off the send path. Its
+// own context, not the request's; one per Crew (the store refuses a second).
+func warmCrewSnapshotCache(store filesnapshots.Store, sessionID, executionID string) {
+	started := time.Now()
+	stats, err := store.Warm(crewSnapshotWarmLimit)
+	if errors.Is(err, filesnapshots.ErrWarming) {
+		return
+	}
+	log.Printf("[FILE_SNAPSHOT] phase=warm session=%s execution=%s elapsed_ms=%d success=%t error=%v capture=%+v", sessionID, executionID, time.Since(started).Milliseconds(), err == nil, err, stats)
 }
 func (api *StreamingAPI) startCrewTurnSnapshot(executionID, sessionID string, req QueryRequest) {
 	api.prepareCrewTurnSnapshot(executionID, sessionID, req)

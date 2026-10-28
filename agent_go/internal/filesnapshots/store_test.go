@@ -306,22 +306,34 @@ func TestSnapshotLockWaitHonorsSendDeadline(t *testing.T) {
 	}
 }
 
-// PLAT-746-163: after a restart no file hashes are cached, so the before-capture
-// gets the cold budget (not the warm one); a reader never waits for the gate.
+// PLAT-746-163: a cold capture on the send path held every first message after
+// a restart for 15 s and the message was then marked not delivered. A cold cache
+// is never read on the send path: the reply is unavailable at once, a background
+// Warm fills the cache, and the next send captures within budget reusing it.
+// While a warm-up runs, a send skips instead of waiting. Readers take no gate.
 func TestColdBeforeCaptureBudgetAndLockFreeReads(t *testing.T) {
 	s := Store{Root: t.TempDir(), Private: t.TempDir()}
 	if err := os.WriteFile(filepath.Join(s.Root, "a.txt"), []byte("a"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if captureBudget(true, time.Nanosecond, time.Minute) != time.Minute || captureBudget(false, time.Nanosecond, time.Minute) != time.Nanosecond {
-		t.Fatal("budget must follow cache state")
+	started := time.Now()
+	cold, err := s.BeginWithin(time.Minute, "cold")
+	if err != nil || cold.Status != "unavailable" || cold.BeforeCapture.Deferred != "cold" || cold.BeforeCapture.Captured != 0 || time.Since(started) > 5*time.Second {
+		t.Fatalf("cold send-path capture was attempted: %v %+v", err, cold)
 	}
-	// Cold: the warm budget (already expired) is not applied.
-	first, err := s.BeginWithin(time.Second, time.Nanosecond, time.Minute, "cold")
-	if err != nil || !first.BeforeCapture.Cold {
-		t.Fatalf("cold capture used the warm budget: %v %+v", err, first)
+	s.state().warming.Store(true)
+	if _, err := s.BeginWithin(time.Minute, "during-warmup"); !errors.Is(err, ErrWarming) {
+		t.Fatalf("send waited for a running warm-up: %v", err)
 	}
-	done, err := s.Finish(t.Context(), "cold")
+	s.state().warming.Store(false)
+	if stats, err := s.Warm(time.Minute); err != nil || stats.Captured != 1 {
+		t.Fatalf("warm-up failed: %v %+v", err, stats)
+	}
+	warm, err := s.BeginWithin(time.Minute, "warm")
+	if err != nil || warm.Status != "capturing" || warm.BeforeCapture.Cold || warm.BeforeCapture.Reused != 1 {
+		t.Fatalf("send after warm-up did not reuse the cache: %v %+v", err, warm)
+	}
+	done, err := s.Finish(t.Context(), "warm")
 	if err != nil {
 		t.Fatal(err)
 	}

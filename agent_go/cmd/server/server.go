@@ -11256,8 +11256,11 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 			// This late path starts its turn under another ID; the snapshot prepared for queryID has no turn.
 			api.discardUnstartedCrewSnapshot(queryID)
 		}
-		if !handled && len(pending) > 0 {
-			handled = api.startNextTurnFromLiveInput(recorded, detached, sessionID, strings.Join(append(pending, message), "\n\n"), nil)
+		if !handled {
+			// No live target took the message (e.g. no_active_session after a restart). The synchronous path falls
+			// through to a new turn here; this late path must do the same instead of marking the message failed.
+			log.Printf("[QUERY->LIVE] Background delivery for session %s found no live target; starting a new turn (recovered=%d)", sessionID, len(pending))
+			handled = api.startTurnAfterLateNoTarget(recorded, detached, sessionID, strings.Join(append(pending, message), "\n\n"))
 		}
 		status := recorded.status
 		if status == 0 {
@@ -11283,6 +11286,41 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 		submission.handle.resolveLate(status, body)
 		log.Printf("[QUERY->LIVE] Background delivery for session %s completed (status=%d)", sessionID, status)
 	}()
+	return true
+}
+
+// startTurnAfterLateNoTarget starts the normal new turn for a /query whose live-input delivery, already answered
+// 202, found no live target. It replays the request handleQuery validated (retainedQueueInputKey) with live input
+// off, so it cannot come back here; the chat submission in the context is reused when the message is unchanged.
+func (api *StreamingAPI) startTurnAfterLateNoTarget(w http.ResponseWriter, r *http.Request, sessionID, message string) bool {
+	input, known := r.Context().Value(retainedQueueInputKey{}).(retainedQueueInput)
+	if !known {
+		return api.startNextTurnFromLiveInput(w, r, sessionID, message, nil)
+	}
+	req := input.Request
+	req.Query, req.Message = message, message
+	req.DisableLiveInputDelivery = true
+	req.IsAutoNotification = false
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return false
+	}
+	next, err := http.NewRequestWithContext(context.WithoutCancel(r.Context()), http.MethodPost, "/api/query", bytes.NewReader(payload))
+	if err != nil {
+		return false
+	}
+	next.Header = r.Header.Clone()
+	next.Header.Set("Content-Type", "application/json")
+	next.Header.Set("X-Session-ID", sessionID)
+	if submission, ok := r.Context().Value(chatSubmissionContextKey{}).(chatSubmissionContext); ok && submission.Message != message {
+		// Recovered queue text was joined in: this is a different message from the original submission.
+		next.Header.Del("Idempotency-Key")
+	}
+	if api.internalQueryHandler != nil {
+		api.internalQueryHandler(w, next)
+	} else {
+		api.handleQuery(w, next)
+	}
 	return true
 }
 

@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
@@ -57,8 +58,11 @@ type CaptureStats struct {
 	ImportedBytes int64 `json:"imported_bytes"`
 	SizeSkipped   int   `json:"size_skipped"`
 	Cold          bool  `json:"cold,omitempty"` // no file hashes were cached: every file was read
-	BudgetSkipped int   `json:"budget_skipped"`
-	ReadSkipped   int   `json:"read_skipped"`
+	// Deferred names why a send-path capture was left to a background cache
+	// warm-up: "cold" (not attempted) or "budget" (ran out of time).
+	Deferred      string `json:"deferred,omitempty"`
+	BudgetSkipped int    `json:"budget_skipped"`
+	ReadSkipped   int    `json:"read_skipped"`
 	// Where the candidate list came from: Git checkouts list their own files
 	// (RepoFiles); only paths outside any checkout, and checkouts that fell back,
 	// are walked (WalkedFiles, counted before ignore filtering).
@@ -101,9 +105,14 @@ type cachedFile struct {
 	blob string
 }
 type storeState struct {
-	gate  chan struct{}
-	files map[string]cachedFile
+	gate    chan struct{}
+	files   map[string]cachedFile
+	warming atomic.Bool
 }
+
+// ErrWarming means a background cache warm-up holds this Crew's gate; a
+// send-path capture is skipped rather than waiting for it.
+var ErrWarming = errors.New("file snapshot cache warm-up in progress")
 
 var states sync.Map
 
@@ -584,21 +593,27 @@ func (s Store) save(r Record) error {
 	return os.Rename(tmp, p)
 }
 func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
-	return s.begin(ctx, ctx, execution, 0, 0)
+	return s.begin(ctx, execution, false)
 }
 
-// BeginWithin waits up to lockWait for the Crew gate, then captures within a
-// budget chosen by cache state: cold when no file hashes are cached (after a
-// restart or the first capture, every file is read), warm otherwise. The wait
-// does not use up the capture budget.
-func (s Store) BeginWithin(lockWait, warm, cold time.Duration, execution string) (Record, error) {
-	lockCtx, cancel := context.WithTimeout(context.Background(), lockWait)
+// BeginWithin is the send-path before-capture: waiting for the Crew gate and
+// capturing together never take longer than budget, so a message is never held
+// behind a capture. A cold cache (after a restart or the first capture) reads
+// every file, which a large Crew cannot do in that time, so it is not tried;
+// it and a warm capture that runs out of time are saved unavailable with
+// BeforeCapture.Deferred set, and the caller runs Warm in the background.
+// While Warm holds the gate this returns ErrWarming at once.
+func (s Store) BeginWithin(budget time.Duration, execution string) (Record, error) {
+	if s.state().warming.Load() {
+		return Record{}, ErrWarming
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
-	return s.begin(lockCtx, context.Background(), execution, warm, cold)
+	return s.begin(ctx, execution, true)
 }
 
-func (s Store) begin(lockCtx, ctx context.Context, execution string, warm, cold time.Duration) (Record, error) {
-	unlock, err := s.lock(lockCtx)
+func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Record, error) {
+	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Record{}, err
 	}
@@ -613,14 +628,17 @@ func (s Store) begin(lockCtx, ctx context.Context, execution string, warm, cold 
 	r := Record{ID: id, ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing"}
 	r.BeforeSkippedState = map[string]string{}
 	r.BeforeCapture.Cold = len(s.state().files) == 0
-	if budget := captureBudget(r.BeforeCapture.Cold, warm, cold); budget > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, budget)
-		defer cancel()
+	if sendPath && r.BeforeCapture.Cold {
+		r.Status = "unavailable"
+		r.BeforeCapture.Deferred = "cold"
+		return r, s.save(r)
 	}
 	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
+		if sendPath && ctx.Err() != nil {
+			r.BeforeCapture.Deferred = "budget"
+		}
 	}
 	saveErr := s.save(r)
 	if err != nil {
@@ -629,11 +647,40 @@ func (s Store) begin(lockCtx, ctx context.Context, execution string, warm, cold 
 	return r, saveErr
 }
 
-func captureBudget(isCold bool, warm, cold time.Duration) time.Duration {
-	if isCold {
-		return cold
+// Warm reads the Crew's files into the file-hash cache without a reply record,
+// so the next send-path capture reuses them and fits its budget. One runs at a
+// time per Crew (ErrWarming otherwise). Its import keeps a ref so a later
+// cleanup cannot remove blobs the cache points to. A warm-up stopped by limit
+// leaves the cache as it was (what it read is not kept).
+func (s Store) Warm(limit time.Duration) (CaptureStats, error) {
+	state := s.state()
+	if !state.warming.CompareAndSwap(false, true) {
+		return CaptureStats{}, ErrWarming
 	}
-	return warm
+	defer state.warming.Store(false)
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return CaptureStats{}, err
+	}
+	defer unlock()
+	if err := s.init(ctx); err != nil {
+		return CaptureStats{}, err
+	}
+	stats := CaptureStats{Cold: len(state.files) == 0}
+	ref := "refs/warm/" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	_, _, _, err = s.capture(ctx, ref, "", &stats, map[string]string{})
+	// Keep only the newest successful warm-up ref: the cache points at its blobs.
+	refs, listErr := s.command(context.Background(), "for-each-ref", "--format=%(refname)", "refs/warm/").Output()
+	if listErr == nil {
+		for _, name := range strings.Fields(string(refs)) {
+			if (err == nil && name != ref) || (err != nil && name == ref) {
+				_ = s.command(context.Background(), "update-ref", "-d", name).Run()
+			}
+		}
+	}
+	return stats, err
 }
 
 // Failed reports whether a retained reply's capture failed, so it saved no
