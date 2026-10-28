@@ -34,8 +34,17 @@ func TestStreamReconnectsWhenLoginRecoveryKeepsExistingAttachment(t *testing.T) 
 			return
 		}
 		var args map[string]any
-		if r.URL.Path != "/api/external/v1/agents/attachment" || json.NewDecoder(r.Body).Decode(&args) != nil || args["action"] != "validate" || args["attachment_id"] != "lease" {
+		if r.URL.Path != "/api/external/v1/agents/attachment" || json.NewDecoder(r.Body).Decode(&args) != nil || args["attachment_id"] != "lease" {
 			t.Errorf("unexpected recovery request: %s", r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if args["action"] == "metadata" || args["action"] == "label" {
+			fmt.Fprint(w, `{}`)
+			return
+		}
+		if args["action"] != "validate" {
+			t.Errorf("unexpected recovery action: %v", args["action"])
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}

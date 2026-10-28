@@ -787,6 +787,7 @@ type loginRecovery struct {
 	refusals    int
 }
 
+// recoverSessionLogin returns true only when a replacement session owns the stream worker.
 func (b *localBridge) recoverSessionLogin(ctx context.Context, s *localSession, recovery *loginRecovery) bool {
 	b.mu.Lock()
 	key := localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)
@@ -842,7 +843,17 @@ func (b *localBridge) recoverSessionLogin(ctx context.Context, s *localSession, 
 		}
 		return false
 	}
-	log.Printf("[BRIDGE-LOGIN] recovered agent=%s attachment=%s", out.Attachment.AgentName, out.Attachment.ID)
+	b.mu.Lock()
+	next := b.sessions[key]
+	replaced := next != nil && next != s
+	b.mu.Unlock()
+	if !replaced {
+		// The idempotent attach path can validate this same lease after the
+		// client refreshed its token. Its original worker must keep retrying.
+		log.Printf("[BRIDGE-LOGIN] validated agent=%s attachment=%s stream=retry_existing", out.Attachment.AgentName, out.Attachment.ID)
+		return false
+	}
+	log.Printf("[BRIDGE-LOGIN] recovered agent=%s attachment=%s stream=replaced", out.Attachment.AgentName, out.Attachment.ID)
 	return true
 }
 
