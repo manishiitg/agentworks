@@ -5,7 +5,7 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { SecretField } from '../ui/SecretField'
 import { ToggleRow } from '../ui/ToggleRow'
-import { SlackChecksView, SlackManifestSetup, SlackPermissionsChecklist } from '../workflow/bots/SlackAppSetupSteps'
+import { SlackChecksView, SlackManifestSetup, SlackPermissionsChecklist, SlackTokenHint } from '../workflow/bots/SlackAppSetupSteps'
 import { slackErrorText } from '../workflow/bots/SlackSlugsSection'
 import type { SlackTestResponse } from '../../services/api-types'
 import { slackBotName, slackBotsApi, type SlackBotState, type VaultSlackBot } from './ProductSlackPanel'
@@ -113,8 +113,8 @@ export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect
       <label className="block">Label in AgentWorks<Input aria-label="Bot label" value={name} onChange={event => setName(event.target.value)}/></label>
       {editing === 'new' && !working && !scopes.length && <p className="text-muted-foreground">Create or open a project you manage to add its bot.</p>}
       {editing === 'new' && <label className="flex flex-col gap-1.5">Managed by<select aria-label="Bot management scope" className="h-9 w-full rounded-md border border-border bg-background px-2" value={scope} onChange={event => setScope(event.target.value)}><option value="" disabled>Choose a Crew or Goal you own</option>{scopes.map(item => <option key={item.workspace_path} value={item.workspace_path}>{item.label}</option>)}</select></label>}
-      <SecretField label="Bot token" value={bot} onChange={setBot} placeholder={editing === 'new' ? 'xoxb-…' : 'Leave blank to keep the saved token'}/>
-      <SecretField label="App token" value={app} onChange={setApp} placeholder={editing === 'new' ? 'xapp-…' : 'Leave blank to keep the saved token'}/>
+      <SecretField label="Bot token" hint={<SlackTokenHint kind="bot"/>} value={bot} onChange={setBot} placeholder={editing === 'new' ? 'xoxb-…' : 'Leave blank to keep the saved token'}/>
+      <SecretField label="App token" hint={<SlackTokenHint kind="app"/>} value={app} onChange={setApp} placeholder={editing === 'new' ? 'xapp-…' : 'Leave blank to keep the saved token'}/>
       <p className="text-muted-foreground">Tokens are encrypted. Saved values are never shown here.</p>
       <ToggleRow label="Enabled" checked={enabled} onCheckedChange={setEnabled}/>
       <details><summary className="cursor-pointer">Slack app setup instructions</summary><div className="mt-2 space-y-3"><SlackManifestSetup defaultName={name || 'AgentWorks'} finalStep="Save the bot here, then choose Use here."/><SlackPermissionsChecklist/></div></details>
