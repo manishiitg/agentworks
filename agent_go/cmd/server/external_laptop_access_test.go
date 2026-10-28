@@ -180,8 +180,17 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("laptop connect timeout")
 			}
+			// The client reports connected before the server finishes the device handshake; the owner's list shows the
+			// computer once it has, and never shows it to someone else.
 			for _, person := range []string{"owner", "other"} {
-				vault, err := f.api.myVaultsOperation(t.Context(), person, map[string]any{"operation": "laptops"})
+				var vault string
+				var err error
+				for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+					vault, err = f.api.myVaultsOperation(t.Context(), person, map[string]any{"operation": "laptops"})
+					if err != nil || person != "owner" || strings.Contains(vault, `"device_id":"mcp-laptop"`) || time.Now().After(deadline) {
+						break
+					}
+				}
 				if err != nil || strings.Contains(vault, `"device_id":"mcp-laptop"`) != (person == "owner") {
 					t.Fatalf("personal Vault computers: %s %v", vault, err)
 				}
@@ -208,30 +217,30 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 				}
 				return body
 			}
-			if computers := call("manage_laptop_access", map[string]any{"action": "devices"}, 200, false); !strings.Contains(string(computers), "mcp-laptop") {
+			if computers := call("terminal", map[string]any{"action": "laptop_devices"}, 200, false); !strings.Contains(string(computers), "mcp-laptop") {
 				t.Fatalf("MCP My Vault computers: %s", computers)
 			}
-			call("manage_laptop_access", map[string]any{"action": "get"}, 400, false)
+			call("terminal", map[string]any{"action": "laptop_get"}, 400, false)
 			folders := []any{map[string]any{"id": "files", "path": folder, "access": "read"}}
-			call("manage_laptop_access", map[string]any{"action": "set", "device_id": "mcp-laptop", "folders": folders}, 200)
-			call("execute_local_shell_command", map[string]any{"folder": "files", "command": "printf laptop-mcp"}, 403)
-			call("copy_local_file_to_project", map[string]any{"folder": "files", "local_path": "sample.bin", "project_path": "uploads/sample.bin"}, 200)
+			call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders}, 200)
+			call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp"}, 403)
+			call("terminal", map[string]any{"action": "local_copy", "folder": "files", "local_path": "sample.bin", "project_path": "uploads/sample.bin"}, 200)
 			copied, err := os.ReadFile(filepath.Join(f.docs, root, "uploads/sample.bin"))
 			if err != nil || !bytes.Equal(copied, payload) {
 				t.Fatalf("binary copy: %v %v", copied, err)
 			}
 			folders[0].(map[string]any)["access"] = "write"
-			call("manage_laptop_access", map[string]any{"action": "set", "device_id": "mcp-laptop", "folders": folders}, 200)
+			call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders}, 200)
 			// Read & write covers files only: the agent can list and write, but commands need their own switch.
-			call("execute_local_shell_command", map[string]any{"folder": "files", "command": "printf laptop-mcp"}, 403)
-			call("write_local_file", map[string]any{"folder": "files", "path": "notes/hello.txt", "content": "hello from the crew"}, 200)
+			call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp"}, 403)
+			call("terminal", map[string]any{"action": "local_write", "folder": "files", "path": "notes/hello.txt", "content": "hello from the crew"}, 200)
 			if written, err := os.ReadFile(filepath.Join(folder, "notes/hello.txt")); err != nil || string(written) != "hello from the crew" {
 				t.Fatalf("written file: %q %v", written, err)
 			}
-			if listed := call("list_local_files", map[string]any{"folder": "files", "path": "notes"}, 200); !strings.Contains(string(listed), "hello.txt") {
+			if listed := call("terminal", map[string]any{"action": "local_files", "folder": "files", "path": "notes"}, 200); !strings.Contains(string(listed), "hello.txt") {
 				t.Fatalf("listing: %s", listed)
 			}
-			call("manage_laptop_access", map[string]any{"action": "set", "device_id": "mcp-laptop", "folders": folders, "commands": true}, 200)
+			call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders, "commands": true}, 200)
 			if !goal {
 				if _, err := defaultProjectOwners().AddCoOwner("work", "dashboard-team", "other"); err != nil {
 					t.Fatal(err)
@@ -262,13 +271,13 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 				t.Fatalf("removed co-owner laptop access: %d %s", denied.Code, denied.Body.String())
 			}
 			{
-				result := call("execute_local_shell_command", map[string]any{"folder": "files", "command": "printf laptop-mcp", "timeout": 10}, 200)
+				result := call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp", "timeout": 10}, 200)
 				if !strings.Contains(string(result), "laptop-mcp") {
 					t.Fatalf("missing local stdout: %s", result)
 				}
 			}
-			call("manage_laptop_access", map[string]any{"action": "remove"}, 200)
-			call("execute_local_shell_command", map[string]any{"folder": "files", "command": "printf should-not-run"}, 400)
+			call("terminal", map[string]any{"action": "laptop_remove"}, 200)
+			call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf should-not-run"}, 400)
 		})
 	}
 }
@@ -281,8 +290,12 @@ func newMCPLaptopFixture(t *testing.T) *externalToolsFixture {
 	f := newExternalToolsFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work","agentworks","mcp-gateway"]},{"id":"other","username":"other","can_create":true,"products":["work","agentworks","mcp-gateway"]}]}`)
 	const root = "Crew/dashboard-team"
-	f.write(t, root+"/product.json", `{"schema_version":1,"product":"work","id":"dashboard-team","title":"Laptop test","session_id":"fixture-main-session"}`)
-	f.write(t, root+"/workflow.json", `{"schema_version":1,"id":"dashboard-team","capabilities":{}}`)
+	// A registered Crew keeps its records in the private store (PLAT-856-383) and has a working folder.
+	if err := os.MkdirAll(filepath.Join(f.docs, root), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "_system/crew-data/dashboard-team/product.json", `{"schema_version":1,"product":"work","id":"dashboard-team","title":"Laptop test","session_id":"fixture-main-session"}`)
+	f.write(t, "_system/crew-data/dashboard-team/workflow.json", `{"schema_version":1,"id":"dashboard-team","capabilities":{}}`)
 	registry := withProjectOwnerRegistry(t)
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "dashboard-team", ProjectID: "dashboard-team", OwnerID: "owner", CanonicalRoot: root}); err != nil {
 		t.Fatal(err)
