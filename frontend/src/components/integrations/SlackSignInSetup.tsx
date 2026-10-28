@@ -11,7 +11,7 @@ type SignInApp = { key: string; configured: boolean; client_id?: string; scopes?
 type Setup = { apps: SignInApp[]; redirect_uri: string }
 
 /** The existing administrator API, shared with sign_in_apps in chat/MCP. */
-export function SlackSignInSetup({ onSaved }: { onSaved: () => Promise<void> }) {
+export function SlackSignInSetup({ onSaved, ready }: { onSaved: () => Promise<void>; ready?: boolean }) {
   const admin = useAuthStore(state => state.user?.is_admin === true)
   const [setup, setSetup] = useState<Setup | null>(null)
   const [clientID, setClientID] = useState('')
@@ -51,7 +51,7 @@ export function SlackSignInSetup({ onSaved }: { onSaved: () => Promise<void> }) 
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" onClick={() => void load()}>Retry</button></p>}
     {notice && <p role="status" className="text-xs">{notice}</p>}
     {!setup && !error && <p className="text-xs text-muted-foreground">Loading sign-in setup…</p>}
-    {setup && !app && <p className="text-xs text-muted-foreground">Slack sign-in is unavailable on this server. Ask AI to check the Slack integration.</p>}
+    {setup && !app && ready !== true && <p className="text-xs text-muted-foreground">There are no Slack app settings to edit here. Ask AI to check this server’s Slack sign-in setup.</p>}
     {app && setup && <details open={!app.configured} className="rounded-lg border border-border p-4">
       <summary className="cursor-pointer text-sm font-medium">{app.configured ? 'Slack sign-in app · Ready' : 'Set up Slack sign-in'}</summary>
       <form className="mt-4 space-y-4 text-sm" aria-label="Slack sign-in app" onSubmit={event => { event.preventDefault(); void save() }}>

@@ -64,6 +64,6 @@ export default function SlackAccountsPanel({ workspacePath, noun = 'Crew', embed
    {saved.sign_in_ready === false && <p className="text-xs text-muted-foreground">{admin ? 'Complete the sign-in setup below, then connect your account.' : 'Ask an administrator to set up Slack sign-in, then connect your account.'}</p>}
   </>}
   <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0"/>Only you can read or search your Slack. People using this {noun} can send messages as you through it.</p>
-  <SlackSignInSetup onSaved={refresh}/>
+  <SlackSignInSetup onSaved={refresh} ready={saved?.sign_in_ready}/>
  </section>
 }

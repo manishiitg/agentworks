@@ -51,5 +51,10 @@ it('copies the server callback without saving, then saves through the existing a
     expect(host.querySelector<HTMLInputElement>('input[type="password"]')!.value).toBe('')
     expect(saved).toHaveBeenCalledTimes(1)
     expect(host.textContent).toContain('Choose Connect my Slack')
+    // A catalog-supplied client needs no separate editable app record.
+    state.get.mockResolvedValue({ data: { redirect_uri: redirect, apps: [] } })
+    await act(async () => root.render(<SlackSignInSetup key="built-in" onSaved={saved} ready/>))
+    expect(host.querySelector('form')).toBeNull()
+    expect(host.textContent).not.toContain('Ask AI')
   } finally { await act(async () => root.unmount()); host.remove(); vi.clearAllMocks(); vi.unstubAllGlobals() }
 })
