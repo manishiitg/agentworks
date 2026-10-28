@@ -78,7 +78,7 @@ func manageMyVaultsParameters() map[string]interface{} {
 			"kind":           str("project_select: mcp, project_secret, shared_secret, google, slack or computer; all_vault_apps with selected true/false turns 'Use all my apps automatically' on or off."),
 			"item_id":        str("project_select: exact item ID from project inventory."),
 			"selected":       map[string]interface{}{"type": "boolean", "description": "project_select: whether this project uses the item."},
-			"workspace_path": str("project: the active Crew or Goal folder, from this chat; access is rechecked."),
+			"workspace_path": str("project / project_select: the Crew or Goal folder; defaults to this chat's project. Access is rechecked."),
 			"name":           str("promote_secret / set_secret / remove_secret: the secret's name. connect with url: the custom server's name."),
 			"provider":       str("connect: the catalog server's name."),
 			"url":            str("Verified custom MCP URL, with name instead of provider."),
@@ -118,6 +118,12 @@ func argString(args map[string]interface{}, key string) string {
 }
 
 func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, args map[string]interface{}) (string, error) {
+	// In a project's own chat the project is the chat's; callers often leave workspace_path out.
+	if op := argString(args, "operation"); (op == "project" || op == "project_select") && argString(args, "workspace_path") == "" {
+		if root := api.projectRootForSession(sessionIDFromContextForVaults(ctx)); root != "" {
+			args["workspace_path"] = root
+		}
+	}
 	if argString(args, "operation") == "project_select" {
 		selected, ok := args["selected"].(bool)
 		if !ok {

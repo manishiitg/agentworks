@@ -92,7 +92,9 @@ func (api *StreamingAPI) removeVaultSecret(ctx context.Context, person, vaultID,
 	if err != nil {
 		return err
 	}
-	if _, err := vaultPersonRequest(ctx, person, http.MethodDelete, "/api/vaults/"+url.PathEscape(vaultID)+"/secrets/"+url.PathEscape(full), nil); err != nil {
+	// A name Vault no longer knows (a selected secret that never got a value) is already gone; removing it still
+	// succeeds so the caller can detach the name.
+	if _, err := vaultPersonRequest(ctx, person, http.MethodDelete, "/api/vaults/"+url.PathEscape(vaultID)+"/secrets/"+url.PathEscape(full), nil); err != nil && !strings.Contains(err.Error(), "unknown secret") {
 		return err
 	}
 	if err := api.removeManagedGlobalSecretValue(ctx, full); err != nil && !errors.Is(err, errGlobalNotFound) {
