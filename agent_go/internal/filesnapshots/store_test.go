@@ -192,7 +192,7 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err := s.Compare(t.Context(), r.ID, "", func(string) bool { return true })
-	if err != nil || r.Status != "partial" || len(c.Changes) != 0 || len(c.Record.Skipped) != 1 {
+	if err != nil || r.Status != "partial" || len(c.Changes) != 0 || len(c.Record.Skipped) != 1 || c.UncapturedChanges != 1 {
 		t.Fatalf("false deletion: %v %+v", err, c)
 	}
 	// Large-Crew responses keep bounded examples; the count and examples
@@ -216,12 +216,36 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	limited, err := s.Compare(t.Context(), many.ID, "", func(string) bool { return true })
-	if err != nil || limited.SkippedCount != 61 || len(limited.Record.Skipped) != 50 || len(many.Skipped) != 122 {
+	if err != nil || limited.SkippedCount != 61 || len(limited.Record.Skipped) != 50 || len(many.Skipped) != 122 || limited.UncapturedChanges != 0 {
 		t.Fatalf("unbounded or lost omissions: %v %+v", err, limited)
 	}
 	granted, err := s.Compare(t.Context(), many.ID, "", func(p string) bool { return p == "asset.bin" })
 	if err != nil || granted.SkippedCount != 1 || len(granted.Record.Skipped) != 1 || granted.Record.Skipped[0] != "asset.bin" {
 		t.Fatalf("skipped response exposed denied paths/count: %v %+v", err, granted)
+	}
+	// PLAT-746-162: unchanged omitted assets are still outside the capture,
+	// but do not warn on every normal edit. A changed omitted file must warn.
+	if _, err := s.Begin(t.Context(), "changed-skipped"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(p, MaxFileBytes+2); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := s.Finish(t.Context(), "changed-skipped")
+	if err != nil {
+		t.Fatal(err)
+	}
+	warning, err := s.Compare(t.Context(), changed.ID, "", func(string) bool { return true })
+	if err != nil || warning.UncapturedChanges != 1 || warning.SkippedCount != 61 {
+		t.Fatalf("changed skipped file lost warning: %v %+v", err, warning)
+	}
+	hidden, err := s.Compare(t.Context(), changed.ID, "", func(path string) bool { return path != "asset.bin" })
+	if err != nil || hidden.UncapturedChanges != 0 {
+		t.Fatalf("warning count exposed denied path: %v %+v", err, hidden)
+	}
+	net, err := s.CompareBetween(t.Context(), many.ID, changed.ID, "", func(string) bool { return true })
+	if err != nil || net.UncapturedChanges != 1 {
+		t.Fatalf("chat boundary warning: %v %+v", err, net)
 	}
 	// One unreadable file must not lose other files or become a false deletion.
 	// The remote verifier runs unprivileged; root can still read mode 000.

@@ -416,9 +416,10 @@ it('keeps a late file comparison on its original reply in both transcript views 
 
 // PLAT-746-158: partial captures with no observed changes used to disappear,
 // making missed files indistinguishable from a successful empty comparison.
-it('shows incomplete file capture in both views but hides a complete empty comparison', async () => {
+it('warns on unknown or changed omissions in both views but hides unchanged skipped assets', async () => {
   let status = 'partial'
-  const get = vi.spyOn(api, 'get').mockImplementation(async () => ({ data: { snapshot: { status }, changes: [] } }) as never)
+  let uncaptured = 1
+  const get = vi.spyOn(api, 'get').mockImplementation(async () => ({ data: { snapshot: { status }, uncaptured_changes: uncaptured, changes: [] } }) as never)
   const history = [
     { ...event('user-files', 'user_message', { content: 'Change a source file' }), sequence: 1, session_id: 'files-session' },
     { ...event('reply-files', 'llm_generation_end', { content: 'Done.' }), sequence: 2, session_id: 'files-session' },
@@ -428,13 +429,14 @@ it('shows incomplete file capture in both views but hides a complete empty compa
       const host = document.createElement('div'); document.body.appendChild(host)
       const root = createRoot(host)
       try {
-        for (const state of ['partial', 'complete']) {
-          status = state
+        for (const state of ['partial', 'unchanged-skips', 'complete']) {
+          status = state === 'complete' ? 'complete' : 'partial'
+          uncaptured = state === 'partial' ? 1 : 0
           const events = [...history, { ...event('saved-files', 'reply_file_changes', { snapshot_id: state, workspace_path: 'Crew/example', start_sequence: 0, end_sequence: 3 }), sequence: 4, session_id: 'files-session' }]
           await act(async () => root.render(clean
             ? <CleanConversationSurface events={events} isStreaming={false} isRestoring={false} streamingText="" />
             : <TerminalEventTranscript terminal={null} events={events} />))
-          expect(host.textContent?.includes('File comparison is incomplete')).toBe(state === 'partial')
+          expect(host.textContent?.includes('may have changed but could not be compared')).toBe(state === 'partial')
           expect(host.querySelector('[aria-label="Files changed during this reply"]')).toBeNull()
         }
       } finally { await act(async () => root.unmount()); host.remove() }

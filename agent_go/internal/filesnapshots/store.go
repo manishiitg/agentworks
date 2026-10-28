@@ -32,17 +32,19 @@ const keepTurns = 50
 
 // Record contains no prompt, transcript or account credentials.
 type Record struct {
-	ID            string       `json:"id"`
-	ExecutionID   string       `json:"execution_id"`
-	StartedAt     time.Time    `json:"started_at"`
-	CompletedAt   *time.Time   `json:"completed_at,omitempty"`
-	Before        string       `json:"-"`
-	After         string       `json:"-"`
-	Status        string       `json:"status"`
-	Skipped       []string     `json:"skipped,omitempty"`
-	Omitted       []string     `json:"-"`
-	BeforeCapture CaptureStats `json:"before_capture"`
-	AfterCapture  CaptureStats `json:"after_capture"`
+	BeforeSkippedState map[string]string `json:"-"`
+	AfterSkippedState  map[string]string `json:"-"`
+	ID                 string            `json:"id"`
+	ExecutionID        string            `json:"execution_id"`
+	StartedAt          time.Time         `json:"started_at"`
+	CompletedAt        *time.Time        `json:"completed_at,omitempty"`
+	Before             string            `json:"-"`
+	After              string            `json:"-"`
+	Status             string            `json:"status"`
+	Skipped            []string          `json:"skipped,omitempty"`
+	Omitted            []string          `json:"-"`
+	BeforeCapture      CaptureStats      `json:"before_capture"`
+	AfterCapture       CaptureStats      `json:"after_capture"`
 }
 
 // CaptureStats explains partial captures without exposing file names or contents.
@@ -59,9 +61,11 @@ type CaptureStats struct {
 // diskRecord keeps Git object names private to the server.
 type diskRecord struct {
 	Record
-	BeforeTree string   `json:"before_tree"`
-	AfterTree  string   `json:"after_tree"`
-	Omitted    []string `json:"omitted,omitempty"`
+	BeforeSkippedState map[string]string `json:"before_skipped_state,omitempty"`
+	AfterSkippedState  map[string]string `json:"after_skipped_state,omitempty"`
+	BeforeTree         string            `json:"before_tree"`
+	AfterTree          string            `json:"after_tree"`
+	Omitted            []string          `json:"omitted,omitempty"`
 }
 type Change struct {
 	Path    string `json:"path"`
@@ -71,12 +75,13 @@ type Change struct {
 	Binary  bool   `json:"binary,omitempty"`
 }
 type Comparison struct {
-	Record       Record   `json:"snapshot"`
-	Changes      []Change `json:"changes"`
-	Diff         string   `json:"diff,omitempty"`
-	Truncated    bool     `json:"truncated,omitempty"`
-	SkippedCount int      `json:"skipped_count"`
-	Note         string   `json:"note"`
+	UncapturedChanges int      `json:"uncaptured_changes"`
+	Record            Record   `json:"snapshot"`
+	Changes           []Change `json:"changes"`
+	Diff              string   `json:"diff,omitempty"`
+	Truncated         bool     `json:"truncated,omitempty"`
+	SkippedCount      int      `json:"skipped_count"`
+	Note              string   `json:"note"`
 }
 type Store struct{ Root, Private string }
 
@@ -213,7 +218,7 @@ func (s Store) candidates(ctx context.Context) ([]string, []string, error) {
 // capture streams eligible files into Git's standard importer. Rooted reads
 // cannot follow a replaced ancestor symlink outside the Crew. Git owns object
 // hashing/deduplication; no user Git config, attributes or clean filters run.
-func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats) (string, []string, []string, error) {
+func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats, skippedState map[string]string) (string, []string, []string, error) {
 	paths, omitted, err := s.candidates(ctx)
 	if err != nil {
 		return "", nil, nil, err
@@ -227,6 +232,13 @@ func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats) (st
 	// A large asset encountered first must not starve ordinary source files.
 	// Stat through the confined root; recheck each file before reading below.
 	skipped := []string{}
+	// Metadata is evidence of an observed change, not a captured blob. Keep it
+	// only for skipped regular files; unreadable/non-regular paths stay unknown.
+	rememberSkipped := func(path string, info os.FileInfo) {
+		if info.Mode().IsRegular() {
+			skippedState[path] = fmt.Sprintf("%d:%d:%d", info.Size(), info.ModTime().UnixNano(), info.Mode())
+		}
+	}
 	// Concurrent deletes are ordinary working-tree changes. An unreadable path
 	// is omitted on both sides of the comparison, never shown as a deletion.
 	skipRead := func(path string, err error) {
@@ -304,6 +316,7 @@ func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats) (st
 			continue
 		}
 		if !info.Mode().IsRegular() || info.Size() > MaxFileBytes {
+			rememberSkipped(path, info)
 			skipped = append(skipped, path)
 			stats.SizeSkipped++
 			continue
@@ -321,6 +334,7 @@ func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats) (st
 			continue
 		}
 		if total+info.Size() > maxCaptureBytes {
+			rememberSkipped(path, info)
 			skipped = append(skipped, path)
 			stats.BudgetSkipped++
 			continue
@@ -338,6 +352,7 @@ func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats) (st
 			continue
 		}
 		if !actual.Mode().IsRegular() || actual.Size() > MaxFileBytes {
+			rememberSkipped(path, actual)
 			f.Close()
 			stats.SizeSkipped++
 			skipped = append(skipped, path)
@@ -350,6 +365,7 @@ func (s Store) capture(ctx context.Context, ref string, stats *CaptureStats) (st
 			continue
 		}
 		if len(data) > MaxFileBytes || total+int64(len(data)) > maxCaptureBytes {
+			rememberSkipped(path, actual)
 			if len(data) > MaxFileBytes {
 				stats.SizeSkipped++
 			} else {
@@ -415,10 +431,12 @@ func (s Store) read(id string) (Record, error) {
 	disk.Record.Before = disk.BeforeTree
 	disk.Record.After = disk.AfterTree
 	disk.Record.Omitted = disk.Omitted
+	disk.Record.BeforeSkippedState = disk.BeforeSkippedState
+	disk.Record.AfterSkippedState = disk.AfterSkippedState
 	return disk.Record, nil
 }
 func (s Store) save(r Record) error {
-	data, err := json.Marshal(diskRecord{Record: r, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted})
+	data, err := json.Marshal(diskRecord{Record: r, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState})
 	if err != nil {
 		return err
 	}
@@ -443,7 +461,8 @@ func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
 		return Record{}, err
 	}
 	r := Record{ID: id, ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing"}
-	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", &r.BeforeCapture)
+	r.BeforeSkippedState = map[string]string{}
+	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", &r.BeforeCapture, r.BeforeSkippedState)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 	}
@@ -467,7 +486,8 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 		return r, nil
 	}
 	var skipped, omitted []string
-	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after", &r.AfterCapture)
+	r.AfterSkippedState = map[string]string{}
+	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after", &r.AfterCapture, r.AfterSkippedState)
 	r.Skipped = append(r.Skipped, skipped...)
 	r.Omitted = append(r.Omitted, omitted...)
 	now := time.Now().UTC()
@@ -587,6 +607,10 @@ func (s Store) compare(ctx context.Context, r Record, file string, allow func(st
 	for p := range skipped {
 		if allow(p) {
 			out.Record.Skipped = append(out.Record.Skipped, p)
+			before, after := r.BeforeSkippedState[p], r.AfterSkippedState[p]
+			if before == "" || after == "" || before != after {
+				out.UncapturedChanges++
+			}
 		}
 	}
 	sort.Strings(out.Record.Skipped)
@@ -679,6 +703,7 @@ func (s Store) CompareBetween(ctx context.Context, first, last, file string, all
 		return Comparison{}, errors.New("a saved comparison boundary is unavailable")
 	}
 	after.Before = before.Before
+	after.BeforeSkippedState = before.BeforeSkippedState
 	after.StartedAt = before.StartedAt
 	after.Skipped = append(after.Skipped, before.Skipped...)
 	after.Omitted = append(after.Omitted, before.Omitted...)

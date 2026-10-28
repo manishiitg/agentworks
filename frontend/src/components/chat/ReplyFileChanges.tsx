@@ -9,7 +9,7 @@ import { FileDiffView } from '../workspace/FileDiffView'
 
 const FileViewer = lazy(() => import('../FileContentViewer').then(module => ({ default: module.FileContentViewerBody })))
 interface Change { path: string; status: string; added?: number; removed?: number; binary?: boolean }
-interface Comparison { changes: Change[]; snapshot: { status: string } }
+interface Comparison { uncaptured_changes: number; changes: Change[]; snapshot: { status: string } }
 const endpoint = '/api/workspace-snapshots'
 const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId })
 
@@ -33,8 +33,8 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
     return () => controller.abort()
   }, [reference.workspacePath, reference.snapshotId])
   if (!comparison?.changes?.length) {
-    return comparison?.snapshot?.status === 'partial'
-      ? <p className="my-3 text-xs text-muted-foreground" role="status">File comparison is incomplete. Some files could not be captured for this reply.</p>
+    return (comparison?.uncaptured_changes ?? 0) > 0
+      ? <p className="my-3 text-xs text-muted-foreground" role="status">{comparison?.uncaptured_changes} {comparison?.uncaptured_changes === 1 ? 'file may' : 'files may'} have changed but could not be compared.</p>
       : null
   }
   return (
@@ -42,7 +42,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       <details>
         <summary className="cursor-pointer font-medium">Files changed during this reply · {comparison.changes.length}</summary>
         <p className="mt-2 text-xs text-muted-foreground">Saved versions. Other chats or editors may have contributed.</p>
-        {comparison.snapshot.status === 'partial' && <p className="text-xs text-muted-foreground">Some files could not be captured.</p>}
+        {comparison.uncaptured_changes > 0 && <p className="text-xs text-muted-foreground">{comparison.uncaptured_changes} {comparison.uncaptured_changes === 1 ? 'file may' : 'files may'} have changed but could not be compared.</p>}
         <ul className="mt-2 space-y-1">
           {comparison.changes.map(change => (
             <li key={change.path} className="flex flex-wrap items-center gap-2">

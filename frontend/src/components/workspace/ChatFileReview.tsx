@@ -11,7 +11,7 @@ import { FileDiffView } from './FileDiffView'
 type Reply = { snapshot_id: string; end_sequence: number }
 type History = { replies: Reply[]; available: boolean; last_snapshot_id: string; note?: string }
 type Change = { path: string; status: string; added?: number; removed?: number; binary?: boolean }
-type Comparison = { changes: Change[]; diff?: string; truncated?: boolean; snapshot: { status: string }; note: string; skipped_count: number }
+type Comparison = { uncaptured_changes: number; changes: Change[]; diff?: string; truncated?: boolean; snapshot: { status: string }; note: string; skipped_count: number }
 type Result = { history: History; comparison?: Comparison; file_replies?: string[]; reply_history_incomplete?: boolean; total_changes?: number; next_offset?: number }
 const endpoint = '/api/workspace-snapshots'
 
@@ -118,14 +118,14 @@ export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
     <div className="min-h-0 flex-1 overflow-auto">
       {scope !== 'uncommitted' && !result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
       {scope !== 'uncommitted' && result && !result.comparison && <p className="p-3 text-sm">{result.history.note}</p>}
-      {result?.comparison?.snapshot.status === 'partial' && <p role="status" className="p-3 text-xs text-muted-foreground">Incomplete capture: {result.comparison.skipped_count} files were skipped. This is not the full set of changes.</p>}
+      {(result?.comparison?.uncaptured_changes ?? 0) > 0 && <p role="status" className="p-3 text-xs text-muted-foreground">{result?.comparison?.uncaptured_changes} {result?.comparison?.uncaptured_changes === 1 ? 'file may' : 'files may'} have changed but could not be compared.</p>}
       <div className="grid gap-1 border-b border-border p-2">
         {scope !== 'uncommitted' && result?.comparison && <p className="p-2 text-xs text-muted-foreground">{result.total_changes ?? changes.length} changed files</p>}
         {changes.map(change => <button type="button" key={change.path} aria-pressed={file === change.path} className={`flex gap-2 rounded px-2 py-1 text-left text-xs ${file === change.path ? 'bg-muted' : 'hover:bg-muted/50'}`} onClick={() => { setFile(change.path); setError('') }}>
           <span className="min-w-0 flex-1 break-all">{change.path}</span><span>{change.binary ? 'Binary' : change.added !== undefined ? `+${change.added} −${change.removed ?? 0}` : change.status}</span>
         </button>)}
         {!!result?.next_offset && scope !== 'uncommitted' && <button type="button" disabled={loadingMore} className="p-2 text-xs underline" onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Show more files'}</button>}
-        {(result?.comparison || scope === 'uncommitted') && changes.length === 0 && <p className="p-2 text-sm">{scope === 'uncommitted' ? 'No tracked changes against HEAD. New untracked files have no diff yet.' : result?.comparison?.snapshot.status === 'partial' ? 'No changes in the captured files.' : 'No net file changes in this comparison.'}</p>}
+        {(result?.comparison || scope === 'uncommitted') && changes.length === 0 && <p className="p-2 text-sm">{scope === 'uncommitted' ? 'No tracked changes against HEAD. New untracked files have no diff yet.' : 'No net changes in the captured files.'}</p>}
       </div>
       {selected && <div className="p-2">
         <h3 className="mb-2 break-all text-sm font-medium">{file}</h3>
