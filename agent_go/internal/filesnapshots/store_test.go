@@ -31,6 +31,7 @@ func TestNestedRepositoriesKeepHistoricalComparisons(t *testing.T) {
 		}
 	}
 	write("code/main.py", "print(0)\n")
+	write("code/reverted.txt", "original\n")
 	write("image.bin", "before\x00bytes")
 	write("code/.gitignore", "ignored.txt\n")
 	write("code/ignored.txt", "ignored bytes")
@@ -61,6 +62,12 @@ func TestNestedRepositoriesKeepHistoricalComparisons(t *testing.T) {
 		}
 		write("code/main.py", fmt.Sprintf("print(%d)\n", turn))
 		if turn == 1 {
+			write("code/reverted.txt", "temporary\n")
+		}
+		if turn == 10 {
+			write("code/reverted.txt", "original\n")
+		}
+		if turn == 1 {
 			write("image.bin", "after\x00bytes")
 			write("code/[x].txt", "literal after\n")
 			write("code/x.txt", "other after\n")
@@ -79,6 +86,22 @@ func TestNestedRepositoriesKeepHistoricalComparisons(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+	}
+	// PLAT-746-158: ten turns form one net comparison, not concatenated patches.
+	net, err := s.CompareBetween(ctx, ID("1"), ID("10"), "code/main.py", func(string) bool { return true })
+	if err != nil || !strings.Contains(net.Diff, "-print(0)") || !strings.Contains(net.Diff, "+print(10)") {
+		t.Fatalf("net comparison: %v %+v", err, net)
+	}
+	for _, change := range net.Changes {
+		if change.Path == "code/reverted.txt" {
+			t.Fatal("reverted file appears as a net change")
+		}
+	}
+	if _, err := s.CompareBetween(ctx, ID("missing"), ID("10"), "", func(string) bool { return true }); err == nil {
+		t.Fatal("missing baseline became an empty tree")
+	}
+	if _, err := s.CompareBetween(ctx, ID("1"), ID("10"), "code/main.py", func(string) bool { return false }); err == nil {
+		t.Fatal("net comparison exposed a revoked path")
 	}
 	later, err := s.Compare(ctx, ID("1"), "code/main.py", func(string) bool { return true })
 	if err != nil || first.Diff != later.Diff || !strings.Contains(later.Diff, "+print(1)") || strings.Contains(later.Diff, "print(10)") {

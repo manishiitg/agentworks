@@ -286,11 +286,21 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	label := fmt.Sprint(summary["name"])
 	switch name {
 	case "list_crew_snapshots", "compare_crew_snapshot":
+		r = r.Clone(r.Context())
+		q := r.URL.Query()
+		for _, key := range []string{"session_id", "through_snapshot_id", "line", "offset"} {
+			if value := str(key); value != "" {
+				q.Set(key, value)
+			}
+		}
+		r.URL.RawQuery = q.Encode()
 		op := "snapshots"
 		if name == "compare_crew_snapshot" {
 			op = "snapshot_compare"
 			if side := str("side"); side != "" {
-				op = "snapshot_file"
+				if str("line") == "" {
+					op = "snapshot_file"
+				}
 				r = r.Clone(r.Context())
 				q := r.URL.Query()
 				q.Set("side", side)

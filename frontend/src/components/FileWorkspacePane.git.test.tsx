@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../utils/openWorkspaceFile', () => ({ openWorkspaceFile: vi.fn() }))
-vi.mock('../services/api', () => ({ agentApi: { getPlannerFileContent: vi.fn(async () => ({ data: { content: 'line one\nline two' } })) } }))
+vi.mock('../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../services/api')>(), agentApi: { getPlannerFileContent: vi.fn(async () => ({ data: { content: 'line one\nline two' } })) } }))
 vi.mock('../stores/useWorkspaceStore', () => {
   const state = { showFileContent: false, files: [], selectedFile: null, pruneOpenTabs: () => undefined, scrollToFile: async () => undefined }
   return { useWorkspaceStore: Object.assign((selector: (s: typeof state) => unknown) => selector(state), { getState: () => state }) }
@@ -79,6 +79,11 @@ describe('FileWorkspacePane git bar', () => {
       // Stage all sends the stage action for the whole repo.
       await act(async () => (view.querySelector('button[aria-label="Stage all"]') as HTMLButtonElement).click())
       expect(workspaceGitApi.act).toHaveBeenCalledWith('Chats/Code/projects/p1', 'app', { op: 'stage', all: true })
+      // Studio-only file review: Cowork keeps its ordinary file tree, not Git controls.
+      await act(async () => root.render(<FileWorkspacePane workspacePath="Chats/Code/projects/p1" showGit={false} />))
+      expect(host.querySelector('[aria-label="Source Control"]')).toBeNull()
+      expect(host.querySelector('[aria-label="Source control"]')).toBeNull()
+      expect(host.textContent).toContain('tree')
     } finally {
       await act(async () => root.unmount())
       host.remove()

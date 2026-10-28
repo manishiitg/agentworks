@@ -24,6 +24,7 @@ function readTreeWidth(): number {
 }
 
 type FileWorkspacePaneProps = {
+  showGit?: boolean
   source?: ReadOnlyFileWorkspaceSource
   workspacePath?: string
   title?: string
@@ -51,6 +52,7 @@ type FileWorkspacePaneProps = {
  */
 function FileWorkspacePaneBody({
   source,
+  showGit = true,
   workspacePath,
   title,
   hiddenRootFolders,
@@ -66,7 +68,7 @@ function FileWorkspacePaneBody({
   onAsk,
 }: FileWorkspacePaneProps) {
   const git = useFileGit()
-  const gitEnabled = !source || !!source.git
+  const gitEnabled = showGit && (!source || !!source.git)
   const gitPath = workspacePath ?? (source?.git ? "" : undefined)
   const workspaceShowFileContent = useWorkspaceStore(state => state.showFileContent)
   const workspaceFiles = useWorkspaceStore(state => state.files)

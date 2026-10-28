@@ -1,7 +1,10 @@
 import { useMemo } from 'react'
 import { useTheme } from '../../hooks/useTheme'
 
+export type DiffLineAnchor = { side: 'before' | 'after'; line: number }
+
 interface DiffRendererProps {
+  onSelectLine?: (anchor: DiffLineAnchor) => void
   content: string
   className?: string
   maxHeightClassName?: string
@@ -19,6 +22,7 @@ type DiffLineKind =
 interface ParsedDiffLine {
   content: string
   kind: DiffLineKind
+  anchor?: DiffLineAnchor
 }
 
 interface DiffPalette {
@@ -119,15 +123,23 @@ const darkPalette: DiffPalette = {
 
 export function DiffRenderer({
   content,
+  onSelectLine,
   className = '',
   maxHeightClassName = 'max-h-[70vh]',
 }: DiffRendererProps) {
   const { theme } = useTheme()
   const lines = useMemo<ParsedDiffLine[]>(() => {
-    return content.split('\n').map(line => ({
-      content: line,
-      kind: classifyDiffLine(line),
-    }))
+    let before = 0, after = 0
+    return content.split('\n').map(content => {
+      const kind = classifyDiffLine(content)
+      const hunk = content.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+      if (hunk) { before = Number(hunk[1]); after = Number(hunk[2]) }
+      let anchor: DiffLineAnchor | undefined
+      if (kind === 'deletion' && before > 0) anchor = { side: 'before', line: before++ }
+      if (kind === 'addition' && after > 0) anchor = { side: 'after', line: after++ }
+      if (kind === 'context' && after > 0) { anchor = { side: 'after', line: after++ }; before++ }
+      return { content, kind, anchor }
+    })
   }, [content])
   const palette = theme === 'dark' ? darkPalette : lightPalette
 
@@ -165,7 +177,7 @@ export function DiffRenderer({
                 className={`grid grid-cols-[3rem_1fr] items-start border-b ${palette.rowBorder} ${palette.lineClasses[line.kind]}`}
               >
                 <div className={`select-none border-r px-2 py-1 text-right ${palette.markerBorder} ${palette.markerClasses[line.kind]}`}>
-                  {marker}
+                  {onSelectLine && line.anchor ? <button type="button" aria-label={`Comment on ${line.anchor.side} line ${line.anchor.line}`} className="underline" onClick={() => onSelectLine(line.anchor!)}>{line.anchor.line}</button> : marker}
                 </div>
                 <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-1 leading-5">
                   {line.content}

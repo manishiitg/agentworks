@@ -1,0 +1,60 @@
+package events
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+)
+
+// ChatFileHistory reads only saved reply references from the existing journal.
+// FirstUserSequence prevents calling a later retained snapshot the chat's start.
+type ChatFileHistory struct {
+	References        []Event
+	FirstUserSequence int64
+	FirstSnapshotID   string
+}
+type chatFileHistoryReader interface {
+	ReadChatFileHistory(context.Context, string) (ChatFileHistory, error)
+}
+
+func (es *EventStore) ReadChatFileHistory(ctx context.Context, sessionID string) (ChatFileHistory, error) {
+	es.adoptJournaledSession(sessionID)
+	es.mu.RLock()
+	reader, ok := es.durableJournal.(chatFileHistoryReader)
+	class := es.persistenceClasses[sessionID]
+	es.mu.RUnlock()
+	if !ok || class != SessionPersistenceInteractiveChat {
+		return ChatFileHistory{}, errors.New("chat history unavailable")
+	}
+	return reader.ReadChatFileHistory(ctx, sessionID)
+}
+
+func (j *SQLiteEventJournal) ReadChatFileHistory(ctx context.Context, sessionID string) (ChatFileHistory, error) {
+	out := ChatFileHistory{References: []Event{}}
+	err := j.db.QueryRowContext(ctx, `SELECT COALESCE(MIN(sequence),0) FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='user_message'`, sessionID).Scan(&out.FirstUserSequence)
+	if err != nil {
+		return out, err
+	}
+	// Arrival can lag the next reply. Order by the saved boundary, not arrival.
+	err = j.db.QueryRowContext(ctx, `SELECT COALESCE((SELECT json_extract(payload,'$.data.data.snapshot_id') FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='reply_file_changes' ORDER BY CAST(json_extract(payload,'$.data.data.start_sequence') AS INTEGER) ASC LIMIT 1),'')`, sessionID).Scan(&out.FirstSnapshotID)
+	if err != nil {
+		return out, err
+	}
+	rows, err := j.db.QueryContext(ctx, `SELECT payload FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='reply_file_changes' ORDER BY CAST(json_extract(payload,'$.data.data.end_sequence') AS INTEGER) DESC LIMIT 50`, sessionID)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return out, err
+		}
+		var event Event
+		if err := json.Unmarshal(raw, &event); err != nil {
+			return out, err
+		}
+		out.References = append(out.References, event)
+	}
+	return out, rows.Err()
+}

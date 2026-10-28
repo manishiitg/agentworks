@@ -568,10 +568,14 @@ func (s Store) Compare(ctx context.Context, id, file string, allow func(string) 
 	}
 	defer unlock()
 	r, err := s.read(id)
-	out := Comparison{Record: r, Changes: []Change{}, Note: "Changes observed during this turn; other chats or editors may also have changed these files. Undo is not available."}
 	if err != nil {
-		return out, err
+		return Comparison{}, err
 	}
+	return s.compare(ctx, r, file, allow)
+}
+
+func (s Store) compare(ctx context.Context, r Record, file string, allow func(string) bool) (Comparison, error) {
+	out := Comparison{Record: r, Changes: []Change{}, Note: "Changes observed during this turn; other chats or editors may also have changed these files. Undo is not available."}
 	if r.Status != "complete" && r.Status != "partial" {
 		return out, errors.New("this turn has no completed file comparison")
 	}
@@ -655,6 +659,51 @@ func (s Store) Compare(ctx context.Context, id, file string, allow func(string) 
 	return out, nil
 }
 
+// CompareBetween compares two retained turn boundaries, never the working tree.
+// Callers resolve the bounds from the authorized chat, not client-supplied Git refs.
+func (s Store) CompareBetween(ctx context.Context, first, last, file string, allow func(string) bool) (Comparison, error) {
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return Comparison{}, err
+	}
+	defer unlock()
+	before, err := s.read(first)
+	if err != nil {
+		return Comparison{}, err
+	}
+	after, err := s.read(last)
+	if err != nil {
+		return Comparison{}, err
+	}
+	if before.Before == "" || after.After == "" || (before.Status != "complete" && before.Status != "partial") || (after.Status != "complete" && after.Status != "partial") {
+		return Comparison{}, errors.New("a saved comparison boundary is unavailable")
+	}
+	after.Before = before.Before
+	after.StartedAt = before.StartedAt
+	after.Skipped = append(after.Skipped, before.Skipped...)
+	after.Omitted = append(after.Omitted, before.Omitted...)
+	if before.Status == "partial" {
+		after.Status = "partial"
+	}
+	out, err := s.compare(ctx, after, file, allow)
+	out.Note = "Net changes between this chat's saved boundaries. Other chats or editors may contribute. Undo is not available."
+	return out, err
+}
+
+// ReadComparedFile uses only the authorized paths of a server-produced comparison.
+func (s Store) ReadComparedFile(ctx context.Context, comparison Comparison, file, side string) ([]byte, error) {
+	found := false
+	for _, change := range comparison.Changes {
+		if change.Path == file {
+			found = true
+		}
+	}
+	if !found || (side != "before" && side != "after") {
+		return nil, errors.New("choose a historical file and side")
+	}
+	return s.readComparedFile(ctx, comparison, file, side)
+}
+
 // ReadFile returns a saved blob only when this exact historical path still
 // passes today's file guard. Git reads the blob itself, never a symlink target.
 func (s Store) ReadFile(ctx context.Context, id, file, side string, allow func(string) bool) ([]byte, error) {
@@ -665,6 +714,10 @@ func (s Store) ReadFile(ctx context.Context, id, file, side string, allow func(s
 	if err != nil {
 		return nil, err
 	}
+	return s.readComparedFile(ctx, comparison, file, side)
+}
+
+func (s Store) readComparedFile(ctx context.Context, comparison Comparison, file, side string) ([]byte, error) {
 	tree := comparison.Record.After
 	if side == "before" {
 		tree = comparison.Record.Before

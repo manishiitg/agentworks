@@ -8,7 +8,7 @@ import { WorkspacePanelHeader } from '../../components/workspace/WorkspacePanelH
 import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../../components/workspace/WorkspacePanelNavigation'
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { DollarSign, Laptop, Settings } from 'lucide-react'
+import { DollarSign, Laptop, Settings, FileDiff } from 'lucide-react'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
@@ -17,7 +17,7 @@ import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHead
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
-import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
+import { setWorkspaceViewTarget, useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
 import api, { agentApi } from '../../services/api'
@@ -45,6 +45,7 @@ import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
 
+const ChatFileReview = lazy(() => import('../../components/workspace/ChatFileReview').then(module => ({ default: module.ChatFileReview })))
 const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
 const ReportView = lazy(() => import('../../components/workflow/ReportViewer').then(module => ({ default: module.ReportView })))
@@ -96,6 +97,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     <TooltipProvider delayDuration={150}>
       {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
     </TooltipProvider>
+    {!readOnly && !isCowork && sessionId && isWorkWorkspaceViewEnabled('files', enabledPanels) && <button type="button" className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-muted" onClick={() => { setWorkspaceViewTarget('files', 'review'); onViewChange('files') }}><FileDiff className="h-4 w-4" />Review changes</button>}
     <ShareDashboardButton workspacePath={workspacePath} tabId={tabId} onAsk={tabId ? async message => {
       await openWorkspacePaneChatWithDraft({ tabId, message })
       onOpenChat?.()
@@ -231,7 +233,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     ? sendWorkspacePaneMessageToChat({ tabId, message })
     : sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId, tabId])
   const usesExistingFolder = Boolean(filesPath && filesPath !== workspacePath)
-  const serverFiles = <FileWorkspacePane workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? [] : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
+
   const sharedFiles = useMemo(
     () => (readOnly ? sharedCrewFileClient(projectId, workspacePath, product.profileId) : null),
     [readOnly, projectId, workspacePath, product.profileId],
@@ -241,6 +243,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const contextMode = useProjectMode(activeSessionId || '')
+  const [reviewOpen, setReviewOpen] = useState(false)
+  useEffect(() => { setReviewOpen(false) }, [tabId, contextMode])
+  useWorkspaceViewTarget('files', target => setReviewOpen(target === 'review'), view === 'files')
+  const serverFiles = <FileWorkspacePane showGit={contextMode === 'dev'} workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? [] : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
   const contextPanels = workWorkspacePanels({ profileId: product.profileId, cowork: product.profileId === 'work' && contextMode === 'cowork', readOnly: Boolean(readOnly), showShell, enabledPanels })
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
@@ -319,7 +325,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{reviewOpen && contextMode === 'dev' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}`} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => setReviewOpen(false)} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
 

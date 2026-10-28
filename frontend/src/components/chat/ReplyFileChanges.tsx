@@ -60,7 +60,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   )
 }
 
-function SavedFile({ reference, change, view, close }: { reference: ReplyFileChangesRef; change: Change; view: 'preview' | 'diff'; close: () => void }) {
+export function SavedFile({ reference, change, view, close, query }: { reference: ReplyFileChangesRef; change: Change; view: 'preview' | 'diff'; close: () => void; query?: Record<string, string> }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [side, setSide] = useState<'before' | 'after'>(change.status === 'D' ? 'before' : 'after')
   const [content, setContent] = useState<{ text: string; bytes?: ArrayBuffer } | null>(null)
@@ -76,7 +76,7 @@ function SavedFile({ reference, change, view, close }: { reference: ReplyFileCha
     if (view === 'diff') return
     const controller = new AbortController()
     setContent(null); setError('')
-    const params = { ...paramsFor(reference), file: change.path, op: 'snapshot_file', side }
+    const params = { ...paramsFor(reference), ...query, file: change.path, op: 'snapshot_file', side }
     const load = async () => {
       const { data } = await api.get<ArrayBuffer>(endpoint, { params, responseType: 'arraybuffer', signal: controller.signal })
       let text = ''
@@ -90,14 +90,14 @@ function SavedFile({ reference, change, view, close }: { reference: ReplyFileCha
     }
     void load().catch(() => { if (!controller.signal.aborted) setError('This saved version is unavailable or you no longer have access. You can open the current file instead.') })
     return () => controller.abort()
-  }, [reference.workspacePath, reference.snapshotId, change.path, change.binary, imageType, name, side, view])
+  }, [reference.workspacePath, reference.snapshotId, change.path, change.binary, imageType, name, side, view, query?.session_id, query?.through_snapshot_id])
   const unsupported = change.binary && !imageType && !isViewableBinaryFile(name)
   return (
     <dialog ref={dialog} onCancel={event => { event.preventDefault(); close() }} className="h-[85vh] w-[min(95vw,1100px)] max-w-none rounded-xl border border-border bg-background p-0 text-foreground backdrop:bg-black/50">
       <div className="flex h-full flex-col">
         <header className="flex flex-wrap items-center gap-3 border-b border-border p-3">
           <h2 className="min-w-0 flex-1 break-all font-medium">{view === 'diff' ? 'File comparison' : 'Saved version'} · {name}</h2>
-          {view === 'preview' && <select aria-label="Saved version" value={side} onChange={event => setSide(event.target.value as 'before' | 'after')} className="rounded border border-border bg-background p-1"><option value="before" disabled={change.status === 'A'}>Before this reply</option><option value="after" disabled={change.status === 'D'}>After this reply</option></select>}
+          {view === 'preview' && <select aria-label="Saved version" value={side} onChange={event => setSide(event.target.value as 'before' | 'after')} className="rounded border border-border bg-background p-1"><option value="before" disabled={change.status === 'A'}>{query ? 'Before comparison' : 'Before this reply'}</option><option value="after" disabled={change.status === 'D'}>{query ? 'After comparison' : 'After this reply'}</option></select>}
           <button type="button" className="text-xs underline" onClick={() => { void openWorkspaceFile(`${reference.workspacePath}/${change.path}`); close() }}>Open current file</button>
           <button type="button" onClick={close} className="rounded border border-border px-2 py-1">Close</button>
         </header>

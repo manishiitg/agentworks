@@ -235,6 +235,10 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		_, ok := confineSharedProjectPath(roots.Virtual, prefix+path)
 		return ok && !crewCallerPrivatePath(prefix+path)
 	}
+	if r.URL.Query().Get("session_id") != "" {
+		api.serveChatFileReview(w, r, roots.Virtual, prefix, op, id, file, store, allow)
+		return
+	}
 	if op == "snapshots" {
 		records, err := store.List()
 		if err != nil {
@@ -272,28 +276,7 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 			externalError(w, 404, "snapshot_unavailable", "This saved file is unavailable or you cannot read it.")
 			return
 		}
-		if r.URL.Query().Get("format") == "json" {
-			out := map[string]any{"path": prefix + file, "side": r.URL.Query().Get("side"), "size": len(content)}
-			binary := !utf8.Valid(content) || bytes.IndexByte(content, 0) >= 0
-			limit := 2 << 20
-			if binary {
-				limit = 512 << 10
-			}
-			if len(content) > limit {
-				out["content_omitted"] = true
-				out["note"] = "This saved file is too large for a chat response. Open its saved version in the file-change card."
-			} else if binary {
-				out["content_base64"] = base64.StdEncoding.EncodeToString(content)
-			} else {
-				out["content"] = string(content)
-			}
-			externalJSON(w, out)
-			return
-		}
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(file)}))
-		w.Header().Set("Cache-Control", "no-store")
-		w.Write(content)
+		writeSavedSnapshotFile(w, r, prefix+file, content)
 		return
 	}
 	comparison, err := store.Compare(ctx, id, file, allow)
@@ -328,4 +311,30 @@ func (api *StreamingAPI) handleCrewFileSnapshots(w http.ResponseWriter, r *http.
 		op = "snapshots"
 	}
 	api.serveCrewFileSnapshots(w, r, root, op, q.Get("snapshot_id"), q.Get("file"))
+}
+
+func writeSavedSnapshotFile(w http.ResponseWriter, r *http.Request, file string, content []byte) {
+	if r.URL.Query().Get("format") == "json" {
+		out := map[string]any{"path": file, "side": r.URL.Query().Get("side"), "size": len(content)}
+		binary := !utf8.Valid(content) || bytes.IndexByte(content, 0) >= 0
+		limit := 2 << 20
+		if binary {
+			limit = 512 << 10
+		}
+		if len(content) > limit {
+			out["content_omitted"] = true
+			out["note"] = "This saved file is too large for a chat response. Open its saved version in the file-change card."
+		} else if binary {
+			out["content_base64"] = base64.StdEncoding.EncodeToString(content)
+		} else {
+			out["content"] = string(content)
+		}
+		externalJSON(w, out)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(file)}))
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(content)
+	return
 }
