@@ -1039,13 +1039,18 @@ func TestRefreshedStatPersistsForUnchangedContent(t *testing.T) {
 	if err := os.Chtimes(touched, newer, newer); err != nil {
 		t.Fatal(err)
 	}
-	f.put("fresh.txt", "fresh\n") // may be racily clean in this capture
+	// Phase 1: only the touch; nothing is added, removed or edited.
 	r, err := f.s.Begin(t.Context(), "touched")
-	if c := r.BeforeCapture; err != nil || c.Changed != 1 || c.ImportedBytes != int64(len("fresh\n")) {
+	if c := r.BeforeCapture; err != nil || c.Changed != 0 || c.ImportedBytes != 0 || c.Removed != 0 {
 		t.Fatalf("touched file was re-imported: %v %+v", err, c)
 	}
 	if mtime, _ := f.indexStat("touched.txt"); mtime != strconv.FormatInt(newer.Unix(), 10) {
 		t.Fatalf("refreshed stat not persisted: index mtime %s, file %d", mtime, newer.Unix())
+	}
+	// Phase 2: a fresh file, possibly racily clean in the capture that adds it.
+	f.put("fresh.txt", "fresh\n")
+	if r, err := f.s.Begin(t.Context(), "fresh"); err != nil || r.BeforeCapture.Changed != 1 {
+		t.Fatalf("fresh file capture: %v %+v", err, r.BeforeCapture)
 	}
 	time.Sleep(1100 * time.Millisecond) // leave fresh.txt's timestamp tick
 	if _, err := f.s.Begin(t.Context(), "settle"); err != nil {
