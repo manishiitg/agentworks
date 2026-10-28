@@ -16,5 +16,5 @@ export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspace
       .then(({ data }) => { if (!controller.signal.aborted) setResult(data) }).catch(() => undefined)
     return () => controller.abort()
   }, [workspacePath, sessionId, revision, savedEvents])
-  return <WorkspaceContextRow icon={FileDiff} onClick={onOpen} detail={result?.summary && <><span>{result.summary.files} files </span><span className="text-green-600">+{result.summary.added}</span> <span className="text-red-500">−{result.summary.removed}</span></>}>Changes in this chat</WorkspaceContextRow>
+  return <WorkspaceContextRow icon={FileDiff} onClick={onOpen} detail={result?.summary && <><span>{result.summary.files} files </span><span className="text-diff-add">+{result.summary.added}</span> <span className="text-diff-del">−{result.summary.removed}</span></>}>Changes in this chat</WorkspaceContextRow>
 }

@@ -110,10 +110,14 @@
   :root {
     --working-accent-orange: 22 88% 44%;
     --working-accent-green: 142 62% 30%;
+    --diff-add: 142 62% 30%;
+    --diff-del: 8 65% 45%;
   }
   .dark {
     --working-accent-orange: 22 92% 62%;
     --working-accent-green: 142 55% 52%;
+    --diff-add: 117 40% 66%;   /* #89d185 */
+    --diff-del: 10 85% 70%;    /* #f48771 */
   }
   :root, .dark {
     --working-accent: var(--working-accent-orange);

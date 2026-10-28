@@ -134,7 +134,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       <div className="flex items-center gap-2">
         <button type="button" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 text-left font-medium" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>
           <span aria-hidden>{isOpen ? '▾' : '▸'}</span>Files changed during this reply · {plural(total)}
-          <span className="text-xs font-normal"><span className="text-green-600">+{added}</span> <span className="text-red-500">−{removed}</span></span>
+          <span className="text-xs font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
           {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -151,7 +151,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
         </div>
       </div>
       {commands.some(command => asked === `command:${command.frontmatter.name}`) && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
-      {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-green-600">+{result.since_review.added}</span> <span className="text-red-500">−{result.since_review.removed}</span></p>}
+      {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-diff-add">+{result.since_review.added}</span> <span className="text-diff-del">−{result.since_review.removed}</span></p>}
       {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
       {canEdit && undo && <div className="mt-2 rounded border border-border p-2 text-xs" role="group" aria-label="Undo this reply">
         {undo.busy && <span>Working…</span>}
@@ -180,7 +180,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
                   <button type="button" className="min-w-0 break-all text-left font-mono text-xs" onClick={() => openChatFiles(reference.sessionId, { reference, change })}>{ownName(change.path, group.root)}</button>
                   <span className="text-xs text-muted-foreground">{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span>
                   {!change.binary && typeof change.added === 'number' && typeof change.removed === 'number'
-                    && <span className="text-xs" aria-label={`${change.added} lines added, ${change.removed} lines removed`}><span className="text-green-600">+{change.added}</span> <span className="text-red-500">−{change.removed}</span></span>}
+                    && <span className="text-xs" aria-label={`${change.added} lines added, ${change.removed} lines removed`}><span className="text-diff-add">+{change.added}</span> <span className="text-diff-del">−{change.removed}</span></span>}
                 </li>
               ))}
               {group.more_count > 0 && <li className="text-xs text-muted-foreground">+ {group.more_count} more</li>}

@@ -245,7 +245,7 @@ export function CleanConversationSurface({
             <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl ${item.role === 'error' ? 'bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-300' : 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300'}`}>
               {item.role === 'error' ? <AlertCircle className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
             </span>
-            <div className={`min-w-0 flex-1 rounded-2xl rounded-tl-md border px-4 py-3 shadow-sm ${item.role === 'error' ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200' : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'}`}>
+            <div className={`min-w-0 flex-1 rounded-2xl rounded-tl-md border px-4 py-3 shadow-sm ${item.role === 'error' ? 'border-red-200 bg-red-50 text-red-800 dark:border-diff-del/35 dark:bg-diff-del/10 dark:text-diff-del' : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'}`}>
               {item.role === 'assistant' ? (
                 <ConversationMarkdownRenderer content={item.content} maxHeight="none" framed={false} copyableCode />
               ) : item.failure ? (

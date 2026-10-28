@@ -56,6 +56,8 @@ export default {
 				DEFAULT: 'hsl(var(--info) / <alpha-value>)',
 				foreground: 'hsl(var(--foreground))'
 			},
+			'diff-add': 'hsl(var(--diff-add) / <alpha-value>)',
+			'diff-del': 'hsl(var(--diff-del) / <alpha-value>)',
 			success: {
 				DEFAULT: 'hsl(var(--success) / <alpha-value>)',
 				foreground: 'hsl(var(--foreground))'
