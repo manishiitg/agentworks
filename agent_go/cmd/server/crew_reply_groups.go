@@ -11,25 +11,29 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 const replyGroupMaxPRLookups = 5
 const replyGroupMaxFailingChecks = 10
 
-// replyFileGroups groups a reply's changes by Git checkout and adds pull
-// request status from the Crew owner's connected GitHub account. The server's
-// own GitHub login is never used.
-func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, comparison filesnapshots.Comparison, allow func(string) bool) []filesnapshots.Group {
+// replyFileGroups groups a reply's changes by Git checkout and, with
+// pullRequests, adds pull request status from the Crew owner's connected
+// GitHub account and each checkout's next Git step. The server's own GitHub
+// login is never used.
+func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, comparison filesnapshots.Comparison, allow func(string) bool, pullRequests bool) []filesnapshots.Group {
 	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, allow)
-	token, connected := "", false
-	if rec := readGitHubRecord(roots.Owner); rec != nil {
-		token = githubTokenValue(rec)
-		connected = token != ""
+	if pullRequests {
+		token, connected := "", false
+		if rec := readGitHubRecord(roots.Owner); rec != nil {
+			token = githubTokenValue(rec)
+			connected = token != ""
+		}
+		attachPullRequests(ctx, groups, token, connected)
 	}
-	attachPullRequests(ctx, groups, token, connected)
 	for i := range groups {
-		if groups[i].Kind == "repo" {
+		if pullRequests && groups[i].Kind == "repo" {
 			groups[i].NextStep = filesnapshots.NextStep(groups[i])
 		}
 		if groups[i].Root != "" {
@@ -41,6 +45,52 @@ func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, c
 	}
 	return groups
 }
+
+// summaryGroups returns the groups the reply event carries (computed when the
+// reply's files were captured), which the card lists.
+func (h chatFileReview) summaryGroups(id string) ([]filesnapshots.Group, bool) {
+	var data struct {
+		Summary *struct {
+			Groups []filesnapshots.Group `json:"groups"`
+		} `json:"summary"`
+	}
+	raw, ok := h.replyData[id]
+	if !ok || json.Unmarshal(raw, &data) != nil || data.Summary == nil {
+		return nil, false
+	}
+	return data.Summary.Groups, true
+}
+
+// replyCard is what a reply card shows for this viewer: its groups and
+// action list. The Git actions, card commands and Undo follow the Crew
+// screens' Builder check (the same one as /api/workspace-access); everyone
+// else gets Review changes only.
+func (api *StreamingAPI) replyCard(r *http.Request, root string, groups []filesnapshots.Group) map[string]any {
+	canEdit := false
+	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken == nil && claims.Scope == "" {
+		if target, err := api.dashboardTarget(r.Context(), claims, root); err == nil {
+			canEdit = target.Edit
+		}
+	}
+	var cardCommands []commands.Command
+	if canEdit {
+		// Same path and access rule as listing the Crew's commands.
+		if path, ok := commandPathForRequest(discardResponse{}, r, false); ok {
+			if list, err := commands.DiscoverCommandsAt(getWorkspaceAPIURL(), path); err == nil {
+				cardCommands = list
+			}
+		}
+	}
+	return map[string]any{"groups": groups, "actions": filesnapshots.CardActions(groups, canEdit, cardCommands), "can_edit": canEdit}
+}
+
+// discardResponse drops what a shared request check writes when its result is
+// only used inside another response.
+type discardResponse struct{}
+
+func (discardResponse) Header() http.Header         { return http.Header{} }
+func (discardResponse) Write(b []byte) (int, error) { return len(b), nil }
+func (discardResponse) WriteHeader(int)             {}
 
 // attachPullRequests resolves each GitHub-backed branch's pull request.
 func attachPullRequests(ctx context.Context, groups []filesnapshots.Group, token string, connected bool) {

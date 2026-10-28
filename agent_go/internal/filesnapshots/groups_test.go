@@ -6,7 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 )
 
 // A checkout the reply cloned lists one group with its branch and only the
@@ -116,5 +120,50 @@ func TestNextStepFollowsTheCheckout(t *testing.T) {
 	git(repo, "fetch", "--quiet", upstream, "feature:refs/remotes/origin/feature")
 	if got := step(&PullRequest{State: "open"}); got != "get_latest" {
 		t.Fatalf("behind its remote: %q", got)
+	}
+}
+
+// The card's actions are decided here (PLAT-746-158): a Run person gets only
+// Review changes; an editor gets Commit, Push, the next Git step, a fix action
+// only for what GitHub reports on the open PR, and their card commands.
+func TestCardActionsFollowViewerAndPullRequest(t *testing.T) {
+	group := Group{Kind: "repo", Root: "app", Name: "app", Branch: "fix-tts", GitHubRepo: "o/r", Files: []Change{{Path: "app/tts.py", Status: "M"}},
+		PR: &PullRequest{Number: 305, URL: "https://github.com/o/r/pull/305", State: "open", Checks: "passing", Review: "none"}, NextStep: "update_pr"}
+	card := []commands.Command{
+		{Frontmatter: commands.CommandFrontmatter{Name: "check-this-change", Description: "Check this change", ShowOnCard: true}, Content: "Look over the files.\n{{context}}"},
+		{Frontmatter: commands.CommandFrontmatter{Name: "slash-only"}, Content: "x"},
+	}
+	placed := func(actions []CardAction) []string {
+		var out []string
+		for _, action := range actions {
+			out = append(out, action.Placement+":"+action.ID)
+		}
+		return out
+	}
+	if got := placed(CardActions([]Group{group}, false, card)); !reflect.DeepEqual(got, []string{"row:review"}) {
+		t.Fatalf("Run person: %v", got)
+	}
+	actions := CardActions([]Group{group}, true, card)
+	want := []string{"row:review", "row:commit", "row:push", "more:next:app", "row:command:check-this-change", "row:add_button"}
+	if got := placed(actions); !reflect.DeepEqual(got, want) {
+		t.Fatalf("editor, passing checks: %v", got)
+	}
+	if !strings.Contains(actions[1].Prompt, "on branch fix-tts. Stage only the files listed here, by name") || !strings.Contains(actions[2].Prompt, "Never push the default branch") || !strings.Contains(actions[2].Prompt, "\n- app/tts.py\n") {
+		t.Fatalf("commit and push prompts: %q / %q", actions[1].Prompt, actions[2].Prompt)
+	}
+	if actions[3].Label != "Update the pull request" || !strings.HasPrefix(actions[3].Prompt, "Update PR #305 in o/r with this reply's work on branch fix-tts.") {
+		t.Fatalf("next step: %+v", actions[3])
+	}
+	if got := actions[4].Prompt; got != "Look over the files.\nContext: this reply changed these files: app/tts.py in app on branch fix-tts; PR https://github.com/o/r/pull/305" {
+		t.Fatalf("card command prompt: %q", got)
+	}
+	group.PR.Checks, group.PR.FailingChecks = "failing", []string{"build", "lint"}
+	actions = CardActions([]Group{group}, true, nil)
+	want = []string{"row:review", "row:commit", "row:push", "more:next:app", "more:fix-checks:app", "row:add_button", "pr_line:fix-checks:app:link"}
+	if got := placed(actions); !reflect.DeepEqual(got, want) {
+		t.Fatalf("editor, failing checks: %v", got)
+	}
+	if got := actions[4].Prompt; got != "PR #305 in o/r has failing checks: build, lint. Open the failing runs, fix the cause on branch fix-tts, push, and tell me what you changed." {
+		t.Fatalf("fix prompt: %q", got)
 	}
 }

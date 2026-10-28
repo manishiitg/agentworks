@@ -3,17 +3,14 @@ import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowDownToLine, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
 import api from '../../services/api'
 import { useReviewRevision, type ReviewResult } from '../workspace/chatFileReview'
-import type { ReplyFileChangesRef, ReplyFileGroup, ReplyPullRequest } from '../../utils/replyFileChanges'
+import type { ReplyCardAction, ReplyFileChangesRef, ReplyFileGroup, ReplyPullRequest } from '../../utils/replyFileChanges'
 import { useProjectMode } from '../../products/work/codeLocalFiles'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { openChatFiles } from '../workspace/chatFileNavigation'
 import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
-import { commandsApi } from '../../api/commands'
-import { renderCommandPrompt } from '../../commands/commandPrompt'
 import { CommandIcon } from '../../commands/CommandIcon'
-import type { UserCommand } from '../../types/commands'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../../utils/chatIdentity'
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
 import { FileDiffIcon, GitCommitIcon, GitPullRequestIcon } from '../icons/octicons'
@@ -26,37 +23,6 @@ type FileGroup = ReplyFileGroup
 const onGitHub = (group: FileGroup) => group.kind === 'repo' && !!group.github_repo && !!group.branch
 
 const ownName = (path: string, root: string) => root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
-// Plain-language requests for the agent in this same chat. Only this reply's files
-// are named, and the agent is told never to push the main branch.
-export const commitRequest = (group: FileGroup) => `Commit these files in ${group.name} (${group.root || 'the Crew folder'}) on branch ${group.branch}. Stage only the files listed here, by name, and use a short message that describes the change. Do not push yet.\n${group.files.map(file => `- ${file.path}`).join('\n')}${group.more_count ? `\n(and ${group.more_count} more files from this reply)` : ''}`
-export const pushRequest = (group: FileGroup) => `Open a pull request for this reply's work in ${group.name} (${group.root || 'the Crew folder'}). If branch ${group.branch} is the default branch (main or master), first create a new branch from it with a short descriptive name; otherwise use ${group.branch}. Never push the default branch. If these files are not committed yet, commit them, staging only the files listed here, by name:\n${group.files.map(file => `- ${file.path}`).join('\n')}${group.more_count ? `\n(and ${group.more_count} more files from this reply)` : ''}\nThen push the branch to GitHub and open a pull request with a proper description: a short title, a summary of what changed and why based on this chat, the list of changed files, and how it was tested. Reply with the pull request link.`
-const fileLines = (group: FileGroup) => `${group.files.map(file => `- ${file.path}`).join('\n')}${group.more_count ? `\n(and ${group.more_count} more files from this reply)` : ''}`
-const repoName = (group: FileGroup) => group.github_repo || group.name
-const prName = (group: FileGroup) => `PR #${group.pr?.number} in ${repoName(group)}`
-export const updatePrRequest = (group: FileGroup) => `Update ${prName(group)} with this reply's work on branch ${group.branch}. If these files are not committed yet, commit them, staging only the files listed here, by name:\n${fileLines(group)}\nThen push branch ${group.branch}, update the pull request description if what it does has changed, and reply with the pull request link.`
-export const getLatestRequest = (group: FileGroup) => `Branch ${group.branch} in ${repoName(group)} (${group.root || 'the Crew folder'}) is behind its copy on GitHub. Bring in the latest changes without losing any work here: keep uncommitted changes safe first, resolve any conflicts, then tell me what came in.`
-export const fixChecksRequest = (group: FileGroup) => `${prName(group)} has failing checks${group.pr?.failing_checks?.length ? `: ${group.pr.failing_checks.join(', ')}` : ''}. Open the failing runs, fix the cause on branch ${group.branch}, push, and tell me what you changed.`
-export const reviewRequest = (group: FileGroup) => `${prName(group)} has review comments asking for changes. Read every review comment, make the requested changes on branch ${group.branch}, push, and tell me what you changed for each comment.`
-export const conflictsRequest = (group: FileGroup) => `${prName(group)} cannot merge because of conflicts with its base branch. Bring branch ${group.branch} up to date with the base branch, resolve the conflicts keeping what both sides meant, push, and tell me which files had conflicts and how you resolved them.`
-type CardAction = { key: string; label: string; message: string; icon: ReactNode }
-const nextStepLabels = { share_pr: 'Share as a pull request', update_pr: 'Update the pull request', get_latest: 'Get the latest changes' } as const
-function nextStepAction(group: FileGroup, named: boolean): CardAction | null {
-  const step = group.next_step
-  if (!step || step === 'none' || !(step in nextStepLabels)) return null
-  const message = step === 'share_pr' ? pushRequest(group) : step === 'update_pr' ? updatePrRequest(group) : getLatestRequest(group)
-  return { key: `next:${group.root}`, label: `${nextStepLabels[step]}${named ? ` · ${group.name}` : ''}`, message, icon: step === 'get_latest' ? <ArrowDownToLine /> : <GitPullRequestIcon /> }
-}
-// Only what GitHub reports for an open PR; nothing when the data does not say so.
-function fixActions(group: FileGroup, named: boolean): CardAction[] {
-  const pr = group.pr
-  if (!pr?.number || pr.state !== 'open') return []
-  const suffix = named ? ` · ${group.name}` : ''
-  const actions: CardAction[] = []
-  if (pr.checks === 'failing') actions.push({ key: `fix-checks:${group.root}`, label: `Fix failing checks${suffix}`, message: fixChecksRequest(group), icon: <Wrench /> })
-  if (pr.review === 'changes_requested') actions.push({ key: `fix-review:${group.root}`, label: `Address review comments${suffix}`, message: reviewRequest(group), icon: <Wrench /> })
-  if (pr.conflicts) actions.push({ key: `fix-conflicts:${group.root}`, label: `Resolve conflicts${suffix}`, message: conflictsRequest(group), icon: <Wrench /> })
-  return actions
-}
 function prLine(pr: PullRequest) {
   const checks = pr.checks && pr.checks !== 'none' ? ` · checks ${pr.checks}` : ''
   const review = pr.review === 'approved' ? ' · approved' : pr.review === 'changes_requested' ? ' · changes requested' : pr.state === 'open' ? ' · no review yet' : ''
@@ -68,15 +34,12 @@ type UndoPlan = { restore: UndoItem[]; skipped: UndoItem[] }
 const fileList = (items: UndoItem[]) => items.slice(0, 5).map(item => item.path.split('/').pop()).join(', ') + (items.length > 5 ? `, +${items.length - 5} more` : '')
 const plural = (n: number) => `${n} file${n === 1 ? '' : 's'}`
 const errorText = (cause: unknown, fallback: string) => (cause as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || (cause instanceof Error ? cause.message : fallback)
-// This reply's context for a card button: replaces {{context}} in the saved message.
-export const cardContext = (groups: FileGroup[]) => {
-  const paths = groups.flatMap(group => group.files.map(file => file.path)).slice(0, 20)
-  const repo = groups.find(group => group.kind === 'repo' && group.branch)
-  const pr = repo?.pr?.url
-  return `Context: this reply changed these files: ${paths.join(', ')}${repo ? ` in ${repo.name} on branch ${repo.branch}` : ''}${pr ? `; PR ${pr}` : ''}`
-}
 const menuRow = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted [&_svg]:h-4 [&_svg]:w-4'
-const commandIcon = (command: UserCommand) => <CommandIcon name={command.frontmatter.icon} fallback={Zap} />
+// The card's own icons draw at once; a person's command icon loads by its Lucide name.
+const cardIcons: Record<string, ReactNode> = { 'octicon:file-diff': <FileDiffIcon />, 'octicon:git-commit': <GitCommitIcon />, 'octicon:git-pull-request': <GitPullRequestIcon />, 'arrow-down-to-line': <ArrowDownToLine />, wrench: <Wrench />, plus: <Plus /> }
+const actionIcon = (icon?: string) => (icon && cardIcons[icon]) || <CommandIcon name={icon} fallback={Zap} />
+// The person's own buttons and Add button sit after a divider; phones keep them under More.
+const ownButton = (action: ReplyCardAction) => action.kind === 'command' || action.id === 'add_button'
 const iconButton = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 [&_svg]:h-4 [&_svg]:w-4'
 const Divider = () => <span className="mx-1.5 h-4 w-px bg-border" aria-hidden />
 // Hover or keyboard focus shows the name and one plain line; touch taps go straight to the button.
@@ -88,8 +51,7 @@ function IconButton({ label, name = label, hint, onClick, disabled, strong, chil
     <TooltipContent className="max-w-xs text-xs"><p className="font-semibold">{name}</p><p className="text-muted-foreground">{hint}</p></TooltipContent>
   </Tooltip>
 }
-type MenuEntry = { key: string; label: string; icon: ReactNode; onSelect: () => void }
-function MoreMenu({ items }: { items: MenuEntry[] }) {
+function MoreMenu({ items, onSelect }: { items: ReplyCardAction[]; onSelect: (action: ReplyCardAction) => void }) {
   return <Menu.Root modal={false}>
     <Tooltip>
       <TooltipTrigger asChild>
@@ -98,14 +60,14 @@ function MoreMenu({ items }: { items: MenuEntry[] }) {
       <TooltipContent className="text-xs">More actions</TooltipContent>
     </Tooltip>
     <Menu.Portal><Menu.Content align="end" sideOffset={6} collisionPadding={12} className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(300px,calc(100vw-24px))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
-      {items.map(item => <Menu.Item key={item.key} onSelect={item.onSelect} className={menuRow}>{item.icon}<span className="min-w-0 flex-1 truncate">{item.label}</span></Menu.Item>)}
+      {items.map(item => <Menu.Item key={item.id} onSelect={() => onSelect(item)} className={menuRow}>{actionIcon(item.icon)}<span className="min-w-0 flex-1 truncate">{item.label}</span></Menu.Item>)}
     </Menu.Content></Menu.Portal>
   </Menu.Root>
 }
-const addButtonStarter = 'Add a button called ___ that sends: ___'
-
 const endpoint = '/api/workspace-snapshots'
 const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId })
+// The server decides the card for this viewer: its groups (PR status once looked up) and actions.
+type ReplyCard = { groups: FileGroup[]; actions: ReplyCardAction[]; can_edit: boolean }
 
 export function ReplyFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const mode = useProjectMode(reference.sessionId)
@@ -124,11 +86,9 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const [revision] = useReviewRevision()
   const phone = useMobileViewport()
   const [reviewError, setReviewError] = useState('')
-  const [fetchedGroups, setFetchedGroups] = useState<FileGroup[]>([])
-  const [prGroups, setPrGroups] = useState<FileGroup[] | null>(null)
-  const [canEdit, setCanEdit] = useState(false)
+  const [card, setCard] = useState<ReplyCard | null>(null)
+  const [checked, setChecked] = useState<ReplyCard | null>(null)
   const [asked, setAsked] = useState('')
-  const [commands, setCommands] = useState<UserCommand[]>([])
   const [open, setOpen] = useState<boolean | null>(null)
   const [undo, setUndo] = useState<{ plan?: UndoPlan; busy?: boolean; done?: string; error?: string } | null>(null)
   const latest = !reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId
@@ -143,30 +103,17 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
         .then(response => { if (!controller.signal.aborted) setResult(response.data) })
         .catch(() => { /* Expired/unavailable history has no change card. */ })
     }
-    if (!hasSummary) {
-      void api.get<{ groups: FileGroup[] }>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_groups' }, signal: controller.signal })
-        .then(response => { if (!controller.signal.aborted) setFetchedGroups(response.data.groups ?? []) })
-        .catch(() => { /* The card still shows the summary line. */ })
-    }
     return () => controller.abort()
   }, [reference.workspacePath, reference.snapshotId, reference.sessionId, hasSummary, sinceReview, revision])
   useEffect(() => {
+    if (!hasSummary) return
     const controller = new AbortController()
-    // Same Builder check as the Crew screens: Run people never see Git buttons.
-    void api.get<{ can_build: boolean }>('/api/workspace-access', { params: { workspace: reference.workspacePath }, signal: controller.signal })
-      .then(response => { if (!controller.signal.aborted) setCanEdit(response.data.can_build === true) })
-      .catch(() => setCanEdit(false))
+    // This viewer's actions, without the GitHub lookup.
+    void api.get<ReplyCard>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'reply_card' }, signal: controller.signal })
+      .then(response => { if (!controller.signal.aborted) setCard(response.data) })
+      .catch(() => { /* Only the actions every viewer gets. */ })
     return () => controller.abort()
-  }, [reference.workspacePath])
-  useEffect(() => {
-    if (!canEdit) { setCommands([]); return }
-    let current = true
-    // Buttons are the Crew's commands marked for the card; nothing extra if the list cannot load.
-    void commandsApi.listCommands(reference.workspacePath)
-      .then(response => { if (current) setCommands((response.commands ?? []).filter(command => command.frontmatter.show_on_card === true)) })
-      .catch(() => { if (current) setCommands([]) })
-    return () => { current = false }
-  }, [canEdit, reference.workspacePath])
+  }, [reference.workspacePath, reference.snapshotId, reference.sessionId, hasSummary])
   const undoParams = (op: string) => ({ ...paramsFor(reference), session_id: reference.sessionId, op })
   const undoCall = (method: 'get' | 'post', op: string) => method === 'get' ? api.get<{ undo: UndoPlan }>(endpoint, { params: undoParams(op) }) : api.post<{ undo: UndoPlan }>(endpoint, {}, { params: undoParams(op) })
   const startUndo = async () => {
@@ -191,36 +138,32 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       setAsked(key)
     } catch (cause) { setReviewError(cause instanceof Error ? cause.message : 'Could not send this to the chat. Try again.') }
   }
-  const baseGroups = summary?.groups ?? fetchedGroups
   // PR status is a GitHub call: it loads once the card is open and never holds the header or file list.
+  // A reply saved without a summary loads its groups this way at once.
   const isOpen = open ?? latest
-  const lookUpPullRequests = isOpen && hasSummary && baseGroups.some(onGitHub)
+  const lookUpPullRequests = !hasSummary || (isOpen && !!summary?.groups.some(onGitHub))
   useEffect(() => {
     if (!lookUpPullRequests) return
     const controller = new AbortController()
-    void api.get<{ groups: FileGroup[] }>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_groups' }, signal: controller.signal })
-      .then(response => { if (!controller.signal.aborted) setPrGroups(response.data.groups ?? []) })
+    void api.get<ReplyCard>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'reply_card', pull_requests: true }, signal: controller.signal })
+      .then(response => { if (!controller.signal.aborted) setChecked(response.data) })
       .catch(() => { /* No PR line. */ })
     return () => controller.abort()
   }, [lookUpPullRequests, reference.workspacePath, reference.snapshotId, reference.sessionId])
-  // The file list stays as captured; the lazy read adds only the PR status and next step.
-  const groups = prGroups ? baseGroups.map(group => { const found = prGroups.find(item => item.kind === group.kind && item.root === group.root); return { ...group, pr: found?.pr, next_step: found?.next_step } }) : baseGroups
+  // The file list stays as captured; the server's lookup adds only the PR status.
+  const groups = checked?.groups ?? summary?.groups ?? []
+  const actions = checked?.actions ?? card?.actions ?? summary?.actions ?? []
+  const canEdit = (checked ?? card)?.can_edit === true
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
-  const repoGroups = groups.filter(group => group.kind === 'repo' && group.branch)
-  const named = repoGroups.length > 1
-  const sendAction = (action: CardAction): MenuEntry => ({ ...action, onSelect: () => void ask(action.key, action.message) })
-  const runCommand = (command: UserCommand) => void ask(`command:${command.frontmatter.name}`, renderCommandPrompt(command.content, cardContext(groups)))
-  const addButton = () => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message: addButtonStarter }).catch(() => setReviewError('Open the original chat to add a button.')) }
-  // The row keeps the defaults, two of the person's buttons and +; everything else is under More. Phones show the defaults and More only.
-  const shownCommands = phone ? [] : commands.slice(0, 2)
-  const more: MenuEntry[] = canEdit ? [
-    ...repoGroups.flatMap(group => { const next = nextStepAction(group, named); return next ? [sendAction(next)] : [] }),
-    ...repoGroups.flatMap(group => fixActions(group, named).map(sendAction)),
-    ...commands.slice(shownCommands.length).map(command => ({ key: `command:${command.frontmatter.name}`, label: command.frontmatter.name, icon: commandIcon(command), onSelect: () => runCommand(command) })),
-    ...(phone ? [{ key: 'add', label: 'Add button', icon: <Plus />, onSelect: addButton }] : []),
-  ] : []
+  const addButton = (message: string) => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message }).catch(() => setReviewError('Open the original chat to add a button.')) }
+  const run = (action: ReplyCardAction) => action.id === 'review' ? openChatFiles(reference.sessionId) : action.id === 'add_button' ? addButton(action.prompt ?? '') : void ask(action.id, action.prompt ?? '')
+  // Phones show the card's defaults in the row and the person's own buttons under More.
+  const inMore = (action: ReplyCardAction) => action.placement === 'more' || (phone && action.placement === 'row' && ownButton(action))
+  const row = actions.filter(action => action.placement === 'row' && !inMore(action))
+  const more = actions.filter(inMore)
+  const rowButton = (action: ReplyCardAction) => <IconButton key={action.id} strong={action.id === 'review'} label={action.aria_label || action.label} name={action.label} hint={action.description ?? ''} onClick={() => run(action)}>{actionIcon(action.icon)}</IconButton>
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
   if (total === 0) return null
   return (
@@ -232,18 +175,10 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
         </button>
         <TooltipProvider delayDuration={150}><div className="flex shrink-0 items-center gap-0.5">
-          <IconButton strong label="Review changes" hint="See every file this reply changed, line by line." onClick={() => openChatFiles(reference.sessionId)}><FileDiffIcon /></IconButton>
-          {canEdit && repoGroups.length > 0 && <>
-            <IconButton label="Commit on the current branch" hint={`Ask the agent to commit these files on ${repoGroups.length === 1 ? repoGroups[0].branch : 'their current branches'}. Nothing is pushed.`} onClick={() => void ask('commit:reply', repoGroups.map(commitRequest).join('\n\n'))}><GitCommitIcon /></IconButton>
-            <IconButton label="Push to a branch and open a PR" hint="Ask the agent to push a branch and open a pull request with a full description." onClick={() => void ask('push:reply', repoGroups.map(pushRequest).join('\n\n'))}><GitPullRequestIcon /></IconButton>
-          </>}
-          {canEdit && !phone && <Divider />}
-          {canEdit && shownCommands.map(command => {
-            const name = command.frontmatter.name
-            return <IconButton key={name} label={command.frontmatter.description || name} name={name} hint={command.frontmatter.description || `Runs your ${name} command in this chat.`} onClick={() => runCommand(command)}>{commandIcon(command)}</IconButton>
-          })}
-          {canEdit && !phone && <IconButton label="Add button" hint="Add your own button to this card." onClick={addButton}><Plus /></IconButton>}
-          {more.length > 0 && <MoreMenu items={more} />}
+          {row.filter(action => !ownButton(action)).map(rowButton)}
+          {row.some(ownButton) && <Divider />}
+          {row.filter(ownButton).map(rowButton)}
+          {more.length > 0 && <MoreMenu items={more} onSelect={run} />}
         </div></TooltipProvider>
       </div>
       {asked && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
@@ -271,7 +206,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
             {group.kind === 'repo' && group.pr?.state === 'connect_github' && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('secrets')}>Connect GitHub to see PR status</button>}
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
               <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>
-              {canEdit && fixActions(group, false).map(action => <button key={action.key} type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => void ask(action.key, action.message)}>{action.label}</button>)}
+              {actions.filter(action => action.placement === 'pr_line' && action.group === group.root).map(action => <button key={action.id} type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => run(action)}>{action.label}</button>)}
             </div>}
           </div>
         ))}

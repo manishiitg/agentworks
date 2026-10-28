@@ -254,7 +254,9 @@ func replyFileSummary(ctx context.Context, store filesnapshots.Store, roots crew
 			groups[i].Files[j].Path = prefix + groups[i].Files[j].Path
 		}
 	}
-	summary := map[string]any{"files": totals.Files, "added": totals.Added, "removed": totals.Removed, "groups": groups}
+	// The actions every viewer gets (Review changes), so the card draws them
+	// before its own request returns this viewer's list.
+	summary := map[string]any{"files": totals.Files, "added": totals.Added, "removed": totals.Removed, "groups": groups, "actions": filesnapshots.CardActions(groups, false, nil)}
 	// Stay well inside one durable event row; a huge reply falls back to the
 	// card's request.
 	if encoded, err := json.Marshal(summary); err != nil || len(encoded) > 24<<10 {
@@ -438,7 +440,7 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 	}
 	comparison.Record.ExecutionID = ""
 	if op == "snapshot_groups" {
-		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow)})
+		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow, true)})
 		return
 	}
 	for i := range comparison.Changes {

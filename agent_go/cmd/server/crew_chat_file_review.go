@@ -59,10 +59,12 @@ type chatFileReview struct {
 	Last      string                  `json:"last_snapshot_id"`
 	Available bool                    `json:"available"`
 	Note      string                  `json:"note,omitempty"`
+	// The stored reply_file_changes data by snapshot id, for the reply card.
+	replyData map[string]json.RawMessage
 }
 
 func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesnapshots.Store, sessionID, root string) (chatFileReview, error) {
-	out := chatFileReview{Replies: []chatSnapshotReference{}, Reviews: []chatReviewPoint{}, Baseline: "start"}
+	out := chatFileReview{Replies: []chatSnapshotReference{}, Reviews: []chatReviewPoint{}, Baseline: "start", replyData: map[string]json.RawMessage{}}
 	history, err := api.eventStore.ReadChatFileHistory(ctx, sessionID)
 	if err != nil {
 		return out, err
@@ -80,6 +82,7 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesn
 			continue
 		}
 		out.Replies = append(out.Replies, ref)
+		out.replyData[ref.ID] = raw
 	}
 	seen := map[string]bool{}
 	for _, ref := range out.Replies {
@@ -156,7 +159,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		api.markChatFilesReviewed(w, r, sessionID, store, history, id)
 		return
 	}
-	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" {
+	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" && op != "reply_card" {
 		externalError(w, 400, "invalid_action", "Choose a saved file comparison.")
 		return
 	}
@@ -219,6 +222,14 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		externalJSON(w, map[string]any{"history": history, "changes": []any{}})
 		return
 	}
+	// The card's file list comes from the reply event; without a GitHub
+	// lookup its actions need no comparison.
+	summaryGroups, hasSummary := history.summaryGroups(id)
+	lookUpPullRequests := r.URL.Query().Get("pull_requests") == "true"
+	if op == "reply_card" && hasSummary && !lookUpPullRequests {
+		externalJSON(w, api.replyCard(r, root, summaryGroups))
+		return
+	}
 	if bound := r.URL.Query().Get("through_snapshot_id"); bound != "" {
 		if _, found := refs[bound]; !found || (id != "" && bound != id) {
 			externalError(w, 404, "not_found", "This saved comparison is unavailable.")
@@ -272,7 +283,24 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	if op == "snapshot_groups" {
 		comparison.Record.Skipped = nil
-		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow)})
+		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow, true)})
+		return
+	}
+	if op == "reply_card" {
+		groups := replyFileGroups(ctx, roots, prefix, comparison, allow, lookUpPullRequests)
+		if hasSummary {
+			// The file list stays as captured; the lookup adds only PR status and next step.
+			for i := range summaryGroups {
+				summaryGroups[i].PR, summaryGroups[i].NextStep = nil, ""
+				for _, found := range groups {
+					if found.Kind == summaryGroups[i].Kind && found.Root == summaryGroups[i].Root {
+						summaryGroups[i].PR, summaryGroups[i].NextStep = found.PR, found.NextStep
+					}
+				}
+			}
+			groups = summaryGroups
+		}
+		externalJSON(w, api.replyCard(r, root, groups))
 		return
 	}
 	summary := reviewSummary(comparison)

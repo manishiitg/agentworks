@@ -3,10 +3,13 @@ import { normalizeTranscriptChunkEvents } from './transcriptChunkUpdates'
 
 type ReplyFileChange = { path: string; status: string; added?: number; removed?: number; binary?: boolean }
 export type ReplyPullRequest = { number?: number; url?: string; state: string; checks?: string; review?: string; failing_checks?: string[]; conflicts?: boolean }
-// next_step is decided by the server: the one Git step this checkout needs now (sent by the lazy groups read, not the event).
-export type ReplyFileGroup = { kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; new_checkout: boolean; files: ReplyFileChange[]; total_files: number; more_count: number; pr?: ReplyPullRequest; next_step?: 'share_pr' | 'update_pr' | 'get_latest' | 'none' }
+export type ReplyFileGroup = { kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; new_checkout: boolean; files: ReplyFileChange[]; total_files: number; more_count: number; pr?: ReplyPullRequest }
+// One card action, decided by the server for the viewer. icon is "octicon:<id>" or a Lucide name;
+// prompt is sent to the chat's agent as is (Review opens Review; Add button puts it in the composer).
+export type ReplyCardAction = { id: string; kind: 'builtin' | 'git_step' | 'fix' | 'command'; label: string; aria_label?: string; description?: string; icon?: string; placement: 'row' | 'more' | 'pr_line'; prompt?: string; group?: string; editors_only?: boolean }
 // Computed by the server when the reply's files were captured; the card renders from it without a request.
-export type ReplyFileSummary = { files: number; added: number; removed: number; groups: ReplyFileGroup[] }
+// actions are the ones every viewer gets, shown until the card's own request returns this viewer's list.
+export type ReplyFileSummary = { files: number; added: number; removed: number; groups: ReplyFileGroup[]; actions?: ReplyCardAction[] }
 
 export interface ReplyFileChangesRef {
   snapshotId: string

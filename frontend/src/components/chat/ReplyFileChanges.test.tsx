@@ -2,21 +2,34 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ canBuild: true, total: 2, undoError: '', extraCommands: [] as string[], pr: {} as Record<string, unknown>, nextStep: 'none' }))
+const state = vi.hoisted(() => ({ canBuild: true, total: 2, undoError: '', phone: false, extraCommands: [] as string[], pr: {} as Record<string, unknown>, nextStep: 'none' }))
 const pr = { number: 305, url: 'https://github.com/o/r/pull/305', state: 'open', checks: 'passing', review: 'none' }
 const group = { kind: 'repo' as const, root: 'app', name: 'app', branch: 'fix-tts', github_repo: 'o/r', new_checkout: true, total_files: 696, more_count: 3, files: [{ path: 'app/tts.py', status: 'M', added: 4, removed: 1 }] }
 const crewFiles = { kind: 'crew_files' as const, root: '', name: 'Crew', new_checkout: false, total_files: 1, more_count: 0, files: [{ path: 'notes.md', status: 'A', added: 2, removed: 0 }] }
-vi.mock('../../api/commands', () => ({ commandsApi: { listCommands: vi.fn(async () => ({ commands: [
-  { frontmatter: { name: 'check-this-change', description: 'Check this change', show_on_card: true }, content: 'Look over the files.\n{{context}}' },
-  { frontmatter: { name: 'other', description: 'Hidden one', show_on_card: false }, content: 'x' },
-  ...state.extraCommands.map(name => ({ frontmatter: { name, description: `Run ${name}`, show_on_card: true }, content: name }))] })) } }))
-vi.mock('../../services/api', () => ({ default: { post: vi.fn(async () => { if (state.undoError) throw { response: { data: { error: { message: state.undoError } } } }; return { data: { undo: { restore: [{ path: 'app/tts.py' }], skipped: [] } } } }), get: vi.fn(async (path: string, options: { params: Record<string, unknown> }) => {
+const review = { id: 'review', kind: 'builtin', label: 'Review changes', description: 'See every file this reply changed, line by line.', icon: 'octicon:file-diff', placement: 'row' } as const
+// The list the server decides (filesnapshots.CardActions); the card only draws it.
+function replyCard(lookedUp: boolean) {
+  const status = { ...pr, ...state.pr }
+  const actions: Record<string, unknown>[] = [review]
+  if (state.canBuild) {
+    actions.push({ id: 'commit', kind: 'builtin', label: 'Commit on the current branch', description: 'Ask the agent to commit these files on fix-tts. Nothing is pushed.', icon: 'octicon:git-commit', placement: 'row', prompt: 'commit prompt' },
+      { id: 'push', kind: 'builtin', label: 'Push to a branch and open a PR', description: 'Ask the agent to push a branch and open a pull request with a full description.', icon: 'octicon:git-pull-request', placement: 'row', prompt: 'push prompt' })
+    if (lookedUp && state.nextStep === 'update_pr') actions.push({ id: 'next:app', kind: 'git_step', label: 'Update the pull request', icon: 'octicon:git-pull-request', placement: 'more', prompt: 'update prompt', group: 'app' })
+    if (lookedUp && status.checks === 'failing') actions.push({ id: 'fix-checks:app', kind: 'fix', label: 'Fix failing checks', icon: 'wrench', placement: 'more', prompt: 'fix prompt', group: 'app' })
+    const commands = ['check-this-change', ...state.extraCommands]
+    commands.forEach((name, i) => actions.push({ id: `command:${name}`, kind: 'command', label: name, aria_label: name === 'check-this-change' ? 'Check this change' : `Run ${name}`, description: `Run ${name}`, placement: i < 2 ? 'row' : 'more', prompt: `${name} prompt` }))
+    actions.push({ id: 'add_button', kind: 'builtin', label: 'Add button', description: 'Add your own button to this card.', icon: 'plus', placement: 'row', prompt: 'Add a button called ___ that sends: ___' })
+    if (lookedUp && status.checks === 'failing') actions.push({ id: 'fix-checks:app:link', kind: 'fix', label: 'Fix failing checks', icon: 'wrench', placement: 'pr_line', prompt: 'fix prompt', group: 'app' })
+  }
+  return { groups: [crewFiles, lookedUp ? { ...group, pr: status } : group], actions, can_edit: state.canBuild }
+}
+vi.mock('../../services/api', () => ({ default: { post: vi.fn(async () => { if (state.undoError) throw { response: { data: { error: { message: state.undoError } } } }; return { data: { undo: { restore: [{ path: 'app/tts.py' }], skipped: [] } } } }), get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
   if (options.params.op === 'snapshot_undo_preview') return { data: { undo: { restore: [{ path: 'app/tts.py', status: 'M', action: 'restore' }], skipped: [{ path: 'app/x.py', status: 'M', action: 'restore', reason: 'changed_later' }] } } }
-  if (path === '/api/workspace-access') return { data: { can_build: state.canBuild } }
-  if (options.params.op === 'snapshot_groups') return { data: { groups: [crewFiles, { ...group, pr: { ...pr, ...state.pr }, next_step: state.nextStep }] } }
+  if (options.params.op === 'reply_card') return { data: replyCard(options.params.pull_requests === true) }
   return { data: { history: { replies: [], reviews: [], available: true, last_snapshot_id: 's', latest_snapshot_id: 's', baseline_snapshot_id: 'x', can_review: true }, total_changes: state.total, comparison: { changes: state.total ? [{ path: 'app/tts.py', status: 'M' }] : [], snapshot: { status: 'complete' }, note: '', skipped_count: 0, uncaptured_changes: 0 } } }
 }) } }))
 vi.mock('../../products/work/codeLocalFiles', () => ({ useProjectMode: () => 'dev' }))
+vi.mock('../../hooks/useMobileViewport', () => ({ useMobileViewport: () => state.phone }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: 'u' } }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: 'w' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { tab1: { tabId: 'tab1', sessionId: 'chat-a' } } }) } }))
@@ -26,55 +39,53 @@ vi.mock('../../utils/projectIntegrationNavigation', () => ({ openProjectIntegrat
 vi.mock('../workspace/chatFileNavigation', () => ({ openChatFiles: vi.fn() }))
 vi.mock('../workspace/chatFileReview', () => ({ markFilesReviewed: vi.fn(), useReviewRevision: () => [0] }))
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
+import { openChatFiles } from '../workspace/chatFileNavigation'
 import api from '../../services/api'
 import { ReplyFileChanges } from './ReplyFileChanges'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 HTMLElement.prototype.scrollIntoView ??= () => {}
 
-// The reply event carries the summary the server computed at capture time.
+// The reply event carries the summary the server computed at capture time, with the actions every viewer gets.
 async function render(canBuild: boolean, total = 2, latestSnapshotId?: string, withSummary = true) {
   state.canBuild = canBuild; state.total = total
-  const summary = withSummary ? { files: total, added: 6, removed: 1, groups: total ? [crewFiles, group] : [] } : undefined
+  const summary = withSummary ? { files: total, added: 6, removed: 1, groups: total ? [crewFiles, group] : [], actions: [review] } : undefined
   const host = document.createElement('div'); document.body.append(host)
   await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId, summary }} />))
   return host
 }
 const openMore = async (host: HTMLElement) => act(async () => { const trigger = button(host, 'More actions')!; trigger.focus(); trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
+const menuItems = () => Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent)
 const menuItem = (text: string) => Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent?.includes(text)) as HTMLElement | undefined
-const snapshotOps = () => vi.mocked(api.get).mock.calls.map(call => (call[1] as { params: Record<string, unknown> } | undefined)?.params?.op).filter(Boolean)
+const snapshotOps = () => vi.mocked(api.get).mock.calls.map(call => (call[1] as { params: Record<string, unknown> } | undefined)?.params).filter(params => params?.op).map(params => `${params!.op}${params!.pull_requests ? '+pr' : ''}`)
 const button = (host: HTMLElement, text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text) || item.getAttribute('aria-label')?.includes(text))
+const rowLabels = (host: HTMLElement) => Array.from(host.querySelectorAll('section > div:first-child button[aria-label]')).map(item => item.getAttribute('aria-label'))
 
 describe('reply card groups', () => {
-  it('lists Git checkouts before Crew files and asks the same chat to commit only this reply, never main', async () => {
+  it('lists Git checkouts before Crew files and sends the server\'s Commit and Push requests to the same chat', async () => {
     const host = await render(true)
     expect(host.textContent).toContain('new copy')
     expect(host.textContent).toContain('+ 3 more')
     expect(host.textContent).toContain('PR #305 · checks passing · no review yet')
     expect(host.textContent!.indexOf('app')).toBeLessThan(host.textContent!.indexOf('not in Git'))
+    vi.mocked(sendWorkspacePaneMessageToChat).mockClear()
     await act(async () => button(host, 'Commit')!.click())
-    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ tabId: 'tab1', message: expect.stringContaining('on branch fix-tts. Stage only the files listed here') })
+    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ tabId: 'tab1', message: 'commit prompt' })
     await act(async () => button(host, 'Push to a branch and open a PR')!.click())
-    const push = vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[1][0].message
-    for (const text of ['Never push the default branch', '- app/tts.py', 'a summary of what changed and why based on this chat', 'how it was tested', 'pull request link']) expect(push).toContain(text)
-  })
-  it('shows no Git buttons to people who cannot edit the Crew', async () => {
-    const host = await render(false)
-    expect(host.textContent).toContain('tts.py')
-    expect(button(host, 'Commit')).toBeUndefined()
-    expect(button(host, 'Push')).toBeUndefined()
+    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[1][0].message).toBe('push prompt')
+    await act(async () => button(host, 'Review changes')!.click())
+    expect(openChatFiles).toHaveBeenCalledWith('chat-a')
   })
   it('shows no card at all for a reply that changed 0 files', async () => {
     const host = await render(true, 0)
     expect(host.querySelector('section')).toBeNull()
   })
-  it('sends a card button with this reply as context, and prefills the composer for + Add button', async () => {
+  it('sends a card button\'s prompt as is, and prefills the composer for + Add button', async () => {
     const host = await render(true)
     vi.mocked(sendWorkspacePaneMessageToChat).mockClear()
-    expect(button(host, 'Hidden one')).toBeUndefined()
     await act(async () => button(host, 'Check this change')!.click())
-    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toContain('Context: this reply changed these files: notes.md, app/tts.py in app on branch fix-tts; PR https://github.com/o/r/pull/305')
+    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toBe('check-this-change prompt')
     await act(async () => button(host, 'Add button')!.click())
-    expect(openWorkspacePaneChatWithDraft).toHaveBeenCalledWith({ tabId: 'tab1', message: expect.stringContaining('Add a button called') })
+    expect(openWorkspacePaneChatWithDraft).toHaveBeenCalledWith({ tabId: 'tab1', message: 'Add a button called ___ that sends: ___' })
   })
   it('undo shows what comes back and what stays, then shows the server error text as is', async () => {
     const host = await render(true)
@@ -85,17 +96,19 @@ describe('reply card groups', () => {
     expect(host.textContent).toContain(state.undoError)
     state.undoError = ''
   })
-  it('shows no undo or card buttons to people who cannot edit the Crew', async () => {
+  it('a Run person sees only Review changes in the header, and no undo', async () => {
     const host = await render(false)
+    expect(host.textContent).toContain('tts.py')
+    expect(rowLabels(host)).toEqual(['Review changes'])
+    expect(button(host, 'More actions')).toBeUndefined()
     expect(button(host, 'Undo this reply')).toBeUndefined()
-    expect(button(host, 'Add button')).toBeUndefined()
   })
-  it('shows totals and the header actions; the latest reply is open, an older one is collapsed', async () => {
+  it('draws the row in the server\'s order; the latest reply is open, an older one is collapsed', async () => {
     const latest = await render(true)
     expect(latest.textContent).toContain('Files changed during this reply · 2 files')
     expect(latest.textContent).toContain('+4')
-    for (const text of ['Review changes', 'Commit on the current branch', 'Push to a branch and open a PR', 'Check this change', 'Add button']) expect(button(latest, text)).toBeDefined()
-    for (const text of ['Compare', 'Mark as reviewed']) expect(button(latest, text)).toBeUndefined()
+    expect(rowLabels(latest)).toEqual(['Review changes', 'Commit on the current branch', 'Push to a branch and open a PR', 'Check this change', 'Add button'])
+    expect(latest.querySelector('section > div:first-child [aria-hidden].w-px')).not.toBeNull()
     expect(button(latest, 'Undo this reply')).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
     const older = await render(true, 2, 'newer')
@@ -104,46 +117,48 @@ describe('reply card groups', () => {
     // Undo lives only inside the opened card, under the file list.
     expect(button(older, 'Undo this reply')).toBeUndefined()
   })
-  it('renders from the reply event without asking for the comparison; PR status loads only for an open card', async () => {
+  it('renders from the reply event without the comparison; PR status loads only for an open card', async () => {
     vi.mocked(api.get).mockClear()
     const older = await render(true, 2, 'newer')
     expect(older.textContent).toContain('Files changed during this reply · 2 files')
     expect(older.textContent).toContain('+6')
-    expect(snapshotOps()).toEqual([])
+    expect(snapshotOps()).toEqual(['reply_card'])
     await act(async () => button(older, 'Files changed during this reply')!.click())
     expect(older.textContent).toContain('tts.py')
-    expect(snapshotOps()).toEqual(['snapshot_groups'])
+    expect(snapshotOps()).toEqual(['reply_card', 'reply_card+pr'])
     // A reply saved before summaries were sent still loads its card.
     vi.mocked(api.get).mockClear()
     const saved = await render(true, 2, undefined, false)
     expect(saved.textContent).toContain('Files changed during this reply · 2 files')
-    expect(snapshotOps()).toEqual(['snapshot_compare', 'snapshot_groups'])
+    expect(snapshotOps()).toEqual(['snapshot_compare', 'reply_card+pr'])
   })
-  it('a Run person sees only Review changes in the header', async () => {
-    const host = await render(false)
-    expect(button(host, 'Review changes')).toBeDefined()
-    expect(button(host, 'Commit on the current branch')).toBeUndefined()
-  })
-  it('keeps two of the person\'s buttons in the row and the rest, with the next Git step first, under More', async () => {
+  it('keeps the server\'s row buttons in the row and the rest, with the next Git step first, under More', async () => {
     state.extraCommands = ['second', 'third', 'fourth']; state.nextStep = 'update_pr'
     const host = await render(true)
     vi.mocked(sendWorkspacePaneMessageToChat).mockClear()
     expect(button(host, 'Run second')).toBeDefined()
     expect(button(host, 'Run third')).toBeUndefined()
     await openMore(host)
-    const items = Array.from(document.querySelectorAll('[role="menuitem"]')).map(item => item.textContent)
-    expect(items).toEqual(['Update the pull request', 'third', 'fourth'])
+    expect(menuItems()).toEqual(['Update the pull request', 'third', 'fourth'])
     await act(async () => menuItem('fourth')!.click())
-    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toContain('fourth')
+    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toBe('fourth prompt')
     state.extraCommands = []; state.nextStep = 'none'
   })
-  it('a PR with failing checks offers Fix failing checks with the check names, on the PR line and under More', async () => {
+  it('on a phone the row keeps the defaults and the person\'s buttons and Add move under More', async () => {
+    state.phone = true; state.extraCommands = ['second', 'third']; state.nextStep = 'update_pr'
+    const host = await render(true)
+    expect(rowLabels(host)).toEqual(['Review changes', 'Commit on the current branch', 'Push to a branch and open a PR', 'More actions'])
+    expect(host.querySelector('section > div:first-child [aria-hidden].w-px')).toBeNull()
+    await openMore(host)
+    expect(menuItems()).toEqual(['Update the pull request', 'check-this-change', 'second', 'third', 'Add button'])
+    state.phone = false; state.extraCommands = []; state.nextStep = 'none'
+  })
+  it('a fix action shows on the PR line and under More when the server sends it', async () => {
     state.pr = { checks: 'failing', failing_checks: ['build', 'lint'] }
     const host = await render(true)
     vi.mocked(sendWorkspacePaneMessageToChat).mockClear()
-    expect(button(host, 'Address review comments')).toBeUndefined()
     await act(async () => button(host, 'Fix failing checks')!.click())
-    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toBe('PR #305 in o/r has failing checks: build, lint. Open the failing runs, fix the cause on branch fix-tts, push, and tell me what you changed.')
+    expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toBe('fix prompt')
     await openMore(host)
     expect(menuItem('Fix failing checks')).toBeDefined()
     expect(button(await render(false), 'Fix failing checks')).toBeUndefined()
