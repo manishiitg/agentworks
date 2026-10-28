@@ -3646,7 +3646,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             runtimeActivity={runtimeActivity}
             events={transcriptEvents}
             isStreaming={activeTabBusy}
-            isRestoring={multiAgentSurface === 'restoring'}
+            // A tab whose history is still loading shows the loading state, not a blank pane (owner, 2026-10-28).
+            isRestoring={multiAgentSurface === 'restoring' || (isLoadingHistory && transcriptEvents.length === 0)}
             streamingText={activeStreamingText}
             streamingChatUIMode={streamingChatUIMode}
             streamingStatus={streamingStatus}
