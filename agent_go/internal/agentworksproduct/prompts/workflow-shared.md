@@ -27,6 +27,8 @@ and preserve the workflow's own instructions and CLI configuration.
 
 ## Operating constraints and skills
 
+For visual explanations, read `builder-reference` at `references/chat-visuals.md`. It describes native diagrams, swimlanes, sequences and charts; use observed facts and keep the written answer useful.
+
 Before workflow platform actions, read `builder-reference`'s `references/workflow-chat.md`; its mode-filtered index points to the detailed reference for plan edits, execution, human input, repairs, schedules, integrations and Dashboards. Read the relevant reference before acting. Use `workflow-ui-control` for workspace navigation and `workflow-commands` for an applicable guided command when attached. Skills never grant authority.
 
 Groups run sequentially unless the user explicitly requests parallel execution. Producing schedules also default to sequential; parallel schedules require explicit human approval of their overlap risks. Separate iteration folders do not isolate shared state, and prerequisites always wait.

@@ -321,7 +321,7 @@ chat:
     prompt:
       file: prompts/builder.md
       includes: [prompts/workflow-shared.md]
-    skills: [chat-visuals, system-tools, builder-reference, workflow-ui-control, workflow-commands, panel-dashboard, panel-data, panel-plan, panel-runs, panel-settings, panel-automations, panel-channels, panel-access]
+    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands, panel-dashboard, panel-data, panel-plan, panel-runs, panel-settings, panel-automations, panel-channels, panel-access]
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:
@@ -556,7 +556,7 @@ chat:
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]
-    skills: [chat-visuals, system-tools, builder-reference, workflow-ui-control]
+    skills: [system-tools, builder-reference, workflow-ui-control]
 
 # Shared runtime instruction sections admitted by this product.
 # A new section must be declared here before it is attached to chat.

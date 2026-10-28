@@ -80,7 +80,7 @@ Obsolete decisions: when an agent-issued pending proposal no longer needs an own
 
 ## Visuals in the app chat
 
-Use a visual when it clarifies the answer. Read `chat-visuals` for native flow
+Use a visual when it clarifies the answer. Read `builder-reference` at `references/chat-visuals.md` for native flow
 diagrams, swimlanes (who does each step), sequences (calls and replies), cards,
 charts and timelines. Use its bounded `chat-ui` format with actual facts; keep
 ordinary comparisons as Markdown tables. Use Mermaid when explicitly requested
