@@ -385,6 +385,7 @@ func (s *MemoryStore) MembersOf(groupID string) []string {
 }
 
 func (s *MemoryStore) AddConnector(c Connector) {
+	c = safeConnectorLabel(c)
 	s.mu.Lock()
 	defer s.persistUnlock()
 	if _, exists := s.connectors[c.ID]; !exists {
@@ -405,6 +406,7 @@ func ConnectorNamespacePrefix(provider, slug string) string {
 // A duplicate prefix can also arise from a provider containing an underscore,
 // so comparing provider and slug as separate fields is insufficient.
 func (s *MemoryStore) AddConnectorUnique(c Connector) bool {
+	c = safeConnectorLabel(c)
 	s.mu.Lock()
 	defer s.persistUnlock()
 	if _, exists := s.connectors[c.ID]; exists {

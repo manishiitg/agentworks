@@ -43,6 +43,9 @@ func (s *MemoryStore) EnsurePlatformGroup(workspace string) error {
 			s.members[id][uid] = true
 		}
 	}
+	if fixed := s.relabelCredentialLabelsLocked(workspace); fixed > 0 {
+		log.Printf("Vault: renamed %d connections whose name looked like a credential to their provider name", fixed)
+	}
 	if revoked := s.revokeVaultOwnedFromPlatformLocked(workspace); revoked > 0 {
 		log.Printf("Vault: removed %d company-wide grants from person-owned vault connections and secrets", revoked)
 	}
