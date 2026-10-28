@@ -3073,7 +3073,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
               ...(currentTab.metadata.agentProfileId === 'knowledgebase' && knowledgebaseFolderPath ? { knowledgebase_folder_path: knowledgebaseFolderPath } : {}),
             },
             tabSessionId,
-            { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery },
+            { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery, attendedChat: true },
           )
         : await agentApi.startQuery(requestPayload, tabSessionId, { identity, submissionId: receipt.id, submittedAtClientTime, queuedDelivery: options?.queuedDelivery, attendedChat: true })
       recordChatSubmissionTelemetry('api_acknowledged', response.session_id || tabSessionId, receipt.id, {

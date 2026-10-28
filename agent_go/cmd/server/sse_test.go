@@ -313,3 +313,57 @@ func TestDurableSSELiveOnlyUpdatesDoNotAdvanceJournalCursor(t *testing.T) {
 		t.Fatalf("live-only chunk advanced the journal cursor: %s", body)
 	}
 }
+
+// A retained turn's completion callback appends reply_file_changes while the
+// completion itself is still being published, so the newer event reaches the
+// stream first. The older completion must still be sent; a test server
+// (2026-10-28) lost it and the Crew chat spinner ran until the tab was reopened
+// (PLAT-746-158).
+func TestDurableSSEDeliversCompletionPublishedAfterANewerEvent(t *testing.T) {
+	journal, err := events.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := events.NewEventStore(10)
+	defer store.Stop()
+	store.SetDurableJournal(journal)
+	const sessionID = "retained-chat"
+	if err := store.SetSessionPersistenceClass(sessionID, events.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
+	store.SetEventAddedCallback(func(session string, event events.Event) {
+		if event.Type == "unified_completion" {
+			store.AddEvent(session, events.Event{ID: "file-snapshot:1", Type: "reply_file_changes", Timestamp: time.Now()})
+		}
+	})
+	api := &StreamingAPI{
+		eventStore: store, runtimeCoordinator: NewRuntimeCoordinator(),
+		activeSessions: map[string]*ActiveSessionInfo{
+			sessionID: {SessionID: sessionID, Status: "running", CreatedAt: time.Now()},
+		},
+	}
+	req := httptest.NewRequest("GET", "/api/sessions/"+sessionID+"/events/stream?durable_chat=1&since=0", nil)
+	req = mux.SetURLVars(req, map[string]string{"session_id": sessionID})
+	ctx, cancel := context.WithCancel(req.Context())
+	w := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		api.handleSSEStream(w, req.WithContext(ctx))
+		close(done)
+	}()
+	time.Sleep(50 * time.Millisecond)
+	store.AddEvent(sessionID, events.Event{
+		ID: "turn-completion", Type: "unified_completion", Timestamp: time.Now(),
+		Data: pkgevents.NewAgentEvent(&pkgevents.UnifiedCompletionEvent{Status: "completed", FinalResult: "done"}),
+	})
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+	body := w.Body.String()
+	if !strings.Contains(body, `"id":"file-snapshot:1"`) {
+		t.Fatalf("setup: the nested event was not streamed: %s", body)
+	}
+	if !strings.Contains(body, `"id":"turn-completion"`) {
+		t.Fatalf("the completion published after a newer event was dropped: %s", body)
+	}
+}

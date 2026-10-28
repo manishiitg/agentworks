@@ -263,8 +263,15 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 	heartbeatTicker := time.NewTicker(15 * time.Second)
 	defer heartbeatTicker.Stop()
 
-	// Track the running last index for SSE id field
+	// lastIndex is the newest index sent (the SSE id). backfilledThrough is
+	// only what the backfill above already delivered. A durable event can reach
+	// this subscriber after a newer one: a store callback appends while the
+	// older event is still being published (a retained turn's completion adds
+	// reply_file_changes before its own completion is broadcast). Skipping by
+	// lastIndex dropped that completion and left the chat's spinner running
+	// until the tab was reopened (PLAT-746-158).
 	lastIndex := sinceIndex
+	backfilledThrough := sinceIndex
 
 	for {
 		select {
@@ -303,7 +310,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			}
 
 			// Skip events already covered by the backfill
-			if event.Sequence > 0 && event.Sequence <= int64(lastIndex) {
+			if event.Sequence > 0 && event.Sequence <= int64(backfilledThrough) {
 				continue
 			}
 
