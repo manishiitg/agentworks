@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, 
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
 import { workSideChatDisplayName } from '../../products/work/workProjectPresentation'
@@ -64,6 +65,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
   const phone = useMobileViewport()
+  // The open desktop sidebar already lists these chats, so the bar then shows only the current one (owner, 2026-10-28).
+  // AppSidebar reports 48 for its closed rail and 0 on phones or when it is not mounted.
+  const chatsInSidebar = useProductNavigationToolbarStore(state => state.sidebarWidth > 48)
   const phoneNavigation = useContext(MobileWorkspaceNavigationContext)
   const selectTab = (tabId: string) => { onSelectTab(tabId); phoneNavigation?.onChange('chat') }
   const closeProjectTab = onCloseTab
@@ -214,6 +218,36 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     const active = stripRef.current?.querySelector('[data-tab-active="true"]')
     if (active && typeof (active as HTMLElement).scrollIntoView === 'function') (active as HTMLElement).scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [activeTabId, tabs.length])
+  const newTabForm = allowSideChats && newTabName !== null && (
+    <form
+      className="absolute inset-x-3 top-full z-40 flex items-center rounded-lg border border-border bg-background p-2 shadow-lg md:static md:shrink-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none"
+      onSubmit={event => { event.preventDefault(); void submitNewAgent(newTabName) }}
+    >
+      <input
+        autoFocus
+        value={newTabName}
+        onChange={event => setNewTabName(event.target.value)}
+        onKeyDown={event => { if (event.key === 'Escape') setNewTabName(null) }}
+        onBlur={() => { if (!opening && !newTabName.trim()) setNewTabName(null) }}
+        maxLength={120}
+        disabled={opening}
+        placeholder="Name this agent, e.g. research"
+        aria-label="Agent name"
+        className="h-11 w-full md:h-7 md:w-48 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-testid="work-new-chat-tab-name"
+      />
+    </form>
+  )
+  if (!phone && chatsInSidebar) return (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <ProjectWorkspaceTitle name={projectName} surface={surface} />
+      {activeTab && <span className="flex min-w-0 items-center gap-2 text-sm text-foreground" data-testid="work-current-chat" title={tabLabel(activeTab)}>
+        <AgentMenuActivity tabId={activeTab.tabId} workspaceActivity={activeTab.tabId === canonicalTabId ? projectActivity : undefined} />
+        <span className="truncate">{tabLabel(activeTab)}</span>
+      </span>}
+      {newTabForm}
+    </div>
+  )
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
@@ -335,26 +369,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         </div>
       )}
 
-      {allowSideChats && newTabName !== null && (
-        <form
-          className="absolute inset-x-3 top-full z-40 flex items-center rounded-lg border border-border bg-background p-2 shadow-lg md:static md:shrink-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none"
-          onSubmit={event => { event.preventDefault(); void submitNewAgent(newTabName) }}
-        >
-          <input
-            autoFocus
-            value={newTabName}
-            onChange={event => setNewTabName(event.target.value)}
-            onKeyDown={event => { if (event.key === 'Escape') setNewTabName(null) }}
-            onBlur={() => { if (!opening && !newTabName.trim()) setNewTabName(null) }}
-            maxLength={120}
-            disabled={opening}
-            placeholder="Name this agent, e.g. research"
-            aria-label="Agent name"
-            className="h-11 w-full md:h-7 md:w-48 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            data-testid="work-new-chat-tab-name"
-          />
-        </form>
-      )}
+      {newTabForm}
       {allowSideChats && newTabName === null && (
         <button
           type="button"
