@@ -322,5 +322,12 @@
     "member": "review_crew_snapshot",
     "description": "Mark the displayed saved reply as reviewed in this chat; later changes start from that saved state. No Git commit.",
     "external_members": "review_crew_snapshot"
+  },
+  {
+    "family": "files",
+    "name": "undo_reply",
+    "member": "undo_crew_reply",
+    "description": "Preview, then undo, the file changes of one saved reply; files changed again later are skipped. No Git commit.",
+    "external_members": "undo_crew_reply"
   }
 ]

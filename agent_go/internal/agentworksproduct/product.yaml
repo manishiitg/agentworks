@@ -512,6 +512,7 @@ chat:
       - list_crew_snapshots
       - compare_crew_snapshot
       - review_crew_snapshot
+      - undo_crew_reply
       - search_crew_files
       - read_crew_file
       - project_functions_calls

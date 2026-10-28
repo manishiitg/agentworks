@@ -366,3 +366,77 @@ func TestLargeAssetsDoNotStarveSourceOrChargeCachedBlobs(t *testing.T) {
 		t.Fatalf("saved comparison changed: %v", err)
 	}
 }
+
+// PLAT-746-158: undoing a reply restores only what the reply left untouched;
+// a file changed again later is reported, never overwritten.
+func TestUndoRestoresReplyChangesAndSkipsLaterEdits(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	s := Store{Root: filepath.Join(base, "files"), Private: filepath.Join(base, "private")}
+	write := func(name, data string) {
+		t.Helper()
+		p := filepath.Join(s.Root, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join(s.Root, name))
+		if err != nil {
+			return "<missing>"
+		}
+		return string(b)
+	}
+	write("kept.txt", "kept\n")
+	write("edited.txt", "edited before\n")
+	write("later.txt", "later before\n")
+	write("removed.txt", "removed before\n")
+	if _, err := s.Begin(ctx, "reply"); err != nil {
+		t.Fatal(err)
+	}
+	write("edited.txt", "edited after\n")
+	write("later.txt", "later after\n")
+	write("new/added.txt", "added\n")
+	write("new/added-later.txt", "added\n")
+	if err := os.Remove(filepath.Join(s.Root, "removed.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Finish(ctx, "reply"); err != nil {
+		t.Fatal(err)
+	}
+	// A later reply touches two files this reply also changed.
+	write("later.txt", "later by someone else\n")
+	write("new/added-later.txt", "edited after the reply\n")
+	all := func(string) bool { return true }
+	id := ID("reply")
+	plan, err := s.PlanUndo(ctx, id, all, all)
+	if err != nil || len(plan.Restore) != 3 || len(plan.Skipped) != 2 || read("edited.txt") != "edited after\n" {
+		t.Fatalf("preview must list without writing: %v %+v", err, plan)
+	}
+	for _, item := range plan.Skipped {
+		if item.Reason != "changed_later" {
+			t.Fatalf("conflict reason: %+v", item)
+		}
+	}
+	plan, err = s.ApplyUndo(ctx, id, all, all)
+	if err != nil || len(plan.Restore) != 3 {
+		t.Fatalf("apply: %v %+v", err, plan)
+	}
+	for name, want := range map[string]string{"edited.txt": "edited before\n", "removed.txt": "removed before\n", "later.txt": "later by someone else\n", "new/added-later.txt": "edited after the reply\n", "new/added.txt": "<missing>", "kept.txt": "kept\n"} {
+		if got := read(name); got != want {
+			t.Fatalf("%s = %q, want %q", name, got, want)
+		}
+	}
+	// Running it again finds everything restored or left alone.
+	if plan, err = s.PlanUndo(ctx, id, all, all); err != nil || len(plan.Restore) != 0 {
+		t.Fatalf("second preview: %v %+v", err, plan)
+	}
+	// A path the caller may not write is reported, not changed.
+	write("edited.txt", "edited after\n")
+	if plan, err = s.PlanUndo(ctx, id, all, func(p string) bool { return p != "edited.txt" }); err != nil || len(plan.Restore) != 0 || plan.Skipped[0].Reason == "" {
+		t.Fatalf("write guard: %v %+v", err, plan)
+	}
+}

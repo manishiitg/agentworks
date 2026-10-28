@@ -28,7 +28,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 	}
 	if product == "work" {
 		// Browser and model chat tools already exist for Crews.
-		names = []string{"settings", "models", "crew_owners", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "review_crew_snapshot"}
+		names = []string{"settings", "models", "crew_owners", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "review_crew_snapshot", "undo_crew_reply"}
 	}
 	names = append(names, "chat_preferences")
 	catalog, err := externalTools()

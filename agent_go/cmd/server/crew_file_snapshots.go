@@ -239,6 +239,17 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		_, ok := confineSharedProjectPath(roots.Virtual, prefix+path)
 		return ok && !crewCallerPrivatePath(prefix+path)
 	}
+	if op == "snapshot_undo_preview" || op == "snapshot_undo" {
+		allowWrite := func(path string) bool {
+			if !guard.Allows(prefix+path, true) {
+				return false
+			}
+			_, ok := confineSharedProjectPath(roots.Virtual, prefix+path)
+			return ok && !crewCallerPrivatePath(prefix+path)
+		}
+		api.serveCrewReplyUndo(w, r, roots.Virtual, prefix, op, id, store, allow, allowWrite)
+		return
+	}
 	if r.URL.Query().Get("session_id") != "" {
 		api.serveChatFileReview(w, r, roots.Virtual, prefix, op, id, file, store, allow)
 		return

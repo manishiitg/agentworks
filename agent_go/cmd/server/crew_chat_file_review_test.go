@@ -183,3 +183,28 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 		t.Fatalf("missing first capture fabricated: %s", body)
 	}
 }
+
+// PLAT-746-158: only a Crew owner with crews:write may undo a reply; the
+// refusal comes before any chat or file lookup.
+func TestUndoReplyRefusesReadTokenAndNonOwner(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	api, _ := newDurableChatAPI(t, "chat-a", "alice")
+	store := filesnapshots.Store{Root: t.TempDir(), Private: t.TempDir()}
+	all := func(string) bool { return true }
+	call := func(token *accesstokens.Token, user string) int {
+		req := httptest.NewRequest("GET", "/?session_id=chat-a", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, AccessToken: token}))
+		w := httptest.NewRecorder()
+		api.serveCrewReplyUndo(w, req, "Crew/not-theirs", "", "snapshot_undo_preview", filesnapshots.ID("x"), store, all, all)
+		return w.Code
+	}
+	if code := call(&accesstokens.Token{Scopes: []string{"crews:read", "crews:run"}, AllCrews: true}, "alice"); code != 403 {
+		t.Fatalf("run/read token must not undo: %d", code)
+	}
+	if code := call(&accesstokens.Token{Scopes: []string{"crews:write"}, AllCrews: true}, "bob"); code != 403 {
+		t.Fatalf("non-owner must not undo: %d", code)
+	}
+	if externalTokenAllows(&UserClaims{UserID: "alice", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}}}, externalTool{Name: "undo_crew_reply"}) {
+		t.Fatal("undo tool must need crews:write")
+	}
+}
