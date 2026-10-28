@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
 )
 
 // SandboxPersistentDirName is the reserved folder a workflow grants every one
@@ -227,25 +229,7 @@ func withPlatformGitIgnoreEnv(env []string, workDir string, writePaths []string)
 		}
 		_ = os.Chmod(file, 0o660)
 	}
-	count := 0
-	for _, kv := range env {
-		if value, ok := strings.CutPrefix(kv, "GIT_CONFIG_COUNT="); ok {
-			if n, err := strconv.Atoi(value); err == nil && n > 0 {
-				count = n
-			}
-		}
-	}
-	out := make([]string, 0, len(env)+3)
-	for _, kv := range env {
-		if !strings.HasPrefix(kv, "GIT_CONFIG_COUNT=") {
-			out = append(out, kv)
-		}
-	}
-	return append(out,
-		"GIT_CONFIG_COUNT="+strconv.Itoa(count+1),
-		"GIT_CONFIG_KEY_"+strconv.Itoa(count)+"=core.excludesFile",
-		"GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"="+file,
-	)
+	return gitcred.AppendGitConfig(env, "core.excludesFile", file)
 }
 
 // privateSandboxHome replaces the shared HOME=/tmp of the Docker-mode

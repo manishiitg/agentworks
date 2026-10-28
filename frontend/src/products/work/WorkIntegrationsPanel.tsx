@@ -1,3 +1,4 @@
+import { useProjectMode } from './codeLocalFiles'
 import { useState } from 'react'
 import { Cable, Server, Users } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -39,6 +40,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   const [shareSection, setShareSection] = useState(false)
   const [integrationSection, setIntegrationSection] = useState<IntegrationSection>('connected')
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
+  const projectMode = useProjectMode(sessionId ?? '')
   useWorkspaceViewTarget('mcp', target => {
     if (target === 'share') { setShareSection(true); return }
     const next = target === 'slack-bot' ? 'slack' : target
@@ -56,7 +58,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
     <div data-ui-view-section={shareSection ? 'share' : tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={draft} /> : <>
         {tab === 'agentbridge' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} />}
-        {tab === 'apps' && <ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
+        {tab === 'apps' && <ProjectIntegrationPanel github={projectMode === 'dev'} workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} onAsk={onAsk} />}
         {tab === 'folders' && <WorkFoldersSection workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
         {tab === 'agents' && canEdit && <CrewPublishedAgents profileId={product.profileId} projectId={projectId} />}

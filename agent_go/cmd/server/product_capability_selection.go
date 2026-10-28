@@ -196,31 +196,33 @@ func productSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath 
 	if err != nil {
 		return nil, err
 	}
-	empty := []string{}
-	if !found {
-		return &empty, nil
+	names := []string{}
+	chosenAppsOnly := false
+	if found {
+		var manifest map[string]interface{}
+		if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
+			return nil, fmt.Errorf("decode product manifest: %w", err)
+		}
+		capabilities, _ := manifest["capabilities"].(map[string]interface{})
+		chosenAppsOnly, _ = capabilities["chosen_vault_apps_only"].(bool)
+		if value := capabilities["selected_global_secret_names"]; value != nil {
+			items, ok := value.([]interface{})
+			if !ok {
+				return nil, fmt.Errorf("product capabilities.selected_global_secret_names must be an array or null")
+			}
+			for _, item := range items {
+				name, ok := item.(string)
+				if ok {
+					names = appendUniqueStrings(names, strings.TrimSpace(name))
+				}
+			}
+		}
 	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return nil, fmt.Errorf("decode product manifest: %w", err)
-	}
-	capabilities, _ := manifest["capabilities"].(map[string]interface{})
-	value, initialized := capabilities["selected_global_secret_names"]
-	if !initialized {
-		return &empty, nil
-	}
-	if value == nil {
-		return &empty, nil
-	}
-	items, ok := value.([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("product capabilities.selected_global_secret_names must be an array or null")
-	}
-	names := make([]string, 0, len(items))
-	for _, item := range items {
-		name, ok := item.(string)
-		if ok {
-			names = appendUniqueStrings(names, strings.TrimSpace(name))
+	// The owner's connected GitHub account reaches the owner's Crews that use all their Vault apps without a separate
+	// selection (PLAT-746-158 B8).
+	if owner, ok := crewProjectOwnerID(workspacePath); ok {
+		if github := githubVaultSecretFor(owner, chosenAppsOnly); github != "" {
+			names = appendUniqueStrings(names, github)
 		}
 	}
 	sort.Strings(names)

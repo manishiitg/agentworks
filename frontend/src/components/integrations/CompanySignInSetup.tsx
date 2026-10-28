@@ -3,7 +3,7 @@ import { Button } from '../ui/Button'
 import { useVaultSetupDraft } from './useVaultSetupDraft'
 
 /** Existing company OAuth setup stays administrator-only beside its provider. */
-export function CompanySignInSetup({provider,tabId}:{provider:'Google'|'Slack';tabId?:string}) {
+export function CompanySignInSetup({provider,tabId}:{provider:'Google'|'Slack'|'GitHub';tabId?:string}) {
  const admin=useAuthStore(state=>state.user?.is_admin===true)
  const multiUser=useAuthStore(state=>state.isMultiUserMode)
  const setup=useVaultSetupDraft(tabId)

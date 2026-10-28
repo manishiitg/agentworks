@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
 )
 
 // slotRequest builds the request slotctl runs for cmd as slot: its argv, folder and environment, with the slot's
@@ -21,16 +23,10 @@ import (
 func slotRequest(cmd *exec.Cmd, slot string) (ExecRequest, error) {
 	req := ExecRequest{Argv: append([]string(nil), cmd.Args...), Cwd: cmd.Dir, Env: WithSlotDocker(append([]string(nil), cmd.Env...), slot)}
 	// The user's folders belong to the platform account with the slot's group, so git would refuse them as
-	// "dubious ownership". The command can only reach what its folder guard grants.
-	hasGit := false
-	for _, e := range req.Env {
-		if strings.HasPrefix(e, "GIT_CONFIG_COUNT=") {
-			hasGit = true
-		}
-	}
-	if !hasGit {
-		req.Env = append(req.Env, GitSlotEnv()...)
-	}
+	// "dubious ownership". The command can only reach what its folder guard grants. Always added, after any git
+	// settings the command already carries: hooks and fsmonitor off is the protection that stops a shared folder's
+	// author from running code as this person.
+	req.Env = gitcred.AppendGitConfig(req.Env, GitSlotConfig...)
 	if cmd.SysProcAttr != nil && cmd.SysProcAttr.Cloneflags&syscall.CLONE_NEWUSER != 0 {
 		req.Userns = true
 	}

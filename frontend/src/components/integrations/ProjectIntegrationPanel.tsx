@@ -1,3 +1,4 @@
+import { GitHubVaultCard } from './GitHubVault'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -31,6 +32,8 @@ export type ProjectSecretControls = {
 type Props = ProjectSecretControls & {
   workspacePath: string; placeNoun: string; section?: IntegrationSection; canEdit: boolean; tabId?: string
   onAsk: (message: string) => Promise<void>; laptop?: ReactNode; onAppsSaved?: (servers: string[]) => void
+  /** Studio projects offer Connect GitHub beside their secrets (PLAT-746-158 B8); Cowork shows nothing new. */
+  github?: boolean
 }
 /** Familiar menu entries open the same native editors directly. */
 export function ProjectIntegrationPanel(props: Props) {
@@ -38,7 +41,7 @@ export function ProjectIntegrationPanel(props: Props) {
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   return <ProjectIntegrationContents key={`${server}:${actor}:${props.workspacePath}`} {...props} />
 }
-function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section = 'connected', canEdit, onAsk, laptop, onAppsSaved, ...secrets }: Props) {
+function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section = 'connected', canEdit, onAsk, laptop, onAppsSaved, github = false, ...secrets }: Props) {
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
   useEffect(() => { if (section === 'connected' || section === 'available') setApps(section) }, [section])
   const kinds: Record<IntegrationSection, VaultItemKind[]> = {connected:['mcp'],available:['mcp'],secrets:['project_secret','shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
@@ -50,6 +53,7 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
       <ProjectMcpPanel view={apps} workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} canEdit={canEdit} onAsk={onAsk} onSelectionSaved={onAppsSaved} />
 
     </>}
+    {section === 'secrets' && github && <GitHubVaultCard />}
     {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} selectedSecrets={secrets.selectedSecrets} onSecretChange={secrets.onSelectedSecretsChange} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
     {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} scopeNoun={placeNoun === 'Flow' ? 'relay' : 'project'} onAsk={onAsk} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}
     {section === 'slack-account' && <><ProductSlackPanel workspacePath={workspacePath} noun={placeNoun} section="account" allowBots={placeNoun !== 'Flow'} tabId={tabId}/></>}

@@ -1,3 +1,4 @@
+import { GitHubConnectCompletion } from './components/integrations/GitHubVault'
 import { ServerProductSurface } from './components/ServerProductSurface'
 import LlmModalHost from './components/topbar/LlmModalHost'
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -724,6 +725,7 @@ function AppWorkspace() {
         <>
         {/* First visit: products, MCP and providers instead of an empty product surface. */}
         <WelcomeHome autoOpen={firstVisit} />
+        <GitHubConnectCompletion />
         {returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
         {dashboardsOpen ? (
           <div className="flex h-full min-h-0 bg-background">

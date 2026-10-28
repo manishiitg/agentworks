@@ -65,8 +65,14 @@ var mcpAppLabels = map[string]string{"google": "Google", "github": "GitHub", "sl
 // app is the OAuth client people sign in through to connect their own Google accounts (Gmail,
 // Drive, Calendar, Docs, Sheets, Slides, used through the server-side gog tool; see
 // docs/design/google_accounts_gog.md). Slack uses its confidential user OAuth
-// endpoints through an internal or Marketplace app. GitHub uses a personal token.
-var mcpAppFocusKeys = map[string]bool{"google": true, "slack": true}
+// endpoints through an internal or Marketplace app. GitHub is the OAuth App people sign in through
+// to connect their own GitHub account in My Vault for Git work (github_vault_oauth.go); it serves no
+// MCP server, so it is always listed (mcpAppStandaloneKeys).
+var mcpAppFocusKeys = map[string]bool{"google": true, "slack": true, "github": true}
+
+// mcpAppStandaloneKeys are sign-in apps used outside the MCP catalog, listed even when no catalog
+// server needs them.
+var mcpAppStandaloneKeys = []string{"github"}
 
 // mcpApp is what an admin stores for one provider.
 type mcpApp struct {
@@ -221,6 +227,11 @@ func mcpAppGroupsFor(servers map[string]mcpclient.MCPServerConfig) []mcpAppGroup
 			byKey[key] = group
 		}
 		group.Servers = append(group.Servers, name)
+	}
+	for _, key := range mcpAppStandaloneKeys {
+		if byKey[key] == nil && mcpAppFocusKeys[key] {
+			byKey[key] = &mcpAppGroup{Key: key, Label: mcpAppLabels[key], Required: true, Servers: []string{}}
+		}
 	}
 	out := make([]mcpAppGroup, 0, len(byKey))
 	for key, group := range byKey {

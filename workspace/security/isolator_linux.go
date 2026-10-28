@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
+
 	"golang.org/x/sys/unix"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/gogconfig"
@@ -233,6 +235,8 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 		cmd.Env = SlotHomeEnv(SlotShellEnv(cmd.Env), policy.WorkDir, policy.WritePaths, iso.UserHome)
 		// The request written by WrapCommand carries the environment as it is now: add the per-call values first.
 		cmd.Env = MergeExtraEnv(cmd.Env, iso.ExtraEnv)
+		// A connected GitHub account's settings follow the git settings already here; the slot's own are added after.
+		cmd.Env = gitcred.WithGitHub(cmd.Env)
 		// Run as the user's slot account: the namespaces and the policy are created after the switch.
 		var wrapped *exec.Cmd
 		var wrapErr error

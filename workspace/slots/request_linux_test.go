@@ -9,8 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
 )
 
 func readRequest(t *testing.T, cmd *exec.Cmd) ExecRequest {
@@ -83,5 +86,42 @@ func TestWrapCommandRefusesBadInput(t *testing.T) {
 	missing := exec.Command("/opt/landlock-runner", "--config", "/nonexistent/policy.json", "--", "/bin/true")
 	if _, err := WrapCommand(context.Background(), missing, "slot01"); err == nil {
 		t.Fatal("an unreadable policy must be an error, not a silently unconfined run")
+	}
+}
+
+// A command that already carries git settings (a connected GitHub account's credential helper) still gets the slot's
+// protection, after them: safe.directory, and hooks and fsmonitor off, which stop a shared folder's author from running
+// code as this person. Neither layer drops the other's settings (PLAT-746-158 B8 review).
+func TestSlotRequestAlwaysAddsGitProtectionAfterEarlierSettings(t *testing.T) {
+	cmd := exec.Command("/bin/true")
+	cmd.Env = gitcred.WithGitHub([]string{"PATH=/usr/bin:/bin", gitcred.SecretEnv + "=example-token"})
+	req, err := slotRequest(cmd, "slot07")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	counts := 0
+	for _, kv := range req.Env {
+		key, value, _ := strings.Cut(kv, "=")
+		got[key] = value
+		if key == "GIT_CONFIG_COUNT" {
+			counts++
+		}
+	}
+	want := map[string]string{
+		"GIT_CONFIG_COUNT": "4",
+		"GIT_CONFIG_KEY_0": "credential.https://github.com.helper",
+		"GIT_CONFIG_KEY_1": "safe.directory", "GIT_CONFIG_VALUE_1": "*",
+		"GIT_CONFIG_KEY_2": "core.hooksPath", "GIT_CONFIG_VALUE_2": "/dev/null",
+		"GIT_CONFIG_KEY_3": "core.fsmonitor", "GIT_CONFIG_VALUE_3": "false",
+		"GH_TOKEN": "example-token",
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Fatalf("%s = %q, want %q (env %v)", key, got[key], value, req.Env)
+		}
+	}
+	if counts != 1 {
+		t.Fatalf("GIT_CONFIG_COUNT appears %d times: %v", counts, req.Env)
 	}
 }

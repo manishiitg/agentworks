@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
+
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
@@ -371,6 +373,11 @@ func ExecuteShellCommand(c *gin.Context) {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 			extraEnvCount++
 		}
+	}
+	// A connected GitHub account (SECRET_GITHUB_TOKEN): GH_TOKEN and git's credential helper, appended after the git
+	// settings already here (PLAT-746-158 B8). A slot's command got them in its request (isolator_linux.go).
+	if userSlot == "" {
+		cmd.Env = gitcred.WithGitHub(cmd.Env)
 	}
 	workspaceDebugLogf("[SHELL_ENV_DEBUG] ExtraEnv received: %d keys total, %d allowed (runtime prefixes plus DB_PATH/PYTHONDONTWRITEBYTECODE)", len(req.ExtraEnv), extraEnvCount)
 	if len(req.ExtraEnv) > 0 {

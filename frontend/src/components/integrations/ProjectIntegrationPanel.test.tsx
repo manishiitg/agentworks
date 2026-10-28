@@ -9,6 +9,7 @@ vi.mock('./ProjectSecretsPanel',()=>({ProjectSecretsPanel:()=> <div data-editor=
 vi.mock('../workflow/WorkflowEmailPanel',()=>({default:()=> <div data-editor="google"/>}))
 vi.mock('./ProductSlackPanel',()=>({ProductSlackPanel:()=> <div data-editor="slack"/>}))
 vi.mock('./CompanySignInSetup',()=>({CompanySignInSetup:()=> <div data-provider-setup/>}))
+vi.mock('./GitHubVault',()=>({GitHubVaultCard:()=> <div data-github-card/>}))
 vi.mock('./ProjectVaultPanel',()=>({ProjectVaultPanel:()=> <div data-restricted/>}))
 import {ProjectIntegrationPanel,type IntegrationSection} from './ProjectIntegrationPanel'
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})

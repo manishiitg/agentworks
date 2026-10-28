@@ -1,6 +1,10 @@
 package slots
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
+)
 
 // ExecRequest is what the platform sends to `slotctl exec` on its standard input.
 type ExecRequest struct {
@@ -33,10 +37,8 @@ func encode(req ExecRequest) ([]byte, error) {
 // are switched off too (core.hooksPath, core.fsmonitor). A shared folder's author cannot get code run
 // as another user's slot through git. Recorded in the decisions log.
 func GitSlotEnv() []string {
-	return []string{
-		"GIT_CONFIG_COUNT=3",
-		"GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=*",
-		"GIT_CONFIG_KEY_1=core.hooksPath", "GIT_CONFIG_VALUE_1=/dev/null",
-		"GIT_CONFIG_KEY_2=core.fsmonitor", "GIT_CONFIG_VALUE_2=false",
-	}
+	return gitcred.AppendGitConfig(nil, GitSlotConfig...)
 }
+
+// GitSlotConfig is the slot's git settings as key/value pairs, appended after any git settings already present.
+var GitSlotConfig = []string{"safe.directory", "*", "core.hooksPath", "/dev/null", "core.fsmonitor", "false"}

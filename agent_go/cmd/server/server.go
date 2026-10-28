@@ -24,6 +24,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
+
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	eventbridge "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/event_bridge"
@@ -2495,6 +2497,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// The catalog of servers that can be connected, and connections of a place.
 	apiRouter.HandleFunc("/mcp/catalog", api.handleMCPCatalog).Methods("GET")
 	apiRouter.HandleFunc("/vault/connections", api.handleMyVaultServers).Methods("GET")
+	apiRouter.HandleFunc("/vault/github", api.handleGitHubVault).Methods("GET", "DELETE")
+	apiRouter.HandleFunc("/vault/github/connect", api.handleGitHubVault).Methods("POST")
+	apiRouter.HandleFunc("/vault/github/complete", api.handleGitHubVault).Methods("POST")
 	apiRouter.HandleFunc("/vault/migration", requireAdmin(api.handleVaultMigration)).Methods("POST")
 	// The old path, kept for a browser tab still running the previous frontend.
 	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
@@ -5946,6 +5951,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		// A connected GitHub account: git and gh in the CLI's own shell act as that person (PLAT-746-158 B8).
+		gitcred.AddGitHub(codingAgentSecretEnvironment)
 		nativeShellAPITransport := false
 		if resolvedProfile != nil && strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.Runtime.APITransport.Mode), "native_shell") {
 			nativeShellAPITransport = true

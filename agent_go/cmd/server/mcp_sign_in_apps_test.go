@@ -311,10 +311,10 @@ func withMCPAppFocus(t *testing.T, keys ...string) {
 	t.Cleanup(func() { mcpAppFocusKeys, mcpCatalogHiddenKeys = previous, previousHidden })
 }
 
-// Google and Slack have sign-in app cards. Google and
-// GitHub are not offered as MCP connectors (Google apps are the Gmail tab / gog, GitHub is a
-// personal access token).
-func TestGoogleAndSlackSignInAppsAndNoGoogleOrGitHubConnectors(t *testing.T) {
+// GitHub, Google and Slack have sign-in app cards (GitHub's is for connecting GitHub in My Vault,
+// PLAT-746-158 B8). Google and GitHub are not offered as MCP connectors (Google apps are the Gmail
+// tab / gog; GitHub is used for Git work through My Vault).
+func TestSignInAppCardsAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	withMCPConnectionsRoot(t)
 	api, _ := newCodePrivacyFixture(t)
@@ -329,8 +329,8 @@ func TestGoogleAndSlackSignInAppsAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	}
 	api.mcpConfigPath = catalogPath
 	api.logger = loggerv2.NewNoop()
-	if cards := api.mcpAppGroups(); len(cards) != 2 || cards[0].Key != "google" || cards[1].Key != "slack" {
-		t.Fatalf("sign-in app cards = %+v, want Google and Slack apps", cards)
+	if cards := api.mcpAppGroups(); len(cards) != 3 || cards[0].Key != "github" || cards[1].Key != "google" || cards[2].Key != "slack" {
+		t.Fatalf("sign-in app cards = %+v, want GitHub, Google and Slack apps", cards)
 	}
 	var names []string
 	for _, entry := range api.mcpCatalog() {
