@@ -144,9 +144,9 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   const avatar = (person: Person) => <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">{who(person).slice(0, 2).toUpperCase()}</span>
   const roleSelect = (person: Person, current: 'owner' | 'use') => person.email && owners?.can_manage
     ? <select aria-label={`Access for ${who(person)}`} value={current} disabled={busy} onChange={event => { const value = person.email as string; void run(() => event.target.value === 'owner' ? makeOwner(value) : makeUser(value)) }} className="h-8 shrink-0 rounded-md border border-border bg-background px-1.5 text-xs">
-        <option value="owner">Owner</option><option value="use">Can use</option>
+        <option value="owner">Owner</option><option value="use">Can chat & run</option>
       </select>
-    : <span className="shrink-0 text-xs text-muted-foreground">{current === 'owner' ? 'Owner' : 'Can use'}</span>
+    : <span className="shrink-0 text-xs text-muted-foreground">{current === 'owner' ? 'Owner' : 'Can chat & run'}</span>
   const removeButton = (person: Person, remove: (value: string) => Promise<void>) => person.email && owners?.can_manage !== false
     ? <button type="button" aria-label={`Remove ${who(person)}`} disabled={busy} onClick={() => void run(() => remove(person.email as string))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
     : null
@@ -162,18 +162,18 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
       <form onSubmit={event => { event.preventDefault(); addPerson() }} className="flex flex-wrap gap-2">
         <input type="email" aria-label="Add a person by email" placeholder="Add a person by email" value={email} disabled={busy} onChange={event => setEmail(event.target.value)} className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm" />
         <select aria-label="Access for the new person" value={role} disabled={busy} onChange={event => setRole(event.target.value as 'use' | 'owner')} className="h-9 rounded-md border border-border bg-background px-2 text-sm">
-          <option value="use">Can use</option>{owners?.can_manage && <option value="owner">Owner</option>}
+          <option value="use">Can chat & run</option>{owners?.can_manage && <option value="owner">Owner</option>}
         </select>
         <button type="button" onClick={addPerson} disabled={busy || !email.trim()} className="h-9 rounded-md border border-border px-3 text-sm hover:bg-muted disabled:opacity-50">Add</button>
       </form>
-      <p className="text-xs text-muted-foreground">Owner: build and change it. Can use: use the dashboard and ask for work.</p>
+      <p className="text-xs text-muted-foreground">Owner: builds and changes it. Can chat & run: chats with it, presses its buttons and sees its dashboard.</p>
     </section>
-    <section aria-label="Anyone else in the company" className="space-y-2 border-t border-border pt-4">
-      <label htmlFor="company-access" className="font-semibold">Anyone else in the company</label>
+    <section aria-label="Who can open it" className="space-y-2 border-t border-border pt-4">
+      <label htmlFor="company-access" className="font-semibold">Who can open it</label>
       <div className="flex flex-wrap items-center gap-2">
         <select id="company-access" value={companyWide ? 'use' : 'none'} disabled={busy} onChange={event => void run(() => event.target.value === 'use' ? putShare('everyone') : shareList(emails))} className="h-9 min-w-0 rounded-md border border-border bg-background px-2 text-sm">
-          <option value="none">Can't access</option>
-          <option value="use">Can use</option>
+          <option value="none">Only people added</option>
+          <option value="use">Everyone at the company</option>
         </select>
         <button type="button" onClick={() => void copyLink()} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"><Link2 aria-hidden="true" className="h-4 w-4" />Copy link</button>
       </div>
