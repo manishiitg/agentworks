@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
-import { Bot, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
-import SlackAdminPanel from '../admin/SlackAdminPanel'
 import { VaultSlackBots } from './VaultSlackBots'
 import api, { agentApi } from '../../services/api'
 import { Button } from '../ui/Button'
@@ -13,10 +12,10 @@ import { SlackSlugsSection, slackErrorText } from '../workflow/bots/SlackSlugsSe
 import { SlackChecksView } from '../workflow/bots/SlackAppSetupSteps'
 import SlackAccountsPanel from './SlackAccountsPanel'
 
-export interface VaultSlackBot { id: string; name: string; configured: boolean; enabled: boolean; can_manage: boolean; scope_label: string; shared: boolean; identity?: { name?: string; workspace?: string; verified: boolean } }
+export interface VaultSlackBot { id: string; name: string; configured: boolean; enabled: boolean; can_manage: boolean; scope_label: string; shared: boolean; default: boolean; can_select: boolean; used_in: { label: string; kind: string }[]; identity?: { name?: string; workspace?: string; verified: boolean } }
 export interface SlackBotState {
  bots: VaultSlackBot[]; scopes: { workspace_path: string; label: string }[]
- selected_id: string; allow_bots?: boolean; can_select?: boolean
+ selected_id: string; allow_bots?: boolean; can_select?: boolean; can_create_company?: boolean
  target?: { workspace_path: string; profile_id?: string }; settings?: SlackTargetSettings
 }
 export const slackBotName = (bot: VaultSlackBot) => bot.identity?.name || (bot.name === 'Default' ? 'Saved Slack bot' : bot.name)
@@ -44,8 +43,6 @@ export function ProductSlackPanel({ workspacePath, noun = 'Crew', allowBots = tr
 }
 
 export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath: string; noun?: string }) {
- const admin = useAuthStore(state => state.user?.is_admin === true)
- const multiUser = useAuthStore(state => state.isMultiUserMode)
  const [data, setData] = useState<SlackBotState | null>(null)
  const [error, setError] = useState('')
  const [busy, setBusy] = useState(false)
@@ -65,16 +62,12 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath
   finally { setBusy(false) }
  }
  return <section aria-label={`Let people talk to this ${noun}`} className="space-y-5 text-sm">
-  <div><h3 className="text-base font-semibold">Let people talk to this {noun} in Slack</h3><p className="mt-1 text-sm text-muted-foreground">People message the bot. Replies come from the bot, with their existing access.</p></div>
+  <div><h3 className="text-base font-semibold">Slack bots</h3><p className="mt-1 text-sm text-muted-foreground">Let people talk to this {noun} in Slack, with their existing access.</p></div>
   {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => void refresh()}>Retry</button></p>}
   {!data && !error ? <p role="status" className="text-muted-foreground">Loading bots…</p> : data && <>
-   {data.bots.length > 0 && (!chosen || data.bots.length > 1) && <label className="flex flex-col gap-2 font-medium">Slack bot<select aria-label="Saved Slack bot" className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm font-normal" disabled={!data.can_select || busy} value={data.selected_id} onChange={event => void select(event.target.value)}>
-    <option value="" disabled>Choose a saved Slack bot</option>
-    {data.bots.map(bot => <option key={bot.id} value={bot.id}>{slackBotName(bot)}{bot.identity?.workspace ? ` · ${bot.identity.workspace}` : ''}{!bot.configured ? ' · Needs setup' : !bot.enabled ? ' · Paused' : ''}</option>)}
-   </select></label>}
-   {!data.bots.length && <div className="rounded-lg border border-border p-4"><p className="font-medium">No bot connected</p><p className="mt-1 text-xs text-muted-foreground">Add a bot below, then choose it for this {noun}.</p></div>}
-   {chosen && <div className="space-y-4 rounded-lg border border-border p-4">
-    <div className="flex flex-wrap items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted"><Bot className="h-5 w-5 text-muted-foreground"/></span><div className="min-w-0 flex-1"><p className="break-words font-medium">{slackBotName(chosen)}</p><p className="mt-0.5 text-xs text-muted-foreground">{chosen.identity?.workspace || 'Workspace not verified'}</p><p role="status" className="mt-1 text-xs text-muted-foreground">{!chosen.configured ? 'Needs setup' : !chosen.enabled ? 'Paused' : result ? result.success ? 'Token checks passed · Verify message delivery in Slack' : 'Connection check failed' : chosen.identity?.verified ? 'Identity verified · Delivery not checked' : 'Saved · Connection not checked'}</p></div>
+   <VaultSlackBots data={data} workspacePath={workspacePath} busy={busy} onSelect={select} onUpdated={refresh}>
+   {chosen && <div className="space-y-4 border-t border-border pt-3">
+    <div className="flex flex-wrap items-center justify-between gap-2"><p role="status" className="text-xs text-muted-foreground">{!chosen.configured ? 'Needs setup' : !chosen.enabled ? 'Paused' : result ? result.success ? 'Token checks passed · Verify message delivery in Slack' : 'Connection check failed' : chosen.identity?.verified ? 'Identity verified · Delivery not checked' : 'Saved · Connection not checked'}</p>
      {chosen.can_manage && <Button size="sm" variant="outline" disabled={busy || !chosen.configured || !chosen.enabled} onClick={() => void check()}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`}/>Check connection</Button>}
     </div>
     {data.settings && data.target && <>
@@ -84,9 +77,8 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath
    </div>}
    {result && <details className="text-xs" open={!result.success}><summary className="cursor-pointer text-muted-foreground">Connection check details</summary><div className="mt-3"><SlackChecksView result={result}/></div></details>}
    {chosen && data.settings && data.target && <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">Channels and display settings</summary><div className="mt-4">{chosen.shared ? <SlackSlugsSection hideSwitch destination={data.target} noun={noun} readOnly={!data.can_select} dmOnly={data.settings.dm_only} settings={{...data.settings, platform_name: slackBotName(chosen)}} onSettings={settings => setData({ ...data, settings })}/> : <SlackBotWhere botId={chosen.id} botName={slackBotName(chosen)} destination={data.target} dmOnly={data.settings.dm_only}/>}</div></details>}
+   </VaultSlackBots>
    {!data.can_select && <p className="text-xs text-muted-foreground">Only an owner can change which bot this {noun} uses.</p>}
   </>}
-  <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">Add or manage bots</summary><div className="mt-4"><VaultSlackBots/></div></details>
-  {admin && <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">{multiUser ? 'Company Slack bot setup' : 'Shared Slack bot setup'}</summary><div className="mt-4"><SlackAdminPanel/></div></details>}
  </section>
 }

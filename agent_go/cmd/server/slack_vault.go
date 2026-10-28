@@ -23,6 +23,9 @@ type slackVaultBot struct {
 	CanManage  bool                      `json:"can_manage"`
 	ScopeLabel string                    `json:"scope_label"`
 	Shared     bool                      `json:"shared"`
+	Default    bool                      `json:"default"`
+	CanSelect  bool                      `json:"can_select"`
+	UsedIn     []slackVaultBotUsage      `json:"used_in"`
 	Identity   services.SlackBotIdentity `json:"identity"`
 }
 type slackVaultScope struct {
@@ -147,6 +150,7 @@ func (api *StreamingAPI) slackVaultBotState(r *http.Request, workspace string) (
 	}
 	identityCtx, cancelIdentity := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancelIdentity()
+	usageCache := map[string]*slackVaultBotUsage{}
 	bots := []slackVaultBot{}
 	for _, conn := range svc.ListConnections() {
 		manageable := requireSlackConnectionAccess(r, api, conn) == nil
@@ -156,6 +160,9 @@ func (api *StreamingAPI) slackVaultBotState(r *http.Request, workspace string) (
 			continue
 		}
 		bot := safeSlackVaultBot(r, api, conn)
+		bot.Default = conn.ID == svc.DefaultConnectionID()
+		bot.CanSelect = out["can_select"] == true && (manageable || shared)
+		bot.UsedIn = api.slackVaultBotUsages(r, conn, bot.Default, usageCache)
 		bot.Identity = svc.BotIdentity(identityCtx, conn)
 		bots = append(bots, bot)
 	}

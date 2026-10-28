@@ -17,12 +17,19 @@ import (
 func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 	api, workspace := setupSlackConnectionTest(t)
 	workspace.files["Workflow/flow/workflow.json"] = `{"schema_version":1,"id":"flow","label":"Flow","kind":"relay","access":{"owners":["alice"]}}`
+	workspace.files["Workflow/gamma/workflow.json"] = `{"schema_version":1,"id":"wf_gamma","label":"Gamma","access":{"owners":["alice"]}}`
 	svc, err := ensureSlackService()
 	if err != nil {
 		t.Fatal(err)
 	}
 	conn, err := svc.CreateSlackConnection(context.Background(), services.SlackConnectionInput{DisplayName: "Saved bot", BotToken: "xoxb-fixture-private", AppToken: "xapp-fixture-private", Enabled: false, WorkspacePath: "Workflow/alpha"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SetSlackConnectionChannelRoute(context.Background(), conn.ID, "CEXAMPLE", &services.SlackConnectionRoute{
+		WorkspacePath: "Workflow/gamma",
+		Targets:       []services.SlackTargetRef{{WorkspacePath: "Workflow/beta"}, {WorkspacePath: "Workflow/deleted"}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	call := func(user, action, path, id string) *httptest.ResponseRecorder {
@@ -34,6 +41,25 @@ func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 	saved := call("alice", "list_saved", "", "")
 	if saved.Code != 200 || !strings.Contains(saved.Body.String(), "Saved bot") {
 		t.Fatalf("saved bot not listed: %d %s", saved.Code, saved.Body)
+	}
+	var state struct {
+		Bots []slackVaultBot `json:"bots"`
+	}
+	if err := json.Unmarshal(saved.Body.Bytes(), &state); err != nil || len(state.Bots) != 1 {
+		t.Fatalf("unexpected bot state: %s", saved.Body)
+	}
+	if usages := state.Bots[0].UsedIn; len(usages) != 2 || usages[0].Label != "Alpha" || usages[1].Label != "Gamma" {
+		t.Fatalf("paused bot usage must include accessible attachments only: %+v", usages)
+	}
+	// An item-bound MCP token must not see a second item's name even when
+	// the same person owns both destinations of this bot.
+	claims := slackConnectionClaims("alice")
+	claims.AccessToken = &accesstokens.Token{WorkflowIDs: []string{"wf_alpha"}, Scopes: []string{"builder:chat", "workflows:read", "files:read", "runs:execute"}}
+	body, _ := json.Marshal(map[string]any{"action": "list_saved", "workspace_path": "Workflow/alpha"})
+	bounded := httptest.NewRecorder()
+	api.handleSlackVaultBots(bounded, adminRequest(http.MethodPost, "/api/integrations/slack/bots", string(body), claims, nil))
+	if bounded.Code != http.StatusOK || json.Unmarshal(bounded.Body.Bytes(), &state) != nil || len(state.Bots) != 1 || len(state.Bots[0].UsedIn) != 1 || state.Bots[0].UsedIn[0].Label != "Alpha" {
+		t.Fatalf("item token exposed other usage: %d %s", bounded.Code, bounded.Body)
 	}
 	for _, private := range []string{"bot_token", "app_token", "fixture-private", "xoxb-", "xapp-"} {
 		if strings.Contains(saved.Body.String(), private) {
