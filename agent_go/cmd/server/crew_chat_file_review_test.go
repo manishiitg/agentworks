@@ -208,3 +208,26 @@ func TestUndoReplyRefusesReadTokenAndNonOwner(t *testing.T) {
 		t.Fatal("undo tool must need crews:write")
 	}
 }
+
+// PLAT-746-158: applying an undo is refused while a turn runs in the chat;
+// the preview is not (it reaches the owner check instead).
+func TestUndoReplyApplyRefusedWhileTurnRunning(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	api, _ := newDurableChatAPI(t, "chat-a", "alice")
+	store := filesnapshots.Store{Root: t.TempDir(), Private: t.TempDir()}
+	all := func(string) bool { return true }
+	api.setSessionBusy("chat-a", true)
+	call := func(method, op string) int {
+		req := httptest.NewRequest(method, "/?session_id=chat-a", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "bob", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, AllCrews: true}}))
+		w := httptest.NewRecorder()
+		api.serveCrewReplyUndo(w, req, "Crew/not-theirs", "", op, filesnapshots.ID("x"), store, all, all)
+		return w.Code
+	}
+	if code := call("POST", "snapshot_undo"); code != 409 {
+		t.Fatalf("apply while busy: %d", code)
+	}
+	if code := call("GET", "snapshot_undo_preview"); code == 409 {
+		t.Fatal("preview must stay available while busy")
+	}
+}
