@@ -2579,12 +2579,12 @@ func runServer(cmd *cobra.Command, args []string) {
 				return
 			}
 			log.Printf("[ROUTE] Redirecting /tools/mcp/%s/%s → custom tool handler", server, tool)
-			executorHandlers.HandlePerToolCustomRequest(w, r, tool)
+			withToolNameHints(w, tool, func(out http.ResponseWriter) { executorHandlers.HandlePerToolCustomRequest(out, r, tool) })
 			return
 		}
 		if isMCPBridgeVirtualToolCategory(server) {
 			log.Printf("[ROUTE] Redirecting /tools/mcp/%s/%s → virtual tool handler", server, tool)
-			executorHandlers.HandlePerToolVirtualRequest(w, r, tool)
+			withToolNameHints(w, tool, func(out http.ResponseWriter) { executorHandlers.HandlePerToolVirtualRequest(out, r, tool) })
 			return
 		}
 		// A guest's free-text ask uses no MCP server, the platform's Vault ones included (856-59).
@@ -2617,14 +2617,16 @@ func runServer(cmd *cobra.Command, args []string) {
 			return
 		}
 		logCustomToolDuration(vars["tool"], strings.TrimSpace(r.Header.Get("X-Session-ID")), func() {
-			withReadOnlyShellHint(w, r.Context(), vars["tool"], func(out http.ResponseWriter) {
-				executorHandlers.HandlePerToolCustomRequest(out, r, vars["tool"])
+			withToolNameHints(w, vars["tool"], func(hinted http.ResponseWriter) {
+				withReadOnlyShellHint(hinted, r.Context(), vars["tool"], func(out http.ResponseWriter) {
+					executorHandlers.HandlePerToolCustomRequest(out, r, vars["tool"])
+				})
 			})
 		})
 	}).Methods("POST", "OPTIONS")
 	toolsRouter.HandleFunc("/virtual/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		executorHandlers.HandlePerToolVirtualRequest(w, r, vars["tool"])
+		withToolNameHints(w, vars["tool"], func(out http.ResponseWriter) { executorHandlers.HandlePerToolVirtualRequest(out, r, vars["tool"]) })
 	}).Methods("POST", "OPTIONS")
 
 	// Session-scoped per-tool endpoints: /s/{session_id}/tools/...
@@ -2672,15 +2674,17 @@ func runServer(cmd *cobra.Command, args []string) {
 			return
 		}
 		logCustomToolDuration(tool, sid, func() {
-			withReadOnlyShellHint(w, ctx, tool, func(out http.ResponseWriter) {
-				executorHandlers.HandlePerToolCustomRequest(out, r.WithContext(ctx), tool)
+			withToolNameHints(w, tool, func(hinted http.ResponseWriter) {
+				withReadOnlyShellHint(hinted, ctx, tool, func(out http.ResponseWriter) {
+					executorHandlers.HandlePerToolCustomRequest(out, r.WithContext(ctx), tool)
+				})
 			})
 		})
 	}).Methods("POST", "OPTIONS")
 	sessionToolsRouter.HandleFunc("/virtual/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		r.Header.Set("X-Session-ID", vars["session_id"])
-		executorHandlers.HandlePerToolVirtualRequest(w, r, vars["tool"])
+		withToolNameHints(w, vars["tool"], func(out http.ResponseWriter) { executorHandlers.HandlePerToolVirtualRequest(out, r, vars["tool"]) })
 	}).Methods("POST", "OPTIONS")
 
 	// MCP Config API routes (from mcp_config_routes.go)
