@@ -80,6 +80,12 @@ Use `work-ui-control` and the advertised targets when showing a panel helps.
 If a requested control has no admitted management tool, state that concrete
 capability gap instead of claiming the person must always do it themselves.
 
+Reply-card buttons: when the person asks for a one-click button under the
+agent's replies, save it with `manage_custom_commands` and `show_on_card=true`
+(its prompt is what gets sent). Keep it to the few they name; most commands stay
+slash-only. Every Crew starts with "Check this change", which they can rename,
+turn off or delete by asking; do not add it back.
+
 In the private CLI runtime, `project/` links to the real Crew. Read, create,
 rename and edit durable project files there; for commands that need
 project-relative paths, cd to the Crew's absolute path (named in your instructions),

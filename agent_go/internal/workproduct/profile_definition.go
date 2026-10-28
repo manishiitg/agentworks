@@ -72,7 +72,7 @@ func defaultCrewIcon(name string) string {
 	return "C"
 }
 
-func customCommandMarkdown(name, description, icon, prompt string, modes []string) string {
+func customCommandMarkdown(name, description, icon, prompt string, modes []string, showOnCard bool) string {
 	var out strings.Builder
 	out.WriteString("---\nname: ")
 	out.WriteString(customCommandSlug(name))
@@ -84,6 +84,9 @@ func customCommandMarkdown(name, description, icon, prompt string, modes []strin
 	for _, mode := range modes {
 		out.WriteString("\n  - ")
 		out.WriteString(mode)
+	}
+	if showOnCard {
+		out.WriteString("\nshow_on_card: true")
 	}
 	out.WriteString("\n---\n\n")
 	out.WriteString(strings.TrimSpace(prompt))
@@ -102,15 +105,16 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 		commandsPath := path.Join(runtime.WorkspacePath, commands.CustomCommandsSubPath)
 		return agentprofiles.ToolSpec{
 			Name: "manage_custom_commands", Category: "custom_commands",
-			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt and icon. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
+			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt, icon and show_on_card. Set show_on_card=true only for the few commands the person wants as a button on each reply card (default false; most commands stay slash-only); it can be turned off again. Every Crew starts with one card command, \"Check this change\", which can be renamed or deleted. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
 			Parameters: map[string]interface{}{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]interface{}{
-					"action":      map[string]interface{}{"type": "string", "enum": []string{"list", "create", "update", "delete"}},
-					"name":        map[string]interface{}{"type": "string", "description": "Slash command name, without the slash."},
-					"description": map[string]interface{}{"type": "string", "description": "Short text shown in the slash menu."},
-					"prompt":      map[string]interface{}{"type": "string", "description": "Prompt submitted by the command. {{context}} inserts the text the user types with the command; put it on its own line (optionally after a \"Label:\" line) so it disappears when nothing is typed. It is appended automatically when missing."},
-					"icon":        map[string]interface{}{"type": "string", "enum": []string{"terminal", "zap", "eye", "code", "file-text", "message-circle", "search", "bookmark", "star"}},
+					"action":       map[string]interface{}{"type": "string", "enum": []string{"list", "create", "update", "delete"}},
+					"name":         map[string]interface{}{"type": "string", "description": "Slash command name, without the slash."},
+					"description":  map[string]interface{}{"type": "string", "description": "Short text shown in the slash menu."},
+					"prompt":       map[string]interface{}{"type": "string", "description": "Prompt submitted by the command. {{context}} inserts the text the user types with the command; put it on its own line (optionally after a \"Label:\" line) so it disappears when nothing is typed. It is appended automatically when missing."},
+					"icon":         map[string]interface{}{"type": "string", "enum": []string{"terminal", "zap", "eye", "code", "file-text", "message-circle", "search", "bookmark", "star"}},
+					"show_on_card": map[string]interface{}{"type": "boolean", "description": "Show this command as a button on each reply card. Default false. Turn on only for the few commands people want one click away."},
 				},
 				"required": []string{"action"},
 			},
@@ -118,6 +122,7 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 				action, _ := args["action"].(string)
 				name, _ := args["name"].(string)
 				name = customCommandSlug(name)
+				commands.EnsureDefaultCardCommand(workspaceAPIURL, commandsPath)
 				if action == "list" {
 					items, err := commands.DiscoverCommandsAt(workspaceAPIURL, commandsPath)
 					if err != nil {
@@ -138,6 +143,7 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 				case "create", "update":
 					description, prompt, icon := "", "", "terminal"
 					modes := []string{"multi-agent"}
+					showOnCard := false
 					if action == "update" {
 						existing, err := commands.GetCommandAt(workspaceAPIURL, commandsPath, name)
 						if err != nil {
@@ -145,6 +151,10 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 						}
 						description, prompt, icon = existing.Frontmatter.Description, existing.Content, existing.Frontmatter.Icon
 						modes = existing.Frontmatter.Modes
+						showOnCard = existing.Frontmatter.ShowOnCard
+					}
+					if value, ok := args["show_on_card"].(bool); ok {
+						showOnCard = value
 					}
 					if value, ok := args["description"].(string); ok {
 						description = value
@@ -158,7 +168,7 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 					if strings.TrimSpace(description) == "" || strings.TrimSpace(prompt) == "" {
 						return "", fmt.Errorf("description and prompt are required")
 					}
-					content := customCommandMarkdown(name, description, icon, prompt, modes)
+					content := customCommandMarkdown(name, description, icon, prompt, modes, showOnCard)
 					var err error
 					if action == "create" {
 						_, err = commands.CreateCommandAt(workspaceAPIURL, commandsPath, name, content)

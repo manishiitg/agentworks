@@ -108,8 +108,24 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 	w := httptest.NewRecorder()
 	listCommandsHandler(workspaceURL)(w, adminRequest(http.MethodGet, "/commands?workspace_path="+externalCommandCrewRoot, "", crewWriter("owner"), nil))
 	var menu commands.ListCommandsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &menu); err != nil || w.Code != 200 || menu.Total != 1 || menu.Commands[0].Frontmatter.Name != "review" {
+	if err := json.Unmarshal(w.Body.Bytes(), &menu); err != nil || w.Code != 200 || menu.Total != 2 {
 		t.Fatalf("app slash menu = %d %s (%v)", w.Code, w.Body.String(), err)
+	}
+	// A new Crew starts with one flagged default; commands created by hand stay off the card.
+	for _, c := range menu.Commands {
+		wantOn := c.Frontmatter.Name == commands.DefaultCardCommandName
+		if c.Frontmatter.ShowOnCard != wantOn || (wantOn && c.Content != commands.DefaultCardCommandMessage+"\n\n{{context}}") {
+			t.Fatalf("card flag/message wrong for %s: %+v", c.Frontmatter.Name, c)
+		}
+	}
+	call(map[string]any{"action": "update", "name": "review", "show_on_card": true})
+	if saved := f.read(t, commandPath); !strings.Contains(saved, "show_on_card: true") || !strings.Contains(saved, "Review this work.") {
+		t.Fatalf("show_on_card not stored: %s", saved)
+	}
+	// Deleting the default sticks: it is not re-seeded on the next read.
+	call(map[string]any{"action": "delete", "name": commands.DefaultCardCommandName})
+	if listed := call(map[string]any{"action": "list"}); strings.Contains(listed, commands.DefaultCardCommandName) {
+		t.Fatalf("deleted default command came back: %s", listed)
 	}
 	call(map[string]any{"action": "update", "name": "review", "prompt": "Review changes."})
 	if saved := f.read(t, commandPath); !strings.Contains(saved, "Review changes.") || !strings.Contains(saved, `icon: "zap"`) || !strings.Contains(saved, `description: "Review work"`) {

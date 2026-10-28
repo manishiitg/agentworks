@@ -6,6 +6,8 @@ type CommandFrontmatter struct {
 	Description string   `yaml:"description" json:"description"`
 	Icon        string   `yaml:"icon,omitempty" json:"icon,omitempty"`
 	Modes       []string `yaml:"modes,omitempty" json:"modes,omitempty"`
+	// ShowOnCard makes the command a button on each reply card. Default off.
+	ShowOnCard bool `yaml:"show_on_card,omitempty" json:"show_on_card"`
 }
 
 // Command represents a complete command with parsed content
