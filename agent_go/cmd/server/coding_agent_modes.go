@@ -85,10 +85,10 @@ func codingAgentRequestHasAttendingUser(req *QueryRequest, sessionID string) boo
 	if strings.TrimSpace(req.BotPlatform) != "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.TriggeredBy)), "bot:") {
 		return false
 	}
-	// Only the builder chat shows question cards (user, 2026-09-29). Product
-	// chats (Code, Crew, Video Studio, ...) run on a server-stamped agent
+	// The builder chat and Crew chats show question cards (owner, 2026-10-28:
+	// "crew should get"). Other product chats run on a server-stamped agent
 	// profile and auto-answer like every automated path.
-	if strings.TrimSpace(req.AgentProfileID) != "" {
+	if profile := strings.TrimSpace(req.AgentProfileID); profile != "" && !isProjectProfileID(profile) {
 		return false
 	}
 	// "Make interactive" hands a schedule session to the user on purpose.

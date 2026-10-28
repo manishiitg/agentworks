@@ -108,6 +108,8 @@ profile:
       - list_project_chats
       - ask_project_chat
       - set_my_agent_identity
+      # A coding agent's question card while a person is in the chat (owner, 2026-10-28).
+      - request_clarification
     # Populated by features above. Not enabled, deliberately: workflow
     # schedule/route tools,
     # pulse/improvement tools, workflow-step orchestration, media-generation tools,
