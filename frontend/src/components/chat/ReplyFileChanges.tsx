@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import api from '../../services/api'
+import { markFilesReviewed, useReviewRevision, type ReviewResult } from '../workspace/chatFileReview'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
 import { useProjectMode } from '../../products/work/codeLocalFiles'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -9,7 +10,6 @@ import { FileDiffView } from '../workspace/FileDiffView'
 
 const FileViewer = lazy(() => import('../FileContentViewer').then(module => ({ default: module.FileContentViewerBody })))
 interface Change { path: string; status: string; added?: number; removed?: number; binary?: boolean }
-interface Comparison { uncaptured_changes: number; changes: Change[]; snapshot: { status: string } }
 const endpoint = '/api/workspace-snapshots'
 const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId })
 
@@ -23,24 +23,31 @@ export function ReplyFileChanges({ reference }: { reference: ReplyFileChangesRef
 }
 
 function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
-  const [comparison, setComparison] = useState<Comparison | null>(null)
+  const [result, setResult] = useState<ReviewResult | null>(null)
+  const comparison = result?.comparison
+  const [revision] = useReviewRevision()
+  const [reviewing, setReviewing] = useState(false)
+  const [reviewError, setReviewError] = useState('')
+  const latest = result?.history.latest_snapshot_id === reference.snapshotId && (!reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId)
+  const reviewed = result?.history.baseline_snapshot_id === reference.snapshotId
   const [selected, setSelected] = useState<{ change: Change; view: 'preview' | 'diff' } | null>(null)
   useEffect(() => {
     const controller = new AbortController()
-    void api.get<Comparison>(endpoint, { params: { ...paramsFor(reference), op: 'snapshot_compare' }, signal: controller.signal })
-      .then(response => { if (!controller.signal.aborted) setComparison(response.data) })
+    void api.get<ReviewResult>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_compare' }, signal: controller.signal })
+      .then(response => { if (!controller.signal.aborted) setResult(response.data) })
       .catch(() => { /* Expired/unavailable history has no change card. */ })
     return () => controller.abort()
-  }, [reference.workspacePath, reference.snapshotId])
-  if (!comparison?.changes?.length) {
+  }, [reference.workspacePath, reference.snapshotId, reference.sessionId, reference.latestSnapshotId, revision])
+  if (!comparison?.changes?.length && !(latest && result?.history.can_review)) {
     return (comparison?.uncaptured_changes ?? 0) > 0
       ? <p className="my-3 text-xs text-muted-foreground" role="status">{comparison?.uncaptured_changes} {comparison?.uncaptured_changes === 1 ? 'file may' : 'files may'} have changed but could not be compared.</p>
       : null
   }
+  if (!comparison) return null
   return (
     <section className="my-3 rounded-lg border border-border px-3 py-2 text-sm" aria-label="Files changed during this reply">
       <details>
-        <summary className="cursor-pointer font-medium">Files changed during this reply · {comparison.changes.length}</summary>
+        <summary className="cursor-pointer font-medium">Files changed during this reply · {result?.total_changes ?? comparison.changes.length}</summary>
         <p className="mt-2 text-xs text-muted-foreground">Saved versions. Other chats or editors may have contributed.</p>
         {comparison.uncaptured_changes > 0 && <p className="text-xs text-muted-foreground">{comparison.uncaptured_changes} {comparison.uncaptured_changes === 1 ? 'file may' : 'files may'} have changed but could not be compared.</p>}
         <ul className="mt-2 space-y-1">
@@ -54,6 +61,17 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
             </li>
           ))}
         </ul>
+        {!!result?.next_offset && <button type="button" className="mt-2 text-xs underline" onClick={() => {
+          const shown = result
+          void api.get<ReviewResult>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_compare', offset: shown.next_offset } })
+            .then(({ data }) => setResult(current => current === shown && data.comparison ? { ...data, comparison: { ...data.comparison, changes: [...shown.comparison!.changes, ...data.comparison.changes] } } : current))
+            .catch(() => setReviewError('Could not load more files. Try again.'))
+        }}>Show more files</button>}
+      {latest && <div className="mt-2 flex flex-wrap items-center gap-2 border-t pt-2 text-xs">
+        {result?.since_review && <span>Since your last review: {result.since_review.files} files <span className="text-green-600">+{result.since_review.added}</span> <span className="text-red-500">−{result.since_review.removed}</span></span>}
+        {reviewed ? <span>Reviewed up to here</span> : result?.history.can_review && <button type="button" disabled={reviewing} className="rounded border px-2 py-1" onClick={() => { setReviewing(true); setReviewError(''); void markFilesReviewed(reference.workspacePath,reference.sessionId,reference.snapshotId).catch(() => setReviewError('Could not save the review point. Try again.')).finally(() => setReviewing(false)) }}>Mark as reviewed</button>}
+        {reviewError && <p role="alert">{reviewError}</p>}
+      </div>}
       </details>
       {selected && <SavedFile key={`${selected.change.path}:${selected.view}`} reference={reference} {...selected} close={() => setSelected(null)} />}
     </section>
@@ -70,7 +88,7 @@ export function SavedFile({ reference, change, view, close, query }: { reference
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null
     dialog.current?.showModal()
-    return () => { previouslyFocused?.focus() }
+    return () => { previouslyFocused?.focus({ preventScroll: true }) }
   }, [])
   useEffect(() => {
     if (view === 'diff') return
@@ -90,7 +108,7 @@ export function SavedFile({ reference, change, view, close, query }: { reference
     }
     void load().catch(() => { if (!controller.signal.aborted) setError('This saved version is unavailable or you no longer have access. You can open the current file instead.') })
     return () => controller.abort()
-  }, [reference.workspacePath, reference.snapshotId, change.path, change.binary, imageType, name, side, view, query?.session_id, query?.through_snapshot_id])
+  }, [reference.workspacePath, reference.snapshotId, change.path, change.binary, imageType, name, side, view, query?.session_id, query?.through_snapshot_id, query?.baseline_snapshot_id])
   const unsupported = change.binary && !imageType && !isViewableBinaryFile(name)
   return (
     <dialog ref={dialog} onCancel={event => { event.preventDefault(); close() }} className="h-[85vh] w-[min(95vw,1100px)] max-w-none rounded-xl border border-border bg-background p-0 text-foreground backdrop:bg-black/50">

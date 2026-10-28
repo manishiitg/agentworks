@@ -15,6 +15,7 @@ const maxDurableChatEventBytes = 64 * 1024
 // meaning is reviewed here.
 var durableChatEventTypes = map[string]bool{
 	"reply_file_changes":           true,
+	"file_reviewed":                true,
 	"background_results_waiting":   true,
 	"agent_end":                    true,
 	"agent_error":                  true,

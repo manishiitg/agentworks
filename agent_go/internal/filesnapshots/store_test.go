@@ -155,6 +155,34 @@ func TestNestedRepositoriesKeepHistoricalComparisons(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.Root, "code/.git/index")); !os.IsNotExist(err) {
 		t.Fatal("user Git index was created")
 	}
+	// PLAT-746: review history survives normal reply retention without changing
+	// the user's repository. Unreviewed old snapshots still expire.
+	if err := s.KeepReviewBoundaries(ctx, ID("1"), ID("5")); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"1", "2", "5"} {
+		r, err := s.read(ID(id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.StartedAt = time.Now().Add(-15 * 24 * time.Hour)
+		if err := s.save(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.prune(ctx)
+	if _, err := s.read(ID("2")); !os.IsNotExist(err) {
+		t.Fatalf("ordinary old snapshot retained: %v", err)
+	}
+	reopened := Store{Root: s.Root, Private: s.Private}
+	reviewed, err := reopened.CompareBoundaries(ctx, ID("1"), ID("5"), "after", "code/main.py", func(string) bool { return true })
+	if err != nil || !strings.Contains(reviewed.Diff, "-print(1)") || !strings.Contains(reviewed.Diff, "+print(5)") {
+		t.Fatalf("retained review interval: %v %+v", err, reviewed)
+	}
+	if _, err := reopened.CompareBetween(ctx, ID("1"), ID("1"), "code/main.py", func(string) bool { return true }); err != nil {
+		t.Fatalf("first before-boundary expired: %v", err)
+	}
+
 }
 
 // PLAT-746-158: an after-capture holding the Crew lock must not make the

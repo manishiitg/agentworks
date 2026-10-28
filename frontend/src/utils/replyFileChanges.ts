@@ -5,6 +5,7 @@ export interface ReplyFileChangesRef {
   snapshotId: string
   workspacePath: string
   sessionId: string
+  latestSnapshotId?: string
 }
 
 // Capture finishes asynchronously, sometimes after the next reply. Bind by
@@ -23,5 +24,14 @@ export function replyFileChangesByMessage(events: PollingEvent[], replyIds: Read
       .sort((a, b) => (b.sequence ?? 0) - (a.sequence ?? 0))[0]
     if (reply) result.set(reply.id, { snapshotId: data.snapshot_id, workspacePath: data.workspace_path, sessionId: event.session_id || '' })
   }
+  const latest = new Map<string, { id: string; end: number }>()
+  for (const event of events) {
+    if (event.type !== 'reply_file_changes') continue
+    const data = event.data?.data as Record<string, unknown> | undefined
+    if (!data || typeof data.snapshot_id !== 'string' || typeof data.end_sequence !== 'number') continue
+    const session = event.session_id || ''
+    if (data.end_sequence > (latest.get(session)?.end ?? -1)) latest.set(session, { id: data.snapshot_id, end: data.end_sequence })
+  }
+  for (const ref of result.values()) ref.latestSnapshotId = latest.get(ref.sessionId)?.id
   return result
 }

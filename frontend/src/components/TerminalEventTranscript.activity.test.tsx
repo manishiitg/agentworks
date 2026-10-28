@@ -358,10 +358,10 @@ it.each(['query_1791824440777049000', 'synthetic-turn:steer-message-179182444077
 it('keeps a late file comparison on its original reply in both transcript views after reload', async () => {
   const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
     if (config?.params?.op === 'snapshot_file') return { data: new TextEncoder().encode('Saved report from the first reply').buffer } as never
-    return { data: { snapshot: { status: 'complete' }, changes: [
+    return { data: { history: { latest_snapshot_id: '', can_review: false }, comparison: { snapshot: { status: 'complete' }, changes: [
       { path: 'report.md', status: 'M', added: 2, removed: 1 },
       { path: 'image.png', status: 'M', binary: true },
-    ] } } as never
+    ] } } } as never
   })
   const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true })
   const numbered = (id: string, type: string, data: Record<string, unknown>, sequence: number) => ({ ...event(id, type, data), sequence, session_id: 'files-session' })
@@ -419,7 +419,7 @@ it('keeps a late file comparison on its original reply in both transcript views 
 it('warns on unknown or changed omissions in both views but hides unchanged skipped assets', async () => {
   let status = 'partial'
   let uncaptured = 1
-  const get = vi.spyOn(api, 'get').mockImplementation(async () => ({ data: { snapshot: { status }, uncaptured_changes: uncaptured, changes: [] } }) as never)
+  const get = vi.spyOn(api, 'get').mockImplementation(async () => ({ data: { history: { latest_snapshot_id: '', can_review: false }, comparison: { snapshot: { status }, uncaptured_changes: uncaptured, changes: [] } } }) as never)
   const history = [
     { ...event('user-files', 'user_message', { content: 'Change a source file' }), sequence: 1, session_id: 'files-session' },
     { ...event('reply-files', 'llm_generation_end', { content: 'Done.' }), sequence: 2, session_id: 'files-session' },

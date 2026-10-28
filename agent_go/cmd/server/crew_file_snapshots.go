@@ -218,6 +218,10 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
+	if op == "snapshot_review" && !crewSnapshotsEnabled(roots) {
+		externalError(w, 400, "studio_only", "Review file changes in Studio.")
+		return
+	}
 	store := filesnapshots.Store{Root: roots.Files, Private: roots.Private}
 	guard := externalFileGuard(r.Context(), false)
 	if err := guard.Validate(); err != nil {

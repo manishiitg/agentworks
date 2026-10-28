@@ -9,6 +9,7 @@ import (
 // ChatFileHistory reads only saved reply references from the existing journal.
 // FirstUserSequence prevents calling a later retained snapshot the chat's start.
 type ChatFileHistory struct {
+	Reviews           []Event
 	References        []Event
 	FirstUserSequence int64
 	FirstSnapshotID   string
@@ -56,5 +57,25 @@ func (j *SQLiteEventJournal) ReadChatFileHistory(ctx context.Context, sessionID 
 		}
 		out.References = append(out.References, event)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	rows.Close()
+	reviews, err := j.db.QueryContext(ctx, `SELECT payload FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='file_reviewed' ORDER BY sequence`, sessionID)
+	if err != nil {
+		return out, err
+	}
+	defer reviews.Close()
+	for reviews.Next() {
+		var raw []byte
+		if err := reviews.Scan(&raw); err != nil {
+			return out, err
+		}
+		var event Event
+		if err := json.Unmarshal(raw, &event); err != nil {
+			return out, err
+		}
+		out.Reviews = append(out.Reviews, event)
+	}
+	return out, reviews.Err()
 }

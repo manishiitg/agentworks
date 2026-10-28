@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { useProjectStatus } from '../../components/workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
@@ -19,8 +20,9 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
 const EMPTY_RECENT: string[] = []
 
-export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget }: {
+export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
+  reviewSessionId?: string
   projectId?: string
   profileId?: 'work'
   panels: ProductPanel<WorkWorkspaceView>[]
@@ -92,7 +94,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'suggestions' && Boolean(count)} onClick={() => open(item)}>{item.label}</Row>
   }
   return <WorkspaceContextCard>
-    {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}
+    {(recent.length > 0 || (reviewSessionId && allowed('files'))) && <Group title="Recent">{reviewSessionId && allowed('files') && <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={() => { setWorkspaceViewTarget('files','review'); onOpen('files') }} />}{recent.map(renderItem)}</Group>}
     {startHere.length > 0 && <Group title="Start here">{startHere.map(renderItem)}</Group>}
     {CREW_MENU_GROUPS.map(group => {
       const remaining = items.filter(item => item.group === group && !featuredIDs.has(item.id))

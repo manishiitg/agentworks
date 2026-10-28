@@ -8,7 +8,7 @@ import { WorkspacePanelHeader } from '../../components/workspace/WorkspacePanelH
 import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../../components/workspace/WorkspacePanelNavigation'
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { DollarSign, Laptop, Settings, FileDiff } from 'lucide-react'
+import { DollarSign, Laptop, Settings } from 'lucide-react'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
@@ -97,7 +97,6 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     <TooltipProvider delayDuration={150}>
       {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
     </TooltipProvider>
-    {!readOnly && !isCowork && sessionId && isWorkWorkspaceViewEnabled('files', enabledPanels) && <button type="button" className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-muted" onClick={() => { setWorkspaceViewTarget('files', 'review'); onViewChange('files') }}><FileDiff className="h-4 w-4" />Review changes</button>}
     <ShareDashboardButton workspacePath={workspacePath} tabId={tabId} onAsk={tabId ? async message => {
       await openWorkspacePaneChatWithDraft({ tabId, message })
       onOpenChat?.()
@@ -320,7 +319,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     <div className="relative flex h-full min-h-0 flex-col bg-background">
       <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly} onBack={() => onViewChange('context')} />
       <div className="min-h-0 flex-1 overflow-hidden">
-        {view==='context' && <WorkContextPanel workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
+        {view==='context' && <WorkContextPanel reviewSessionId={contextMode === 'dev' ? activeSessionId : undefined} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
         {view === 'files' && (readOnly ? <SharedCrewFilesPanel
           projectId={projectId}
           crewRoot={workspacePath}

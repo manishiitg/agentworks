@@ -32,6 +32,7 @@ const keepTurns = 50
 
 // Record contains no prompt, transcript or account credentials.
 type Record struct {
+	Reviewed           bool              `json:"-"`
 	BeforeSkippedState map[string]string `json:"-"`
 	AfterSkippedState  map[string]string `json:"-"`
 	ID                 string            `json:"id"`
@@ -61,6 +62,7 @@ type CaptureStats struct {
 // diskRecord keeps Git object names private to the server.
 type diskRecord struct {
 	Record
+	Reviewed           bool              `json:"reviewed,omitempty"`
 	BeforeSkippedState map[string]string `json:"before_skipped_state,omitempty"`
 	AfterSkippedState  map[string]string `json:"after_skipped_state,omitempty"`
 	BeforeTree         string            `json:"before_tree"`
@@ -428,6 +430,7 @@ func (s Store) read(id string) (Record, error) {
 	if err = json.Unmarshal(data, &disk); err != nil {
 		return Record{}, err
 	}
+	disk.Record.Reviewed = disk.Reviewed
 	disk.Record.Before = disk.BeforeTree
 	disk.Record.After = disk.AfterTree
 	disk.Record.Omitted = disk.Omitted
@@ -436,7 +439,7 @@ func (s Store) read(id string) (Record, error) {
 	return disk.Record, nil
 }
 func (s Store) save(r Record) error {
-	data, err := json.Marshal(diskRecord{Record: r, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState})
+	data, err := json.Marshal(diskRecord{Record: r, Reviewed: r.Reviewed, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState})
 	if err != nil {
 		return err
 	}
@@ -552,7 +555,7 @@ func (s Store) prune(ctx context.Context) {
 	}
 	removed := false
 	for i, r := range records {
-		if i < keepTurns && time.Since(r.StartedAt) < 14*24*time.Hour {
+		if r.Reviewed || (i < keepTurns && time.Since(r.StartedAt) < 14*24*time.Hour) {
 			continue
 		}
 		for _, phase := range []string{"before", "after"} {
@@ -686,6 +689,38 @@ func (s Store) compare(ctx context.Context, r Record, file string, allow func(st
 // CompareBetween compares two retained turn boundaries, never the working tree.
 // Callers resolve the bounds from the authorized chat, not client-supplied Git refs.
 func (s Store) CompareBetween(ctx context.Context, first, last, file string, allow func(string) bool) (Comparison, error) {
+	return s.CompareBoundaries(ctx, first, last, "before", file, allow)
+}
+
+// KeepReviewBoundaries keeps only the selected review points in the existing
+// snapshot records. Ordinary replies retain their normal bounded retention.
+func (s Store) KeepReviewBoundaries(ctx context.Context, ids ...string) error {
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		r, err := s.read(id)
+		if err != nil {
+			return err
+		}
+		if r.After == "" {
+			return errors.New("review boundary is unavailable")
+		}
+		r.Reviewed = true
+		if err := s.save(r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CompareBoundaries also permits an accepted after-state as the next baseline.
+func (s Store) CompareBoundaries(ctx context.Context, first, last, firstSide, file string, allow func(string) bool) (Comparison, error) {
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Comparison{}, err
@@ -698,6 +733,15 @@ func (s Store) CompareBetween(ctx context.Context, first, last, file string, all
 	after, err := s.read(last)
 	if err != nil {
 		return Comparison{}, err
+	}
+	if firstSide == "after" {
+		before.Before = before.After
+		before.BeforeSkippedState = before.AfterSkippedState
+		if before.CompletedAt != nil {
+			before.StartedAt = *before.CompletedAt
+		}
+	} else if firstSide != "before" {
+		return Comparison{}, errors.New("invalid saved boundary")
 	}
 	if before.Before == "" || after.After == "" || (before.Status != "complete" && before.Status != "partial") || (after.Status != "complete" && after.Status != "partial") {
 		return Comparison{}, errors.New("a saved comparison boundary is unavailable")

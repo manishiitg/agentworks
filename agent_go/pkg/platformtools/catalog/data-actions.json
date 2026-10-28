@@ -315,5 +315,12 @@
     "member": "compare_crew_snapshot",
     "description": "Compare files observed before and after a Crew turn. No undo.",
     "external_members": "compare_crew_snapshot"
+  },
+  {
+    "family": "files",
+    "name": "mark_reviewed",
+    "member": "review_crew_snapshot",
+    "description": "Mark the displayed saved reply as reviewed in this chat; later changes start from that saved state. No Git commit.",
+    "external_members": "review_crew_snapshot"
   }
 ]
