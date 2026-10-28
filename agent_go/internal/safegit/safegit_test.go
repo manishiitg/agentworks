@@ -93,6 +93,7 @@ func TestGitFileCheckoutsDoNotRunConfiguredCommands(t *testing.T) {
 	sep := filepath.Join(root, "sep")
 	sepGit := filepath.Join(root, "gitdirs", "sep")
 	os.MkdirAll(sep, 0o700)
+	os.MkdirAll(filepath.Dir(sepGit), 0o700)
 	git(sep, "init", "--quiet", "--separate-git-dir", sepGit)
 	os.WriteFile(filepath.Join(sep, "a.txt"), []byte("one\n"), 0o600)
 	git(sep, "add", ".")
