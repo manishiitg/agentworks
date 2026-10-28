@@ -41,8 +41,8 @@ type Group struct {
 }
 
 // gitIn runs read-only Git in a user checkout through the shared hardened helper.
-func gitIn(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	return safegit.Command(ctx, dir, nil, args...)
+func gitIn(ctx context.Context, root, dir string, args ...string) *exec.Cmd {
+	return safegit.CommandIn(ctx, root, dir, nil, args...)
 }
 
 // checkoutRoot returns the deepest folder at or above file (inside root) that
@@ -138,22 +138,22 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 	// when everything is an add and the adds cover the checkout (a few files
 	// may be skipped by capture rules, so a small tracked remainder is fine).
 	tracked := 0
-	if out, err := gitIn(ctx, abs, "ls-files", "-z").Output(); err == nil {
+	if out, err := gitIn(ctx, root, abs, "ls-files", "-z").Output(); err == nil {
 		tracked = bytes.Count(out, []byte{0})
 	}
 	g.NewCheckout = allAdded && (len(changes) >= tracked || len(changes) >= 20)
-	if out, err := gitIn(ctx, abs, "symbolic-ref", "--short", "-q", "HEAD").Output(); err == nil {
+	if out, err := gitIn(ctx, root, abs, "symbolic-ref", "--short", "-q", "HEAD").Output(); err == nil {
 		g.Branch = strings.TrimSpace(string(out))
 	}
 	if g.Branch == "" {
-		if out, err := gitIn(ctx, abs, "rev-parse", "--short", "HEAD").Output(); err == nil {
+		if out, err := gitIn(ctx, root, abs, "rev-parse", "--short", "HEAD").Output(); err == nil {
 			g.Branch = "detached@" + strings.TrimSpace(string(out))
 		}
 	}
-	if out, err := gitIn(ctx, abs, "config", "--get", "remote.origin.url").Output(); err == nil {
+	if out, err := gitIn(ctx, root, abs, "config", "--get", "remote.origin.url").Output(); err == nil {
 		g.GitHubRepo = GitHubRepo(string(out))
 	}
-	files, ok := workingTreeEdits(ctx, abs, dir, allow)
+	files, ok := workingTreeEdits(ctx, root, abs, dir, allow)
 	switch {
 	case ok && (len(files) > 0 || g.NewCheckout):
 		g.Files = files
@@ -166,8 +166,8 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 }
 
 // workingTreeEdits lists files differing from HEAD in one checkout.
-func workingTreeEdits(ctx context.Context, abs, dir string, allow func(string) bool) ([]Change, bool) {
-	raw, err := gitIn(ctx, abs, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all").Output()
+func workingTreeEdits(ctx context.Context, root, abs, dir string, allow func(string) bool) ([]Change, bool) {
+	raw, err := gitIn(ctx, root, abs, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all").Output()
 	if err != nil {
 		return nil, false
 	}
@@ -194,7 +194,7 @@ func workingTreeEdits(ctx context.Context, abs, dir string, allow func(string) b
 	for i := range files {
 		byPath[files[i].Path] = &files[i]
 	}
-	if stats, err := gitIn(ctx, abs, "diff", "HEAD", "--no-ext-diff", "--no-textconv", "--no-renames", "--numstat", "-z", "--").Output(); err == nil {
+	if stats, err := gitIn(ctx, root, abs, "diff", "HEAD", "--no-ext-diff", "--no-textconv", "--no-renames", "--numstat", "-z", "--").Output(); err == nil {
 		for _, row := range bytes.Split(stats, []byte{0}) {
 			f := bytes.SplitN(row, []byte{'\t'}, 3)
 			if len(f) != 3 {

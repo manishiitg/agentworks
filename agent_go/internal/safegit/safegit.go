@@ -13,9 +13,74 @@ import (
 	"strings"
 )
 
-// Command builds a hardened git call in dir. extraConfig is "-c" style pairs
-// such as "core.excludesFile=/path" (already key=value).
+// Command builds a hardened git call in dir (a checkout whose .git is a
+// directory). extraConfig holds key=value pairs such as
+// "core.excludesFile=/path". A checkout whose .git is a file is refused here;
+// use CommandIn with the Crew root.
+//
+// Filter and diff driver commands defined by the repo are blanked, so Git LFS
+// filters do not run: LFS files show as pointer text in status and diff.
 func Command(ctx context.Context, dir string, extraConfig []string, args ...string) *exec.Cmd {
+	return CommandIn(ctx, dir, dir, extraConfig, args...)
+}
+
+func refused(ctx context.Context) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", "--version-refused-by-safegit")
+	cmd.Env = env()
+	return cmd
+}
+
+// confined resolves p and reports whether it lies inside root's real path.
+func confined(root, p string) (string, bool) {
+	r, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", false
+	}
+	q, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(r, q)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return q, true
+}
+
+// linkedGitDir resolves a ".git" file (linked worktree or submodule) to its
+// git dir. Both the git dir and its commondir must stay inside root.
+func linkedGitDir(root, dir, file string) (string, bool) {
+	raw, err := os.ReadFile(file)
+	if err != nil || len(raw) > 4096 {
+		return "", false
+	}
+	line := strings.TrimSpace(string(raw))
+	if !strings.HasPrefix(line, "gitdir:") {
+		return "", false
+	}
+	target := strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(dir, target)
+	}
+	gitDir, ok := confined(root, target)
+	if !ok {
+		return "", false
+	}
+	if common, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+		c := strings.TrimSpace(string(common))
+		if !filepath.IsAbs(c) {
+			c = filepath.Join(gitDir, c)
+		}
+		if _, ok := confined(root, c); !ok {
+			return "", false
+		}
+	}
+	return gitDir, true
+}
+
+// CommandIn is Command for checkouts that may have a .git file; every git
+// dir it uses must resolve inside root.
+func CommandIn(ctx context.Context, root, dir string, extraConfig []string, args ...string) *exec.Cmd {
 	var full []string
 	for _, c := range extraConfig {
 		full = append(full, "-c", c)
@@ -33,7 +98,14 @@ func Command(ctx context.Context, dir string, extraConfig []string, args ...stri
 		"-c", "gc.auto=0",
 	)
 	gitDir := filepath.Join(dir, ".git")
-	if info, err := os.Lstat(gitDir); err == nil && info.IsDir() {
+	if info, err := os.Lstat(gitDir); err == nil && info.Mode()&os.ModeSymlink == 0 {
+		if !info.IsDir() {
+			resolved, ok := linkedGitDir(root, dir, gitDir)
+			if !ok {
+				return refused(ctx)
+			}
+			gitDir = resolved
+		}
 		// Explicit git dir and work tree: the repo's own config (core.worktree)
 		// or a .git file cannot redirect Git outside the folder.
 		full = append(full, "--git-dir", gitDir, "--work-tree", dir)
