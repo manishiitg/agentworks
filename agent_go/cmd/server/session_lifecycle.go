@@ -114,7 +114,7 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 	api.agentCancelMux.Lock()
 	_, hasGoTurn := api.agentCancelFuncs[sessionID]
 	api.agentCancelMux.Unlock()
-	api.interruptInteractiveCLITurn(sessionID, hasGoTurn)
+	api.interruptInteractiveCLITurn(sessionID, hasGoTurn || api.retainedMainTurnTracked(sessionID))
 	api.agentCancelMux.Lock()
 	cancelFunc, exists := api.agentCancelFuncs[sessionID]
 	if exists {
@@ -125,7 +125,7 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 	api.agentCancelMux.Unlock()
 
 	if !exists {
-		if api.isSessionBusy(sessionID) {
+		if api.isSessionBusy(sessionID) && !api.retainedMainTurnTracked(sessionID) {
 			// The turn was accepted but is still starting (Stop pressed 6 times at 09:17 on server B, each dropped as
 			// "idle"). Hold the Stop; the turn applies it as soon as it can be cancelled.
 			api.holdPendingTurnStop(sessionID)
@@ -760,16 +760,26 @@ var stoppedTurnSettleWait = 4 * time.Second
 // returns to Ready; the browser only shows it.
 func (api *StreamingAPI) settleStoppedTurnWithNoOwner(sessionID string) {
 	time.Sleep(stoppedTurnSettleWait)
-	if api == nil || api.eventStore == nil || !api.eventStore.TurnInProgress(sessionID) {
+	if api == nil || api.eventStore == nil {
 		return
 	}
 	api.agentCancelMux.Lock()
 	_, hasGoTurn := api.agentCancelFuncs[sessionID]
 	api.agentCancelMux.Unlock()
-	api.retainedMainTurnsMu.Lock()
-	tracked := !api.retainedMainTurns[sessionID].IsZero()
-	api.retainedMainTurnsMu.Unlock()
-	if hasGoTurn || tracked {
+	if hasGoTurn {
+		return
+	}
+	// A retained turn still open after the provider had its chance to end it has no one left to end it (a Codex
+	// follow-up turn nothing watched kept the chat "working" through 15 Stops). Stop releases it.
+	if api.retainedMainTurnTracked(sessionID) {
+		api.releaseStoppedSessionTurnMarkers(sessionID)
+		api.emitInterruptedTurnEnd(sessionID, "stop_retained_turn")
+		api.setSessionBusy(sessionID, false)
+		api.updateSessionStatus(sessionID, "completed")
+		log.Printf("[SESSION STOP] settled session=%s outcome=interrupted reason=retained_turn_unfinished_after_stop", sessionID)
+		return
+	}
+	if !api.eventStore.TurnInProgress(sessionID) {
 		return
 	}
 	api.emitInterruptedTurnEnd(sessionID, "stop_no_owner")

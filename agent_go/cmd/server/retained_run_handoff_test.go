@@ -203,3 +203,22 @@ func TestRetainedNativeOldExactCompletionCannotAnswerFreshInput(t *testing.T) {
 		t.Fatal("old exact-ID replay consumed a fresh accepted input")
 	}
 }
+
+// Excellence 2026-10-28: a retained turn nothing watched kept the chat "working" and 15 Stops only held. Stop must
+// release a retained turn that is still open after the provider had its chance to end it.
+func TestStopReleasesRetainedTurnNothingEnds(t *testing.T) {
+	const sessionID = "stop-retained-turn"
+	api := newRunHandoffAPI(t, sessionID, "mlp-muse-stop-retained")
+	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
+	acceptRunHandoffInput(t, api, sessionID, "input-1", "finished-run")
+	if !api.isSessionBusy(sessionID) || !api.retainedMainTurnTracked(sessionID) {
+		t.Fatal("setup: the retained turn should be open")
+	}
+	old := stoppedTurnSettleWait
+	stoppedTurnSettleWait = 0
+	defer func() { stoppedTurnSettleWait = old }()
+	api.settleStoppedTurnWithNoOwner(sessionID)
+	if api.isSessionBusy(sessionID) || api.retainedMainTurnTracked(sessionID) {
+		t.Fatal("Stop left the retained turn open")
+	}
+}
