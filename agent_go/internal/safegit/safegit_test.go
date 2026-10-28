@@ -169,3 +169,118 @@ func TestGitFileCheckoutsDoNotRunConfiguredCommands(t *testing.T) {
 		t.Fatal("a .git file pointing outside the root must be refused")
 	}
 }
+
+// Gaps found in review: drivers defined in an included config file, a
+// symlinked .git leading outside the root, and an unreadable config must not
+// let a repo-configured command run.
+func TestIncludedConfigSymlinkedGitDirAndBadConfigDoNotRunCommands(t *testing.T) {
+	ctx := context.Background()
+	mk := func(dir string) {
+		t.Helper()
+		os.MkdirAll(dir, 0o700)
+		for _, args := range [][]string{{"init", "--quiet"}, {"add", "."}, {"commit", "--quiet", "-m", "init"}} {
+			if args[0] == "add" {
+				os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o600)
+			}
+			cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v %s", args, err, out)
+			}
+		}
+	}
+	hostile := func(configFile, attrs string) string {
+		marker := filepath.Join(t.TempDir(), "marker")
+		script := filepath.Join(t.TempDir(), "clean.sh")
+		os.WriteFile(script, []byte("#!/bin/sh\ntouch "+marker+"\ncat\n"), 0o700)
+		f, _ := os.OpenFile(configFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		f.WriteString("[filter \"evil\"]\n\tclean = " + script + "\n")
+		f.Close()
+		os.WriteFile(attrs, []byte("*.txt filter=evil\n"), 0o600)
+		return marker
+	}
+	plain := func(dir string) {
+		cmd := exec.Command("git", "-C", dir, "status", "--porcelain")
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull}
+		cmd.Run()
+	}
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	dirty := func(dir string) { os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\ntwo changed\n"), 0o600) }
+
+	t.Run("include inside root is blanked", func(t *testing.T) {
+		root := t.TempDir()
+		repo := filepath.Join(root, "r")
+		mk(repo)
+		inc := filepath.Join(root, "extra.inc")
+		marker := hostile(inc, filepath.Join(repo, ".git", "info", "attributes"))
+		cmd := exec.Command("git", "-C", repo, "config", "include.path", inc)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v %s", err, out)
+		}
+		dirty(repo)
+		plain(repo)
+		if !exists(marker) {
+			t.Fatal("control: unhardened git did not run the included filter; the test proves nothing")
+		}
+		os.Remove(marker)
+		if err := Command(ctx, repo, nil, "status", "--porcelain").Run(); err != nil {
+			t.Fatal(err)
+		}
+		if exists(marker) {
+			t.Fatal("included filter ran through the helper")
+		}
+	})
+	t.Run("include outside root is refused", func(t *testing.T) {
+		root := t.TempDir()
+		repo := filepath.Join(root, "r")
+		mk(repo)
+		inc := filepath.Join(t.TempDir(), "outside.inc")
+		marker := hostile(inc, filepath.Join(repo, ".git", "info", "attributes"))
+		exec.Command("git", "-C", repo, "config", "include.path", inc).Run()
+		dirty(repo)
+		if err := Command(ctx, repo, nil, "status", "--porcelain").Run(); err == nil {
+			t.Fatal("an include outside the root must be refused")
+		}
+		if exists(marker) {
+			t.Fatal("outside include ran")
+		}
+	})
+	t.Run("symlinked .git outside root is refused", func(t *testing.T) {
+		root := t.TempDir()
+		outside := filepath.Join(t.TempDir(), "outside")
+		mk(outside)
+		marker := hostile(filepath.Join(outside, ".git", "config"), filepath.Join(outside, ".git", "info", "attributes"))
+		work := filepath.Join(root, "w")
+		os.MkdirAll(work, 0o700)
+		os.WriteFile(filepath.Join(work, "a.txt"), []byte("one\ntwo changed\n"), 0o600)
+		if err := os.Symlink(filepath.Join(outside, ".git"), filepath.Join(work, ".git")); err != nil {
+			t.Fatal(err)
+		}
+		plain(work)
+		if !exists(marker) {
+			t.Fatal("control: unhardened git did not follow the symlinked .git; the test proves nothing")
+		}
+		os.Remove(marker)
+		if err := CommandIn(ctx, root, work, nil, "status", "--porcelain").Run(); err == nil {
+			t.Fatal("a symlinked .git leading outside the root must be refused")
+		}
+		if exists(marker) {
+			t.Fatal("outside repo's filter ran")
+		}
+	})
+	t.Run("unreadable config fails closed", func(t *testing.T) {
+		root := t.TempDir()
+		repo := filepath.Join(root, "r")
+		mk(repo)
+		marker := hostile(filepath.Join(repo, ".git", "config"), filepath.Join(repo, ".git", "info", "attributes"))
+		f, _ := os.OpenFile(filepath.Join(repo, ".git", "config"), os.O_APPEND|os.O_WRONLY, 0o600)
+		f.WriteString("[broken\n")
+		f.Close()
+		dirty(repo)
+		if err := Command(ctx, repo, nil, "status", "--porcelain").Run(); err == nil {
+			t.Fatal("an unreadable config must be refused, not run unblanked")
+		}
+		if exists(marker) {
+			t.Fatal("filter ran")
+		}
+	})
+}

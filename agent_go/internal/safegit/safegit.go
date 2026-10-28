@@ -98,7 +98,18 @@ func CommandIn(ctx context.Context, root, dir string, extraConfig []string, args
 		"-c", "gc.auto=0",
 	)
 	gitDir := filepath.Join(dir, ".git")
-	if info, err := os.Lstat(gitDir); err == nil && info.Mode()&os.ModeSymlink == 0 {
+	if info, err := os.Lstat(gitDir); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			// A symlinked .git is followed only when it stays inside root.
+			real, ok := confined(root, gitDir)
+			if !ok {
+				return refused(ctx)
+			}
+			gitDir = real
+			if info, err = os.Stat(real); err != nil {
+				return refused(ctx)
+			}
+		}
 		if !info.IsDir() {
 			resolved, ok := linkedGitDir(root, dir, gitDir)
 			if !ok {
@@ -109,7 +120,11 @@ func CommandIn(ctx context.Context, root, dir string, extraConfig []string, args
 		// Explicit git dir and work tree: the repo's own config (core.worktree)
 		// or a .git file cannot redirect Git outside the folder.
 		full = append(full, "--git-dir", gitDir, "--work-tree", dir)
-		for _, c := range driverOverrides(ctx, dir, gitDir) {
+		overrides, ok := driverOverrides(ctx, root, dir, gitDir)
+		if !ok {
+			return refused(ctx) // fail closed: unknown drivers could run
+		}
+		for _, c := range overrides {
 			full = append(full, "-c", c)
 		}
 	}
@@ -133,34 +148,46 @@ func env() []string {
 }
 
 // driverOverrides blanks every filter and diff driver command the repo's
-// config defines. Reading config runs nothing.
-func driverOverrides(ctx context.Context, dir, gitDir string) []string {
-	cmd := exec.CommandContext(ctx, "git", "-c", "safe.directory="+dir, "--git-dir", gitDir, "config", "--local", "--name-only", "--get-regexp", `^(filter|diff)\.`)
+// config defines, including drivers in files it includes (git status and diff
+// follow include.path/includeIf). Reading config runs nothing. ok is false when
+// the config cannot be read or includes a file outside root.
+func driverOverrides(ctx context.Context, root, dir, gitDir string) ([]string, bool) {
+	cmd := exec.CommandContext(ctx, "git", "-c", "safe.directory="+dir, "--git-dir", gitDir, "config", "--local", "--includes", "--show-origin", "--name-only", "--list")
 	cmd.Dir = dir
 	cmd.Env = env()
 	out, err := cmd.Output()
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	seen := map[string]bool{}
 	var cfg []string
-	for _, key := range bytes.Fields(out) {
-		k := string(key)
+	for _, line := range strings.Split(string(out), "\n") {
+		if line == "" {
+			continue
+		}
+		origin, k, found := strings.Cut(line, "\t")
+		if !found {
+			return nil, false
+		}
+		if file, isFile := strings.CutPrefix(origin, "file:"); isFile {
+			if _, ok := confined(root, file); !ok {
+				return nil, false
+			}
+		}
 		i, j := strings.Index(k, "."), strings.LastIndex(k, ".")
 		if i == j {
 			continue // filter.<x> without a driver name, e.g. diff.renames
 		}
 		kind, name := k[:i], k[i+1:j]
-		if seen[kind+"."+name] {
+		if kind != "filter" && kind != "diff" || seen[kind+"."+name] {
 			continue
 		}
 		seen[kind+"."+name] = true
-		switch kind {
-		case "filter":
+		if kind == "filter" {
 			cfg = append(cfg, "filter."+name+".clean=", "filter."+name+".smudge=", "filter."+name+".process=", "filter."+name+".required=false")
-		case "diff":
+		} else {
 			cfg = append(cfg, "diff."+name+".textconv=", "diff."+name+".command=")
 		}
 	}
-	return cfg
+	return cfg, true
 }
