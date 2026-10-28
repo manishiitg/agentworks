@@ -125,4 +125,26 @@ func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 	if _, err := reg.tools["manage_slack_bot"].exec(ctx, map[string]any{"action": "save", "bot_token": "never-store"}); err == nil {
 		t.Fatal("product bot-choice tool accepted credential mutation")
 	}
+	shared, err := svc.CreateSlackConnection(context.Background(), services.SlackConnectionInput{DisplayName: "Team bot", Enabled: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetDefaultSlackConnection(context.Background(), shared.ID); err != nil {
+		t.Fatal(err)
+	}
+	workspace.files["config/slack-targets.json"] = `{"targets":[{"workspace_path":"Workflow/alpha","platform_bot":true},{"workspace_path":"Workflow/beta","platform_bot":true},{"workspace_path":"Workflow/gamma","platform_bot":false}]}`
+	admin := call("admin-1", "list_saved", "Workflow/alpha", "")
+	if admin.Code != http.StatusOK || json.Unmarshal(admin.Body.Bytes(), &state) != nil {
+		t.Fatalf("cannot inspect default bot: %d %s", admin.Code, admin.Body)
+	}
+	for _, bot := range state.Bots {
+		if bot.ID == shared.ID && (!bot.Default || bot.CanSelect) {
+			t.Fatalf("paused unconfigured default must be shown, but not selectable: %+v", bot)
+		}
+	}
+	request := slackConnectionRequest(t, http.MethodGet, "alice", "")
+	usage := api.slackVaultBotUsages(request, shared, true, map[string]*slackVaultBotUsage{})
+	if len(usage) != 1 || usage[0].Label != "Alpha" {
+		t.Fatalf("shared usage ignored access or explicit opt-out: %+v", usage)
+	}
 }

@@ -75,7 +75,7 @@ export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect
     try {
       const result = await slackBotsApi.act(action, { connection_id: item.id })
       if (action === 'test') setChecks(result as SlackTestResponse)
-      else { setNotice('Bot removed.'); await onUpdated() }
+      else { existing(); setNotice('Bot removed.'); await onUpdated() }
       setError('')
     } catch (cause) { setError(slackErrorText(cause, 'Could not update this bot.')) }
     finally { setWorking(false) }
@@ -83,7 +83,7 @@ export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect
 
   return <div aria-label="Slack bot choices" className="space-y-3">
     <div className="flex flex-wrap gap-2">
-      <Button type="button" size="sm" variant={view === 'existing' ? 'secondary' : 'outline'} disabled={busy} onClick={existing}>Use existing</Button>
+      <Button type="button" size="sm" variant={view === 'existing' ? 'secondary' : 'outline'} disabled={busy} onClick={() => { existing(); void onUpdated() }}>Use existing</Button>
       <Button type="button" size="sm" variant={view === 'new' ? 'secondary' : 'outline'} disabled={busy} onClick={() => void add()}><Plus className="mr-1.5 h-3.5 w-3.5"/>Add new</Button>
     </div>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}

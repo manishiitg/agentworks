@@ -160,8 +160,8 @@ func (api *StreamingAPI) slackVaultBotState(r *http.Request, workspace string) (
 			continue
 		}
 		bot := safeSlackVaultBot(r, api, conn)
-		bot.Default = conn.ID == svc.DefaultConnectionID()
-		bot.CanSelect = out["can_select"] == true && (manageable || shared)
+		bot.Default = conn.WorkspacePath == "" && conn.ID == svc.DefaultConnectionID()
+		bot.CanSelect = out["can_select"] == true && (conn.WorkspacePath != "" && manageable || shared)
 		bot.UsedIn = api.slackVaultBotUsages(r, conn, bot.Default, usageCache)
 		bot.Identity = svc.BotIdentity(identityCtx, conn)
 		bots = append(bots, bot)
