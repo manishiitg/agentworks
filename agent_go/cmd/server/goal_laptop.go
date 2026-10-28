@@ -53,6 +53,14 @@ func (api *StreamingAPI) handleGoalLaptopBrowse(w http.ResponseWriter, r *http.R
 func (api *StreamingAPI) externalLaptopRoot(w http.ResponseWriter, r *http.Request, args map[string]any) (string, bool) {
 	caller := GetUserFromContext(r.Context())
 	workspaceID, workflowID := externalArg(args, "workspace_id"), externalArg(args, "workflow_id")
+	// The merged terminal tool passes a Crew as crew_id (externalResolveMerged); it names the same Crew.
+	if crewID := externalArg(args, "crew_id"); crewID != "" {
+		if workspaceID != "" {
+			externalError(w, 400, "invalid_arguments", "Pass workspace_id or crew_id for a Crew, not both.")
+			return "", false
+		}
+		workspaceID = crewID
+	}
 	if (workspaceID == "") == (workflowID == "") {
 		externalError(w, 400, "invalid_arguments", "Pass workspace_id for a Crew or workflow_id for a Goal, exactly one.")
 		return "", false
