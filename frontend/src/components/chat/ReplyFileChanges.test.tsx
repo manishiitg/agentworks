@@ -3,7 +3,9 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({ canBuild: true, total: 2, undoError: '', extraCommands: [] as string[], pr: {} as Record<string, unknown>, nextStep: 'none' }))
-const group = { kind: 'repo', root: 'app', name: 'app', branch: 'fix-tts', github_repo: 'o/r', new_checkout: true, total_files: 696, more_count: 3, files: [{ path: 'app/tts.py', status: 'M', added: 4, removed: 1 }], pr: { number: 305, url: 'https://github.com/o/r/pull/305', state: 'open', checks: 'passing', review: 'none' } }
+const pr = { number: 305, url: 'https://github.com/o/r/pull/305', state: 'open', checks: 'passing', review: 'none' }
+const group = { kind: 'repo' as const, root: 'app', name: 'app', branch: 'fix-tts', github_repo: 'o/r', new_checkout: true, total_files: 696, more_count: 3, files: [{ path: 'app/tts.py', status: 'M', added: 4, removed: 1 }] }
+const crewFiles = { kind: 'crew_files' as const, root: '', name: 'Crew', new_checkout: false, total_files: 1, more_count: 0, files: [{ path: 'notes.md', status: 'A', added: 2, removed: 0 }] }
 vi.mock('../../api/commands', () => ({ commandsApi: { listCommands: vi.fn(async () => ({ commands: [
   { frontmatter: { name: 'check-this-change', description: 'Check this change', show_on_card: true }, content: 'Look over the files.\n{{context}}' },
   { frontmatter: { name: 'other', description: 'Hidden one', show_on_card: false }, content: 'x' },
@@ -11,7 +13,7 @@ vi.mock('../../api/commands', () => ({ commandsApi: { listCommands: vi.fn(async 
 vi.mock('../../services/api', () => ({ default: { post: vi.fn(async () => { if (state.undoError) throw { response: { data: { error: { message: state.undoError } } } }; return { data: { undo: { restore: [{ path: 'app/tts.py' }], skipped: [] } } } }), get: vi.fn(async (path: string, options: { params: Record<string, unknown> }) => {
   if (options.params.op === 'snapshot_undo_preview') return { data: { undo: { restore: [{ path: 'app/tts.py', status: 'M', action: 'restore' }], skipped: [{ path: 'app/x.py', status: 'M', action: 'restore', reason: 'changed_later' }] } } }
   if (path === '/api/workspace-access') return { data: { can_build: state.canBuild } }
-  if (options.params.op === 'snapshot_groups') return { data: { groups: [{ kind: 'crew_files', root: '', name: 'Crew', new_checkout: false, total_files: 1, more_count: 0, files: [{ path: 'notes.md', status: 'A', added: 2, removed: 0 }] }, { ...group, pr: { ...group.pr, ...state.pr }, next_step: state.nextStep }] } }
+  if (options.params.op === 'snapshot_groups') return { data: { groups: [crewFiles, { ...group, pr: { ...pr, ...state.pr }, next_step: state.nextStep }] } }
   return { data: { history: { replies: [], reviews: [], available: true, last_snapshot_id: 's', latest_snapshot_id: 's', baseline_snapshot_id: 'x', can_review: true }, total_changes: state.total, comparison: { changes: state.total ? [{ path: 'app/tts.py', status: 'M' }] : [], snapshot: { status: 'complete' }, note: '', skipped_count: 0, uncaptured_changes: 0 } } }
 }) } }))
 vi.mock('../../products/work/codeLocalFiles', () => ({ useProjectMode: () => 'dev' }))
@@ -24,18 +26,22 @@ vi.mock('../../utils/projectIntegrationNavigation', () => ({ openProjectIntegrat
 vi.mock('../workspace/chatFileNavigation', () => ({ openChatFiles: vi.fn() }))
 vi.mock('../workspace/chatFileReview', () => ({ markFilesReviewed: vi.fn(), useReviewRevision: () => [0] }))
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
+import api from '../../services/api'
 import { ReplyFileChanges } from './ReplyFileChanges'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 HTMLElement.prototype.scrollIntoView ??= () => {}
 
-async function render(canBuild: boolean, total = 2, latestSnapshotId?: string) {
+// The reply event carries the summary the server computed at capture time.
+async function render(canBuild: boolean, total = 2, latestSnapshotId?: string, withSummary = true) {
   state.canBuild = canBuild; state.total = total
+  const summary = withSummary ? { files: total, added: 6, removed: 1, groups: total ? [crewFiles, group] : [] } : undefined
   const host = document.createElement('div'); document.body.append(host)
-  await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId }} />))
+  await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId, summary }} />))
   return host
 }
 const openMore = async (host: HTMLElement) => act(async () => { const trigger = button(host, 'More actions')!; trigger.focus(); trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
 const menuItem = (text: string) => Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent?.includes(text)) as HTMLElement | undefined
+const snapshotOps = () => vi.mocked(api.get).mock.calls.map(call => (call[1] as { params: Record<string, unknown> } | undefined)?.params?.op).filter(Boolean)
 const button = (host: HTMLElement, text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text) || item.getAttribute('aria-label')?.includes(text))
 
 describe('reply card groups', () => {
@@ -97,6 +103,21 @@ describe('reply card groups', () => {
     expect(button(older, 'Check this change')).toBeDefined()
     // Undo lives only inside the opened card, under the file list.
     expect(button(older, 'Undo this reply')).toBeUndefined()
+  })
+  it('renders from the reply event without asking for the comparison; PR status loads only for an open card', async () => {
+    vi.mocked(api.get).mockClear()
+    const older = await render(true, 2, 'newer')
+    expect(older.textContent).toContain('Files changed during this reply · 2 files')
+    expect(older.textContent).toContain('+6')
+    expect(snapshotOps()).toEqual([])
+    await act(async () => button(older, 'Files changed during this reply')!.click())
+    expect(older.textContent).toContain('tts.py')
+    expect(snapshotOps()).toEqual(['snapshot_groups'])
+    // A reply saved before summaries were sent still loads its card.
+    vi.mocked(api.get).mockClear()
+    const saved = await render(true, 2, undefined, false)
+    expect(saved.textContent).toContain('Files changed during this reply · 2 files')
+    expect(snapshotOps()).toEqual(['snapshot_compare', 'snapshot_groups'])
   })
   it('a Run person sees only Review changes in the header', async () => {
     const host = await render(false)

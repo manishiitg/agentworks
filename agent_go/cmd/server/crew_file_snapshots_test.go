@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -80,6 +81,15 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	if err := os.WriteFile(modeFile, []byte(`{"mode":"dev"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
+	// A cold file-hash cache defers the send-path capture (PLAT-746-163);
+	// warm it as the background warm-up does.
+	roots, found, err := crewStorageRoots(linkBetaPath)
+	if err != nil || !found {
+		t.Fatalf("Crew roots: %v %v", found, err)
+	}
+	if _, err := (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).Warm(time.Minute); err != nil {
+		t.Fatal(err)
+	}
 	api.trackConversationTurnStart("turn", "session", QueryRequest{SelectedFolder: linkBetaPath})
 	api.prepareCrewTurnSnapshot("turn", "session", QueryRequest{SelectedFolder: linkBetaPath})
 	value, ok := api.crewTurnSnapshots.Load("turn")
@@ -107,8 +117,13 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	api.finishCrewTurnSnapshot(snapshot)
 	reference := api.eventStore.LastEventsRaw("session", 1)[0]
 	payload, _ := json.Marshal(reference)
-	if reference.Type != "reply_file_changes" || strings.Contains(string(payload), "visible/") || strings.Contains(string(payload), "denied/") || snapshot.completedSequence.Load() != endSequence {
-		t.Fatalf("late snapshot lost its reply boundary or exposed filenames: %s", payload)
+	if reference.Type != "reply_file_changes" || snapshot.completedSequence.Load() != endSequence {
+		t.Fatalf("late snapshot lost its reply boundary: %s", payload)
+	}
+	// The card renders from the event: the summary (counts, files, group) is
+	// computed once at capture, under the same path rules as the compare op.
+	if !strings.Contains(string(payload), `"summary":{"added":2,"files":2,"groups":[{"kind":"crew_files"`) || !strings.Contains(string(payload), `{"path":"visible/main.txt","status":"M","added":1,"removed":1}`) {
+		t.Fatalf("reply event has no file summary: %s", payload)
 	}
 	if got := api.trackedWorkflowExecutions["turn"].Metadata["file_snapshot_id"]; got != filesnapshots.ID("turn") {
 		t.Fatalf("execution reference: %q", got)

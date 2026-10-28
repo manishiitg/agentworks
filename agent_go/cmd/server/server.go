@@ -8535,6 +8535,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[COMPLETION_TRACE] stage=agentworks_stream_closed session=%q query=%q chunks=%d elapsed=%s", sessionID, queryID, chunkCount, time.Since(streamWaitStartedAt).Round(time.Millisecond))
 		log.Printf("[STREAMING_LIFECYCLE] StreamWithEvents completed | session=%s chunks=%d duration=%dms", sessionID, chunkCount, time.Since(startTime).Milliseconds())
 		log.Printf("[AGENT DEBUG] After streaming loop, streamCtx.Err(): %v", streamCtx.Err())
+		if agentCtx.Err() == nil {
+			// The reply is complete: the changed-files card need not wait for
+			// the transcript save below.
+			api.markCrewTurnOutputDone(queryID)
+		}
 
 		// Clean up running agent reference (steer injection no longer possible)
 		api.runningAgentsMux.Lock()

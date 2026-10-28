@@ -2,8 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowDownToLine, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
 import api from '../../services/api'
-import { useReviewRevision, type FileChange, type ReviewResult } from '../workspace/chatFileReview'
-import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
+import { useReviewRevision, type ReviewResult } from '../workspace/chatFileReview'
+import type { ReplyFileChangesRef, ReplyFileGroup, ReplyPullRequest } from '../../utils/replyFileChanges'
 import { useProjectMode } from '../../products/work/codeLocalFiles'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -20,9 +20,10 @@ import { FileDiffIcon, GitCommitIcon, GitPullRequestIcon } from '../icons/octico
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 
-type PullRequest = { number?: number; url?: string; state: string; checks?: string; review?: string; failing_checks?: string[]; conflicts?: boolean }
-// next_step is decided by the server: the one Git step this checkout needs now.
-type FileGroup = { kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; new_checkout: boolean; files: FileChange[]; total_files: number; more_count: number; pr?: PullRequest; next_step?: 'share_pr' | 'update_pr' | 'get_latest' | 'none' }
+type PullRequest = ReplyPullRequest
+type FileGroup = ReplyFileGroup
+// Git status (PR, checks, next step) is only looked up for a checkout on GitHub.
+const onGitHub = (group: FileGroup) => group.kind === 'repo' && !!group.github_repo && !!group.branch
 
 const ownName = (path: string, root: string) => root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
 // Plain-language requests for the agent in this same chat. Only this reply's files
@@ -116,34 +117,47 @@ export function ReplyFileChanges({ reference }: { reference: ReplyFileChangesRef
 }
 
 function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
+  const summary = reference.summary
+  // Only for a reply saved before summaries were sent with the event, and for the newest reply's "since your last review" line.
   const [result, setResult] = useState<ReviewResult | null>(null)
   const comparison = result?.comparison
   const [revision] = useReviewRevision()
   const phone = useMobileViewport()
   const [reviewError, setReviewError] = useState('')
-  const [groups, setGroups] = useState<FileGroup[]>([])
+  const [fetchedGroups, setFetchedGroups] = useState<FileGroup[]>([])
+  const [prGroups, setPrGroups] = useState<FileGroup[] | null>(null)
   const [canEdit, setCanEdit] = useState(false)
   const [asked, setAsked] = useState('')
   const [commands, setCommands] = useState<UserCommand[]>([])
   const [open, setOpen] = useState<boolean | null>(null)
   const [undo, setUndo] = useState<{ plan?: UndoPlan; busy?: boolean; done?: string; error?: string } | null>(null)
-  const latest = result?.history.latest_snapshot_id === reference.snapshotId && (!reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId)
-  const reviewed = result?.history.baseline_snapshot_id === reference.snapshotId
+  const latest = !reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId
+  const reviewed = reference.reviewedSnapshotId === reference.snapshotId
+  const sinceReview = latest && !!reference.reviewedSnapshotId && !reviewed
+  const hasSummary = !!summary
   useEffect(() => {
     const controller = new AbortController()
-    void api.get<ReviewResult>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_compare' }, signal: controller.signal })
-      .then(response => { if (!controller.signal.aborted) setResult(response.data) })
-      .catch(() => { /* Expired/unavailable history has no change card. */ })
-    // Loaded with the card, not on open, so opening or closing it never changes the page height later.
-    void api.get<{ groups: FileGroup[] }>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_groups' }, signal: controller.signal })
-      .then(response => { if (!controller.signal.aborted) setGroups(response.data.groups ?? []) })
-      .catch(() => { /* The card still shows the summary line. */ })
+    // The card itself renders from the reply event; this only fills the "since your last review" line.
+    if (!hasSummary || sinceReview) {
+      void api.get<ReviewResult>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_compare' }, signal: controller.signal })
+        .then(response => { if (!controller.signal.aborted) setResult(response.data) })
+        .catch(() => { /* Expired/unavailable history has no change card. */ })
+    }
+    if (!hasSummary) {
+      void api.get<{ groups: FileGroup[] }>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_groups' }, signal: controller.signal })
+        .then(response => { if (!controller.signal.aborted) setFetchedGroups(response.data.groups ?? []) })
+        .catch(() => { /* The card still shows the summary line. */ })
+    }
+    return () => controller.abort()
+  }, [reference.workspacePath, reference.snapshotId, reference.sessionId, hasSummary, sinceReview, revision])
+  useEffect(() => {
+    const controller = new AbortController()
     // Same Builder check as the Crew screens: Run people never see Git buttons.
     void api.get<{ can_build: boolean }>('/api/workspace-access', { params: { workspace: reference.workspacePath }, signal: controller.signal })
       .then(response => { if (!controller.signal.aborted) setCanEdit(response.data.can_build === true) })
       .catch(() => setCanEdit(false))
     return () => controller.abort()
-  }, [reference.workspacePath, reference.snapshotId, reference.sessionId, reference.latestSnapshotId, revision])
+  }, [reference.workspacePath])
   useEffect(() => {
     if (!canEdit) { setCommands([]); return }
     let current = true
@@ -177,11 +191,24 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       setAsked(key)
     } catch (cause) { setReviewError(cause instanceof Error ? cause.message : 'Could not send this to the chat. Try again.') }
   }
-  const total = result?.total_changes ?? comparison?.changes?.length ?? 0
-  const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
-  const added = sum('added'), removed = sum('removed')
-  const repoGroups = groups.filter(group => group.kind === 'repo' && group.branch)
+  const baseGroups = summary?.groups ?? fetchedGroups
+  // PR status is a GitHub call: it loads once the card is open and never holds the header or file list.
   const isOpen = open ?? latest
+  const lookUpPullRequests = isOpen && hasSummary && baseGroups.some(onGitHub)
+  useEffect(() => {
+    if (!lookUpPullRequests) return
+    const controller = new AbortController()
+    void api.get<{ groups: FileGroup[] }>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_groups' }, signal: controller.signal })
+      .then(response => { if (!controller.signal.aborted) setPrGroups(response.data.groups ?? []) })
+      .catch(() => { /* No PR line. */ })
+    return () => controller.abort()
+  }, [lookUpPullRequests, reference.workspacePath, reference.snapshotId, reference.sessionId])
+  // The file list stays as captured; the lazy read adds only the PR status and next step.
+  const groups = prGroups ? baseGroups.map(group => { const found = prGroups.find(item => item.kind === group.kind && item.root === group.root); return { ...group, pr: found?.pr, next_step: found?.next_step } }) : baseGroups
+  const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
+  const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
+  const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
+  const repoGroups = groups.filter(group => group.kind === 'repo' && group.branch)
   const named = repoGroups.length > 1
   const sendAction = (action: CardAction): MenuEntry => ({ ...action, onSelect: () => void ask(action.key, action.message) })
   const runCommand = (command: UserCommand) => void ask(`command:${command.frontmatter.name}`, renderCommandPrompt(command.content, cardContext(groups)))
@@ -195,7 +222,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
     ...(phone ? [{ key: 'add', label: 'Add button', icon: <Plus />, onSelect: addButton }] : []),
   ] : []
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
-  if (!comparison || (result?.total_changes ?? comparison.changes?.length ?? 0) === 0) return null
+  if (total === 0) return null
   return (
     <section className="my-3 rounded-lg border border-border px-3 py-2 text-sm" aria-label="Files changed during this reply">
       <div className="flex items-center gap-2">

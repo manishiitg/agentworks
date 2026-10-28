@@ -58,6 +58,7 @@ type crewTurnSnapshot struct {
 	startSequence                int64
 	completedSequence            atomic.Int64
 	watching                     atomic.Bool
+	outputDone                   atomic.Bool
 	finish                       sync.Once
 }
 
@@ -160,8 +161,29 @@ func (api *StreamingAPI) watchCrewTurnSnapshot(executionID string) {
 
 // Completion is observed after the response is published. This does not hold
 // provider input locks or change native turn/child scheduling.
+// A turn whose reply stream ended cleanly is ready once no child work runs:
+// the after-capture does not wait for the transcript save that follows
+// (seconds on a long chat), which the capture excludes anyway (builder/).
 func (api *StreamingAPI) crewSnapshotReady(snapshot *crewTurnSnapshot) bool {
-	return api.conversationTurnTreeSnapshot(snapshot.executionID).terminal() && !api.retainedMainTurnTracked(snapshot.sessionID)
+	if api.retainedMainTurnTracked(snapshot.sessionID) {
+		return false
+	}
+	tree := api.conversationTurnTreeSnapshot(snapshot.executionID)
+	return tree.terminal() || snapshot.outputDone.Load() && tree.RootFound && tree.RunningChildren == 0
+}
+
+// markCrewTurnOutputDone runs when the main reply stream closes without
+// cancellation. A turn still answering live input keeps the ordinary
+// completion path. The reply boundary is bound when the capture publishes.
+func (api *StreamingAPI) markCrewTurnOutputDone(executionID string) {
+	value, ok := api.crewTurnSnapshots.Load(executionID)
+	if !ok {
+		return
+	}
+	snapshot := value.(*crewTurnSnapshot)
+	if !api.retainedMainTurnTracked(snapshot.sessionID) {
+		snapshot.outputDone.Store(true)
+	}
 }
 func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 	snapshot.finish.Do(func() {
@@ -174,9 +196,9 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		defer cancel()
 		started := time.Now()
 		record, err := snapshot.store.Finish(ctx, snapshot.executionID)
-		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err, record.AfterCapture)
+		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s output_done=%t elapsed_ms=%d success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, snapshot.outputDone.Load(), time.Since(started).Milliseconds(), err == nil, err, record.AfterCapture)
 		if err == nil && (record.Status == "complete" || record.Status == "partial") {
-			api.publishCrewSnapshot(snapshot, record)
+			api.publishCrewSnapshot(snapshot, roots, record)
 		}
 	})
 }
@@ -202,10 +224,73 @@ func (api *StreamingAPI) bindCrewSnapshotCompletion(executionID string, sequence
 		snapshot.completedSequence.CompareAndSwap(0, sequence)
 	}
 }
-func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, record filesnapshots.Record) {
+
+// replyFileSummary is the card's header and file list, computed once when the
+// after-capture finishes so the card renders from the event with no request.
+// It uses the same path rules as the compare op (hidden and caller-private
+// paths are never listed); the PR lookup stays a lazy request.
+func replyFileSummary(ctx context.Context, store filesnapshots.Store, roots crewroot.Roots, id string) (map[string]any, bool) {
+	prefix := ""
+	if roots.Local {
+		prefix = crewroot.FilesSegment + "/"
+	}
+	allow := func(path string) bool {
+		_, ok := confineSharedProjectPath(roots.Virtual, prefix+path)
+		return ok && !crewCallerPrivatePath(prefix+path)
+	}
+	comparison, err := store.Compare(ctx, id, "", allow)
+	if err != nil {
+		return nil, false
+	}
+	totals := reviewSummary(comparison)
+	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, allow)
+	for i := range groups {
+		if groups[i].Root != "" {
+			groups[i].Root = prefix + groups[i].Root
+		}
+		for j := range groups[i].Files {
+			groups[i].Files[j].Path = prefix + groups[i].Files[j].Path
+		}
+	}
+	summary := map[string]any{"files": totals.Files, "added": totals.Added, "removed": totals.Removed, "groups": groups}
+	// Stay well inside one durable event row; a huge reply falls back to the
+	// card's request.
+	if encoded, err := json.Marshal(summary); err != nil || len(encoded) > 24<<10 {
+		return nil, false
+	}
+	return summary, true
+}
+
+// crewTurnLastSequence returns the newest stored event after the boundary
+// that still belongs to the same turn (before the next user message).
+func (api *StreamingAPI) crewTurnLastSequence(sessionID string, boundary int64) int64 {
+	last := boundary
+	for _, event := range api.eventStore.LastEventsRaw(sessionID, 200) {
+		if event.Sequence <= boundary {
+			continue
+		}
+		if event.Type == "user_message" {
+			break
+		}
+		if event.Type != "reply_file_changes" && event.Sequence > last {
+			last = event.Sequence
+		}
+	}
+	return last
+}
+
+func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots crewroot.Roots, record filesnapshots.Record) {
+	if snapshot.outputDone.Load() && api.eventStore != nil {
+		// The reply's final events were stored before its stream closed.
+		snapshot.completedSequence.CompareAndSwap(0, api.crewSnapshotSequence(snapshot.sessionID))
+	}
 	end := snapshot.completedSequence.Load()
 	if api.eventStore == nil || end <= snapshot.startSequence {
 		return
+	}
+	if late := api.crewTurnLastSequence(snapshot.sessionID, end); late > end {
+		// Log only: this turn stored events after its bound reply boundary.
+		log.Printf("[FILE_SNAPSHOT] phase=publish session=%s execution=%s snapshot=%s boundary_late end_sequence=%d turn_last_sequence=%d output_done=%t", snapshot.sessionID, snapshot.executionID, record.ID, end, late, snapshot.outputDone.Load())
 	}
 	checkCtx, cancelCheck := context.WithTimeout(context.Background(), 5*time.Second)
 	unchanged := snapshot.store.Unchanged(checkCtx, record)
@@ -223,17 +308,25 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, record 
 		execution.Metadata["file_snapshot_end_sequence"] = strconv.FormatInt(end, 10)
 	}
 	api.trackedWorkflowExecutionsMux.Unlock()
-	data := storeevents.NewGenericEventData("reply_file_changes", map[string]interface{}{
+	fields := map[string]interface{}{
 		"snapshot_id": record.ID, "workspace_path": snapshot.root,
 		"execution_id": snapshot.executionID, "start_sequence": snapshot.startSequence, "end_sequence": end,
-	})
+	}
+	summaryStarted := time.Now()
+	summaryCtx, cancelSummary := context.WithTimeout(context.Background(), 5*time.Second)
+	summary, ok := replyFileSummary(summaryCtx, snapshot.store, roots, record.ID)
+	cancelSummary()
+	if ok {
+		fields["summary"] = summary
+	}
+	data := storeevents.NewGenericEventData("reply_file_changes", fields)
 	event := unifiedevents.NewAgentEvent(data)
 	event.SessionID = snapshot.sessionID
 	api.eventStore.AddEvent(snapshot.sessionID, storeevents.Event{
 		ID: "file-snapshot:" + record.ID, Type: "reply_file_changes", Timestamp: time.Now(), SessionID: snapshot.sessionID,
 		ExecutionID: snapshot.executionID, ExecutionKind: "main_agent", TerminalOwnerID: "main:" + snapshot.sessionID, Data: event,
 	})
-	log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s start_sequence=%d end_sequence=%d", snapshot.sessionID, snapshot.executionID, record.ID, snapshot.startSequence, end)
+	log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s start_sequence=%d end_sequence=%d summary=%t summary_ms=%d", snapshot.sessionID, snapshot.executionID, record.ID, snapshot.startSequence, end, ok, time.Since(summaryStarted).Milliseconds())
 }
 
 func (api *StreamingAPI) discardUnstartedCrewSnapshot(executionID string) {
