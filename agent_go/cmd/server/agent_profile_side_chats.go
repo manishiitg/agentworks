@@ -315,6 +315,15 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 					return
 				}
 			}
+			// Refuse now what the next turn would refuse, so the chat keeps a model that runs.
+			if model := strings.TrimSpace(input.ModelID); model != "" && !providerOptionOffersModel(option, currentCodingAgentModel(option.Provider, model)) {
+				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that model is not available for this coding agent")
+				return
+			}
+			if effort := strings.TrimSpace(input.ReasoningEffort); effort != "" && !reasoningEffortOffered(option, effort) {
+				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that reasoning level is not available for this model")
+				return
+			}
 		}
 		if _, err := store.setAgentModel(r.Context(), userID, slot.profile.ID, key, input.Engine, input.ModelID, input.ReasoningEffort, input.ConnectionID, userID); err != nil {
 			writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())

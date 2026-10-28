@@ -127,6 +127,7 @@ const CodingProvidersPanel = lazy(() => import('./providers/CodingProvidersPanel
 // Load the chat-only controls with the composer rather than the application entry.
 const ChatSendModeButton = lazy(() => import('./chat/ChatSendModeButton').then(module => ({ default: module.ChatSendModeButton })))
 const DurableChatQueue = lazy(() => import('./chat/DurableChatQueue').then(module => ({ default: module.DurableChatQueue })))
+const ComposerModelChips = lazy(() => import('../products/work/ComposerModelChips'))
 import type { PlannerFile, LLMProvider, TerminalSnapshot } from '../services/api-types'
 import type { LLMOption } from '../types/llm'
 import { useAppStore, useMCPStore, useLLMStore, useChatStore } from '../stores'
@@ -3593,11 +3594,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     {goalModelLabel}
                   </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" aria-label={`Model: ${goalModelLabel}`} title={goalModelLabel}>{goalModelLabel}</span>
                 )}
-                {(agentProfileId === 'work') && agentProfileProjectId && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`) && (
-                  activeTab.metadata.agentProfileCanOpenModels ? <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground" title={`${activeTab.metadata.agentProfileChatModelOverride ? 'Own model' : 'Same as Crew'} · ${activeTab.metadata.agentProfileChatModelLabel} — open Models`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId: agentProfileProjectId, conversationKey: activeTab?.metadata?.agentProfileConversationKey } }))}>
+                {(agentProfileId === 'work') && agentProfileProjectId && activeTabId && crewModelLabel && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`) && (() => {
+                  const label = activeTab.metadata.agentProfileCanOpenModels ? <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground" title={`${activeTab.metadata.agentProfileChatModelOverride ? 'Own model' : 'Same as Crew'} · ${activeTab.metadata.agentProfileChatModelLabel} — open Models`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId: agentProfileProjectId, conversationKey: activeTab?.metadata?.agentProfileConversationKey } }))}>
                     {crewModelLabel}
                   </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{crewModelLabel}</span>
-                )}
+                  // Owners pick the model and reasoning here; everyone else sees the label.
+                  return activeTab.metadata.agentProfileCanOpenModels
+                    ? <Suspense fallback={label}><ComposerModelChips tabId={activeTabId} workspacePath={agentProfileWorkspace || ''} label={crewModelLabel} fallback={label} /></Suspense>
+                    : label
+                })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {showContextIndicator && typeof contextPercent === 'number' && <span className="whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground" role="status" aria-label={`Context ${contextPercent}%`}>Context {contextPercent}%</span>}
                 {(agentProfileId === 'work' || isGoalBuilderChat) && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} workflowPath={isGoalBuilderChat ? workflowPhaseWorkspacePath : undefined} />}

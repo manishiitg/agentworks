@@ -11,21 +11,18 @@ import { useQueryClient } from '@tanstack/react-query'
 import { workChatModelsQueryKey } from './useWorkChatModels'
 import { isProjectProductId } from './projectProduct'
 import type { AgentProfileChatModel, AgentProfileSideChat, LLMProvider, PresetLLMConfig } from '../../services/api-types'
-import { llmConfigService, type ByokModel, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
+import { llmConfigService, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
 import ModalPortal from '../../components/ui/ModalPortal'
 // Loaded on first use: the key setup is rare and kept the eager bundle over budget (PLAT-717).
 const ByokSetup = lazy(() => import('../../components/providers/ByokSetup'))
 const ByokModelBrowser = lazy(() => import('../../components/providers/ByokModelBrowser'))
-import { byokServiceOf } from '../../utils/byok'
 import { useChatStore } from '../../stores/useChatStore'
-import { useLLMStore } from '../../stores/useLLMStore'
-import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, modelReasoningLevels, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
 import { useProjectProduct } from './projectProduct'
 import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
-import { readyCodingProviders } from '../../utils/providerCatalogFilter'
 import { ProviderChangeNotice } from '../../components/chat/ProviderChangeNotice'
-import { allowedModelOrFirst, filterAllowedModels } from '../../utils/allowedModels'
+import { allowedModelOrFirst } from '../../utils/allowedModels'
+import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import { SharedTokenUsageNotice } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ChatDisplayPreferences } from '../../components/chat/ChatDisplayPreferences'
@@ -105,12 +102,8 @@ export function WorkModelsPanel({
   const activeRuntime = useChatStore(state => tab?.sessionId
     ? state.activeSessionsCache.find(session => session.session_id === tab.sessionId)?.runtime
     : undefined)
-  const providerManifest = useLLMStore(state => state.providerManifest)
-  const providerManifestLoaded = useLLMStore(state => state.providerManifestLoaded)
-  const loadProviderManifest = useLLMStore(state => state.loadProviderManifest)
-  const [options, setOptions] = useState<AgentProfileProviderOption[]>([])
-  const [cursorModels, setCursorModels] = useState<DynamicModelEntry[]>([])
-  const [accounts, setAccounts] = useState<ProviderConnection[] | null>(null)
+  const sources = useWorkModelSources({ profileId: effectiveProfileId, profileVersion: effectiveProfileVersion, accountProduct: effectiveAccountProduct, workspacePath })
+  const { options, accounts, providerManifest, refresh: refreshSources } = sources
   const [refreshing, setRefreshing] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [usageSession, setUsageSession] = useState<ProviderSetupSession | null>(null)
@@ -132,75 +125,14 @@ export function WorkModelsPanel({
     }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    void loadAgentProfileProviderOptions(effectiveProfileId, effectiveProfileVersion).then(loaded => {
-      if (!cancelled) setOptions(loaded)
-    })
-    return () => { cancelled = true }
-  }, [effectiveProfileId, effectiveProfileVersion])
-
-  useEffect(() => {
-    if (!providerManifestLoaded) void loadProviderManifest()
-  }, [loadProviderManifest, providerManifestLoaded])
-
-  useEffect(() => {
-    let cancelled = false
-    setAccounts(null)
-    const refreshAccounts = () => {
-      void llmConfigService.getProviderConnections({ workspacePath, product: effectiveAccountProduct }).then(records => {
-        if (!cancelled) setAccounts(records)
-      }).catch(() => { if (!cancelled) setAccounts([]) })
-    }
-    refreshAccounts()
-    window.addEventListener('provider-connections-changed', refreshAccounts)
-    return () => { cancelled = true; window.removeEventListener('provider-connections-changed', refreshAccounts) }
-  }, [workspacePath, effectiveAccountProduct])
-
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [loaded, records] = await Promise.all([
-        loadAgentProfileProviderOptions(effectiveProfileId, effectiveProfileVersion),
-        llmConfigService.getProviderConnections({ workspacePath, product: effectiveAccountProduct }),
-        loadProviderManifest(),
-      ])
-      setOptions(loaded)
-      setAccounts(records)
+      await refreshSources()
     } finally {
       setRefreshing(false)
     }
-  }, [loadProviderManifest, effectiveProfileId, effectiveProfileVersion, effectiveAccountProduct, workspacePath])
-
-  const readyProviders = useMemo(() => accounts === null ? [] : readyCodingProviders(providerManifest, accounts), [providerManifest, accounts])
-  const modelCatalog = useMemo(() => {
-    const models = readyProviders.flatMap(provider => provider.id === 'cursor-cli' ? [] : provider.models || [])
-    // Cursor's selected-account inventory is authoritative. Static metadata
-    // must not reintroduce unavailable models (PLAT-872 / PLAT-387).
-    for (const model of cursorModels) {
-      models.push({
-        provider: 'cursor-cli', model_id: model.model_id, model_name: model.model_name,
-        context_window: model.context_window || 0, input_cost_per_1m: model.cost_input || 0, output_cost_per_1m: model.cost_output || 0,
-      })
-    }
-    return models
-  }, [readyProviders, cursorModels])
-  const engineGroups = useMemo(
-    // Use the platform catalog; Cursor's catalog comes from this account.
-    // Do not reinsert a profile default that Cursor did not offer.
-    () => buildAgentProfileEngineGroups(options
-      .filter(option => readyProviders.some(provider => provider.id === option.provider))
-      .map(option => ({ ...option, models: undefined, model_id: option.provider === 'cursor-cli' ? '' : option.model_id })), modelCatalog),
-    [readyProviders, modelCatalog, options],
-  )
-  // Only providers this person may run here: one with a usable account (the server's, if it is available to them,
-  // or one of their own or shared with them). Offering Codex to someone it is closed to saved a model every turn then
-  // refused ("the codex-cli server account is not available to you here", server B 2026-10-07).
-  const workProviderIds = useMemo(() => {
-    const all = options.map(option => option.provider || option.id)
-    if (accounts === null) return all
-    return all.filter(provider => accounts.some(account => account.provider === provider && account.usable !== false))
-  }, [options, accounts])
+  }, [refreshSources])
 
   const hasStarted = events?.some(event => event.type === 'user_message') ?? false
   const projectSelection = workLLMSelectionFromConfig(projectLLMConfig)
@@ -224,73 +156,21 @@ export function WorkModelsPanel({
   const recordedConnectionId = !supportsChatModels && tab?.metadata?.agentProfileChatProvider === selectedOption?.provider
     ? tab?.metadata?.agentProfileChatConnectionID || undefined
     : undefined
-  const ownDefaultConnectionId = accounts
-    ?.filter(account => account.provider === selectedOption?.provider && (account.relation ?? (account.scope === 'global' ? 'server' : 'own')) === 'own'
-      && account.usable !== false && account.configured !== false)
-    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0]?.id
-  const inUseConnectionId = selectedConnectionId || recordedConnectionId || ownDefaultConnectionId
-  // A model key account (PLAT-717): its own models (the person's picks), with the live catalog's free and price data.
-  const inUseAccount = accounts?.find(account => account.id === inUseConnectionId)
-  const cursorAccountId = selectedOption?.provider === 'cursor-cli' ? inUseConnectionId || 'global:cursor-cli' : undefined
-  const [cursorModelsError, setCursorModelsError] = useState('')
-  const [cursorSelectionDisabled, setCursorSelectionDisabled] = useState(false)
-  useEffect(() => {
-    let cancelled = false
-    setCursorModels([]); setCursorModelsError(''); setCursorSelectionDisabled(false)
-    if (cursorAccountId) {
-      void llmConfigService.getProviderModels('cursor-cli', false, false, {
-        connection_id: cursorAccountId, workspace_path: workspacePath, product: effectiveAccountProduct,
-      }).then(result => {
-        if (!cancelled) {
-          setCursorModels(result.models || [])
-          setCursorModelsError(result.error || '')
-          setCursorSelectionDisabled(result.selection_disabled === true)
-        }
-      }).catch(() => { if (!cancelled) setCursorModelsError('Cursor models could not be loaded. Check this account in Providers, then refresh.') })
-    }
-    return () => { cancelled = true }
-  }, [cursorAccountId, accounts, workspacePath, effectiveAccountProduct])
-
-  const keyService = selectedOption?.provider === 'pi-cli' ? byokServiceOf(inUseAccount) : undefined
-  const [keyModels, setKeyModels] = useState<ByokModel[]>([])
+  const inUseConnectionId = selectedConnectionId || recordedConnectionId || ownDefaultConnectionId(accounts, selectedOption?.provider)
+  const {
+    workProviderIds, inUseAccount, keyService, cursorModels, cursorModelsError, cursorSelectionDisabled,
+    defaultForOption, selectedAllowedModels, selectableModels, levelsForModel, effortForModel, effortForPick,
+  } = useWorkModelChoices(sources, { selectedOption, selectedConnectionId, inUseConnectionId, workspacePath, accountProduct: effectiveAccountProduct })
   const [keyBrowserOpen, setKeyBrowserOpen] = useState(false)
   const [keyPicksDraft, setKeyPicksDraft] = useState<string[] | null>(null)
   const [keySetupOpen, setKeySetupOpen] = useState(false)
-  const keyAccountId = keyService ? inUseAccount?.id : undefined
-  useEffect(() => {
-    let cancelled = false
-    setKeyModels([])
-    if (keyAccountId) {
-      void llmConfigService.byokModels({ connection_id: keyAccountId, workspace_path: workspacePath }).then(result => {
-        if (!cancelled) setKeyModels(result.models || [])
-      }).catch(() => undefined)
-    }
-    return () => { cancelled = true }
-  }, [keyAccountId, workspacePath])
   const llmConfig = useMemo<PresetLLMConfig | undefined>(() => selectedOption?.provider ? {
     schema_version: 2,
     mode: 'provider_profile',
     provider: selectedOption.provider as LLMProvider,
     connection_id: selectedConnectionId || recordedConnectionId,
   } : undefined, [selectedOption, selectedConnectionId, recordedConnectionId])
-  // The models an account allows (absent = every model): the account the project names, else the server's.
-  const allowedModelsFor = useCallback((provider: string | undefined, connectionId: string | undefined) => (
-    provider ? accounts?.find(account => account.id === (connectionId || `global:${provider}`))?.allowed_models : undefined
-  ), [accounts])
-  const defaultForOption = useCallback((option: AgentProfileProviderOption | undefined, connectionId?: string) => {
-    if (!option) return { modelId: '', reasoningEffort: undefined as string | undefined }
-    const defaults = providerManifest.find(provider => provider.id === option.provider)?.default_tier_models?.builder
-    const profileEffort = typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined
-    const manifestEffort = typeof defaults?.options?.reasoning_effort === 'string' ? defaults.options.reasoning_effort : undefined
-    return {
-      modelId: allowedModelOrFirst(defaults?.model_id || option.model_id || '', allowedModelsFor(option.provider, connectionId)) || '',
-      reasoningEffort: [profileEffort, manifestEffort, option.reasoning_efforts?.[0]]
-        .find(effort => effort && option.reasoning_efforts?.includes(effort)),
-    }
-  }, [providerManifest, allowedModelsFor])
 
-  const currentGroup = engineGroups.find(group => group.option.id === selectedOption?.id)
-  const selectedAllowedModels = keyService ? inUseAccount?.allowed_models : allowedModelsFor(selectedOption?.provider, selectedConnectionId)
   const selectedDefaults = defaultForOption(selectedOption, selectedConnectionId)
   const metadataMatchesSelectedProvider = !supportsChatModels && tab?.metadata?.agentProfileEngine === selectedOption?.id
   // Only an allowed model is shown selected; a saved one the account no longer allows reads as its first allowed model
@@ -299,41 +179,10 @@ export function WorkModelsPanel({
     || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileModelID : undefined)
     || (!supportsChatModels ? activeRuntime?.model_id : undefined)
     || selectedDefaults.modelId, selectedAllowedModels)
-  const keyModelChoices = useMemo<ModelMetadata[] | null>(() => {
-    if (!keyService) return null
-    const byId = new Map(keyModels.map(model => [model.model_id, model]))
-    const picks = inUseAccount?.allowed_models?.length ? inUseAccount.allowed_models : keyModels.filter(model => model.recommended).slice(0, 12).map(model => model.model_id)
-    return picks.map(id => {
-      const meta = byId.get(id)
-      return {
-        model_id: id, model_name: meta?.model_name || id.slice(id.indexOf('/') + 1), provider: 'pi-cli',
-        context_window: meta?.context_window || 0, input_cost_per_1m: meta?.cost_input || 0, output_cost_per_1m: meta?.cost_output || 0, is_free: meta?.is_free,
-      } satisfies ModelMetadata
-    }).sort((a, b) => Number(Boolean(b.is_free)) - Number(Boolean(a.is_free)))
-  }, [keyService, keyModels, inUseAccount?.allowed_models])
-  const selectableModels = useMemo(() => {
-    if (keyModelChoices) return keyModelChoices
-    const metadataById = new Map(modelCatalog.map(model => [model.model_id, model]))
-    return filterAllowedModels((currentGroup?.models || []).map(({ id, label }) => metadataById.get(id) || {
-      model_id: id,
-      model_name: label,
-      provider: selectedOption?.provider || '',
-      context_window: 0,
-      input_cost_per_1m: 0,
-      output_cost_per_1m: 0,
-    } satisfies ModelMetadata), selectedAllowedModels)
-  }, [keyModelChoices, currentGroup?.models, modelCatalog, selectedOption?.provider, selectedAllowedModels])
   const requestedReasoningEffort = savedSelection?.reasoningEffort
     || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined)
     || selectedDefaults.reasoningEffort
-  const levelsForModel = (modelId: string, option = selectedOption) => modelReasoningLevels(option,
-    modelCatalog.find(model => model.provider === option?.provider && model.model_id === modelId))
   const reasoningLevels = levelsForModel(currentModelId)
-  const effortForModel = (modelId: string, requested: string | undefined, option = selectedOption) => {
-    const levels = levelsForModel(modelId, option)
-    return [requested, defaultForOption(option).reasoningEffort, levels[0]?.id]
-      .find(effort => effort && levels.some(level => level.id === effort))
-  }
   const currentReasoningEffort = effortForModel(currentModelId, requestedReasoningEffort)
   const currentModelLabel = selectableModels.find(model => model.model_id === currentModelId)?.model_name
     || currentModelId
@@ -404,9 +253,7 @@ export function WorkModelsPanel({
       connectionId: selectedConnectionId,
       provider: selectedOption.provider,
       modelId,
-      reasoningEffort: selectedOption.provider === 'agy-cli'
-        ? modelId.match(/-(low|medium|high)$/)?.[1]
-        : effortForModel(modelId, currentReasoningEffort),
+      reasoningEffort: effortForPick(modelId, currentReasoningEffort),
     })
   }
 

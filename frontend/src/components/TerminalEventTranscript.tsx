@@ -419,9 +419,9 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   const attachments = messageAttachmentPaths(metadata)
   if (!collapsible) {
     return (
-      <div className={`ml-auto mt-2 max-w-[84%] text-right ${compactBottom ? 'mb-1' : 'mb-2'}`}>
+      <div className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
         {attachments.length > 0 && <UserAttachments paths={attachments} />}
-        {shown !== '' && <div className="whitespace-pre-wrap break-words text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>}
+        {shown !== '' && <div data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>}
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
