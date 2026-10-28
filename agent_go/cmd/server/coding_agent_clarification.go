@@ -260,9 +260,14 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 			return "", errNoAttendingUser
 		}
 		api.codingAgentClarificationsMu.Unlock()
-		answers := <-p.answers // The person's answer was recorded first.
-		result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})
-		return string(result), err
+		// The entry is gone: a person's answer was recorded first, or Stop, a newer question or teardown removed it.
+		select {
+		case answers := <-p.answers:
+			result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})
+			return string(result), err
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	case answers := <-p.answers:
 		log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=consumed after_ms=%d", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds())
 		result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})
