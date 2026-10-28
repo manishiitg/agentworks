@@ -54,11 +54,21 @@ func testAssistantMessage(id, content string) internalevents.Event {
 	}
 }
 
+func testCompletion(id, text string) internalevents.Event {
+	return internalevents.Event{ID: id, Type: "unified_completion", Timestamp: time.Now(), Data: &pkgevents.AgentEvent{
+		Type: pkgevents.EventType("unified_completion"),
+		Data: internalevents.NewGenericEventData("unified_completion", map[string]interface{}{"final_result": text}),
+	}}
+}
+
 // Live server A incident: B was sent while the CLI was still answering A. The CLI
 // took B only after finishing A, but B was recorded at send time, so A's
 // answer rendered under B. B must be recorded where the CLI took it.
 func TestSteeredMessageIsRecordedAfterTheInFlightAnswer(t *testing.T) {
 	const session = "crew-steer"
+	// Claude Code defaults to the SDK transport, which has no durable ack; these tests are about the
+	// terminal transport, where a steered message waits in the CLI input.
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "tmux")
 	store := openClientIdentityTestStore(t, session)
 	release := make(chan struct{})
 	api := &StreamingAPI{eventStore: store,
@@ -74,11 +84,13 @@ func TestSteeredMessageIsRecordedAfterTheInFlightAnswer(t *testing.T) {
 	store.AddEvent(session, testUserMessage("user:sub-a", "this ticket <url>"))
 	api.recordLiveCodingAgentUserMessage(session, "whats the title of this ticket?", string(llmproviders.ProviderClaudeCode), "steer-b", "sent_to_cli", "sub-b")
 	store.AddEvent(session, testAssistantMessage("answer-a", "This is WEB-1681 ..."))
+	// The CLI finishes A before it takes B: A's end row is recorded, then the ack arrives.
+	store.AddEvent(session, testCompletion("completion-a", "This is WEB-1681 ..."))
 	close(release)
 	confirmed := waitForLiveInputConfirmed(t, store, session)
 	store.AddEvent(session, testAssistantMessage("answer-b", "Centralize shared database migrations in lib-core"))
 
-	want := []string{"user:sub-a", "answer-a", "user:sub-b", "steer-b:confirmed", "answer-b"}
+	want := []string{"user:sub-a", "answer-a", "completion-a", "user:sub-b", "steer-b:confirmed", "answer-b"}
 	got := durableChatIDs(t, store, session)
 	if len(got) != len(want) {
 		t.Fatalf("journal order = %v, want %v", got, want)
@@ -92,8 +104,8 @@ func TestSteeredMessageIsRecordedAfterTheInFlightAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Events[2].Timestamp.Before(page.Events[1].Timestamp) {
-		t.Fatalf("steered row dated %s before the answer it followed (%s)", page.Events[2].Timestamp, page.Events[1].Timestamp)
+	if page.Events[3].Timestamp.Before(page.Events[2].Timestamp) {
+		t.Fatalf("steered row dated %s before the answer it followed (%s)", page.Events[3].Timestamp, page.Events[2].Timestamp)
 	}
 	payload, ok := confirmed.Data.Data.(*pkgevents.LiveInputConfirmedEvent)
 	if !ok || payload.Metadata["client_message_id"] != "sub-b" || payload.MessageID != "steer-b" {
@@ -105,6 +117,9 @@ func TestSteeredMessageIsRecordedAfterTheInFlightAnswer(t *testing.T) {
 // before the durable ack arrived. B's answer must still follow B.
 func TestSteeredAnswerJournalledBeforeTheAckStillFollowsTheQuestion(t *testing.T) {
 	const session = "crew-steer-race"
+	// Claude Code defaults to the SDK transport, which has no durable ack; these tests are about the
+	// terminal transport, where a steered message waits in the CLI input.
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "tmux")
 	store := openClientIdentityTestStore(t, session)
 	release := make(chan struct{})
 	api := &StreamingAPI{eventStore: store,
@@ -116,20 +131,13 @@ func TestSteeredAnswerJournalledBeforeTheAckStillFollowsTheQuestion(t *testing.T
 			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed, ProofSource: "transcript"}, nil
 		},
 	}
-	completion := func(id, text string) internalevents.Event {
-		return internalevents.Event{ID: id, Type: "unified_completion", Timestamp: time.Now(), Data: &pkgevents.AgentEvent{
-			Type: pkgevents.EventType("unified_completion"),
-			Data: internalevents.NewGenericEventData("unified_completion", map[string]interface{}{"final_result": text}),
-		}}
-	}
-
 	store.AddEvent(session, testUserMessage("user:sub-a", "this ticket <url>"))
 	api.recordLiveCodingAgentUserMessage(session, "whats the title of this ticket?", string(llmproviders.ProviderClaudeCode), "steer-b", "sent_to_cli", "sub-b")
 	store.AddEvent(session, testAssistantMessage("answer-a", "This is WEB-1681 ..."))
-	store.AddEvent(session, completion("completion-a", "This is WEB-1681 ..."))
+	store.AddEvent(session, testCompletion("completion-a", "This is WEB-1681 ..."))
 	// The CLI took B and answered before the ack watcher confirmed it.
 	store.AddEvent(session, testAssistantMessage("answer-b", "Centralize shared database migrations in lib-core"))
-	store.AddEvent(session, completion("completion-b", "Centralize shared database migrations in lib-core"))
+	store.AddEvent(session, testCompletion("completion-b", "Centralize shared database migrations in lib-core"))
 	close(release)
 	waitForLiveInputConfirmed(t, store, session)
 

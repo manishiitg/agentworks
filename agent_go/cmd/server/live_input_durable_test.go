@@ -126,6 +126,7 @@ func TestWatchLiveInputDurableEmitsConfirmedEventForClaude(t *testing.T) {
 	store := internalevents.NewEventStore(10)
 	defer store.Stop()
 	const sessionID = "durable-watch-claude"
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "tmux") // the SDK default has no durable ack
 	const messageID = "steer-message-claude-1"
 	api := &StreamingAPI{eventStore: store,
 		internalDurableAckHandler: func(_ context.Context, provider llmproviders.Provider, owner, message string) (llmtypes.DurableAck, error) {

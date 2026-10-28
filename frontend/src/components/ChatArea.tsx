@@ -1780,6 +1780,13 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       const runtimeScope = getRuntimeEventScope(event)
       const isSubAgentEvent = !isForegroundSession || runtimeScope.kind !== 'session'
 
+      // A message steered into a running answer: the text already streamed stays above it. The live buffer
+      // renders below every row, so freeze it as its own reply row dated just before the message.
+      if (!isSubAgentEvent && event.type === 'user_message' && (innerData?.metadata as Record<string, unknown> | undefined)?.source === 'coding_agent_live_input' && event.timestamp) {
+        const frozen = chatStore.freezeStreamingTextBefore(actualSessionId, event.timestamp)
+        if (frozen) newEvents.push(frozen)
+      }
+
       // Skip backend user_message events when we already have a frontend-created one
       // (avoids duplicate user message bubbles in the chat). Internal
       // [AUTO-NOTIFICATION] messages still enter the event store, but the

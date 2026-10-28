@@ -805,6 +805,9 @@ export interface ChatState extends StoreActions {
   setTerminalOutputOpen: (sessionId: string, open: boolean) => void
   toggleTerminalOutputOpen: (sessionId: string) => void
   clearStreamingText: (sessionId: string) => void
+  // Turns the text streamed so far into its own reply row dated just before `beforeIso`, and empties the live buffer.
+  // The live buffer renders below every row, so a message sent mid-answer sat above text that was already on screen.
+  freezeStreamingTextBefore: (sessionId: string, beforeIso: string) => PollingEvent | null
   clearStreamingTerminal: (sessionId: string) => void
   clearStreamingStatus: (sessionId: string) => void
 
@@ -1918,6 +1921,29 @@ export const useChatStore = create<ChatState>()(
             },
           }
         })
+      },
+
+      freezeStreamingTextBefore: (sessionId: string, beforeIso: string): PollingEvent | null => {
+        useChatStore.getState().flushStreamingChunks(sessionId)
+        const live: string = useChatStore.getState().streamingText[sessionId] || ''
+        const content: string = live.trim()
+        const before = Date.parse(beforeIso)
+        if (!content || !Number.isFinite(before)) return null
+        const timestamp = new Date(before - 1).toISOString()
+        set((state) => {
+          const nextText = { ...state.streamingText }
+          delete nextText[sessionId]
+          return { streamingText: nextText }
+        })
+        // Same row the live narration path builds (intermediateUpdateFromTranscriptChunk): an intermediate reply.
+        const data: Record<string, unknown> = { content, result: content, status: 'completed', restored_intermediate_update: true }
+        return {
+          id: `stream-${sessionId}-${before}-update`,
+          type: 'llm_generation_end',
+          timestamp,
+          session_id: sessionId,
+          data: { type: 'llm_generation_end', data },
+        } as unknown as PollingEvent
       },
 
       clearStreamingText: (sessionId: string) => {
