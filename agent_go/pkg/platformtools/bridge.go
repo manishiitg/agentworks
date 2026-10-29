@@ -2,20 +2,32 @@ package platformtools
 
 import mcpagent "github.com/manishiitg/mcpagent/agent"
 
-// BridgeRuntime exposes exactly the projected, already-admitted native catalog
-// to coding CLIs. Source names retired by projection are never bridge aliases.
+// coreBridgeFamilies are the projected tools every coding CLI gets natively:
+// the working tools a chat uses on most turns. Every other admitted platform
+// tool stays in the session catalog and is reached through get_api_spec /
+// search_tools, so its schema is not resent with every model call
+// (PLAT-825-130 had published all of them, about 26K tokens per call).
+var coreBridgeFamilies = map[string]bool{"terminal": true, "browser": true, "files": true}
+
+// BridgeRuntime exposes the core projected tools plus the caller's explicit
+// bridge tools to coding CLIs. Source names retired by projection are never
+// bridge aliases.
 func BridgeRuntime(projected []mcpagent.ToolDefinition, runtime mcpagent.RuntimeConfig) mcpagent.RuntimeConfig {
+	inCatalog := map[string]bool{}
+	for _, tool := range projected {
+		inCatalog[tool.Name] = true
+	}
 	bridge := []string{}
 	seen := map[string]bool{}
 	for _, tool := range projected {
-		if !seen[tool.Name] {
+		if coreBridgeFamilies[tool.Name] && !seen[tool.Name] {
 			bridge = append(bridge, tool.Name)
 			seen[tool.Name] = true
 		}
 	}
 	for _, name := range runtime.Tools.AdditionalBridge {
 		name = PublicName(name)
-		if IsFamily(name) && !seen[name] {
+		if IsFamily(name) && !inCatalog[name] {
 			continue
 		}
 		if !seen[name] {
