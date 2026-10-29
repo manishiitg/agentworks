@@ -83,10 +83,6 @@ type PresetLLMConfig struct {
 
 	TieredConfig *TieredLLMConfig `json:"tiered_config,omitempty"`
 
-	// IdleCompaction: false stops the idle sweep from summarising this
-	// project's long chats; absent means on (PLAT-872-71).
-	IdleCompaction *bool `json:"idle_compaction,omitempty"`
-
 	// Migration-only fields. NormalizePresetLLMConfig consumes and clears these
 	// when an older workflow is loaded, so they are never written again.
 	LegacyModelID           string          `json:"model_id,omitempty"`

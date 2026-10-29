@@ -91,7 +91,6 @@ type idleCompactCandidate struct {
 	BackgroundWork bool
 	Stopped        bool
 	LimitReached   bool // the tab owner is at a token limit
-	Disabled       bool // the project's owner turned idle compaction off
 	TabOff         bool // the tab's owner turned "Auto-compact when idle" off (PLAT-872-71)
 	LastActivity   time.Time
 	LastPerson     time.Time
@@ -111,7 +110,7 @@ func idleCompactDecide(c idleCompactCandidate, cfg idleCompactConfig, now time.T
 		return false, false, "outside_idle_window"
 	}
 	switch {
-	case c.Disabled, c.TabOff:
+	case c.TabOff:
 		return true, false, "disabled"
 	case !c.Interactive:
 		return true, false, "not_interactive"
@@ -387,24 +386,8 @@ func (api *StreamingAPI) idleCompactCandidateFor(sessionID, owner string, chat i
 	c.Stopped = api.isSessionMarkedStopped(sessionID)
 	c.ContextTokens, c.ContextWindow, _ = api.chatContextUsage(sessionID, chat.provider, chat.personReq.ModelID, false)
 	c.LimitReached = api.sharedAccountTokenLimitHit(context.Background(), owner, chat.provider) != nil
-	c.Disabled = !idleCompactProjectEnabled(chat.personReq.SelectedFolder)
 	c.TabOff = !idleCompactTabEnabled(owner, sessionID)
 	return c
-}
-
-// idleCompactProjectEnabled reads the project's models setting
-// (capabilities.llm_config.idle_compaction in its workflow.json). The chat's
-// project is the folder its last person turn ran in (a Crew, Goal, Relay or
-// Pulse). An unknown project or an unset value means on.
-func idleCompactProjectEnabled(workspacePath string) bool {
-	if strings.TrimSpace(workspacePath) == "" {
-		return true
-	}
-	caps, found, err := LoadManifestForExecution(context.Background(), workspacePath)
-	if err != nil || !found || caps == nil || caps.LLMConfig == nil || caps.LLMConfig.IdleCompaction == nil {
-		return true
-	}
-	return *caps.LLMConfig.IdleCompaction
 }
 
 // idleCompactLastActivity is when the chat last did anything: its last turn's

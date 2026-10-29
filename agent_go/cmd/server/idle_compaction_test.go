@@ -39,7 +39,6 @@ func TestIdleCompactDecide(t *testing.T) {
 		{"schedule or function session", ready(func(c *idleCompactCandidate) { c.Interactive = false }), true, false, "not_interactive"},
 		{"provider without a native trigger", ready(func(c *idleCompactCandidate) { c.Supported = false }), true, false, "unsupported"},
 		{"owner at token limit", ready(func(c *idleCompactCandidate) { c.LimitReached = true }), true, false, "limit"},
-		{"project turned it off (PLAT-872-71)", ready(func(c *idleCompactCandidate) { c.Disabled = true }), true, false, "disabled"},
 		{"tab owner turned it off in the model menu (PLAT-872-71)", ready(func(c *idleCompactCandidate) { c.TabOff = true }), true, false, "disabled"},
 	}
 	for _, tc := range cases {

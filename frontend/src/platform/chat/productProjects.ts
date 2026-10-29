@@ -489,53 +489,16 @@ export async function updateProductProjectLLMConfig<P extends string>(
     const capabilities = manifest.capabilities && typeof manifest.capabilities === 'object'
       ? { ...(manifest.capabilities as Record<string, unknown>) }
       : {}
-    // A model change keeps the project's idle compaction choice.
-    const saved = savedLLMConfig(capabilities)
-    const next: PresetLLMConfig = llmConfig.idle_compaction === undefined && saved?.idle_compaction !== undefined
-      ? { ...llmConfig, idle_compaction: saved.idle_compaction }
-      : llmConfig
-    capabilities.llm_config = next
+    capabilities.llm_config = llmConfig
     const updatedAt = new Date().toISOString()
     manifest.capabilities = capabilities
     manifest.updated_at = updatedAt
     await agentApi.updatePlannerFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
     if (runtimeManifestName && !project.runtimeConfigInitialized) await stripLegacyRuntimeFromProduct(project, commitLabel)
-    return { ...project, llmConfig: next, runtimeConfigInitialized: true, updatedAt }
+    return { ...project, llmConfig, runtimeConfigInitialized: true, updatedAt }
   } catch {
     throw new Error('Project configuration is invalid JSON.')
   }
-}
-
-function savedLLMConfig(capabilities: Record<string, unknown>): PresetLLMConfig | undefined {
-  return parseProductLLMConfig(capabilities.llm_config)
-}
-
-/** Sets the project's "Tidy long chats while idle" switch (capabilities.llm_config.idle_compaction, PLAT-872-71). */
-export async function updateProductProjectIdleCompaction<P extends string>(
-  project: ProductProject<P>,
-  enabled: boolean,
-  commitLabel: string,
-  runtimeManifestName?: string,
-): Promise<ProductProject<P>> {
-  let manifestPath: string
-  let manifest: Record<string, unknown>
-  try {
-    ({ path: manifestPath, manifest } = await readProjectRuntimeManifest(project, runtimeManifestName))
-  } catch {
-    throw new Error('Project configuration is invalid JSON.')
-  }
-  const capabilities = manifest.capabilities && typeof manifest.capabilities === 'object'
-    ? { ...(manifest.capabilities as Record<string, unknown>) }
-    : {}
-  const saved = savedLLMConfig(capabilities)
-  if (!saved) throw new Error('Choose a model first, then change this setting.')
-  const llmConfig: PresetLLMConfig = { ...saved, idle_compaction: enabled }
-  capabilities.llm_config = llmConfig
-  const updatedAt = new Date().toISOString()
-  manifest.capabilities = capabilities
-  manifest.updated_at = updatedAt
-  await agentApi.updatePlannerFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
-  return { ...project, llmConfig, updatedAt }
 }
 
 /** Sets the crew's "Native agent tools" switch (capabilities.native_agent_tools). */
