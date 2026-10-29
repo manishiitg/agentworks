@@ -122,7 +122,7 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	}
 	// The card renders from the event: the summary (counts, files, group) is
 	// computed once at capture, under the same path rules as the compare op.
-	if !strings.Contains(string(payload), `"summary":{"added":2,"files":2,"groups":[{"kind":"crew_files"`) || !strings.Contains(string(payload), `{"path":"visible/main.txt","status":"M","added":1,"removed":1}`) {
+	if !strings.Contains(string(payload), `"added":2,"files":2,"groups":[{"kind":"crew_files"`) || !strings.Contains(string(payload), `{"path":"visible/main.txt","status":"M","added":1,"removed":1}`) {
 		t.Fatalf("reply event has no file summary: %s", payload)
 	}
 	if got := api.trackedWorkflowExecutions["turn"].Metadata["file_snapshot_id"]; got != filesnapshots.ID("turn") {

@@ -61,6 +61,11 @@ type Record struct {
 	Omitted            []string          `json:"-"`
 	BeforeCapture      CaptureStats      `json:"before_capture"`
 	AfterCapture       CaptureStats      `json:"after_capture"`
+	// BeforeCompletedAt is when the before-capture finished reading files.
+	BeforeCompletedAt *time.Time `json:"before_completed_at,omitempty"`
+	// Reason says why an unavailable reply has no comparison: "capture_late"
+	// when its before-capture finished after the turn's first tool started.
+	Reason string `json:"reason,omitempty"`
 }
 
 // CaptureStats explains partial captures without exposing file names or contents.
@@ -431,17 +436,19 @@ func (s Store) Begin(ctx context.Context, execution string) (Record, error) {
 }
 
 // BeginWithin is the send-path before-capture: waiting for the Crew gate and
-// capturing together never take longer than budget, so a message is never held
-// behind a capture. A cold Crew (no persisted private index yet) reads every
-// file, which a large Crew cannot do in that time, so it is not tried;
-// it and a warm capture that runs out of time are saved unavailable with
-// BeforeCapture.Deferred set, and the caller runs Warm in the background.
-// While Warm holds the gate this returns ErrWarming at once.
-func (s Store) BeginWithin(budget time.Duration, execution string) (Record, error) {
+// capturing together never take longer than limit. The server runs it beside
+// the send and does not hold the message for more than a short wait; a capture
+// that finishes later is checked against the turn's first tool start in
+// FinishAfter (PLAT-746-163). A cold Crew (no persisted private index yet)
+// reads every file, so it is not tried; it and a warm capture that runs out of
+// limit are saved unavailable with BeforeCapture.Deferred set, and the caller
+// runs Warm in the background. While Warm holds the gate this returns
+// ErrWarming at once.
+func (s Store) BeginWithin(limit time.Duration, execution string) (Record, error) {
 	if s.state().warming.Load() {
 		return Record{}, ErrWarming
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	return s.begin(ctx, execution, true)
 }
@@ -468,6 +475,8 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 		return r, s.save(r)
 	}
 	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes)
+	completed := time.Now().UTC()
+	r.BeforeCompletedAt = &completed
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 		if sendPath && ctx.Err() != nil {
@@ -542,6 +551,19 @@ func (s Store) Saved(id string) bool {
 	return err == nil && (r.Status == "complete" || r.Status == "partial")
 }
 func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
+	return s.FinishAfter(ctx, execution, time.Time{})
+}
+
+// lateMargin covers the delay between a tool really starting and the server
+// seeing its start event.
+const lateMargin = 250 * time.Millisecond
+
+// FinishAfter is Finish for a reply whose before-capture ran on past the send.
+// firstTool is when the turn's first tool started (zero: none seen). The saved
+// before-state is the reply's baseline only if it finished reading before any
+// tool could have written; otherwise the reply is unavailable with Reason
+// "capture_late" and no after-capture, never a later baseline (PLAT-746-158).
+func (s Store) FinishAfter(ctx context.Context, execution string, firstTool time.Time) (Record, error) {
 	// A reply with no before-state (deferred or failed capture) has no card and
 	// no use for an after-capture: return without waiting on the gate, which
 	// the background index build may hold for minutes. Reads take no gate.
@@ -559,6 +581,10 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	}
 	if r.Status != "capturing" {
 		return r, nil
+	}
+	if !firstTool.IsZero() && (r.BeforeCompletedAt == nil || !r.BeforeCompletedAt.Add(lateMargin).Before(firstTool)) {
+		r.Status, r.Reason = "unavailable", "capture_late"
+		return r, s.save(r)
 	}
 	var skipped, omitted []string
 	r.AfterSkippedState = map[string]string{}

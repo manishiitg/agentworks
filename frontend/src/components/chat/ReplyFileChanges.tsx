@@ -75,6 +75,7 @@ export function ReplyFileChanges({ reference }: { reference: ReplyFileChangesRef
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = JSON.stringify([account, server, reference.workspacePath, reference.snapshotId])
   if (mode !== 'dev') return null
+  if (reference.unavailable) return <p className="my-2 text-xs text-muted-foreground">{reference.unavailable}</p>
   return <ScopedFileChanges key={scope} reference={reference} />
 }
 

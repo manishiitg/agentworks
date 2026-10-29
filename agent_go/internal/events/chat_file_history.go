@@ -70,11 +70,12 @@ func (j *SQLiteEventJournal) ReadChatFileHistory(ctx context.Context, sessionID 
 		return out, err
 	}
 	// Arrival can lag the next reply. Order by the saved boundary, not arrival.
-	err = j.db.QueryRowContext(ctx, `SELECT COALESCE((SELECT json_extract(payload,'$.data.data.snapshot_id') FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='reply_file_changes' ORDER BY CAST(json_extract(payload,'$.data.data.start_sequence') AS INTEGER) ASC LIMIT 1),'')`, sessionID).Scan(&out.FirstSnapshotID)
+	// A reply whose changes were not saved has no snapshot_id and is skipped.
+	err = j.db.QueryRowContext(ctx, `SELECT COALESCE((SELECT json_extract(payload,'$.data.data.snapshot_id') FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='reply_file_changes' AND COALESCE(json_extract(payload,'$.data.data.snapshot_id'),'')<>'' ORDER BY CAST(json_extract(payload,'$.data.data.start_sequence') AS INTEGER) ASC LIMIT 1),'')`, sessionID).Scan(&out.FirstSnapshotID)
 	if err != nil {
 		return out, err
 	}
-	rows, err := j.db.QueryContext(ctx, `SELECT payload FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='reply_file_changes' ORDER BY CAST(json_extract(payload,'$.data.data.end_sequence') AS INTEGER) DESC LIMIT 50`, sessionID)
+	rows, err := j.db.QueryContext(ctx, `SELECT payload FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='reply_file_changes' AND COALESCE(json_extract(payload,'$.data.data.snapshot_id'),'')<>'' ORDER BY CAST(json_extract(payload,'$.data.data.end_sequence') AS INTEGER) DESC LIMIT 50`, sessionID)
 	if err != nil {
 		return out, err
 	}

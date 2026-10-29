@@ -22,6 +22,8 @@ export interface ReplyFileChangesRef {
   summary?: ReplyFileSummary
   // The chat's newest review point (a file_reviewed event), if any.
   reviewedSnapshotId?: string
+  // The server's one line when this reply's file changes were not saved (no snapshot).
+  unavailable?: string
 }
 
 const summaryOf = (value: unknown): ReplyFileSummary | undefined => {
@@ -37,13 +39,15 @@ export function replyFileChangesByMessage(events: PollingEvent[], replyIds: Read
   for (const event of events) {
     if (event.type !== 'reply_file_changes') continue
     const data = event.data?.data as Record<string, unknown> | undefined
-    if (!data || typeof data.snapshot_id !== 'string' || typeof data.workspace_path !== 'string'
+    const unavailable = data?.status === 'unavailable' && typeof data.message === 'string' ? data.message : undefined
+    if (!data || (typeof data.snapshot_id !== 'string' && !unavailable) || typeof data.workspace_path !== 'string'
       || typeof data.start_sequence !== 'number' || typeof data.end_sequence !== 'number') continue
     const reply = replies.filter(candidate => candidate.session_id === event.session_id
       && typeof candidate.sequence === 'number' && candidate.sequence > (data.start_sequence as number)
       && candidate.sequence <= (data.end_sequence as number))
       .sort((a, b) => (b.sequence ?? 0) - (a.sequence ?? 0))[0]
-    if (reply) result.set(reply.id, { snapshotId: data.snapshot_id, workspacePath: data.workspace_path, sessionId: event.session_id || '', summary: summaryOf(data.summary) })
+    if (reply && unavailable) result.set(reply.id, { snapshotId: '', workspacePath: data.workspace_path, sessionId: event.session_id || '', unavailable })
+    else if (reply) result.set(reply.id, { snapshotId: data.snapshot_id as string, workspacePath: data.workspace_path, sessionId: event.session_id || '', summary: summaryOf(data.summary) })
   }
   const newest = (type: string) => {
     const found = new Map<string, { id: string; end: number }>()
