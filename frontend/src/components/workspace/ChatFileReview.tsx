@@ -6,7 +6,7 @@ import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { shownFilePath } from '../../utils/replyFileChanges'
 import api from '../../services/api'
 import { INLINE_REVIEW_FILE_LIMIT, ReplyFileViewer } from './ReplyFileViewer'
-import { reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type FileChange as Change } from './chatFileReviewData'
+import { reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type ReviewHistory, type FileChange as Change } from './chatFileReviewData'
 
 // Older replies' saved copies are cleared to save space; name the message the comparison starts from.
 const startedFrom = (message?: { text: string; at?: string }) => {
@@ -25,26 +25,32 @@ type ReviewProps = { workspacePath: string; sessionId: string; tabId: string; on
  * never set up here. */
 export function ChatFileReview(props: ReviewProps) {
   const [repos, setRepos] = useState<GitRepo[] | null>(null)
+  const [recentRepos, setRecentRepos] = useState<string[]>([])
   const [revision, setRevision] = useState(0)
   useEffect(() => {
     let live = true
-    void workspaceGitApi.status(props.workspacePath).then(found => { if (live) setRepos(found) }).catch(() => { if (live) setRepos(current => current ?? []) })
+    void Promise.all([
+      workspaceGitApi.status(props.workspacePath),
+      api.get<ReviewHistory>(endpoint, { params: { workspace_path: props.workspacePath, session_id: props.sessionId, op: 'snapshots' } })
+        .then(({ data }) => data.recent_repos ?? []).catch(() => [] as string[]),
+    ]).then(([found, recent]) => { if (live) { setRecentRepos(recent); setRepos(found) } })
+      .catch(() => { if (live) setRepos(current => current ?? []) })
     return () => { live = false }
-  }, [props.workspacePath, revision])
+  }, [props.workspacePath, props.sessionId, revision])
   if (!repos) return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
     <WorkspaceViewHeader title="Files" subtitle="Review changes" />
     <p className="p-3 text-sm">Loading…</p>
   </section>
   // "This chat" is always offered and opens first, Git project or not.
   return repos.length
-    ? <GitReview workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
-      renderChat={(bar, onRecentRepositories) => <SnapshotReview {...props} bar={bar} onRecentRepositories={onRecentRepositories} />} />
+    ? <GitReview workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} recentRepos={recentRepos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
+      renderChat={bar => <SnapshotReview {...props} bar={bar} />} />
     : <SnapshotReview {...props} />
 }
 
 /** All requests and sends stay with that chat; the server resolves and
  * authorizes its saved boundaries. */
-function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar, onRecentRepositories }: ReviewProps & { bar?: ReactNode; onRecentRepositories?: (roots: string[]) => void }) {
+function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: ReviewProps & { bar?: ReactNode }) {
   const [reviewId, setReviewId] = useState('')
   const [result, setResult] = useState<Result | null>(null)
   const [revision, refresh] = useReviewRevision()
@@ -62,9 +68,6 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar, onRece
       .catch(() => { if (!controller.signal.aborted) setError('Could not load this saved comparison. Refresh and try again.') })
     return () => controller.abort()
   }, [workspacePath, sessionId, reviewId, revision])
-  useEffect(() => {
-    if (result) onRecentRepositories?.(result.history.recent_repos ?? [])
-  }, [result, onRecentRepositories])
   const through = result?.history.last_snapshot_id
   const loadMore = async () => {
     if (!result?.next_offset || !result.comparison) return

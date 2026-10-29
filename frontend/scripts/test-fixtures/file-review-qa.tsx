@@ -11,7 +11,7 @@ const options = new URLSearchParams(location.search)
 const count = Number(options.get('count') || 2)
 const changes = Array.from({ length: count }, (_, index) => ({ path: `file-${index}.txt`, status: 'M', added: 1, removed: 1 }))
 const diff = (file: string) => `@@ -1 +1 @@\n-old ${file}\n+new ${file}\n`
-api.get = (async (_url: string, config: { params: { file?: string } }) => ({ data: {
+api.get = (async (_url: string, config: { params: { file?: string; op?: string } }) => ({ data: config.params.op === 'snapshots' ? { recent_repos: options.has('worktree') ? ['app-wt'] : [] } : {
   history: { replies: [], reviews: [], available: true, last_snapshot_id: 'last', baseline_snapshot_id: 'start', recent_repos: options.has('worktree') ? ['app-wt'] : [] },
   total_changes: count,
   comparison: { changes, diff: config.params.file ? diff(config.params.file) : '', note: '', snapshot: { status: 'complete' } },
