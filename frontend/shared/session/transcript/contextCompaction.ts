@@ -138,6 +138,12 @@ export function contextCompactionText(info: ContextCompactionInfo): string {
     const sizes = info.tokensBefore > 0 && info.tokensAfter > 0 ? ` (${formatCompactTokens(info.tokensBefore)} → ${formatCompactTokens(info.tokensAfter)})` : ''
     return `While you were away, this chat was tidied to save cost${sizes}`
   }
+  // "Compact now" from the chat's model menu (PLAT-872-71): the person asked for it.
+  if (info.trigger === 'manual' && !info.stale && !(info.phase === 'end' && failed)) {
+    if (info.phase === 'start') return 'Compacting this chat…'
+    const sizes = info.tokensBefore > 0 && info.tokensAfter > 0 ? ` (${formatCompactTokens(info.tokensBefore)} → ${formatCompactTokens(info.tokensAfter)})` : ''
+    return `Compacted this chat${sizes}`
+  }
   if (info.phase === 'start') {
     return info.stale ? 'Context compaction started (no result recorded)' : 'Compacting context…'
   }

@@ -22,6 +22,14 @@ describe('context compaction rows', () => {
     expect(compactionRows([start, end])).toEqual(['Compacted context (1m 39s) · 384k → 92k tokens'])
   })
 
+  it('shows "Compact now" as one manual row, never "while you were away" (PLAT-872-71)', () => {
+    expect(compactionRows([
+      ev('c1', 'context_compaction', { phase: 'start', compaction_id: 'x', trigger: 'manual' }),
+      ev('c2', 'context_compaction', { phase: 'end', compaction_id: 'x', trigger: 'manual' }),
+      ev('c3', 'context_compaction', { phase: 'end', compaction_id: 'x', trigger: 'manual', tokens_before: 310_000, tokens_after: 42_000 }),
+    ])).toEqual(['Compacted this chat (310k → 42k)'])
+  })
+
   it('marks a start left open by a finished turn instead of spinning forever', () => {
     expect(compactionRows([
       ev('c1', 'context_compaction', { phase: 'start', compaction_id: 'x' }),
