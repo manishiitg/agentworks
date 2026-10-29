@@ -48,8 +48,16 @@ func (api *StreamingAPI) handleUIControl(w http.ResponseWriter, r *http.Request)
 	cleanWorkspace := path.Clean(strings.Trim(strings.TrimSpace(workspace), "/"))
 	workspaceRef := workspaceref.MustParse(cleanWorkspace)
 	isOwnedWork := workspaceRef.OwnedByOrUnowned(user) && workspaceRef.IsProject()
-	if !isWorkflow && !isOwnedWork {
+	// A Crew lives at the shared Crew/<id> root, which OwnedByOrUnowned never claims: its chat binds when the
+	// caller may use that Crew (crewAccessFor, the rule every other Crew route uses).
+	crew, isSharedCrew := resolveCrewPath(r.Context(), user, cleanWorkspace)
+	isSharedCrew = isSharedCrew && crew.Shared
+	if !isWorkflow && !isOwnedWork && !isSharedCrew {
 		fail("unsupported_surface", http.StatusConflict)
+		return
+	}
+	if isSharedCrew && crewAccessFor(GetUserFromContext(r.Context()), crew) == crewAccessNone {
+		fail("forbidden", http.StatusForbidden)
 		return
 	}
 	if isWorkflow {

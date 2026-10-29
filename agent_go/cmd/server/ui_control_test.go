@@ -84,25 +84,26 @@ func TestUIControlHTTPRejectsForeignAndOwnerlessSessions(t *testing.T) {
 	}
 }
 
+// A Crew's chat at the shared Crew/<id> root binds for a caller who may use the Crew; before the fix every
+// such bind was refused with unsupported_surface. A caller the Crew is not shared with stays refused.
 func TestUIControlHTTPRestoresCrewScopeAndAcceptsCrewViews(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	stubCrewLookups(t, map[string]string{"Crew/crew-1": "user-a"}, nil)
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
-		"work:project:crew-1": {
-			SessionID:     "work:project:crew-1",
-			UserID:        "user-a",
-			WorkspacePath: "_users/user-a/Chats/Work/projects/crew-1",
-		},
+		"work:project:crew-1":   {SessionID: "work:project:crew-1", UserID: "user-a", WorkspacePath: "Crew/crew-1"},
+		"work:project:crew-1-b": {SessionID: "work:project:crew-1-b", UserID: "user-b", WorkspacePath: "Crew/crew-1"},
 	}}
-	call := func(body map[string]interface{}) *httptest.ResponseRecorder {
+	call := func(user, session string, body map[string]interface{}) *httptest.ResponseRecorder {
 		t.Helper()
 		raw, _ := json.Marshal(body)
-		r := mux.SetURLVars(requestWithUserForSessionAccess("user-a"), map[string]string{"session_id": "work:project:crew-1"})
+		r := mux.SetURLVars(requestWithUserForSessionAccess(user), map[string]string{"session_id": session})
 		r.Body = io.NopCloser(strings.NewReader(string(raw)))
 		w := httptest.NewRecorder()
 		api.handleUIControl(w, r)
 		return w
 	}
 
-	w := call(map[string]interface{}{"operation": "bind", "version": 1})
+	w := call("user-a", "work:project:crew-1", map[string]interface{}{"operation": "bind", "version": 1})
 	if w.Code != 200 {
 		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
 	}
@@ -110,7 +111,7 @@ func TestUIControlHTTPRestoresCrewScopeAndAcceptsCrewViews(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &binding); err != nil {
 		t.Fatal(err)
 	}
-	if binding["workspace"] != "Chats/Work/projects/crew-1" {
+	if binding["workspace"] != "Crew/crew-1" {
 		t.Fatalf("restored workspace = %#v", binding["workspace"])
 	}
 
@@ -118,12 +119,18 @@ func TestUIControlHTTPRestoresCrewScopeAndAcceptsCrewViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w = call(map[string]interface{}{
+	w = call("user-a", "work:project:crew-1", map[string]interface{}{
 		"operation": "sync", "version": 1, "binding": binding["binding"], "token": binding["token"],
 		"state": map[string]interface{}{"view": "memory", "revision": 1, "visible": true},
 	})
 	if w.Code != 200 || !strings.Contains(w.Body.String(), a.RequestID) {
 		t.Fatalf("memory sync: %d %s", w.Code, w.Body.String())
+	}
+
+	// user-b owns this chat session but the private Crew is not shared with them.
+	w = call("user-b", "work:project:crew-1-b", map[string]interface{}{"operation": "bind", "version": 1})
+	if w.Code != 403 || strings.TrimSpace(w.Body.String()) != "forbidden" {
+		t.Fatalf("bind without Crew access: %d %s", w.Code, w.Body.String())
 	}
 }
 
