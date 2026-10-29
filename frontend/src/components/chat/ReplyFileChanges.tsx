@@ -40,8 +40,8 @@ const cardIcons: Record<string, ReactNode> = { 'octicon:file-diff': <FileDiffIco
 const actionIcon = (icon?: string) => (icon && cardIcons[icon]) || <CommandIcon name={icon} fallback={Zap} />
 // The person's own buttons and Add button sit after a divider; phones keep them under More.
 const ownButton = (action: ReplyCardAction) => action.kind === 'command' || action.id === 'add_button'
-const iconButton = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 [&_svg]:h-4 [&_svg]:w-4'
-const Divider = () => <span className="mx-1.5 h-4 w-px bg-border" aria-hidden />
+const iconButton = 'inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 [&_svg]:h-3.5 [&_svg]:w-3.5'
+const Divider = () => <span className="mx-1 h-3.5 w-px bg-border" aria-hidden />
 // Hover or keyboard focus shows the name and one plain line; touch taps go straight to the button.
 function IconButton({ label, name = label, hint, onClick, disabled, strong, children }: { label: string; name?: string; hint: string; onClick: () => void; disabled?: boolean; strong?: boolean; children: ReactNode }) {
   return <Tooltip>
@@ -166,11 +166,11 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
   if (total === 0) return null
   return (
-    <section className="my-3 rounded-lg border border-border px-3 py-2 text-sm" aria-label="Files changed during this reply">
+    <section className="my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Files changed during this reply">
       <div className="flex items-center gap-2">
-        <button type="button" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 text-left font-medium" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>
+        <button type="button" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 text-left font-medium text-muted-foreground hover:text-foreground" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>
           <span aria-hidden>{isOpen ? '▾' : '▸'}</span>Files changed during this reply · {plural(total)}
-          <span className="text-xs font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
+          <span className="font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
           {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
         </button>
         <TooltipProvider delayDuration={150}><div className="flex shrink-0 items-center gap-0.5">
