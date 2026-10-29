@@ -304,7 +304,12 @@ func StartInteractiveShell(c *gin.Context) {
 		shellError(c, http.StatusBadRequest, "Crew folder is unavailable")
 		return
 	} else if bound {
-		isolator.WritePaths = append(isolator.WritePaths, filepath.Join(roots.Private, ".sandbox-cache", "home"))
+		home, err := ensureCrewShellHome(roots.Private)
+		if err != nil {
+			shellError(c, http.StatusInternalServerError, "Cannot prepare the terminal home")
+			return
+		}
+		isolator.WritePaths = append(isolator.WritePaths, home)
 	}
 	// Attaches run in this same sandbox (interactive_shell_attach.go). The
 	// agent server calls start before every attach, so a restarted service
@@ -557,6 +562,19 @@ func interactiveShellHome(docsDir string, writePaths []string, workingDir string
 	}
 	security.EnsurePlatformGitIgnore(filepath.Join(home, ".config"))
 	return home
+}
+
+// ensureCrewShellHome creates a bound Crew's private shell home before the sandbox policy names it: the policy refuses a path that does
+// not exist, and a Crew that never opened a terminal has no home yet. Folder modes match interactiveShellHome.
+func ensureCrewShellHome(private string) (string, error) {
+	home := filepath.Join(private, ".sandbox-cache", "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return "", err
+	}
+	for _, dir := range []string{filepath.Dir(home), home} {
+		_ = os.Chmod(dir, 0o770|os.ModeSetgid)
+	}
+	return home, nil
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
