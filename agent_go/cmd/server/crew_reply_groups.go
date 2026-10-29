@@ -23,7 +23,7 @@ const replyGroupMaxFailingChecks = 10
 // GitHub account and each checkout's next Git step. The server's own GitHub
 // login is never used.
 func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, comparison filesnapshots.Comparison, allow func(string) bool, pullRequests bool) []filesnapshots.Group {
-	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, allow)
+	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
 	if pullRequests {
 		token, connected := "", false
 		if rec := readGitHubRecord(roots.Owner); rec != nil {

@@ -61,6 +61,13 @@ type Record struct {
 	Omitted            []string          `json:"-"`
 	BeforeCapture      CaptureStats      `json:"before_capture"`
 	AfterCapture       CaptureStats      `json:"after_capture"`
+	// Git checkouts present at the before-capture (Crew-relative folders), and
+	// what the after-capture found about checkouts that appeared or vanished
+	// during the turn (repo_baselines.go).
+	BeforeRepos     []string          `json:"-"`
+	NewRepos        map[string]string `json:"-"`
+	GoneRepos       []string          `json:"-"`
+	BaselineSkipped []string          `json:"-"`
 }
 
 // CaptureStats explains partial captures without exposing file names or contents.
@@ -102,6 +109,10 @@ type diskRecord struct {
 	BeforeTree         string            `json:"before_tree"`
 	AfterTree          string            `json:"after_tree"`
 	Omitted            []string          `json:"omitted,omitempty"`
+	BeforeRepos        []string          `json:"before_repos"` // [] when none; absent on older records
+	NewRepos           map[string]string `json:"new_repos,omitempty"`
+	GoneRepos          []string          `json:"gone_repos,omitempty"`
+	BaselineSkipped    []string          `json:"baseline_skipped,omitempty"`
 }
 type Change struct {
 	Path    string `json:"path"`
@@ -118,6 +129,9 @@ type Comparison struct {
 	Truncated         bool     `json:"truncated,omitempty"`
 	SkippedCount      int      `json:"skipped_count"`
 	Note              string   `json:"note"`
+	// NewRepos are the checkouts that appeared during the compared turns with
+	// their checked-out commit as the baseline (cards label them "new copy").
+	NewRepos []string `json:"-"`
 }
 type Store struct{ Root, Private string }
 
@@ -184,10 +198,14 @@ func (s Store) Unchanged(ctx context.Context, r Record) bool {
 			return false
 		}
 	}
-	if r.Before == r.After {
+	before, after, err := s.effective(ctx, r)
+	if err != nil {
+		return false
+	}
+	if before == after {
 		return true
 	}
-	return s.command(ctx, "--literal-pathspecs", "diff", "--quiet", "--no-ext-diff", "--no-textconv", r.Before, r.After, "--").Run() == nil
+	return s.command(ctx, "--literal-pathspecs", "diff", "--quiet", "--no-ext-diff", "--no-textconv", before, after, "--").Run() == nil
 }
 func (s Store) init(ctx context.Context) error {
 	if err := os.MkdirAll(filepath.Join(s.dir(), "turns"), 0700); err != nil {
@@ -412,10 +430,15 @@ func (s Store) read(id string) (Record, error) {
 	disk.Record.Omitted = disk.Omitted
 	disk.Record.BeforeSkippedState = disk.BeforeSkippedState
 	disk.Record.AfterSkippedState = disk.AfterSkippedState
+	disk.Record.BeforeRepos = disk.BeforeRepos
+	disk.Record.NewRepos = disk.NewRepos
+	disk.Record.GoneRepos = disk.GoneRepos
+	disk.Record.BaselineSkipped = disk.BaselineSkipped
 	return disk.Record, nil
 }
 func (s Store) save(r Record) error {
-	data, err := json.Marshal(diskRecord{Record: r, Reviewed: r.Reviewed, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState})
+	data, err := json.Marshal(diskRecord{Record: r, Reviewed: r.Reviewed, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState,
+		BeforeRepos: r.BeforeRepos, NewRepos: r.NewRepos, GoneRepos: r.GoneRepos, BaselineSkipped: r.BaselineSkipped})
 	if err != nil {
 		return err
 	}
@@ -468,7 +491,9 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 		r.BeforeCapture.Deferred = "cold"
 		return r, s.save(r)
 	}
-	r.Before, r.Skipped, r.Omitted, err = s.capture(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes)
+	repos := map[string]string{}
+	r.Before, r.Skipped, r.Omitted, err = s.captureRepos(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes, repos)
+	r.BeforeRepos = sortedKeys(repos)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 		if sendPath && ctx.Err() != nil {
@@ -563,9 +588,13 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	}
 	var skipped, omitted []string
 	r.AfterSkippedState = map[string]string{}
-	r.After, skipped, omitted, err = s.capture(ctx, "refs/turns/"+r.ID+"/after", r.Before, &r.AfterCapture, r.AfterSkippedState, maxImportBytes)
+	repos := map[string]string{}
+	r.After, skipped, omitted, err = s.captureRepos(ctx, "refs/turns/"+r.ID+"/after", r.Before, &r.AfterCapture, r.AfterSkippedState, maxImportBytes, repos)
 	r.Skipped = append(r.Skipped, skipped...)
 	r.Omitted = append(r.Omitted, omitted...)
+	if err == nil && r.Before != "" {
+		s.repoBaselines(ctx, &r, repos)
+	}
 	now := time.Now().UTC()
 	r.CompletedAt = &now
 	r.Status = "complete"
@@ -631,13 +660,14 @@ func (s Store) prune(ctx context.Context) {
 		if r.Reviewed || (i < keepTurns && time.Since(r.StartedAt) < 14*24*time.Hour) {
 			continue
 		}
-		for _, phase := range []string{"before", "after"} {
+		for _, phase := range []string{"before", "after", "baseline"} {
 			_ = s.command(ctx, "update-ref", "-d", "refs/turns/"+r.ID+"/"+phase).Run()
 		}
 		_ = os.Remove(filepath.Join(s.dir(), "turns", r.ID+".json"))
 		removed = true
 	}
 	if removed {
+		s.dropViews(ctx)
 		_ = s.command(ctx, "gc", "--prune=now", "--quiet").Run()
 	}
 }
@@ -674,6 +704,20 @@ func (s Store) compare(ctx context.Context, r Record, file string, allow func(st
 	if r.Status != "complete" && r.Status != "partial" {
 		return out, errors.New("this turn has no completed file comparison")
 	}
+	// Checkouts that appeared or vanished during the turn compare against
+	// their checked-out commit, not against nothing (repo_baselines.go).
+	before, after, err := s.effective(ctx, r)
+	if err != nil {
+		return out, err
+	}
+	r.Before, r.After = before, after
+	out.Record.Before, out.Record.After = before, after
+	for p, tree := range r.NewRepos {
+		if tree != "" {
+			out.NewRepos = append(out.NewRepos, p)
+		}
+	}
+	sort.Strings(out.NewRepos)
 	skipped := map[string]bool{}
 	for _, p := range r.Skipped {
 		skipped[p] = true
@@ -696,6 +740,9 @@ func (s Store) compare(ctx context.Context, r Record, file string, allow func(st
 		out.Record.Skipped = out.Record.Skipped[:50]
 	}
 	for _, p := range r.Omitted {
+		skipped[p] = true
+	}
+	for _, p := range r.BaselineSkipped {
 		skipped[p] = true
 	}
 	raw, err := s.command(ctx, "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-status", "-z", r.Before, r.After, "--").Output()
@@ -801,6 +848,10 @@ func (s Store) CompareBoundaries(ctx context.Context, first, last, firstSide, fi
 	if err != nil {
 		return Comparison{}, err
 	}
+	window, err := s.windowRepos(before.StartedAt, after.StartedAt)
+	if err != nil {
+		return Comparison{}, err
+	}
 	if firstSide == "after" {
 		before.Before = before.After
 		before.BeforeSkippedState = before.AfterSkippedState
@@ -823,6 +874,7 @@ func (s Store) CompareBoundaries(ctx context.Context, first, last, firstSide, fi
 	if before.Status == "partial" {
 		after.Status = "partial"
 	}
+	after.NewRepos, after.GoneRepos, after.BaselineSkipped = window.NewRepos, window.GoneRepos, window.BaselineSkipped
 	out, err := s.compare(ctx, after, file, allow)
 	out.Note = "Net changes between this chat's saved boundaries. Other chats or editors may contribute. Undo is not available."
 	return out, err

@@ -354,6 +354,12 @@ type pending struct {
 // new contents. Paths skipped for size, budget or read errors are left out of
 // the tree and out of every index, so no older blob stands in for them.
 func (s Store) capture(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string, budget int64) (string, []string, []string, error) {
+	return s.captureRepos(ctx, ref, prior, stats, skippedState, budget, nil)
+}
+
+// captureRepos is capture that also fills repos (when non-nil) with the Git
+// checkouts it listed: Crew-relative folder -> absolute work tree.
+func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string, budget int64, repos map[string]string) (string, []string, []string, error) {
 	s.cleanStale()
 	if err := os.MkdirAll(s.indexDir(), 0700); err != nil {
 		return "", nil, nil, err
@@ -361,6 +367,11 @@ func (s Store) capture(ctx context.Context, ref, prior string, stats *CaptureSta
 	checkouts, omitted, err := s.candidates(ctx, stats)
 	if err != nil {
 		return "", nil, nil, err
+	}
+	for _, c := range checkouts {
+		if repos != nil && !c.loose {
+			repos[c.prefix] = c.dir
+		}
 	}
 	root, err := os.OpenRoot(s.Root)
 	if err != nil {
