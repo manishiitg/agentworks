@@ -51,7 +51,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	for key, value := range map[string]any{
 		"chat_instructions":  map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional short instructions for the app chat: behavior, tone and what to do first. Visible to people who can use the app; no secrets. Empty clears. Owner only; never grants tools or permissions."},
 		"expected_version":   externalString("Version from settings action=get; the update is refused if the settings changed since."),
-		"models":             map[string]any{"type": "object", "description": "The models object from settings action=get with your changes. Replaces it whole; every account (connection_id) must be one you may use. idle_compaction: false stops tidying (summarising) this project's long chats after about 50 idle minutes; absent means on."},
+		"models":             map[string]any{"type": "object", "description": "The models object from settings action=get with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
 		"mcp_servers":        map[string]any{"type": "object", "additionalProperties": false, "description": "Attach/detach apps (MCP servers and Vault apps), or replace the complete selection.", "properties": map[string]any{"add": names, "remove": names, "replace": names}},
 		"use_all_vault_apps": map[string]any{"type": "boolean", "description": "Use all my apps automatically. On: every Vault app the owner may use is available. Off: only the Vault apps listed in mcp_servers."},
 		"tools":              addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),

@@ -6340,13 +6340,12 @@ func registerWorkshopLLMTools(iwm *InteractiveWorkshopManager, mcpAgent Definiti
 					"enum":        []string{workflowtypes.LLMConfigModeProviderProfile, workflowtypes.LLMConfigModeExplicit},
 					"description": "provider_profile follows the coding-agent provider defaults; explicit pins every workflow role.",
 				},
-				"provider":        map[string]interface{}{"type": "string", "description": "Coding-agent provider id. Required only in provider_profile mode."},
-				"builder_llm":     llmEntrySchema("Builder model for planning, eval design, debugging, and normal workflow-builder chat."),
-				"tier_1":          llmEntrySchema("High-reasoning execution tier: first-time or difficult work."),
-				"tier_2":          llmEntrySchema("Medium-reasoning execution tier: established work with useful context."),
-				"tier_3":          llmEntrySchema("Low-reasoning execution tier: validation and mature routine work."),
-				"background_llm":  llmEntrySchema("Model for independent reviews and knowledge-base maintenance."),
-				"idle_compaction": map[string]interface{}{"type": "boolean", "description": "Tidy long chats while idle: after about 50 minutes without a message, long chats are summarised so the next message costs less. On unless set to false; omit to keep the saved value."},
+				"provider":       map[string]interface{}{"type": "string", "description": "Coding-agent provider id. Required only in provider_profile mode."},
+				"builder_llm":    llmEntrySchema("Builder model for planning, eval design, debugging, and normal workflow-builder chat."),
+				"tier_1":         llmEntrySchema("High-reasoning execution tier: first-time or difficult work."),
+				"tier_2":         llmEntrySchema("Medium-reasoning execution tier: established work with useful context."),
+				"tier_3":         llmEntrySchema("Low-reasoning execution tier: validation and mature routine work."),
+				"background_llm": llmEntrySchema("Model for independent reviews and knowledge-base maintenance."),
 			},
 			"required": []string{"mode"},
 		},
@@ -6375,7 +6374,7 @@ func registerWorkshopLLMTools(iwm *InteractiveWorkshopManager, mcpAgent Definiti
 				"schema_version": workflowtypes.LLMConfigSchemaVersion,
 			}
 			for _, key := range []string{
-				"use_knowledgebase", "kb_shape", "idle_compaction",
+				"use_knowledgebase", "kb_shape",
 				"enable_context_summarization",
 				"enable_image_generation", "image_gen_provider", "image_gen_model_id",
 			} {
@@ -6385,10 +6384,6 @@ func registerWorkshopLLMTools(iwm *InteractiveWorkshopManager, mcpAgent Definiti
 			}
 
 			updated := []string{}
-			if value, ok := args["idle_compaction"].(bool); ok {
-				llmCfg["idle_compaction"] = value
-				updated = append(updated, fmt.Sprintf("idle_compaction=%t", value))
-			}
 
 			buildTierEntry := func(raw interface{}) map[string]interface{} {
 				m, ok := raw.(map[string]interface{})
