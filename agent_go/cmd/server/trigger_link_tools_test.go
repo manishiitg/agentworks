@@ -167,11 +167,11 @@ func TestConnectCrewToCrewCreatesVisibleBoundTrigger(t *testing.T) {
 
 // Internal bindings default to isolation until dispatch resolves project owners.
 func TestCallerBindingDefaultsToIsolationBeforeOwnerRouting(t *testing.T) {
-	trigger := productWebhookTrigger{ID: "t", Kind: triggerKindInternal, RunDestination: runDestinationCrewChat}
+	trigger := productWebhookTrigger{ID: "t", Kind: triggerKindInternal, RunDestination: runDestinationChat}
 	if !trigger.ownConversation() {
-		t.Fatal("internal trigger with crew_chat must still run in its own conversation")
+		t.Fatal("internal trigger with chat must still run in its own conversation")
 	}
-	if webhook := (productWebhookTrigger{ID: "w", RunDestination: runDestinationCrewChat}); webhook.ownConversation() {
+	if webhook := (productWebhookTrigger{ID: "w", RunDestination: runDestinationChat}); webhook.ownConversation() {
 		t.Fatal("an external webhook keeps its main-chat destination")
 	}
 	if webhook := (productWebhookTrigger{ID: "w", RunDestination: runDestinationIsolated}); !webhook.ownConversation() {

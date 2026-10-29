@@ -342,7 +342,7 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 		trigger.Caller = manifest.Triggers[index].Caller
 		trigger.WorkspaceFunction = manifest.Triggers[index].WorkspaceFunction || req.WorkspaceFunction
 		if strings.TrimSpace(req.RunDestination) == "" {
-			trigger.RunDestination = firstNonEmptyTrimmed(manifest.Triggers[index].RunDestination, runDestinationCrewChat)
+			trigger.RunDestination = firstNonEmptyTrimmed(manifest.Triggers[index].RunDestination, runDestinationChat)
 		}
 	}
 	if strings.TrimSpace(req.Kind) != "" || index < 0 {

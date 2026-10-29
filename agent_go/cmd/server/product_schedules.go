@@ -26,7 +26,7 @@ const projectScheduleJobPrefix = "product-project:"
 const productScheduleStateFile = "product-schedules.json"
 
 const (
-	runDestinationCrewChat = "crew_chat"
+	runDestinationChat = "chat"
 	runDestinationIsolated = "isolated"
 )
 
@@ -34,17 +34,17 @@ func runDestination(isolated bool) string {
 	if isolated {
 		return runDestinationIsolated
 	}
-	return runDestinationCrewChat
+	return runDestinationChat
 }
 
 func isolatedForRunDestination(value string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", runDestinationCrewChat:
+	case "", runDestinationChat:
 		return false, nil
 	case runDestinationIsolated:
 		return true, nil
 	default:
-		return false, fmt.Errorf("run_destination must be %q or %q", runDestinationCrewChat, runDestinationIsolated)
+		return false, fmt.Errorf("run_destination must be %q or %q", runDestinationChat, runDestinationIsolated)
 	}
 }
 

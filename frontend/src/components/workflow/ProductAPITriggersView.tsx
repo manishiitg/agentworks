@@ -92,8 +92,8 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <span className="shrink-0 font-medium text-foreground">Run in</span>
-        <select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.run_destination || 'crew_chat'} onChange={event => void save({ ...trigger, run_destination: event.target.value as 'crew_chat' | 'isolated' })} className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">
-          <option value="crew_chat">Main chat</option>
+        <select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.run_destination || 'chat'} onChange={event => void save({ ...trigger, run_destination: event.target.value as 'chat' | 'isolated' })} className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">
+          <option value="chat">Main chat</option>
           <option value="isolated">Own conversation</option>
         </select>
         </label>

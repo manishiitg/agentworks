@@ -48,7 +48,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
 			"id":              map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
 			"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"}, "rotate_secret": map[string]interface{}{"type": "boolean"},
-			"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}, "description": "Where trigger runs execute. crew_chat (default) runs in the main Crew conversation; isolated gives this webhook its own continuing conversation. Internal project callers use the main chat when source and target share any owner; otherwise a separate continuing conversation."},
+			"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationChat, runDestinationIsolated}, "description": "Where trigger runs execute. chat (default) runs in the main Crew conversation; isolated gives this webhook its own continuing conversation. Internal project callers use the main chat when source and target share any owner; otherwise a separate continuing conversation."},
 			"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
 			"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
 		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -117,7 +117,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if current == nil {
 				return "", fmt.Errorf("trigger not found")
 			}
-			name, message, enabled, destination := current.Name, current.Message, current.Enabled, firstNonEmptyTrimmed(current.RunDestination, runDestinationCrewChat)
+			name, message, enabled, destination := current.Name, current.Message, current.Enabled, firstNonEmptyTrimmed(current.RunDestination, runDestinationChat)
 			authMode := ""
 			if current.Webhook != nil {
 				authMode = current.Webhook.AuthMode

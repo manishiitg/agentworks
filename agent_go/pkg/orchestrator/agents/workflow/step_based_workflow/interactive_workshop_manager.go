@@ -5458,12 +5458,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"description": "Optional delay after the prerequisite terminal receipt before this schedule may start.",
 				},
 				"run_destination": map[string]interface{}{
-					"type": "string", "enum": []string{"new", "crew_chat", "isolated"},
-					"description": "Only for a schedule with messages: new (a new conversation each time, the default), crew_chat (the schedule owner's Builder chat named by chat_id) or isolated (the schedule's own conversation, kept across runs). A plan run always starts a new run.",
+					"type": "string", "enum": []string{"new", "chat", "isolated"},
+					"description": "Only for a schedule with messages: new (a new conversation each time, the default), chat (the schedule owner's Builder chat named by chat_id) or isolated (the schedule's own conversation, kept across runs). A plan run always starts a new run.",
 				},
 				"chat_id": map[string]interface{}{
 					"type":        "string",
-					"description": "With run_destination crew_chat: main for the main Builder chat, or a tab id from manage_builder_chats list.",
+					"description": "With run_destination chat: main for the main Builder chat, or a tab id from manage_builder_chats list.",
 				},
 				"dependency_deadline": map[string]interface{}{
 					"type":        "string",
@@ -5767,12 +5767,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type": "integer", "minimum": 0, "description": "Delay after prerequisite completion. Zero clears it.",
 				},
 				"run_destination": map[string]interface{}{
-					"type": "string", "enum": []string{"new", "crew_chat", "isolated"},
-					"description": "Only for a schedule with messages: new (a new conversation each time, the default), crew_chat (the schedule owner's Builder chat named by chat_id) or isolated (the schedule's own conversation, kept across runs). A plan run always starts a new run.",
+					"type": "string", "enum": []string{"new", "chat", "isolated"},
+					"description": "Only for a schedule with messages: new (a new conversation each time, the default), chat (the schedule owner's Builder chat named by chat_id) or isolated (the schedule's own conversation, kept across runs). A plan run always starts a new run.",
 				},
 				"chat_id": map[string]interface{}{
 					"type":        "string",
-					"description": "With run_destination crew_chat: main for the main Builder chat, or a tab id from manage_builder_chats list.",
+					"description": "With run_destination chat: main for the main Builder chat, or a tab id from manage_builder_chats list.",
 				},
 				"dependency_deadline": map[string]interface{}{
 					"type": "string", "description": "Local HH:MM deadline, or an empty string to clear it.",

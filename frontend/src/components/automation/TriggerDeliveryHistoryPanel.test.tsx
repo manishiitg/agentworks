@@ -62,7 +62,7 @@ it('loads Crew trigger runs from the product trigger source and opens their chat
 it('keeps older webhook rows compact and explains why their payload is unavailable', async () => {
   vi.mocked(productWebhooksApi.list).mockResolvedValue({ triggers: [{
     id: 'trigger-old', name: 'Older delivery', enabled: true, message: 'A long saved webhook instruction',
-    auth_mode: 'bearer', path: '/api/hooks/product/trigger-old', run_destination: 'crew_chat',
+    auth_mode: 'bearer', path: '/api/hooks/product/trigger-old', run_destination: 'chat',
   }] })
   vi.mocked(productWebhooksApi.runs).mockResolvedValue({ runs: [{
     id: 'run-old', job_id: 'product-project:work:crew-1:trigger-old', trigger_source: 'webhook',

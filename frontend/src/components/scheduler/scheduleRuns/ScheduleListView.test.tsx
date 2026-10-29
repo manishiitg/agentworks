@@ -59,7 +59,7 @@ describe('ScheduleListView run destination', () => {
   it('lists the tabs the server returns and selects the one the schedule runs in', async () => {
     const { host, unmount } = await renderList([
       job({
-        id: 'p', name: 'Upwork check', entity_type: 'product', run_destination: 'crew_chat', chat_id: 'abc12345',
+        id: 'p', name: 'Upwork check', entity_type: 'product', run_destination: 'chat', chat_id: 'abc12345',
         run_destinations: [{ id: 'main', label: 'Main chat' }, { id: 'abc12345', label: 'Upwork' }, { id: 'isolated', label: 'Own conversation' }],
       }),
     ])

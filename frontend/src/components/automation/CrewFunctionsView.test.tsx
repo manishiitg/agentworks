@@ -35,7 +35,7 @@ describe('CrewFunctionsView', () => {
     listTriggers.mockReset()
     removeTrigger.mockReset()
     listTriggers.mockResolvedValue({ triggers: [
-      { id: 'hook-1', name: 'GitHub push', enabled: true, message: 'x', auth_mode: 'github', path: '/api/hooks/product/hook-1', run_destination: 'crew_chat' },
+      { id: 'hook-1', name: 'GitHub push', enabled: true, message: 'x', auth_mode: 'github', path: '/api/hooks/product/hook-1', run_destination: 'chat' },
       { id: 'bind-1', name: 'Called by Alpha Bot', enabled: true, message: 'x', auth_mode: '', path: '', run_destination: 'isolated', kind: 'internal', caller: { type: 'crew', id: 'alpha' } },
     ] })
     removeTrigger.mockResolvedValue({})

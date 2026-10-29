@@ -17,7 +17,7 @@ func TestProductWebhookTriggerValidationAndDTO(t *testing.T) {
 		t.Fatal(err)
 	}
 	dto := productWebhookDTO(trigger)
-	if dto.Path != "/api/hooks/"+trigger.ID || dto.AuthMode != "bearer" || dto.Message != trigger.Message || dto.RunDestination != runDestinationCrewChat {
+	if dto.Path != "/api/hooks/"+trigger.ID || dto.AuthMode != "bearer" || dto.Message != trigger.Message || dto.RunDestination != runDestinationChat {
 		t.Fatalf("dto = %+v", dto)
 	}
 	trigger.RunDestination = runDestinationIsolated

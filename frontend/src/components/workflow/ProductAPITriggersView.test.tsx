@@ -13,7 +13,7 @@ vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const scope = { profileId: 'work', projectId: 'p1' }
-const trigger = { id: 'trigger-1', name: 'Deploy hook', enabled: true, message: 'Deploy the app', auth_mode: 'bearer' as const, path: '/api/hooks/product/trigger-1', run_destination: 'crew_chat' as const }
+const trigger = { id: 'trigger-1', name: 'Deploy hook', enabled: true, message: 'Deploy the app', auth_mode: 'bearer' as const, path: '/api/hooks/product/trigger-1', run_destination: 'chat' as const }
 const cleanups: (() => void)[] = []
 beforeEach(() => {
   // Automatic incoming Gmail is a server-deployment surface (PLAT-500); the panel renders only when local_mode is false.

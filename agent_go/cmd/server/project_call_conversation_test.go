@@ -132,7 +132,7 @@ func TestLegacyLocalCrewStepAdoptsMainChatDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := stepworkflow.CrewStepRequest{WorkflowID: manifest.ID, ExecutionID: "exec-local", StepID: "notify", Group: "default", ProfileID: "work", ProjectID: "beta", TriggerID: triggerID, TimeoutSeconds: 1}
-	deliveryID := crewStepDeliveryBase(req.WorkflowID, req.ExecutionID, req.Group, req.StepID, req.TriggerID, runDestinationCrewChat)
+	deliveryID := crewStepDeliveryBase(req.WorkflowID, req.ExecutionID, req.Group, req.StepID, req.TriggerID, runDestinationChat)
 	delivery, err := env.api.dispatchTargetTrigger(ctx, "owner", caller, target, triggerID, deliveryID, "test", map[string]interface{}{})
 	if err != nil {
 		t.Fatal(err)

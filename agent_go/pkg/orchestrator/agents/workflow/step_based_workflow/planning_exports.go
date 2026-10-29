@@ -288,7 +288,7 @@ type ScheduleRuntimePolicy struct {
 	AfterDelayMinutes        int
 	DependencyDeadline       string
 	// RunDestination and ChatID choose where a schedule with messages runs,
-	// as the Schedules screen does (new, crew_chat with chat_id, isolated).
+	// as the Schedules screen does (new, chat with chat_id, isolated).
 	// Empty and nil keep the current choice.
 	RunDestination string
 	ChatID         *string

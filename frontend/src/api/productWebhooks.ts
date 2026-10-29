@@ -10,7 +10,7 @@ export interface ProductAPITrigger {
   auth_mode: 'bearer' | 'github' | ''
   path: string
   secret?: string
-  run_destination: 'crew_chat' | 'isolated'
+  run_destination: 'chat' | 'isolated'
   kind?: string
   caller?: { type: string; id: string; profile_id?: string }
 }

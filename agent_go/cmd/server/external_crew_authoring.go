@@ -977,7 +977,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"cadence_hours":   map[string]any{"type": "integer", "minimum": 0, "description": "Run this many hours after the last run (instead of cron)."},
 		"preferred_hour":  map[string]any{"type": "integer", "minimum": 0, "maximum": 23},
 		"enabled":         map[string]any{"type": "boolean"},
-		"run_destination": map[string]any{"type": "string", "enum": []any{runDestinationCrewChat, runDestinationIsolated}, "description": "crew_chat (default) or isolated."},
+		"run_destination": map[string]any{"type": "string", "enum": []any{runDestinationChat, runDestinationIsolated}, "description": "chat (default) or isolated."},
 	}}
 	props := map[string]any{
 		"root_path":         str("Local app only, at creation: full path of an existing folder to use directly. Crew resources are kept in its .agentworks folder; existing files and instructions are preserved. Omit for a managed folder."),

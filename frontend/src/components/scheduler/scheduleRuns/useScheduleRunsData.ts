@@ -523,7 +523,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     try {
       const request: UpdateScheduledJobRequest = destination === 'isolated' || destination === 'new'
         ? { run_destination: destination as 'isolated' | 'new' }
-        : { run_destination: 'crew_chat', chat_id: destination === 'main' ? '' : destination }
+        : { run_destination: 'chat', chat_id: destination === 'main' ? '' : destination }
       const updated = await schedulerApi.updateJob(job.id, request)
       setJobs(previous => previous.map(candidate => candidate.id === job.id ? retainDurationAverage(updated, candidate) : candidate))
       const label = job.run_destinations?.find(item => item.id === destination)?.label

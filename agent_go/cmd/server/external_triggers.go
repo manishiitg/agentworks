@@ -21,7 +21,7 @@ func externalTriggerDefinitions(add func(string, string, bool, bool, map[string]
 		"action":  map[string]any{"type": "string", "enum": []any{"list", "create", "update", "delete", "test", "status", "runs"}},
 		"limit":   externalInteger(1, 100),
 		"id":      externalString("Trigger ID from list; required for update, delete, test and runs."),
-		"trigger": map[string]any{"type": "object", "description": "For create and update. Workflows and Flows: name, enabled, kind (webhook default, function, internal), auth_mode (bearer or github), route_selections, group_names (workflows), function {name, description, inputs, allowed_callers}, caller, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Crews: name, enabled, message, auth_mode, run_destination (crew_chat or isolated), kind (internal), caller, rotate_secret. For test: payload, event, delivery_id; for status: run_id."},
+		"trigger": map[string]any{"type": "object", "description": "For create and update. Workflows and Flows: name, enabled, kind (webhook default, function, internal), auth_mode (bearer or github), route_selections, group_names (workflows), function {name, description, inputs, allowed_callers}, caller, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Crews: name, enabled, message, auth_mode, run_destination (chat or isolated), kind (internal), caller, rotate_secret. For test: payload, event, delivery_id; for status: run_id."},
 	}, "action", "project")
 }
 
@@ -135,7 +135,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		}
 		externalJSON(w, map[string]any{"crew_id": crewID, "triggers": out})
 	case "create", "update":
-		req := productWebhookRequest{ProfileID: profileID, ProjectID: crewID, Enabled: true, RunDestination: runDestinationCrewChat}
+		req := productWebhookRequest{ProfileID: profileID, ProjectID: crewID, Enabled: true, RunDestination: runDestinationChat}
 		if action == "update" {
 			var current *productWebhookTrigger
 			for i := range triggers {
@@ -148,7 +148,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 				return
 			}
 			req.Name, req.Message, req.Enabled, req.Kind, req.Caller = current.Name, current.Message, current.Enabled, current.Kind, current.Caller
-			req.RunDestination = firstNonEmptyTrimmed(current.RunDestination, runDestinationCrewChat)
+			req.RunDestination = firstNonEmptyTrimmed(current.RunDestination, runDestinationChat)
 			if current.Webhook != nil {
 				req.AuthMode = current.Webhook.AuthMode
 			}

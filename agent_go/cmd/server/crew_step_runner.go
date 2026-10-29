@@ -95,7 +95,7 @@ func (r *crewStepRunner) RunCrewStep(ctx context.Context, req stepworkflow.CrewS
 	// the immutable execution identity: run folders are reused between
 	// executions and would let a later execution adopt a stale success.
 	// The trigger and its destination join the key so retargeting a step
-	// (or flipping isolated/crew_chat) fires a new run instead of
+	// (or flipping isolated/chat) fires a new run instead of
 	// adopting the previous trigger's success.
 	destination := runDestinationIsolated
 	if _, binding, _, _, terr := r.crews.findInternalProductTrigger(ctx, r.userID, req.ProfileID, req.ProjectID, req.TriggerID); terr == nil {

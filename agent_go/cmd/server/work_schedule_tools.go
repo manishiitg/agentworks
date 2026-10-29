@@ -105,7 +105,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return err
 	}
 	if !readOnly {
-		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Choose crew_chat to send a normal message into the project chat (steering it if already running), or isolated for this schedule's own persistent automation conversation.", map[string]interface{}{
+		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Choose chat to send a normal message into the project chat (steering it if already running), or isolated for this schedule's own persistent automation conversation.", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},
@@ -115,7 +115,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"run_at":          map[string]interface{}{"type": "string", "description": "One-time: run once at this exact moment, RFC3339 with an offset, for example 2026-10-05T21:30:00+05:30. Must be in the future."},
 				"timezone":        map[string]interface{}{"type": "string", "description": "IANA timezone, for example Asia/Kolkata. Required with cron_expression; for a one-time schedule it only sets how the time is shown."},
 				"enabled":         map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}, "description": "Where runs execute. Defaults to crew_chat."},
+				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationChat, runDestinationIsolated}, "description": "Where runs execute. Defaults to chat."},
 				"chat_id":         map[string]interface{}{"type": "string", "description": "Run in this tab of the project (a chat_id from the project's chat list) instead of the main chat. Omit to use the chat this is called from."},
 			},
 			"required": []string{"name", "message"},
@@ -179,7 +179,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"cron_expression": map[string]interface{}{"type": "string"}, "timezone": map[string]interface{}{"type": "string"},
 				"in_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "Make it one-time: run once this many minutes from now. Replaces the recurring timing."},
 				"run_at":     map[string]interface{}{"type": "string", "description": "Make it one-time: run once at this RFC3339 moment. Replaces the recurring timing."}, "enabled": map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}},
+				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationChat, runDestinationIsolated}},
 				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). An empty string moves it back to the main chat."},
 			},
 			"required": []string{"id"},
@@ -275,11 +275,11 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return err
 	}
 	if !readOnly {
-		if err := register("create_project_trigger", "Create an authenticated webhook trigger for this project. Choose crew_chat to queue work in the main project conversation, or isolated for this webhook's own continuing conversation. Return the one-time secret immediately, and tell the user that anyone holding the URL and secret can start a run as them, with their connections and secrets."+crewFunctionsHint, map[string]interface{}{
+		if err := register("create_project_trigger", "Create an authenticated webhook trigger for this project. Choose chat to queue work in the main project conversation, or isolated for this webhook's own continuing conversation. Return the one-time secret immediately, and tell the user that anyone holding the URL and secret can start a run as them, with their connections and secrets."+crewFunctionsHint, map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
 				"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}},
+				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationChat, runDestinationIsolated}},
 				"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
 				"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
 			}, "required": []string{"name", "message"},
@@ -306,7 +306,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			"type": "object", "properties": map[string]interface{}{
 				"id": map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
 				"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"}, "rotate_secret": map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}},
+				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationChat, runDestinationIsolated}},
 				"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
 				"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
 			}, "required": []string{"id"},
@@ -326,7 +326,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			if current == nil {
 				return "", fmt.Errorf("trigger not found")
 			}
-			name, message, enabled, destination := current.Name, current.Message, current.Enabled, firstNonEmptyTrimmed(current.RunDestination, runDestinationCrewChat)
+			name, message, enabled, destination := current.Name, current.Message, current.Enabled, firstNonEmptyTrimmed(current.RunDestination, runDestinationChat)
 			authMode := ""
 			if current.Webhook != nil {
 				authMode = current.Webhook.AuthMode

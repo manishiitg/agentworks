@@ -64,15 +64,15 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 		return nil
 	}
 	if destination == "" {
-		destination = runDestinationCrewChat
+		destination = runDestinationChat
 	}
 	switch destination {
 	case runDestinationNew:
 		sched.ChatKey, sched.Conversation = "", ""
 		return nil
-	case runDestinationCrewChat, runDestinationIsolated:
+	case runDestinationChat, runDestinationIsolated:
 	default:
-		return fmt.Errorf("run_destination must be %q, %q or %q", runDestinationNew, runDestinationCrewChat, runDestinationIsolated)
+		return fmt.Errorf("run_destination must be %q, %q or %q", runDestinationNew, runDestinationChat, runDestinationIsolated)
 	}
 	if len(sched.Messages) == 0 {
 		return fmt.Errorf("only a schedule that sends messages can run in a chat; a plan run always starts a new run")
@@ -116,7 +116,7 @@ func goalScheduleDestinationView(manifest *WorkflowManifest, workspace string, s
 	case sched.Conversation == runDestinationIsolated:
 		destination = runDestinationIsolated
 	case sched.ChatKey != "":
-		destination, chatKey = runDestinationCrewChat, sched.ChatKey
+		destination, chatKey = runDestinationChat, sched.ChatKey
 		if sched.ChatKey != mainKey {
 			chatID = strings.TrimPrefix(sched.ChatKey, manifest.ID+codeChatSideMarker)
 		}
