@@ -335,10 +335,22 @@ var crewSnapshotUnavailableText = map[string]string{
 	"failed":     "File changes for this reply weren't saved (the file snapshot failed).",
 }
 
+// crewSetupNoticeShown remembers chats (per Crew store) that already got the
+// "setting up file tracking" line, so a Crew's first index build shows it
+// once per chat, not under every reply (PLAT-746-163). In memory: after a
+// restart a chat may see it once more.
+var crewSetupNoticeShown sync.Map
+
 func (api *StreamingAPI) publishCrewSnapshotUnavailable(snapshot *crewTurnSnapshot, reason string) {
 	end, ok := api.crewSnapshotReplyEnd(snapshot)
 	if !ok {
 		return
+	}
+	if reason == "setting_up" {
+		if _, shown := crewSetupNoticeShown.LoadOrStore(snapshot.sessionID+"\x00"+snapshot.store.Private, true); shown {
+			log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s skipped=setting_up_already_shown", snapshot.sessionID, snapshot.executionID)
+			return
+		}
 	}
 	data := storeevents.NewGenericEventData("reply_file_changes", map[string]interface{}{
 		"status": "unavailable", "reason": reason, "message": crewSnapshotUnavailableText[reason], "workspace_path": snapshot.root,

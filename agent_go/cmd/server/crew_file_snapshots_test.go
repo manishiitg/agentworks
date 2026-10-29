@@ -196,3 +196,37 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 		t.Fatal("undelivered snapshot remains active")
 	}
 }
+
+// While a Crew's first index builds, the "setting up" line shows once per
+// chat; other unavailable reasons stay per reply (PLAT-746-163).
+func TestSettingUpNoticeOncePerChat(t *testing.T) {
+	api := lifecycleTestAPI()
+	api.eventStore = storeevents.NewEventStore(100)
+	store := filesnapshots.Store{Root: t.TempDir(), Private: t.TempDir()}
+	reply := func(session, execution, reason string) {
+		api.eventStore.AddEvent(session, storeevents.Event{ID: execution + "-user", Type: "user_message", SessionID: session})
+		snapshot := &crewTurnSnapshot{store: store, root: "Crew/example", executionID: execution, sessionID: session, startSequence: api.crewSnapshotSequence(session)}
+		api.eventStore.AddEvent(session, storeevents.Event{ID: execution + "-reply", Type: "unified_completion", SessionID: session})
+		snapshot.outputDone.Store(true)
+		api.publishCrewSnapshotUnavailable(snapshot, reason)
+	}
+	count := func(session, reason string) int {
+		n := 0
+		for _, event := range api.eventStore.LastEventsRaw(session, 100) {
+			if event.Type == "reply_file_changes" {
+				if raw, _ := json.Marshal(event.Data); strings.Contains(string(raw), `"reason":"`+reason+`"`) {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	for i, session := range []string{"chat-a", "chat-a", "chat-a", "chat-b"} {
+		reply(session, "setup-"+string(rune('a'+i)), "setting_up")
+	}
+	reply("chat-a", "busy-1", "busy")
+	reply("chat-a", "busy-2", "busy")
+	if a, b, busy := count("chat-a", "setting_up"), count("chat-b", "setting_up"), count("chat-a", "busy"); a != 1 || b != 1 || busy != 2 {
+		t.Fatalf("setting_up chat-a=%d chat-b=%d busy=%d, want 1 1 2", a, b, busy)
+	}
+}
