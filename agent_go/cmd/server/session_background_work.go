@@ -22,7 +22,7 @@ import (
 
 type SessionBackgroundWorkItem struct {
 	ID        string    `json:"id"`
-	Kind      string    `json:"kind"` // step | workflow_run | sub_agent | crew_call
+	Kind      string    `json:"kind"` // step | workflow_run | sub_agent | crew_call | claude_task
 	Label     string    `json:"label"`
 	StartedAt time.Time `json:"started_at"`
 	CanStop   bool      `json:"can_stop"`
@@ -98,7 +98,9 @@ func (api *StreamingAPI) sessionBackgroundWork(sessionID string) []SessionBackgr
 		return items
 	}
 	items = append(items, api.nativeCodingBackgroundWork(sessionID)...)
+	items = append(items, claudeTaskBackgroundWork(sessionID)...)
 	if api.bgAgentRegistry == nil {
+		sort.Slice(items, func(i, j int) bool { return items[i].StartedAt.Before(items[j].StartedAt) })
 		return items
 	}
 	running := map[string]BackgroundAgentSnapshot{}
@@ -193,6 +195,9 @@ func (api *StreamingAPI) handleStopSessionBackgroundWork(w http.ResponseWriter, 
 }
 
 func (api *StreamingAPI) stopSessionBackgroundWorkItem(sessionID, execID string) bool {
+	if strings.HasPrefix(execID, claudeTaskWorkPrefix) {
+		return stopClaudeTaskBackgroundWork(sessionID, execID)
+	}
 	if api == nil || api.bgAgentRegistry == nil {
 		return false
 	}

@@ -12,6 +12,7 @@ const KIND_PREFIX: Record<SessionBackgroundWorkItem['kind'], string> = {
   native_helper: '',
   native_command: '',
   native_turn: '',
+  claude_task: 'Started by Claude',
 }
 
 export function backgroundWorkLabel(item: SessionBackgroundWorkItem): string {

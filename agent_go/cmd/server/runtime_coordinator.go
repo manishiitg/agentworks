@@ -438,6 +438,10 @@ func (api *StreamingAPI) collectRuntimeSnapshot(sessionID string) RuntimeSnapsho
 			}
 		}
 	}
+	// Tasks Claude started itself keep running after its answer (PLAT-872).
+	if !snapshot.BackgroundLive && claudeTasksRunning(sessionID) {
+		snapshot.BackgroundLive = true
+	}
 
 	if api.terminalStore != nil {
 		snapshot.TerminalBusy = api.terminalStore.SessionHasBusyCodingTmux(sessionID)

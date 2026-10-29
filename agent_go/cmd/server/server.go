@@ -2887,6 +2887,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// automatically mirror its background session's agent messages into the
 	// parent's Slack thread — no per-tool hooks required.
 	virtualtools.SetSpawnListener(botManager)
+	// Claude's own background tasks that outlive a turn are shown under the last reply (PLAT-872).
+	api.wireClaudeBackgroundTasks()
 
 	// Wire bot session checker for human feedback (skip 2-min delay for bot sessions)
 	feedbackStore := virtualtools.GetHumanFeedbackStore()
@@ -8153,7 +8155,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// This prevents the agent from being canceled when the HTTP request ends
 		agentCtx, cancelTurn := context.WithCancelCause(streamCtx)
 		agentCancel = func() { cancelTurn(context.Canceled) }
-		stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, queryID, time.Now(), nil, func(reason error) bool { cancelTurn(reason); return true })
+		stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, queryID, time.Now(), nil, func(reason error) bool {
+			if releaseAnsweredCodingTurn(sessionID) {
+				return true
+			}
+			cancelTurn(reason)
+			return true
+		})
 		defer stopIdleWatch()
 		agentCtx = queryLogCtx.Context(agentCtx)
 		agentCtx = withConversationTurnExecutionID(agentCtx, queryID)

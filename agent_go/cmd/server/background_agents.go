@@ -2975,7 +2975,13 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 	// Create cancellable context for this synthetic turn
 	agentCtx, cancelTurn := context.WithCancelCause(context.Background())
 	agentCancel := func() { cancelTurn(context.Canceled) }
-	stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, syntheticExecutionID, time.Now(), nil, func(reason error) bool { cancelTurn(reason); return true })
+	stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, syntheticExecutionID, time.Now(), nil, func(reason error) bool {
+		if releaseAnsweredCodingTurn(sessionID) {
+			return true
+		}
+		cancelTurn(reason)
+		return true
+	})
 	if logCtx, ok := lookupServerLogContext(sessionID); ok {
 		agentCtx = logCtx.Context(agentCtx)
 	}
