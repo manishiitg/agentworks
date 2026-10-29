@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
 // PLAT-872: sharing a conversation does not share its provider account's quota.
@@ -17,17 +16,7 @@ func TestNativeUsageWarningsStayWithAccountOwner(t *testing.T) {
 	store := events.NewEventStore(10)
 	defer store.Stop()
 	store.SetSessionOwner("native-private-example", "alice")
-	api := &StreamingAPI{eventStore: store, nativeCosts: map[string]*nativeCostAccountant{"native-private-example": {usage: nativeusage.PrivateUsage{ContextUsed: 4200, ContextWindow: 10000, Limits: []nativeusage.Limit{{Name: "private-window", UsedPercent: 95}}}}}}
-	// The composer reads the existing session summary even when the runtime
-	// has no published terminal. Only the reported context percent is shared.
-	summary := api.buildActiveSessionInfoSummary(&ActiveSessionInfo{SessionID: "native-private-example"})
-	raw, err := json.Marshal(summary)
-	if err != nil || summary.ContextUsagePercent == nil || *summary.ContextUsagePercent != 42 || strings.Contains(string(raw), "private-window") {
-		t.Fatalf("session context projection: %s %v", raw, err)
-	}
-	if api.nativeSessionContextPercent("unknown") != nil {
-		t.Fatal("unknown context invented a percentage")
-	}
+	api := &StreamingAPI{eventStore: store}
 	payload := map[string]interface{}{"events": []interface{}{map[string]interface{}{"type": "status_line", "data": map[string]interface{}{"text": "private quota text", "metadata": map[string]interface{}{"context_used_tokens": 4200, "context_window_tokens": 10000, "rate_limit_windows": []interface{}{map[string]interface{}{"name": "private-window", "used_percent": 95, "resets_at": 12345}}, "status_extras": []interface{}{"ctx 42%", "private-window 95%"}}}}, map[string]interface{}{"type": "tool_call_end", "data": map[string]interface{}{"result": map[string]interface{}{"credits": 3, "plan": "Product plan"}}}}}
 	// Native Codex token_count and Claude status line shapes, with sample
 	// numbers: private windows/credits never survive shared replay.

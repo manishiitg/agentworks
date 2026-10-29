@@ -18,7 +18,7 @@ describe('CostsHeader', () => {
   it('keeps exact costs and token accounting in closed details below the readable total', () => {
     const html = renderToStaticMarkup(<CostsOverview overallSummary={totals} scopedCosts={null} aggregateSummary={null} phaseCostSummary={null} />)
     expect(html).toContain('Recorded tokens')
-    expect(html).toContain('1.0K')
+    expect(html).toContain('1k')
     expect(html.indexOf('Recorded tokens')).toBeLessThan(html.indexOf('Cost · USD'))
     expect(html).toContain('$245.62')
     expect(html).toContain('Exact recorded cost: $245.6234')
@@ -35,6 +35,6 @@ describe('CostsHeader', () => {
       overallSummary={{ ...totals, totalCost: 0, totalInputTokens: 7386250, totalOutputTokens: 322254, cacheReadTokens: 5000000, cacheWriteTokens: 100000 }}
       aggregateSummary={null} phaseCostSummary={null} />)
     expect(html).toContain('Not priced')
-    for (const value of ['7.39M', '2.29M', '5.00M', '322.3K']) expect(html).toContain(value)
+    for (const value of ['7.4M', '2.3M', '5M', '322k']) expect(html).toContain(value)
   })
 })

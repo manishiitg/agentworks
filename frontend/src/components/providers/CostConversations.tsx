@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ChatHistoryConversation, CostConversation } from '../../services/api-types'
-import { formatCost, formatUSD, formatTokens } from '../workflow/costs/helpers'
+import { formatCost, formatUSD } from '../workflow/costs/helpers'
 import { totalTokens } from '../../utils/costTokens'
 import CostPricingNotice from './CostPricingNotice'
 import CostTokenBreakdown from './CostTokenBreakdown'
+import { formatTokens } from '../../utils/formatTokens'
 
 const ConversationRenderer = lazy(() => import('../ui/ConversationRenderer').then(module => ({ default: module.ConversationRenderer })))
 

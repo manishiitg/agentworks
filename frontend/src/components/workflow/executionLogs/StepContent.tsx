@@ -31,21 +31,9 @@ import { ConversationViewer } from '../ConversationViewer'
 import { AskAIButton } from '../AskAIButton'
 import { MarkdownRenderer } from '../../ui/MarkdownRenderer'
 import { StepMetadata, StructuredJsonView, StepMetricChip } from './LogPrimitives'
-import {
-  formatDuration,
-  formatRunFolderLabel,
-  formatStepStartedAt,
-  formatTokenCount,
-  getExecutionMetrics,
-  getExecutionOrigin,
-  getAgentReflection,
-  getSentAgentMessages,
-  getStepFirstActivityMs,
-  getStepMetrics,
-  hasStepMetrics,
-  type ValidationFeedback,
-} from './helpers'
+import { formatDuration, formatRunFolderLabel, formatStepStartedAt, getExecutionMetrics, getExecutionOrigin, getAgentReflection, getSentAgentMessages, getStepFirstActivityMs, getStepMetrics, hasStepMetrics, type ValidationFeedback } from './helpers'
 import { buildErrorAskMessage } from './logsAskAI'
+import { formatTokens } from '../../../utils/formatTokens'
 
 export interface StepContentProps {
   stepId: string
@@ -342,17 +330,17 @@ export function StepContent(props: StepContentProps) {
               )}
               {factsShowMetrics && factsMetrics.inputTokens > 0 && (
                 <StepMetricChip title={`Input tokens: ${factsMetrics.inputTokens.toLocaleString()}`}>
-                  {formatTokenCount(factsMetrics.inputTokens)} in
+                  {formatTokens(factsMetrics.inputTokens)} in
                 </StepMetricChip>
               )}
               {factsShowMetrics && factsMetrics.outputTokens > 0 && (
                 <StepMetricChip title={`Output tokens: ${factsMetrics.outputTokens.toLocaleString()}${factsMetrics.reasoningTokens > 0 ? ` (includes ${factsMetrics.reasoningTokens.toLocaleString()} reasoning)` : ''}`}>
-                  {formatTokenCount(factsMetrics.outputTokens)} out
+                  {formatTokens(factsMetrics.outputTokens)} out
                 </StepMetricChip>
               )}
               {factsShowMetrics && factsMetrics.cacheTokens > 0 && (
                 <StepMetricChip title={`Cached tokens: ${factsMetrics.cacheTokens.toLocaleString()}`}>
-                  {formatTokenCount(factsMetrics.cacheTokens)} cache
+                  {formatTokens(factsMetrics.cacheTokens)} cache
                 </StepMetricChip>
               )}
               {factsStartedAtMs > 0 && (
@@ -502,17 +490,17 @@ export function StepContent(props: StepContentProps) {
                               )}
                               {execMetrics.inputTokens > 0 && (
                                 <span title={`Input tokens: ${execMetrics.inputTokens.toLocaleString()}`} className="text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border">
-                                  {formatTokenCount(execMetrics.inputTokens)} in
+                                  {formatTokens(execMetrics.inputTokens)} in
                                 </span>
                               )}
                               {execMetrics.outputTokens > 0 && (
                                 <span title={`Output tokens: ${execMetrics.outputTokens.toLocaleString()}${execMetrics.reasoningTokens > 0 ? ` (includes ${execMetrics.reasoningTokens.toLocaleString()} reasoning)` : ''}`} className="text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border">
-                                  {formatTokenCount(execMetrics.outputTokens)} out
+                                  {formatTokens(execMetrics.outputTokens)} out
                                 </span>
                               )}
                               {execMetrics.cacheTokens > 0 && (
                                 <span title={`Cached tokens: ${execMetrics.cacheTokens.toLocaleString()}`} className="text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border">
-                                  {formatTokenCount(execMetrics.cacheTokens)} cache
+                                  {formatTokens(execMetrics.cacheTokens)} cache
                                 </span>
                               )}
                               {execMetrics.durationMs > 0 && (

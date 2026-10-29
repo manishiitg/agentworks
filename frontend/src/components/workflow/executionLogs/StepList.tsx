@@ -9,29 +9,8 @@ import type { ExecutionLogsResponse, StepExecutionLogs } from '../../../services
 import { StepMetricChip } from './LogPrimitives'
 import { AskAIButton } from '../AskAIButton'
 import { buildStepAskMessage } from './logsAskAI'
-import {
-  formatDuration,
-  formatRunFolderLabel,
-  formatTokenCount,
-  getStepDisplayTitle,
-  getStepIcon,
-  getRecordedStepType,
-  getStepIndentStyle,
-  getStepLatestError,
-  getStepMetrics,
-  getStepModel,
-  getStepNestingClass,
-  getStepNestingLevel,
-  getStepResultPreview,
-  getStepStatus,
-  getStepTypeBadgeStyle,
-  getStepTypeDescription,
-  getStepTypeLabel,
-  hasKnowledgebaseSignal,
-  hasLearningSignal,
-  hasStepMetrics,
-  sortStepEntriesByExecution,
-} from './helpers'
+import { formatDuration, formatRunFolderLabel, getStepDisplayTitle, getStepIcon, getRecordedStepType, getStepIndentStyle, getStepLatestError, getStepMetrics, getStepModel, getStepNestingClass, getStepNestingLevel, getStepResultPreview, getStepStatus, getStepTypeBadgeStyle, getStepTypeDescription, getStepTypeLabel, hasKnowledgebaseSignal, hasLearningSignal, hasStepMetrics, sortStepEntriesByExecution } from './helpers'
+import { formatTokens } from '../../../utils/formatTokens'
 
 export interface StepAskContext {
   workspacePath: string | null
@@ -140,7 +119,7 @@ export function StepList({ logs, focusedStepId, routeFilterKey, showFailedOnly =
                             )}
                             {showMetrics && stepMetrics.totalTokens > 0 && (
                               <StepMetricChip title={`Tokens used: ${stepMetrics.totalTokens.toLocaleString()} total (${stepMetrics.inputTokens.toLocaleString()} input, ${stepMetrics.outputTokens.toLocaleString()} output${stepMetrics.reasoningTokens > 0 ? `, ${stepMetrics.reasoningTokens.toLocaleString()} reasoning` : ''}${stepMetrics.cacheTokens > 0 ? `, ${stepMetrics.cacheTokens.toLocaleString()} cache` : ''})`}>
-                                {formatTokenCount(stepMetrics.totalTokens)} tok total
+                                {formatTokens(stepMetrics.totalTokens)} tok total
                               </StepMetricChip>
                             )}
                             {showMetrics && stepMetrics.durationMs > 0 && (
@@ -168,7 +147,7 @@ export function StepList({ logs, focusedStepId, routeFilterKey, showFailedOnly =
                                 stepTitle: displayTitle,
                                 status: stepStatus,
                                 duration: showMetrics && stepMetrics.durationMs > 0 ? formatDuration(stepMetrics.durationMs) : undefined,
-                                tokens: showMetrics && stepMetrics.totalTokens > 0 ? `${formatTokenCount(stepMetrics.totalTokens)} tokens` : undefined,
+                                tokens: showMetrics && stepMetrics.totalTokens > 0 ? `${formatTokens(stepMetrics.totalTokens)} tokens` : undefined,
                                 preview: resultPreview || undefined,
                                 error: latestError || undefined,
                               })}

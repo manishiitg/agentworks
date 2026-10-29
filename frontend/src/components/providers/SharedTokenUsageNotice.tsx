@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { authApi, type SharedAccountTokenUsage } from '../../services/api'
-import { formatTokens, resetLabel, shownTokenFigures } from '../../utils/tokenLimits'
+import { resetLabel, shownTokenFigures } from '../../utils/tokenLimits'
+import { formatTokens } from '../../utils/formatTokens'
 
 /**
  * The person's own use of the shared server accounts against the limits an

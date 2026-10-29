@@ -4,11 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"math"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
@@ -88,95 +84,44 @@ func (api *StreamingAPI) nativeUsageResponse(r *http.Request, session string, va
 	return copy
 }
 
-func (api *StreamingAPI) nativeUsageSnapshot(ctx context.Context, s terminals.Snapshot) terminals.Snapshot {
+// nativeUsageSnapshot is a terminal's status as the browser sees it. Plan limits are left out of every terminal:
+// the chat's usage chip (/api/chat-context) is the one place that shows them. The main agent's terminal carries
+// the chat's context figures from the one reader, chatUsage, so after a provider switch it no longer shows the
+// previous provider's numbers; other terminals keep what their own CLI reported.
+func (api *StreamingAPI) nativeUsageSnapshot(s terminals.Snapshot) terminals.Snapshot {
+	main := terminals.IsMainAgentTerminal(s) && strings.TrimSpace(s.SessionID) != ""
+	if len(s.Status.StatusMeta) == 0 && !main {
+		return s
+	}
 	meta := map[string]interface{}{}
-	for key, v := range s.Status.StatusMeta {
-		meta[key] = v
+	if raw, err := json.Marshal(s.Status.StatusMeta); err == nil {
+		_ = json.Unmarshal(raw, &meta)
 	}
-	api.nativeCostsMu.Lock()
-	a := api.nativeCosts[s.SessionID]
-	api.nativeCostsMu.Unlock()
-	if a != nil {
-		a.mu.Lock()
-		usage := a.usage
-		a.mu.Unlock()
-		if usage.ContextUsed > 0 {
-			meta["context_used_tokens"] = usage.ContextUsed
-		}
-		if usage.ContextWindow > 0 {
-			meta["context_window_tokens"] = usage.ContextWindow
-			meta["context_used_tokens"] = usage.ContextUsed
-		}
-		if api.nativeUsageOwner(ctx, s.SessionID) && len(usage.Limits) > 0 {
-			var windows []interface{}
-			for _, limit := range usage.Limits {
-				windows = append(windows, map[string]interface{}{"name": limit.Name, "used_percent": limit.UsedPercent, "window_minutes": limit.WindowMinutes, "resets_at": limit.ResetsAt})
-			}
-			meta["rate_limit_windows"] = windows
-		}
+	if meta == nil {
+		meta = map[string]interface{}{}
 	}
-	if !api.nativeUsageOwner(ctx, s.SessionID) {
-		raw, err := json.Marshal(meta)
-		if err == nil {
-			var copy map[string]interface{}
-			if json.Unmarshal(raw, &copy) == nil {
-				stripNativeAccountFields(copy, true, false)
-				meta = copy
+	stripNativeAccountFields(meta, true, false)
+	if main {
+		delete(meta, "context_used_tokens")
+		delete(meta, "context_window_tokens")
+		delete(meta, "context_usage_percent")
+		if extras, ok := meta["status_extras"].([]interface{}); ok {
+			var kept []interface{}
+			for _, item := range extras {
+				if text, ok := item.(string); !ok || !strings.HasPrefix(strings.TrimSpace(text), "ctx ") {
+					kept = append(kept, item)
+				}
 			}
+			meta["status_extras"] = kept
+		}
+		used, window, _ := api.chatUsage(s.SessionID, api.chatUsageSubjectForSession(s.SessionID), false)
+		if used > 0 {
+			meta["context_used_tokens"] = used
+		}
+		if window > 0 {
+			meta["context_window_tokens"] = window
 		}
 	}
 	s.Status.StatusMeta = meta
-	if percent, known := nativeContextPercent(meta); known {
-		meta["context_usage_percent"] = percent
-	}
 	return s
-}
-
-var nativeContextSegment = regexp.MustCompile(`(?i)^ctx\s+(\d+(?:\.\d+)?)\s*%$`)
-
-// Context belongs to the chat, including runtimes with no terminal snapshot.
-// Account plan limits stay out of this shared session projection.
-func (api *StreamingAPI) nativeSessionContextPercent(session string) *int {
-	api.nativeCostsMu.Lock()
-	a := api.nativeCosts[session]
-	api.nativeCostsMu.Unlock()
-	if a == nil {
-		return nil
-	}
-	a.mu.Lock()
-	usage := a.usage
-	a.mu.Unlock()
-	percent, known := nativeContextPercent(map[string]interface{}{"context_used_tokens": usage.ContextUsed, "context_window_tokens": usage.ContextWindow})
-	if !known {
-		return nil
-	}
-	return &percent
-}
-
-// Normalize only numbers reported by the current runtime. Model guesses and
-// account plan windows are not context usage.
-func nativeContextPercent(meta map[string]interface{}) (int, bool) {
-	number := func(v interface{}) (float64, bool) {
-		n, err := strconv.ParseFloat(fmt.Sprint(v), 64)
-		return n, err == nil && !math.IsNaN(n) && !math.IsInf(n, 0) && n >= 0
-	}
-	if n, ok := number(meta["context_usage_percent"]); ok {
-		return int(math.Round(math.Min(n, 100))), true
-	}
-	used, hasUsed := number(meta["context_used_tokens"])
-	window, hasWindow := number(meta["context_window_tokens"])
-	if hasUsed && hasWindow && window > 0 {
-		return int(math.Round(math.Min(100*used/window, 100))), true
-	}
-	raw, _ := json.Marshal(meta["status_extras"])
-	var extras []string
-	_ = json.Unmarshal(raw, &extras)
-	for _, extra := range extras {
-		if match := nativeContextSegment.FindStringSubmatch(strings.TrimSpace(extra)); len(match) == 2 {
-			if n, ok := number(match[1]); ok {
-				return int(math.Round(math.Min(n, 100))), true
-			}
-		}
-	}
-	return 0, false
 }

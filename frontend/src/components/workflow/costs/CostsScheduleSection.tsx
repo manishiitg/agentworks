@@ -2,7 +2,8 @@ import React from 'react'
 import { CalendarClock } from 'lucide-react'
 import type { CostSummary } from '../../../services/api-types'
 import { inputTokens, totalTokens, costAmountLabel } from '../../../utils/costTokens'
-import { formatTokens, formatUSD } from './helpers'
+import { formatUSD } from './helpers'
+import { formatTokens } from '../../../utils/formatTokens'
 
 // Spend per project schedule, reminder or trigger (PLAT-702). Rows come from
 // the ledger's by_source, which only turns recorded after PLAT-702 carry.

@@ -6,16 +6,10 @@ import {
   List,
   TrendingUp,
 } from 'lucide-react'
-import {
-  formatUSD,
-  formatTokens,
-  getRunFolderDisplayName,
-  getRunFolderSecondaryLabel,
-  getRunFolderTitle,
-  getRunBadgeLabel,
-} from './helpers'
+import { formatUSD, getRunFolderDisplayName, getRunFolderSecondaryLabel, getRunFolderTitle, getRunBadgeLabel } from './helpers'
 import StageCostCard from './StageCostCard'
 import type { CostsData } from './useCostsData'
+import { formatTokens } from '../../../utils/formatTokens'
 
 type RunCostsSectionProps = Pick<
   CostsData,

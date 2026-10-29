@@ -10,10 +10,11 @@ import type {
   CostOverviewMCP,
   CostOverviewUser,
 } from '../../services/api-types'
-import { formatTokens } from '../workflow/costs/helpers'
+
 import { inputTokens, tokenSummary, pricingCoverageText, costAmountLabel } from '../../utils/costTokens'
 import CostsScheduleSection from '../workflow/costs/CostsScheduleSection'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
+import { formatTokens } from '../../utils/formatTokens'
 
 type Group = 'user' | 'workflow' | 'crew' | 'code' | 'product' | 'bot' | 'mcp' | 'other'
 

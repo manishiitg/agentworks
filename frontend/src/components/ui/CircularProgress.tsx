@@ -2,6 +2,7 @@ import React from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
 import type { TokenUsageEvent } from '../../generated/events'
 import { formatDuration } from '../../utils/duration'
+import { formatTokens } from '../../utils/formatTokens'
 
 // Type for context-only token usage (from ToolCallEndEvent)
 export interface ContextOnlyTokenUsage {
@@ -32,15 +33,6 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
   const offset = circumference - (percentage / 100) * circumference
 
 
-  // Helper function to format token count
-  const formatTokenCount = (tokens: number): string => {
-    if (tokens >= 1_000_000) {
-      return `${(tokens / 1_000_000).toFixed(1)}M`.replace('.0', '')
-    } else if (tokens >= 1_000) {
-      return `${(tokens / 1_000).toFixed(0)}k`
-    }
-    return tokens.toLocaleString()
-  }
 
   // Extract token usage details for tooltip
   const getTooltipContent = () => {
@@ -88,7 +80,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
                 </span>
               </div>
               <div className="text-gray-500 dark:text-gray-400 text-[10px]">
-                Max: {formatTokenCount(modelContextWindow)}
+                Max: {formatTokens(modelContextWindow)}
               </div>
             </div>
           )}
@@ -170,7 +162,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           <div className="flex items-center justify-between gap-4">
             <span className="text-gray-500 dark:text-gray-400">Input:</span>
             <span className="font-medium">
-              {formatTokenCount(promptTokens)}
+              {formatTokens(promptTokens)}
               {inputCost > 0 && (
                 <span className="text-green-600 dark:text-green-400 ml-1">(${inputCost.toFixed(4)})</span>
               )}
@@ -180,7 +172,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
             <div className="flex items-center justify-between gap-4">
               <span className="text-gray-500 dark:text-gray-400">Cache:</span>
               <span className="font-medium text-sky-600 dark:text-sky-400">
-                {formatTokenCount(cacheTokens)}
+                {formatTokens(cacheTokens)}
                 {cacheCost > 0 && (
                   <span className="text-green-600 dark:text-green-400 ml-1">(${cacheCost.toFixed(4)})</span>
                 )}
@@ -191,7 +183,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
             <div className="flex items-center justify-between gap-4">
               <span className="text-gray-500 dark:text-gray-400">Reasoning:</span>
               <span className="font-medium text-purple-600 dark:text-purple-400">
-                {formatTokenCount(reasoningTokens)}
+                {formatTokens(reasoningTokens)}
                 {reasoningCost > 0 && (
                   <span className="text-green-600 dark:text-green-400 ml-1">(${reasoningCost.toFixed(4)})</span>
                 )}
@@ -201,7 +193,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           <div className="flex items-center justify-between gap-4">
             <span className="text-gray-500 dark:text-gray-400">Output:</span>
             <span className="font-medium">
-              {formatTokenCount(completionTokens)}
+              {formatTokens(completionTokens)}
               {outputCost > 0 && (
                 <span className="text-green-600 dark:text-green-400 ml-1">(${outputCost.toFixed(4)})</span>
               )}
@@ -231,7 +223,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
             </div>
             {modelContextWindow > 0 && (
               <div className="text-gray-500 dark:text-gray-400 text-[10px]">
-                Max: {formatTokenCount(modelContextWindow)}
+                Max: {formatTokens(modelContextWindow)}
               </div>
             )}
           </div>
