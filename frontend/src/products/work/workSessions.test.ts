@@ -362,7 +362,8 @@ describe('updateProductProjectLLMConfig', () => {
           schema_version: 1,
           id: 'abc',
           label: 'Site',
-          capabilities: { custom_feature: { enabled: true } },
+          // The owner turned idle chat tidying off; a model change must not turn it back on (PLAT-872-71).
+          capabilities: { custom_feature: { enabled: true }, llm_config: { schema_version: 2, mode: 'explicit', idle_compaction: false } },
         }),
       },
     })
@@ -374,12 +375,12 @@ describe('updateProductProjectLLMConfig', () => {
     })
     const updated = await updateProductProjectLLMConfig(project, llmConfig, 'Update model', 'workflow.json')
 
-    expect(updated.llmConfig).toEqual(llmConfig)
+    expect(updated.llmConfig).toEqual({ ...llmConfig, idle_compaction: false })
     const [path, content] = updatePlannerFile.mock.calls.at(-1)!
     expect(path).toBe(`${project.workspacePath}/workflow.json`)
     const manifest = JSON.parse(content as string)
     expect(manifest.capabilities.custom_feature).toEqual({ enabled: true })
-    expect(manifest.capabilities.llm_config).toEqual(llmConfig)
+    expect(manifest.capabilities.llm_config).toEqual({ ...llmConfig, idle_compaction: false })
   })
 })
 

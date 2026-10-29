@@ -22,6 +22,7 @@ import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
+import { IdleCompactionSetting } from '../../components/workflow/IdleCompactionSetting'
 import { ChatInstructionsCard } from '../../components/workflow/ChatInstructionsCard'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
 import type { WorkRuntimeSelection } from './workTabs'
@@ -268,7 +269,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
+export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, idleCompaction = true, onIdleCompactionChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -288,6 +289,8 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
   onAsk: (message: string) => Promise<void>
   onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>
   nativeAgentTools?: boolean
+  idleCompaction?: boolean
+  onIdleCompactionChange?: (enabled: boolean) => Promise<unknown>
   /** Omitted for readers: only the Crew owner can change it. */
   onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>
   onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>
@@ -349,6 +352,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
             hideHeader
           />
           {!modelsOnly && product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
+          <IdleCompactionSetting enabled={idleCompaction} onChange={onIdleCompactionChange} disabledTitle={shared ? 'Only the owner can change this.' : 'Choose a model first, then change this setting.'} />
         </div>}
       </div>
     </div>
