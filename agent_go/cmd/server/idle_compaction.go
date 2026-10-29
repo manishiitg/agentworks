@@ -92,6 +92,7 @@ type idleCompactCandidate struct {
 	Stopped        bool
 	LimitReached   bool // the tab owner is at a token limit
 	Disabled       bool // the project's owner turned idle compaction off
+	TabOff         bool // the tab's owner turned "Auto-compact when idle" off (PLAT-872-71)
 	LastActivity   time.Time
 	LastPerson     time.Time
 	AttemptedAt    time.Time // last idle compaction attempt
@@ -110,7 +111,7 @@ func idleCompactDecide(c idleCompactCandidate, cfg idleCompactConfig, now time.T
 		return false, false, "outside_idle_window"
 	}
 	switch {
-	case c.Disabled:
+	case c.Disabled, c.TabOff:
 		return true, false, "disabled"
 	case !c.Interactive:
 		return true, false, "not_interactive"
@@ -150,6 +151,7 @@ type idleCompactRun struct {
 	started bool
 	stopped bool
 	cancel  context.CancelFunc
+	manual  bool // "Compact now" from the tab's model menu, not the idle sweep
 }
 
 func newIdleCompactRun() *idleCompactRun { return &idleCompactRun{done: make(chan struct{})} }
@@ -383,9 +385,10 @@ func (api *StreamingAPI) idleCompactCandidateFor(sessionID, owner string, chat i
 	c.Queued = api.conversationTurnHasBacklog(owner, sessionID)
 	c.BackgroundWork = api.sessionAwaitsBackgroundResults(sessionID) || len(claudeBackgroundTasks(sessionID)) > 0
 	c.Stopped = api.isSessionMarkedStopped(sessionID)
-	c.ContextTokens, c.ContextWindow = api.idleCompactContextSize(sessionID)
+	c.ContextTokens, c.ContextWindow, _ = api.chatContextUsage(sessionID, chat.provider, chat.personReq.ModelID, false)
 	c.LimitReached = api.sharedAccountTokenLimitHit(context.Background(), owner, chat.provider) != nil
 	c.Disabled = !idleCompactProjectEnabled(chat.personReq.SelectedFolder)
+	c.TabOff = !idleCompactTabEnabled(owner, sessionID)
 	return c
 }
 
@@ -402,21 +405,6 @@ func idleCompactProjectEnabled(workspacePath string) bool {
 		return true
 	}
 	return *caps.LLMConfig.IdleCompaction
-}
-
-// idleCompactContextSize is the chat's context at its last model call, as the
-// CLI recorded it (native transcript usage, or the provider's own usage with
-// its context window).
-func (api *StreamingAPI) idleCompactContextSize(sessionID string) (used, window int) {
-	api.nativeCostsMu.Lock()
-	a := api.nativeCosts[sessionID]
-	api.nativeCostsMu.Unlock()
-	if a == nil {
-		return 0, 0
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return int(a.usage.ContextUsed), int(a.usage.ContextWindow)
 }
 
 // idleCompactLastActivity is when the chat last did anything: its last turn's
@@ -488,24 +476,28 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	if before == 0 {
 		before = tokens
 	}
-	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d idle_min=%d action=%s reason=%q before=%d after=%d cache_read=%d cache_write=%d",
-		sessionID, chat.provider, owner, tokens, idleMin, action, reason, before, result.TokensAfter, result.CacheReadTokens, result.CacheWriteTokens)
+	trigger := "idle"
+	if run.manual {
+		trigger = "manual"
+	}
+	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d idle_min=%d trigger=%s action=%s reason=%q before=%d after=%d cache_read=%d cache_write=%d",
+		sessionID, chat.provider, owner, tokens, idleMin, trigger, action, reason, before, result.TokensAfter, result.CacheReadTokens, result.CacheWriteTokens)
 	if action == "compacted" {
-		api.recordIdleCompactionInChat(sessionID, chat.provider, before, result.TokensAfter, startedAt)
+		api.recordIdleCompactionInChat(sessionID, chat.provider, trigger, before, result.TokensAfter, startedAt)
 	}
 }
 
 // recordIdleCompactionInChat adds the one "tidied while you were away" row to
-// the chat: a context_compaction end with trigger idle, the shape the
-// transcript already renders. The CLI's own compaction events do not reliably
+// the chat: a context_compaction end with trigger idle (or manual, for
+// "Compact now"), the shape the transcript already renders. The CLI's own compaction events do not reliably
 // reach the chat from a compaction-only call, so the server records the
 // result itself; if one already arrived, nothing is added (one row per
 // compaction).
-func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider string, before, after int, startedAt time.Time) {
+func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider, trigger string, before, after int, startedAt time.Time) {
 	if api.eventStore == nil {
 		return
 	}
-	if idleCompactionEventSince(api.eventStore.LastEventsRaw(sessionID, 200), startedAt) {
+	if idleCompactionEventSince(api.eventStore.LastEventsRaw(sessionID, 200), startedAt, trigger) {
 		log.Printf("[IDLE_COMPACT] session=%s chat row already recorded by the CLI stream", sessionID)
 		return
 	}
@@ -514,7 +506,7 @@ func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider string, 
 		BaseEventData: agentevents.BaseEventData{Timestamp: now},
 		Provider:      provider,
 		Phase:         "end",
-		Trigger:       "idle",
+		Trigger:       trigger,
 		Outcome:       "success",
 		TokensBefore:  before,
 		TokensAfter:   after,
@@ -529,9 +521,10 @@ func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider string, 
 	log.Printf("[IDLE_COMPACT] session=%s chat row recorded event=%s err=%v", sessionID, id, err)
 }
 
-// idleCompactionEventSince reports whether an idle compaction end is already
-// among the chat's events since the compaction started.
-func idleCompactionEventSince(events []storeevents.Event, since time.Time) bool {
+// idleCompactionEventSince reports whether a compaction end is already among
+// the chat's events since the compaction started. For an idle one it must say
+// trigger idle; "Compact now" accepts the CLI's own row whatever its trigger.
+func idleCompactionEventSince(events []storeevents.Event, since time.Time, trigger string) bool {
 	for i := len(events) - 1; i >= 0; i-- {
 		event := events[i]
 		if event.Timestamp.Before(since) {
@@ -540,7 +533,7 @@ func idleCompactionEventSince(events []storeevents.Event, since time.Time) bool 
 		if event.Type != string(agentevents.ContextCompaction) || event.Data == nil {
 			continue
 		}
-		if c, ok := event.Data.Data.(*agentevents.ContextCompactionEvent); ok && c.Phase == "end" && c.Trigger == "idle" {
+		if c, ok := event.Data.Data.(*agentevents.ContextCompactionEvent); ok && c.Phase == "end" && (c.Trigger == "idle" || trigger != "idle") {
 			return true
 		}
 	}
@@ -563,7 +556,7 @@ func (api *StreamingAPI) compactIdleTurn(ctx context.Context, sessionID string, 
 	}
 	if api.eventStore != nil {
 		// The Working line says the chat is being tidied, not "running".
-		api.eventStore.BeginIdleCompaction(sessionID)
+		api.eventStore.BeginIdleCompaction(sessionID, run.manual)
 		defer api.eventStore.EndIdleCompaction(sessionID)
 	}
 	result, err := mcpagent.CompactAgentSessionIdle(compactCtx, agent)

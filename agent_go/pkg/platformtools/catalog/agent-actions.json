@@ -1608,6 +1608,38 @@
   },
   {
     "family": "sessions",
+    "name": "compact",
+    "member": "sessions_compact_crew",
+    "description": "Compact one of your Crew chats now: its conversation is summarised so the next message costs less.",
+    "source": "manage_crew_chats",
+    "source_action": "compact"
+  },
+  {
+    "family": "sessions",
+    "name": "fresh",
+    "member": "sessions_fresh_crew",
+    "description": "Start one of your Crew chats fresh: its next message begins a new conversation with a short summary of this one.",
+    "source": "manage_crew_chats",
+    "source_action": "fresh"
+  },
+  {
+    "family": "sessions",
+    "name": "compact",
+    "member": "__crew_chat_compact",
+    "description": "Compact this chat: its conversation is summarised so the next message costs less.",
+    "source": "manage_crew_model",
+    "source_action": "compact"
+  },
+  {
+    "family": "sessions",
+    "name": "fresh",
+    "member": "__crew_chat_fresh",
+    "description": "Start this chat fresh: the next message begins a new conversation with a short summary of this one.",
+    "source": "manage_crew_model",
+    "source_action": "fresh"
+  },
+  {
+    "family": "sessions",
     "name": "project_context",
     "member": "sessions_project_context_crew",
     "description": "List instruction and skill paths found in your existing local project folder; discovery does not mean loaded.",

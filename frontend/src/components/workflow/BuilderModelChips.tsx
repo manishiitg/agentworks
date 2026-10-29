@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import * as Menu from '@radix-ui/react-dropdown-menu'
+import { Settings2 } from 'lucide-react'
 import { Chip, ChoiceItems, type Choice } from '../../products/work/ComposerModelChips'
+import ChatContextItems, { menuRowClass } from '../../products/work/ChatContextItems'
 import { CursorModelPicker } from '../ui/CursorModelPicker'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
+import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { workflowManifestApi } from '../../services/api'
 import { llmConfigService, type DynamicModelEntry, type ProviderConnection } from '../../services/llm-config-api'
@@ -29,8 +32,10 @@ function effortLabel(option: LLMOption): string {
  * role of the workflow's model setting through the same manifest save as Models;
  * the server checks access and the account's models when the turn runs.
  */
-export default function BuilderModelChips({ workspacePath, label, fallback }: {
+export default function BuilderModelChips({ workspacePath, sessionId, label, fallback }: {
   workspacePath: string
+  /** This Builder tab's chat; its Context group (PLAT-872-71) shows when the server offers one. */
+  sessionId?: string
   label: string
   fallback: ReactNode
 }) {
@@ -133,6 +138,14 @@ export default function BuilderModelChips({ workspacePath, label, fallback }: {
   const showModel = models.length > 1
   const showEffort = levels.length > 1 && Boolean(currentLevel)
 
+  // This tab's Context group (PLAT-872-71), then the way to the full Models page, as in Crew's menu.
+  const contextItems = sessionId ? <>
+    <ChatContextItems sessionId={sessionId} modelLabel={modelLabel} />
+    <Menu.Separator className="my-1 h-px bg-border first:hidden" />
+    <Menu.Item className={menuRowClass} onSelect={() => useWorkflowStore.getState().openWorkspaceView('identity', 'llm')}>
+      <Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Change model or account…
+    </Menu.Item>
+  </> : null
   const cursorChoices = provider === 'cursor-cli'
     ? cursorModels.filter(model => !hasModelLimit(allowed) || isModelAllowed(model.model_id, allowed)) : []
   if (provider === 'cursor-cli') {
@@ -146,21 +159,23 @@ export default function BuilderModelChips({ workspacePath, label, fallback }: {
           if (modelId !== builder.model_id) void save({ provider: 'cursor-cli' as LLMProvider, model_id: modelId })
         }} />
       </div>
+      {contextItems}
     </Chip>
   }
 
   if (phone) {
-    if (!showModel && !showEffort) return <>{fallback}</>
+    if (!showModel && !showEffort && !sessionId) return <>{fallback}</>
     const combined = showEffort && currentLevel ? `${modelLabel} · ${currentLevel.label}` : modelLabel
     return <Chip label={combined} ariaLabel={`Model: ${combined}`} disabled={saving}>
       {showModel && <ChoiceItems title="Model" choices={models} value={builder.model_id} onPick={pickModel} />}
       {showModel && showEffort && <Menu.Separator className="my-1 h-px bg-border" />}
       {showEffort && <ChoiceItems title="Reasoning" choices={levels} value={currentKey} onPick={pickEffort} />}
+      {contextItems}
     </Chip>
   }
   return <>
-    {showModel
-      ? <Chip label={modelLabel} ariaLabel={`Model: ${modelLabel}`} disabled={saving}><ChoiceItems choices={models} value={builder.model_id} onPick={pickModel} /></Chip>
+    {showModel || sessionId
+      ? <Chip label={modelLabel} ariaLabel={`Model: ${modelLabel}`} disabled={saving}>{showModel && <ChoiceItems choices={models} value={builder.model_id} onPick={pickModel} />}{contextItems}</Chip>
       : fallback}
     {showEffort && currentLevel && <Chip label={currentLevel.label} ariaLabel={`Reasoning: ${currentLevel.label}`} disabled={saving}><ChoiceItems choices={levels} value={currentKey} onPick={pickEffort} /></Chip>}
   </>

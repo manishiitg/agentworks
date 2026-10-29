@@ -407,6 +407,20 @@ func (s *Store) ListRaw(sessionID string) []Snapshot {
 	return out
 }
 
+// MainAgentStatusMeta returns the status meta (context use, plan windows) of the session's
+// newest main-agent terminal that reported any, with that terminal's tmux session.
+func (s *Store) MainAgentStatusMeta(sessionID string) (map[string]interface{}, string, bool) {
+	if strings.TrimSpace(sessionID) == "" {
+		return nil, "", false
+	}
+	for _, snapshot := range s.ListRaw(sessionID) {
+		if currentTerminalIsMainAgent(snapshot) && len(snapshot.Status.StatusMeta) > 0 {
+			return snapshot.Status.StatusMeta, snapshot.TmuxSession, true
+		}
+	}
+	return nil, "", false
+}
+
 // SessionHasBusyCodingTmux reports whether the session has a coding-agent tmux
 // terminal whose pane currently looks busy (actively processing). This lets a
 // resumed/launch-only coding agent — which has no server-managed foreground

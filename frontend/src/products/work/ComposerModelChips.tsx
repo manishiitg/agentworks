@@ -8,10 +8,11 @@ import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { workChatModelsQueryKey } from './useWorkChatModels'
 import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
+import ChatContextItems, { menuLabelClass, menuRowClass } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
-const rowClass = 'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
-const labelClass = 'px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground'
+const rowClass = menuRowClass
+const labelClass = menuLabelClass
 const contentClass = 'z-[100] max-h-[min(360px,var(--radix-dropdown-menu-content-available-height))] w-[min(260px,calc(100vw-24px))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg'
 
 export type Choice = { id: string; label: string }
@@ -53,6 +54,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const queryClient = useQueryClient()
   const phone = useMobileViewport()
   const meta = useChatStore(state => state.chatTabs[tabId]?.metadata)
+  const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId) || ''
   const [saving, setSaving] = useState(false)
   const [cursorOpen, setCursorOpen] = useState(false)
   const profileId = meta?.agentProfileId || ''
@@ -96,7 +98,10 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // Quick ways out of the menu: the full Models page (provider and account) and this project's usage.
   const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
   const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
+  // This chat's Context group (PLAT-872-71): meter, plan limits, 1M context, auto-compact, compact now, fresh chat.
+  const contextItems = sessionId ? <ChatContextItems sessionId={sessionId} modelLabel={label} /> : null
   const footer = <>
+    {contextItems}
     <Menu.Separator className="my-1 h-px bg-border" />
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Change provider or account…</Menu.Item>
     <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
@@ -115,7 +120,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
 
   if (phone && cursorPicker) return <>{cursorPicker}{showEffort && effortLabel && <Chip label={effortLabel} ariaLabel={`Reasoning: ${effortLabel}`} disabled={saving}><ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} /></Chip>}</>
   if (phone) {
-    if (!showModel && !showEffort) return <>{fallback}</>
+    if (!showModel && !showEffort && !sessionId) return <>{fallback}</>
     const combined = effortLabel ? `${label} · ${effortLabel}` : label
     return <Chip label={combined} ariaLabel={`Model: ${combined}`} disabled={saving}>
       {showModel && <ChoiceItems title="Model" choices={models} value={currentModel} onPick={pickModel} />}
@@ -125,8 +130,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     </Chip>
   }
   return <>
-    {cursorPicker || (showModel
-      ? <Chip label={label} ariaLabel={`Model: ${label}`} disabled={saving}><ChoiceItems choices={models} value={currentModel} onPick={pickModel} />{footer}</Chip>
+    {cursorPicker || (showModel || sessionId
+      ? <Chip label={label} ariaLabel={`Model: ${label}`} disabled={saving}>{showModel && <ChoiceItems choices={models} value={currentModel} onPick={pickModel} />}{footer}</Chip>
       : fallback)}
     {showEffort && effortLabel && <Chip label={effortLabel} ariaLabel={`Reasoning: ${effortLabel}`} disabled={saving}><ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} /></Chip>}
   </>

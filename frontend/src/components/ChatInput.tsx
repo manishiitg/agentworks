@@ -3597,7 +3597,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </button>
                   // Goal and Flow Builders pick the model and reasoning here, like Crew; everyone else sees the label.
                   return workflowPhaseWorkspacePath
-                    ? <Suspense fallback={label}><BuilderModelChips workspacePath={workflowPhaseWorkspacePath} label={goalModelLabel} fallback={label} /></Suspense>
+                    ? <Suspense fallback={label}><BuilderModelChips workspacePath={workflowPhaseWorkspacePath} sessionId={activeTab?.sessionId || undefined} label={goalModelLabel} fallback={label} /></Suspense>
                     : label
                 })()}
                 {(agentProfileId === 'work') && agentProfileProjectId && activeTabId && crewModelLabel && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`) && (() => {

@@ -31,6 +31,7 @@ const (
 	turnPhaseRunning        = "running"
 	turnPhaseCompacting     = "compacting"
 	turnPhaseCompactingText = "Tidying this chat while you were away"
+	turnPhaseCompactingNow  = "Compacting this chat"
 	turnPhaseStaleAfter     = 6 * time.Hour
 	turnPhaseRetrySuffix    = " - retrying original model"
 	turnPhaseWaitingMessage = "Waiting for your answer"
@@ -92,6 +93,9 @@ func turnPhaseText(s *turnPhaseState) string {
 	case turnPhaseWaitingForYou:
 		return turnPhaseWaitingMessage
 	case turnPhaseCompacting:
+		if s.reason == "manual" {
+			return turnPhaseCompactingNow
+		}
 		return turnPhaseCompactingText
 	}
 	return ""
@@ -274,13 +278,16 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 
 // BeginIdleCompaction shows the idle compaction (PLAT-872) as the chat's turn
 // phase, so the Working line says the chat is being tidied instead of
-// "running" while the CLI compacts.
-func (es *EventStore) BeginIdleCompaction(sessionID string) {
+// "running" while the CLI compacts. manual is the tab's "Compact now".
+func (es *EventStore) BeginIdleCompaction(sessionID string, manual bool) {
 	if sessionID == "" || !es.turnPhaseOn() {
 		return
 	}
 	now := time.Now()
 	st := &turnPhaseState{phase: turnPhaseCompacting, updated: now}
+	if manual {
+		st.reason = "manual"
+	}
 	st.announce = fmt.Sprintf("%s|%s|%s|%d|%d|%s", st.phase, st.label, st.reason, st.attempt, st.total, st.nextIn)
 	turnPhasesMu.Lock()
 	turnPhases[sessionID] = st
