@@ -132,11 +132,9 @@ Requirements this template assumes:
   `build-and-activate.sh` for why: `EnvironmentFile=` wins over a systemd
   drop-in's `Environment=` for the same key, so a stale `PATH=` there would
   otherwise silently outrank the managed one).
-- Product-specific one-time migrations or catalog copies (Workflow Builder
-  chat migration, playbook catalog) are optional per product via
-  `RUN_WORKFLOW_BUILDER_MIGRATION` / `COPY_PLAYBOOKS` in `product.env` — leave
-  both `false` for a fixed single-workspace product like SparkQuill that has
-  neither concept.
+- The playbook catalog copy is optional per product via `COPY_PLAYBOOKS` in
+  `product.env` — leave it `false` for a fixed single-workspace product like
+  SparkQuill that has no playbooks.
 
 ## Usage
 

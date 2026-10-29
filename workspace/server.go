@@ -35,7 +35,6 @@ The server provides endpoints for:
 
 func init() {
 	serverCmd.Flags().Bool("debug", false, "Enable debug mode")
-	serverCmd.Flags().Bool("migrate-crew-state-only", false, "Convert Crew platform storage and exit before serving")
 	serverCmd.Flags().String("restore-crew-state-backup", "", "Restore a stopped Crew storage conversion and exit")
 	viper.BindPFlag("debug", serverCmd.Flags().Lookup("debug"))
 }
@@ -79,9 +78,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	} else if backup != "" {
 		fmt.Printf("[CREW_STATE_MIGRATION] moved=%d backup=%s\n", count, backup)
-	}
-	if only, _ := cmd.Flags().GetBool("migrate-crew-state-only"); only {
-		return
 	}
 
 	// One-off source migration, before any workspace requests or processes.

@@ -1,4 +1,4 @@
-"""PLAT-856-383: deploy converters must never treat user files as platform records."""
+"""PLAT-856-383: the deploy admission scan must never treat user files as platform records."""
 import importlib.util
 import json
 from pathlib import Path
@@ -16,7 +16,7 @@ def module(relative):
 
 
 class CrewPrivateStateHooks(unittest.TestCase):
-    def test_converters_use_private_records_and_preserve_same_named_user_files(self):
+    def test_admission_scan_reads_private_records_not_same_named_user_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
             docs, state = base / 'docs', base / 'state'
@@ -32,19 +32,8 @@ class CrewPrivateStateHooks(unittest.TestCase):
             (private / 'product.json').write_text(json.dumps({'id': 'id', 'owner_id': 'owner', 'identity': {'role': 'Platform role'}, 'description': 'Purpose'}))
             (private / 'workflow.json').write_text(json.dumps({'id': 'id', 'capabilities': {'browser_mode': 'auto'}}))
             (state / 'ownership/projects.json').write_text(json.dumps({'projects': {'work/example': {'product': 'work', 'folder': 'example', 'project_id': 'id', 'owner_id': 'owner'}}}))
-            module('scripts/migrations/fold-crew-role.py').migrate(docs, state)
-            module('scripts/migrations/crew-owner-tabs.py').migrate(docs, state)
-            module('scripts/migrate-browser-modes.py').migrate(docs, base / 'browser-backup', 'server', state)
-            module('scripts/group-platform-tool-selections.py').migrate(docs, base / 'tools-backup', [])
-            module('scripts/simplify-workflow-settings.py').migrate(docs, base / 'settings-backup')
-            schedules = module('scripts/migrate-project-schedules.py')
-            self.assertEqual(list(schedules.project_roots(docs)), [('Crew', private)])
             paths = module('deploy/common/admission_scan.py').manifests(docs)
             self.assertEqual(set(paths), {private / 'product.json', private / 'workflow.json'})
-            for name, value in person.items():
-                self.assertEqual(json.loads((user / name).read_text()), value)
-            self.assertNotIn('role', json.loads((private / 'product.json').read_text()).get('identity', {}))
-            self.assertEqual(json.loads((private / 'workflow.json').read_text())['capabilities']['browser_mode'], 'headless')
 
 
 if __name__ == '__main__':

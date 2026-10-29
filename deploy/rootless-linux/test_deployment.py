@@ -41,7 +41,6 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
             "PIN_NODE_VERSION=\"24.21.0\"",
             "AGY_AUTH_MODE=gemini",
             "COPY_PLAYBOOKS=true",
-            "RUN_WORKFLOW_BUILDER_MIGRATION=true",
             "PERSIST_MCP_STATE=true",
             "PUBLIC_HEALTH_STATUS=200",
             'PUBLIC_CHECK_PATHS=("/login")',
@@ -67,7 +66,6 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
         for expected in (
             "RUNTIME_CONFIG_REQUIRED_SNIPPETS",
             "PLAYBOOK_SMOKE_PATH",
-            "RUN_WORKFLOW_BUILDER_MIGRATION",
             "AGENT_EXTRA_ENV",
             "deployment_checks.py",
             "prune-releases.py",

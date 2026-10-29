@@ -86,34 +86,12 @@ RELEASE_ID="${PRODUCT}-${builder_revision:0:8}-$(date +%Y%m%d%H%M%S)"
 REMOTE_RELEASE="$REMOTE_APP/releases/$RELEASE_ID"
 BUILD_DIR="$REMOTE_RELEASE"
 MIGRATION_STOPPED_AGENT=0
-MIGRATION_STOPPED_WORKSPACE=0
 # Make room first (PLAT-545): only when space is short, and never the live release, the newest one before it, or one in use.
 python3 "$REPO_ROOT/deploy/common/prune-releases.py" "$REMOTE_APP" --apply --only-if-free-below-gb 15 \
   || echo 'warning: could not make room before the deploy' >&2
 mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs"
 touch "$BUILD_DIR/.deploying"
-mkdir -p "$BUILD_DIR/migrations"
-install -m 0755 "$REPO_ROOT/scripts/migrations/agent-email-inboxes.py" "$BUILD_DIR/migrations/agent-email-inboxes.py"
-install -m 0755 "$REPO_ROOT/scripts/migrations/crew-owner-tabs.py" "$BUILD_DIR/migrations/crew-owner-tabs.py"
-install -m 0755 "$REPO_ROOT/scripts/migrations/agentbridge-receipts.py" "$BUILD_DIR/migrations/agentbridge-receipts.py"
-install -m 0755 "$REPO_ROOT/scripts/migrations/retire-agent-server-relay.py" "$BUILD_DIR/migrations/retire-agent-server-relay.py"
-install -m 0755 "$REPO_ROOT/scripts/migrations/fold-crew-role.py" "$BUILD_DIR/migrations/fold-crew-role.py"
-install -m 0755 "$REPO_ROOT/scripts/migrations/account-availability.py" "$BUILD_DIR/migrations/account-availability.py"
-install -m 0755 "$REPO_ROOT/scripts/migrations/vault-apps-setting.py" "$BUILD_DIR/migrations/vault-apps-setting.py"
-install -m 0755 "$REPO_ROOT/scripts/migrations/one-sharing-model.py" "$BUILD_DIR/migrations/one-sharing-model.py"
-install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"
-install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
-install -m 0755 "$REPO_ROOT/scripts/migrate-project-schedules.py" "$BUILD_DIR/migrations/migrate-project-schedules.py"
-install -m 0755 "$REPO_ROOT/scripts/migrate-browser-modes.py" "$BUILD_DIR/migrations/migrate-browser-modes.py"
-install -m 0755 "$REPO_ROOT/scripts/migrate-card-default-command.py" "$BUILD_DIR/migrations/migrate-card-default-command.py"
-install -m 0755 "$REPO_ROOT/scripts/repair-workflow-builder-tabs.py" "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py"
-for grouped_tool_catalog in "$REPO_ROOT/agent_go/pkg/platformtools/catalog/"*-actions.json; do
-  install -m 0644 "$grouped_tool_catalog" "$BUILD_DIR/migrations/$(basename "$grouped_tool_catalog")"
-done
 cleanup_build() {
-  if [[ "$MIGRATION_STOPPED_WORKSPACE" == 1 ]]; then
-    systemctl --user restart "$PRODUCT-workspace" >/dev/null 2>&1 || true
-  fi
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
     systemctl --user restart "$PRODUCT-agent" >/dev/null 2>&1 || true
@@ -425,80 +403,16 @@ except Exception:
   sleep 5
 done
 
-# Back up and retire personal Gmail intake before starting company inbox code.
+# Stop the old agent before current moves; it restarts on the new release below.
 MIGRATION_STOPPED_AGENT=1
 systemctl --user stop "$PRODUCT-agent"
-# Retire product-wide account grants before the new server reads its policy.
-# On failure, cleanup_build restarts the old agent (current has not moved).
-python3 "$BUILD_DIR/migrations/account-availability.py" --workspace-dir "$REMOTE_APP/data/docs" --env-file "$REMOTE_APP/.env" --backup-dir "$REMOTE_APP/state/migration-backups/account-audiences-$(date -u +%Y%m%dT%H%M%SZ)"
-# Replace the saved NO_SERVERS marker with "Use all my apps automatically" (PLAT-856-394); runs once.
-python3 "$BUILD_DIR/migrations/vault-apps-setting.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/vault-apps-setting-$(date -u +%Y%m%dT%H%M%SZ)" --done-file "$REMOTE_APP/state/migrations/vault-apps-setting.done"
-# One sharing model (PLAT-856-393): Goal editors become owners, Flow editors people who can use it.
-python3 "$BUILD_DIR/migrations/one-sharing-model.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/one-sharing-model-$(date -u +%Y%m%dT%H%M%SZ)"
-python3 "$BUILD_DIR/migrations/agent-email-inboxes.py" \
-  "$REMOTE_APP/state/gmail-inbound/email.db" --workspace-root "$REMOTE_APP/data/docs"
-python3 "$BUILD_DIR/migrations/crew-owner-tabs.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"
-python3 "$BUILD_DIR/migrations/agentbridge-receipts.py" "$REMOTE_APP/data/docs/_system/agent_messages/conversations.json"
-python3 "$BUILD_DIR/migrations/retire-agent-server-relay.py" --state-root "$REMOTE_APP/state" --mailbox "$REMOTE_APP/data/docs/_system/agent_messages/conversations.json"
-python3 "$BUILD_DIR/migrations/fold-crew-role.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"
-grouped_tool_catalog_args=()
-for grouped_tool_catalog in "$BUILD_DIR/migrations/"*-actions.json; do
-  grouped_tool_catalog_args+=(--catalog "$grouped_tool_catalog")
-done
-python3 "$BUILD_DIR/migrations/group-platform-tool-selections.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/group-platform-tools-$(date -u +%Y%m%dT%H%M%SZ)" "${grouped_tool_catalog_args[@]}" --native-namespace workspace_advanced --native-namespace workspace_browser --native-namespace human_tools
-python3 "$BUILD_DIR/migrations/simplify-workflow-settings.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/simplify-workflow-settings-$(date -u +%Y%m%dT%H%M%SZ)"
 MIGRATION_STOPPED_AGENT=0
 ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
 MIGRATION_STOPPED_AGENT=1
 vault_install "$BUILD_DIR" "$REMOTE_APP" "$PRODUCT"
 
-# One-time migration of legacy Workflow Builder chats, if this product opted
-# in. Runs after `current` points at code that understands the new nested
-# layout, but before starting the new agent, so no turn can rewrite a
-# transcript while it moves. The marker lives outside releases and makes all
-# later deployments a no-op.
-if [[ "${RUN_WORKFLOW_BUILDER_MIGRATION:-false}" == "true" ]]; then
-  migration_state="$REMOTE_APP/state/migrations"
-  migration_marker="$migration_state/workflow-builder-chats-v1.done"
-  install -d -m 0700 "$migration_state"
-  if [[ ! -f "$migration_marker" ]]; then
-    echo "==> [$RELEASE_ID] Migrating legacy Workflow Builder chats"
-    mkdir -p "$BUILD_DIR/migrations"
-    install -m 0755 "$REPO_ROOT/scripts/migrate_workflow_builder_chats.py" "$BUILD_DIR/migrations/migrate_workflow_builder_chats.py"
-    install -m 0644 "$PRODUCT_DIR/workflow-builder-chat-owners-v1.json" "$BUILD_DIR/migrations/workflow-builder-chat-owners-v1.json"
-    python3 "$BUILD_DIR/migrations/migrate_workflow_builder_chats.py" \
-      --workspace-root "$REMOTE_APP/data/docs" \
-      --owner-map "$BUILD_DIR/migrations/workflow-builder-chat-owners-v1.json" \
-      --apply
-    marker_tmp="$(mktemp "$migration_state/.workflow-builder-chats-v1.XXXXXX")"
-    printf 'release=%s\ncompleted_at=%s\n' "$RELEASE_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker_tmp"
-    chmod 0600 "$marker_tmp"
-    mv "$marker_tmp" "$migration_marker"
-  fi
-fi
-
-# One-time migration of retired personal ("yours") secrets into the
-# product's secret box, if this product opted in. Same shape as the Workflow
-# Builder migration above: runs after `current` points at the new release
-# but before the new agent starts, stamping a marker outside releases so
-# later deploys are a no-op. The agent binary reads AUTH_SECRET and
-# WORKSPACE_DOCS_PATH from the service .env (exported in a subshell so the
-# rest of this script keeps its own environment). Personal files are
-# archived, never deleted, and only after every secret for that user
-# migrated cleanly; anything unreadable is reported and left in place.
-# PLAT-871-15 runs last, with the old agent stopped and all prior shape hooks complete.
-python3 "$BUILD_DIR/migrations/migrate-project-schedules.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/project-schedules-$(date -u +%Y%m%dT%H%M%SZ)"
-python3 "$BUILD_DIR/migrations/migrate-browser-modes.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/browser-modes-$RELEASE_ID" --state-root "$REMOTE_APP/state" --deployment-mode server
-python3 "$BUILD_DIR/migrations/migrate-card-default-command.py" --workspace-dir "$REMOTE_APP/data/docs"
-python3 "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/workflow-builder-tabs-$(date -u +%Y%m%dT%H%M%SZ)"
-# Convert only platform records after older one-off hooks, with every writer stopped.
-# The same compiled conversion runs on desktop workspace startup.
-systemctl --user stop "$PRODUCT-workspace"
-MIGRATION_STOPPED_WORKSPACE=1
-AGENTWORKS_STATE_ROOT="$REMOTE_APP/state" LOCAL_MODE=false "$BUILD_DIR/bin/$PRODUCT-workspace" server --docs-dir "$REMOTE_APP/data/docs" --migrate-crew-state-only
 systemctl --user daemon-reload
 systemctl --user restart "$PRODUCT-workspace"
-MIGRATION_STOPPED_WORKSPACE=0
 sleep 2
 vault_start "$PRODUCT" "${VAULT_PORT:-$((WORKSPACE_PORT + 2))}"
 systemctl --user restart "$PRODUCT-agent"
