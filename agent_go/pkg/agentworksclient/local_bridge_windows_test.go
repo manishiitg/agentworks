@@ -60,8 +60,8 @@ func TestWindowsLocalBridgeServesAndRefusesASecondListener(t *testing.T) {
 		t.Fatalf("a second listener = %v", err)
 	}
 
-	// PLAT-856-222: an actual Windows READ_CONTROL denial was reduced to
-	// "unsafe directory", hiding the failing step needed to diagnose hooks.
+	// PLAT-856-222: preserve the privacy-check cause instead of returning
+	// only "unsafe directory", while retaining the successful private ping.
 	user, err := privateWindowsUser()
 	if err != nil {
 		t.Fatal(err)
@@ -74,9 +74,7 @@ func TestWindowsLocalBridgeServesAndRefusesASecondListener(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// OWNER RIGHTS removes the owner's implicit READ_CONTROL grant; keep
-	// WRITE_DAC allowed so the original private ACL can always be restored.
-	denied, err := windows.SecurityDescriptorFromString("D:P(D;;RC;;;OW)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;" + user.String() + ")")
+	denied, err := windows.SecurityDescriptorFromString("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;" + user.String() + ")(A;;GR;;;WD)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,10 +91,19 @@ func TestWindowsLocalBridgeServesAndRefusesASecondListener(t *testing.T) {
 		}
 	}()
 	_, err = CallLocalBridge(callCtx, root, LocalBridgeRequest{Action: "ping"})
-	if !errors.Is(err, windows.ERROR_ACCESS_DENIED) || !strings.Contains(err.Error(), "unsafe local bridge directory") || !strings.Contains(err.Error(), "read owner and DACL (win32=5)") {
-		t.Fatalf("directory access denial lost its cause: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "unsafe local bridge directory") || !strings.Contains(err.Error(), "accessible to other operating-system users") {
+		t.Fatalf("directory privacy rejection lost its cause: %v", err)
 	}
 	if strings.Contains(err.Error(), root) || strings.Contains(err.Error(), user.String()) {
 		t.Fatalf("directory access denial disclosed a path or SID: %v", err)
+	}
+	// Exercise a real failing Windows descriptor read without relying on the
+	// runner's privilege level to enforce a READ_CONTROL denial.
+	err = CheckPrivateAccess(filepath.Join(root, "missing"), info)
+	if !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) || !strings.Contains(err.Error(), "read owner and DACL (win32=2)") {
+		t.Fatalf("descriptor-read failure lost its Windows cause: %v", err)
+	}
+	if strings.Contains(err.Error(), root) || strings.Contains(err.Error(), user.String()) {
+		t.Fatalf("descriptor-read failure disclosed a path or SID: %v", err)
 	}
 }
