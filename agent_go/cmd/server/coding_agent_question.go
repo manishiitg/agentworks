@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -69,6 +70,7 @@ func (api *StreamingAPI) handleCodingAgentQuestionAnswer(w http.ResponseWriter, 
 		return
 	}
 	if err := musecli.SubmitQuestionAnswers(ctx, sessionID, req.PromptID, answers); err != nil {
+		log.Printf("[MUSE_QUESTION] session=%s prompt=%s auto=%v answer delivery failed: %v", sessionID, req.PromptID, req.Auto, err)
 		// If the first options cannot be submitted, interrupt the native
 		// question rather than leave the chat waiting.
 		if req.Auto && !strings.Contains(err.Error(), "no longer pending") {
