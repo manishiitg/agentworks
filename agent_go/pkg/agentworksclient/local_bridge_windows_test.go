@@ -56,7 +56,9 @@ func TestWindowsLocalBridgeServesAndRefusesASecondListener(t *testing.T) {
 	if err != nil || reply.Version != "windows-test" {
 		t.Fatalf("ping = %+v, %v", reply, err)
 	}
-	if err = ServeLocalBridge(ctx, root); err == nil || !strings.Contains(err.Error(), "already has a listener") {
+	// PLAT-856-222: a real second listener retains the Windows lock-conflict
+	// cause; other LockFileEx failures must not be diagnosed as contention.
+	if err = ServeLocalBridge(ctx, root); !errors.Is(err, windows.ERROR_LOCK_VIOLATION) || !strings.Contains(err.Error(), "already has a listener") {
 		t.Fatalf("a second listener = %v", err)
 	}
 
