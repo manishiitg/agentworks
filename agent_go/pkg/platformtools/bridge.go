@@ -4,8 +4,8 @@ import mcpagent "github.com/manishiitg/mcpagent/agent"
 
 // coreBridgeFamilies are the projected tools every coding CLI gets natively:
 // the working tools a chat uses on most turns. Every other admitted platform
-// tool stays in the session catalog and is reached through get_api_spec /
-// search_tools, so its schema is not resent with every model call
+// tool stays in the session catalog: search_tools / get_api_spec find it and
+// the bridge's call_tool runs it on its usual route, so its schema is not resent with every model call
 // (PLAT-825-130 had published all of them, about 26K tokens per call).
 var coreBridgeFamilies = map[string]bool{"terminal": true, "browser": true, "files": true}
 
