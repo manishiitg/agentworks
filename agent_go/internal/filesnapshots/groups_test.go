@@ -61,6 +61,32 @@ func TestNewCheckoutCollapsesToEditedFilesAndKeepsPlainFilesApart(t *testing.T) 
 	}
 }
 
+// PLAT-746: an existing checkout with older uncommitted edits lists only the
+// files this reply changed, so the card's count matches its rows.
+func TestExistingCheckoutListsOnlyThisReplysFiles(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "app")
+	os.MkdirAll(repo, 0o700)
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	git("init", "--quiet")
+	for _, name := range []string{"a.txt", "b.txt"} {
+		os.WriteFile(filepath.Join(repo, name), []byte("one\n"), 0o600)
+	}
+	git("add", ".")
+	git("commit", "--quiet", "-m", "init")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("older edit\n"), 0o600)
+	os.WriteFile(filepath.Join(repo, "b.txt"), []byte("one\ntwo\n"), 0o600)
+	groups := GroupChanges(context.Background(), root, []Change{{Path: "app/b.txt", Status: "M"}}, func(string) bool { return true })
+	if len(groups) != 1 || len(groups[0].Files) != 1 || groups[0].Files[0].Path != "app/b.txt" {
+		t.Fatalf("groups = %+v", groups)
+	}
+}
+
 func TestGitHubRepoDropsCredentialsAndOtherHosts(t *testing.T) {
 	for remote, want := range map[string]string{
 		"git@github.com:acme/app.git":             "acme/app",

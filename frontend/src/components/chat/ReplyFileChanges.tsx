@@ -201,6 +201,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
               ))}
               {group.more_count > 0 && <li className="text-xs text-muted-foreground">+ {group.more_count} more</li>}
             </ul>
+            {group.kind === 'repo' && group.pr?.state === 'unavailable' && <p className="mt-1 text-xs text-muted-foreground">GitHub did not answer for {group.github_repo || group.name} with your GitHub sign-in, so PR status is not shown.</p>}
             {group.kind === 'repo' && group.pr?.state === 'connect_github' && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('secrets')}>Connect GitHub to see PR status</button>}
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
               <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>

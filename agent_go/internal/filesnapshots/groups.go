@@ -199,13 +199,11 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 	g.dirty = ok && len(files) > 0
 	g.unpushed = gitCount(ctx, root, abs, "HEAD", "--not", "--remotes")
 	g.behind = gitCount(ctx, root, abs, "HEAD..@{upstream}")
-	switch {
-	case ok && (len(files) > 0 || g.NewCheckout):
+	// The card lists this reply's own changes. Only a checkout the reply
+	// created (thousands of adds) collapses to the files edited in it.
+	g.Files = changes
+	if ok && g.NewCheckout {
 		g.Files = files
-	default:
-		// Nothing differs from HEAD now (for example the reply committed):
-		// show what the reply changed, as before.
-		g.Files = changes
 	}
 	return capGroup(g)
 }
