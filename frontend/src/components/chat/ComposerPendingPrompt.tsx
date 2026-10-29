@@ -21,7 +21,7 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
   const oneClick = prompt.questions.length === 1 && !question.multiSelect && !question.allowOther
     && question.options.length > 0 && question.options.length <= 4
   if (!oneClick) {
-    return <div className="mx-auto mb-2 w-full max-w-4xl px-3" data-testid="composer-pending-prompt">
+    return <div className="mb-2 w-full px-3" data-testid="composer-pending-prompt">
       <CodingAgentQuestionCard prompt={prompt} onAnswer={onAnswer} />
     </div>
   }
@@ -40,7 +40,7 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
   }
   // Approve is the main action, so it comes last (next to where people expect "send").
   const options = approval ? [...question.options].sort((a, b) => Number(a.label === 'Allow') - Number(b.label === 'Allow')) : question.options
-  return <section className="mx-auto mb-2 w-full max-w-4xl px-3" data-testid="composer-pending-prompt" aria-live="polite">
+  return <section className="mb-2 w-full px-3" data-testid="composer-pending-prompt" aria-live="polite">
     <div className="rounded-xl border border-amber-300/70 bg-amber-50/80 p-3 text-card-foreground shadow-sm dark:border-amber-500/40 dark:bg-amber-950/30">
       <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-300">
         {approval ? <ShieldQuestion className="h-3.5 w-3.5" aria-hidden="true" /> : <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />}
