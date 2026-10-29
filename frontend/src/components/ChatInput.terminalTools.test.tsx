@@ -239,7 +239,8 @@ describe('terminal toolbar shared tools', () => {
     expect(send).toHaveBeenLastCalledWith('review this file', expect.objectContaining({ sourceTabId: 'A', deliveryMode: 'queue' }))
     const input = host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
     await act(async () => useChatStore.getState().setTabConfig('A', { inputText: '' }))
-    expect(host.querySelector('[data-testid="chat-submit-button"]')).toBeNull()
+    // Empty: the arrow is hidden but keeps its place, so typing does not shift the row.
+    expect(host.querySelector('[data-testid="chat-submit-button"]')?.closest('[data-send-slot]')?.className).toBe('invisible')
     expect(host.querySelector('[aria-label="Add files and actions"]')).not.toBeNull()
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'second message')

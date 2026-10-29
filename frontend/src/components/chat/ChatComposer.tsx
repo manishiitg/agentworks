@@ -58,9 +58,10 @@ export function ChatComposerControls({ className, ...props }: HTMLAttributes<HTM
   return <div className={cn('flex min-w-0 flex-wrap justify-between items-center gap-y-1 [&_button]:min-h-7 [&_button]:min-w-7 [&_button>svg]:!h-3 [&_button>svg]:!w-3', className)} {...props} />
 }
 
-/** Keep the default 40px floor and avoid a layout write on single-line typing. */
+/** Keep the default 36px floor and avoid a layout write on single-line typing. */
 export function resizeChatComposerTextarea(textarea: HTMLTextAreaElement, product = false): void {
-  const floor = product ? 36 : 40
+  // One line of text plus the textarea's own padding: no spare blank line under an empty box.
+  const floor = product ? 32 : 36
   if (textarea.style.height === `${floor}px` && textarea.scrollHeight <= textarea.clientHeight) return
   textarea.style.height = 'auto'
   const next = `${Math.min(Math.max(textarea.scrollHeight, floor), 100)}px`

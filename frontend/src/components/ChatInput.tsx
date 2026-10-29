@@ -1576,7 +1576,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (textareaRef.current) {
       // Set initial height to 2 lines (40px) if empty
       if (!inputText || inputText.trim() === '') {
-        textareaRef.current.style.height = isProductSurface ? '36px' : '40px'
+        textareaRef.current.style.height = isProductSurface ? '32px' : '36px'
       } else {
         adjustTextareaHeight()
       }
@@ -1586,7 +1586,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Set initial height on mount
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = isProductSurface ? '36px' : '40px'
+      textareaRef.current.style.height = isProductSurface ? '32px' : '36px'
     }
   }, [isProductSurface])
 
@@ -3627,7 +3627,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       </Button>}
                       {!nativeTerminalTools && <span className={showStopButton && foregroundTurnActive ? 'max-md:hidden' : 'contents'}>{micEl}</span>}
                       {/* Chat and task actions share the popup; Enter follows the selected delivery mode. */}
-                      {(!compactComposerActions || hasValidQuery) && <Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
+                      {/* The arrow keeps its place while the box is empty, so typing never moves the row. */}
+                      <span data-send-slot className={compactComposerActions && !hasValidQuery ? 'invisible' : 'contents'} aria-hidden={compactComposerActions && !hasValidQuery ? true : undefined}><Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
                         {!compactComposerActions && deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
                       </Button>}>
                       <ChatSendModeButton
@@ -3642,7 +3643,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onOpenChange={setSendOptionsOpen}
                         onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
                       />
-                      </Suspense>}
+                      </Suspense></span>
                     </div>
                 </div>
               </div>
