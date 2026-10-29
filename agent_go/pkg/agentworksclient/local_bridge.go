@@ -341,16 +341,22 @@ func CallLocalBridge(ctx context.Context, root string, request LocalBridgeReques
 	if err != nil {
 		return out, err
 	}
-	if !info.IsDir() || CheckPrivateAccess(root, info) != nil {
-		return out, errors.New("unsafe local bridge directory")
+	if !info.IsDir() {
+		return out, errors.New("unsafe local bridge directory: expected a directory")
+	}
+	if err = CheckPrivateAccess(root, info); err != nil {
+		return out, fmt.Errorf("unsafe local bridge directory: %w", err)
 	}
 	socket := filepath.Join(root, "bridge.sock")
 	info, err = os.Lstat(socket)
 	if err != nil {
 		return out, err
 	}
-	if info.Mode()&os.ModeSocket == 0 || CheckPrivateAccess(socket, info) != nil {
-		return out, errors.New("unsafe local bridge socket")
+	if info.Mode()&os.ModeSocket == 0 {
+		return out, errors.New("unsafe local bridge socket: expected a socket")
+	}
+	if err = CheckPrivateAccess(socket, info); err != nil {
+		return out, fmt.Errorf("unsafe local bridge socket: %w", err)
 	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", socket)

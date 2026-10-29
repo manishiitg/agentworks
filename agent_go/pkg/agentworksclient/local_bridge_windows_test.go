@@ -2,11 +2,14 @@ package agentworksclient
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // The bridge must serve and answer on Windows over its private local socket: the directory is created
@@ -55,5 +58,45 @@ func TestWindowsLocalBridgeServesAndRefusesASecondListener(t *testing.T) {
 	}
 	if err = ServeLocalBridge(ctx, root); err == nil || !strings.Contains(err.Error(), "already has a listener") {
 		t.Fatalf("a second listener = %v", err)
+	}
+
+	// PLAT-856-222: an actual Windows READ_CONTROL denial was reduced to
+	// "unsafe directory", hiding the failing step needed to diagnose hooks.
+	user, err := privateWindowsUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := windows.GetNamedSecurityInfo(root, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalACL, _, err := original.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// OWNER RIGHTS removes the owner's implicit READ_CONTROL grant; keep
+	// WRITE_DAC allowed so the original private ACL can always be restored.
+	denied, err := windows.SecurityDescriptorFromString("D:P(D;;RC;;;OW)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;" + user.String() + ")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deniedACL, _, err := denied.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = windows.SetNamedSecurityInfo(root, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, deniedACL, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := windows.SetNamedSecurityInfo(root, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, originalACL, nil); err != nil {
+			t.Errorf("restore directory access: %v", err)
+		}
+	}()
+	_, err = CallLocalBridge(callCtx, root, LocalBridgeRequest{Action: "ping"})
+	if !errors.Is(err, windows.ERROR_ACCESS_DENIED) || !strings.Contains(err.Error(), "unsafe local bridge directory") || !strings.Contains(err.Error(), "read owner and DACL (win32=5)") {
+		t.Fatalf("directory access denial lost its cause: %v", err)
+	}
+	if strings.Contains(err.Error(), root) || strings.Contains(err.Error(), user.String()) {
+		t.Fatalf("directory access denial disclosed a path or SID: %v", err)
 	}
 }
