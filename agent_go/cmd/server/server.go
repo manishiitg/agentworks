@@ -8578,6 +8578,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			finalHistory = mergeNativeContinuationChatHistory(historyForAgent, finalHistory)
 			log.Printf("[CONVERSATION DEBUG] Native continuation merge: retained %d prior messages, final history now %d messages for session %s", len(historyForAgent), len(finalHistory), sessionID)
 		}
+		// Every answer Claude finished inside this turn, also when the turn was
+		// released or cancelled before its final reply (PLAT-872).
+		finalHistory = api.historyWithNativeTurnAnswers(sessionID, finalHistory)
 		// What we write to disk. Defaults to finalHistory; if mode changed
 		// this turn, drop the synthetic handoff message (index 0) and append
 		// the rest to the pre-change snapshot so the persisted file stays

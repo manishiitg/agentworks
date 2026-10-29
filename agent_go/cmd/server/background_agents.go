@@ -3143,8 +3143,8 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		syntheticStatus = trackedExecutionStatusCompleted
 		syntheticError = ""
 
-		// Final save of conversation history
-		finalHistory := llmAgent.GetHistory()
+		// Final save of conversation history, with every answer Claude finished in it (PLAT-872)
+		finalHistory := api.historyWithNativeTurnAnswers(sessionID, llmAgent.GetHistory())
 		api.conversationMux.Lock()
 		api.conversationHistory[sessionID] = finalHistory
 		api.conversationMux.Unlock()

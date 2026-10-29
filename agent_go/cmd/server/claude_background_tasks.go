@@ -35,6 +35,7 @@ var releaseAnsweredCodingTurn = func(sessionID string) bool {
 // work pill reads the list itself, so a change only refreshes the session's
 // runtime state and tells open screens to read it again.
 func (api *StreamingAPI) wireClaudeBackgroundTasks() {
+	claudecode.SetSDKAnswerListener(recordNativeTurnAnswer)
 	claudecode.SetSDKBackgroundListener(func(update claudecode.SDKBackgroundUpdate) {
 		sessionID := strings.TrimSpace(update.Owner)
 		if sessionID == "" {
