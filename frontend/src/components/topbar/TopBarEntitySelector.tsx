@@ -2,7 +2,6 @@ import { useCompactProductNavigation, useProductNavigationSidebar } from '../wor
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { LayoutGrid, Plus } from 'lucide-react'
 import { ProductPickerMenu } from '../workspace/ProductPickerMenu'
-import { ProductSurfaceSwitcher } from '../ProductSurfaceSwitcher'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 
@@ -184,7 +183,6 @@ export function TopBarEntitySelector({
       {(open || compact) && (
         <div ref={panelRef} hidden={!open} style={sidebar || titleNavigation ? panelPosition : undefined} className={`preset-dropdown ${sidebar || titleNavigation ? 'fixed w-[420px] max-h-[calc(100dvh-64px)] overflow-hidden' : compact ? 'absolute right-0 top-full mt-1 w-[420px] max-h-[calc(100dvh-64px)] overflow-hidden' : 'absolute left-0 top-full mt-1 w-64'} ${compact ? (open ? 'flex flex-col' : 'hidden') : ''} z-50 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-popover text-popover-foreground shadow-xl`}>
           {compact ? <ProductPickerMenu title={placeholder === 'Select Automation' ? 'Automations' : placeholder === 'Select Flow' ? 'Flows' : 'Workspaces'}
-            products={<ProductSurfaceSwitcher menuOnly onSelect={onClose} />}
             footer={!sidebarSettings && <section data-picker-setup className="shrink-0 border-t border-border p-1.5"><div ref={registerSetup} data-picker-setup-slot /></section>}>
             {children}
           </ProductPickerMenu> : children}

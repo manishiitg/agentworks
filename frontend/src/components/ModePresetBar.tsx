@@ -1,4 +1,3 @@
-import { ProductPickerActionsContext } from './workspace/productNavigationContexts'
 import React, { useState, useEffect, useCallback } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
@@ -483,23 +482,9 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     }
   }, [showPresetDropdown, selectedModeCategory, presetsLoading, refreshPresets, getPresetsForMode])
 
-  const pickerActions = hasProductSchedules ? <button type="button" role="menuitem" data-tour="global-schedules" data-product-navigation-action
-    aria-label={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
-    aria-pressed={showSchedulesOverview && !showProviders && !showWorkflowsOverview}
-    title={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
-    onClick={() => {
-      window.dispatchEvent(new Event('close-workspace-picker'))
-      useLLMStore.getState().setShowLLMModal(false)
-      setAdminPage(null); setShowWorkflowsOverview(false); setShowSchedulesOverview(true)
-    }}
-    className={`relative mx-1 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors ${showSchedulesOverview && !showProviders && !showWorkflowsOverview ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-    <CalendarClock className="h-4 w-4 shrink-0" /><span>Schedules &amp; triggers</span>
-    {schedulerPaused === true && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-1 ring-background" />}
-  </button> : null
 
   return (
     <>
-      <ProductPickerActionsContext.Provider value={pickerActions}>
       <ProductTopBar>
           {/* Product and current automation */}
           <ProductTopBarMain>
@@ -652,7 +637,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
           </ProductTopBarMain>
 
       </ProductTopBar>
-      </ProductPickerActionsContext.Provider>
 
       {/* Keyboard Shortcuts & Tips Modal */}
       {showShortcuts && (

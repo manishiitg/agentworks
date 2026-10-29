@@ -118,15 +118,13 @@ it.each(['agentworks', 'relays'])('opens the existing %s creation form for a pen
 })
 
 
-it.each(['agentworks', 'work'] as const)('keeps global schedules in the %s header picker after removing Account navigation', async productSurface => {
-  const showSchedules = vi.fn()
-  Object.assign(mocks.state, { productSurface, setShowLLMModal: vi.fn(), setAdminPage: vi.fn(), setShowWorkflowsOverview: vi.fn(), setShowSchedulesOverview: showSchedules })
+// Owner, 2026-10-29: the project picker only switches projects; no schedules action or product grid.
+it.each(['agentworks', 'work'] as const)('shows only projects in the %s header picker', async productSurface => {
+  Object.assign(mocks.state, { productSurface, setShowLLMModal: vi.fn(), setAdminPage: vi.fn(), setShowWorkflowsOverview: vi.fn(), setShowSchedulesOverview: vi.fn() })
   await render(productSurface === 'work' ? { productControl: <TopBarEntitySelector placeholder="Choose a Crew" open={false} onToggle={() => {}} onClose={() => {}}><span>Existing Crews</span></TopBarEntitySelector> } : {})
-  const schedule = host.querySelector<HTMLButtonElement>('[data-product-picker-menu] [data-tour="global-schedules"]')!
-  expect(schedule).not.toBeNull()
   expect(host.querySelector('[data-product-settings] [data-product-picker-menu]')).not.toBeNull()
-  await act(async () => schedule.click())
-  expect(showSchedules).toHaveBeenCalledWith(true)
+  expect(host.querySelector('[data-product-picker-menu] [data-tour="global-schedules"]')).toBeNull()
+  expect(host.querySelector('[data-product-picker-menu] [data-product-switch-menu]')).toBeNull()
 })
 
 it('omits global Goal activity from the header and automation picker', async () => {
