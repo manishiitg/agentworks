@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -52,6 +53,7 @@ func ServeStream(m *Manager, upgrader *websocket.Upgrader, w http.ResponseWriter
 	// just a byte count, is what separates near-silence (a muted/wrong input
 	// device) from real speech reaching the engine.
 	var audioChunks, totalSamples int
+	opened := time.Now()
 	send := func(msg StreamMessage) {
 		if writeErr := conn.WriteJSON(msg); writeErr != nil {
 			log.Printf("[VOICE] write failed: %v", writeErr)
@@ -67,8 +69,9 @@ func ServeStream(m *Manager, upgrader *websocket.Upgrader, w http.ResponseWriter
 			if result.Text != "" {
 				send(StreamMessage{Type: "final", Text: result.Text, EndOfUtterance: true})
 			}
-			log.Printf("[VOICE] session ended: chunks=%d audio_seconds=%.1f final_text=%q",
-				audioChunks, float64(totalSamples)/float64(SampleRate), result.Text)
+			// Audio far shorter than the session means the browser dropped samples.
+			log.Printf("[VOICE] session ended: chunks=%d audio_seconds=%.1f wall_seconds=%.1f final_text=%q",
+				audioChunks, float64(totalSamples)/float64(SampleRate), time.Since(opened).Seconds(), result.Text)
 			return
 		}
 		switch msgType {

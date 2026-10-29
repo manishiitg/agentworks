@@ -5,10 +5,10 @@
  * — that app is a separate Vite project frontend/src cannot import from, so
  * this is a copy, not a shared module.
  *
- * Requesting the AudioContext at 16000Hz directly (rather than capturing at
- * the device's native 44.1/48kHz and resampling in JS) lets the browser/OS
- * audio driver do the resampling, which is both simpler and higher quality
- * than a hand-rolled resampler.
+ * The AudioContext runs at the device's own rate (44.1/48kHz). Asking the
+ * browser for a 16kHz context made it deliver only about a third of the audio
+ * on a live server, so the speech engine heard nothing it could transcribe;
+ * capture now averages down to 16kHz here.
  */
 
 /** 160ms at 16kHz — small enough for responsive partials, large enough to
@@ -77,9 +77,9 @@ export async function startPcmCapture(
   // too small to be worth a websocket send each. Coalesce up to a real chunk
   // first.
   let pending: number[] = []
+  const toTarget = createDownsampler(ctx.sampleRate, PCM_SAMPLE_RATE)
   node.port.onmessage = (event: MessageEvent<Float32Array>) => {
-    const samples = event.data
-    for (let i = 0; i < samples.length; i++) pending.push(samples[i])
+    toTarget(event.data, sample => pending.push(sample))
     while (pending.length >= PCM_CHUNK_SAMPLES) {
       const slice = pending.splice(0, PCM_CHUNK_SAMPLES)
       onChunk(floatTo16BitPCM(slice))
@@ -103,6 +103,24 @@ export async function startPcmCapture(
       try { node.disconnect() } catch { /* already disconnected */ }
       try { silence.disconnect() } catch { /* already disconnected */ }
     },
+  }
+}
+
+/** Converts a stream at `from` Hz to `to` Hz by averaging each output sample's
+ *  window of input samples (a box filter, enough to keep speech intelligible).
+ *  State carries across calls, so chunk boundaries add no clicks. */
+export function createDownsampler(from: number, to: number) {
+  const step = from / to
+  let sum = 0, count = 0, position = 0
+  return (input: ArrayLike<number>, emit: (sample: number) => void) => {
+    if (step <= 1) { for (let i = 0; i < input.length; i++) emit(input[i]); return }
+    for (let i = 0; i < input.length; i++) {
+      sum += input[i]; count++; position++
+      if (position >= step) {
+        emit(sum / count)
+        position -= step; sum = 0; count = 0
+      }
+    }
   }
 }
 

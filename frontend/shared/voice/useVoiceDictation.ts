@@ -101,7 +101,9 @@ export function useVoiceDictation(options: VoiceDictationOptions) {
       // prompt, and the socket. Serially these added up to ~3s of "Getting
       // voice ready" on every click; the slowest of them alone is well under
       // a second.
-      const audioCtx = new AudioContext({ sampleRate: 16000 })
+      // The device's own rate: a 16 kHz context made the browser drop audio (a third of the
+      // samples arrived), so capture converts to 16 kHz itself (pcmCapture).
+      const audioCtx = new AudioContext()
       audioCtxRef.current = audioCtx
       const workletReady = ensurePcmWorklet(audioCtx)
 
