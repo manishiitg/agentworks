@@ -134,6 +134,53 @@ func TestUIControlHTTPRestoresCrewScopeAndAcceptsCrewViews(t *testing.T) {
 	}
 }
 
+// In someone else's Crew a Run person's screen shows only the chat and the dashboard (AGENTS.md, one company per
+// server): their bound page lists only the dashboard and their agent's open of Files is refused; the owner gets Files.
+func TestUIControlRunPersonGetsOnlyRunViews(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"user-a","username":"user-a","products":["work"]},{"id":"user-c","username":"user-c","products":["work"]}]}`)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	stubCrewLookups(t, map[string]string{"Crew/crew-1": "user-a"}, nil)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "crew-1", OwnerID: "user-a", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
+		"work:project:crew-1":   {SessionID: "work:project:crew-1", UserID: "user-a", WorkspacePath: "Crew/crew-1"},
+		"work:project:crew-1-c": {SessionID: "work:project:crew-1-c", UserID: "user-c", WorkspacePath: "Crew/crew-1"},
+	}}
+	bindViews := func(user, session string) []string {
+		t.Helper()
+		r := mux.SetURLVars(requestWithUserForSessionAccess(user), map[string]string{"session_id": session})
+		r.Body = io.NopCloser(strings.NewReader(`{"operation":"bind","version":1}`))
+		w := httptest.NewRecorder()
+		api.handleUIControl(w, r)
+		var out struct {
+			Contract uiContract `json:"contract"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
+			t.Fatalf("%s bind: %d %s", user, w.Code, w.Body.String())
+		}
+		return uiContractViewIDs(out.Contract)
+	}
+	if got := bindViews("user-c", "work:project:crew-1-c"); strings.Join(got, ",") != "report" {
+		t.Fatalf("Run person's page views = %v, want only report", got)
+	}
+	if got := strings.Join(bindViews("user-a", "work:project:crew-1"), ","); !strings.Contains(got, "files") {
+		t.Fatalf("owner's page views = %s, want files", got)
+	}
+
+	reg := &recordingRegistrar{}
+	if err := api.registerOpenWorkWorkspaceViewTool(reg, "user-c", "work:project:crew-1-c", "Crew/crew-1", false); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "files", "action": "open"})
+	if !strings.Contains(out, `"code":"unsupported_view"`) {
+		t.Fatalf("Run person's agent opened Files: %s", out)
+	}
+	if err := validateUIActionForContract(projectUIControlContract("Crew/crew-1", true), "files", "open", ""); err != nil {
+		t.Fatalf("owner's agent cannot open Files: %v", err)
+	}
+}
+
 func TestUIControlHTTPDoesNotRestoreAutomatedCrewScope(t *testing.T) {
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
 		"work:project:crew-1": {

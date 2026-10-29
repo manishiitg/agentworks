@@ -9,7 +9,7 @@ import (
 func TestWorkUIRegistersSamePresentationToolFamilyWithWorkViews(t *testing.T) {
 	api := &StreamingAPI{}
 	reg := &recordingRegistrar{}
-	if err := api.registerOpenWorkWorkspaceViewTool(reg, "user-1", "work-chat", "Crew/demo"); err != nil {
+	if err := api.registerOpenWorkWorkspaceViewTool(reg, "user-1", "work-chat", "Crew/demo", true); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
@@ -91,7 +91,7 @@ func TestWorkUIUsesPublicWorkspaceForUserScopedProductConversation(t *testing.T)
 		t.Run(workspace, func(t *testing.T) {
 			api := &StreamingAPI{}
 			reg := &recordingRegistrar{}
-			if err := api.registerOpenWorkWorkspaceViewTool(reg, "user-1", "work-chat", workspace); err != nil {
+			if err := api.registerOpenWorkWorkspaceViewTool(reg, "user-1", "work-chat", workspace, true); err != nil {
 				t.Fatal(err)
 			}
 			if got, want := api.uiBroker().scope("work-chat"), "Chats/Work/projects/demo"; got != want {

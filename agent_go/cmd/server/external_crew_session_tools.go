@@ -41,7 +41,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 	}
 	reg := crewCapabilityRegistrar{}
 	if agentprofiles.HasFeature(profile, "workspace-ui") {
-		if err = api.registerOpenWorkWorkspaceViewTool(reg, claims.UserID, chat.SessionID, crew.Binding.WorkspacePath); err != nil {
+		if err = api.registerOpenWorkWorkspaceViewTool(reg, claims.UserID, chat.SessionID, crew.Binding.WorkspacePath, crew.OwnedByCaller); err != nil {
 			externalFailure(w, err)
 			return
 		}

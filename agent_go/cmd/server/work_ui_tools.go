@@ -29,10 +29,24 @@ var workUIControlContract = uiContract{
 // codeUIControlContract is Crew's project contract without the views Code
 // does not have: identity, schedules, triggers and the automation section.
 
-// projectUIControlContract returns the UI contract for a project workspace.
-func projectUIControlContract(workspace string) uiContract {
+// crewRunUIViews are the panel views a Run person sees in someone else's Crew: beside the chat only the project's
+// dashboard (AGENTS.md, one company per server). Files, Memory, Terminal and the setup views stay with its Builders.
+var crewRunUIViews = map[string]bool{"report": true}
 
-	return workUIControlContract
+// projectUIControlContract returns the UI contract for a project workspace: the full list for a Builder (owner or
+// co-owner), only crewRunUIViews for a Run person. Both the bound page and the agent's actions use this contract.
+func projectUIControlContract(workspace string, builder bool) uiContract {
+	if builder {
+		return workUIControlContract
+	}
+	run := workUIControlContract
+	run.Views = nil
+	for _, v := range workUIControlContract.Views {
+		if crewRunUIViews[v.ID] {
+			run.Views = append(run.Views, v)
+		}
+	}
+	return run
 }
 
 // restoredWorkUIScope reconstructs the presentation-only browser scope from
@@ -64,8 +78,8 @@ func registerWorkUIAllowed(req QueryRequest) bool {
 		!req.IsAutoNotification
 }
 
-func (api *StreamingAPI) registerOpenWorkWorkspaceViewTool(registrar definitionToolRegistrar, userID, session, workspace string) error {
+func (api *StreamingAPI) registerOpenWorkWorkspaceViewTool(registrar definitionToolRegistrar, userID, session, workspace string, builder bool) error {
 	workspace = canonicalChatHistoryWorkspacePath(userID, workspace)
-	contract := projectUIControlContract(workspace)
+	contract := projectUIControlContract(workspace, builder)
 	return api.registerUIControlToolsForContract(registrar, session, workspace, contract)
 }

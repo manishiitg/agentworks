@@ -56,9 +56,16 @@ func (api *StreamingAPI) handleUIControl(w http.ResponseWriter, r *http.Request)
 		fail("unsupported_surface", http.StatusConflict)
 		return
 	}
-	if isSharedCrew && crewAccessFor(GetUserFromContext(r.Context()), crew) == crewAccessNone {
-		fail("forbidden", http.StatusForbidden)
-		return
+	contract := uiContractForScope(workspace)
+	if isSharedCrew {
+		switch crewAccessFor(GetUserFromContext(r.Context()), crew) {
+		case crewAccessNone:
+			fail("forbidden", http.StatusForbidden)
+			return
+		case crewAccessReader:
+			// A Run person's page gets only the Run views (the dashboard), like their screen.
+			contract = projectUIControlContract(cleanWorkspace, false)
+		}
 	}
 	if isWorkflow {
 		level, manifest := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), workspace)
@@ -98,7 +105,7 @@ func (api *StreamingAPI) handleUIControl(w http.ResponseWriter, r *http.Request)
 		var client *uiBinding
 		client, err = b.bind(session)
 		if err == nil {
-			out = map[string]interface{}{"binding": client.id, "token": client.token, "workspace": workspace, "version": uiControlContract.Version, "contract": uiContractForScope(workspace)}
+			out = map[string]interface{}{"binding": client.id, "token": client.token, "workspace": workspace, "version": uiControlContract.Version, "contract": contract}
 		}
 	case "sync":
 		out, err = b.syncClient(session, req.Binding, req.Token, req.State)

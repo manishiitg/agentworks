@@ -1153,7 +1153,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
 			gate.Declare(name)
 		}
-		if err := api.registerOpenWorkWorkspaceViewTool(registrar, userID, sessionID, workspacePath); err != nil {
+		if err := api.registerOpenWorkWorkspaceViewTool(registrar, userID, sessionID, workspacePath, true); err != nil {
 			return err
 		}
 	}

@@ -257,11 +257,12 @@ func validUIViewForContract(contract uiContract, view string) bool {
 	return false
 }
 
+// uiContractForScope is the Builder contract of a scope; a Crew's Run person gets projectUIControlContract(…, false).
 func uiContractForScope(scope string) uiContract {
 	// isProjectWorkspacePath already reads a project the same way with or without
 	// its _users/<id>/ prefix; who may bind is checked by the route, not here.
 	if clean := path.Clean(strings.Trim(strings.TrimSpace(scope), "/")); isProjectWorkspacePath(clean) {
-		return projectUIControlContract(clean)
+		return projectUIControlContract(clean, true)
 	}
 	return uiControlContract
 }
