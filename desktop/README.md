@@ -47,7 +47,7 @@ If you are already running the frontend and workspace services via Docker Compos
 
 In this wrapper-only mode, Electron does not own the backend, so connected servers are unavailable. The sidebar explains this.
 
-For connected-server testing with Vite, use the full local launcher:
+For connected-server testing with Vite, run the full local launcher yourself from a terminal. It compiles the backend locally:
 
 ```bash
 cd agent_go

@@ -22,17 +22,21 @@ const { spawnWithBootstrap } = require('../../desktop/lib/connections');
   const completed = once(child, 'exit');
   child.stdout.on('data', chunk => { output += chunk; });
   child.stderr.on('data', chunk => { output += chunk; });
+  let readinessTimer;
   try {
-    await Promise.race([
-      new Promise((resolve, reject) => {
-        const timer = setInterval(() => {
-          if (/DynamicPort: \d+/.test(output)) { clearInterval(timer); resolve(); }
-          else if (child.exitCode !== null) { clearInterval(timer); reject(new Error('server exited before readiness')); }
-        }, 100);
-        timer.unref();
-      }),
-      new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('server readiness timed out')), 60000); timer.unref(); }),
-    ]);
+    await new Promise((resolve, reject) => {
+      const deadline = Date.now() + 60000;
+      readinessTimer = setInterval(() => {
+        if (/DynamicPort: \d+/.test(output)) { clearInterval(readinessTimer); resolve(); }
+        else if (child.exitCode !== null || child.signalCode !== null || Date.now() > deadline) {
+          clearInterval(readinessTimer);
+          // Fixture-only output; strip even the synthetic credentials before diagnosis.
+          let detail = output.slice(-8000);
+          for (const value of Object.values(bootstrap)) detail = detail.replaceAll(value, '[fixture]');
+          reject(new Error('server did not become ready: ' + detail));
+        }
+      }, 100);
+    });
     const listing = spawnSync('ps', ['eww', '-p', String(child.pid)], { encoding: 'utf8' });
     assert.equal(listing.status, 0);
     for (const value of ['AGENTWORKS_DESKTOP_', 'AUTH_SECRET=', bootstrap.secret, bootstrap.auth_secret, 'inherited-auth-canary', 'inherited-proof-canary']) {
@@ -41,6 +45,7 @@ const { spawnWithBootstrap } = require('../../desktop/lib/connections');
     }
     console.log('Real agent-server startup and ps credential check passed.');
   } finally {
+    clearInterval(readinessTimer);
     child.kill('SIGKILL'); await completed;
   }
   // Repeat through the development launcher, using a different Vite origin.
