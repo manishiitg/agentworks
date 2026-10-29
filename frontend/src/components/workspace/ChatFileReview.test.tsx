@@ -2,13 +2,13 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2 }))
+const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[] }))
 const replies = [{ snapshot_id: 'first', end_sequence: 2 }, { snapshot_id: 'last', end_sequence: 4 }]
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
-  return { data: { history: { replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
+  return { data: { history: { recent_repos: state.recentRepos, replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
 }), post: vi.fn(async () => { state.reviewed = true; return { data: {} } }) }, agentApi: { getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: 'current contents' } })) }, workspaceApi: { get: vi.fn() } }))
-vi.mock('../../services/workspaceGit', () => ({ workspaceGitApi: { status: vi.fn(async () => []), diff: vi.fn() } }))
+vi.mock('../../services/workspaceGit', () => ({ workspaceGitApi: { status: vi.fn(async () => []), diff: vi.fn(), branches: vi.fn(async () => []), branchCompare: vi.fn(async (_workspace: string, repo: string) => ({ branch: repo === 'app-wt' ? 'feature' : 'main', base: 'main', base_sha: 'abc1234', head_sha: 'def1234', unpushed: 0, files: [] })), branchDiff: vi.fn() } }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { exact: { sessionId: state.sessionId } } }) } }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn(async () => ({})) }))
 vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: () => ({}), assertChatIdentityCurrent: () => undefined }))
@@ -25,6 +25,30 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('defaults Branch / PR to the server-ranked chat checkout and retains a manual choice', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      state.recentRepos = ['removed-worktree', 'app-wt']
+      vi.mocked(workspaceGitApi.status).mockResolvedValueOnce([
+        { root: 'app', branch: 'main', ahead: 0, behind: 0, files: [] },
+        { root: 'app-wt', branch: 'feature', ahead: 0, behind: 0, files: [] },
+      ])
+      await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      const button = (text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent === text)!
+      await act(async () => button('Branch / PR').click())
+      expect(workspaceGitApi.branchCompare).toHaveBeenLastCalledWith('Crew/example', 'app-wt', '')
+      const picker = host.querySelector<HTMLSelectElement>('[aria-label="Worktree"]')!
+      expect(picker.value).toBe('app-wt')
+      expect(picker.selectedOptions[0].textContent).toContain('This chat')
+      await act(async () => { picker.value = 'app'; picker.dispatchEvent(new Event('change', { bubbles: true })) })
+      expect(workspaceGitApi.branchCompare).toHaveBeenLastCalledWith('Crew/example', 'app', '')
+      await act(async () => button('This chat').click())
+      await act(async () => button('Branch / PR').click())
+      expect(host.querySelector<HTMLSelectElement>('[aria-label="Worktree"]')?.value).toBe('app')
+    } finally { state.recentRepos = []; await act(async () => root.unmount()); host.remove() }
+  })
+
   it('shows all 50 saved diffs, keeping the picker for 51 files', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)

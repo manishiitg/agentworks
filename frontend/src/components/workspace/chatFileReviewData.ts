@@ -4,6 +4,7 @@ import api from '../../services/api'
 export type FileChange = { path: string; status: string; added?: number; removed?: number; binary?: boolean }
 export type ReviewSummary = { files: number; added: number; removed: number }
 export type ReviewHistory = {
+  recent_repos?: string[]
   replies: { snapshot_id: string; end_sequence: number }[]
   reviews: { snapshot_id: string; reviewed_at: string }[]
   available: boolean; start_message?: { text: string; at?: string }; last_snapshot_id: string; latest_snapshot_id: string

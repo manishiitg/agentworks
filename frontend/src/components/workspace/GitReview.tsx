@@ -21,11 +21,12 @@ const scopeLabel: Record<Scope, string> = { uncommitted: 'Uncommitted', branch: 
  * same list the reply card counts, including files outside any repository. */
 export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, onBrowse, renderChat }: {
   workspacePath: string; sessionId: string; tabId: string; repos: GitRepo[]; onRefresh: () => void; onBrowse: () => void
-  renderChat: (bar: ReactNode) => ReactNode
+  renderChat: (bar: ReactNode, onRecentRepositories: (roots: string[]) => void) => ReactNode
 }) {
   // This chat first: the reply card's count is this chat's changes, so the review opens on the same list (owner, 2026-10-29).
   const [scope, setScope] = useState<Scope>('chat')
-  const [repoRoot, setRepoRoot] = useState(repos[0].root)
+  const [repoRoot, setRepoRoot] = useState<string | null>(null)
+  const [recentRepos, setRecentRepos] = useState<string[]>([])
   const [base, setBase] = useState('')
   const [branches, setBranches] = useState<string[]>([])
   const [compare, setCompare] = useState<GitBranchCompare | null>(null)
@@ -35,7 +36,8 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
   const [revision, setRevision] = useState(0)
   const folder = workspacePath.split('/').filter(Boolean).pop() || 'Project'
   const repoName = (root: string) => root || folder
-  const repo = repos.find(item => item.root === repoRoot) ?? repos[0]
+  const recentRepo = recentRepos.map(root => repos.find(item => item.root === root)).find(item => item !== undefined)
+  const repo = repos.find(item => item.root === repoRoot) ?? recentRepo ?? repos[0]
 
   useEffect(() => {
     if (scope !== 'branch') return
@@ -90,7 +92,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
     {(['chat', 'uncommitted', 'branch'] as const).map(value => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setSelected(null) }}
       className={`px-2 py-0.5 ${scope === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{scopeLabel[value]}</button>)}
   </div>
-  if (scope === 'chat') return renderChat(<div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">{scopeSwitch}</div>)
+  if (scope === 'chat') return renderChat(<div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">{scopeSwitch}</div>, setRecentRepos)
 
   return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
     <WorkspaceViewHeader title="Files" subtitle="Review changes" actions={<>
@@ -100,9 +102,11 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       {scopeSwitch}
       {scope === 'branch' && <>
-        {repos.length > 1 && <select aria-label="Project" value={repo.root} className={select} onChange={event => { setRepoRoot(event.target.value); setBase(''); setSelected(null) }}>
-          {repos.map(item => <option key={item.root} value={item.root}>{repoName(item.root)}</option>)}
-        </select>}
+        <label className="flex w-full min-w-0 items-center gap-1 text-xs text-muted-foreground sm:w-auto">Worktree
+          <select aria-label="Worktree" title={`${repoName(repo.root)} · ${repo.branch}`} value={repo.root} className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground sm:max-w-md" onChange={event => { setRepoRoot(event.target.value); setBase(''); setSelected(null) }}>
+            {repos.map(item => <option key={item.root} value={item.root}>{repoName(item.root)} · {item.branch}{recentRepos.includes(item.root) ? ' · This chat' : ''}</option>)}
+          </select>
+        </label>
         <span className="flex-1" />
         {baseOptions.length > 0 && <label className="flex items-center gap-1 text-xs text-muted-foreground">Compare with
           <select aria-label="Compare with" value={compare?.base ?? base} className={select} onChange={event => { setBase(event.target.value); setSelected(null) }}>

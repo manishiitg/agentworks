@@ -54,14 +54,15 @@ func reviewSummary(comparison filesnapshots.Comparison) chatReviewSummary {
 }
 
 type chatFileReview struct {
-	Reviews   []chatReviewPoint       `json:"reviews"`
-	Baseline  string                  `json:"baseline_snapshot_id"`
-	Latest    string                  `json:"latest_snapshot_id"`
-	CanReview bool                    `json:"can_review"`
-	Replies   []chatSnapshotReference `json:"replies"`
-	First     string                  `json:"first_snapshot_id"`
-	Last      string                  `json:"last_snapshot_id"`
-	Available bool                    `json:"available"`
+	RecentRepos []string                `json:"recent_repos,omitempty"`
+	Reviews     []chatReviewPoint       `json:"reviews"`
+	Baseline    string                  `json:"baseline_snapshot_id"`
+	Latest      string                  `json:"latest_snapshot_id"`
+	CanReview   bool                    `json:"can_review"`
+	Replies     []chatSnapshotReference `json:"replies"`
+	First       string                  `json:"first_snapshot_id"`
+	Last        string                  `json:"last_snapshot_id"`
+	Available   bool                    `json:"available"`
 	// The person's message the comparison starts from, when the chat's
 	// earliest replies are no longer saved.
 	StartMessage *chatStartMessage `json:"start_message,omitempty"`
@@ -147,6 +148,38 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesn
 	return out, nil
 }
 
+// recentRepositories uses the chat's own saved reply groups, newest first.
+// File grants are rechecked before even a checkout name is returned. It does
+// not infer a working folder from titles, messages, or another chat's activity.
+func (h chatFileReview) recentRepositories(prefix string, allow func(string) bool) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for i := len(h.Replies) - 1; i >= 0; i-- {
+		groups, _ := h.summaryGroups(h.Replies[i].ID)
+		for _, group := range groups {
+			if group.Kind != "repo" {
+				continue
+			}
+			root := strings.TrimPrefix(group.Root, prefix)
+			if seen[root] {
+				continue
+			}
+			for _, file := range group.Files {
+				name := strings.TrimPrefix(file.Path, prefix)
+				if root != "" && !strings.HasPrefix(name, root+"/") {
+					continue
+				}
+				if allow(name) {
+					out = append(out, root)
+					seen[root] = true
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
 // The file route already authorizes the Crew and current paths. Chat history
 // has its own read rule; sharing files alone does not grant a private chat.
 func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Request, roots crewroot.Roots, prefix, op, id, file string, store filesnapshots.Store, allow func(string) bool) {
@@ -166,6 +199,12 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		externalError(w, 404, "not_found", "This chat has no saved file history.")
 		return
+	}
+	if file == "" && (op == "snapshot_compare" || op == "snapshots") {
+		history.RecentRepos = history.recentRepositories(prefix, allow)
+		if len(history.RecentRepos) > 0 {
+			log.Printf("[FILE_REVIEW] session=%s recent_repos=%d preferred_repo=%q", sessionID, len(history.RecentRepos), history.RecentRepos[0])
+		}
 	}
 	history.CanReview = api.crewSessionCanControl(r, sessionID)
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {

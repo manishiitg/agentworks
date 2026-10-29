@@ -38,13 +38,13 @@ export function ChatFileReview(props: ReviewProps) {
   // "This chat" is always offered and opens first, Git project or not.
   return repos.length
     ? <GitReview workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
-      renderChat={bar => <SnapshotReview {...props} bar={bar} />} />
+      renderChat={(bar, onRecentRepositories) => <SnapshotReview {...props} bar={bar} onRecentRepositories={onRecentRepositories} />} />
     : <SnapshotReview {...props} />
 }
 
 /** All requests and sends stay with that chat; the server resolves and
  * authorizes its saved boundaries. */
-function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: ReviewProps & { bar?: ReactNode }) {
+function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar, onRecentRepositories }: ReviewProps & { bar?: ReactNode; onRecentRepositories?: (roots: string[]) => void }) {
   const [reviewId, setReviewId] = useState('')
   const [result, setResult] = useState<Result | null>(null)
   const [revision, refresh] = useReviewRevision()
@@ -62,6 +62,9 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
       .catch(() => { if (!controller.signal.aborted) setError('Could not load this saved comparison. Refresh and try again.') })
     return () => controller.abort()
   }, [workspacePath, sessionId, reviewId, revision])
+  useEffect(() => {
+    if (result) onRecentRepositories?.(result.history.recent_repos ?? [])
+  }, [result, onRecentRepositories])
   const through = result?.history.last_snapshot_id
   const loadMore = async () => {
     if (!result?.next_offset || !result.comparison) return

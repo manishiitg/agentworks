@@ -51,7 +51,7 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 		}
 	}
 	ref := func(id string, start, end int64) {
-		events.AddEvent("chat-a", storeevents.Event{ID: "ref-" + id, Type: "reply_file_changes", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("reply_file_changes", map[string]any{"snapshot_id": filesnapshots.ID(id), "workspace_path": "", "start_sequence": start, "end_sequence": end}))})
+		events.AddEvent("chat-a", storeevents.Event{ID: "ref-" + id, Type: "reply_file_changes", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("reply_file_changes", map[string]any{"snapshot_id": filesnapshots.ID(id), "workspace_path": "", "start_sequence": start, "end_sequence": end, "summary": map[string]any{"groups": []filesnapshots.Group{{Kind: "repo", Root: id, Files: []filesnapshots.Change{{Path: id + "/main.txt"}}}}}}))})
 	}
 	// The first capture's reference arrives last, but its saved start is zero.
 	ref("last", 2, 4)
@@ -66,12 +66,19 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 	pageParams := url.Values{"session_id": {"chat-a"}}
 	_, body := call("alice", pageParams, true)
 	var page struct {
+		History    chatFileReview           `json:"history"`
 		Next       int                      `json:"next_offset"`
 		Total      int                      `json:"total_changes"`
 		Comparison filesnapshots.Comparison `json:"comparison"`
 	}
 	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 100 || len(page.Comparison.Changes) != 100 || page.Total != 106 {
 		t.Fatalf("bounded file page: %v %s", err, body)
+	}
+	if strings.Join(page.History.RecentRepos, ",") != "last,first" {
+		t.Fatalf("recent checkouts must follow this chat's reply order: %+v", page.History.RecentRepos)
+	}
+	if _, denied := call("alice", pageParams, false); strings.Contains(denied, `"recent_repos"`) {
+		t.Fatal("revoked file paths exposed checkout names")
 	}
 	pageParams.Set("offset", "100")
 	pageParams.Set("through_snapshot_id", filesnapshots.ID("last"))
@@ -258,5 +265,24 @@ func TestUndoReplyApplyRefusedWhileTurnRunning(t *testing.T) {
 	}
 	if code := call("alice", "GET", "snapshot_undo_preview"); code == 409 {
 		t.Fatal("preview must stay available while busy")
+	}
+}
+
+func TestChatReviewRecentRepositoriesRespectsFileGrants(t *testing.T) {
+	h := chatFileReview{Replies: []chatSnapshotReference{{ID: "old"}, {ID: "new"}}, replyData: map[string]json.RawMessage{}}
+	for id, groups := range map[string][]filesnapshots.Group{
+		"old": {{Kind: "repo", Root: "_files/old", Files: []filesnapshots.Change{{Path: "_files/old/a.txt"}}}},
+		"new": {
+			{Kind: "repo", Root: "_files/new", Files: []filesnapshots.Change{{Path: "_files/new/a.txt"}}},
+			{Kind: "repo", Root: "_files/hidden", Files: []filesnapshots.Change{{Path: "_files/hidden/a.txt"}}},
+			{Kind: "repo", Root: "_files/old", Files: []filesnapshots.Change{{Path: "_files/old/b.txt"}}},
+			{Kind: "crew_files", Files: []filesnapshots.Change{{Path: "_files/note.txt"}}},
+		},
+	} {
+		h.replyData[id], _ = json.Marshal(map[string]any{"summary": map[string]any{"groups": groups}})
+	}
+	got := h.recentRepositories("_files/", func(name string) bool { return !strings.HasPrefix(name, "hidden/") })
+	if strings.Join(got, ",") != "new,old" {
+		t.Fatalf("expected newest, allowed, unique Crew-relative checkouts: %v", got)
 	}
 }
