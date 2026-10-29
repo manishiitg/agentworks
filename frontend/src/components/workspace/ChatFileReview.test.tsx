@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false }))
 const replies = [{ snapshot_id: 'first', end_sequence: 2 }, { snapshot_id: 'last', end_sequence: 4 }]
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
-  if (options.params.op === 'snapshot_file') return { data: new TextEncoder().encode('saved contents').buffer }
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
   return { data: { history: { replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: [{ path: 'main.ts', status: 'M', added: 1, removed: 1 }, { path: 'second.ts', status: 'M', added: 1, removed: 1 }], snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
 }), post: vi.fn(async () => { state.reviewed = true; return { data: {} } }) }, agentApi: { getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: 'current contents' } })) }, workspaceApi: { get: vi.fn() } }))
@@ -74,17 +73,17 @@ describe('Studio review comments', () => {
         const select = host.querySelector('select')!
         select.value = value; select.dispatchEvent(new Event('change', { bubbles: true }))
       })
-      await chooseVersion('after')
-      expect(host.querySelector('[data-testid="file-content"]')?.textContent).toBe('saved contents')
-      expect(host.querySelector('[data-testid="file-content"]')?.getAttribute('data-editable')).toBe('false')
+      // Only two views: Current is the live file (never a saved copy), Changes the diff.
+      expect(Array.from(host.querySelectorAll('select option')).map(option => option.textContent)).toEqual(['Current', 'Changes'])
       await chooseVersion('current')
       expect(agentApi.getPlannerFileContent).toHaveBeenCalledWith('Crew/example/main.ts')
       expect(host.querySelector('[data-testid="file-content"]')?.textContent).toBe('current contents')
       expect(host.querySelector('[data-testid="file-content"]')?.getAttribute('data-editable')).toBe('true')
-      await chooseVersion('before')
-      vi.mocked(agentApi.getPlannerFileContent).mockRejectedValueOnce(new Error('This file no longer exists. Browse files or choose a saved version.'))
+      await chooseVersion('changes')
+      vi.mocked(agentApi.getPlannerFileContent).mockRejectedValueOnce(Object.assign(new Error('Request failed'), { response: { status: 404 } }))
       await chooseVersion('current')
-      expect(host.querySelector('[role="alert"]')?.textContent).toContain('no longer exists')
+      expect(host.querySelector('[role="alert"]')?.textContent).toBe('This file no longer exists in the project.')
+      expect(host.querySelector('[data-testid="file-content"]')).toBeNull()
       await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
       await act(async () => button('Mark as reviewed').click())
       expect(api.post).toHaveBeenCalledWith('/api/workspace-snapshots', null, { params: { workspace_path: 'Crew/example', session_id: 'chat-a', snapshot_id: 'last', op: 'snapshot_review' } })

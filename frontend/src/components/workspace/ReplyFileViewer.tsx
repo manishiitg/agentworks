@@ -10,10 +10,12 @@ import { reviewEndpoint, type ReviewResult } from './chatFileReviewData'
 import type { SavedFileSelection } from './chatFileNavigation'
 
 const FileViewer = lazy(() => import('../FileContentViewer').then(module => ({ default: module.FileContentViewerBody })))
-type Version = 'current' | 'after' | 'before' | 'changes'
+type Version = 'current' | 'changes'
+const missingFile = 'This file no longer exists in the project.'
+const isMissing = (cause: unknown) => (cause as { response?: { status?: number } })?.response?.status === 404
 
-/** The existing Files panel hosts both current and immutable saved content.
- * Only Current uses the editable workspace source. */
+/** Two views: Current is the live project file in the normal file viewer (never a
+ * saved copy), Changes is the saved comparison diff. */
 export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: { selection: SavedFileSelection; tabId: string; onBack: () => void; embedded?: boolean }) {
   const { reference, change, query } = selection
   const [version, setVersion] = useState<Version>('changes')
@@ -24,7 +26,6 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: 
   const [comment, setComment] = useState('')
   const [sending, setSending] = useState(false)
   const name = change.path.split('/').pop() || change.path
-  const imageType = ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' } as Record<string, string>)[name.split('.').pop()?.toLowerCase() || '']
   const params = { workspace_path: reference.workspacePath, session_id: reference.sessionId, snapshot_id: reference.snapshotId, ...query, file: change.path }
   useEffect(() => {
     const controller = new AbortController()
@@ -32,39 +33,31 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: 
     setContent(null); setComparison(undefined); setError(''); setAnchor(null)
     const load = async () => {
       if (version === 'current') {
+        // The live file at its workspace path; a missing file is said plainly and
+        // never replaced by a saved copy.
         const path = `${reference.workspacePath}/${change.path}`
-        if (isViewableBinaryFile(name)) {
-          const { data } = await workspaceApi.get<ArrayBuffer>(`/api/documents/${encodeURIComponent(path)}`, { params: { download: 'true' }, responseType: 'arraybuffer', signal: controller.signal })
-          assertChatIdentityCurrent(identity)
-          if (!controller.signal.aborted) setContent({ text: '', bytes: data })
-        } else {
-          const response = await agentApi.getPlannerFileContent(path)
-          assertChatIdentityCurrent(identity)
-          if (!response.success || !response.data) throw new Error(response.message || 'The current file is unavailable. Browse files or choose a saved version.')
-          if (response.data.is_binary && !response.data.is_image) throw new Error('Preview is unavailable for this file type.')
-          if (!controller.signal.aborted) setContent({ text: String(response.data.content ?? '') })
-        }
+        try {
+          if (isViewableBinaryFile(name)) {
+            const { data } = await workspaceApi.get<ArrayBuffer>(`/api/documents/${encodeURIComponent(path)}`, { params: { download: 'true' }, responseType: 'arraybuffer', signal: controller.signal })
+            assertChatIdentityCurrent(identity)
+            if (!controller.signal.aborted) setContent({ text: '', bytes: data })
+          } else {
+            const response = await agentApi.getPlannerFileContent(path)
+            assertChatIdentityCurrent(identity)
+            if (!response.success || !response.data) throw new Error(response.message || 'The current file could not be opened. Refresh and try again.')
+            if (response.data.is_binary && !response.data.is_image) throw new Error('Preview is unavailable for this file type.')
+            if (!controller.signal.aborted) setContent({ text: String(response.data.content ?? '') })
+          }
+        } catch (cause) { throw isMissing(cause) ? new Error(missingFile) : cause }
         return
       }
-      if (version === 'changes') {
-        const { data } = await api.get<ReviewResult>(reviewEndpoint, { params: { ...params, op: 'snapshot_compare' }, signal: controller.signal })
-        if (!data.comparison) throw new Error(data.history.note || 'This saved comparison is no longer available.')
-        if (!controller.signal.aborted) setComparison(data.comparison)
-        return
-      }
-      const { data } = await api.get<ArrayBuffer>(reviewEndpoint, { params: { ...params, op: 'snapshot_file', side: version }, responseType: 'arraybuffer', signal: controller.signal })
-      let text = ''
-      if (imageType) {
-        const bytes = new Uint8Array(data)
-        let binary = ''
-        for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192))
-        text = `data:${imageType};base64,${btoa(binary)}`
-      } else if (!change.binary && !isViewableBinaryFile(name)) text = new TextDecoder().decode(data)
-      if (!controller.signal.aborted) setContent({ text, bytes: data })
+      const { data } = await api.get<ReviewResult>(reviewEndpoint, { params: { ...params, op: 'snapshot_compare' }, signal: controller.signal })
+      if (!data.comparison) throw new Error(data.history.note || 'This saved comparison is no longer available.')
+      if (!controller.signal.aborted) setComparison(data.comparison)
     }
-    void load().catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'This file is unavailable. Choose another version or browse files.') })
+    void load().catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'This file could not be opened. Refresh and try again.') })
     return () => controller.abort()
-  }, [reference.workspacePath, reference.sessionId, reference.snapshotId, change.path, change.binary, version, imageType, name, query?.baseline_snapshot_id, query?.through_snapshot_id])
+  }, [reference.workspacePath, reference.sessionId, reference.snapshotId, change.path, version, name, query?.baseline_snapshot_id, query?.through_snapshot_id])
   const send = async () => {
     if (!anchor || !comment.trim()) return
     const identity = captureChatIdentity()
@@ -83,17 +76,16 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: 
     <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
       <strong className="min-w-0 flex-1 break-all text-sm">{shownFilePath(change.path)}</strong>
       <select aria-label="File version" value={version} className="rounded border border-border bg-background p-1 text-xs" onChange={event => setVersion(event.target.value as Version)}>
-        <option value="current">Current</option><option value="after" disabled={change.status === 'D'}>{query ? 'After comparison' : 'After this reply'}</option><option value="before" disabled={change.status === 'A'}>{query ? 'Before comparison' : 'Before this reply'}</option><option value="changes">Changes</option>
+        <option value="current">Current</option><option value="changes">Changes</option>
       </select>
       {!embedded && <button type="button" className="text-xs underline" onClick={onBack}>Browse files</button>}
     </header>
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="min-h-0 flex-1 overflow-auto">
-      {!error && (version === 'changes' ? !comparison ? <p className="p-3 text-sm">Loading comparison…</p> : change.binary ? <p className="p-3 text-sm">Choose Before or After to preview this file.</p> : <DiffRenderer content={comparison.diff || ''} onSelectLine={setAnchor} maxHeightClassName="max-h-none" />
+      {!error && (version === 'changes' ? !comparison ? <p className="p-3 text-sm">Loading comparison…</p> : change.binary ? <p className="p-3 text-sm">This file is not text, so there are no line changes to show. Choose Current to see the file.</p> : <DiffRenderer content={comparison.diff || ''} onSelectLine={setAnchor} maxHeightClassName="max-h-none" />
         : !content ? <p className="p-3 text-sm">Loading file…</p>
         : <Suspense fallback={<p className="p-3 text-sm">Loading viewer…</p>}>
-          {version !== 'current' && change.binary && !imageType && !isViewableBinaryFile(name) ? <p className="p-3 text-sm">Preview is unavailable for this file type.</p>
-          : <FileViewer editable={version === 'current'} source={{ selectedFile: { name, path: version === 'current' ? `${reference.workspacePath}/${change.path}` : change.path }, fileContent: content.text, binaryFileData: content.bytes ?? null, loadingFileContent: false, showFileContent: true, setShowFileContent: show => { if (!show) onBack() }, openTabs: [], openFile: () => {}, closeFile: onBack, revealFolder: onBack }} />}</Suspense>)}
+          <FileViewer editable source={{ selectedFile: { name, path: `${reference.workspacePath}/${change.path}` }, fileContent: content.text, binaryFileData: content.bytes ?? null, loadingFileContent: false, showFileContent: true, setShowFileContent: show => { if (!show) onBack() }, openTabs: [], openFile: () => {}, closeFile: onBack, revealFolder: onBack }} /></Suspense>)}
       {comparison?.truncated && <p className="p-3 text-xs text-muted-foreground">Only the start of this large comparison is shown.</p>}
     </div>
     {anchor && <div className="space-y-2 border-t p-3"><p className="text-xs">{anchor.side} line {anchor.line}</p><textarea aria-label="Request a change" className="min-h-20 w-full rounded border bg-background p-2 text-sm" value={comment} onChange={event => setComment(event.target.value)} placeholder="What should change here?" /><button type="button" disabled={sending || !comment.trim()} className="rounded border px-3 py-1 text-sm disabled:opacity-50" onClick={() => void send()}>Send to this chat</button></div>}
