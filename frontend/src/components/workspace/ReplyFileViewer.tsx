@@ -14,7 +14,7 @@ type Version = 'current' | 'after' | 'before' | 'changes'
 
 /** The existing Files panel hosts both current and immutable saved content.
  * Only Current uses the editable workspace source. */
-export function ReplyFileViewer({ selection, tabId, onBack }: { selection: SavedFileSelection; tabId: string; onBack: () => void }) {
+export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: { selection: SavedFileSelection; tabId: string; onBack: () => void; embedded?: boolean }) {
   const { reference, change, query } = selection
   const [version, setVersion] = useState<Version>('changes')
   const [content, setContent] = useState<{ text: string; bytes?: ArrayBuffer } | null>(null)
@@ -85,7 +85,7 @@ export function ReplyFileViewer({ selection, tabId, onBack }: { selection: Saved
       <select aria-label="File version" value={version} className="rounded border border-border bg-background p-1 text-xs" onChange={event => setVersion(event.target.value as Version)}>
         <option value="current">Current</option><option value="after" disabled={change.status === 'D'}>{query ? 'After comparison' : 'After this reply'}</option><option value="before" disabled={change.status === 'A'}>{query ? 'Before comparison' : 'Before this reply'}</option><option value="changes">Changes</option>
       </select>
-      <button type="button" className="text-xs underline" onClick={onBack}>Browse files</button>
+      {!embedded && <button type="button" className="text-xs underline" onClick={onBack}>Browse files</button>}
     </header>
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="min-h-0 flex-1 overflow-auto">
