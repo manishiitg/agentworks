@@ -19,6 +19,10 @@ import (
 	agentevents "github.com/manishiitg/mcpagent/events"
 )
 
+type chatStartMessage struct {
+	Text string `json:"text"`
+	At   string `json:"at,omitempty"`
+}
 type chatSnapshotReference struct {
 	ID        string `json:"snapshot_id"`
 	Workspace string `json:"workspace_path"`
@@ -58,7 +62,10 @@ type chatFileReview struct {
 	First     string                  `json:"first_snapshot_id"`
 	Last      string                  `json:"last_snapshot_id"`
 	Available bool                    `json:"available"`
-	Note      string                  `json:"note,omitempty"`
+	// The person's message the comparison starts from, when the chat's
+	// earliest replies are no longer saved.
+	StartMessage *chatStartMessage `json:"start_message,omitempty"`
+	Note         string            `json:"note,omitempty"`
 	// The stored reply_file_changes data by snapshot id, for the reply card.
 	replyData map[string]json.RawMessage
 }
@@ -107,12 +114,12 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesn
 	}
 	sort.Slice(out.Reviews, func(i, j int) bool { return out.Reviews[i].End < out.Reviews[j].End })
 	sort.Slice(out.Replies, func(i, j int) bool { return out.Replies[i].End < out.Replies[j].End })
-	// A reply whose capture failed has no saved before/after; it must not be
-	// the start of the comparison (PLAT-746-163). A record removed by
-	// retention stays listed, so its missing start is still refused.
+	// A reply whose capture failed, or that retention removed, has no saved
+	// before/after; the comparison starts at the oldest reply still saved and
+	// names the message it came from (owner, 2026-10-29; PLAT-746-163).
 	usable := out.Replies[:0]
 	for _, ref := range out.Replies {
-		if !store.Failed(ref.ID) {
+		if store.Saved(ref.ID) {
 			usable = append(usable, ref)
 		}
 	}
@@ -121,6 +128,15 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesn
 		first, last := out.Replies[0], out.Replies[len(out.Replies)-1]
 		out.First, out.Last, out.Latest = first.ID, last.ID, last.ID
 		out.Available = first.ID == history.FirstSnapshotID && history.FirstUserSequence > first.Start && history.FirstUserSequence <= first.End
+		if !out.Available {
+			if message, err := api.eventStore.ChatUserMessageBetween(ctx, sessionID, first.Start, first.End); err == nil {
+				text := []rune(strings.Join(strings.Fields(message.Text), " "))
+				if len(text) > 80 {
+					text = append(text[:79], '…')
+				}
+				out.StartMessage = &chatStartMessage{Text: string(text), At: message.At}
+			}
+		}
 	}
 	if len(out.Reviews) > 0 {
 		out.Baseline = out.Reviews[len(out.Reviews)-1].ID
@@ -256,7 +272,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		history.Available = false
-		history.Note = "The earliest saved changes of this chat were removed to save space. Open a recent reply's changes from the chat instead."
+		history.Note = "Could not compare this chat's saved changes. Refresh and try again."
 		externalJSON(w, map[string]any{"history": history, "changes": []any{}})
 		return
 	}

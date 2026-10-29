@@ -531,11 +531,11 @@ func (s Store) warm(ctx context.Context, batch int64, afterBatch func(CaptureSta
 	}
 }
 
-// Failed reports whether a retained reply's capture failed, so it saved no
-// before or after state. A record that is gone (retention) is not Failed.
-func (s Store) Failed(id string) bool {
+// Saved reports whether a reply still has its before and after state: its
+// capture did not fail and retention has not removed it.
+func (s Store) Saved(id string) bool {
 	r, err := s.read(id)
-	return err == nil && r.Status == "unavailable"
+	return err == nil && (r.Status == "complete" || r.Status == "partial")
 }
 func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	// A reply with no before-state (deferred or failed capture) has no card and

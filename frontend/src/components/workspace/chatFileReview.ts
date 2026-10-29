@@ -6,7 +6,7 @@ export type ReviewSummary = { files: number; added: number; removed: number }
 export type ReviewHistory = {
   replies: { snapshot_id: string; end_sequence: number }[]
   reviews: { snapshot_id: string; reviewed_at: string }[]
-  available: boolean; last_snapshot_id: string; latest_snapshot_id: string
+  available: boolean; start_message?: { text: string; at?: string }; last_snapshot_id: string; latest_snapshot_id: string
   baseline_snapshot_id: string; can_review: boolean; note?: string
 }
 export type ReviewResult = {

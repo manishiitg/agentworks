@@ -6,6 +6,13 @@ import { captureChatIdentity, assertChatIdentityCurrent } from '../../utils/chat
 import { openChatFiles } from './chatFileNavigation'
 import { markFilesReviewed, reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type FileChange as Change } from './chatFileReview'
 
+// Older replies' saved copies are cleared to save space; name the message the comparison starts from.
+const startedFrom = (message?: { text: string; at?: string }) => {
+  if (!message?.text) return ' since the oldest reply still saved'
+  const at = message.at ? new Date(message.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+  return ` since your message “${message.text}”${at ? ` (${at})` : ''}. Earlier changes are no longer saved.`
+}
+
 /** Mounted with an account/server/chat key by its owner. All requests and sends
  * stay with that chat; the server resolves and authorizes its saved boundaries. */
 export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
@@ -63,7 +70,7 @@ export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
       {result && !result.comparison && <p className="p-3 text-sm">{result.history.note}</p>}
       <div className="grid gap-1 border-b border-border p-2">
-        {result?.comparison && <p className="p-2 text-xs text-muted-foreground">{result.total_changes ?? changes.length} changed files{!reviewId && !result.history.reviews?.length && !result.history.available ? ' (since the first saved reply of this chat)' : ''}</p>}
+        {result?.comparison && <p className="p-2 text-xs text-muted-foreground">{result.total_changes ?? changes.length} changed files{!reviewId && !result.history.reviews?.length && !result.history.available ? startedFrom(result.history.start_message) : ''}</p>}
         {changes.map(change => <button type="button" key={change.path} className="flex gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50" onClick={() => { if (through) openChatFiles(sessionId, { reference: { workspacePath, sessionId, snapshotId: '' }, change, query: { session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }) }}>
           <span className="min-w-0 flex-1 break-all">{change.path}</span><span>{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span><span className="text-diff-add">{!change.binary && `+${change.added ?? 0}`}</span><span className="text-diff-del">{change.binary ? 'Binary' : `−${change.removed ?? 0}`}</span>
         </button>)}

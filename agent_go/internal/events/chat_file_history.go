@@ -14,6 +14,39 @@ type ChatFileHistory struct {
 	FirstUserSequence int64
 	FirstSnapshotID   string
 }
+
+// ChatUserMessage is one message the person sent, for naming where a
+// comparison starts.
+type ChatUserMessage struct {
+	Sequence int64
+	Text     string
+	At       string
+}
+type chatUserMessageReader interface {
+	ChatUserMessageBetween(context.Context, string, int64, int64) (ChatUserMessage, error)
+}
+
+// ChatUserMessageBetween returns the first message the person sent after
+// sequence after and up to through (one reply's span).
+func (es *EventStore) ChatUserMessageBetween(ctx context.Context, sessionID string, after, through int64) (ChatUserMessage, error) {
+	es.mu.RLock()
+	reader, ok := es.durableJournal.(chatUserMessageReader)
+	es.mu.RUnlock()
+	if !ok {
+		return ChatUserMessage{}, errors.New("chat history unavailable")
+	}
+	return reader.ChatUserMessageBetween(ctx, sessionID, after, through)
+}
+
+func (j *SQLiteEventJournal) ChatUserMessageBetween(ctx context.Context, sessionID string, after, through int64) (ChatUserMessage, error) {
+	var out ChatUserMessage
+	err := j.db.QueryRowContext(ctx, `SELECT sequence,
+		COALESCE(json_extract(payload,'$.data.data.content'), json_extract(payload,'$.data.data.message'), json_extract(payload,'$.data.data.data.content'), json_extract(payload,'$.data.data.data.message'), ''),
+		COALESCE(json_extract(payload,'$.timestamp'), '')
+		FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='user_message' AND sequence>? AND sequence<=? ORDER BY sequence LIMIT 1`, sessionID, after, through).Scan(&out.Sequence, &out.Text, &out.At)
+	return out, err
+}
+
 type chatFileHistoryReader interface {
 	ReadChatFileHistory(context.Context, string) (ChatFileHistory, error)
 }

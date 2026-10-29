@@ -20,7 +20,8 @@ import (
 )
 
 // PLAT-746-158: whole-chat review must retain private-chat and path access,
-// use saved boundaries despite late reference arrival, and refuse a lost start.
+// use saved boundaries despite late reference arrival, and start at the oldest
+// saved reply once retention removed the first.
 func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	api, events := newDurableChatAPI(t, "chat-a", "alice")
@@ -182,12 +183,13 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 	}
 	params.Del("review_id")
 	params.Set("baseline_snapshot_id", "start")
-	// Removing the real first record simulates retention; never substitute a later one.
+	// Retention removed the chat's first reply: the comparison starts at the
+	// oldest reply still saved, not an empty panel (owner, 2026-10-29).
 	if err := os.Remove(filepath.Join(store.Private, "file-snapshots", "turns", filesnapshots.ID("first")+".json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, body := call("alice", params, true); strings.Contains(body, "+last") {
-		t.Fatalf("missing first capture fabricated: %s", body)
+	if code, body := call("alice", params, true); code != 200 || !strings.Contains(body, "-first") || !strings.Contains(body, "+last") || !strings.Contains(body, `"available":false`) {
+		t.Fatalf("comparison from the oldest saved reply %d %s", code, body)
 	}
 }
 
@@ -232,7 +234,12 @@ func TestUndoReplyApplyRefusedWhileTurnRunning(t *testing.T) {
 		return ""
 	}
 	crewOwners.mu.Unlock()
-	t.Cleanup(func() { crewOwners.mu.Lock(); crewOwners.read = nil; crewOwners.entries = map[string]crewOwnerEntry{}; crewOwners.mu.Unlock() })
+	t.Cleanup(func() {
+		crewOwners.mu.Lock()
+		crewOwners.read = nil
+		crewOwners.entries = map[string]crewOwnerEntry{}
+		crewOwners.mu.Unlock()
+	})
 	store := filesnapshots.Store{Root: t.TempDir(), Private: t.TempDir()}
 	all := func(string) bool { return true }
 	api.setSessionBusy("chat-a", true)
