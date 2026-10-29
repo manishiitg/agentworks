@@ -624,7 +624,7 @@ func TestAgentReceiptActivityKeepsOwnerAndReceiptBoundaries(t *testing.T) {
 		{Endpoints: [2]agentMessageEndpoint{{UserID: "sender"}, {UserID: "owner", NamedAgentID: "own"}}, Messages: []agentMessage{
 			{From: 0, SentAt: now.Add(time.Hour)}, // storage is not a received receipt
 			{From: 0, DeliveredAt: now},
-			{From: 0, Kind: "status", DeliveredAt: now.Add(time.Hour)},
+			{From: 0, Kind: agentPingKind, DeliveredAt: now.Add(time.Hour)},
 		}},
 		{Endpoints: [2]agentMessageEndpoint{{UserID: "sender"}, {UserID: "other", NamedAgentID: "foreign"}}, Messages: []agentMessage{{From: 0, DeliveredAt: now.Add(time.Hour)}}},
 	}}

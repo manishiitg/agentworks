@@ -290,7 +290,7 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	for _, refusal := range []string{"agent_opened", "different_chat", "another_person", "status_only"} {
+	for _, refusal := range []string{"agent_opened", "different_chat", "another_person", "ping_only"} {
 		conversation := original
 		conversation.ID = "inbox-" + refusal
 		incoming := original.Messages[0]
@@ -304,8 +304,8 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 			conversation.Endpoints[0].ChatKey = "session:" + hostedSession
 		case "another_person":
 			conversation.Endpoints[0].UserID = "other"
-		case "status_only":
-			conversation.Messages[0].Kind = "status"
+		case "ping_only":
+			conversation.Messages[0].Kind = agentPingKind
 		}
 		agentMessageMu.Lock()
 		store, e := readAgentMessageStore(ctx)

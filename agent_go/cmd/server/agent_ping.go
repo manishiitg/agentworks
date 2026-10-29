@@ -16,8 +16,19 @@ import (
 
 const agentPingKind = "ping"
 
+// Person pings use their own server-owned conversation.
+const agentStatusConversationPrefix = "status-inbox-"
+
+func shortMessageID(id string) string {
+	id = strings.TrimPrefix(id, "msg-")
+	if len(id) > 8 {
+		id = id[:8]
+	}
+	return id
+}
+
 // serverAuthoredKind is true for lines the server writes itself: no peer sender to check.
-func serverAuthoredKind(kind string) bool { return kind == "status" || kind == agentPingKind }
+func serverAuthoredKind(kind string) bool { return kind == agentPingKind }
 
 func firstLineClip(text string, limit int) string {
 	line := strings.TrimSpace(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0])
@@ -86,11 +97,13 @@ func (api *StreamingAPI) externalAgentPing(w http.ResponseWriter, r *http.Reques
 	senderName, targetName := endpointDisplayLabel(sender, dest.UserID), endpointDisplayLabel(dest, dest.UserID)
 	m.PingedAt = now
 	collapsed := false
+	pingConversation := -1
 	statusID := agentStatusConversationPrefix + dest.NamedAgentID
 	for i := range s.Conversations {
 		if s.Conversations[i].ID != statusID {
 			continue
 		}
+		pingConversation = i
 		for j := range s.Conversations[i].Messages {
 			p := &s.Conversations[i].Messages[j]
 			if p.Kind == agentPingKind && p.Delivery == "stored" && p.PingSender == sender.NamedAgentID {
@@ -101,13 +114,18 @@ func (api *StreamingAPI) externalAgentPing(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if !collapsed {
-		appendAgentStatusMessage(&s, dest, fmt.Sprintf("agent:%s is waiting for a reply from agent:%s", senderName, targetName), now)
-		for i := range s.Conversations {
-			if s.Conversations[i].ID == statusID {
-				last := &s.Conversations[i].Messages[len(s.Conversations[i].Messages)-1]
-				last.Kind, last.PingSender, last.PingCount = agentPingKind, sender.NamedAgentID, 1
-			}
+		dest.ShareID, dest.Guest = "", "" // the ping belongs to the target agent itself
+		if pingConversation < 0 {
+			s.Conversations = append(s.Conversations, agentConversation{ID: statusID, Endpoints: [2]agentMessageEndpoint{dest, dest}})
+			pingConversation = len(s.Conversations) - 1
 		}
+		pings := &s.Conversations[pingConversation]
+		if len(pings.Messages) >= 100 {
+			pings.Messages = pings.Messages[len(pings.Messages)-99:]
+		}
+		pings.Next++
+		s.NextAgentSequence++
+		pings.Messages = append(pings.Messages, agentMessage{ID: "msg-status-" + fmt.Sprint(s.NextAgentSequence) + "-" + shortMessageID(dest.NamedAgentID), Sequence: pings.Next, From: 0, Text: fmt.Sprintf("agent:%s is waiting for a reply from agent:%s", senderName, targetName), SentAt: now, Delivery: "stored", Kind: agentPingKind, AgentSequence: s.NextAgentSequence, PingSender: sender.NamedAgentID, PingCount: 1})
 	}
 	if err = saveAgentMessageStore(r.Context(), s); err != nil {
 		externalError(w, 500, "store_error", "The ping could not be saved; try again.")

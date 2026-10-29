@@ -69,7 +69,7 @@ type agentMessage struct {
 	LiveTransport      string    `json:"live_transport,omitempty"`
 	LiveSession        string    `json:"live_session,omitempty"`
 	LiveAttachment     string    `json:"live_attachment,omitempty"`
-	Kind               string    `json:"kind,omitempty"` // "status": a server-authored line, not a message from a peer
+	Kind               string    `json:"kind,omitempty"` // "ping": a server-authored person notification, not a peer message
 	DeliveredAt        time.Time `json:"delivered_at,omitempty"`
 	PingedAt           time.Time `json:"pinged_at,omitempty"`   // the sender pinged the person once for this message
 	PingSender         string    `json:"ping_sender,omitempty"` // on a ping line: the agent that pinged
