@@ -90,7 +90,6 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
         <details className="mt-3 text-xs">
           <summary className="w-fit cursor-pointer text-muted-foreground hover:text-foreground">Token usage</summary>
           <div className="mt-2"><CostTokenBreakdown compact usage={row} /></div>
-          <p className="mt-2 text-muted-foreground">Exact recorded cost: {formatUSD(row.total_cost_usd)}</p>
         </details>
         <button type="button" className="mt-3 text-xs text-primary underline" onClick={() => setChat(chat === key ? null : key)}>{chat === key ? 'Hide chat' : 'View chat'}</button>
         {chat === key && <ChatPreview key={key} conversation={row} />}

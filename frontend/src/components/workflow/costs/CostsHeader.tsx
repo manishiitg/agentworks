@@ -39,13 +39,15 @@ export function CostsOverview({ scopedCosts, overallSummary, aggregateSummary, p
         {scopedCosts && <CostPricingNotice usage={scopedCosts.total} />}
       </div>
     </div>
-    <p className="mt-3 text-xs text-muted-foreground">Across the activity recorded below.</p>
     <details className="mt-3 border-t border-border pt-3 text-xs">
       <summary className="w-fit cursor-pointer font-medium text-muted-foreground hover:text-foreground">Usage details</summary>
       <div className="mt-3 space-y-3">
         <CostTokenBreakdown compact usage={{ input_tokens: overallSummary.totalInputTokens, cache_read_tokens: overallSummary.cacheReadTokens, cache_write_tokens: overallSummary.cacheWriteTokens, completion_tokens: overallSummary.totalOutputTokens }} />
-        <p className="text-muted-foreground">Exact recorded cost: {formatUSD(overallSummary.totalCost)}</p>
-        {!scopedCosts && <p className="text-muted-foreground">{formatTokens(overallSummary.totalInputTokens)} input · {formatTokens(overallSummary.totalOutputTokens)} output</p>}
+        <details className="text-muted-foreground">
+          <summary className="w-fit cursor-pointer hover:text-foreground">How tokens are counted</summary>
+          <p className="mt-2">Fresh input, cache reads and cache writes add up to total input; output is separate.</p>
+          <p className="mt-1">Cache reuses a matching input prefix. New history, tool results and outputs still require processing. Identical user messages do not guarantee identical full inputs.</p>
+        </details>
         {aggregateSummary && <p className="text-muted-foreground">{aggregateSummary.totalRuns} run{aggregateSummary.totalRuns !== 1 ? 's' : ''}</p>}
         {aggregateSummary && aggregateSummary.totalToolCost > 0 && <p className="text-muted-foreground">AI {formatUSD(aggregateSummary.totalLLMCost)} · Tools {formatUSD(aggregateSummary.totalToolCost)}</p>}
         {phaseCostSummary && !scopedCosts && <p className="text-muted-foreground">Builder {formatUSD(phaseCostSummary.totalCost)}</p>}

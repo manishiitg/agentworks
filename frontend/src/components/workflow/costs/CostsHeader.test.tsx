@@ -21,7 +21,7 @@ describe('CostsHeader', () => {
     expect(html).toContain('1k')
     expect(html.indexOf('Recorded tokens')).toBeLessThan(html.indexOf('Cost · USD'))
     expect(html).toContain('$245.62')
-    expect(html).toContain('Exact recorded cost: $245.6234')
+    expect(html).toContain('$245.6234')
     expect(html).toContain('Usage details')
     expect(html).toContain('Fresh input')
     expect(html).toContain('200')
