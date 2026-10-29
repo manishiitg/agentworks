@@ -46,11 +46,12 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
       <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" /> Waiting for your answer just above the message box.
     </p>
   }
-  return <section className="w-full rounded-xl border border-border bg-card p-3 text-card-foreground" data-testid="coding-agent-question-card">
-    <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+  return <section className={`w-full rounded-xl border border-border bg-card p-3 text-card-foreground ${pending ? 'flex max-h-[min(320px,40dvh)] flex-col' : ''}`} data-testid="coding-agent-question-card">
+    <div className="mb-2 flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">
       {prompt.state === 'answered' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />}
       {pending ? 'Clarification needed' : prompt.state === 'answered' ? 'Clarification answered' : prompt.state === 'unanswered' ? 'Answered automatically' : 'Clarification closed'}
     </div>
+    <div className={pending ? 'min-h-0 overflow-y-auto overscroll-contain pr-1' : undefined}>
     {prompt.questions.map((question) => <fieldset key={question.id} className="mb-3 space-y-1" disabled={!pending || submitting || !onAnswer}>
       <legend className="mb-1.5 whitespace-pre-wrap text-[13px] font-medium">{question.question}</legend>
       {question.multiSelect && <p className="mb-2 text-xs text-muted-foreground">{question.maxSelections || (question.minSelections || 0) > 1 ? selectionHint(bounds(question)) : 'Select all that apply.'}</p>}
@@ -92,7 +93,8 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
         </div>
       })()}
     </fieldset>)}
-    {pending ? <div className="flex flex-wrap items-center gap-2">
+    </div>
+    {pending ? <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-2">
       <button type="button" onClick={() => void submit()} disabled={!ready || submitting || !onAnswer} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-50">{submitting ? 'Submitting…' : 'Send answer'}</button>
       <button type="button" onClick={() => void submit(true)} disabled={submitting || !onAnswer || prompt.questions.some(q => !q.options.length)} className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Use first options</button>
     </div>

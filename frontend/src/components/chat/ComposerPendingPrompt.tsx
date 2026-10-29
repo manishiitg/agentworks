@@ -21,7 +21,7 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
   const oneClick = prompt.questions.length === 1 && !question.multiSelect && !question.allowOther
     && question.options.length > 0 && question.options.length <= 4
   if (!oneClick) {
-    return <div className="mx-auto mb-2 max-h-[45vh] w-full max-w-4xl overflow-y-auto px-3" data-testid="composer-pending-prompt">
+    return <div className="mx-auto mb-2 w-full max-w-4xl px-3" data-testid="composer-pending-prompt">
       <CodingAgentQuestionCard prompt={prompt} onAnswer={onAnswer} />
     </div>
   }
