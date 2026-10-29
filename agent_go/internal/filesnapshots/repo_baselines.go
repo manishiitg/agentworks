@@ -23,9 +23,8 @@ import (
 // agent added) is not thousands of edits: its checked-out files came from
 // commits that existed before the turn. PLAT-746-165: one new worktree showed
 // as 3,081 added files. So the after-capture records, for each new checkout,
-// a baseline: the tree of the newest first-parent commit of its HEAD that was
-// committed before the turn started (the commit it was cloned or added at;
-// commits the agent made during the turn stay changes). Comparisons, the
+// a baseline: the commit it was checked out at (startCommit). Commits the
+// agent made in it during the turn stay changes. Comparisons, the
 // chat's combined changes and Undo then put that baseline in the checkout's
 // folder on the "before" side, so only real edits, additions and deletions
 // show, committed or not. A checkout with no commit from before the turn (the
@@ -95,8 +94,7 @@ func (s Store) repoBaselines(ctx context.Context, r *Record, after map[string]st
 		}
 		dir := after[p]
 		newRepos[p] = ""
-		out, err := gitIn(ctx, s.Root, dir, "rev-list", "--first-parent", "--max-count=1", until, "HEAD").Output()
-		base := strings.TrimSpace(string(out))
+		base, err := startCommit(ctx, s.Root, dir, r.StartedAt, until)
 		if err != nil || base == "" {
 			log.Printf("[FILE_SNAPSHOT] phase=new_repo snapshot=%s repo=%q baseline=none error=%v", r.ID, p, err)
 			continue
@@ -142,6 +140,33 @@ func (s Store) repoBaselines(ctx context.Context, r *Record, after map[string]st
 		newRepos[p] = s.subtree(ctx, baselineRef(r.ID), p)
 		log.Printf("[FILE_SNAPSHOT] phase=new_repo snapshot=%s repo=%q baseline_commit=%s baseline_tree=%s", r.ID, p, base, newRepos[p])
 	}
+}
+
+// startCommit is the commit a checkout that appeared during the turn was
+// checked out at. Git's own record comes first: the oldest entry of the
+// checkout's HEAD reflog, written by worktree add (or clone) during the turn,
+// so a worktree added at a commit the agent made earlier in the same turn
+// compares against that commit. An oldest entry that is itself a commit
+// (git init, then commit) is the agent's work, not a checkout. Without such a
+// reflog (none, disabled, or older than the turn): the newest first-parent
+// commit of HEAD committed before the turn started. Read-only.
+func startCommit(ctx context.Context, root, dir string, started time.Time, until string) (string, error) {
+	if out, err := gitIn(ctx, root, dir, "reflog", "show", "--date=unix", "--format=%H %gd %gs", "HEAD").Output(); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		oldest := strings.SplitN(lines[len(lines)-1], " ", 3)
+		if len(oldest) >= 2 && strings.HasPrefix(oldest[1], "HEAD@{") {
+			at, perr := strconv.ParseInt(strings.TrimSuffix(strings.TrimPrefix(oldest[1], "HEAD@{"), "}"), 10, 64)
+			message := ""
+			if len(oldest) == 3 {
+				message = oldest[2]
+			}
+			if perr == nil && at >= started.Unix() && len(oldest[0]) >= 40 && !strings.HasPrefix(message, "commit") {
+				return oldest[0], nil
+			}
+		}
+	}
+	out, err := gitIn(ctx, root, dir, "rev-list", "--first-parent", "--max-count=1", until, "HEAD").Output()
+	return strings.TrimSpace(string(out)), err
 }
 
 // importBaselines writes one commit (baselineRef) holding every baseline file

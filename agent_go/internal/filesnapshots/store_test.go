@@ -1153,12 +1153,21 @@ func TestNewCheckoutComparesAgainstItsCheckedOutCommit(t *testing.T) {
 		f.put("wt/new.txt", "new\n")
 		f.put("wt/c.txt", "c committed\n")
 		f.git("wt", "commit", "--quiet", "-m", "turn", "--", "c.txt")
+		// A worktree added at a commit made earlier in this turn compares
+		// against that commit (its reflog), not the last one before the turn.
+		f.git("main", "worktree", "add", "--quiet", "-b", "side", "../wt2")
+		f.put("wt2/e.txt", "e\n")
+		f.git("wt2", "add", "e.txt")
+		f.git("wt2", "commit", "--quiet", "-m", "e")
+		f.git("wt2", "worktree", "add", "--quiet", "-b", "later", "../wt3")
+		f.put("wt3/a.txt", "a in wt3\n")
+		f.git("wt3", "commit", "--quiet", "-am", "a3")
 		f.put("fresh/x.txt", "x\n")
 		f.git("fresh", "init", "--quiet")
 		f.git("fresh", "add", "-A")
 		f.git("fresh", "commit", "--quiet", "-m", "fresh")
 	})
-	want := map[string]string{"wt/a.txt": "M", "wt/b.txt": "D", "wt/c.txt": "M", "wt/d.txt": "D", "wt/new.txt": "A", "fresh/x.txt": "A"}
+	want := map[string]string{"wt/a.txt": "M", "wt/b.txt": "D", "wt/c.txt": "M", "wt/d.txt": "D", "wt/new.txt": "A", "fresh/x.txt": "A", "wt2/e.txt": "A", "wt3/a.txt": "M"}
 	if got := f.changes(first); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("reply changes = %v, want %v", got, want)
 	}
@@ -1176,10 +1185,10 @@ func TestNewCheckoutComparesAgainstItsCheckedOutCommit(t *testing.T) {
 		t.Fatalf("chat changes = %v, want %v", got, want)
 	}
 	plan, err := f.s.ApplyUndo(ctx, first, all, all)
-	if err != nil || len(plan.Restore) != 5 || !strings.Contains(plan.Note, "fresh") {
+	if err != nil || len(plan.Restore) != 7 || !strings.Contains(plan.Note, "fresh") {
 		t.Fatalf("undo: %v %+v", err, plan)
 	}
-	for rel, want := range map[string]string{"wt/a.txt": "a\n", "wt/b.txt": "b\n", "wt/c.txt": "c\n", "wt/d.txt": "d\n", "wt/new.txt": "<missing>", "wt/more.txt": "more\n", "fresh/x.txt": "x\n"} {
+	for rel, want := range map[string]string{"wt/a.txt": "a\n", "wt/b.txt": "b\n", "wt/c.txt": "c\n", "wt/d.txt": "d\n", "wt/new.txt": "<missing>", "wt/more.txt": "more\n", "fresh/x.txt": "x\n", "wt2/e.txt": "<missing>", "wt3/a.txt": "a\n", "wt3/e.txt": "e\n"} {
 		if got := read(rel); got != want {
 			t.Fatalf("after undo %s = %q, want %q", rel, got, want)
 		}
