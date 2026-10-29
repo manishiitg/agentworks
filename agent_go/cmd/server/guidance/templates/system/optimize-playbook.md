@@ -152,7 +152,7 @@ The step **description** in plan.json is the primary instruction the execution a
 - `description_reviewed` + `review_notes`
 Plan modification tools automatically clear `description_reviewed` when a reviewed contract changes (including description, dependencies, schema, messages, or routing). Review the final edited contract before marking it reviewed again. If the tool reports a bookkeeping failure, repair that metadata; do not assume the old review is current.
 
-**Dependencies after changes**: Follow `builder-reference/references/plan-change-impact.md`. After related edits, do one combined compatibility check in the current agent before the targeted test; inspect only affected dependencies. Do not launch a separate drift reviewer for each edit or test retry. Reserve the full `/review-artifact-drift` audit for scheduled AgentWorks or an explicit user request. Record inspected changelog entries through typed review metadata.
+**Dependencies after changes**: Follow `builder-reference/references/plan-change-impact.md`. After related edits, do one combined compatibility check in the current agent before the targeted test; inspect only affected dependencies. Do not launch a separate drift reviewer for each edit or test retry. Reserve the full `/run-plan-drift` audit for scheduled AgentWorks or an explicit user request. Record inspected changelog entries through typed review metadata.
 
 ### 6. Post-Execution Step Review
 After running a step, review it for optimization — but follow this priority order. Fix fundamentals first before worrying about efficiency.

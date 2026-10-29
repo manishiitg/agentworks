@@ -82,7 +82,7 @@ func getRecordPlanDriftReviewSchema() string {
 			},
 			"reviewed_by": {
 				"type": "string",
-				"description": "Optional actor label, e.g. \"pulse:plan_drift_review\" for the automatic AgentWorks module, or left unset for a manual review-artifact-drift invocation (defaults to the current session)."
+				"description": "Optional actor label, e.g. \"pulse:plan_drift_review\" for the automatic AgentWorks module, or left unset for a manual run-plan-drift invocation (defaults to the current session)."
 			},
 			"reviewed_through_change_id": {
 				"type": "string",

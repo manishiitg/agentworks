@@ -12,9 +12,9 @@ import (
 // ordering -- so the queue silently owned the sequence. None of it was
 // reviewable, because the checklist never named the schedule as evidence.
 func TestArtifactDriftAuditsTheSchedule(t *testing.T) {
-	rendered, err := renderFromRegistry("review-artifact-drift", tmplData{}, allKinds)
+	rendered, err := renderFromRegistry("run-plan-drift", tmplData{}, allKinds)
 	if err != nil {
-		t.Fatalf("render review-artifact-drift: %v", err)
+		t.Fatalf("render run-plan-drift: %v", err)
 	}
 
 	for _, want := range []string{

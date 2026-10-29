@@ -39,11 +39,11 @@ design-plan
 ready-to-optimize
 ops-review
 review-code
-review-artifact-drift
+run-plan-drift
 improve-knowledge
 improve-learnings
 improve-data
-define-success
+setup-goals
 auto-improve
 improve-report
 ```
@@ -63,7 +63,7 @@ improve-report
 | `/improve-knowledge` | Builder, Optimizer | Improve knowledgebase notes with targeted cleanup or cross-step consolidation. |
 | `/improve-learnings` | Builder, Optimizer | Improve global learnings with targeted cleanup or current-plan consolidation. |
 | `/improve-data` | Builder, Optimizer | Improve durable data contracts, schemas, and report compatibility. |
-| `/define-success` | Workshop | Confirm and normalize the durable Goal / Ikigai in `soul/soul.md`; do not seed a duplicate Goal card. |
+| `/setup-goals` | Workshop | Confirm and normalize the durable Goal / Ikigai in `soul/soul.md`; do not seed a duplicate Goal card. |
 | `/auto-improve` | Optimizer | Create/update frequent Run-mode and Optimizer-mode schedules. |
 | `/improve-report` | Builder, Optimizer | Improve report layout, color, density, and widget/data wiring. |
 
@@ -73,7 +73,7 @@ improve-report
 |---|---|
 | Execution | `execute_step`, `query_step`, `send_step_message`, `stop_step`, `stop_all_executions`, `list_executions`, `run_full_workflow`, `debug_step` |
 | Plan/config | `add_step` (agent/scripted/routing/branch/crew), `update_step`, `delete_plan_steps`, `cleanup_orphan_step_configs`, `update_step_config`, `update_validation_schema` |
-| Review | `review_plan`, `review_workflow_timing`, `review_workflow_costs`; artifact drift uses `/review-artifact-drift` with `call_generic_agent` |
+| Review | `review_plan`, `review_workflow_timing`, `review_workflow_costs`; artifact drift uses `/run-plan-drift` with `call_generic_agent` |
 | Reports | `get_report_plan`, `upsert_report_widget`, `move_report_widget`, `toggle_report_widget`, `remove_report_widget`, `set_report_theme`, `set_section_layout`, `validate_report_plan`, `preview_report_render` |
 | Schedules | `create_schedule`, `create_calendar_schedule`, `update_schedule`, `delete_schedule`, `trigger_schedule`, `get_schedule_runs` |
 

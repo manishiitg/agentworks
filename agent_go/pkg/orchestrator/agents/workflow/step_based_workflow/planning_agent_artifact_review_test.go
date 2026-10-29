@@ -290,7 +290,7 @@ func TestArtifactReviewNotices(t *testing.T) {
 		"small internal edits",
 		"affected dependencies before testing",
 		"plan-change-impact.md",
-		"review-artifact-drift",
+		"run-plan-drift",
 		"drift_review",
 		"plan_drift_review",
 	} {

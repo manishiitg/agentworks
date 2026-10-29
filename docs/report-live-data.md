@@ -33,7 +33,7 @@ The script prints one JSON value; `run` resolves with it.
 
 It works on workflow Dashboards and on Crew project Dashboards (the Work
 product's `db/reports/`). Crews learn it from the `work-dashboard` skill,
-workflows from `reporting-policy` / `design-reporting-ui`.
+workflows from `reporting-policy` / `design-dashboard`.
 
 ## Who can run it, and as whom
 
