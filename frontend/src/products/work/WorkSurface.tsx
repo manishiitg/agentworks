@@ -1037,6 +1037,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     return () => window.removeEventListener('agentworks:open-chat-laptop', open)
   }, [selected?.id, isShared, workspacePanels, selectWorkspaceView])
   useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail
+      if (detail?.projectId !== selected?.id || !isWorkWorkspaceViewEnabled('costs', workspacePanels)) return
+      selectWorkspaceView('costs')
+    }
+    window.addEventListener('agentworks:open-chat-usage', open)
+    return () => window.removeEventListener('agentworks:open-chat-usage', open)
+  }, [selected?.id, workspacePanels, selectWorkspaceView])
+  useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
       if (selected?.id !== selectedProjectIdFor(product)) return

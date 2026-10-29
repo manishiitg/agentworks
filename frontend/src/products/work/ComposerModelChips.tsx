@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Check, ChevronDown } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -93,6 +93,14 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   }
   const pickModel = (modelId: string) => void save(modelId, effortForPick(modelId, currentEffort))
   const pickEffort = (effort: string) => void save(currentModel, effort)
+  // Quick ways out of the menu: the full Models page (provider and account) and this project's usage.
+  const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
+  const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
+  const footer = <>
+    <Menu.Separator className="my-1 h-px bg-border" />
+    <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Change provider or account…</Menu.Item>
+    <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
+  </>
   // Cursor lists every variant of a model as its own entry; show them the way the Models page does:
   // by company, one row per model, variants as chips, older versions folded away.
   const cursorChoices = selectedOption.provider === 'cursor-cli' && !cursorSelectionDisabled
@@ -102,6 +110,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <div onKeyDown={event => event.stopPropagation()}>
       <CursorModelPicker models={cursorChoices} selectedModelId={currentModel} onSelect={modelId => { setCursorOpen(false); pickModel(modelId) }} />
     </div>
+    {footer}
   </Chip>
 
   if (phone && cursorPicker) return <>{cursorPicker}{showEffort && effortLabel && <Chip label={effortLabel} ariaLabel={`Reasoning: ${effortLabel}`} disabled={saving}><ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} /></Chip>}</>
@@ -112,11 +121,12 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       {showModel && <ChoiceItems title="Model" choices={models} value={currentModel} onPick={pickModel} />}
       {showModel && showEffort && <Menu.Separator className="my-1 h-px bg-border" />}
       {showEffort && <ChoiceItems title="Reasoning" choices={levels} value={currentEffort} onPick={pickEffort} />}
+      {footer}
     </Chip>
   }
   return <>
     {cursorPicker || (showModel
-      ? <Chip label={label} ariaLabel={`Model: ${label}`} disabled={saving}><ChoiceItems choices={models} value={currentModel} onPick={pickModel} /></Chip>
+      ? <Chip label={label} ariaLabel={`Model: ${label}`} disabled={saving}><ChoiceItems choices={models} value={currentModel} onPick={pickModel} />{footer}</Chip>
       : fallback)}
     {showEffort && effortLabel && <Chip label={effortLabel} ariaLabel={`Reasoning: ${effortLabel}`} disabled={saving}><ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} /></Chip>}
   </>
