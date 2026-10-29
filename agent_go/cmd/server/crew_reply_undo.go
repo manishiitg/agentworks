@@ -60,6 +60,12 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 		known = known || ref.ID == id
 	}
 	if !known {
+		// A reply of this chat whose copies were cleared or never saved is listed
+		// in the chat but not among the saved replies.
+		if _, ok := history.replyData[id]; ok {
+			externalError(w, 404, "snapshot_unavailable", "This reply's saved files are unavailable, so it cannot be undone.")
+			return
+		}
 		externalError(w, 404, "not_found", "This saved reply does not belong to this chat.")
 		return
 	}
