@@ -17,13 +17,14 @@ const scopeLabel: Record<Scope, string> = { uncommitted: 'Uncommitted', branch: 
  * latest commit. Branch / PR: what the branch adds on top of its base, as a pull
  * request shows it. The server picks the base and pins both commits; this view
  * only shows what it returns. When the Crew folder itself is not a repository,
- * "This chat" shows the chat's saved-copy changes (renderChat), so files outside
- * the repositories are not hidden. */
+ * "This chat" (the default) shows the chat's saved-copy changes (renderChat), the
+ * same list the reply card counts, including files outside any repository. */
 export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, onBrowse, renderChat }: {
   workspacePath: string; sessionId: string; tabId: string; repos: GitRepo[]; onRefresh: () => void; onBrowse: () => void
-  renderChat?: (bar: ReactNode) => ReactNode
+  renderChat: (bar: ReactNode) => ReactNode
 }) {
-  const [scope, setScope] = useState<Scope>('uncommitted')
+  // This chat first: the reply card's count is this chat's changes, so the review opens on the same list (owner, 2026-10-29).
+  const [scope, setScope] = useState<Scope>('chat')
   const [repoRoot, setRepoRoot] = useState(repos[0].root)
   const [base, setBase] = useState('')
   const [branches, setBranches] = useState<string[]>([])
@@ -78,10 +79,10 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
   const baseOptions = Array.from(new Set([compare?.base ?? '', ...branches].filter(Boolean)))
   const grouped = scope === 'uncommitted' && repos.length > 1
   const scopeSwitch = <div role="group" aria-label="What to review" className="flex overflow-hidden rounded border border-border text-xs">
-    {(renderChat ? ['uncommitted', 'branch', 'chat'] as const : ['uncommitted', 'branch'] as const).map(value => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setSelected(null) }}
+    {(['chat', 'uncommitted', 'branch'] as const).map(value => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setSelected(null) }}
       className={`px-2 py-0.5 ${scope === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{scopeLabel[value]}</button>)}
   </div>
-  if (scope === 'chat' && renderChat) return renderChat(<div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">{scopeSwitch}</div>)
+  if (scope === 'chat') return renderChat(<div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">{scopeSwitch}</div>)
 
   return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
     <WorkspaceViewHeader title="Files" subtitle="Review changes" actions={<>

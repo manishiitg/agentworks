@@ -96,6 +96,9 @@ describe('Studio review comments', () => {
       vi.mocked(workspaceGitApi.status).mockResolvedValueOnce([{ root: 'app', branch: 'feature', ahead: 0, behind: 0, files: [{ path: 'lib.py', status: 'modified' }] }])
       vi.mocked(workspaceGitApi.diff).mockResolvedValueOnce({ diff: '@@ -1 +1 @@\n-old git\n+new git\n', truncated: false })
       await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      // This chat opens first, matching the reply card's count; Git scopes stay one click away.
+      expect(host.textContent).toContain('Every file this chat changed')
+      await act(async () => button('Uncommitted').click())
       expect(host.textContent).toContain('Branch / PR')
       expect(host.textContent).toContain('feature · 1 file not committed yet')
       expect(workspaceGitApi.diff).toHaveBeenCalledWith('Crew/example', 'app', 'lib.py')
@@ -111,9 +114,6 @@ describe('Studio review comments', () => {
       })
       await act(async () => button('Send to this chat').click())
       expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ tabId: 'exact', message: 'In app, file lib.py, after line 1 (changes not committed yet, compared with the latest commit):\n\nKeep the old name' })
-      // The Crew folder is not itself a repository: its other changes stay reviewable.
-      await act(async () => button('This chat').click())
-      expect(host.textContent).toContain('Every file this chat changed')
     } finally { state.sessionId = 'chat-a'; state.reviewed = false; await act(async () => root.unmount()); host.remove() }
   })
 })

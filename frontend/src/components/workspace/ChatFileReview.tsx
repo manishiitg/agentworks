@@ -35,11 +35,10 @@ export function ChatFileReview(props: ReviewProps) {
     <WorkspaceViewHeader title="Files" subtitle="Review changes" />
     <p className="p-3 text-sm">Loading…</p>
   </section>
-  // When the Crew folder itself is not a repository, files outside the
-  // repositories stay reviewable as this chat's changes ("This chat").
+  // "This chat" is always offered and opens first, Git project or not.
   return repos.length
     ? <GitReview workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
-      renderChat={repos.some(repo => repo.root === '') ? undefined : bar => <SnapshotReview {...props} bar={bar} />} />
+      renderChat={bar => <SnapshotReview {...props} bar={bar} />} />
     : <SnapshotReview {...props} />
 }
 
