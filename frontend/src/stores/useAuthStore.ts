@@ -215,6 +215,12 @@ export const useAuthStore = create<AuthState>()(
 
         // Logout action
         logout: async () => {
+          if (getRawActiveWorkspaceId() !== 'local') {
+            const { desktopRequest } = await import('../services/desktopConnections')
+            await desktopRequest(`/${getRawActiveWorkspaceId()}`, 'DELETE')
+            await window.electronAPI?.openDesktopConnection?.('local', '/home')
+            return
+          }
           ++authOperation
           // Start revocation with the old token, then invalidate local identity
           // immediately. A slow logout must never clear a later login's token.

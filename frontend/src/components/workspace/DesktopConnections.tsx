@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Globe, Laptop, Plus } from 'lucide-react'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../../services/desktopConnections'
 import { getLocalApiBaseUrl } from '../../services/api'
 import { getRawActiveWorkspaceId, useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { followAppLink } from '../../utils/productUrlNavigation'
+import { followAppLink } from '../../utils/appNavigation'
 
 const local: DesktopConnection = { id: 'local', name: 'Local', server: '' }
 export function DesktopConnections({ children }: { children?: ReactNode }) {

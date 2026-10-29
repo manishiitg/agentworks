@@ -25,6 +25,17 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// Capture at package startup, before any coding CLI or terminal can inherit it.
+// Unlike user-selected task secrets, this proves control of the app window.
+var desktopBootstrapSecret, desktopBootstrapHost = consumeDesktopBootstrap()
+
+func consumeDesktopBootstrap() (string, string) {
+	secret, host := os.Getenv("AGENTWORKS_DESKTOP_SECRET"), os.Getenv("AGENTWORKS_DESKTOP_HOST")
+	_ = os.Unsetenv("AGENTWORKS_DESKTOP_SECRET")
+	_ = os.Unsetenv("AGENTWORKS_DESKTOP_HOST")
+	return secret, host
+}
+
 type desktopConnection struct {
 	ID     string   `json:"id"`
 	Name   string   `json:"name"`
@@ -47,7 +58,7 @@ type desktopSignIn struct {
 }
 
 func desktopConnectionGate(w http.ResponseWriter, r *http.Request) bool {
-	secret, host := os.Getenv("AGENTWORKS_DESKTOP_SECRET"), os.Getenv("AGENTWORKS_DESKTOP_HOST")
+	secret, host := desktopBootstrapSecret, desktopBootstrapHost
 	u := GetUserFromContext(r.Context())
 	// Single-user JWTs alone aren't a desktop proof: localhost login issues them
 	// without a password. Never admit PAT/MCP callers to these saved web sessions.
@@ -401,7 +412,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 		return
 	}
 	id := mux.Vars(r)["connection"]
-	base, token := "http://"+os.Getenv("AGENTWORKS_DESKTOP_HOST"), strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	base, token := "http://"+desktopBootstrapHost, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if id != "local" {
 		c, err := desktopConnectionFor(GetUserFromContext(r.Context()).UserID, id)
 		if err != nil {

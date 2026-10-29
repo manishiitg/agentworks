@@ -6,11 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	llm "github.com/manishiitg/mcpagent/llm"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -27,8 +29,9 @@ func desktopTestEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AUTH_SECRET", "desktop-connections-test-signing-secret")
-	t.Setenv("AGENTWORKS_DESKTOP_SECRET", "app-proof")
-	t.Setenv("AGENTWORKS_DESKTOP_HOST", "127.0.0.1:18743")
+	oldSecret, oldHost := desktopBootstrapSecret, desktopBootstrapHost
+	desktopBootstrapSecret, desktopBootstrapHost = "app-proof", "127.0.0.1:18743"
+	t.Cleanup(func() { desktopBootstrapSecret, desktopBootstrapHost = oldSecret, oldHost })
 }
 
 // PLAT-746: remote credentials must not become local credentials or cross owners.
@@ -180,5 +183,27 @@ func TestDesktopConnectionSSEFlushesBeforeCompletion(t *testing.T) {
 	line, err := bufio.NewReader(resp.Body).ReadString('\n')
 	if err != nil || line != "data: started\n" {
 		t.Fatalf("first event was buffered: %q %v", line, err)
+	}
+}
+
+// The proof unlocks all saved remote accounts; coding agents must not inherit it.
+func TestDesktopConnectionProofNeverReachesChildProcesses(t *testing.T) {
+	t.Setenv("AGENTWORKS_DESKTOP_SECRET", "app-proof")
+	t.Setenv("AGENTWORKS_DESKTOP_HOST", "127.0.0.1:18743")
+	secret, host := consumeDesktopBootstrap()
+	if secret != "app-proof" || host != "127.0.0.1:18743" {
+		t.Fatal("startup lost app bootstrap")
+	}
+	for _, env := range [][]string{minimalChildEnv(), providerConnectionSetupEnvironment("desktop-proof-test", &llm.ProviderAPIKeys{}, true), os.Environ()} {
+		for _, value := range env {
+			if strings.HasPrefix(value, "AGENTWORKS_DESKTOP_") {
+				t.Fatal("app bootstrap inherited by child")
+			}
+		}
+		cmd := exec.Command("sh", "-c", `test -z "${AGENTWORKS_DESKTOP_SECRET+x}" && test -z "${AGENTWORKS_DESKTOP_HOST+x}"`)
+		cmd.Env = env
+		if err := cmd.Run(); err != nil {
+			t.Fatal("child received desktop bootstrap")
+		}
 	}
 }
