@@ -39,24 +39,6 @@ test -f "$PRODUCT_DIR/product.env" || { echo "No such product: $PRODUCT_DIR/prod
 source "$PRODUCT_DIR/product.env"
 [[ "$PRODUCT" == "$EXPECTED_PRODUCT" ]] || { echo "product.env PRODUCT=$PRODUCT does not match the deployed product $EXPECTED_PRODUCT" >&2; exit 1; }
 
-[[ "$STAGE_ONLY" == 1 ]] || python3 - "$REMOTE_APP/.env" "${REQUIRED_PERSISTED_ENV_KEYS[@]:-}" <<'PY'
-from pathlib import Path
-import sys
-
-required = [key for key in sys.argv[2:] if key]
-if required:
-    path = Path(sys.argv[1])
-    values = {}
-    if path.is_file():
-        for line in path.read_text().splitlines():
-            key, separator, value = line.partition('=')
-            if separator:
-                values[key] = value.strip().strip('"')
-    missing = [key for key in required if not values.get(key)]
-    if missing:
-        raise SystemExit('Missing required persisted deployment settings: ' + ', '.join(missing))
-PY
-
 for snippet in "${RUNTIME_CONFIG_REQUIRED_SNIPPETS[@]:-}"; do
   [[ -z "$snippet" ]] || grep -Fq "$snippet" "$PRODUCT_DIR/runtime-config.js" || {
     echo "$PRODUCT runtime config is missing required setting: $snippet" >&2
@@ -68,39 +50,27 @@ done
   for command in python3 file sha256sum openssl ldd; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
   prebuilt_verify "$REPO_ROOT" "$PREBUILT"
 python3 "$REPO_ROOT/deploy/common/verify-cli-release.py" "$PREBUILT/downloads"
-# gog (Gmail connector) needs its encrypted file keyring on a headless box;
-# on "auto" it uses the service user's gnome-keyring, which has no unlocked
-# default collection, and every Gmail connect fails. Generate the password
-# once and preserve it (changing it orphans stored tokens). Checked below by
-# deployment_checks.py, in the env file and in the running process.
-if [[ -f "$REMOTE_APP/.env" ]]; then
-  grep -q '^GOG_KEYRING_PASSWORD=' "$REMOTE_APP/.env" || printf 'GOG_KEYRING_PASSWORD=%s\n' "$(openssl rand -hex 32)" >> "$REMOTE_APP/.env"
-  grep -q '^GOG_KEYRING_BACKEND=' "$REMOTE_APP/.env" || echo 'GOG_KEYRING_BACKEND=file' >> "$REMOTE_APP/.env"
-  chmod 600 "$REMOTE_APP/.env"
-fi
-[[ "$STAGE_ONLY" == 1 ]] || PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
-
 builder_revision="$(prebuilt_revision "$PREBUILT" mcp-agent-builder-go)"
 test -n "$builder_revision"
 RELEASE_ID="${PRODUCT}-${builder_revision:0:8}-$(date +%Y%m%d%H%M%S)"
 REMOTE_RELEASE="$REMOTE_APP/releases/$RELEASE_ID"
 BUILD_DIR="$REMOTE_RELEASE"
-MIGRATION_STOPPED_AGENT=0
 # Make room first (PLAT-545): only when space is short, and never the live release, the newest one before it, or one in use.
 python3 "$REPO_ROOT/deploy/common/prune-releases.py" "$REMOTE_APP" --apply --only-if-free-below-gb 15 \
   || echo 'warning: could not make room before the deploy' >&2
 mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs"
 touch "$BUILD_DIR/.deploying"
+source "$REPO_ROOT/deploy/common/slots.sh"
+source "$REPO_ROOT/deploy/common/vault.sh"
+# The activation steps every server runs (env merge, units, switch, restart, health, prune, self-tests).
+source "$REPO_ROOT/deploy/common/activate-release.sh"
+UNIT_PREFIX="$PRODUCT"
 cleanup_build() {
-  if declare -F vault_recover >/dev/null; then vault_recover; fi
-  if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
-    systemctl --user restart "$PRODUCT-agent" >/dev/null 2>&1 || true
-  fi
+  activate_recover
   if [[ "$(readlink -f "$REMOTE_APP/current")" != "$BUILD_DIR" && "${KEEP_STAGED:-0}" != 1 ]]; then rm -rf "$BUILD_DIR"; fi
 }
 trap cleanup_build EXIT
 
-# Slot helper installation runs during activation.
 # version.json: which CLI build this server offers and its compatibility epoch (downloads/cli-release.json, from
 # deploy/cli-release.json). The CLI installs a release automatically only when the epoch equals the one it was built with;
 # bumping the epoch is how a release is marked breaking, and the person is told why.
@@ -128,8 +98,6 @@ with open(os.path.join(downloads, "version.json"), "w") as f:
 PY
 }
 
-source "$REPO_ROOT/deploy/common/slots.sh"
-source "$REPO_ROOT/deploy/common/vault.sh"
 echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no compile)"
 # Plain cp -R, not -a: copied files get today's mtime, as freshly built ones did. The carried-over asset cleanup below
 # deletes files by age, and an old build must not have its assets removed for the age of the build.
@@ -150,8 +118,6 @@ cp "$SCRIPT_DIR/deployment_checks.py" "$BUILD_DIR/deployment_checks.py"
 # The slot self-test and the secret admission scan travel with the release (./deploy.sh slotcheck runs current's copy).
 cp "$REPO_ROOT/deploy/common/slotcheck.sh" "$BUILD_DIR/slotcheck.sh"
 cp "$REPO_ROOT/deploy/common/admission_scan.py" "$BUILD_DIR/admission_scan.py"
-# The env merge travels with the release too: it updates the host .env from EXTRA_ENV and drops keys the deploy wrote before and no longer lists (PLAT-789).
-cp "$REPO_ROOT/deploy/common/merge_env.py" "$BUILD_DIR/merge_env.py"
 # frontend's build:report-preview step (part of `npm run build` above) writes
 # report-preview.js to agent_go/cmd/server/static/ in the source checkout,
 # never into the release. $PRODUCT-agent, like every other product on this
@@ -213,18 +179,8 @@ if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then
   fi
 fi
 
-# Carry the previous release's hashed frontend assets into the new one. A tab
-# opened before the swap still lazy-imports chunks by their old hashed names
-# on its next navigation; without these files it fails with "Failed to fetch
-# dynamically imported module". Hashed names never collide, so only missing
-# files are copied (-n), mtimes are preserved (-p), and anything carried for
-# more than 14 days is dropped so the directory cannot grow forever.
-prev="$REMOTE_APP/current/frontend/assets"
-next="$BUILD_DIR/frontend/assets"
-if [[ -d "$prev" && -d "$next" ]]; then
-  cp -pn "$prev"/* "$next"/ 2>/dev/null || true
-  find "$next" -type f -mtime +14 -delete
-fi
+# Carry the previous release's hashed frontend assets into the new one (open tabs still load their old chunks).
+activate_carry_assets "$REMOTE_APP" "$BUILD_DIR"
 
 if [[ "$STAGE_ONLY" == 1 ]]; then
   rm -f "$BUILD_DIR/.deploying"
@@ -233,38 +189,14 @@ if [[ "$STAGE_ONLY" == 1 ]]; then
   exit 0
 fi
 
-echo "==> [$RELEASE_ID] Activating release and restarting services"
-# Check again after the build, before switching current or restarting services.
-PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
-source "$REPO_ROOT/deploy/common/relay-dbos.sh"
-relay_dbos_python="$(relay_dbos_prepare "$REPO_ROOT" "$REMOTE_APP")"
 # Video export uses the same encoder as browser recordings plus FFprobe.
 # Provision this core tool during deploy, never in a person's export request.
 if ! REMOTE_APP="$REMOTE_APP" python3 "$SCRIPT_DIR/install-ffprobe.py"; then
   echo "Video export is not available on this server yet: FFprobe setup failed. Dashboard playback is available." >&2
 fi
-chmod +x "$BUILD_DIR"/bin/*
-# The Linux sandbox must really work on this host for this release before it goes live. Shell commands run inside it, and a
-# policy that blocks a path inside a granted one needs a user namespace, which Ubuntu 23.10+ denies by default
-# (kernel.apparmor_restrict_unprivileged_userns=1): a host without it fails every shell command while the other deploy checks
-# pass. This runs the real thing as the service account, so a host that is not prepared stops here.
-if [[ ! -x "$BUILD_DIR/bin/workspace-security.test" ]]; then
-  echo "ERROR: the release has no bin/workspace-security.test, so the sandbox cannot be proven on this host." >&2
-  exit 1
-fi
-if ! sandbox_log="$("$BUILD_DIR/bin/workspace-security.test" -test.run '^TestMountNamespaceFallbackEnforcesLandlockRejectedOverlapPolicy$' -test.v 2>&1)"; then
-  printf '%s\n' "$sandbox_log" | tail -20 >&2
-  echo "ERROR: the Linux sandbox does not work on this host, so shell commands would fail. kernel.apparmor_restrict_unprivileged_userns=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo n/a)." >&2
-  echo "Fix: as root on the host, run: PRODUCT=$PRODUCT bash -s -- userns < deploy/common/provision-slots.sh (HOST_SETUP products get this automatically)." >&2
-  exit 1
-fi
-echo "sandbox: proven on this host (mount-namespace fallback test passed)"
-# Slot accounts must reach this release's Landlock launcher (releases/ 0711; PLAT-478). No-op without slots.
-slots_release_traversal "$REMOTE_APP" "$BUILD_DIR"
-ln -sfn "$REMOTE_APP/logs" "$BUILD_DIR/logs"
 
 # The standard runtime profile (deploy/common/runtime_profile.json, docs/design/deploy_unification.md): the same settings on every
-# product, written below into .env and both services like EXTRA_ENV (a product's own EXTRA_ENV entry for the same key still wins).
+# product, written into .env and both services like EXTRA_ENV (a product's own EXTRA_ENV entry for the same key still wins).
 mapfile -t STANDARD_ENV < <(python3 - "$REPO_ROOT/deploy/common/runtime_profile.json" "$REMOTE_APP" "$REMOTE_APP/state" <<'PY'
 import json, sys
 profile, app, data = sys.argv[1:]
@@ -278,246 +210,14 @@ if ! "$SCRIPT_DIR/install-managed-chrome.sh" "$REMOTE_APP" >/dev/null; then
   STANDARD_ENV=("${STANDARD_ENV[@]/AGENT_BROWSER_EXECUTABLE_PATH=*/}")
 fi
 EXTRA_ENV=("${STANDARD_ENV[@]}" "${EXTRA_ENV[@]:-}")
-EXTRA_ENV+=("RELAY_DBOS_PYTHON=$relay_dbos_python")
-install -d -m 0700 "$REMOTE_APP/state" "$REMOTE_APP/state/mcp" "$REMOTE_APP/state/browser-profile"
+install -d -m 0700 "$REMOTE_APP/state" "$REMOTE_APP/state/browser-profile"
 
-if true; then
-  # MCP state lives in state/mcp on every product now (the profile sets AGENTWORKS_MCP_STATE_DIR): carry a release's user config over once.
-  mcp_state="$REMOTE_APP/state/mcp"
-  install -d -m 0700 "$mcp_state"
-  legacy_mcp="$REMOTE_APP/current/configs/mcp_servers_${PRODUCT}_user.json"
-  if [[ -f "$legacy_mcp" && ! -e "$mcp_state/mcp_servers_${PRODUCT}_user.json" ]]; then
-    cp -n "$legacy_mcp" "$mcp_state/mcp_servers_${PRODUCT}_user.json"
-    chmod 0600 "$mcp_state/mcp_servers_${PRODUCT}_user.json"
-  fi
-fi
-
-runtime_path="$REMOTE_APP/tools/node/bin:$REMOTE_APP/tools/bin:$REMOTE_APP/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-# Per-user accounts: a `tmux` front-end first in PATH sends a slot's sessions to that slot's own tmux
-# server and leaves every other command to the real tmux. It lives outside the releases so its path
-# never changes; a host without slots keeps the plain PATH.
-if slots_shim_dir="$(slots_install_shim "$REMOTE_APP" "$BUILD_DIR")" && [[ -n "$slots_shim_dir" ]]; then
-  runtime_path="$slots_shim_dir:$runtime_path"
-fi
-
-# EnvironmentFile= values are applied after Environment= and therefore win
-# for duplicate variables -- a systemd drop-in setting PATH looks correct in
-# `systemctl show` while the executed process still receives whatever PATH
-# is (or is not) in .env. Replace just that one line atomically so the
-# managed PATH always wins regardless of what the drop-in also says, and
-# preserve every other line in .env untouched (server C hit this live on
-# 2026-09-11). Keys this deploy wrote last time and no longer lists are removed
-# (deploy/common/merge_env.py remembers them in .env.managed-keys); a line added
-# by hand stays.
-env_file="$REMOTE_APP/.env"
-if [[ -f "$env_file" ]]; then
-  env_next="$(mktemp "$REMOTE_APP/.env.runtime.XXXXXX")"
-  if [[ -f "$BUILD_DIR/merge_env.py" ]]; then
-    python3 "$BUILD_DIR/merge_env.py" "$env_file" "$env_next" "$REMOTE_APP/.env.managed-keys" "$runtime_path" "${EXTRA_ENV[@]:-}"
-  else
-    # A release built before merge_env.py existed (the deploy script comes from this checkout, the release from the build):
-    # the old merge, which updates listed keys but removes nothing.
-    python3 - "$env_file" "$env_next" "$runtime_path" "${EXTRA_ENV[@]:-}" <<'PY'
-from pathlib import Path
-import sys
-
-source, destination, runtime_path, *managed_entries = sys.argv[1:]
-managed = {"PATH": runtime_path}
-for entry in managed_entries:
-    if not entry:
-        continue
-    key, separator, value = entry.partition("=")
-    if not separator or not key:
-        raise SystemExit("EXTRA_ENV entries must use KEY=value")
-    managed[key] = value
-
-output = []
-written = set()
-for line in Path(source).read_text().splitlines():
-    key, separator, _ = line.partition("=")
-    if separator and key in managed:
-        if key not in written:
-            output.append(f"{key}={managed[key]}")
-            written.add(key)
-        continue
-    output.append(line)
-for key, value in managed.items():
-    if key not in written:
-        output.append(f"{key}={value}")
-Path(destination).write_text("\n".join(output) + "\n")
-PY
-  fi
-  chmod 0600 "$env_next"
-  mv "$env_next" "$env_file"
-fi
-
-mkdir -p "$HOME/.config/systemd/user/$PRODUCT-agent.service.d" "$HOME/.config/systemd/user/$PRODUCT-workspace.service.d"
-for obsolete in "${REMOVE_DEPLOY_DROPINS[@]:-}"; do
-  [[ -z "$obsolete" ]] || {
-    rm -f "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/$obsolete"
-    rm -f "$HOME/.config/systemd/user/$PRODUCT-workspace.service.d/$obsolete"
-  }
-done
-{
-  echo '[Service]'
-  echo "Environment=PATH=$runtime_path"
-  for entry in "${EXTRA_ENV[@]:-}"; do
-    [[ -n "$entry" ]] && echo "Environment=$entry"
-  done
-} > "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf"
-cp "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf" \
-   "$HOME/.config/systemd/user/$PRODUCT-workspace.service.d/zz-deploy-managed.conf"
-echo "Environment=AGENTWORKS_STATE_ROOT=$REMOTE_APP/state" >> "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf"
-# The agent serves renderer assets from the same packaged frontend as nginx.
-echo "Environment=STATIC_DIR=$REMOTE_APP/current/frontend" >> "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf"
-echo "Environment=AGENTWORKS_STATE_ROOT=$REMOTE_APP/state" >> "$HOME/.config/systemd/user/$PRODUCT-workspace.service.d/zz-deploy-managed.conf"
-for entry in "${AGENT_EXTRA_ENV[@]:-}"; do
-  [[ -n "$entry" ]] && echo "Environment=$entry" >> "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf"
-done
-
-vault_prepare "$BUILD_DIR" "$REMOTE_APP" "$REMOTE_APP/data/docs" "$PRODUCT" "$AGENT_PORT" "${VAULT_PORT:-$((WORKSPACE_PORT + 2))}"
-
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-
-# Drain before the restart: restarting while a turn is running hands the user
-# a 502 mid-message. Poll the agent's /health "drain" block until it is idle,
-# up to DRAIN_TIMEOUT_SECONDS (default 5 min); new turns can still start
-# during the wait, so this is best-effort, and an agent without the field
-# (older release, or not yet running) drains immediately.
-DRAIN_TIMEOUT_SECONDS="${DRAIN_TIMEOUT_SECONDS:-300}"
-deadline=$(($(date +%s) + DRAIN_TIMEOUT_SECONDS))
-while :; do
-  h="$(curl -s --max-time 5 "http://127.0.0.1:$AGENT_PORT/api/health" || true)"
-  idle="$(printf '%s' "$h" | python3 -c 'import json,sys
-try:
-  d=json.load(sys.stdin)
-  print("false" if d.get("drain",{}).get("idle") is False else "true")
-except Exception:
-  print("true")' 2>/dev/null || echo true)"
-  [[ "$idle" == "true" ]] && { echo "drain: agent idle, restarting"; break; }
-  if [[ $(date +%s) -ge $deadline ]]; then
-    echo "drain: still busy after ${DRAIN_TIMEOUT_SECONDS}s; restarting anyway" >&2
-    break
-  fi
-  echo "drain: waiting for in-flight turns"
-  sleep 5
-done
-
-# Stop the old agent before current moves; it restarts on the new release below.
-MIGRATION_STOPPED_AGENT=1
-systemctl --user stop "$PRODUCT-agent"
-MIGRATION_STOPPED_AGENT=0
-ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
-MIGRATION_STOPPED_AGENT=1
-vault_install "$BUILD_DIR" "$REMOTE_APP" "$PRODUCT"
-
-systemctl --user daemon-reload
-systemctl --user restart "$PRODUCT-workspace"
-sleep 2
-vault_start "$PRODUCT" "${VAULT_PORT:-$((WORKSPACE_PORT + 2))}"
-systemctl --user restart "$PRODUCT-agent"
-MIGRATION_STOPPED_AGENT=0
-sleep 2
-systemctl --user restart "$PRODUCT-gateway"
-sleep 2
-systemctl --user is-active "$PRODUCT-workspace" "$PRODUCT-agent" "$PRODUCT-gateway"
-
-# Verify what the services actually received at exec time. `systemctl show`
-# reports Environment= assignments but does not expose a later PATH override
-# from EnvironmentFile=, which is how a broken deploy can otherwise pass.
-for unit in "$PRODUCT-agent" "$PRODUCT-workspace"; do
-  pid="$(systemctl --user show "$unit" -p MainPID --value)"
-  [[ "$pid" -gt 0 ]]
-  tr '\0' '\n' < "/proc/$pid/environ" | grep -Fqx "PATH=$runtime_path"
-  for entry in "${EXTRA_ENV[@]:-}"; do
-    [[ -n "$entry" ]] && { tr '\0' '\n' < "/proc/$pid/environ" | grep -Fqx "$entry" || { echo "$unit did not receive $entry" >&2; exit 1; }; }
-  done
-done
-
-agent_pid="$(systemctl --user show "$PRODUCT-agent" -p MainPID --value)"
-for entry in "${AGENT_EXTRA_ENV[@]:-}"; do
-  [[ -n "$entry" ]] && { tr '\0' '\n' < "/proc/$agent_pid/environ" | grep -Fqx "$entry" || { echo "$PRODUCT-agent did not receive $entry" >&2; exit 1; }; }
-done
-if [[ -n "${PLAYBOOK_SMOKE_PATH:-}" ]]; then
-  test -f "/proc/$agent_pid/cwd/playbooks/$PLAYBOOK_SMOKE_PATH"
-fi
-
-if [[ -n "${PIN_NODE_VERSION:-}" ]]; then
-  test "$(node --version)" = "v$PIN_NODE_VERSION"
-fi
-
-echo "==> [$RELEASE_ID] Verifying"
-PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$BUILD_DIR/deployment_checks.py" running
-# The agent listens a few seconds after systemd reports it active (after a drain it can take longer): retry
-# instead of failing the deploy on "connection refused" while the new release is still starting.
-wait_for_url() {
-  local url="$1" tries=60
-  until curl -fsS -o /dev/null --max-time 5 "$url" 2>/dev/null; do
-    tries=$((tries - 1))
-    [[ "$tries" -gt 0 ]] || { echo "$url did not come up in 2 minutes" >&2; return 1; }
-    sleep 2
-  done
-}
-wait_for_url "http://127.0.0.1:$AGENT_PORT/api/health"
-echo "agent  /api/health: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$AGENT_PORT/api/health")"
-wait_for_url "http://127.0.0.1:$WORKSPACE_PORT/health"
-curl -fsS "http://127.0.0.1:$WORKSPACE_PORT/health"; echo
-# A local reverse proxy in front of the gateway (a host's own nginx) must answer before the public name exists.
-if [[ -n "${LOCAL_PROXY_CHECK_URL:-}" ]]; then
-  wait_for_url "$LOCAL_PROXY_CHECK_URL"
-  echo "local proxy $LOCAL_PROXY_CHECK_URL: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$LOCAL_PROXY_CHECK_URL")"
-fi
-public_code=000
-if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
-  echo "public checks skipped (PUBLIC_CHECKS=false: no DNS/HTTPS for $DOMAIN yet)"
-else
-# Not `curl -f`: whether /api/health is reachable through the gateway without
-# auth depends on its gate (GATEWAY_SSO_ONLY in .env) --
-# see the matching comment in deploy.sh. Only a connection failure or a 5xx
-# means the gateway itself is broken.
-public_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$DOMAIN/api/health")"
-echo "public /api/health: $public_code"
-if [[ -n "${PUBLIC_HEALTH_STATUS:-}" ]]; then
-  [[ "$public_code" == "$PUBLIC_HEALTH_STATUS" ]] || { echo "https://$DOMAIN/api/health returned $public_code, expected $PUBLIC_HEALTH_STATUS" >&2; exit 1; }
-else
-  [[ "$public_code" -lt 500 ]] || { echo "https://$DOMAIN/api/health returned $public_code" >&2; exit 1; }
-fi
-for path in "${PUBLIC_CHECK_PATHS[@]:-}"; do
-  [[ -z "$path" ]] || curl -fsS -o /dev/null --max-time 10 "https://$DOMAIN$path"
-done
-fi
-for file in install-agentworks.sh version.json; do
-  # The agent must serve both assets. A password-gated product returns 401
-  # for anonymous public requests to these paths, just like /api/health.
-  curl -fsS -o /dev/null --max-time 10 "http://127.0.0.1:$AGENT_PORT/api/downloads/cli/$file"
-  if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
-    :
-  elif [[ "$public_code" == 401 ]]; then
-    cli_public_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$DOMAIN/api/downloads/cli/$file")"
-    [[ "$cli_public_code" == 401 ]] || { echo "https://$DOMAIN/api/downloads/cli/$file returned $cli_public_code, expected 401" >&2; exit 1; }
-  else
-    curl -fsS -o /dev/null --max-time 10 "https://$DOMAIN/api/downloads/cli/$file"
-  fi
-done
-
-rm -f "$BUILD_DIR/.deploying"
-python3 "$BUILD_DIR/prune-releases.py" "$REMOTE_APP" --apply \
-  --health-url "http://127.0.0.1:$AGENT_PORT/api/health" \
-  --health-url "http://127.0.0.1:$WORKSPACE_PORT/health"
-
-# How this server differs from the standard runtime profile (docs/design/deploy_unification.md). Report only for now: it never fails
-# a deploy while the servers are being aligned.
-python3 "$REPO_ROOT/deploy/common/profile_report.py" --profile "$REPO_ROOT/deploy/common/runtime_profile.json" --name "$PRODUCT" \
-  --account "$PRODUCT" --app "$REMOTE_APP" --data "$REMOTE_APP/state" --workspace-port "$WORKSPACE_PORT" || true
-
-# The slot self-test (PLAT-478): on a slot host, a real slotted `pwd` per slot in the docs root, a workflow, a Crew and a
-# Code project, plus the config checks. Read-only. The release is already live: a failure does not roll back, it fails
-# the deploy loudly with FAIL lines that say what to fix.
-if slots_enabled; then
-  if ! slots_selfcheck "$REMOTE_APP" "$REMOTE_APP/data/docs" "$PRODUCT" "$BUILD_DIR"; then
-    echo "==> Release $RELEASE_ID is live at https://$DOMAIN, but the SLOT SELF-TEST FAILED (see FAIL lines above)" >&2
-    exit 1
-  fi
-fi
-
-echo "==> Done. Release $RELEASE_ID is live at https://$DOMAIN"
+# This server's layout, read by the shared activation. A rootless product is the account PRODUCT in /srv/PRODUCT.
+RELEASE_DIR="$BUILD_DIR"
+APP_ROOT="$REMOTE_APP"
+DOCS_ROOT="$REMOTE_APP/data/docs"
+STATE_ROOT="$REMOTE_APP/state"
+SERVICE_ACCOUNT="$PRODUCT"
+LIVE_URL="https://$DOMAIN"
+RUNTIME_PATH="$REMOTE_APP/tools/node/bin:$REMOTE_APP/tools/bin:$REMOTE_APP/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+activate_release

@@ -1,3 +1,12 @@
+# Release activation
+
+Every server deploy activates a staged release with `activate-release.sh`:
+env merge, unit files and the managed drop-ins, the switch of `current`,
+service restarts, health checks, release pruning and the self-tests. Each
+deploy path keeps its own build and transport and sources this file on the
+server; what differs between servers is data in the server's `product.env`
+(see the variables at the top of the script).
+
 # Linux release retention
 
 All deployments that write `releases/<id>` share `prune-releases.py`:

@@ -1,8 +1,9 @@
 """Fail-closed rootless-Linux deployment checks; never print environment contents.
 
-Generalized from deploy/cf/deployment_checks.py (confida). Product-specific
-values come from PRODUCT and EXPECTED_PUBLIC_URL in the environment, both
-already exported by build-and-activate.sh before this runs.
+Run by the shared activation (deploy/common/activate-release.sh) on every
+server. Values come from the environment: PRODUCT and EXPECTED_PUBLIC_URL, and
+APP_ROOT, DOCS_ROOT, UNIT_PREFIX and SERVICE_ACCOUNT, which default to the
+rootless layout (/srv/PRODUCT, its data/docs, PRODUCT-agent, the PRODUCT account).
 """
 import argparse
 import json
@@ -17,8 +18,12 @@ import sys
 
 PRODUCT = os.environ.get("PRODUCT", "")
 EXPECTED_PUBLIC_URL = os.environ.get("EXPECTED_PUBLIC_URL", "")
-ENV_FILE = Path(f"/srv/{PRODUCT}/.env")
-UNIT = f"{PRODUCT}-agent"
+APP_ROOT = os.environ.get("APP_ROOT") or f"/srv/{PRODUCT}"
+DOCS_ROOT = os.environ.get("DOCS_ROOT") or f"{APP_ROOT}/data/docs"
+UNIT_PREFIX = os.environ.get("UNIT_PREFIX") or PRODUCT
+SERVICE_ACCOUNT = os.environ.get("SERVICE_ACCOUNT") or PRODUCT
+ENV_FILE = Path(f"{APP_ROOT}/.env")
+UNIT = f"{UNIT_PREFIX}-agent"
 
 
 def check_environment_file(path=ENV_FILE):
@@ -93,7 +98,7 @@ def check_user_slots(env_path=ENV_FILE, users_path=None):
     So this check is part of every deploy. It needs the product's own env file and its user directory; a server with a single
     account is a personal install and needs no slots.
     """
-    users_path = users_path or Path(f"/srv/{PRODUCT}/data/docs/config/users.json")
+    users_path = users_path or Path(f"{DOCS_ROOT}/config/users.json")
     if not users_path.exists():
         return
     users = [u for u in json.loads(users_path.read_text()).get("users", []) if not u.get("disabled") and u.get("id")]
@@ -147,7 +152,7 @@ def check_private_tmp(env_path=ENV_FILE, restrict_path="/proc/sys/kernel/apparmo
         raise ValueError(
             "this host restricts unprivileged user namespaces and the workspace service cannot create one (private /tmp is "
             "unavailable), so shell commands with hidden folders fail. Fix: as root run: "
-            f"PRODUCT={PRODUCT} bash -s -- userns < deploy/common/provision-slots.sh, then restart {PRODUCT}-workspace"
+            f"PRODUCT={PRODUCT} bash -s -- userns < deploy/common/provision-slots.sh, then restart {UNIT_PREFIX}-workspace"
         )
 
 
@@ -157,8 +162,8 @@ def main():
     args = parser.parse_args()
     if not PRODUCT:
         raise ValueError("PRODUCT must be set in the environment before running this check")
-    if platform.system() != "Linux" or pwd.getpwuid(os.getuid()).pw_name != PRODUCT:
-        raise ValueError(f"deployment checks must run as the {PRODUCT} account on Linux")
+    if platform.system() != "Linux" or pwd.getpwuid(os.getuid()).pw_name != SERVICE_ACCOUNT:
+        raise ValueError(f"deployment checks must run as the {SERVICE_ACCOUNT} account on Linux")
     check_environment_file()
     check_gog_keyring_file()
     if EXPECTED_PUBLIC_URL and str(ENV_FILE) not in systemctl_value("EnvironmentFiles").split():

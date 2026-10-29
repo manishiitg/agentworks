@@ -60,7 +60,7 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
 
     def test_shared_builder_owns_confida_runtime_guards(self):
         deploy = (REPO / "deploy.sh").read_text()
-        build = (ROOT / "build-and-activate.sh").read_text()
+        build = (ROOT / "build-and-activate.sh").read_text() + (REPO / "deploy/common/activate-release.sh").read_text()
         for expected in ("install-slack-cli.sh", "agent-browser@latest", "install-coding-clis.sh", "to_https_url"):
             self.assertIn(expected, deploy)
         for expected in (
@@ -108,10 +108,13 @@ class GogKeyringDeploymentCheckTest(unittest.TestCase):
         rootless = (ROOT / "build-and-activate.sh").read_text()
         rts = (REPO / "deploy/aws-ec2/server/build-and-activate.sh").read_text()
         entry = (REPO / "deploy.sh").read_text()
+        shared = (REPO / "deploy/common/activate-release.sh").read_text()
+        self.assertIn("GOG_KEYRING_BACKEND", shared)
+        self.assertIn("GOG_KEYRING_PASSWORD", shared)
         for name, text in (("rootless", rootless), ("rts", rts)):
             with self.subTest(deploy=name):
-                self.assertIn("GOG_KEYRING_BACKEND", text)
-                self.assertIn("GOG_KEYRING_PASSWORD", text)
+                self.assertIn('source "$REPO_ROOT/deploy/common/activate-release.sh"', text)
+                self.assertIn("\nactivate_release\n", text)
         for name, text in (("rootless-entry", entry), ("rts", rts)):
             with self.subTest(deploy=name):
                 self.assertIn("deploy/common/install-gog.sh", text)
