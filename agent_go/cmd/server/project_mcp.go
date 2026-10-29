@@ -147,7 +147,7 @@ func (api *StreamingAPI) projectMCPTarget(ctx context.Context, claims *UserClaim
 		return dashboardTarget{}, dashboardFailure(403, "Project access is unavailable.")
 	}
 	if a.Kind == "work" {
-		binding, _, ok := api.resolveExternalWorkspace(ctx, claims, a.Kind+":"+a.ID)
+		binding, _, ok := api.resolveExternalWorkspace(ctx, claims, a.ID)
 		if ok {
 			return api.dashboardTarget(ctx, claims, binding.Binding.WorkspacePath)
 		}

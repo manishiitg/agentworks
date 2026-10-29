@@ -112,7 +112,7 @@ func (api *StreamingAPI) openDashboardApp(r *http.Request, args map[string]any) 
 	if resolved.Resource.Code == "" {
 		link = strings.TrimRight(effectiveShareBaseURL(), "/") + "/dashboards"
 	}
-	data := map[string]any{"resource_id": resolved.Resource.ID, "workspace_id": workspaceExternalID(crewProfileID, resolved.Target.ID), "project_id": resolved.Target.ID, "revision": resolved.Document.Published, "title": resolved.Document.Title, "url": link, "html": string(page), "files": files, "asset_prefix": prefix, "capability": resolved.Capability}
+	data := map[string]any{"resource_id": resolved.Resource.ID, "workspace_id": resolved.Target.ID, "project_id": resolved.Target.ID, "revision": resolved.Document.Published, "title": resolved.Document.Title, "url": link, "html": string(page), "files": files, "asset_prefix": prefix, "capability": resolved.Capability}
 	result := mcp.NewToolResultText("Opened " + resolved.Document.Title + ". Use Ask or a published action to start work. Website: " + link)
 	result.StructuredContent = map[string]any{"resource_id": resolved.Resource.ID, "title": resolved.Document.Title, "url": link, "revision": resolved.Document.Published}
 	result.Meta = &mcp.Meta{AdditionalFields: map[string]any{"dashboard": data}}

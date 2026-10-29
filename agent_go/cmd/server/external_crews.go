@@ -235,7 +235,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		// check a Crew-only token read the user's workflow results (PLAT-366).
 		mine := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
 		isCrew := call.TargetKind == triggerCallerCrew && call.TargetChat == ""
-		targetID := workspaceExternalID(call.TargetProfileID, call.TargetID)
+		targetID := call.TargetID
 		call.mu.Unlock()
 		if !isCrew || (claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(targetID))) {
 			externalError(w, 404, "not_found", "Function call not found.")
@@ -379,7 +379,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		api.addCrewCallCommands(ctx, crew.OwnedByCaller, call, out)
 		externalJSON(w, out)
 	case "project_functions_calls":
-		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(ctx, workspaceExternalID(manifest.Product, manifest.ID), claims.UserID, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
+		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(ctx, manifest.ID, claims.UserID, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
 	case "project_functions_list":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "functions": externalCrewFunctionSummaries(ctx, crew, manifest, label)})
 	case "list_crew_files", "search_crew_files":

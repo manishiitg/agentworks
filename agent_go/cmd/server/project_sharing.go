@@ -24,7 +24,7 @@ func crewSharedWithOthers(root string) bool {
 		return false
 	}
 	id, ok := projectIdentityOf(root)
-	if !ok || !projectSupportsRunAudience(id.Product) {
+	if !ok || !isProjectProfileID(id.Product) {
 		return false
 	}
 	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
@@ -48,7 +48,7 @@ func crewSharedWith(root, userID string) bool {
 		return false
 	}
 	id, ok := projectIdentityOf(root)
-	if !ok || !projectSupportsRunAudience(id.Product) {
+	if !ok || !isProjectProfileID(id.Product) {
 		return false
 	}
 	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)

@@ -44,9 +44,6 @@ func TestCanonicalCrewKeepsPrivateBindingsAndAudience(t *testing.T) {
 	if !crewProjectOwnedByCallerStrict("owner", root) || crewProjectOwnedByCallerStrict("other", root) {
 		t.Fatal("registered owner changed")
 	}
-	if len(projectProducts) != 1 || projectProducts[0].ProfileID != crewProfileID {
-		t.Fatal("duplicate project product remains")
-	}
 }
 
 // The unified public path creates one private Crew, keeps owner discovery, and

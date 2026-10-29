@@ -21,7 +21,7 @@ func projectCreationGate(claims *UserClaims, profileID string) (int, string) {
 		return http.StatusUnauthorized, "Sign in to create a Crew."
 	}
 	access := userAccessForClaims(claims)
-	if !isProjectProfileID(profileID) || !workspaceOriginAllowed(claims, profileID) || access.Disabled || !access.CanEdit || !access.CanCreateIn(profileID) || !workspaceCreateTokenAllowed(claims, profileID) {
+	if !isProjectProfileID(profileID) || !workspaceOriginAllowed(claims, profileID) || access.Disabled || !access.CanEdit || !access.CanCreateIn(profileID) || !workspaceCreateTokenAllowed(claims) {
 		return http.StatusForbidden, "This account cannot create a Crew here. An administrator can change its create permissions."
 	}
 	return 0, ""

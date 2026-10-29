@@ -316,15 +316,13 @@ func invalidateWorkFolderSessions(ctx context.Context, identityKey, reason strin
 	if userID == "" {
 		return
 	}
-	for _, product := range projectProducts {
-		sessions, err := defaultProductConversationRegistryStore().liveSessionIDs(ctx, userID, product.ProfileID)
-		if err != nil {
-			continue
-		}
-		for sessionID := range sessions {
-			common.SetSessionFolderGuard(sessionID, []string{}, []string{})
-			closeCodingCLIAndReleaseTurnMarkers(sessionID, reason)
-		}
+	sessions, err := defaultProductConversationRegistryStore().liveSessionIDs(ctx, userID, crewProfileID)
+	if err != nil {
+		return
+	}
+	for sessionID := range sessions {
+		common.SetSessionFolderGuard(sessionID, []string{}, []string{})
+		closeCodingCLIAndReleaseTurnMarkers(sessionID, reason)
 	}
 }
 

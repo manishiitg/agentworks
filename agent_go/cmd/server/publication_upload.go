@@ -144,15 +144,10 @@ func publicationGate(claims *UserClaims) error {
 }
 
 func (api *StreamingAPI) publicationChoice(ctx context.Context, claims *UserClaims, profileID string, existing ...bool) (*publishedProject, error) {
-	if profileID == "" {
-		for _, p := range projectProducts {
-			if workspaceOriginAllowed(claims, p.ProfileID) && userAccessForClaims(claims).CanCreateIn(p.ProfileID) {
-				profileID = p.ProfileID
-				break
-			}
-		}
+	if profileID == "" && workspaceOriginAllowed(claims, crewProfileID) && userAccessForClaims(claims).CanCreateIn(crewProfileID) {
+		profileID = crewProfileID
 	}
-	if !isProjectProfileID(profileID) || !workspaceOriginAllowed(claims, profileID) || (len(existing) == 0 || !existing[0]) && (!userAccessForClaims(claims).CanCreateIn(profileID) || !workspaceCreateTokenAllowed(claims, profileID)) {
+	if !isProjectProfileID(profileID) || !workspaceOriginAllowed(claims, profileID) || (len(existing) == 0 || !existing[0]) && (!userAccessForClaims(claims).CanCreateIn(profileID) || !workspaceCreateTokenAllowed(claims)) {
 		return nil, fmt.Errorf("This connection cannot create that Crew. Choose a product you may build in.")
 	}
 	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)

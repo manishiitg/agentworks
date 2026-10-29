@@ -125,21 +125,16 @@ func checkProjectStorageClaim(records map[string]projectOwnerRecord, key string,
 	return nil
 }
 
-// sharedRootRecord recognizes both origins, including a Crew spelling retained
-// as an alias after rollback. Ambiguous legacy records never select an owner.
+// sharedRootRecord returns the Crew owner record for a shared-root folder.
 func (r *projectOwnerRegistry) sharedRootRecord(folder string) (projectOwnerRecord, bool) {
 	root := workspaceref.SharedProjectPath(folder)
-	var found projectOwnerRecord
-	n := 0
-	// Folder names survive movement. Two keyed lookups use the registry's
+	// Folder names survive movement. The keyed lookup uses the registry's
 	// change-aware read cache; listing projects never scans/copies it per row.
-	for _, product := range projectProducts {
-		rec, exists := r.Lookup(product.ProfileID, folder)
-		if exists && projectStorageRoot(rec) == root {
-			found, n = rec, n+1
-		}
+	rec, exists := r.Lookup(crewProfileID, folder)
+	if !exists || projectStorageRoot(rec) != root {
+		return projectOwnerRecord{}, false
 	}
-	return found, n == 1
+	return rec, true
 }
 
 func projectRootIsShared(root string) bool {

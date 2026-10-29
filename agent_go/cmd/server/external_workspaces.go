@@ -55,39 +55,27 @@ func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *U
 	if api == nil || api.agentProfiles == nil || claims == nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
-	origin, id := "", strings.TrimSpace(raw)
-	if head, tail, ok := strings.Cut(id, ":"); ok && isProjectProfileID(head) {
-		origin, id = head, tail
+	// Listed workspace IDs read "work:<id>"; the bare Crew ID works too.
+	id := workspaceTokenProjectID(strings.TrimSpace(raw))
+	if !workspaceOriginAllowed(claims, crewProfileID) {
+		return crewProjectBinding{}, productProjectManifest{}, false
 	}
-	var result crewProjectBinding
-	var manifest productProjectManifest
-	found := false
-	for _, product := range projectProducts {
-		if origin != "" && product.ProfileID != origin || !workspaceOriginAllowed(claims, product.ProfileID) {
-			continue
-		}
-		if token := claims.AccessToken; token != nil && !workspaceDashboardTokenAllows(claims, product.ProfileID, id) {
-			continue
-		}
-		profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, claims.UserID)
-		if err != nil {
-			continue
-		}
-		binding, err := resolveCrewProjectBinding(ctx, claims.UserID, profile, id, "")
-		if err != nil {
-			continue
-		}
-		doc, err := readCrewProjectManifests(ctx, profile.ID, binding.Binding.WorkspacePath)
-		if err != nil || doc.ID != id {
-			continue
-		}
-
-		if found {
-			return crewProjectBinding{}, productProjectManifest{}, false
-		}
-		result, manifest, found = binding, doc, true
+	if token := claims.AccessToken; token != nil && !workspaceDashboardTokenAllows(claims, crewProfileID, id) {
+		return crewProjectBinding{}, productProjectManifest{}, false
 	}
-	return result, manifest, found
+	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
+	if err != nil {
+		return crewProjectBinding{}, productProjectManifest{}, false
+	}
+	binding, err := resolveCrewProjectBinding(ctx, claims.UserID, profile, id, "")
+	if err != nil {
+		return crewProjectBinding{}, productProjectManifest{}, false
+	}
+	doc, err := readCrewProjectManifests(ctx, profile.ID, binding.Binding.WorkspacePath)
+	if err != nil || doc.ID != id {
+		return crewProjectBinding{}, productProjectManifest{}, false
+	}
+	return binding, doc, true
 }
 
 func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
@@ -147,19 +135,11 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			spec.Name = name
 		}
 		origin := crewProfileID
-		if origin == "" {
-			for _, product := range projectProducts {
-				if workspaceOriginAllowed(claims, product.ProfileID) && userAccessForClaims(claims).CanCreateIn(product.ProfileID) {
-					origin = product.ProfileID
-					break
-				}
-			}
-		}
-		if !isProjectProfileID(origin) || !workspaceOriginAllowed(claims, origin) || !userAccessForClaims(claims).CanCreateIn(origin) || !userAccessForClaims(claims).CanEdit {
+		if !workspaceOriginAllowed(claims, origin) || !userAccessForClaims(claims).CanCreateIn(origin) || !userAccessForClaims(claims).CanEdit {
 			externalError(w, 403, "forbidden", "This account cannot create that project. An administrator can change its create permissions.")
 			return
 		}
-		if !workspaceCreateTokenAllowed(claims, origin) {
+		if !workspaceCreateTokenAllowed(claims) {
 			externalError(w, 403, "insufficient_scope", "Creating a project needs your existing Builder access.")
 			return
 		}
@@ -168,7 +148,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "creation_failed", externalCrewCreateError(id, setupErr))
 			return
 		}
-		_, _, ok := api.resolveExternalWorkspace(r.Context(), claims, origin+":"+id)
+		_, _, ok := api.resolveExternalWorkspace(r.Context(), claims, id)
 		if !ok {
 			externalError(w, 502, "workspace_unavailable", "The project was created but could not be opened; use action=list.")
 			return
@@ -259,49 +239,50 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 	claims := GetUserFromContext(r.Context())
 	items := []map[string]any{}
 	seen := map[string]bool{}
-	for _, product := range projectProducts {
-		if !workspaceOriginAllowed(claims, product.ProfileID) {
+	product := crewProduct
+	if !workspaceOriginAllowed(claims, product.ProfileID) {
+		externalJSON(w, map[string]any{"workspaces": items})
+		return
+	}
+	profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, claims.UserID)
+	if err != nil {
+		externalJSON(w, map[string]any{"workspaces": items})
+		return
+	}
+	owners := append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...)
+	for _, owner := range owners {
+		// Navigation keeps only work the caller builds; another owner's Crew qualifies only when the caller
+		// co-owns it. Skipping the other owners here (registry only) avoids reading and resolving every Crew
+		// shared with the caller on each sidebar refresh; the kept rows are still resolved below.
+		if navigation && owner != claims.UserID && !ownerHasCrewCoOwnedBy(r.Context(), profile, owner, claims.UserID) {
 			continue
 		}
-		profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, claims.UserID)
-		if err != nil {
-			continue
-		}
-		owners := append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...)
-		for _, owner := range owners {
-			// Navigation keeps only work the caller builds; another owner's Crew qualifies only when the caller
-			// co-owns it. Skipping the other owners here (registry only) avoids reading and resolving every Crew
-			// shared with the caller on each sidebar refresh; the kept rows are still resolved below.
-			if navigation && owner != claims.UserID && !ownerHasCrewCoOwnedBy(r.Context(), profile, owner, claims.UserID) {
+		rows := listProjectsForOwner(r.Context(), claims, profile, owner, owner != claims.UserID)
+		for _, row := range rows {
+			if q := strings.ToLower(strings.TrimSpace(externalArg(args, "query"))); q != "" && !strings.Contains(strings.ToLower(row.Title), q) {
 				continue
 			}
-			rows := listProjectsForOwner(r.Context(), claims, profile, owner, owner != claims.UserID)
-			for _, row := range rows {
-				if q := strings.ToLower(strings.TrimSpace(externalArg(args, "query"))); q != "" && !strings.Contains(strings.ToLower(row.Title), q) {
-					continue
-				}
-				key := product.ProfileID + ":" + row.ID
-				if seen[key] {
-					continue
-				}
-				binding, doc, ok := api.resolveExternalWorkspace(r.Context(), claims, key)
-				if !ok {
-					continue
-				}
-				// The Builder sidebar lists work this person builds. Run-only
-				// shares are discovered through Dashboards and ordinary MCP lists.
-				if navigation && !binding.OwnedByCaller {
-					continue
-				}
-				seen[key] = true
-				item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
-				if navigation {
-					root := binding.Binding.WorkspacePath
-					item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
-					item["icon"] = doc.Identity.Icon
-				}
-				items = append(items, item)
+			key := product.ProfileID + ":" + row.ID
+			if seen[key] {
+				continue
 			}
+			binding, doc, ok := api.resolveExternalWorkspace(r.Context(), claims, key)
+			if !ok {
+				continue
+			}
+			// The Builder sidebar lists work this person builds. Run-only
+			// shares are discovered through Dashboards and ordinary MCP lists.
+			if navigation && !binding.OwnedByCaller {
+				continue
+			}
+			seen[key] = true
+			item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
+			if navigation {
+				root := binding.Binding.WorkspacePath
+				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
+				item["icon"] = doc.Identity.Icon
+			}
+			items = append(items, item)
 		}
 	}
 	externalJSON(w, map[string]any{"workspaces": items})
@@ -343,21 +324,15 @@ func (api *StreamingAPI) handleWorkspaces(w http.ResponseWriter, r *http.Request
 	api.externalWorkspaceCall(w, r, args)
 }
 
-func workspaceExternalID(profileID, id string) string {
-
-	return id
-}
-
 func workspaceTokenProjectID(id string) string {
 	return strings.TrimPrefix(id, "work:")
 }
 
-func workspaceCreateTokenAllowed(claims *UserClaims, origin string) bool {
+func workspaceCreateTokenAllowed(claims *UserClaims) bool {
 	if claims == nil {
 		return false
 	}
 	if token := claims.AccessToken; token != nil {
-
 		return token.AllCrews && token.Allows("crews:write") && token.BoundAgentID == "" && token.BoundAgentName == ""
 	}
 	return true

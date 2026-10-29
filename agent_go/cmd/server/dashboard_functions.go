@@ -42,9 +42,7 @@ func (api *StreamingAPI) dashboardFunctionDispatch(w http.ResponseWriter, r *htt
 	rec := httptest.NewRecorder()
 	switch resolved.Target.Kind {
 	case "crew":
-		origin := crewProfileID
-
-		args["crew_id"] = workspaceExternalID(origin, resolved.Target.ID)
+		args["crew_id"] = resolved.Target.ID
 		api.externalCrewCall(rec, req, crewTool, args)
 	case "workflow", "relay":
 		access, manifest := workflowAccessForWorkspacePath(ctx, claims, resolved.Target.Root)

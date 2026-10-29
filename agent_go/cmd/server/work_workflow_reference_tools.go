@@ -52,10 +52,7 @@ func listAccessibleCrewProjects(ctx context.Context, userID, query string) ([]ma
 
 // listCrewProjectsForOwner lists one owner's Crew projects as seen by userID.
 func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string) ([]map[string]interface{}, error) {
-	return listWorkspaceProjectsForOwner(ctx, userID, ownerID, query, projectProducts[0])
-}
-
-func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query string, product projectProduct) ([]map[string]interface{}, error) {
+	product := crewProduct
 	root := agentProfileRuntimeWorkspace(ownerID, product.ProjectsRoot)
 	store := defaultProductProjectStore()
 	paths, err := listSharedCrewManifestPaths(ctx, store, ownerID, product.ProfileID)
@@ -515,17 +512,15 @@ func listAccessibleWorkspaceProjects(ctx context.Context, claims *UserClaims, qu
 		return nil, nil
 	}
 	rows := []map[string]interface{}{}
-	for _, product := range projectProducts {
-		if !workspaceOriginAllowed(claims, product.ProfileID) {
-			continue
+	if !workspaceOriginAllowed(claims, crewProfileID) {
+		return rows, nil
+	}
+	for _, owner := range append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...) {
+		items, err := listCrewProjectsForOwner(ctx, claims.UserID, owner, query)
+		if err != nil {
+			return nil, err
 		}
-		for _, owner := range append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...) {
-			items, err := listWorkspaceProjectsForOwner(ctx, claims.UserID, owner, query, product)
-			if err != nil {
-				return nil, err
-			}
-			rows = append(rows, items...)
-		}
+		rows = append(rows, items...)
 	}
 	return rows, nil
 }

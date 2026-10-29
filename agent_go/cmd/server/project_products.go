@@ -22,16 +22,12 @@ type projectProduct struct {
 	// FallbackName is shown when the profile is not registered; the name in
 	// the product's product.yaml wins otherwise.
 	FallbackName string
-	// RunAudience is the origin's current support for non-owner Run access.
-	// Storage IDs remain distinct; behavior callers use this capability.
-	RunAudience bool
 }
 
 const crewProfileID = "work"
 
-var projectProducts = []projectProduct{
-	{ProfileID: crewProfileID, ProjectsRoot: workspaceref.SharedCrewRoot, FallbackName: "Crew", RunAudience: true},
-}
+// crewProduct is the only project product.
+var crewProduct = projectProduct{ProfileID: crewProfileID, ProjectsRoot: workspaceref.SharedCrewRoot, FallbackName: "Crew"}
 
 // isProjectProfileID reports whether profileID is a project product.
 func isProjectProfileID(profileID string) bool {
@@ -40,11 +36,8 @@ func isProjectProfileID(profileID string) bool {
 }
 
 func projectProductForProfile(profileID string) (projectProduct, bool) {
-	profileID = strings.TrimSpace(profileID)
-	for _, product := range projectProducts {
-		if strings.EqualFold(product.ProfileID, profileID) {
-			return product, true
-		}
+	if strings.EqualFold(crewProduct.ProfileID, strings.TrimSpace(profileID)) {
+		return crewProduct, true
 	}
 	return projectProduct{}, false
 }
@@ -60,8 +53,7 @@ func projectProductForPath(workspacePath string) (projectProduct, string, bool) 
 			product, ok := projectProductForProfile(rec.Product)
 			return product, project, ok
 		}
-		product, _ := projectProductForProfile(crewProfileID)
-		return product, project, true
+		return crewProduct, project, true
 	}
 	return projectProduct{}, "", false
 }
@@ -89,13 +81,6 @@ func (api *StreamingAPI) projectProductName(userID, workspacePath string) string
 		}
 	}
 	return product.FallbackName
-}
-
-// projectSupportsRunAudience is separate from the legacy product identifier:
-// paths, manifests and native session IDs must not be renamed to change access.
-func projectSupportsRunAudience(profileID string) bool {
-	product, ok := projectProductForProfile(profileID)
-	return ok && product.RunAudience
 }
 
 // Inventory/creation roots are configuration, never a selectable chat workspace.

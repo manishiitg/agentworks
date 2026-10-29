@@ -85,13 +85,14 @@ func TestWorkspaceMCPAliasesUseNativeServices(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCodeOnlyCreateScope(t *testing.T) {
-	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"code:run"}}}
-	if !workspaceCreateTokenAllowed(claims, "code") || workspaceCreateTokenAllowed(claims, "work") {
-		t.Fatal("creation scope crossed origin")
+// Creating a Crew over a token needs crews:write on all Crews; a token bounded to listed Crews cannot create.
+func TestWorkspaceCreateTokenNeedsAllCrewsWrite(t *testing.T) {
+	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, AllCrews: true}}
+	if !workspaceCreateTokenAllowed(claims) {
+		t.Fatal("all-Crews write token refused")
 	}
-	claims.AccessToken.CrewIDs = []string{"one-project"}
-	if workspaceCreateTokenAllowed(claims, "code") {
+	claims.AccessToken.AllCrews, claims.AccessToken.CrewIDs = false, []string{"one-project"}
+	if workspaceCreateTokenAllowed(claims) {
 		t.Fatal("bounded machine token created outside its project list")
 	}
 }

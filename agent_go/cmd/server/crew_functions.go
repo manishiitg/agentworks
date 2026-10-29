@@ -1472,7 +1472,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		}
 		return resolveFunctionTarget(ctx, claims, caller, name)
 	}
-	targetSchema := map[string]interface{}{"type": "string", "description": "The project or workflow name/tag/path. For a shared Code project use workspace:code:<id>."}
+	targetSchema := map[string]interface{}{"type": "string", "description": "The project or workflow name/tag/path. For a shared Crew use workspace:work:<id>."}
 	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
 		if args == nil {
 			args = map[string]interface{}{}
