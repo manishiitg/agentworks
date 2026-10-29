@@ -16,9 +16,6 @@ func TestPlatformCodingProvidersKeepRoleDefaultAndOfferRegistry(t *testing.T) {
 		}
 	}
 	for _, contract := range llm.CodingAgentProviderContracts() {
-		if contract.Deprecated {
-			continue
-		}
 		if _, ok := llm.GetCodingAgentDefaultTierModels(contract.Provider); !ok {
 			continue
 		}

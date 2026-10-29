@@ -53,7 +53,6 @@ Covered for each provider:
 - Owner starts first, then Run; and the reverse order.
 - Prompt, skill body and supporting-reference collisions.
 - First session cleanup while the second still needs its prompt.
-- Both remove-on-cleanup and restore-prior-file modes.
 - Private-directory controls and shared workflow file access.
 
 The default expects the known collision. A passing result means

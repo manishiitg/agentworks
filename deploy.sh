@@ -428,99 +428,6 @@ done
 echo "==> [$PRODUCT] Done."
 )
 
-# --- Deploy notices in Slack -------------------------------------------------
-# A short message when a deploy starts and when it finishes, so people know. The incoming-webhook
-# URL is a secret (anyone with it can post to the channel): it is read from DEPLOY_SLACK_WEBHOOK_URL
-# or the first line of ~/.config/agentworks/deploy-slack-webhook (mode 600), never from the repo.
-# OFF by default (owner, 2026-10-03: "for now make Slack posts silent"); post for one run with
-#   DEPLOY_SLACK_NOTIFY=1 ./deploy.sh confida
-# With no webhook set nothing is sent either, and a failed post never fails or delays a deploy.
-deploy_notify() {
-  if [[ -n "${DEPLOY_SLACK_BOT_CHANNEL:-}" ]]; then
-    python3 "$REPO_ROOT/deploy/common/slack-notice.py" \
-      --channel "$DEPLOY_SLACK_BOT_CHANNEL" --state "$DEPLOY_NOTICE_STATE" \
-      --phase "${2:-start}" --text "$1" \
-      --token-file "${DEPLOY_SLACK_BOT_TOKEN_FILE:-$HOME/.config/agentworks/agentworks-slack.env}" || true
-    return 0
-  fi
-  local url="${DEPLOY_SLACK_WEBHOOK_URL:-}" file="${DEPLOY_SLACK_WEBHOOK_FILE:-$HOME/.config/agentworks/deploy-slack-webhook}"
-  [[ -z "$url" && -r "$file" ]] && url="$(head -n1 "$file" | tr -d '[:space:]')"
-  [[ -n "$url" ]] || return 0
-  local payload
-  payload="$(python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$1" 2>/dev/null)" || return 0
-  curl -sS -m 10 -X POST -H 'Content-type: application/json' --data "$payload" "$url" >/dev/null 2>&1 || true
-}
-
-deploy_label() {
-  case "$SERVER" in
-    all-hetzner) echo "excellence, confida and sparkquill" ;;
-    *) echo "$SERVER" ;;
-  esac
-}
-
-# The commit a server runs now, read from its current release folder's name (read-only; empty when unknown).
-deploy_current_revision() {
-  local release=""
-  case "$SERVER" in
-    rts|video-studio) release="$(ssh -o BatchMode=yes -o ConnectTimeout=15 -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@${RTS_HOST_IP:?set RTS_HOST_IP in the private deployments/deploy.env}" 'readlink /var/lib/video-studio/video-studio/current' 2>/dev/null)" ;;
-    excellence) release="$(build_ssh 'readlink -f /srv/agents/current' 2>/dev/null)" ;;
-    confida|sparkquill|dominion) release="$(build_ssh "readlink -f /srv/$SERVER/current" 2>/dev/null)" ;;
-  esac
-  release="$(basename "${release:-}")"
-  # Release folders are <sha>-<time> (RTS) or <product>-<sha>-<time> (Hetzner).
-  local part
-  for part in ${release//-/ }; do
-    [[ "$part" =~ ^[0-9a-f]{7,40}$ ]] && git -C "$REPO_ROOT" cat-file -e "$part^{commit}" 2>/dev/null && { echo "$part"; return 0; }
-  done
-}
-
-# What changes for people since the server's current release: one line per change, bookkeeping commits left out.
-deploy_changelog() {
-  local from="$1" to="$2" lines count
-  [[ -n "$from" ]] || return 0
-  lines="$(git -C "$REPO_ROOT" log --no-merges --reverse --format='%s' "$from..$to" 2>/dev/null | grep -vE '^(Record |Merge |Use PLAT-[0-9]+ for |PLAT-[0-9]+: ticket)' | awk '!seen[$0]++')"
-  count="$(printf '%s\n' "$lines" | grep -c . || true)"
-  [[ "$count" -gt 0 ]] || return 0
-  printf '\n*What changes* (%s changes since %s):\n' "$count" "${from:0:9}"
-  printf '%s\n' "$lines" | head -n 60 | cut -c1-140 | sed 's/^/• /'
-  [[ "$count" -le 60 ]] || printf '…and %s more\n' "$((count - 60))"
-}
-
-deploy_start_notice() {
-  case "${DEPLOY_SLACK_NOTIFY:-0}" in 0|false|no|off) return 0 ;; esac
-  [[ -n "$SERVER" && "$SERVER" != "-h" && "$SERVER" != "--help" ]] || return 0
-  DEPLOY_NOTICE_STARTED="$(date +%s)"
-  if [[ -n "${DEPLOY_SLACK_BOT_CHANNEL:-}" ]]; then
-    DEPLOY_NOTICE_STATE="$(mktemp "${TMPDIR:-/tmp}/agentworks-deploy-notice.XXXXXX")"
-    deploy_notify "${DEPLOY_SLACK_LABEL:-$(deploy_label)} is updating. Please pause testing; chats may disconnect briefly. Completion will be posted in this thread." start
-    trap 'deploy_finish_notice $?' EXIT
-    return 0
-  fi
-  local head_line target changelog
-  git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
-  target="origin/main"
-  head_line="$(git -C "$REPO_ROOT" log -1 --format='%h %s' "$target" 2>/dev/null | cut -c1-90)"
-  # DEPLOY_CHANGELOG_FROM=<sha> lists changes since that commit instead (for example since an earlier deploy whose
-  # notice was too short).
-  changelog="$(deploy_changelog "${DEPLOY_CHANGELOG_FROM:-$(deploy_current_revision)}" "$target")"
-  DEPLOY_NOTICE_STARTED="$(date +%s)"
-  deploy_notify ":rocket: Deploying *$(deploy_label)* now (${head_line:-main}). It restarts in a few minutes; chats reconnect on their own.${changelog}"
-  trap 'deploy_finish_notice $?' EXIT
-}
-
-deploy_finish_notice() {
-  local rc="$1" took=""
-  case "${DEPLOY_SLACK_NOTIFY:-0}" in 0|false|no|off) trap - EXIT; return "$rc" ;; esac
-  [[ -n "${DEPLOY_NOTICE_STARTED:-}" ]] && took=" in $(( ($(date +%s) - DEPLOY_NOTICE_STARTED) / 60 )) min"
-  trap - EXIT
-  if [[ "$rc" == "0" ]]; then
-    deploy_notify ":white_check_mark: *${DEPLOY_SLACK_LABEL:-$(deploy_label)}* is deployed${took}. You can carry on." finish
-  else
-    deploy_notify ":warning: The *${DEPLOY_SLACK_LABEL:-$(deploy_label)}* update hit a problem. Please pause testing while the team checks it." finish
-  fi
-  return "$rc"
-}
-
 # --build <name|sha> (or DEPLOY_BUILD): deploy that existing build; --force: rebuild even if these revisions were already built.
 DEPLOY_ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -635,15 +542,6 @@ fi
 if [[ "$SERVER" == report ]]; then
   exec "$REPO_ROOT/deploy/common/profile-report-all.sh" "$@"
 fi
-
-# Private per-product notice settings decide which team hears about an update.
-notice_product="$SERVER"
-[[ "$SERVER" != excellence && "$SERVER" != all-hetzner ]] || notice_product=agents
-if [[ "$notice_product" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then
-  notice_config="$(deployments_dir)/products/$notice_product/deploy-notices.env"
-  [[ ! -f "$notice_config" ]] || source "$notice_config"
-fi
-deploy_start_notice
 
 case "$SERVER" in
   rts|video-studio)

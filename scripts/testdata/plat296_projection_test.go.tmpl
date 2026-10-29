@@ -11,7 +11,7 @@ import (
  "github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-func plat296ProjectPrompt(dir, marker string, restore bool) (func(), error) {
+func plat296ProjectPrompt(dir, marker string) (func(), error) {
  {{PROMPT_WRITER}}
 }
 
@@ -23,11 +23,10 @@ func TestPLAT296TestingWorkflowProjection(t *testing.T) {
  for _, isolated := range []bool{false,true} {
   layout := "shared"; if isolated {layout="private-control"}
   for _, first := range []string{"owner","run"} {
-   for _, restore := range []bool{false,true} {
-    restoreLabel := "remove"; if restore {restoreLabel="restore"}
-    t.Run(layout+"/"+first+"-first/"+restoreLabel,func(t *testing.T){
+   {
+    t.Run(layout+"/"+first+"-first",func(t *testing.T){
      second := "run"; if first=="run" {second="owner"}
-     caseRoot := filepath.Join(root,"cases","{{PACKAGE}}",layout,first,restoreLabel)
+     caseRoot := filepath.Join(root,"cases","{{PACKAGE}}",layout,first)
      shared := filepath.Join(caseRoot,"Workflow","testing")
      if err:=os.MkdirAll(filepath.Join(shared,"planning"),0700);err!=nil {t.Fatal(err)}
      if err:=os.WriteFile(filepath.Join(shared,"planning","plan.json"),plan,0600);err!=nil {t.Fatal(err)}
@@ -37,14 +36,14 @@ func TestPLAT296TestingWorkflowProjection(t *testing.T) {
       b,err:=os.ReadFile(os.Getenv("AGENTWORKS_PROJECTION_SERVER_DIRS"));if err!=nil{t.Fatal(err)}
       var selected map[string]map[string]string
       if err:=json.Unmarshal(b,&selected);err!=nil{t.Fatal(err)}
-      dirs=selected["{{PACKAGE}}/private-control/"+first+"/"+restoreLabel]
+      dirs=selected["{{PACKAGE}}/private-control/"+first]
       if dirs["owner"]==""||dirs["run"]==""||dirs["owner"]==dirs["run"]{t.Fatal("missing or shared server runtime selection")}
       t.Logf("server-selected owner=%s run=%s",dirs["owner"],dirs["run"])
      }
      if isolated { if err:=os.MkdirAll(filepath.Dir(filepath.Join(shared,"{{PROMPT_FILE}}")),0700);err!=nil{t.Fatal(err)} }
      if isolated { if err:=os.WriteFile(filepath.Join(shared,"{{PROMPT_FILE}}"),[]byte("user-maintained workflow instructions"),0600);err!=nil{t.Fatal(err)} }
      project:=func(role string)func(){
-      cleanup,err:=plat296ProjectPrompt(dirs[role],"PLAT296_"+role,restore); if err!=nil {t.Fatal(err)}
+      cleanup,err:=plat296ProjectPrompt(dirs[role],"PLAT296_"+role); if err!=nil {t.Fatal(err)}
       skill:=&llmtypes.Skill{Name:"builder-reference",Description:"Test-only mode marker",Content:"PLAT296_"+role,SupportingFiles:[]llmtypes.SkillFile{{RelPath:"references/mode.md",Content:[]byte("PLAT296_"+role)}}}
       {{SKILL_WRITER}}
       if err!=nil {t.Fatal(err)}
@@ -59,7 +58,7 @@ func TestPLAT296TestingWorkflowProjection(t *testing.T) {
      referenceClobber:=!strings.Contains(read(first,"{{SKILLS_DIR}}/builder-reference/references/mode.md"),"PLAT296_"+first)
      closeFirst()
      cleanupClobber:=!strings.Contains(read(second,"{{PROMPT_FILE}}"),"PLAT296_"+second)
-     t.Logf("layout=%s first=%s restore=%t prompt_collision=%t skill_collision=%t reference_collision=%t cleanup_collision=%t",layout,first,restore,promptClobber,skillClobber,referenceClobber,cleanupClobber)
+     t.Logf("layout=%s first=%s prompt_collision=%t skill_collision=%t reference_collision=%t cleanup_collision=%t",layout,first,promptClobber,skillClobber,referenceClobber,cleanupClobber)
      if isolated {
       if promptClobber||skillClobber||referenceClobber||cleanupClobber {t.Fatal("private-directory control failed")}
      } else if os.Getenv("AGENTWORKS_PROJECTION_EXPECT") == "collision" {
