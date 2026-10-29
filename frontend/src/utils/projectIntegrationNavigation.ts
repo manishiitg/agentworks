@@ -7,6 +7,21 @@ import { openProductWorkspace } from './productWorkspaceNavigation'
 import { writeWorkspaceViewPreference } from './workspaceViewPreference'
 import { setWorkspaceViewTarget } from '../hooks/useWorkspaceViewTarget'
 
+const integrationNavigationEvent = 'agentworks:open-project-integrations'
+
+/** Preserve the requested section when the Crew reveals its integrations panel. */
+export function listenForProjectIntegrationNavigation(open: () => void) {
+  const receive = (event: Event) => {
+    const detail = (event as CustomEvent<{ tabId: string }>).detail
+    const state = useChatStore.getState()
+    if (!detail?.tabId || state.activeTabId !== detail.tabId) return
+    if (state.chatTabs[detail.tabId]?.metadata?.agentProfileId !== 'work') return
+    open()
+  }
+  window.addEventListener(integrationNavigationEvent, receive)
+  return () => window.removeEventListener(integrationNavigationEvent, receive)
+}
+
 export function isProjectIntegrationChat(tab: ChatTab | undefined, includeRelay = false): tab is ChatTab {
   const meta = tab?.metadata
   if (!tab || !meta || meta.isViewOnly || meta.workshopMode === 'run' || meta.isExecutionRun || meta.isScheduledRun || meta.isBotRun || meta.agentProfileTabCanWrite === false) return false
@@ -26,7 +41,7 @@ export function revealProjectIntegrationChat(tab: ChatTab, openVault = false, ta
   if (openVault) {
     if (crew) {
       setWorkspaceViewTarget('mcp', target)
-      window.dispatchEvent(new CustomEvent('agentworks:open-project-vault', { detail: { tabId: tab.tabId } }))
+      window.dispatchEvent(new CustomEvent(integrationNavigationEvent, { detail: { tabId: tab.tabId } }))
     } else useWorkflowStore.getState().openWorkspaceView('mcp', target)
   }
 }

@@ -1,3 +1,4 @@
+import { listenForProjectIntegrationNavigation } from '../../utils/projectIntegrationNavigation'
 import { chatFilesNavigationEvent } from '../../components/workspace/chatFileNavigation'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
@@ -1011,19 +1012,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setPanelOpen(true)
     selectWorkspaceView(panel)
   }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels])
-  useEffect(() => {
-    const open = (event: Event) => {
-      const target = (event as CustomEvent<{ tabId: string }>).detail?.tabId
-      if (!target || useChatStore.getState().activeTabId !== target) return
-      const chat = useChatStore.getState().chatTabs[target]
-      if (chat?.metadata?.agentProfileId !== 'work') return
-      setWorkspaceViewTarget('mcp', 'vault')
-      setPanelOpen(true)
-      selectWorkspaceView('mcp')
-    }
-    window.addEventListener('agentworks:open-project-vault', open)
-    return () => window.removeEventListener('agentworks:open-project-vault', open)
-  }, [selectWorkspaceView])
+  useEffect(() => listenForProjectIntegrationNavigation(() => {
+    setPanelOpen(true)
+    selectWorkspaceView('mcp')
+  }), [selectWorkspaceView])
   useEffect(() => {
     const open = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId: string; conversationKey?: string }>).detail
