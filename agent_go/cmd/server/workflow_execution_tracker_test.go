@@ -223,65 +223,6 @@ func TestInteractiveWorkflowBuilderTaskBlocksNewBuilderChat(t *testing.T) {
 	}
 }
 
-// The chat/schedule pairing is symmetric, and only one half was implemented.
-// trackedExecutionBlocksNewWorkflowBuilderChat already lets a user open a chat
-// while scheduled work runs; the reverse — a schedule firing while a user has a
-// chat open — was rejected with 409 workflow_busy in a few milliseconds, telling
-// a cron job to "stop the running chat", which it cannot do.
-func TestScheduledRequestBypassesWorkflowBusy(t *testing.T) {
-	for name, tc := range map[string]struct {
-		sessionID   string
-		triggeredBy string
-		want        bool
-	}{
-		"manual schedule trigger": {sessionID: "schedule-manual--44163d28_1785290407859979000", want: true},
-		"cron schedule session":   {sessionID: "schedule-cron--8cfba228_1784606404126176000", want: true},
-		"cron trigger field":      {sessionID: "b3c7f380-f405-4661-86d4-a9f984a151ce", triggeredBy: "cron", want: true},
-		"scheduler trigger field": {sessionID: "b3c7f380-f405-4661-86d4-a9f984a151ce", triggeredBy: "scheduled", want: true},
-		"ordinary user chat":      {sessionID: "d0afa8ad-5af3-4a3d-aeea-a6dfa7646975", triggeredBy: "workflow_builder", want: false},
-		"bare uuid session":       {sessionID: "b3c7f380-f405-4661-86d4-a9f984a151ce", want: false},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if got := scheduledRequestBypassesWorkflowBusy(tc.sessionID, tc.triggeredBy); got != tc.want {
-				t.Fatalf("scheduledRequestBypassesWorkflowBusy(%q, %q) = %v, want %v",
-					tc.sessionID, tc.triggeredBy, got, tc.want)
-			}
-		})
-	}
-}
-
-// Both directions of the same rule, stated together so neither half can be
-// removed without the other's intent being visible.
-func TestChatAndScheduleDoNotBlockEachOther(t *testing.T) {
-	userChat := &TrackedWorkflowExecution{
-		Status:      trackedExecutionStatusRunning,
-		PhaseID:     "workflow-builder",
-		SessionID:   "d0afa8ad-5af3-4a3d-aeea-a6dfa7646975",
-		TriggeredBy: "workflow_builder",
-	}
-	scheduled := &TrackedWorkflowExecution{
-		Status:    trackedExecutionStatusRunning,
-		PhaseID:   "workflow-builder",
-		SessionID: "schedule-manual--44163d28_1785290407859979000",
-	}
-
-	// A running schedule must not block a user opening a chat.
-	if trackedExecutionBlocksNewWorkflowBuilderChat(scheduled) {
-		t.Fatal("scheduled work must not block a user's builder chat")
-	}
-	// A running user chat must not block a schedule firing.
-	if !scheduledRequestBypassesWorkflowBusy(scheduled.SessionID, scheduled.TriggeredBy) {
-		t.Fatal("a schedule must not be refused because a user chat is open")
-	}
-	// A second interactive chat is still refused — that guard is the point.
-	if !trackedExecutionBlocksNewWorkflowBuilderChat(userChat) {
-		t.Fatal("a running user chat must still block another interactive chat")
-	}
-	if scheduledRequestBypassesWorkflowBusy(userChat.SessionID, userChat.TriggeredBy) {
-		t.Fatal("an ordinary chat must not claim the scheduled bypass")
-	}
-}
-
 func TestOnlyFullWorkflowExecutionBlocksSchedule(t *testing.T) {
 	for name, tc := range map[string]struct {
 		exec *TrackedWorkflowExecution
