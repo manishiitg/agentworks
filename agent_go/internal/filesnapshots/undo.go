@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -34,6 +35,9 @@ type UndoPlan struct {
 	Restore           []UndoItem `json:"restore"`
 	Skipped           []UndoItem `json:"skipped"`
 	UncapturedChanges int        `json:"uncaptured_changes"`
+	// Note says plainly what undo leaves alone as a whole, such as a new Git
+	// folder the reply created from scratch.
+	Note string `json:"note,omitempty"`
 }
 
 type treeEntry struct{ mode, oid string }
@@ -83,20 +87,28 @@ func currentBytes(root *os.Root, file string) (data []byte, exists, regular bool
 	return data, true, len(data) <= MaxFileBytes, err
 }
 
-func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite func(string) bool) (UndoPlan, error) {
+// evaluateUndo also returns r with the comparison's before and after (a new
+// checkout's baseline in place), which the writes must use.
+func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite func(string) bool) (UndoPlan, Record, error) {
 	plan := UndoPlan{SnapshotID: r.ID, Restore: []UndoItem{}, Skipped: []UndoItem{}}
 	comparison, err := s.compare(ctx, r, "", allowRead)
 	if err != nil {
-		return plan, err
+		return plan, r, err
 	}
+	r.Before, r.After = comparison.Record.Before, comparison.Record.After
 	plan.UncapturedChanges = comparison.UncapturedChanges
+	leftNew := map[string]int{}
 	root, err := os.OpenRoot(s.Root)
 	if err != nil {
-		return plan, err
+		return plan, r, err
 	}
 	defer root.Close()
 	for _, change := range comparison.Changes {
 		item := UndoItem{Path: change.Path, Status: change.Status}
+		if p := newRepoWithoutBaseline(r, change.Path); p != "" {
+			leftNew[p]++
+			continue
+		}
 		switch change.Status {
 		case "A":
 			item.Action = "delete"
@@ -174,7 +186,16 @@ func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite
 	}
 	sort.Slice(plan.Restore, func(i, j int) bool { return plan.Restore[i].Path < plan.Restore[j].Path })
 	sort.Slice(plan.Skipped, func(i, j int) bool { return plan.Skipped[i].Path < plan.Skipped[j].Path })
-	return plan, nil
+	folders := make([]string, 0, len(leftNew))
+	for p := range leftNew {
+		folders = append(folders, p)
+	}
+	sort.Strings(folders)
+	for _, p := range folders {
+		plan.Note += fmt.Sprintf("Undo leaves %s alone: this reply created it as a new Git folder (%d files). Delete the folder if you don't want it. ", p, leftNew[p])
+	}
+	plan.Note = strings.TrimSpace(plan.Note)
+	return plan, r, nil
 }
 
 // PlanUndo shows what undoing the reply would do, without writing anything.
@@ -189,7 +210,8 @@ func (s Store) PlanUndo(ctx context.Context, id string, allowRead, allowWrite fu
 	if err != nil {
 		return UndoPlan{}, err
 	}
-	return s.evaluateUndo(ctx, r, allowRead, allowWrite)
+	plan, _, err := s.evaluateUndo(ctx, r, allowRead, allowWrite)
+	return plan, err
 }
 
 // ApplyUndo re-checks every file at write time and restores only those still
@@ -204,7 +226,7 @@ func (s Store) ApplyUndo(ctx context.Context, id string, allowRead, allowWrite f
 	if err != nil {
 		return UndoPlan{}, err
 	}
-	plan, err := s.evaluateUndo(ctx, r, allowRead, allowWrite)
+	plan, r, err := s.evaluateUndo(ctx, r, allowRead, allowWrite)
 	if err != nil {
 		return plan, err
 	}

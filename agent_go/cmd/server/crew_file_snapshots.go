@@ -275,7 +275,7 @@ func replyFileSummary(ctx context.Context, store filesnapshots.Store, roots crew
 		return nil, false
 	}
 	totals := reviewSummary(comparison)
-	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, allow)
+	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
 	for i := range groups {
 		if groups[i].Root != "" {
 			groups[i].Root = prefix + groups[i].Root

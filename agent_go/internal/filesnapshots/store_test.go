@@ -1109,3 +1109,89 @@ func TestRefreshedStatPersistsForUnchangedContent(t *testing.T) {
 		t.Fatalf("after restart: %v %+v", err, c)
 	}
 }
+
+// PLAT-746-165: a linked worktree the agent added during a reply showed every
+// checked-out file as added (3,081 files). Its baseline is the commit it was
+// added at: only the reply's own edits show, including one it committed, the
+// chat's combined changes agree, Undo restores just those edits, a checkout
+// made from scratch (git init) is left to the person, and removing the
+// worktree later reports no deletions.
+func TestNewCheckoutComparesAgainstItsCheckedOutCommit(t *testing.T) {
+	f := newCrew(t)
+	ctx := t.Context()
+	all := func(string) bool { return true }
+	t.Setenv("GIT_COMMITTER_DATE", "@1700000000 +0000")
+	f.repo("main", map[string]string{"a.txt": "a\n", "b.txt": "b\n", "c.txt": "c\n", "d.txt": "d\n"})
+	os.Unsetenv("GIT_COMMITTER_DATE")
+	f.put("notes.md", "notes\n")
+	// Uncommitted, so the committed d.txt is only in the checkout's own objects.
+	f.put("main/d.txt", "d local\n")
+	f.backdateAll()
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(f.s.Root, rel))
+		if err != nil {
+			return "<missing>"
+		}
+		return string(b)
+	}
+	reply := func(name string, work func()) string {
+		t.Helper()
+		if _, err := f.s.Begin(ctx, name); err != nil {
+			t.Fatal(err)
+		}
+		work()
+		if r, err := f.s.Finish(ctx, name); err != nil || r.Status != "complete" {
+			t.Fatalf("finish %s: %v %+v", name, err, r)
+		}
+		return ID(name)
+	}
+	first := reply("worktree", func() {
+		f.git("main", "worktree", "add", "--quiet", "-b", "feature", "../wt")
+		f.put("wt/a.txt", "a edited\n")
+		os.Remove(filepath.Join(f.s.Root, "wt", "b.txt"))
+		os.Remove(filepath.Join(f.s.Root, "wt", "d.txt"))
+		f.put("wt/new.txt", "new\n")
+		f.put("wt/c.txt", "c committed\n")
+		f.git("wt", "commit", "--quiet", "-m", "turn", "--", "c.txt")
+		f.put("fresh/x.txt", "x\n")
+		f.git("fresh", "init", "--quiet")
+		f.git("fresh", "add", "-A")
+		f.git("fresh", "commit", "--quiet", "-m", "fresh")
+	})
+	want := map[string]string{"wt/a.txt": "M", "wt/b.txt": "D", "wt/c.txt": "M", "wt/d.txt": "D", "wt/new.txt": "A", "fresh/x.txt": "A"}
+	if got := f.changes(first); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("reply changes = %v, want %v", got, want)
+	}
+	second := reply("more", func() { f.put("wt/more.txt", "more\n") })
+	chat, err := f.s.CompareBoundaries(ctx, first, second, "before", "", all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want["wt/more.txt"] = "A"
+	got := map[string]string{}
+	for _, c := range chat.Changes {
+		got[c.Path] = c.Status
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("chat changes = %v, want %v", got, want)
+	}
+	plan, err := f.s.ApplyUndo(ctx, first, all, all)
+	if err != nil || len(plan.Restore) != 5 || !strings.Contains(plan.Note, "fresh") {
+		t.Fatalf("undo: %v %+v", err, plan)
+	}
+	for rel, want := range map[string]string{"wt/a.txt": "a\n", "wt/b.txt": "b\n", "wt/c.txt": "c\n", "wt/d.txt": "d\n", "wt/new.txt": "<missing>", "wt/more.txt": "more\n", "fresh/x.txt": "x\n"} {
+		if got := read(rel); got != want {
+			t.Fatalf("after undo %s = %q, want %q", rel, got, want)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(f.s.Root, "wt", ".git")); err != nil {
+		t.Fatalf("undo touched the checkout: %v", err)
+	}
+	removed := reply("remove", func() {
+		f.git("main", "worktree", "remove", "--force", "../wt")
+		os.RemoveAll(filepath.Join(f.s.Root, "fresh"))
+	})
+	if got := f.changes(removed); len(got) != 0 {
+		t.Fatalf("removing checkouts reported %v", got)
+	}
+}

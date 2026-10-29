@@ -116,11 +116,12 @@ func checkoutRoot(root, file string, cache map[string]string) string {
 	return found
 }
 
-// GroupChanges groups a reply's changes by Git checkout. A checkout that the
-// reply added whole collapses to one group listing only files edited in it
-// (working tree vs HEAD); other changes are one "Crew files (not in Git)" group.
+// GroupChanges groups a reply's changes by Git checkout; other changes are one
+// "Crew files (not in Git)" group. newRepos are the checkouts that appeared
+// during the reply (Comparison.NewRepos): their changes are already only the
+// edits made since their checked-out commit, and the group says "new copy".
 // allow takes root-relative paths and is the caller's current file guard.
-func GroupChanges(ctx context.Context, root string, changes []Change, allow func(string) bool) []Group {
+func GroupChanges(ctx context.Context, root string, changes []Change, newRepos []string, allow func(string) bool) []Group {
 	cache := map[string]string{}
 	byRepo := map[string][]Change{}
 	var plain []Change
@@ -142,7 +143,11 @@ func GroupChanges(ctx context.Context, root string, changes []Change, allow func
 	sort.Strings(dirs)
 	out := []Group{}
 	for _, d := range dirs {
-		out = append(out, repoGroup(ctx, root, d, byRepo[d], allow))
+		g := repoGroup(ctx, root, d, byRepo[d], allow)
+		for _, p := range newRepos {
+			g.NewCheckout = g.NewCheckout || p == d
+		}
+		out = append(out, g)
 	}
 	if len(plain) > 0 {
 		out = append(out, capGroup(Group{Kind: "crew_files", Name: "Crew files (not in Git)", Files: plain}))
@@ -170,20 +175,6 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 		name = "Crew folder"
 	}
 	g := Group{Kind: "repo", Root: dir, Name: name}
-	allAdded := true
-	for _, c := range changes {
-		if c.Status != "A" {
-			allAdded = false
-		}
-	}
-	// A checkout the reply created lists its files as adds. Treat it as new
-	// when everything is an add and the adds cover the checkout (a few files
-	// may be skipped by capture rules, so a small tracked remainder is fine).
-	tracked := 0
-	if out, err := gitIn(ctx, root, abs, "ls-files", "-z").Output(); err == nil {
-		tracked = bytes.Count(out, []byte{0})
-	}
-	g.NewCheckout = allAdded && (len(changes) >= tracked || len(changes) >= 20)
 	if out, err := gitIn(ctx, root, abs, "symbolic-ref", "--short", "-q", "HEAD").Output(); err == nil {
 		g.Branch = strings.TrimSpace(string(out))
 	}
@@ -199,12 +190,8 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 	g.dirty = ok && len(files) > 0
 	g.unpushed = gitCount(ctx, root, abs, "HEAD", "--not", "--remotes")
 	g.behind = gitCount(ctx, root, abs, "HEAD..@{upstream}")
-	// The card lists this reply's own changes. Only a checkout the reply
-	// created (thousands of adds) collapses to the files edited in it.
+	// The card lists this reply's own changes, as saved.
 	g.Files = changes
-	if ok && g.NewCheckout {
-		g.Files = files
-	}
 	return capGroup(g)
 }
 

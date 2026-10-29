@@ -30,7 +30,7 @@ function prLine(pr: PullRequest) {
 }
 
 type UndoItem = { path: string; status: string; action: string; reason?: string }
-type UndoPlan = { restore: UndoItem[]; skipped: UndoItem[] }
+type UndoPlan = { restore: UndoItem[]; skipped: UndoItem[]; note?: string }
 const fileList = (items: UndoItem[]) => items.slice(0, 5).map(item => item.path.split('/').pop()).join(', ') + (items.length > 5 ? `, +${items.length - 5} more` : '')
 const plural = (n: number) => `${n} file${n === 1 ? '' : 's'}`
 const errorText = (cause: unknown, fallback: string) => (cause as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || (cause instanceof Error ? cause.message : fallback)
@@ -217,6 +217,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           {undo.done && <p>{undo.done}</p>}
           {undo.plan && <>
             <p>{undo.plan.restore.length ? `This will put back ${plural(undo.plan.restore.length)} (${fileList(undo.plan.restore)})` : 'There is nothing to put back'}{undo.plan.skipped.length ? ` and leave ${plural(undo.plan.skipped.length)} alone because a later reply changed them (${fileList(undo.plan.skipped)}).` : '.'}</p>
+            {undo.plan.note && <p className="mt-1">{undo.plan.note}</p>}
             <div className="mt-1 flex gap-2">
               {undo.plan.restore.length > 0 && <button type="button" className="rounded border border-primary px-2 py-1" onClick={() => void confirmUndo()}>Undo {plural(undo.plan.restore.length)}</button>}
               <button type="button" className="rounded border px-2 py-1" onClick={() => setUndo(null)}>Cancel</button>
