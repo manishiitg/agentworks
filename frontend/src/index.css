@@ -1660,13 +1660,46 @@
   background-color: rgba(107, 114, 128, 0.7);
 }
 
-/* Menus reserve a gutter so the thumb never sits on status labels. Opt out of
-   Chromium's wider native 'thin' scrollbar and use the scoped 4px treatment. */
+/* Keep menu labels clear of a quiet scrollbar; reveal it more on interaction. */
 .workspace-menu-scroll[class*="overflow-y-auto"] {
-  scrollbar-width: auto;
-  scrollbar-color: auto;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.18) transparent;
   scrollbar-gutter: stable;
   padding-right: 6px;
+}
+
+.workspace-menu-scroll[class*="overflow-y-auto"]:is(:hover, :focus-within) {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  .workspace-menu-scroll[class*="overflow-y-auto"],
+  .workspace-menu-scroll[class*="overflow-y-auto"]:is(:hover, :focus-within) {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  .workspace-menu-scroll[class*="overflow-y-auto"]::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .workspace-menu-scroll[class*="overflow-y-auto"]::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.18);
+  }
+
+  .workspace-menu-scroll[class*="overflow-y-auto"]:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.4);
+  }
+}
+
+@media (forced-colors: active) {
+  .workspace-menu-scroll[class*="overflow-y-auto"] {
+    scrollbar-color: auto;
+  }
+
+  .workspace-menu-scroll[class*="overflow-y-auto"]::-webkit-scrollbar-thumb {
+    background-color: CanvasText !important;
+  }
 }
 
 /* ===== WORKFLOW NODE ANIMATIONS ===== */
