@@ -244,8 +244,8 @@ type LocalBridgeOptions struct {
 	// half an hour of jitter). Tests can shorten the two scheduling intervals.
 	AutoUpdate                       func(context.Context)
 	AutoUpdateFirst, AutoUpdateEvery time.Duration
-	// Version is the build that runs the bridge. A newer CLI replaces a bridge
-	// that reports another version, so hooks never talk to an older helper.
+	// Version identifies the running helper's source release. Explicit start/update
+	// handles helper replacement; ordinary hooks/MCP reuse a responsive helper.
 	Version string
 	// ClientBuild is this helper's build id, reported on attach and metadata refresh.
 	ClientBuild string
