@@ -22,53 +22,20 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
-	"github.com/manishiitg/mcpagent/llm"
 )
 
 const crewSnapshotTimeout = 15 * time.Second
 
-// The send waits at most crewSnapshotBeforeBudget for the before-capture and
-// never longer (PLAT-746-163: a 15 s cold capture on the send path made every
-// first message after a restart fail to deliver). A capture still running then
-// goes on beside the turn, up to crewSnapshotBeforeLimit, and is the reply's
-// baseline only if it finished before the turn's first tool started (checked
-// at Finish); otherwise the reply has no comparison, never a later baseline
-// (PLAT-746-158). A Crew with no private index yet is not captured on send and
-// builds its index in the background instead.
-const crewSnapshotBeforeBudget = 2 * time.Second
+// The reply's before-capture starts beside the send and the send never waits
+// for it (PLAT-746-163: a 15 s cold capture on the send path made messages
+// fail to deliver). Owner decision, 2026-10-29: a capture that finishes during
+// the turn is still the reply's baseline. Accepted risk: a file the agent
+// edits before the capture reaches it is missing from that reply's card, its
+// Undo and the chat's changes; never a false change, no data loss. The
+// capture is bounded by crewSnapshotBeforeLimit, and a Crew with no private
+// index yet is not captured (no baseline) while it builds one in the background.
 const crewSnapshotBeforeLimit = time.Minute
 const crewSnapshotWarmLimit = 2 * time.Minute
-
-// Tool-start signals a provider path reports before (or as) the tool runs. A
-// path with neither keeps the old rule: only a capture that finished within
-// the send budget is a baseline.
-const (
-	// Claude Code in tmux: the transcript's tool_use record carries Claude's own
-	// time, written before the tool runs.
-	crewToolTimingProviderRecord = "provider_tool_use"
-	// Claude SDK stream-json tool_use (before the tool runs), Codex app-server
-	// item/started and Cursor ACP tool_call in_progress (as the tool starts):
-	// the server's receipt time, within lateMargin of the real start.
-	crewToolTimingStream = "stream_tool_start"
-)
-
-func crewSnapshotToolTiming(provider string) string {
-	provider = strings.ToLower(strings.TrimSpace(provider))
-	contract, ok := llm.GetCodingAgentProviderContract(llm.Provider(provider), "")
-	if !ok {
-		return ""
-	}
-	is := func(p llm.Provider) bool { return provider == strings.ToLower(string(p)) }
-	switch {
-	case is(llm.ProviderClaudeCode) && contract.Transport == llm.CodingAgentTransportTmux:
-		return crewToolTimingProviderRecord
-	case is(llm.ProviderClaudeCode) && contract.Transport == llm.CodingAgentTransportSDK,
-		is(llm.ProviderCodexCLI) && contract.Transport == llm.CodingAgentTransportAppServer,
-		is(llm.ProviderCursorCLI) && contract.Transport == llm.CodingAgentTransportACP:
-		return crewToolTimingStream
-	}
-	return ""
-}
 
 // PLAT-746-158: file review belongs to Studio. Read the server-owned project
 // metadata before touching the snapshot store; browser mode is not the switch.
@@ -97,21 +64,16 @@ type crewTurnSnapshot struct {
 	outputDone                   atomic.Bool
 	finish                       sync.Once
 	// The before-capture runs beside the send; record and beforeErr are set
-	// before beforeDone closes. background: it outlived the send budget.
+	// before beforeDone closes.
 	sentAt     time.Time
-	toolTiming string
 	beforeDone chan struct{}
 	record     filesnapshots.Record
 	beforeErr  error
-	background atomic.Bool
-	// Earliest tool signal of any kind, and earliest one this provider path
-	// reports before or as the tool runs (Unix ns, 0 = none).
-	firstTool, firstTrustedTool atomic.Int64
 }
 
-// prepareCrewTurnSnapshot must run before provider delivery, outside native
-// input locks. Steering does not call this: it belongs to the running turn.
-// It holds the send for at most crewSnapshotBeforeBudget.
+// prepareCrewTurnSnapshot runs before provider delivery, outside native input
+// locks, and returns at once. Steering does not call this: it belongs to the
+// running turn.
 func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, req QueryRequest) {
 	if api == nil || executionID == "" || sessionID == "" {
 		return
@@ -120,18 +82,10 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		return
 	}
 	folder := strings.TrimSpace(req.SelectedFolder)
-	provider := strings.TrimSpace(req.Provider)
-	api.lastQueryMu.RLock()
-	last := api.lastQueryRequests[sessionID]
-	api.lastQueryMu.RUnlock()
 	if folder == "" {
-		folder = last.SelectedFolder
-	}
-	if provider == "" {
-		provider = last.Provider
-	}
-	if provider == "" {
-		provider = api.retainedCLIProvider(sessionID)
+		api.lastQueryMu.RLock()
+		folder = api.lastQueryRequests[sessionID].SelectedFolder
+		api.lastQueryMu.RUnlock()
 	}
 	if folder == "" {
 		// After a restart the last query is gone; the session's recorded
@@ -151,134 +105,27 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		return
 	}
 	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private}, root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID),
-		sentAt: time.Now(), toolTiming: crewSnapshotToolTiming(provider), beforeDone: make(chan struct{})}
+		sentAt: time.Now(), beforeDone: make(chan struct{})}
 	if _, loaded := api.crewTurnSnapshots.LoadOrStore(executionID, snapshot); loaded {
 		return
 	}
 	go func() {
-		defer close(snapshot.beforeDone)
 		snapshot.record, snapshot.beforeErr = snapshot.store.BeginWithin(crewSnapshotBeforeLimit, executionID)
-	}()
-	budget := time.NewTimer(crewSnapshotBeforeBudget)
-	defer budget.Stop()
-	select {
-	case <-snapshot.beforeDone:
+		close(snapshot.beforeDone)
 		api.logCrewBeforeCapture(snapshot)
-	case <-budget.C:
-		snapshot.background.Store(true)
-		log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s pending=background budget_ms=%d tool_timing=%s", sessionID, executionID, crewSnapshotBeforeBudget.Milliseconds(), firstNonEmptyString(snapshot.toolTiming, "none"))
-		go func() {
-			<-snapshot.beforeDone
-			api.logCrewBeforeCapture(snapshot)
-		}()
-	}
+	}()
 }
 
 func (api *StreamingAPI) logCrewBeforeCapture(snapshot *crewTurnSnapshot) {
 	record, err := snapshot.record, snapshot.beforeErr
 	if errors.Is(err, filesnapshots.ErrWarming) {
-		log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s skipped=warming reason=cache_warmup_running", snapshot.sessionID, snapshot.executionID)
+		log.Printf("[SNAPSHOT] before_capture session=%s execution=%s elapsed_ms=%d skipped=warming", snapshot.sessionID, snapshot.executionID, time.Since(snapshot.sentAt).Milliseconds())
 		return
 	}
-	log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d background=%t success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, time.Since(snapshot.sentAt).Milliseconds(), snapshot.background.Load(), err == nil, err, record.BeforeCapture)
-	if reason := record.BeforeCapture.Deferred; reason != "" {
-		log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s deferred=background reason=%s baseline=none", snapshot.sessionID, snapshot.executionID, reason)
+	log.Printf("[SNAPSHOT] before_capture session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d files=%d deferred=%s error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, time.Since(snapshot.sentAt).Milliseconds(), record.BeforeCapture.Captured, firstNonEmptyString(record.BeforeCapture.Deferred, "none"), err, record.BeforeCapture)
+	if record.BeforeCapture.Deferred != "" {
 		go warmCrewSnapshotCache(snapshot.store, snapshot.sessionID, snapshot.executionID)
 	}
-}
-
-// observeCrewSnapshotTool records the earliest tool signal of each running
-// turn's chat, from every stored event (all provider paths). The earlier of
-// the provider's own time and the server's receipt time is used.
-func (api *StreamingAPI) observeCrewSnapshotTool(sessionID string, event storeevents.Event) {
-	at, timing, ok := crewToolSignal(event)
-	if !ok {
-		return
-	}
-	api.crewTurnSnapshots.Range(func(_, value any) bool {
-		snapshot := value.(*crewTurnSnapshot)
-		if snapshot.sessionID != sessionID || at.Before(snapshot.sentAt) {
-			return true
-		}
-		storeEarliest(&snapshot.firstTool, at)
-		if timing != "" && timing == snapshot.toolTiming {
-			storeEarliest(&snapshot.firstTrustedTool, at)
-		}
-		return true
-	})
-}
-
-// crewToolSignal returns a tool event's earliest time and, when the event is
-// a start reported before or as the tool runs, which provider path's timing it is.
-func crewToolSignal(event storeevents.Event) (time.Time, string, bool) {
-	if event.Data == nil {
-		return time.Time{}, "", false
-	}
-	earliest := func(times ...time.Time) time.Time {
-		var out time.Time
-		for _, t := range times {
-			if !t.IsZero() && (out.IsZero() || t.Before(out)) {
-				out = t
-			}
-		}
-		return out
-	}
-	switch data := event.Data.Data.(type) {
-	case *unifiedevents.ToolCallStartEvent:
-		timing := crewToolTimingStream
-		if data.ServerName == "native" { // read back from the transcript after the fact
-			timing = ""
-		}
-		return earliest(event.Timestamp, data.Timestamp), timing, true
-	case *unifiedevents.ToolCallEndEvent:
-		return earliest(event.Timestamp, data.Timestamp), "", true
-	case *unifiedevents.ToolCallErrorEvent:
-		return earliest(event.Timestamp, data.Timestamp), "", true
-	case *unifiedevents.CodingAgentNativeActivityEvent:
-		record := data.Record
-		switch record.Kind {
-		case "tool", "file", "helper", "background_command":
-		default:
-			return time.Time{}, "", false
-		}
-		timing := ""
-		if record.Kind == "tool" && record.State == "started" && !record.Timestamp.IsZero() {
-			timing = crewToolTimingProviderRecord
-		}
-		return earliest(event.Timestamp, record.Timestamp), timing, true
-	}
-	return time.Time{}, "", false
-}
-
-func storeEarliest(value *atomic.Int64, at time.Time) {
-	n := at.UnixNano()
-	for {
-		current := value.Load()
-		if current != 0 && current <= n || value.CompareAndSwap(current, n) {
-			return
-		}
-	}
-}
-
-// beforeBoundary is the time the before-capture must have finished by to be
-// this reply's baseline (zero: no check, the capture finished within the send
-// budget, before delivery). Without a pre-execution tool signal for this
-// provider path, or with a tool seen but no such signal, the old rule holds:
-// a capture that outlived the send is not a baseline.
-func (snapshot *crewTurnSnapshot) beforeBoundary() (time.Time, string) {
-	if !snapshot.background.Load() {
-		return time.Time{}, ""
-	}
-	first, trusted := snapshot.firstTool.Load(), snapshot.firstTrustedTool.Load()
-	switch {
-	case snapshot.toolTiming == "":
-		return snapshot.sentAt, "no_tool_timing"
-	case first == 0:
-		return time.Time{}, "no_tool"
-	case trusted == 0:
-		return snapshot.sentAt, "no_trusted_tool_start"
-	}
-	return time.Unix(0, min(first, trusted)), "first_tool"
 }
 
 // warmCrewSnapshotCache builds a Crew's persisted private index off the send
@@ -356,7 +203,7 @@ func (api *StreamingAPI) markCrewTurnOutputDone(executionID string) {
 func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 	snapshot.finish.Do(func() {
 		defer api.crewTurnSnapshots.Delete(snapshot.executionID)
-		// The send never waited for a slow before-capture; the after-capture does.
+		// The send never waited for the before-capture; the after-capture does.
 		<-snapshot.beforeDone
 		roots, found, err := crewStorageRoots(snapshot.root)
 		if err != nil || !found || roots.Files != snapshot.store.Root || roots.Private != snapshot.store.Private {
@@ -367,32 +214,23 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 			return
 		}
 		if snapshot.record.ID == "" {
+			api.publishCrewSnapshotUnavailable(snapshot, "failed")
 			return
 		}
-		boundary, why := snapshot.beforeBoundary()
 		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotTimeout)
 		defer cancel()
 		started := time.Now()
-		record, err := snapshot.store.FinishAfter(ctx, snapshot.executionID, boundary)
-		if snapshot.background.Load() {
-			completed, firstTool := "none", "none"
-			if record.BeforeCompletedAt != nil {
-				completed = strconv.FormatInt(record.BeforeCompletedAt.Sub(snapshot.sentAt).Milliseconds(), 10)
-			}
-			if !boundary.IsZero() {
-				firstTool = strconv.FormatInt(boundary.Sub(snapshot.sentAt).Milliseconds(), 10)
-			}
-			reason := firstNonEmptyString(record.Reason, record.BeforeCapture.Deferred, why)
-			log.Printf("[FILE_SNAPSHOT] phase=before session=%s execution=%s snapshot=%s completed_ms=%s first_tool_ms=%s tool_timing=%s valid=%t reason=%s", snapshot.sessionID, snapshot.executionID, record.ID, completed, firstTool, firstNonEmptyString(snapshot.toolTiming, "none"), record.Status == "complete" || record.Status == "partial", reason)
-		}
+		record, err := snapshot.store.Finish(ctx, snapshot.executionID)
 		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s output_done=%t elapsed_ms=%d success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, snapshot.outputDone.Load(), time.Since(started).Milliseconds(), err == nil, err, record.AfterCapture)
 		switch {
 		case err == nil && (record.Status == "complete" || record.Status == "partial"):
 			api.publishCrewSnapshot(snapshot, roots, record)
 		case record.BeforeCapture.Deferred == "cold":
 			api.publishCrewSnapshotUnavailable(snapshot, "setting_up")
-		case record.BeforeCapture.Deferred == "budget" || record.Reason == "capture_late":
+		case record.BeforeCapture.Deferred == "budget":
 			api.publishCrewSnapshotUnavailable(snapshot, "busy")
+		default:
+			api.publishCrewSnapshotUnavailable(snapshot, "failed")
 		}
 	})
 }
@@ -490,18 +328,14 @@ func (api *StreamingAPI) crewSnapshotReplyEnd(snapshot *crewTurnSnapshot) (int64
 }
 
 // crewSnapshotUnavailableText is the reply's one line when its file changes
-// were not saved. Sent only when a tool ran in the turn: a reply with no tool
-// cannot have changed files.
+// could not be captured at all.
 var crewSnapshotUnavailableText = map[string]string{
 	"setting_up": "File changes for this reply weren't saved (setting up file tracking for this Crew).",
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
+	"failed":     "File changes for this reply weren't saved (the file snapshot failed).",
 }
 
 func (api *StreamingAPI) publishCrewSnapshotUnavailable(snapshot *crewTurnSnapshot, reason string) {
-	if snapshot.firstTool.Load() == 0 {
-		log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s skipped=unavailable_no_tool reason=%s", snapshot.sessionID, snapshot.executionID, reason)
-		return
-	}
 	end, ok := api.crewSnapshotReplyEnd(snapshot)
 	if !ok {
 		return

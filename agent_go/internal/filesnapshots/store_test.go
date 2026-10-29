@@ -367,10 +367,10 @@ func TestColdBeforeCaptureBudgetAndLockFreeReads(t *testing.T) {
 	}
 }
 
-// A before-capture that outlives the send is the reply's baseline only if it
-// finished before the turn's first tool started; otherwise it was possibly
-// taken after a write and must never be used (PLAT-746-163).
-func TestLateBeforeCaptureIsNeverABaseline(t *testing.T) {
+// The before-capture runs beside the send. One that finishes after the turn
+// has started (here: held behind the Crew gate) is still the reply's
+// baseline (PLAT-746-163, owner decision 2026-10-29).
+func TestBeforeCaptureFinishingDuringTheTurnIsTheBaseline(t *testing.T) {
 	s := Store{Root: t.TempDir(), Private: t.TempDir()}
 	if err := os.WriteFile(filepath.Join(s.Root, "a.txt"), []byte("a"), 0600); err != nil {
 		t.Fatal(err)
@@ -379,29 +379,34 @@ func TestLateBeforeCaptureIsNeverABaseline(t *testing.T) {
 	if _, err := s.Warm(time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct {
-		execution  string
-		toolOffset time.Duration // first tool start relative to capture completion
-		status     string
-		reason     string
-	}{
-		{"before-first-tool", time.Second, "complete", ""},
-		{"after-first-tool", -time.Millisecond, "unavailable", "capture_late"},
-	} {
-		begun, err := s.BeginWithin(time.Minute, tc.execution)
-		if err != nil || begun.Status != "capturing" || begun.BeforeCompletedAt == nil {
-			t.Fatalf("%s: before-capture failed: %v %+v", tc.execution, err, begun)
-		}
-		if err := os.WriteFile(filepath.Join(s.Root, "a.txt"), []byte(tc.execution), 0600); err != nil {
-			t.Fatal(err)
-		}
-		done, err := s.FinishAfter(t.Context(), tc.execution, begun.BeforeCompletedAt.Add(tc.toolOffset))
-		if err != nil || done.Status != tc.status || done.Reason != tc.reason {
-			t.Fatalf("%s: got %v %+v, want status %s reason %q", tc.execution, err, done, tc.status, tc.reason)
-		}
-		if tc.reason != "" && (done.After != "" || s.Saved(done.ID)) {
-			t.Fatalf("%s: a late capture became a saved comparison: %+v", tc.execution, done)
-		}
+	held, err := s.lock(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		r   Record
+		err error
+	}
+	begun := make(chan result, 1)
+	go func() {
+		r, err := s.BeginWithin(time.Minute, "slow-before")
+		begun <- result{r, err}
+	}()
+	time.Sleep(200 * time.Millisecond) // the turn is running; the capture still waits
+	held()
+	got := <-begun
+	if got.err != nil || got.r.Status != "capturing" {
+		t.Fatalf("late-finishing before-capture was dropped: %v %+v", got.err, got.r)
+	}
+	if err := os.WriteFile(filepath.Join(s.Root, "a.txt"), []byte("edited"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	done, err := s.Finish(t.Context(), "slow-before")
+	if err != nil || done.Status != "complete" {
+		t.Fatalf("finish: %v %+v", err, done)
+	}
+	if changed, err := s.Compare(t.Context(), done.ID, "", func(string) bool { return true }); err != nil || len(changed.Changes) != 1 {
+		t.Fatalf("reply does not show its edit: %v %+v", err, changed)
 	}
 }
 

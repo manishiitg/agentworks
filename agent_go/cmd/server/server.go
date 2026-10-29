@@ -2242,7 +2242,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		// required for committed replies or native helper activity to arrive.
 		api.observeNativeCodingRuntime(sessionID, event)
 		api.observeTurnInactivity(sessionID, event)
-		api.observeCrewSnapshotTool(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		api.settleNativeForeground(sessionID, event)
 		if event.Data != nil {
