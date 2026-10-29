@@ -2981,6 +2981,7 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Start background cleanup goroutine to mark inactive sessions (10 minute timeout)
 	go api.cleanupInactiveSessions()
+	go api.runIdleCompactionSweeper()
 	go api.watchScheduleSummaryForLiveFeed()
 	go api.warmLLMConfigCaches()
 	go preloadProviderAccountSettings()
@@ -4174,7 +4175,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		serverList = strings.Join(selectedServers, ",")
 	}
 
-	if !req.IsAutoNotification && !isScheduledSessionIdentity(sessionID, req.TriggeredBy) {
+	// Idle compaction (PLAT-872): a compaction turn runs only on an idle chat,
+	// and a person's send waits (bounded) for a running one.
+	idleRun := idleCompactRunFromContext(r.Context())
+	if idleRun != nil && (api.conversationTurnOccupied(sessionID) || api.conversationTurnHasBacklog(currentUserID, sessionID)) {
+		http.Error(w, "turn_running", http.StatusConflict)
+		return
+	}
+	if idleRun == nil && !req.IsAutoNotification {
+		api.waitForIdleCompaction(r.Context(), sessionID, "query")
+	}
+	if idleRun == nil && !req.IsAutoNotification && !isScheduledSessionIdentity(sessionID, req.TriggeredBy) {
 		var finishSubmission func()
 		var accepted bool
 		w, r, finishSubmission, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, req.Query)
@@ -4356,7 +4367,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// show "waiting" and retry. Nothing was sent or queued, so a
 			// retry (fresh Idempotency-Key) cannot duplicate.
 			var acquired bool
-			releaseInputLane, acquired = api.tryLockSessionInputLane(sessionID, sessionInputLaneInteractiveWait)
+			laneWait := sessionInputLaneInteractiveWait
+			if idleRun != nil {
+				laneWait = 0 // an idle compaction never waits for a turn
+			}
+			releaseInputLane, acquired = api.tryLockSessionInputLane(sessionID, laneWait)
 			if !acquired {
 				logfWithContext(queryLogCtx, "[TURN_RUNNING] Rejected interactive send for session %s: input lane still held", sessionID)
 				w.Header().Set("Content-Type", "application/json")
@@ -4381,6 +4396,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Another request may have durably queued while this request acquired
 	// the lane. Give the drainer its older turn before doing any agent work.
 	if releaseInputLane != nil && !conversationTurnQueueExecution(r.Context()) && shouldUseDurableConversationTurnQueue(req) && api.conversationTurnHasBacklog(currentUserID, sessionID) {
+		if idleRun != nil {
+			http.Error(w, "turn_running", http.StatusConflict)
+			return
+		}
 		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
 		// The deferred lane release kicks the drainer after durable admission.
 		return
@@ -4400,7 +4419,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.AgentMode == "workflow_phase" && req.PhaseID == "workflow-builder" && resolvedProfile == nil && !currentUserIsReadOnly {
+	if idleRun == nil && req.AgentMode == "workflow_phase" && req.PhaseID == "workflow-builder" && resolvedProfile == nil && !currentUserIsReadOnly {
 		active, _ := api.getActiveSession(sessionID)
 		policy := resolveWorkflowChatPolicy(sessionID, req, active, currentUserIsReadOnly)
 		if policy.Mode == "builder" && policy.Origin == "interactive" {
@@ -4414,7 +4433,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Chat sessions are in-memory only — tracked via activeSessions map
 	// below. No persistent session metadata.
 
-	if !req.IsAutoNotification && !strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "cron") {
+	if idleRun == nil && !req.IsAutoNotification && !strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "cron") {
 		api.clearSessionStopped(sessionID)
 		// Lift the MCP registry zombie-prevention flag only for that intentional
 		// user resume, otherwise internal recovery can resurrect stopped bridges.
@@ -5569,9 +5588,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	req.userID = currentUserID
 	continuationReq := queryRequestForContinuation(req, isWorkflowPhase, workflowPhaseFolder)
 	continuationReq = queryRequestWithEffectiveRuntime(continuationReq, finalProvider, finalModelID)
-	api.lastQueryMu.Lock()
-	api.lastQueryRequests[sessionID] = continuationReq
-	api.lastQueryMu.Unlock()
+	if idleRun == nil {
+		api.lastQueryMu.Lock()
+		api.lastQueryRequests[sessionID] = continuationReq
+		api.lastQueryMu.Unlock()
+		if idleCompactPersonTurn(r, sessionID, req) {
+			idleCompacts.notePersonTurn(sessionID, currentUserID, continuationReq, time.Now())
+		}
+	}
 
 	// Set user-facing busy state for regular chat turns.
 	if !isWorkflowPhase {
@@ -5636,7 +5660,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		turnStatus := trackedExecutionStatusCanceled
 		turnError := "conversation turn ended before completion was recorded"
 		var agentCancel context.CancelFunc
+		var idleTurnRuntime *ChatHistoryAgentRuntime
 		defer func() {
+			if idleRun != nil {
+				// A compaction turn that ended before its compaction step.
+				idleRun.finish(llmtypes.IdleCompactResult{Reason: llmtypes.IdleCompactReasonFailed}, errors.New(turnError))
+			} else {
+				idleCompacts.noteTurnEnd(sessionID, idleTurnRuntime, time.Now())
+			}
 			if agentCancel != nil {
 				agentCancel()
 				api.agentCancelMux.Lock()
@@ -5675,6 +5706,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Helper function to send error and continue (not terminate)
 		sendError := func(errorMsg string, shouldTerminate bool) {
+			if shouldTerminate && idleRun != nil {
+				// A compaction turn fails silently: the log says why, the chat shows nothing.
+				turnStatus, turnError = trackedExecutionStatusFailed, errorMsg
+				return
+			}
 			if shouldTerminate {
 				turnStatus = trackedExecutionStatusFailed
 				turnError = errorMsg
@@ -8423,6 +8459,21 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			codingFallbackWorkspace = restoredConversationWorkspace
 		}
 
+		if idleRun != nil {
+			// Idle compaction (PLAT-872): the agent is built as for the person's
+			// next message; only the CLI's own compaction runs.
+			api.compactIdleTurn(agentCtx, sessionID, idleRun, llmAgent.GetUnderlyingAgent())
+			api.runningAgentsMux.Lock()
+			if api.runningAgents[sessionID] == registeredRunningAgent {
+				delete(api.runningAgents, sessionID)
+			}
+			api.runningAgentsMux.Unlock()
+			_ = llmAgent.Close()
+			turnStatus, turnError = trackedExecutionStatusCompleted, ""
+			api.updateSessionStatus(sessionID, "completed")
+			return
+		}
+
 		if len(historyForAgent) > 0 && replayHistoryToAgent {
 			historyToReplay := historyForAgent
 			if isCodingAgentProvider(finalProvider, finalModelID) {
@@ -8622,6 +8673,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if chatRuntime != nil {
 				chatRuntime.WorkshopMode = newWorkshopMode
 			}
+			idleTurnRuntime = chatRuntime
 		}
 		var uiEvents []events.Event
 		if api.eventStore != nil {
@@ -11657,6 +11709,7 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		http.Error(w, "Message is required", http.StatusBadRequest)
 		return
 	}
+	api.waitForIdleCompaction(r.Context(), sessionID, "live_input")
 
 	if req.SubmissionID != "" && r.Header.Get("Idempotency-Key") == "" {
 		r.Header.Set("Idempotency-Key", req.SubmissionID)
