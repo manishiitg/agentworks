@@ -684,7 +684,7 @@ type EventStore struct {
 	activityCallback   ActivityCallback // Optional callback to update session activity
 	eventAddedCallback EventAddedCallback
 	// eventPreparer, when set, may add facts the server derives to an event before it is stored (see SetEventPreparer).
-	eventPreparer    func(event *Event)
+	eventPreparer    func(sessionID string, event *Event)
 	durableJournal   DurableEventJournal
 	hydratedSessions map[string]bool
 	hydrateMu        sync.Mutex
@@ -842,7 +842,7 @@ func (es *EventStore) SetActivityCallback(callback ActivityCallback) {
 // SetEventPreparer sets a function that runs on every event before it is stored, so the server can write facts it derives
 // (for example the files attached to a user message) into the stored event once, for every producer. It must be quick and
 // must not add events.
-func (es *EventStore) SetEventPreparer(prepare func(event *Event)) {
+func (es *EventStore) SetEventPreparer(prepare func(sessionID string, event *Event)) {
 	es.mu.Lock()
 	defer es.mu.Unlock()
 	es.eventPreparer = prepare
@@ -986,7 +986,7 @@ func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
 	prepare := es.eventPreparer
 	es.mu.Unlock()
 	if prepare != nil {
-		prepare(&event)
+		prepare(sessionID, &event)
 	}
 	if es.holdForDeferredSteer(sessionID, event) {
 		return nil

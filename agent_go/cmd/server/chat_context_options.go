@@ -244,6 +244,12 @@ func (api *StreamingAPI) compactChatNow(owner string, tab chatContextTab, afterT
 	if followed == nil || chat.lastPerson.IsZero() || chat.lastTurnEnd.IsZero() {
 		return http.StatusConflict, "Send a message in this chat first; then it can be compacted."
 	}
+	// The compaction turn runs, and is charged, as the chat's tab owner: only that person may ask for it.
+	runAs := api.idleCompactOwner(sessionID, chat.personUser)
+	if runAs != strings.TrimSpace(owner) {
+		log.Printf("[IDLE_COMPACT] session=%s owner=%s caller=%s action=refuse reason=compact_now_not_owner", sessionID, runAs, owner)
+		return http.StatusForbidden, "Only this chat's owner can compact it."
+	}
 	if !llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(chat.provider)), chat.transport) {
 		return http.StatusConflict, "This chat's model cannot be compacted from here."
 	}
@@ -265,8 +271,7 @@ func (api *StreamingAPI) compactChatNow(owner string, tab chatContextTab, afterT
 	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
 		return http.StatusConflict, "This chat is already being compacted."
 	}
-	// The turn runs exactly as the sweep's: as the chat's tab owner (the caller, whose own tab this is).
-	runAs := api.idleCompactOwner(sessionID, chat.personUser)
+	// The turn runs exactly as the sweep's: as the chat's tab owner, the caller.
 	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=compact reason=compact_now", sessionID, chat.provider, runAs, tokens)
 	go api.runIdleCompaction(sessionID, runAs, chat, tokens, 0, run)
 	return http.StatusAccepted, "Compacting this chat now."

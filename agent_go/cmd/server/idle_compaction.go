@@ -470,17 +470,18 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	}
 }
 
-// recordIdleCompactionInChat adds the one "tidied while you were away" row to
-// the chat: a context_compaction end with trigger idle (or manual, for
-// "Compact now"), the shape the transcript already renders. The CLI's own compaction events do not reliably
-// reach the chat from a compaction-only call, so the server records the
-// result itself; if one already arrived, nothing is added (one row per
-// compaction).
+// recordIdleCompactionInChat adds the chat row for a finished compaction: a context_compaction end with trigger
+// idle ("tidied while you were away") or manual ("Compact now"), the shape the transcript already renders. The
+// CLI's own compaction events do not reliably reach the chat from a compaction-only call, so the server records
+// the result itself. For an idle one, an end the CLI stream already recorded is kept and nothing is added. For
+// "Compact now" the server's row is always added, with the stream's compaction id, so the transcript collapses
+// the stream's rows into this one (one row per compaction, never "While you were away").
 func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider, trigger string, before, after int, startedAt time.Time) {
 	if api.eventStore == nil {
 		return
 	}
-	if idleCompactionEventSince(api.eventStore.LastEventsRaw(sessionID, 200), startedAt, trigger) {
+	streamID, streamEnded := idleCompactionEventSince(api.eventStore.LastEventsRaw(sessionID, 200), startedAt, trigger)
+	if streamEnded && (trigger == "idle" || streamID == "") {
 		log.Printf("[IDLE_COMPACT] session=%s chat row already recorded by the CLI stream", sessionID)
 		return
 	}
@@ -489,6 +490,7 @@ func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider, trigger
 		BaseEventData: agentevents.BaseEventData{Timestamp: now},
 		Provider:      provider,
 		Phase:         "end",
+		CompactionID:  streamID,
 		Trigger:       trigger,
 		Outcome:       "success",
 		TokensBefore:  before,
@@ -501,26 +503,47 @@ func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider, trigger
 	wrapped.SessionID = sessionID
 	id := "idle-compaction-" + sessionID + "-" + strconv.FormatInt(now.UnixNano(), 10)
 	err := api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.ContextCompaction), Timestamp: now, SessionID: sessionID, Data: wrapped})
-	log.Printf("[IDLE_COMPACT] session=%s chat row recorded event=%s err=%v", sessionID, id, err)
+	log.Printf("[IDLE_COMPACT] session=%s chat row recorded event=%s trigger=%s stream_compaction=%q err=%v", sessionID, id, trigger, streamID, err)
 }
 
-// idleCompactionEventSince reports whether a compaction end is already among
-// the chat's events since the compaction started. For an idle one it must say
-// trigger idle; "Compact now" accepts the CLI's own row whatever its trigger.
-func idleCompactionEventSince(events []storeevents.Event, since time.Time, trigger string) bool {
+// idleCompactionEventSince looks at the chat's compaction events since the compaction started: the id of the
+// newest one with this trigger (the stream tags a "Compact now" run manual, see tagManualCompactionEvent) and
+// whether an end is among them.
+func idleCompactionEventSince(events []storeevents.Event, since time.Time, trigger string) (compactionID string, ended bool) {
 	for i := len(events) - 1; i >= 0; i-- {
 		event := events[i]
 		if event.Timestamp.Before(since) {
-			return false
+			break
 		}
 		if event.Type != string(agentevents.ContextCompaction) || event.Data == nil {
 			continue
 		}
-		if c, ok := event.Data.Data.(*agentevents.ContextCompactionEvent); ok && c.Phase == "end" && (c.Trigger == "idle" || trigger != "idle") {
-			return true
+		c, ok := event.Data.Data.(*agentevents.ContextCompactionEvent)
+		if !ok || c.Trigger != trigger {
+			continue
 		}
+		if compactionID == "" {
+			compactionID = c.CompactionID
+		}
+		ended = ended || c.Phase == "end"
 	}
-	return false
+	return compactionID, ended
+}
+
+// tagManualCompactionEvent runs on every chat event before it is stored: while a "Compact now" runs for the chat,
+// the CLI's compaction events (which the adapters tag idle) are tagged manual, so the chat never says "While you
+// were away" for a compaction the person asked for.
+func tagManualCompactionEvent(sessionID string, event *storeevents.Event) {
+	if event == nil || event.Type != string(agentevents.ContextCompaction) || event.Data == nil {
+		return
+	}
+	c, ok := event.Data.Data.(*agentevents.ContextCompactionEvent)
+	if !ok || c.Trigger != "idle" {
+		return
+	}
+	if run := idleCompacts.running(strings.TrimSpace(sessionID)); run != nil && run.manual {
+		c.Trigger = "manual"
+	}
 }
 
 // compactIdleTurn is the compaction-only end of handleQuery's turn: the agent
