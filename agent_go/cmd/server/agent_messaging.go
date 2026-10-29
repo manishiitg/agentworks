@@ -1147,9 +1147,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	} else {
 		result, err = api.startSessionInternalWithResult(ctx, reqMap, session, dest.UserID, nil)
 	}
-	if err == nil {
-		api.relayTabFinalAnswer(ctx, c, m, source, dest, result.FinalResponse)
-	}
+	_ = result // the receiving tab replies itself; nothing is relayed on its behalf
 	return session, err
 }
 
