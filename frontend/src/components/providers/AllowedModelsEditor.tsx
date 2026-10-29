@@ -62,9 +62,6 @@ export default function AllowedModelsEditor({ provider, value, disabled = false,
           {selected.length === 0 && !loading && <p className="text-xs text-amber-700 dark:text-amber-300">Pick at least one model, or choose All models.</p>}
         </fieldset>
       )}
-      {limited && provider === 'claude-code' && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">Allowing a model also allows its 1M-context option, which costs about twice as much after 200K tokens.</p>
-      )}
       <div className="flex gap-2">
         <button disabled={!canSave} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{disabled ? 'Saving…' : 'Save models'}</button>
         <button disabled={disabled} type="button" onClick={onCancel} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">Cancel</button>

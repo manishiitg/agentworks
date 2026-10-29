@@ -48,11 +48,10 @@ func externalChatName(args map[string]any) (string, error) {
 }
 
 func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. message: send an attributed agent message to any owner’s tab, using the normal messaging path. Agents may also use sessions action=ask from their own tab. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with workspace action=ask chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. set_model also takes context_1m and idle_compaction for that chat; without engine only those change. list with chat_id adds that chat's context (tokens used of its window, its account's plan limits, the offered switches). compact: compact one of your chats now (summarise its conversation so the next message costs less); refused while it is busy. fresh: the chat's next message starts a new conversation that carries a short summary of this one; its history stays. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. project_context: names of instructions and skills found in an own existing local folder, not a loaded claim. native_list: own Claude/Codex conversations for the exact folder and available original accounts. native_resume: reopen native_id from that list in a separate private tab; no turn starts. Human confirmations remain in the chat.", true, false, map[string]any{
+	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. message: send an attributed agent message to any owner’s tab, using the normal messaging path. Agents may also use sessions action=ask from their own tab. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with workspace action=ask chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. set_model also takes idle_compaction for that chat; without engine only it changes. list with chat_id adds that chat's context (tokens used of its window, its account's plan limits, the offered switches). compact: compact one of your chats now (summarise its conversation so the next message costs less); refused while it is busy. fresh: the chat's next message starts a new conversation that carries a short summary of this one; its history stays. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. project_context: names of instructions and skills found in an own existing local folder, not a loaded claim. native_list: own Claude/Codex conversations for the exact folder and available original accounts. native_resume: reopen native_id from that list in a separate private tab; no turn starts. Human confirmations remain in the chat.", true, false, map[string]any{
 		"crew_id":          externalString("Crew ID from workspace action=list."),
 		"native_id":        externalString("Opaque id from native_list, required for native_resume. Owner-only local existing-folder Crews. Reopens in a separate private chat tab; no model turn starts until you send a message."),
 		"action":           map[string]any{"type": "string", "enum": []any{"list", "read", "project_context", "native_list", "native_resume", "new", "side_open", "side_close", "side_rename", "set_model", "compact", "fresh", "delete", "stop", "message", "tools", "tool"}},
-		"context_1m":       map[string]any{"type": "boolean", "description": "For set_model: run this chat's Claude Opus or Sonnet model with its 1M-token context window (true) or the normal window (false). Omit to keep it."},
 		"idle_compaction":  map[string]any{"type": "boolean", "description": "For set_model: Auto-compact when idle. Long chats are summarised after about 50 minutes idle, so the next message costs less. On unless turned off. Omit to keep it."},
 		"engine":           externalString("For set_model: a provider option of this Crew (as on its Models page, e.g. claude-code, codex-cli); empty returns the chat to the Crew's model."),
 		"model_id":         externalString("For set_model: a model of that provider."),
@@ -282,14 +281,14 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			externalError(w, 404, "chat_not_found", "Pass main or a side chat's chat_id from list.")
 			return
 		}
-		context1M, idleCompaction, argErr := chatContextArgs(args)
+		idleCompaction, argErr := chatContextArgs(args)
 		if argErr != nil {
 			externalError(w, 400, "invalid_arguments", argErr.Error())
 			return
 		}
 		_, hasEngine := args["engine"]
-		if !hasEngine && context1M == nil && idleCompaction == nil {
-			externalError(w, 400, "invalid_arguments", "Send an engine (empty uses the Crew's model), context_1m or idle_compaction.")
+		if !hasEngine && idleCompaction == nil {
+			externalError(w, 400, "invalid_arguments", "Send an engine (empty uses the Crew's model) or idle_compaction.")
 			return
 		}
 		if hasEngine {
@@ -297,12 +296,12 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 				"project_id": crewID, "conversation_key": chat.key, "engine": externalArg(args, "engine"),
 				"model_id": externalArg(args, "model_id"), "reasoning_effort": externalArg(args, "reasoning_effort"), "connection_id": externalArg(args, "connection_id"),
 			})
-			if status >= 400 || (context1M == nil && idleCompaction == nil) {
+			if status >= 400 || idleCompaction == nil {
 				respond(status, body)
 				return
 			}
 		}
-		api.externalChatContext(w, r, chat.SessionID, chatContextRequest{Context1M: context1M, IdleCompaction: idleCompaction})
+		api.externalChatContext(w, r, chat.SessionID, chatContextRequest{IdleCompaction: idleCompaction})
 	case "compact", "fresh":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
 		if !found {

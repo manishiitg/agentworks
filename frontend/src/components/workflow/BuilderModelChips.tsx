@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Settings2 } from 'lucide-react'
-import { Chip, ChoiceItems, type Choice } from '../../products/work/ComposerModelChips'
+import { Chip, ChoiceItems, useOpenFromStatusBar, type Choice } from '../../products/work/ComposerModelChips'
 import ChatContextItems, { menuRowClass } from '../../products/work/ChatContextItems'
 import { CursorModelPicker } from '../ui/CursorModelPicker'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -51,6 +51,9 @@ export default function BuilderModelChips({ workspacePath, sessionId, label, fal
   const [accounts, setAccounts] = useState<ProviderConnection[] | null>(null)
   const [cursorModels, setCursorModels] = useState<DynamicModelEntry[]>([])
   const [cursorOpen, setCursorOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const usesCursorPicker = useRef(false)
+  useOpenFromStatusBar(sessionId, () => (usesCursorPicker.current ? setCursorOpen : setMenuOpen)(true))
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { if (!providerManifestLoaded) void loadProviderManifest() }, [providerManifestLoaded, loadProviderManifest])
@@ -148,6 +151,7 @@ export default function BuilderModelChips({ workspacePath, sessionId, label, fal
   </> : null
   const cursorChoices = provider === 'cursor-cli'
     ? cursorModels.filter(model => !hasModelLimit(allowed) || isModelAllowed(model.model_id, allowed)) : []
+  usesCursorPicker.current = provider === 'cursor-cli'
   if (provider === 'cursor-cli') {
     const cursorLabel = cursorChoices.find(model => model.model_id === builder.model_id)?.model_name || label
     if (cursorChoices.length < 2) return <>{fallback}</>
@@ -166,7 +170,7 @@ export default function BuilderModelChips({ workspacePath, sessionId, label, fal
   if (phone) {
     if (!showModel && !showEffort && !sessionId) return <>{fallback}</>
     const combined = showEffort && currentLevel ? `${modelLabel} · ${currentLevel.label}` : modelLabel
-    return <Chip label={combined} ariaLabel={`Model: ${combined}`} disabled={saving}>
+    return <Chip label={combined} ariaLabel={`Model: ${combined}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen}>
       {showModel && <ChoiceItems title="Model" choices={models} value={builder.model_id} onPick={pickModel} />}
       {showModel && showEffort && <Menu.Separator className="my-1 h-px bg-border" />}
       {showEffort && <ChoiceItems title="Reasoning" choices={levels} value={currentKey} onPick={pickEffort} />}
@@ -175,7 +179,7 @@ export default function BuilderModelChips({ workspacePath, sessionId, label, fal
   }
   return <>
     {showModel || sessionId
-      ? <Chip label={modelLabel} ariaLabel={`Model: ${modelLabel}`} disabled={saving}>{showModel && <ChoiceItems choices={models} value={builder.model_id} onPick={pickModel} />}{contextItems}</Chip>
+      ? <Chip label={modelLabel} ariaLabel={`Model: ${modelLabel}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen}>{showModel && <ChoiceItems choices={models} value={builder.model_id} onPick={pickModel} />}{contextItems}</Chip>
       : fallback}
     {showEffort && currentLevel && <Chip label={currentLevel.label} ariaLabel={`Reasoning: ${currentLevel.label}`} disabled={saving}><ChoiceItems choices={levels} value={currentKey} onPick={pickEffort} /></Chip>}
   </>

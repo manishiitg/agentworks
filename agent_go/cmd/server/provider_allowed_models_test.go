@@ -30,10 +30,6 @@ func TestAllowedModelsListLogic(t *testing.T) {
 	if !modelAllowed(nil, "anything") || !modelAllowed([]string{"a"}, " A ") || modelAllowed([]string{"a"}, "b") {
 		t.Fatal("modelAllowed")
 	}
-	// PLAT-872-71: "1M context" runs an allowed Claude model with its larger window; it is not another model.
-	if !modelAllowed([]string{"claude-opus-5-5"}, "claude-opus-5-5[1m]") || modelAllowed([]string{"claude-sonnet-5-5"}, "claude-opus-5-5[1m]") {
-		t.Fatal("modelAllowed must admit an allowed model's 1M window only")
-	}
 	if _, err := validateAllowedModels(make([]string, 0)); err != nil {
 		t.Fatal(err)
 	}

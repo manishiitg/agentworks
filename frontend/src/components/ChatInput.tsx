@@ -129,6 +129,7 @@ const ChatSendModeButton = lazy(() => import('./chat/ChatSendModeButton').then(m
 const DurableChatQueue = lazy(() => import('./chat/DurableChatQueue').then(module => ({ default: module.DurableChatQueue })))
 const ComposerModelChips = lazy(() => import('../products/work/ComposerModelChips'))
 const BuilderModelChips = lazy(() => import('./workflow/BuilderModelChips'))
+const ChatStatusBar = lazy(() => import('../products/work/ChatStatusBar'))
 import type { PlannerFile, LLMProvider, TerminalSnapshot } from '../services/api-types'
 import type { LLMOption } from '../types/llm'
 import { useAppStore, useMCPStore, useLLMStore, useChatStore } from '../stores'
@@ -1432,6 +1433,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const crewModelLabel = activeTab?.metadata?.agentProfileChatModelLabel
     ? composerModelLabel(activeTab.metadata.agentProfileChatModelLabel, mainAgentRuntimeLLM?.provider || activeTab.metadata.agentProfileChatProvider)
     : null
+  // The status line under the composer goes with the model menu: Goal/Relay Builders who can change the workflow,
+  // and the Crew/Code tab's owner (not agent tabs, not Run). The server still answers only the tab's owner.
+  const chatStatusBarOffered = !isViewOnly && (isWorkflowPhaseChat
+    ? Boolean(canWriteCommandWorkflow && isInteractiveWorkflowBuilderChat && workflowPhaseWorkspacePath)
+    : Boolean(agentProfileId === 'work' && agentProfileProjectId && activeTab?.metadata?.agentProfileCanOpenModels
+      && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`)))
 
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -3649,6 +3656,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               </div>
             </ChatComposerControls>
         </ChatComposerForm>
+        {/* This chat's status line (model, context, plan limits); the server answers only the tab's owner. */}
+        {chatStatusBarOffered && tabSessionId && <Suspense fallback={null}><ChatStatusBar sessionId={tabSessionId} modelLabel={(isWorkflowPhaseChat ? goalModelLabel : crewModelLabel) ?? undefined} busy={isTurnInFlight} /></Suspense>}
         <input
           ref={fileUploadInputRef}
           type="file"

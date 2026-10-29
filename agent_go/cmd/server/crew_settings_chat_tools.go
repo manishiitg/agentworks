@@ -135,9 +135,8 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		}
 	}
 	if agentprofiles.HasFeature(profile.Definition, "models") {
-		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id and connection_id returned by list. Choose your own personal account or a company account available to you for this tab. An empty engine returns the chat to the Crew's default. Other chats and the Crew default stay unchanged. list also shows this chat's context: tokens used of its window, its account's plan limits and the offered switches. set takes context_1m and idle_compaction (without engine only they change). compact: summarise this chat's conversation once this reply ends, so the next message costs less. fresh: the next message starts a new conversation carrying a short summary of this one; the history stays.", map[string]any{
+		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id and connection_id returned by list. Choose your own personal account or a company account available to you for this tab. An empty engine returns the chat to the Crew's default. Other chats and the Crew default stay unchanged. list also shows this chat's context: tokens used of its window, its account's plan limits and the offered switches. set takes idle_compaction (without engine only it changes). compact: summarise this chat's conversation once this reply ends, so the next message costs less. fresh: the next message starts a new conversation carrying a short summary of this one; the history stays.", map[string]any{
 			"action":           map[string]any{"type": "string", "enum": []string{"list", "set", "compact", "fresh"}},
-			"context_1m":       map[string]any{"type": "boolean", "description": "For set: run this chat's Claude Opus or Sonnet model with its 1M-token context window (true) or the normal window (false)."},
 			"idle_compaction":  map[string]any{"type": "boolean", "description": "For set: Auto-compact when idle. Long chats are summarised after about 50 minutes idle, so the next message costs less."},
 			"engine":           map[string]any{"type": "string", "description": "Provider option from list. For set, an empty string uses the Crew default."},
 			"connection_id":    externalString("Your personal or available company account ID from provider_connections in list."),
@@ -156,7 +155,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 			choices = limitProfileModelsToAccount(r.Context(), claims.UserID, profileWithAvailableProviders(choices))
 			payload := map[string]any{"crew_id": crewID, "action": "list"}
 			owner := productWorkspaceUserID(r.Context())
-			context1M, idleCompaction, argErr := chatContextArgs(args)
+			idleCompaction, argErr := chatContextArgs(args)
 			if argErr != nil {
 				return "", argErr
 			}
@@ -180,8 +179,8 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 				return contextReply(chatContextRequest{Action: externalArg(args, "action")})
 			case "set":
 				_, hasEngine := args["engine"]
-				if !hasEngine && (context1M != nil || idleCompaction != nil) {
-					return contextReply(chatContextRequest{Context1M: context1M, IdleCompaction: idleCompaction})
+				if !hasEngine && idleCompaction != nil {
+					return contextReply(chatContextRequest{IdleCompaction: idleCompaction})
 				}
 				if !hasEngine {
 					return "", errors.New("Choose an engine from list, or send an empty engine to use the Crew default.")
@@ -213,8 +212,8 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 			state["provider_options"] = choices.Runtime.ProviderOptions
 			state["this_chat"] = project.Self.Key
 			state["next"] = "A saved model change applies from the next message."
-			if context1M != nil || idleCompaction != nil {
-				if _, err := contextReply(chatContextRequest{Context1M: context1M, IdleCompaction: idleCompaction}); err != nil {
+			if idleCompaction != nil {
+				if _, err := contextReply(chatContextRequest{IdleCompaction: idleCompaction}); err != nil {
 					return "", err
 				}
 			}

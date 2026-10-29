@@ -25,7 +25,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/mcpclient"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
 
 const maxAgentProfileRequestBytes = 2 << 20
@@ -1034,16 +1033,6 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	}
 	if err := constrainProductChatModel(ctx, &query); err != nil {
 		return QueryRequest{}, err
-	}
-	// "1M context" in the tab's model menu (PLAT-872-71): the same model with its 1M window. A model
-	// change makes bindRuntimeConfiguration below relaunch the CLI, which resumes the same conversation.
-	if own.Context1M && strings.EqualFold(strings.TrimSpace(query.Provider), "claude-code") {
-		query.ModelID = claudecode.With1MContext(query.ModelID)
-		if query.LLMConfig != nil {
-			configCopy := *query.LLMConfig
-			configCopy.Primary.ModelID = query.ModelID
-			query.LLMConfig = &configCopy
-		}
 	}
 	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
 	// A chat has one account, and only the person's choice in Models changes it (owner, 2026-10-07).
