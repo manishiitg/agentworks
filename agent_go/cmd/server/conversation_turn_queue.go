@@ -218,6 +218,11 @@ func (api *StreamingAPI) writeConversationTurnQueue(ctx context.Context, userID 
 }
 
 func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, sessionID string, req QueryRequest) (queuedConversationTurn, int, error) {
+	if idleCompactRunFromContext(ctx) != nil {
+		// Never persist an idle compaction: its request is the last person
+		// message, which the drainer would run again as a real turn.
+		return queuedConversationTurn{}, 0, errors.New("idle compaction turns are never queued")
+	}
 	userID, sessionID = strings.TrimSpace(userID), strings.TrimSpace(sessionID)
 	if userID == "" || sessionID == "" {
 		return queuedConversationTurn{}, 0, errors.New("conversation owner and session are required")

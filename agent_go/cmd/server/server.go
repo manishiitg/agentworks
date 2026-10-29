@@ -1466,6 +1466,12 @@ func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r 
 		rejectUnavailableQueuedSteer(w)
 		return true
 	}
+	// An idle compaction replays the last person request only to build the
+	// agent. Queued, the drainer would run that request again as a real turn.
+	if idleCompactRunFromContext(r.Context()) != nil {
+		http.Error(w, "turn_running", http.StatusConflict)
+		return true
+	}
 	turn, position, err := api.enqueueConversationTurn(r.Context(), userID, sessionID, req)
 	if err != nil {
 		http.Error(w, "Cannot durably queue conversation turn: "+err.Error(), http.StatusServiceUnavailable)
