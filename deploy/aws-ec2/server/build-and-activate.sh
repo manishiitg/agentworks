@@ -341,7 +341,7 @@ preflight_reply="$(CLAUDE_CODE_OAUTH_TOKEN="$token" claude -p --output-format js
 if ! printf '%s' "$preflight_reply" | jq -e '.is_error == false' >/dev/null 2>&1; then
   preflight_result="$(printf '%s' "$preflight_reply" | jq -r '.result // empty' 2>/dev/null || true)"
   case "$preflight_result" in
-    *"session limit"*|*"usage limit"*|*"rate limit"*|*"Rate limit"*|*"capacity"*)
+    *"session limit"*|*"usage limit"*|*"spend limit"*|*"rate limit"*|*"Rate limit"*|*"capacity"*)
       echo "WARNING: Claude token is valid but the account is capped right now (${preflight_result}); continuing." >&2 ;;
     *)
       echo "Claude token validation failed: ${preflight_result:-no JSON reply from claude -p}" >&2
@@ -358,7 +358,7 @@ rm -rf "$probe_dir"
 probe_result="$(printf '%s' "$probe_reply" | jq -r '.result // empty' 2>/dev/null || true)"
 case "$probe_result" in
   *WALRUS-7*) ;;
-  *"session limit"*|*"usage limit"*|*"rate limit"*|*"Rate limit"*|*"capacity"*)
+  *"session limit"*|*"usage limit"*|*"spend limit"*|*"rate limit"*|*"Rate limit"*|*"capacity"*)
     echo "WARNING: AGENTS.md read check skipped, the Claude account is capped right now (${probe_result})." >&2 ;;
   *)
     echo "This claude ($("$tools_dir/bin/claude" --version)) does not read AGENTS.md, so sessions would start without their system prompt: ${probe_result:-no reply}" >&2
