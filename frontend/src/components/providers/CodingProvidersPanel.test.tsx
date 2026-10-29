@@ -134,7 +134,7 @@ describe('CodingProvidersPanel', () => {
 
   it('shows coding agents only, with sign-in on the accounts and no setup steps or usage check', async () => {
     vi.mocked(llmConfigService.startProviderSetup).mockResolvedValue({
-      id: 'usage-1', provider: 'codex-cli', action: 'usage', status: 'running',
+      id: 'inspect-1', provider: 'codex-cli', action: 'inspect', status: 'running',
     } as Awaited<ReturnType<typeof llmConfigService.startProviderSetup>>)
     vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({
       providers: [

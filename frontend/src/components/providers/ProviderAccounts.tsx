@@ -122,7 +122,6 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [authMethod, setAuthMethod] = useState(defaultAuthMethod)
   const [session, setSession] = useState<ProviderSetupSession | null>(null)
   const [sessionRowId, setSessionRowId] = useState<string | null>(null)
-  const [usageText, setUsageText] = useState<{ rowId: string; text: string } | null>(null)
   const [statuses, setStatuses] = useState<Record<string, ProviderAccountStatus | 'loading'>>({})
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -210,26 +209,20 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     } catch (saveError) { setError(providerApiErrorText(saveError, 'Could not save account. Check the provider and administrator policy.')) }
     finally { setBusy(false) }
   }
-  const runSetup = async (record: ProviderConnection, action: 'authenticate' | 'usage' | 'inspect') => {
+  const runSetup = async (record: ProviderConnection, action: 'authenticate' | 'inspect') => {
     setBusy(true); setError(null)
     try {
-      if (action === 'usage') {
-        const result = await llmConfigService.checkProviderUsage(provider, record.id)
-        if (result.session) { setSession(result.session); setSessionRowId(record.id) }
-        else setUsageText({ rowId: record.id, text: result.usage_output || 'No usage output.' })
-      } else {
-        let started: ProviderSetupSession
-        try {
-          started = await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, false, record.id)
-        } catch (startError) {
-          // One sign-in or terminal per account at a time: offer to end the running one.
-          if ((startError as { response?: { status?: number } })?.response?.status !== 409 || !window.confirm(`A ${providerLabel || provider} terminal is already open for this account. End it and start a new one?`)) throw startError
-          started = await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, true, record.id)
-        }
-        setSession(started)
-        setSessionRowId(record.id)
+      let started: ProviderSetupSession
+      try {
+        started = await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, false, record.id)
+      } catch (startError) {
+        // One sign-in or terminal per account at a time: offer to end the running one.
+        if ((startError as { response?: { status?: number } })?.response?.status !== 409 || !window.confirm(`A ${providerLabel || provider} terminal is already open for this account. End it and start a new one?`)) throw startError
+        started = await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, true, record.id)
       }
-    } catch (setupError) { setError(providerApiErrorText(setupError, action === 'usage' ? 'Could not check usage.' : action === 'inspect' ? 'Could not open the terminal.' : 'Could not start account login.')) }
+      setSession(started)
+      setSessionRowId(record.id)
+    } catch (setupError) { setError(providerApiErrorText(setupError, action === 'inspect' ? 'Could not open the terminal.' : 'Could not start account login.')) }
     finally { setBusy(false) }
   }
   const login = (record: ProviderConnection) => runSetup(record, 'authenticate')
@@ -330,11 +323,6 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const checkItem = (record: ProviderConnection) => statuses[record.id] !== undefined || byokServiceOf(record) ? [{ label: byokServiceOf(record) ? 'Test key again' : 'Check sign-in again', onSelect: () => void refreshStatus(record) }] : []
   const terminalFor = (record: ProviderConnection) => (session && sessionRowId === record.id && (
     <div className="mt-3 w-full"><GuidedProviderTerminal session={session} onFinished={value => { setSession(value); changed() }} onClose={() => { setSession(null); setSessionRowId(null) }} /></div>
-  )) || (usageText && usageText.rowId === record.id && (
-    <div className="mt-3 w-full">
-      <pre aria-label={`Usage output for ${record.display_name}`} className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs text-gray-800 dark:bg-gray-900 dark:text-gray-200">{usageText.text}</pre>
-      <button type="button" className={`${secondaryButtonClass} mt-2`} onClick={() => setUsageText(null)}>Close</button>
-    </div>
   ))
   const sharingEditor = (record: ProviderConnection) => sharingId === record.id && (
     <form className="mt-3 w-full space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveSharing(record) }}>

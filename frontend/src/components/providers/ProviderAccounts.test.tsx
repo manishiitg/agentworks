@@ -12,7 +12,6 @@ vi.mock('../../services/llm-config-api', () => ({
     setServerAccountAvailability: vi.fn(),
     getProviderShareTargets: vi.fn(),
     startProviderSetup: vi.fn(),
-    checkProviderUsage: vi.fn(),
     getProviderAccountStatus: vi.fn(),
     signOutProviderAccount: vi.fn(),
     getProviderAccountCosts: vi.fn(),
@@ -36,20 +35,20 @@ const server: ProviderConnection = {
   id: 'global:claude-code', provider: 'claude-code', display_name: 'Server account', scope: 'global', auth_method: 'server',
   kind: 'installed', relation: 'server', source: 'Installation (.env: CLAUDE_CODE_OAUTH_TOKEN)',
   availability: { available_to: 'all', text: 'Everyone', source: 'installation', pinned: false },
-  availability_editable: true, usable: true, can_manage: true, can_view_usage: true,
+  availability_editable: true, usable: true, can_manage: true,
 }
 const own: ProviderConnection = {
   id: 'acct-own', provider: 'claude-code', display_name: 'My Max', scope: 'user', auth_method: 'cli_login',
-  kind: 'user', relation: 'own', usable: true, can_manage: true, can_view_usage: true,
+  kind: 'user', relation: 'own', usable: true, can_manage: true,
   sharing: { mode: 'shared', workflows: ['wf-1'], crews: [], users: ['u-bob', 'u-carol'] },
 }
 const sharedWithMe: ProviderConnection = {
   id: 'acct-dana', provider: 'claude-code', display_name: 'Dana team', scope: 'user', auth_method: 'api_key',
-  kind: 'user', relation: 'shared_with_you', owner_name: 'Dana', usable: true, can_manage: false, can_view_usage: true,
+  kind: 'user', relation: 'shared_with_you', owner_name: 'Dana', usable: true, can_manage: false,
 }
 const adminView: ProviderConnection = {
   id: 'acct-erin', provider: 'claude-code', display_name: 'Erin personal', scope: 'user', auth_method: 'api_key',
-  kind: 'user', relation: 'admin_view', owner_name: 'Erin', usable: false, can_manage: true, can_view_usage: true, sharing: { mode: 'private' },
+  kind: 'user', relation: 'admin_view', owner_name: 'Erin', usable: false, can_manage: true, sharing: { mode: 'private' },
 }
 
 beforeEach(() => {

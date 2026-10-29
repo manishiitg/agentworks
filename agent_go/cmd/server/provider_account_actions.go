@@ -165,10 +165,13 @@ func runProviderAccountCommand(ctx context.Context, target providerAccountTarget
 
 var providerSecretLike = regexp.MustCompile(`(?i)(sk-[a-z0-9_\-]{6,}|[a-z0-9_\-]{32,})`)
 
+// providerTerminalEscapes are terminal escapes in CLI output: OSC sequences first, then CSI and single-key escapes.
+var providerTerminalEscapes = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;:?>]*[ -/]*[@-~]|\x1b.|\x07`)
+
 // safeProviderText keeps one short line of CLI text with anything that looks
 // like a key or token removed.
 func safeProviderText(raw string) string {
-	text := cleanProviderUsageText(raw)
+	text := strings.ReplaceAll(providerTerminalEscapes.ReplaceAllString(raw, ""), "\r", "")
 	for _, line := range strings.Split(text, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			line = providerSecretLike.ReplaceAllString(line, "[hidden]")
