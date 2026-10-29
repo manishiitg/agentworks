@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react'
 import { useTheme } from '../../hooks/useTheme'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
+
+const DiffCode = lazy(() => import('./DiffCode'))
 
 export type DiffLineAnchor = { side: 'before' | 'after'; line: number }
 
@@ -26,23 +28,11 @@ interface ParsedDiffLine {
   before?: number
   after?: number
   anchor?: DiffLineAnchor
+  /** On a hunk line: the unchanged lines skipped before it. */
+  skipped?: number
 }
 
 type SplitRow = { full: ParsedDiffLine } | { left?: ParsedDiffLine; right?: ParsedDiffLine }
-
-interface DiffPalette {
-  container: string
-  toolbar: string
-  stats: {
-    additions: string
-    deletions: string
-    hunks: string
-  }
-  rowBorder: string
-  markerBorder: string
-  lineClasses: Record<DiffLineKind, string>
-  markerClasses: Record<DiffLineKind, string>
-}
 
 const classifyDiffLine = (line: string): DiffLineKind => {
   if (line.startsWith('diff --git ') || line.startsWith('index ')) {
@@ -66,72 +56,32 @@ const classifyDiffLine = (line: string): DiffLineKind => {
   return 'meta'
 }
 
-const lightPalette: DiffPalette = {
-  container: 'border-gray-200 bg-white',
-  toolbar: 'border-gray-200 bg-gray-50/80',
-  stats: {
-    additions: 'bg-diff-add/10 text-diff-add',
-    deletions: 'bg-diff-del/10 text-diff-del',
-    hunks: 'bg-sky-100 text-sky-800',
-  },
-  rowBorder: 'border-gray-100',
-  markerBorder: 'border-gray-200',
-  lineClasses: {
-    'git-header': 'bg-violet-50 text-violet-700',
-    'file-header': 'bg-amber-50 text-amber-700',
-    'hunk': 'bg-sky-50 text-sky-700',
-    'addition': 'bg-diff-add/10 text-diff-add',
-    'deletion': 'bg-diff-del/10 text-diff-del',
-    'context': 'bg-white text-gray-700',
-    'meta': 'bg-gray-50/60 text-gray-600',
-  },
-  markerClasses: {
-    'git-header': 'text-violet-500',
-    'file-header': 'text-amber-500',
-    'hunk': 'text-sky-500',
-    'addition': 'text-diff-add',
-    'deletion': 'text-diff-del',
-    'context': 'text-gray-400',
-    'meta': 'text-gray-400',
-  },
+// Like VS Code: rows are tinted, code keeps its syntax colours, headers are hidden.
+const rowTint: Partial<Record<DiffLineKind, string>> = { addition: 'bg-diff-add/10', deletion: 'bg-diff-del/10' }
+const gutterTint: Partial<Record<DiffLineKind, string>> = { addition: 'bg-diff-add/20 text-diff-add', deletion: 'bg-diff-del/20 text-diff-del' }
+const LANGUAGES: Record<string, string> = {
+  ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx', mjs: 'javascript', cjs: 'javascript', go: 'go', py: 'python',
+  json: 'json', md: 'markdown', css: 'css', scss: 'scss', html: 'markup', xml: 'markup', svg: 'markup', yml: 'yaml', yaml: 'yaml',
+  sh: 'bash', bash: 'bash', zsh: 'bash', rs: 'rust', java: 'java', kt: 'kotlin', rb: 'ruby', sql: 'sql', swift: 'swift',
+  c: 'c', h: 'c', cpp: 'cpp', cs: 'csharp', php: 'php', toml: 'toml', dockerfile: 'docker',
 }
-
-const darkPalette: DiffPalette = {
-  container: 'border-gray-700 bg-gray-900',
-  toolbar: 'border-gray-700 bg-gray-800/80',
-  stats: {
-    additions: 'bg-diff-add/10 text-diff-add',
-    deletions: 'bg-diff-del/10 text-diff-del',
-    hunks: 'bg-sky-950/50 text-sky-200',
-  },
-  rowBorder: 'border-gray-800',
-  markerBorder: 'border-gray-800',
-  lineClasses: {
-    'git-header': 'bg-violet-950/30 text-violet-300',
-    'file-header': 'bg-amber-950/30 text-amber-300',
-    'hunk': 'bg-sky-950/30 text-sky-300',
-    'addition': 'bg-diff-add/10 text-diff-add',
-    'deletion': 'bg-diff-del/10 text-diff-del',
-    'context': 'bg-gray-900 text-gray-300',
-    'meta': 'bg-gray-900/80 text-gray-400',
-  },
-  markerClasses: {
-    'git-header': 'text-violet-300',
-    'file-header': 'text-amber-300',
-    'hunk': 'text-sky-300',
-    'addition': 'text-diff-add',
-    'deletion': 'text-diff-del',
-    'context': 'text-gray-500',
-    'meta': 'text-gray-500',
-  },
+const languageOf = (lines: ParsedDiffLine[]) => {
+  const header = lines.find(line => line.content.startsWith('+++ ') && !line.content.endsWith('/dev/null')) ?? lines.find(line => line.content.startsWith('--- '))
+  const name = header?.content.slice(4).trim().replace(/^[ab]\//, '').split('/').pop()?.toLowerCase() ?? ''
+  return LANGUAGES[name === 'dockerfile' ? name : name.split('.').pop() ?? ''] ?? ''
 }
+const MAX_HIGHLIGHTED_LINES = 3000
 
 const parseDiff = (content: string): ParsedDiffLine[] => {
   let before = 0, after = 0
   return content.split('\n').map(content => {
     const kind = classifyDiffLine(content)
     const hunk = content.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-    if (hunk) { before = Number(hunk[1]); after = Number(hunk[2]) }
+    if (hunk) {
+      const skipped = Number(hunk[2]) - Math.max(after, 1)
+      before = Number(hunk[1]); after = Number(hunk[2])
+      return { content, kind, skipped }
+    }
     if (kind === 'deletion' && before > 0) { const line = before++; return { content, kind, before: line, anchor: { side: 'before', line } } }
     if (kind === 'addition' && after > 0) { const line = after++; return { content, kind, after: line, anchor: { side: 'after', line } } }
     if (kind === 'context' && after > 0) { const line = after++; return { content, kind, before: before++, after: line, anchor: { side: 'after', line } } }
@@ -192,74 +142,71 @@ export function DiffRenderer({
   const [hideWhitespace, setHideWhitespace] = useState(() => readChoice(WHITESPACE_KEY))
   const split = splitChoice && !phone
   const parsed = useMemo(() => parseDiff(content), [content])
-  const lines = useMemo(() => hideWhitespace ? hideWhitespaceChanges(parsed) : parsed, [parsed, hideWhitespace])
+  const language = useMemo(() => parsed.length <= MAX_HIGHLIGHTED_LINES ? languageOf(parsed) : '', [parsed])
+  const lines = useMemo(() => (hideWhitespace ? hideWhitespaceChanges(parsed) : parsed).filter(line => line.kind !== 'git-header' && line.kind !== 'file-header' && !(line.kind === 'meta' && !line.content.trim())), [parsed, hideWhitespace])
   const splitRows = useMemo(() => split ? toSplitRows(lines) : [], [lines, split])
-  const palette = theme === 'dark' ? darkPalette : lightPalette
+  const isDark = theme === 'dark'
 
   const stats = useMemo(() => {
     return lines.reduce((acc, line) => {
       if (line.kind === 'addition') acc.additions += 1
       if (line.kind === 'deletion') acc.deletions += 1
-      if (line.kind === 'hunk') acc.hunks += 1
       return acc
-    }, { additions: 0, deletions: 0, hunks: 0 })
+    }, { additions: 0, deletions: 0 })
   }, [lines])
 
   const toggle = (key: string, value: boolean, set: (value: boolean) => void) => { set(value); saveChoice(key, value) }
-  const toggleClass = (on: boolean) => `rounded border px-2 py-0.5 ${on ? 'border-current font-medium' : `${palette.markerBorder} opacity-70`}`
+  const toggleClass = (on: boolean) => `rounded px-2 py-0.5 ${on ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`
+  const plain = (text: string) => <span>{text}</span>
+  const code = (text: string): ReactNode => language && text.trim()
+    ? <Suspense fallback={plain(text)}><DiffCode text={text} language={language} isDark={isDark} /></Suspense>
+    : plain(text)
   const lineNumber = (line: ParsedDiffLine, side: 'before' | 'after') => onSelectLine && line.anchor?.side === side
-    ? <button type="button" aria-label={`Comment on ${side} line ${line.anchor.line}`} className="underline" onClick={() => onSelectLine(line.anchor!)}>{line.anchor.line}</button>
+    ? <button type="button" aria-label={`Comment on ${side} line ${line.anchor.line}`} className="hover:underline" onClick={() => onSelectLine(line.anchor!)}>{line.anchor.line}</button>
     : line[side]
-  const cell = (line: ParsedDiffLine | undefined, side: 'before' | 'after') => line
-    ? <div className={`grid min-w-0 grid-cols-[3rem_1fr] ${palette.lineClasses[line.kind]}`}>
-      <div className={`select-none border-r px-2 py-1 text-right ${palette.markerBorder} ${palette.markerClasses[line.kind]}`}>{lineNumber(line, side)}</div>
-      <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-1 leading-5">{line.content.slice(1)}</pre>
+  const gutter = (line: ParsedDiffLine, number: ReactNode) =>
+    <div className={`select-none px-2 text-right tabular-nums ${gutterTint[line.kind] ?? 'text-muted-foreground/60'}`}>{number}</div>
+  const text = (line: ParsedDiffLine) =>
+    <pre className="min-w-0 whitespace-pre-wrap break-words px-3 text-foreground/90">{code(line.content.slice(1))}</pre>
+  // A hunk header becomes a quiet "N unmodified lines" divider, as in VS Code.
+  const divider = (line: ParsedDiffLine, key: number) =>
+    <div key={key} className="select-none border-y border-border/50 bg-muted/40 py-0.5 text-center text-[11px] text-muted-foreground">
+      {line.kind === 'hunk' ? (line.skipped ? `${line.skipped} unmodified ${line.skipped === 1 ? 'line' : 'lines'}` : '⋯') : line.content}
     </div>
-    : <div className={palette.lineClasses.meta} />
+  const cell = (line: ParsedDiffLine | undefined, side: 'before' | 'after') => line
+    ? <div className={`grid min-w-0 grid-cols-[3.25rem_1fr] ${rowTint[line.kind] ?? ''}`}>
+      {gutter(line, lineNumber(line, side))}
+      {text(line)}
+    </div>
+    : <div className="bg-muted/30" />
 
   return (
-    <div className={`flex flex-col rounded-lg border ${palette.container} ${className}`}>
-      <div className={`flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs ${palette.toolbar}`}>
-        <span className={`rounded px-2 py-0.5 font-medium ${palette.stats.additions}`}>
-          +{stats.additions}
-        </span>
-        <span className={`rounded px-2 py-0.5 font-medium ${palette.stats.deletions}`}>
-          -{stats.deletions}
-        </span>
-        <span className={`rounded px-2 py-0.5 font-medium ${palette.stats.hunks}`}>
-          {stats.hunks} sections
-        </span>
-        <span className="ml-auto flex gap-2">
+    <div className={`flex flex-col overflow-hidden rounded-md border border-border bg-background ${className}`}>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
+        <span className="font-medium text-diff-add">+{stats.additions}</span>
+        <span className="font-medium text-diff-del">-{stats.deletions}</span>
+        <span className="ml-auto flex gap-1">
           {!phone && <button type="button" aria-pressed={splitChoice} className={toggleClass(splitChoice)} onClick={() => toggle(SPLIT_KEY, !splitChoice, setSplitChoice)}>Side by side</button>}
           <button type="button" aria-pressed={hideWhitespace} className={toggleClass(hideWhitespace)} onClick={() => toggle(WHITESPACE_KEY, !hideWhitespace, setHideWhitespace)}>Hide whitespace</button>
         </span>
       </div>
 
       <div className={`min-h-0 flex-1 overflow-auto ${maxHeightClassName}`}>
-        <div className="min-w-full font-mono text-xs">
+        <div className="min-w-full font-mono text-xs leading-5">
           {split ? splitRows.map((row, index) => 'full' in row
-            ? <div key={index} className={`border-b px-3 py-1 ${palette.rowBorder} ${palette.lineClasses[row.full.kind]}`}><pre className="whitespace-pre-wrap break-words leading-5">{row.full.content}</pre></div>
-            : <div key={index} data-split-row className={`grid grid-cols-2 border-b ${palette.rowBorder}`}>
-              <div className={`min-w-0 border-r ${palette.markerBorder}`}>{cell(row.left, 'before')}</div>
+            ? divider(row.full, index)
+            : <div key={index} data-split-row className="grid grid-cols-2">
+              <div className="min-w-0 border-r border-border/60">{cell(row.left, 'before')}</div>
               {cell(row.right, 'after')}
             </div>)
-          : lines.map((line, index) => {
-            const marker = line.content.length > 0 ? line.content[0] : ' '
-
-            return (
-              <div
-                key={`${index}-${line.content}`}
-                className={`grid grid-cols-[3rem_1fr] items-start border-b ${palette.rowBorder} ${palette.lineClasses[line.kind]}`}
-              >
-                <div className={`select-none border-r px-2 py-1 text-right ${palette.markerBorder} ${palette.markerClasses[line.kind]}`}>
-                  {onSelectLine && line.anchor ? <button type="button" aria-label={`Comment on ${line.anchor.side} line ${line.anchor.line}`} className="underline" onClick={() => onSelectLine(line.anchor!)}>{line.anchor.line}</button> : marker}
-                </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-1 leading-5">
-                  {line.content}
-                </pre>
-              </div>
-            )
-          })}
+          : lines.map((line, index) => line.kind === 'hunk' || line.kind === 'meta'
+            ? divider(line, index)
+            : <div key={`${index}-${line.content}`} className={`grid grid-cols-[3.25rem_1fr] items-start ${rowTint[line.kind] ?? ''}`}>
+              {gutter(line, onSelectLine && line.anchor
+                ? <button type="button" aria-label={`Comment on ${line.anchor.side} line ${line.anchor.line}`} className="hover:underline" onClick={() => onSelectLine(line.anchor!)}>{line.anchor.line}</button>
+                : line.after ?? line.before)}
+              {text(line)}
+            </div>)}
         </div>
       </div>
     </div>

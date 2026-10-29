@@ -30,3 +30,12 @@ it('aligns old and new lines side by side, hides whitespace-only changes, and ke
   expect(onSelectLine).toHaveBeenCalledWith({ side: 'before', line: 2 })
   expect(host.querySelectorAll('[aria-label="Comment on after line 1"]')).toHaveLength(1)
 })
+
+it('hides file headers and shows the unchanged lines between sections as a count', async () => {
+  const host = document.createElement('div'); document.body.append(host)
+  const twoSections = '--- a/app.ts\n+++ b/app.ts\n@@ -1,1 +1,1 @@\n-a\n+b\n@@ -10,1 +10,1 @@\n-c\n+d\n'
+  await act(async () => createRoot(host).render(<DiffRenderer content={twoSections} />))
+  expect(host.textContent).not.toContain('+++')
+  expect(host.textContent).not.toContain('@@')
+  expect(host.textContent).toContain('8 unmodified lines')
+})
