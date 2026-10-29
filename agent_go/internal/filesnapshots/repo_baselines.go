@@ -28,7 +28,10 @@ import (
 // chat's combined changes and Undo then put that baseline in the checkout's
 // folder on the "before" side, so only real edits, additions and deletions
 // show, committed or not. A checkout with no commit from before the turn (the
-// agent ran git init) keeps its files as additions, and Undo leaves it alone.
+// agent ran git init and committed) is the agent's own work: it is not
+// recorded, its files are additions and Undo treats them as usual. A new
+// checkout whose baseline cannot be read keeps its files as additions and
+// Undo leaves that folder alone.
 //
 // A checkout whose folder is gone after the turn (worktree removed, folder
 // renamed) shows no deletions: its saved files stand on both sides.
@@ -93,9 +96,13 @@ func (s Store) repoBaselines(ctx context.Context, r *Record, after map[string]st
 			continue
 		}
 		dir := after[p]
-		newRepos[p] = ""
 		base, err := startCommit(ctx, s.Root, dir, r.StartedAt, until)
-		if err != nil || base == "" {
+		if err == nil && base == "" {
+			log.Printf("[FILE_SNAPSHOT] phase=new_repo snapshot=%s repo=%q baseline=own_work", r.ID, p)
+			continue
+		}
+		newRepos[p] = ""
+		if err != nil {
 			log.Printf("[FILE_SNAPSHOT] phase=new_repo snapshot=%s repo=%q baseline=none error=%v", r.ID, p, err)
 			continue
 		}
@@ -148,8 +155,10 @@ func (s Store) repoBaselines(ctx context.Context, r *Record, after map[string]st
 // so a worktree added at a commit the agent made earlier in the same turn
 // compares against that commit. An oldest entry that is itself a commit
 // (git init, then commit) is the agent's work, not a checkout. Without such a
-// reflog (none, disabled, or older than the turn): the newest first-parent
-// commit of HEAD committed before the turn started. Read-only.
+// reflog (none, disabled, or older than the turn) the fallback is a best
+// guess by commit date: the newest first-parent commit of HEAD committed
+// before the turn started; "" means every commit is from the turn (the
+// agent's own repository). Read-only.
 func startCommit(ctx context.Context, root, dir string, started time.Time, until string) (string, error) {
 	if out, err := gitIn(ctx, root, dir, "reflog", "show", "--date=unix", "--format=%H %gd %gs", "HEAD").Output(); err == nil {
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
@@ -423,8 +432,8 @@ func (s Store) windowRepos(from, to time.Time) (Record, error) {
 }
 
 // newRepoWithoutBaseline returns the new checkout folder holding file when
-// that checkout has no commit from before the turn; Undo leaves such files
-// alone rather than emptying a checkout the agent created.
+// that checkout's baseline could not be read; Undo leaves such files alone
+// rather than deleting checked-out files the reply did not write.
 func newRepoWithoutBaseline(r Record, file string) string {
 	for p, tree := range r.NewRepos {
 		if tree == "" && strings.HasPrefix(file, p+"/") {
