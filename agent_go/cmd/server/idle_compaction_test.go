@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -46,5 +47,14 @@ func TestIdleCompactDecide(t *testing.T) {
 				t.Fatalf("got in_window=%t compact=%t reason=%s, want %t %t %s", inWindow, compact, reason, tc.inWindow, tc.compact, tc.reason)
 			}
 		})
+	}
+}
+
+// An idle compaction carries the last person request only to build the agent.
+// If it were queued, the drainer would run that request again as a real turn.
+func TestIdleCompactionTurnIsNeverQueued(t *testing.T) {
+	ctx := context.WithValue(context.Background(), idleCompactRunKey{}, &idleCompactRun{})
+	if _, _, err := (&StreamingAPI{}).enqueueConversationTurn(ctx, "user-1", "session-1", QueryRequest{Query: "last person message"}); err == nil {
+		t.Fatal("an idle compaction turn was accepted into the conversation queue")
 	}
 }
