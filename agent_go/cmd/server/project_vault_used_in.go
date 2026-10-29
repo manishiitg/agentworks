@@ -50,12 +50,9 @@ func buildUsedIn(projects []usedInProject) usedInIndex {
 
 func (u usedInIndex) forItem(kind, id string) []string {
 	out := append([]string{}, u[kind+":"+id]...)
-	if kind == "mcp" {
-		for _, name := range u["all_apps"] {
-			if !slices.Contains(out, name) {
-				out = append(out, name)
-			}
-		}
+	// An app counts for every project that uses all the person's apps; listing them all is noise, so say it once.
+	if kind == "mcp" && len(out) == 0 && len(u["all_apps"]) > 0 {
+		return []string{"All your projects (uses all your apps)"}
 	}
 	return out
 }
