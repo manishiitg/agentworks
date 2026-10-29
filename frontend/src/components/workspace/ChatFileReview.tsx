@@ -4,7 +4,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { captureChatIdentity, assertChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openChatFiles } from './chatFileNavigation'
-import { markFilesReviewed, reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type FileChange as Change } from './chatFileReview'
+import { markFilesReviewed, reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type FileChange as Change } from './chatFileReviewData'
 
 // Older replies' saved copies are cleared to save space; name the message the comparison starts from.
 const startedFrom = (message?: { text: string; at?: string }) => {

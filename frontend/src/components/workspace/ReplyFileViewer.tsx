@@ -5,7 +5,7 @@ import { captureChatIdentity, assertChatIdentityCurrent } from '../../utils/chat
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { isViewableBinaryFile } from '../../utils/openWorkspaceFile'
 import DiffRenderer, { type DiffLineAnchor } from '../ui/DiffRenderer'
-import { reviewEndpoint, type ReviewResult } from './chatFileReview'
+import { reviewEndpoint, type ReviewResult } from './chatFileReviewData'
 import type { SavedFileSelection } from './chatFileNavigation'
 
 const FileViewer = lazy(() => import('../FileContentViewer').then(module => ({ default: module.FileContentViewerBody })))

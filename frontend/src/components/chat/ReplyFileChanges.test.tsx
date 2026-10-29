@@ -37,7 +37,7 @@ vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat
 vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: () => 0, assertChatIdentityCurrent: () => undefined }))
 vi.mock('../../utils/projectIntegrationNavigation', () => ({ openProjectIntegrations: vi.fn() }))
 vi.mock('../workspace/chatFileNavigation', () => ({ openChatFiles: vi.fn() }))
-vi.mock('../workspace/chatFileReview', () => ({ markFilesReviewed: vi.fn(), useReviewRevision: () => [0] }))
+vi.mock('../workspace/chatFileReviewData', () => ({ markFilesReviewed: vi.fn(), useReviewRevision: () => [0] }))
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { openChatFiles } from '../workspace/chatFileNavigation'
 import api from '../../services/api'

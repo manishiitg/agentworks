@@ -3,7 +3,7 @@ import { FileDiff } from 'lucide-react'
 import api from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
-import { reviewEndpoint, useReviewRevision, type ReviewResult } from './chatFileReview'
+import { reviewEndpoint, useReviewRevision, type ReviewResult } from './chatFileReviewData'
 
 export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspacePath: string; sessionId: string; onOpen: () => void }) {
   const [result, setResult] = useState<ReviewResult | null>(null)

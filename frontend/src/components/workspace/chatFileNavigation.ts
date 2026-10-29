@@ -1,7 +1,7 @@
 import { useChatStore } from '../../stores/useChatStore'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
-import type { FileChange } from './chatFileReview'
+import type { FileChange } from './chatFileReviewData'
 
 export type SavedFileSelection = { reference: ReplyFileChangesRef; change: FileChange; query?: Record<string, string> }
 export const chatFilesNavigationEvent = 'agentworks:open-chat-files'
