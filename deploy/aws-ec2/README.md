@@ -38,9 +38,12 @@ After the deploy it prints the CloudFront usage report
 This server's AWS profile, stack, CloudFront distribution, public URL, branding
 and agent service file are not in this repository: they live in the private
 deployments repo under `products/<server>/` (`aws.env`, `runtime-config.js`,
-`video-studio-agent.service`, `brand/`), which `deploy.sh` reads and ships with
-each deploy. The copies of `server/runtime-config.js` and
+`video-studio-agent.service`, `brand/`, `product.env`), which `deploy.sh` reads
+and ships with each deploy. The copies of `server/runtime-config.js` and
 `rootless/video-studio-agent.service` here are neutral placeholders.
+`product.env` holds the server's layout (app, docs, state and MCP state folders,
+tool folder, unit name prefix, service account and ports). Activation itself is
+the shared `deploy/common/activate-release.sh`, the same steps every server runs.
 `AWS_REGION` and `SSH_KEY_PATH` can still be overridden in the environment.
 
 This release path connects as `video-studio`, writes only its own application

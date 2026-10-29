@@ -95,17 +95,18 @@ class WiringTest(unittest.TestCase):
         for script in ("deploy/rootless-linux/build-and-activate.sh", "deploy/aws-ec2/server/build-and-activate.sh"):
             text = (REPO / script).read_text()
             with self.subTest(script=script):
-                self.assertIn('slots_release_traversal "$REMOTE_APP" "$BUILD_DIR"', text)
-                self.assertIn("slots_selfcheck ", text)
                 self.assertIn('cp "$REPO_ROOT/deploy/common/slotcheck.sh" "$BUILD_DIR/slotcheck.sh"', text)
                 self.assertIn('cp "$REPO_ROOT/deploy/common/admission_scan.py" "$BUILD_DIR/admission_scan.py"', text)
-                # The self-test fails the deploy (after activation, so nothing is rolled back) ...
-                selfcheck = text.index("slots_selfcheck ")
-                self.assertIn("exit 1", text[selfcheck:selfcheck + 400])
-                # ... and runs after the release is switched to current.
-                self.assertGreater(selfcheck, text.index('ln -sfn'))
-                # Traversal happens before the release is activated.
-                self.assertLess(text.index("slots_release_traversal"), text.index("vault_install"))
+                self.assertIn('source "$REPO_ROOT/deploy/common/activate-release.sh"', text)
+        text = (REPO / "deploy/common/activate-release.sh").read_text()
+        self.assertIn('slots_release_traversal "$APP_ROOT" "$RELEASE_DIR"', text)
+        # The self-test fails the deploy (after activation, so nothing is rolled back) ...
+        selfcheck = text.index("slots_selfcheck ")
+        self.assertIn("return 1", text[selfcheck:selfcheck + 400])
+        # ... and runs after the release is switched to current.
+        self.assertGreater(selfcheck, text.index('ln -sfn "$RELEASE_DIR"'))
+        # Traversal happens before the release is activated.
+        self.assertLess(text.index("slots_release_traversal"), text.index("vault_install"))
 
     def test_deploy_sh_has_a_standalone_slotcheck(self):
         text = (REPO / "deploy.sh").read_text()

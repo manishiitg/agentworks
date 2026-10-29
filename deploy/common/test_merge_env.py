@@ -29,6 +29,18 @@ class MergeEnvTest(unittest.TestCase):
         out = merge("STALE=1\nA=0\nPATH=x\n", managed, set())
         self.assertIn("STALE=1", out)
 
+    def test_secrets_come_from_a_file_and_an_empty_path_is_left_alone(self):
+        # The AWS host keeps PATH in its unit files and passes its global secrets as a file, never on a command line.
+        import tempfile
+        from merge_env import main
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / ".env").write_text("PATH=/unit\nTOKEN=old\n")
+            (tmp / "secrets").write_text("TOKEN=new\n\n")
+            main([str(tmp / ".env"), str(tmp / "out"), str(tmp / "keys"), "", "--from-file", str(tmp / "secrets"), "A=1"])
+            self.assertEqual((tmp / "out").read_text(), "PATH=/unit\nTOKEN=new\nA=1\n")
+            self.assertEqual((tmp / "keys").read_text().split(), ["A", "TOKEN"])
+
     def test_a_duplicated_managed_key_is_written_once(self):
         managed = parse_entries("/bin", ["A=1"])
         out = merge("A=0\nA=9\nPATH=/bin\n", managed, set())

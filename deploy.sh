@@ -82,7 +82,8 @@ source "$REPO_ROOT/deploy/common/build-once.sh"
 # all three repositories and builds the release itself.
 # The AWS server's profile, stack, CloudFront distribution, public branding and URL are company-specific, so they live in
 # the private deployments repo: products/<name>/aws.env plus runtime-config.js, video-studio-agent.service and brand/ there.
-# This loads aws.env into the shell and sets AWS_OVERLAY_DIR to the folder holding the rest.
+# This loads aws.env into the shell and sets AWS_OVERLAY_DIR to the folder holding the rest. Its product.env (the server's
+# folders, unit names, account and ports) is read on the server by build-and-activate.sh and deploy/common/activate-release.sh.
 load_aws_server_config() {
   local dir; dir="$(deployments_dir)/products/${1:-video-studio}"
   [[ -f "$dir/aws.env" ]] || { echo "The AWS server's settings are missing: $dir/aws.env (private deployments repo; AGENTWORKS_DEPLOYMENTS_DIR)" >&2; exit 1; }
@@ -92,7 +93,7 @@ load_aws_server_config() {
 }
 deploy_rts() {
   load_aws_server_config "${AWS_PRODUCT_DIR:-video-studio}"
-  [[ -f "$AWS_OVERLAY_DIR/runtime-config.js" && -f "$AWS_OVERLAY_DIR/video-studio-agent.service" ]] || { echo "Missing runtime-config.js or video-studio-agent.service in $AWS_OVERLAY_DIR" >&2; exit 1; }
+  [[ -f "$AWS_OVERLAY_DIR/runtime-config.js" && -f "$AWS_OVERLAY_DIR/video-studio-agent.service" && -f "$AWS_OVERLAY_DIR/product.env" ]] || { echo "Missing runtime-config.js, video-studio-agent.service or product.env in $AWS_OVERLAY_DIR" >&2; exit 1; }
   local AWS_PROFILE_NAME="${AWS_PROFILE_NAME:?aws.env must set AWS_PROFILE_NAME}"
   local AWS_REGION="${AWS_REGION:-us-west-2}"
   local STACK_NAME="${STACK_NAME:?aws.env must set STACK_NAME}"
@@ -123,9 +124,10 @@ deploy_rts() {
    | jq -er 'to_entries[] | select(.key | test("^[A-Z0-9_]+$")) | select(.value | type == "string" and length > 0) | if .key == "CLAUDE_CODE_OAUTH_TOKEN" or .key == "CURSOR_API_KEY" then "\(.key)=\(.value)" else "GLOBAL_SECRET_\(.key)=\(.value)" end' > "$STAGING/globals"
   chmod 600 "$STAGING/globals"
   cp "$RTS_DIR/server/bootstrap-build.sh" "$STAGING/bootstrap-build.sh"
-  # This server's own branding, public URL and service file travel with the deploy; build-and-activate.sh prefers them.
+  # This server's own branding, public URL, service file and product.env (its layout, read by the shared activation) travel
+  # with the deploy.
   mkdir -p "$STAGING/overlay"
-  cp "$AWS_OVERLAY_DIR/runtime-config.js" "$AWS_OVERLAY_DIR/video-studio-agent.service" "$STAGING/overlay/"
+  cp "$AWS_OVERLAY_DIR/runtime-config.js" "$AWS_OVERLAY_DIR/video-studio-agent.service" "$AWS_OVERLAY_DIR/product.env" "$STAGING/overlay/"
   [[ ! -d "$AWS_OVERLAY_DIR/brand" ]] || cp -R "$AWS_OVERLAY_DIR/brand" "$STAGING/overlay/brand"
   # Make room first (PLAT-545): a full disk broke the new gateway's database on 2026-10-05. Only runs when space is short,
   # and never removes the live release, the newest one before it, or anything a running process still uses.
