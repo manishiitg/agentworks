@@ -2,15 +2,12 @@
 # Run only after stopping the local app and all workflow writers. No restart.
 set -euo pipefail
 migration_docs="" migration_state="" migration_agent="" migration_user=""
-migration_workspace_url="${WORKSPACE_API_URL:-}" migration_workspace_env=""
 while (( $# )); do
   case "$1" in
     --workspace-dir) migration_docs="${2:?missing workspace directory}" ;;
     --state-root) migration_state="${2:?missing state root}" ;;
     --agent-binary) migration_agent="${2:?missing agent binary}" ;;
     --local-user-id) migration_user="${2:?missing local user ID}" ;;
-    --workspace-api-url) migration_workspace_url="${2:?missing workspace API URL}" ;;
-    --workspace-env-file) migration_workspace_env="${2:?missing workspace environment file}" ;;
     *) echo "Use --workspace-dir DIR --state-root DIR --agent-binary FILE --local-user-id ID; stop the app first." >&2; exit 2 ;;
   esac
   shift 2
@@ -39,8 +36,4 @@ python3 "$migration_repo/scripts/migrate_workflow_builder_chats.py" --workspace-
 python3 "$migration_repo/scripts/migrate-project-schedules.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/project-schedules" --single-user --local-user-id "$migration_user"
 python3 "$migration_repo/scripts/migrate-browser-modes.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/browser-modes" --state-root "$migration_state" --deployment-mode local
 python3 "$migration_repo/scripts/repair-workflow-builder-tabs.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/workflow-builder-tabs"
-migration_reference_args=()
-if [[ -n "$migration_workspace_url" ]]; then migration_reference_args+=(--workspace-api-url "$migration_workspace_url"); fi
-if [[ -n "$migration_workspace_env" ]]; then migration_reference_args+=(--workspace-env-file "$migration_workspace_env"); fi
-python3 "$migration_repo/scripts/migrate-saved-platform-references.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/saved-platform-references" --catalog-dir "$migration_repo/agent_go/pkg/platformtools/catalog" "${migration_reference_args[@]}"
 echo "Local stopped-app migrations complete. The app has not been restarted."

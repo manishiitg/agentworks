@@ -176,43 +176,6 @@ func invocation(actions []Action, source string, args map[string]any) (string, m
 	return match.Family, input
 }
 
-// RetiredNameHint is error wording only: it names the current tool and action
-// for an old member name (run_full_workflow -> runs action=start) so an agent
-// taught the old name moves on instead of guessing. The old name stays
-// uncallable (PLAT-856-397). Empty when the name is not a retired member.
-func RetiredNameHint(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" || IsFamily(name) {
-		return ""
-	}
-	var options []string
-	for _, action := range Actions {
-		matches := action.Member == name
-		for _, alias := range action.Aliases {
-			matches = matches || alias == name
-		}
-		if !matches {
-			continue
-		}
-		option := "`" + action.Family + " action=" + action.Name
-		if action.Scope != "" {
-			option += " scope=" + action.Scope
-		}
-		option += "`"
-		known := false
-		for _, existing := range options {
-			known = known || existing == option
-		}
-		if !known {
-			options = append(options, option)
-		}
-	}
-	if len(options) == 0 {
-		return ""
-	}
-	return name + " is now " + strings.Join(options, " or ") + "."
-}
-
 func PublicName(identity string) string {
 	for _, action := range Actions {
 		if action.Source != "" && action.Source == identity {

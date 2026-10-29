@@ -21,7 +21,6 @@ func PublicName(identity string) string  { return catalog.PublicName(identity) }
 func IsDashboardMember(name string) bool { return catalog.IsDashboardMember(name) }
 func IsMember(name string) bool          { return catalog.IsMember(name) }
 func IsFamily(name string) bool          { return catalog.IsFamily(name) }
-func RetiredNameHint(name string) string { return catalog.RetiredNameHint(name) }
 func Invocation(source string, args map[string]any) (string, map[string]any) {
 	return catalog.Invocation(source, args)
 }
