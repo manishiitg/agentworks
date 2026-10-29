@@ -72,7 +72,7 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 		}
 		return value
 	}
-	call(sender, map[string]any{"action": "register", "agent_name": "sender"})
+	senderID := call(sender, map[string]any{"action": "register", "agent_name": "sender"})["agent_id"].(string)
 	root, err := os.MkdirTemp("", "aw-receipt-")
 	if err != nil {
 		t.Fatal(err)
@@ -257,7 +257,7 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	tool(map[string]any{"action": "ack", "message_id": hostedID, "delivery": "delivered"}, false)
 	oldTurn := agentMessageTurn
 	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, request map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
-		if session != hostedSession || request["agent_message_inbox"] != hostedInbox {
+		if session != hostedSession || request["agent_message_inbox"] != hostedInbox && request["agent_message_inbox"] != "inbox-different_chat" {
 			t.Errorf("reply reached another chat: session=%s inbox=%v", session, request["agent_message_inbox"])
 		}
 		return internalSessionTurnResult{}, nil
@@ -290,13 +290,13 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	for _, refusal := range []string{"agent_opened", "different_chat", "another_person", "ping_only"} {
+	for _, scenario := range []string{"agent_opened", "different_chat", "another_person", "ping_only", "not_recipient"} {
 		conversation := original
-		conversation.ID = "inbox-" + refusal
+		conversation.ID = "inbox-" + scenario
 		incoming := original.Messages[0]
-		incoming.ID = "msg-" + refusal
+		incoming.ID = "msg-" + scenario
 		conversation.Messages = []agentMessage{incoming}
-		switch refusal {
+		switch scenario {
 		case "agent_opened":
 			conversation.Endpoints[0], conversation.Endpoints[1] = conversation.Endpoints[1], conversation.Endpoints[0]
 			conversation.Messages[0].From = 1
@@ -305,7 +305,12 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 		case "another_person":
 			conversation.Endpoints[0].UserID = "other"
 		case "ping_only":
+			// Real person pings live in the target's private notification inbox.
+			conversation.ID = agentStatusConversationPrefix + attached.Attachment.AgentID
+			conversation.Endpoints = [2]agentMessageEndpoint{original.Endpoints[1], original.Endpoints[1]}
 			conversation.Messages[0].Kind = agentPingKind
+		case "not_recipient":
+			conversation.Endpoints[1].NamedAgentID = senderID
 		}
 		agentMessageMu.Lock()
 		store, e := readAgentMessageStore(ctx)
@@ -317,7 +322,18 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		tool(map[string]any{"action": "reply", "message_id": incoming.ID, "message": "Must refuse", "submission_id": refusal}, true)
+		args := map[string]any{"action": "reply", "message_id": incoming.ID, "message": "Reply", "submission_id": scenario}
+		if scenario == "different_chat" {
+			// PLAT-856-412, 23 Oct decision: "A new reply uses current inbox
+			// participation and current send/share authority."
+			response := tool(args, false)
+			var receipt map[string]any
+			if json.Unmarshal(response.Result, &receipt) != nil || receipt["inbox_id"] != conversation.ID {
+				t.Fatal("current participant's reply lost its inbox")
+			}
+		} else {
+			tool(args, true)
+		}
 	}
 	// Rotating the receiver lease makes the old MCP child's receipts fail.
 	if _, e := parent.AttachAgent(ctx, agentworksclient.AgentAttachmentOptions{AgentName: "receiver", Provider: "codex", SessionID: "replacement-session"}); e != nil {
