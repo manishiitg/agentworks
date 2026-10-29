@@ -10,6 +10,7 @@ import (
 // values and must never be logged.
 
 var myVaultScreenOperations = map[string]bool{
+	"github_status": true, "github_connect": true, "github_disconnect": true,
 	"project": true, "project_select": true, "laptops": true, "apps": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true,
 }
 

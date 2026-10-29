@@ -63,6 +63,7 @@ const manageMyVaultsDescription = "Your own Vault items: your sign-ins (MCP apps
 	"sign_in {connection_id, client_id?, client_secret?} to finish or renew sign-in in chat; " +
 	"promote_secret {name, confirm} copies a secret of this Crew, Code or workflow into your Vault server-side (you never see the value; confirm as for promote); " +
 	"set_secret {name, value, replace} stores a value the person gave you (replace=true to overwrite an existing name); the answer names the secret and never repeats the value, and you must not either; remove_secret {name}; " +
+	"github_status shows your GitHub connection. github_connect {method: gh|pat|oauth, token?} offers gh first on a single-user local installation, PAT on local or server, and optional OAuth last. gh copies your current local login into encrypted storage; later gh account changes do not change it. pat takes the token you provide. Never repeat the token. github_disconnect removes the saved connection. " +
 	"sync {connection_id}; remove_connection {connection_id}. " +
 	"A person can give you a secret value to store with set_secret, or run `agentworks secret set NAME` in their terminal, or promote an existing one."
 
@@ -81,6 +82,8 @@ func manageMyVaultsParameters() map[string]interface{} {
 			"workspace_path": str("project / project_select: the Crew or Goal folder; defaults to this chat's project. Access is rechecked."),
 			"name":           str("promote_secret / set_secret / remove_secret: the secret's name. connect with url: the custom server's name."),
 			"provider":       str("connect: the catalog server's name."),
+			"method":         str("github_connect: gh (local owner only), pat (personal access token), or oauth (browser sign-in)."),
+			"token":          str("github_connect with method=pat: the supplied personal access token. Stored encrypted; never return or repeat it."),
 			"url":            str("Verified custom MCP URL, with name instead of provider."),
 			"label":          str("connect: an account label, e.g. Notion · Engineering."),
 			"connection_id":  str("The connection's ID (c-...) from project."),
@@ -145,7 +148,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		return string(raw), err
 	}
 	if op := argString(args, "operation"); strings.HasPrefix(op, "github_") {
-		return api.githubVaultOperation(ctx, person, op)
+		return api.githubVaultOperation(ctx, person, op, args)
 	}
 	if argString(args, "operation") == "laptops" {
 		if !personVaultActive(person) {

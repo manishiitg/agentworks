@@ -659,7 +659,7 @@
     "family": "vault",
     "name": "mine_github_connect",
     "member": "manage_my_vaults__github_connect",
-    "description": "Connect your own GitHub account: returns a link to approve on GitHub, opened where you are signed in to AgentWorks. Git and gh in your Crews then act as you.",
+    "description": "Connect your own GitHub account. Choose method=gh on a single-user local installation, method=pat with token on local or server, or optional method=oauth for browser sign-in. gh saves a copy of the current login; later native account changes do not change it. Never return or repeat tokens.",
     "source": "manage_my_vaults",
     "source_action": "github_connect",
     "source_key": "operation"
@@ -668,7 +668,7 @@
     "family": "vault",
     "name": "mine_github_disconnect",
     "member": "manage_my_vaults__github_disconnect",
-    "description": "Disconnect your GitHub account: revokes it at GitHub and removes it from your Vault.",
+    "description": "Remove your saved GitHub connection from AgentWorks. Native gh logins and PATs stay unchanged; OAuth access is also revoked at GitHub when available.",
     "source": "manage_my_vaults",
     "source_action": "github_disconnect",
     "source_key": "operation"

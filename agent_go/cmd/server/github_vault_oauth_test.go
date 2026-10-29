@@ -98,7 +98,7 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 		return personalRoute(api, (*StreamingAPI).handleGitHubVault, method, path, body, user, nil)
 	}
 
-	started := call(http.MethodPost, "/api/vault/github/connect", "", "alice")
+	started := call(http.MethodPost, "/api/vault/github/connect", `{"method":"oauth"}`, "alice")
 	var start struct {
 		AuthURL string `json:"auth_url"`
 	}

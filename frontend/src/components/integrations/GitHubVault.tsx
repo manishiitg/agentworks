@@ -1,55 +1,89 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import api from '../../services/api'
 import { Button } from '../ui/Button'
 import { CompanySignInSetup } from './CompanySignInSetup'
 
-interface GitHubStatus { app_ready: boolean; connected: boolean; login?: string; next?: string; summary?: string; approval_page?: string }
+interface GitHubStatus { app_ready: boolean; connected: boolean; gh_available: boolean; source?: string; login?: string; summary?: string; approval_page?: string }
 
 const errorText = (cause: unknown, fallback: string) => {
   const data = (cause as { response?: { data?: { error?: string } | string } })?.response?.data
   return typeof data === 'string' ? data : data?.error || fallback
 }
+const sourceName = (source?: string) => source === 'gh' ? 'GitHub CLI' : source === 'pat' ? 'Personal access token' : 'Browser sign-in'
 
-/** Connect your own GitHub account: the account becomes your GITHUB_TOKEN secret, so Git work in your Crews acts as you. */
+/** Every method saves the same owner-scoped GITHUB_TOKEN used by Git work and PR status. */
 export function GitHubVaultCard() {
   const [status, setStatus] = useState<GitHubStatus | null>(null)
   const [busy, setBusy] = useState(false)
+  const [token, setToken] = useState('')
+  const tokenId = useId()
   const [message, setMessage] = useState<string | null>(null)
   const load = useCallback(async () => {
     try { setStatus((await api.get<GitHubStatus>('/api/vault/github')).data) } catch (cause) { setMessage(errorText(cause, 'Could not read your GitHub connection.')) }
   }, [])
   useEffect(() => { void load() }, [load])
-  const connect = async () => {
+  const connect = async (method: 'gh' | 'pat' | 'oauth') => {
     setBusy(true); setMessage(null)
-    try { window.location.assign((await api.post<{ auth_url: string }>('/api/vault/github/connect')).data.auth_url) } catch (cause) { setMessage(errorText(cause, 'Could not start the GitHub connection.')); setBusy(false) }
+    try {
+      const result = (await api.post<{ auth_url?: string; login?: string }>('/api/vault/github/connect', { method, ...(method === 'pat' ? { token } : {}) })).data
+      if (result.auth_url) { window.location.assign(result.auth_url); return }
+      setMessage(`Connected as ${result.login}.`)
+      await load()
+    } catch (cause) { setMessage(errorText(cause, 'Could not connect GitHub.')) } finally { setToken(''); setBusy(false) }
   }
   const disconnect = async () => {
     setBusy(true); setMessage(null)
     try {
-      const result = (await api.delete<{ revoked_at_github: boolean }>('/api/vault/github')).data
-      setMessage(result.revoked_at_github ? 'GitHub disconnected.' : 'Removed from your Vault. GitHub did not confirm it; you can also remove the app in your GitHub settings.')
+      const result = (await api.delete<{ message: string }>('/api/vault/github')).data
+      setMessage(result.message)
       await load()
     } catch (cause) { setMessage(errorText(cause, 'Could not disconnect GitHub.')) } finally { setBusy(false) }
   }
   if (!status) return message ? <p role="alert" className="text-xs text-destructive">{message}</p> : null
+  const methods = <div className="space-y-3 pt-2">
+    {status.gh_available && <div className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-border p-3">
+      <div className="min-w-0 flex-1">
+        <h4 className="text-sm font-medium">Use your GitHub CLI login</h4>
+        <p className="mt-1 text-xs text-muted-foreground">Save a copy of the account signed in with gh on this computer. Later gh account changes or logout won’t change this connection; reconnect here to update it.</p>
+      </div>
+      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void connect('gh')}>Use gh</Button>
+    </div>}
+    <form className="space-y-2 rounded-md border border-border p-3" onSubmit={event => { event.preventDefault(); void connect('pat') }}>
+      <label htmlFor={tokenId} className="block text-sm font-medium">Personal access token</label>
+      <p className="text-xs text-muted-foreground">Works on your computer or a server. Choose the repositories and permissions you need when creating the token.</p>
+      <div className="flex flex-wrap gap-2">
+        <input id={tokenId} type="password" autoComplete="off" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} placeholder="Paste a GitHub token" className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm" disabled={busy}/>
+        <Button type="submit" size="sm" disabled={busy || !token.trim()}>Connect token</Button>
+      </div>
+      <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer" className="text-xs underline">Create a token on GitHub</a>
+      <p className="text-xs text-muted-foreground">Stored encrypted. Saved tokens are never shown here.</p>
+    </form>
+    <details className="rounded-md border border-border p-3">
+      <summary className="cursor-pointer text-sm font-medium">Browser sign-in · optional</summary>
+      <div className="mt-2 space-y-2">
+        <p className="text-xs text-muted-foreground">{status.app_ready ? 'Approve access to your account on GitHub.' : 'Requires an OAuth app. You can use a personal access token without setting this up.'}</p>
+        {status.app_ready && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void connect('oauth')}>Sign in with GitHub</Button>}
+        <CompanySignInSetup provider="GitHub" />
+      </div>
+    </details>
+  </div>
   return <section aria-label="GitHub" className="space-y-2 rounded-lg border border-border p-3">
-    <div className="flex items-center justify-between gap-3">
-      <div>
-        <h3 className="text-sm font-medium">GitHub</h3>
-        <p className="text-xs text-muted-foreground">{status.connected ? `${status.summary || `Connected as ${status.login}`}. Git and pull requests in your Crews use this account.` : 'Connect your GitHub account so Git work in your Crews (clone, push, pull requests) acts as you.'}</p>
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h3 className="text-sm font-medium">GitHub{status.connected ? ` · ${status.login}` : ''}</h3>
+        <p className="text-xs text-muted-foreground">{status.connected ? `${sourceName(status.source)}. Git and pull requests in your Crews use this saved account.` : 'Connect your account for Git work and pull requests in your Crews.'}</p>
+        {status.connected && <p className="mt-1 text-xs text-muted-foreground">{status.summary}</p>}
+        {status.connected && status.source === 'gh' && <p className="mt-1 text-xs text-muted-foreground">Saved copy of your gh login. Reconnect here after switching accounts in gh.</p>}
         {status.connected && status.approval_page && <a className="text-xs underline" href={status.approval_page} target="_blank" rel="noreferrer">Open the approval page on GitHub</a>}
       </div>
-      {status.connected
-        ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>
-        : <Button size="sm" disabled={busy || !status.app_ready} onClick={() => void connect()}>Connect GitHub</Button>}
+      {status.connected && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>}
     </div>
-    {!status.app_ready && !status.connected && <p className="text-xs text-muted-foreground">{status.next}</p>}
+    {status.connected ? <details><summary className="cursor-pointer text-xs text-muted-foreground">Change connection</summary>{methods}</details> : methods}
     {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}
-    <CompanySignInSetup provider="GitHub" />
   </section>
 }
 
-/** Finishes a GitHub connection when the browser comes back from GitHub (?github_connect=...), signed in as the person who started it. */
+/** Finishes a connection as the person who started it. */
 export function GitHubConnectCompletion() {
   const [note, setNote] = useState<string | null>(null)
   useEffect(() => {

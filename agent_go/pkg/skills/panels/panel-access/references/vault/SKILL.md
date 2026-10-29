@@ -56,3 +56,16 @@ interactive Builder work only, never Goal steps, schedules or AgentWorks.
 After changing something, read the saved state and explain the result plainly.
 The panel refreshes after the turn finishes. A panel click drafts a request into
 the same owned tab; do not open another owner's tab or a hidden assistant chat.
+
+GitHub setup: read vault action=mine_github_status first. Offer the methods in
+this order: existing gh login (only when gh_available is true for this local
+owner), personal access token on local or hosted, then optional OAuth browser
+sign-in. Use mine_github_connect with method=gh, method=pat and token, or
+method=oauth. A missing OAuth app never blocks PAT. A PAT's repository
+permissions decide what works; do not require broad scopes just to connect.
+Every method saves the same personal GITHUB_TOKEN secret and selected login.
+Using gh explicitly copies its current token; later gh logout/account changes
+do not change that saved connection. Never silently fall back to another
+identity. Keep the existing Crew secret selection and owner lending rules.
+mine_github_disconnect removes the saved connection: native gh and the PAT
+itself stay unchanged; OAuth is revoked when possible. Never repeat tokens.
