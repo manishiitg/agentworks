@@ -88,7 +88,6 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const [reviewError, setReviewError] = useState('')
   const [card, setCard] = useState<ReplyCard | null>(null)
   const [checked, setChecked] = useState<ReplyCard | null>(null)
-  const [asked, setAsked] = useState('')
   const [open, setOpen] = useState<boolean | null>(null)
   const [undo, setUndo] = useState<{ plan?: UndoPlan; busy?: boolean; done?: string; error?: string } | null>(null)
   const latest = !reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId
@@ -127,15 +126,14 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       setUndo({ done: `Restored ${plural(plan.restore.length)}${plan.skipped.length ? `, left ${plural(plan.skipped.length)} alone` : ''}.` })
     } catch (cause) { setUndo({ error: errorText(cause, 'Could not undo this reply. Try again.') }) }
   }
-  const ask = async (key: string, message: string) => {
-    setReviewError(''); setAsked('')
+  const ask = async (message: string) => {
+    setReviewError('')
     try {
       const identity = captureChatIdentity()
       const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId
       if (!tabId) throw new Error('Open the original chat to ask for this.')
       assertChatIdentityCurrent(identity)
       await sendWorkspacePaneMessageToChat({ tabId, message })
-      setAsked(key)
     } catch (cause) { setReviewError(cause instanceof Error ? cause.message : 'Could not send this to the chat. Try again.') }
   }
   // PR status is a GitHub call: it loads once the card is open and never holds the header or file list.
@@ -159,7 +157,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
   const addButton = (message: string) => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message }).catch(() => setReviewError('Open the original chat to add a button.')) }
-  const run = (action: ReplyCardAction) => action.id === 'review' ? openChatFiles(reference.sessionId) : action.id === 'add_button' ? addButton(action.prompt ?? '') : void ask(action.id, action.prompt ?? '')
+  const run = (action: ReplyCardAction) => action.id === 'review' ? openChatFiles(reference.sessionId) : action.id === 'add_button' ? addButton(action.prompt ?? '') : void ask(action.prompt ?? '')
   // Phones show the card's defaults in the row and the person's own buttons under More.
   const inMore = (action: ReplyCardAction) => action.placement === 'more' || (phone && action.placement === 'row' && ownButton(action))
   const row = actions.filter(action => action.placement === 'row' && !inMore(action))
@@ -182,7 +180,6 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
           {more.length > 0 && <MoreMenu items={more} onSelect={run} />}
         </div></TooltipProvider>
       </div>
-      {asked && <p className="mt-1 text-xs text-muted-foreground">Asked in this chat.</p>}
       {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-diff-add">+{result.since_review.added}</span> <span className="text-diff-del">−{result.since_review.removed}</span></p>}
       {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
       {isOpen && <div>
