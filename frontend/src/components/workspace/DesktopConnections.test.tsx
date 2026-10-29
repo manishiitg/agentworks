@@ -36,3 +36,18 @@ it('identical project IDs open on their owning server while an offline server le
     window.electronAPI = previous
   }
 })
+
+it('a wrapper without the app-owned backend explains how to enable connections instead of silently hiding them', async () => {
+  const previous = window.electronAPI
+  window.electronAPI = { getDesktopConnection: () => null, openDesktopConnection: vi.fn() }
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<DesktopConnections><span>Local chats</span></DesktopConnections>))
+    expect(host.textContent).toContain('Local chats')
+    expect(host.textContent).toContain('desktop launcher')
+    expect(host.querySelector('form')).toBeNull()
+  } finally {
+    await act(async () => root.unmount())
+    window.electronAPI = previous
+  }
+})

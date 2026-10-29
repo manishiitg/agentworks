@@ -71,3 +71,24 @@ test('desktop bootstrap goes over fd 3 and is absent from process lists and work
     }
   } finally { child.kill(); await once(child, 'exit'); }
 });
+
+// PLAT-746-211: Vite and the agent listen on different origins in the local launcher.
+test('development window selects connections on Vite and sends proof only to its backend', async () => {
+  const origin = 'http://127.0.0.1:18743', appOrigin = 'http://127.0.0.1:51733';
+  const frame = { url: appOrigin + '/crew' }, contents = { id: 4, mainFrame: frame };
+  let beforeHeaders, getConnection, openConnection, loaded;
+  installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: (_, cb) => { beforeHeaders = cb; } } },
+    ipcMain: { on: (_, cb) => { getConnection = cb; }, handle: (_, cb) => { openConnection = cb; } },
+    getWindow: () => ({ webContents: contents, loadURL: async url => { loaded = url; } }),
+    getOrigin: () => origin, getAppOrigin: () => appOrigin, secret: 'app-proof' });
+  const event = { sender: contents, senderFrame: frame };
+  getConnection(event);
+  assert.equal(event.returnValue, 'local');
+  const request = { webContentsId: 4, frame, resourceType: 'xhr', requestHeaders: {} };
+  for (const [url, expected] of [[origin + '/api/desktop-connections', 'app-proof'], [appOrigin + '/api/desktop-connections', undefined], ['http://127.0.0.1:18744/api/desktop-connections', undefined]]) {
+    beforeHeaders({ ...request, url }, result => assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], expected));
+  }
+  beforeHeaders({ ...request, frame: { url: frame.url }, url: origin + '/api/desktop-connections' }, result => assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], undefined));
+  await openConnection(event, 'a'.repeat(32), '/crew/projects/example');
+  assert.equal(loaded, appOrigin + '/crew/projects/example');
+});

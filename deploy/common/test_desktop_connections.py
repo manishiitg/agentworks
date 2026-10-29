@@ -5,7 +5,8 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-for source in ("desktop/main.js", "desktop/preload.js"):
+subprocess.run(["bash", "-n", str(root / "agent_go/run_server_with_logging.sh")], check=True)
+for source in ("desktop/main.js", "desktop/preload.js", "desktop/lib/devAgent.js"):
     subprocess.run(["node", "--check", str(root / source)], check=True)
 subprocess.run(["node", "--test", str(root / "desktop/lib/connections.test.js")], check=True)
 # Exercise the actual server executable on the build host, through Electron's

@@ -45,7 +45,16 @@ If you are already running the frontend and workspace services via Docker Compos
     DEV_URL=http://localhost:5173 npm start
     ```
 
-In this mode, Electron skips port conflict checks and server lifecycle management, directly loading your development URL.
+In this wrapper-only mode, Electron does not own the backend, so connected servers are unavailable. The sidebar explains this.
+
+For connected-server testing with Vite, use the full local launcher:
+
+```bash
+cd agent_go
+./run_server_with_logging.sh
+```
+
+The launcher builds the backend once and starts Vite and the workspace service. Electron starts the backend through the same private credential pipe as the packaged app. The left sidebar then shows **Local** and **Connect server**. Stop the previous backend and frontend first; `--only-frontend` cannot attach this capability to a separately started backend. No Mac package is required.
 
 ## Build & Package (Distribution)
 

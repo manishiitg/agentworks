@@ -8,7 +8,9 @@ import { openAppProduct } from '../../utils/appNavigation'
 
 const local: DesktopConnection = { id: 'local', name: 'Local', server: '' }
 export function DesktopConnections({ children }: { children?: ReactNode }) {
-  return window.electronAPI?.getDesktopConnection?.() ? <ConnectedServers>{children}</ConnectedServers> : <>{children}</>
+  if (!window.electronAPI?.getDesktopConnection) return <>{children}</>
+  if (!window.electronAPI.getDesktopConnection()) return <>{children}<p className="px-3 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to use connected servers.</p></>
+  return <ConnectedServers>{children}</ConnectedServers>
 }
 function ConnectedServers({ children }: { children?: ReactNode }) {
   const active = getRawActiveWorkspaceId()

@@ -225,3 +225,29 @@ func TestDesktopConnectionProofNeverReachesChildProcesses(t *testing.T) {
 		t.Fatalf("bootstrap child: %v %s", err, output)
 	}
 }
+
+// PLAT-746-211: only the Vite origin named in the private bootstrap may use
+// saved accounts across origins; another loopback app and missing proof fail.
+func TestDesktopConnectionDevelopmentOrigin(t *testing.T) {
+	desktopTestEnvironment(t)
+	previous := desktopStartup.AppOrigin
+	desktopStartup.AppOrigin = "http://127.0.0.1:51733"
+	defer func() { desktopStartup.AppOrigin = previous }()
+	for _, item := range []struct {
+		origin, proof string
+		allowed       bool
+	}{
+		{desktopStartup.AppOrigin, "app-proof", true},
+		{"http://127.0.0.1:51734", "app-proof", false},
+		{desktopStartup.AppOrigin, "", false},
+	} {
+		request := desktopTestRequest("GET", "/api/desktop-connections", "", "owner")
+		request.Header.Set("Origin", item.origin)
+		request.Header.Set("Sec-Fetch-Site", "same-site")
+		request.Header.Set("X-AgentWorks-Desktop", item.proof)
+		response := httptest.NewRecorder()
+		if desktopConnectionGate(response, request) != item.allowed {
+			t.Fatal("development origin/proof boundary failed")
+		}
+	}
+}

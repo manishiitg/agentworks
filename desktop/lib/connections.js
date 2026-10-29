@@ -5,9 +5,9 @@ function isAppFrame(frame, contents, origin) {
   catch { return false; }
 }
 
-function connectionRequest(details, contents, origin) {
+function connectionRequest(details, contents, origin, appOrigin = origin) {
   if (!contents || details.webContentsId !== contents.id ||
-      !['xhr', 'fetch'].includes(details.resourceType) || !isAppFrame(details.frame, contents, origin)) return false;
+      !['xhr', 'fetch'].includes(details.resourceType) || !isAppFrame(details.frame, contents, appOrigin)) return false;
   try {
     const url = new URL(details.url);
     return url.origin === origin && (url.pathname === '/api/desktop-connections' ||
@@ -15,29 +15,29 @@ function connectionRequest(details, contents, origin) {
   } catch { return false; }
 }
 
-function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, secret }) {
+function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, getAppOrigin = getOrigin, secret }) {
   let connection = 'local';
-  session.webRequest.onBeforeSendHeaders({ urls: ['http://127.0.0.1/*'] }, (details, done) => {
+  session.webRequest.onBeforeSendHeaders({ urls: ['http://127.0.0.1/*', 'http://localhost/*'] }, (details, done) => {
     const origin = getOrigin();
     const headers = { ...details.requestHeaders };
     // Never accept a renderer-supplied version, even in a subframe.
     for (const key of Object.keys(headers)) if (key.toLowerCase() === 'x-agentworks-desktop') delete headers[key];
-    if (connectionRequest(details, getWindow()?.webContents, origin)) headers['X-AgentWorks-Desktop'] = secret;
+    if (connectionRequest(details, getWindow()?.webContents, origin, getAppOrigin())) headers['X-AgentWorks-Desktop'] = secret;
     done({ requestHeaders: headers });
   });
   ipcMain.on('get-desktop-connection', event => {
     const origin = getOrigin();
-    event.returnValue = event.sender === getWindow()?.webContents && isAppFrame(event.senderFrame, event.sender, origin) ? connection : null;
+    event.returnValue = origin && event.sender === getWindow()?.webContents && isAppFrame(event.senderFrame, event.sender, getAppOrigin()) ? connection : null;
   });
   ipcMain.handle('open-desktop-connection', async (event, id, route) => {
     const origin = getOrigin();
-    if (event.sender !== getWindow()?.webContents || !isAppFrame(event.senderFrame, event.sender, origin)) throw new Error('Use the main app window.');
+    if (!origin || event.sender !== getWindow()?.webContents || !isAppFrame(event.senderFrame, event.sender, getAppOrigin())) throw new Error('Use the main app window.');
     if (id !== 'local' && !/^[a-f0-9]{32}$/.test(id)) throw new Error('Unknown connection.');
     if (typeof route !== 'string' || !/^\/(?:crew(?:\/projects\/[a-zA-Z0-9_-]+)?|workflows(?:\/[a-zA-Z0-9_-]+)?|goals|home)$/.test(route)) throw new Error('Unknown project.');
     connection = id;
     // Reopening discards per-server singleton caches and event readers. Work
     // continues on its server. The connection never comes from an app URL.
-    await getWindow().loadURL(origin + route);
+    await getWindow().loadURL(getAppOrigin() + route);
   });
 }
 // Neither child starts with signing credentials or app proof in its environment.

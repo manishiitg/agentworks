@@ -34,6 +34,7 @@ type desktopBootstrap struct {
 	Secret     string `json:"secret"`
 	Host       string `json:"host"`
 	AuthSecret string `json:"auth_secret"`
+	AppOrigin  string `json:"app_origin"`
 }
 
 func consumeDesktopBootstrap() desktopBootstrap {
@@ -49,6 +50,12 @@ func consumeDesktopBootstrap() desktopBootstrap {
 	var value desktopBootstrap
 	if json.NewDecoder(io.LimitReader(pipe, 16384)).Decode(&value) != nil || value.Secret == "" || value.Host == "" || ValidateAuthSecretValue(value.AuthSecret) != nil {
 		panic("Invalid desktop bootstrap")
+	}
+	if value.AppOrigin != "" {
+		origin, err := url.Parse(value.AppOrigin)
+		if err != nil || origin.Scheme != "http" || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || origin.Path != "" || (origin.Hostname() != "127.0.0.1" && origin.Hostname() != "localhost" && origin.Hostname() != "::1") {
+			panic("Invalid desktop app origin")
+		}
 	}
 	value.AuthSecret = strings.TrimSpace(value.AuthSecret)
 	return value
@@ -85,11 +92,15 @@ func desktopConnectionGate(w http.ResponseWriter, r *http.Request) bool {
 		http.Error(w, `{"error":"Open this connection in the Mac app."}`, http.StatusForbidden)
 		return false
 	}
-	if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+host {
+	appOrigin := desktopStartup.AppOrigin
+	if appOrigin == "" {
+		appOrigin = "http://" + host
+	}
+	if origin := r.Header.Get("Origin"); origin != "" && origin != appOrigin {
 		http.Error(w, `{"error":"Use the app window."}`, http.StatusForbidden)
 		return false
 	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" && r.Header.Get("Origin") != appOrigin {
 		http.Error(w, `{"error":"Use the app window."}`, http.StatusForbidden)
 		return false
 	}
