@@ -78,7 +78,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
-                        Daily costs
+                        Daily usage
                       </h3>
 
                     </div>
@@ -89,7 +89,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                       <thead>
                         <tr className="text-muted-foreground border-b border-border pb-2">
                           <th className="text-left font-medium pb-2">Date (UTC)</th>
-                          <th className="text-right font-medium pb-2">Activity</th>
+                          <th className="text-right font-medium pb-2">Tokens</th>
                           <th className="text-right font-medium pb-2">Cost</th>
                         </tr>
                       </thead>
@@ -117,16 +117,24 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                     aria-label={`${isExpanded ? 'Hide' : 'Show'} daily activity details for ${entry.date}`}
                                   >
                                     {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-                                    {entry.date}
+                                    <span>
+                                      <span className="block">{entry.date}</span>
+                                      <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
+                                        {Object.keys(dayUsage?.by_conversation || {}).length > 0
+                                          ? `${Object.keys(dayUsage?.by_conversation || {}).length} ${Object.keys(dayUsage?.by_conversation || {}).length === 1 ? 'chat' : 'chats'}`
+                                          : entry.runCount > 0 ? `${entry.runCount} ${entry.runCount === 1 ? 'run' : 'runs'}` : ''}
+                                        {entry.llmDurationMS > 0 && ` · ${formatDuration(entry.llmDurationMS)} AI time`}
+                                      </span>
+                                    </span>
                                   </button>
                                 </td>
-                                <td className="py-2 text-right text-muted-foreground">
-                                  {Object.keys(dayUsage?.by_conversation || {}).length > 0
-                                    ? `${Object.keys(dayUsage?.by_conversation || {}).length} chats`
-                                    : entry.runCount > 0 ? `${entry.runCount} runs` : '—'}
-                                  {entry.llmDurationMS > 0 && <span className="mt-0.5 block text-[10px]">{formatDuration(entry.llmDurationMS)} AI time</span>}
+                                <td className="py-2 text-right font-medium tabular-nums text-foreground">
+                                  {entry.totalInputTokens === undefined || entry.totalOutputTokens === undefined ? '—' : formatTokens(entry.totalInputTokens + entry.totalOutputTokens)}
                                 </td>
-                                <td className="py-2 text-right font-semibold tabular-nums text-foreground" title={formatUSD(entry.totalCost)}>{entry.totalCost === 0 && (dayUsage?.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatCost(entry.totalCost)}</td>
+                                <td className="py-2 text-right font-medium tabular-nums text-muted-foreground" title={formatUSD(entry.totalCost)}>
+                                  {entry.totalCost === 0 && (dayUsage?.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatCost(entry.totalCost)}
+                                  {((dayUsage?.token_estimate_cost_usd ?? 0) > 0 || (dayUsage?.subscription_shadow_cost_usd ?? 0) > 0) && <span className="mt-0.5 block text-[10px]">Estimated</span>}
+                                </td>
                               </tr>
                               {isExpanded && (
                                 <tr className="bg-muted/20">

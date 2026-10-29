@@ -24,16 +24,21 @@ export function CostsOverview({ scopedCosts, overallSummary, aggregateSummary, p
   if (!overallSummary) return null
   const usage = { ...scopedCosts?.total, total_cost_usd: overallSummary.totalCost }
   return <section aria-label="Cost summary" className="min-w-0 rounded-lg border border-border bg-card p-4">
-    <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex flex-wrap items-start justify-between gap-5">
       <div>
-        <p className="text-xs text-muted-foreground">Total recorded cost · USD</p>
-        <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums text-foreground" title={formatUSD(overallSummary.totalCost)}>
-          {costAmountLabel(usage, formatCost)}
+        <p className="text-xs text-muted-foreground">Recorded tokens</p>
+        <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums text-foreground" title={(overallSummary.totalInputTokens + overallSummary.totalOutputTokens).toLocaleString()}>
+          {formatTokens(overallSummary.totalInputTokens + overallSummary.totalOutputTokens)}
         </p>
+        <p className="mt-2 text-xs text-muted-foreground">{formatTokens(overallSummary.totalInputTokens)} input · {formatTokens(overallSummary.totalOutputTokens)} output</p>
       </div>
-      {scopedCosts && <CostPricingNotice usage={scopedCosts.total} />}
+      <div className="space-y-1 text-left sm:text-right">
+        <p className="text-xs text-muted-foreground">Cost · USD</p>
+        <p className="text-lg font-medium tabular-nums text-foreground" title={formatUSD(overallSummary.totalCost)}>{costAmountLabel(usage, formatCost)}</p>
+        {scopedCosts && <CostPricingNotice usage={scopedCosts.total} />}
+      </div>
     </div>
-    <p className="mt-2 text-xs text-muted-foreground">For the activity recorded below.</p>
+    <p className="mt-3 text-xs text-muted-foreground">Across the activity recorded below.</p>
     <details className="mt-3 border-t border-border pt-3 text-xs">
       <summary className="w-fit cursor-pointer font-medium text-muted-foreground hover:text-foreground">Usage details</summary>
       <div className="mt-3 space-y-3">
@@ -53,7 +58,7 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({ startedAt, loading, loadAllCo
     <WorkspaceViewHeader
       bare
       icon={DollarSign}
-      title="Cost Analysis"
+      title="Usage & cost"
       context={startedAt ? <span className="text-xs font-normal text-muted-foreground">{formatStartedAt(startedAt)}</span> : undefined}
       actions={<>
         {headerAction}

@@ -11,12 +11,15 @@ describe('CostsHeader', () => {
     const html = renderToStaticMarkup(<CostsHeader loading={false} loadAllCosts={async () => {}} headerAction={<button data-testid="ask-ai">Ask AI</button>} />)
     expect(html).toContain('shrink-0')
     expect(html).toMatch(/^<div class="min-w-0 shrink-0">/)
-    expect(html).not.toContain('Total recorded cost')
+    expect(html).not.toContain('Recorded tokens')
     expect(html).toContain('data-testid="ask-ai"')
   })
 
   it('keeps exact costs and token accounting in closed details below the readable total', () => {
     const html = renderToStaticMarkup(<CostsOverview overallSummary={totals} scopedCosts={null} aggregateSummary={null} phaseCostSummary={null} />)
+    expect(html).toContain('Recorded tokens')
+    expect(html).toContain('1.0K')
+    expect(html.indexOf('Recorded tokens')).toBeLessThan(html.indexOf('Cost · USD'))
     expect(html).toContain('$245.62')
     expect(html).toContain('Exact recorded cost: $245.6234')
     expect(html).toContain('Usage details')
