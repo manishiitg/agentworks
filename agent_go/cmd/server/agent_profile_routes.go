@@ -25,6 +25,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
 
 const maxAgentProfileRequestBytes = 2 << 20
@@ -1034,6 +1035,16 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err := constrainProductChatModel(ctx, &query); err != nil {
 		return QueryRequest{}, err
 	}
+	// "1M context" in the tab's model menu (PLAT-872-71): the same model with its 1M window. A model
+	// change makes bindRuntimeConfiguration below relaunch the CLI, which resumes the same conversation.
+	if own.Context1M && strings.EqualFold(strings.TrimSpace(query.Provider), "claude-code") {
+		query.ModelID = claudecode.With1MContext(query.ModelID)
+		if query.LLMConfig != nil {
+			configCopy := *query.LLMConfig
+			configCopy.Primary.ModelID = query.ModelID
+			query.LLMConfig = &configCopy
+		}
+	}
 	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
 	// A chat has one account, and only the person's choice in Models changes it (owner, 2026-10-07).
 	// When neither the request nor the chat names one for this provider (a new chat, or the first
@@ -1059,6 +1070,8 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if accountChanged {
 		log.Printf("[PRODUCT_CHAT] account change for conversation %q: %s -> %s (same chat, CLI restarts on the new account)", conversation.ConversationKey, canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID), canonicalProviderConnectionID(query.Provider, query.ConnectionID))
 	}
+	// "Fresh chat" waits for a running turn to end: a message queued behind it would resume the old conversation.
+	fresh := conversation.FreshNative && !(runningServerAPI != nil && runningServerAPI.conversationTurnOccupied(conversation.SessionID))
 	target, found, err := resolveProductResumeTarget(userID, conversation)
 	if err != nil {
 		return QueryRequest{}, fmt.Errorf("resolve saved conversation: %w", err)
@@ -1068,7 +1081,18 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 			// Keep the visible history; start a fresh CLI session on the new account.
 			target.Runtime = nil
 		}
+		if fresh && target != nil {
+			// "Fresh chat" (PLAT-872-71): same as an account change. The visible history stays and the new
+			// native conversation starts from the continuity notice (recent turns and the archive path).
+			target.Runtime = nil
+			log.Printf("[CHAT_CONTEXT] fresh native conversation for %q session=%s", conversation.ConversationKey, conversation.SessionID)
+		}
 		query.resolvedResumeTarget = target
+	}
+	if fresh {
+		if err := defaultProductConversationRegistryStore().setFreshNative(ctx, userID, profile.ID, conversation.ConversationKey, false); err != nil {
+			return QueryRequest{}, err
+		}
 	}
 	if strings.TrimSpace(query.Provider) != "" {
 		skillFilesDigest := conversation.SkillFilesDigest
@@ -1083,6 +1107,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		if err != nil {
 			return QueryRequest{}, err
 		}
+		restart = restart || fresh // the retained CLI holds the old conversation
 		// A previous attempt may already have persisted the new selection while
 		// leaving the old durable session alive. Check the actual retained runtime
 		// too, so retrying that selection cannot deliver to the old model.

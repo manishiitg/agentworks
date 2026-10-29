@@ -77,7 +77,7 @@ func TestIdleCompactionPhaseIsNotRunning(t *testing.T) {
 	defer es.Stop()
 	es.EnableTurnPhase()
 	const session = "idle-compaction-phase"
-	es.BeginIdleCompaction(session)
+	es.BeginIdleCompaction(session, false)
 	add(es, session, "llm_generation_start", &mcpevents.LLMGenerationStartEvent{ModelID: "codex"})
 	add(es, session, "llm_generation_end", &mcpevents.LLMGenerationEndEvent{})
 	es.EndIdleCompaction(session)

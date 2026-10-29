@@ -40,6 +40,7 @@ func TestIdleCompactDecide(t *testing.T) {
 		{"provider without a native trigger", ready(func(c *idleCompactCandidate) { c.Supported = false }), true, false, "unsupported"},
 		{"owner at token limit", ready(func(c *idleCompactCandidate) { c.LimitReached = true }), true, false, "limit"},
 		{"project turned it off (PLAT-872-71)", ready(func(c *idleCompactCandidate) { c.Disabled = true }), true, false, "disabled"},
+		{"tab owner turned it off in the model menu (PLAT-872-71)", ready(func(c *idleCompactCandidate) { c.TabOff = true }), true, false, "disabled"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

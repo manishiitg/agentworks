@@ -11,6 +11,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
 
 // Allowed models per provider account (the decisions log, 2026-10-03).
@@ -141,7 +142,12 @@ func personAccountAllowedModels(person, provider string) []string {
 // modelAllowed reports whether model may run on an account whose list is
 // allowed. An empty list admits every model.
 func modelAllowed(allowed []string, model string) bool {
-	return len(allowed) == 0 || containsFold(allowed, strings.TrimSpace(model))
+	if len(allowed) == 0 || containsFold(allowed, strings.TrimSpace(model)) {
+		return true
+	}
+	// A chat's "1M context" runs an allowed Claude model with its larger window (PLAT-872-71).
+	base, oneM := claudecode.Strip1MContext(model)
+	return oneM && containsFold(allowed, strings.TrimSpace(base))
 }
 
 func disallowedModelError(model, accountName string, allowed []string) error {

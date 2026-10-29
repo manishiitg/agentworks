@@ -263,6 +263,19 @@ export interface AgentProfileChatModel {
   display_label?: string
 }
 
+/** One chat's context and its context options (PLAT-872-71). Absent switches are not offered for this chat. */
+export interface ChatContextView {
+  session_id: string
+  used_tokens?: number
+  window_tokens?: number
+  limits?: { label: string; used_percent: number; resets_at?: string }[]
+  context_1m?: { on: boolean }
+  idle_compaction?: { on: boolean }
+  idle_compaction_hint?: string
+  can_compact: boolean
+  can_fresh: boolean
+}
+
 /** Effective caller-owned runtime resolved by the server for one chat. */
 export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
   provider: string

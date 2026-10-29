@@ -146,13 +146,10 @@
     "family": "models",
     "name": "set",
     "member": "__crew_model_set",
-    "description": "Change this chat’s model for its next message.",
+    "description": "Change this chat’s model, 1M context or Auto-compact when idle, for its next message.",
     "source": "manage_crew_model",
     "source_action": "set",
     "scope": "tab",
-    "required": [
-      "engine"
-    ],
     "external_members": "set_tab_model",
     "aliases": [
       "set_tab_model"

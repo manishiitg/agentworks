@@ -59,8 +59,11 @@ type ProductConversationRecord struct {
 	// process. bindRuntime compares against these to know when the caller
 	// must close the tmux session so the next turn relaunches with the new
 	// flags.
-	ModelID              string   `json:"model_id,omitempty"`
-	ReasoningEffort      string   `json:"reasoning_effort,omitempty"`
+	ModelID         string `json:"model_id,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	// FreshNative starts the next turn in a new native conversation (the tab's "Fresh chat", PLAT-872-71). The
+	// visible history stays; the new conversation gets the usual continuity notice with the recent turns.
+	FreshNative          bool     `json:"fresh_native,omitempty"`
 	EnabledServers       []string `json:"enabled_servers,omitempty"`
 	SelectedSkills       []string `json:"selected_skills,omitempty"`
 	SkillFilesDigest     string   `json:"skill_files_digest,omitempty"`
@@ -105,6 +108,10 @@ type ProductAgentIdentity struct {
 	Engine          string `json:"engine,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	// Context1M runs this chat's Claude Opus/Sonnet model with its 1M-token window (PLAT-872-71).
+	Context1M bool `json:"context_1m,omitempty"`
+	// IdleCompactionOff stops the idle sweep from compacting this chat; it is on unless the person turned it off.
+	IdleCompactionOff bool `json:"idle_compaction_off,omitempty"`
 }
 
 const (
@@ -215,6 +222,64 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 	}
 	log.Printf("[AGENT_MODEL] %s set chat %s to engine=%q model=%q effort=%q connection_id=%q", identity.UpdatedBy, entryKey, identity.Engine, identity.ModelID, identity.ReasoningEffort, identity.ConnectionID)
 	return identity, nil
+}
+
+// setChatContextOptions saves a chat's context choices (nil keeps a choice) and logs the change with its actor.
+func (store productConversationRegistryStore) setChatContextOptions(ctx context.Context, userID, profileID, conversationKey string, context1M, idleCompaction *bool, actor string) (ProductAgentIdentity, error) {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
+	if _, ok := document.Entries[entryKey]; !ok {
+		return ProductAgentIdentity{}, fmt.Errorf("that chat no longer exists")
+	}
+	if document.Agents == nil {
+		document.Agents = map[string]ProductAgentIdentity{}
+	}
+	identity := document.Agents[entryKey]
+	if context1M != nil {
+		identity.Context1M = *context1M
+	}
+	if idleCompaction != nil {
+		identity.IdleCompactionOff = !*idleCompaction
+	}
+	identity.UpdatedBy = strings.TrimSpace(actor)
+	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	document.Agents[entryKey] = identity
+	document.Version = productConversationRegistryVersion
+	if err := store.writeDocument(ctx, path, document); err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	log.Printf("[CHAT_CONTEXT] %s set chat %s context_1m=%t idle_compaction=%t", identity.UpdatedBy, entryKey, identity.Context1M, !identity.IdleCompactionOff)
+	return identity, nil
+}
+
+// setFreshNative marks (or clears) a chat's next turn to start a new native conversation.
+func (store productConversationRegistryStore) setFreshNative(ctx context.Context, userID, profileID, conversationKey string, fresh bool) error {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return err
+	}
+	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
+	record, ok := document.Entries[entryKey]
+	if !ok {
+		return fmt.Errorf("that chat no longer exists")
+	}
+	if record.FreshNative == fresh {
+		return nil
+	}
+	record.FreshNative = fresh
+	document.Entries[entryKey] = record
+	return store.writeDocument(ctx, path, document)
 }
 
 // setSideChatOrder saves the order of one project's side tabs as the person arranged them: conversationKeys come
