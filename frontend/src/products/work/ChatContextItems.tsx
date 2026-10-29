@@ -4,6 +4,7 @@ import { Check, Layers, RotateCcw } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { ChatContextView } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
+import { useChatPreferences } from '../../hooks/useChatPreferences'
 
 export const menuRowClass = 'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
 export const menuLabelClass = 'px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground'
@@ -27,9 +28,14 @@ export function chatLimitsText(limits: ChatContextView['limits']): string {
   return parts.join(' · ') + when
 }
 
-/** Sent when the menu changes a chat's context, so the status bar under the composer shows the server's new view. */
+/** "5h 4% · 7d 85%": the plan use without reset times, for the chip in the chat box. */
+export function chatLimitsShort(limits: ChatContextView['limits']): string {
+  return (limits ?? []).map(limit => `${limit.label} ${Math.round(limit.used_percent)}%`).join(' · ')
+}
+
+/** Sent when the menu changes a chat's context, so the chip in the chat box shows the server's new view. */
 export const chatContextChangedEvent = 'agentworks:chat-context-changed'
-/** Sent by the status bar under the composer to open that chat's model menu. */
+/** Sent by the chip in the chat box to open that chat's model menu. */
 export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 
 /**
@@ -40,6 +46,7 @@ export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 export default function ChatContextItems({ sessionId, modelLabel }: { sessionId: string; modelLabel?: string }) {
   const [view, setView] = useState<ChatContextView | null>(null)
   const [busy, setBusy] = useState(false)
+  const preferences = useChatPreferences()
 
   useEffect(() => {
     let cancelled = false
@@ -95,5 +102,11 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
     {view.can_fresh && <Menu.Item className={menuRowClass} disabled={busy} onSelect={() => void send({ action: 'fresh' })}>
       <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Fresh chat
     </Menu.Item>}
+    {/* The person's own display choice, saved on the server for all their chats and devices; off until turned on. */}
+    <Menu.CheckboxItem className={menuRowClass} checked={preferences.showContextIndicator} disabled={!preferences.ready || preferences.save.isPending} onSelect={keepOpen}
+      onCheckedChange={checked => preferences.save.mutate(checked === true, { onError: () => useChatStore.getState().addToast('Could not save that. Try again in a moment.', 'error') })}>
+      <span className="min-w-0 flex-1">Show in chat box</span>
+      <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
+    </Menu.CheckboxItem>
   </>
 }

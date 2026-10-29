@@ -76,13 +76,16 @@ type Status struct {
 	// StatusMeta carries raw provider statusline extras that don't have a
 	// first-class field (context window, git branch, rate limits, …) so the UI
 	// can surface them without the store needing to know each provider's schema.
-	StatusMeta                map[string]interface{} `json:"status_meta,omitempty"`
-	DurationMs                int64                  `json:"duration_ms,omitempty"`
-	PreValidationStatus       string                 `json:"pre_validation_status,omitempty"`
-	PreValidationSummary      string                 `json:"pre_validation_summary,omitempty"`
-	PreValidationPassedChecks int                    `json:"pre_validation_passed_checks,omitempty"`
-	PreValidationFailedChecks int                    `json:"pre_validation_failed_checks,omitempty"`
-	PreValidationTotalChecks  int                    `json:"pre_validation_total_checks,omitempty"`
+	StatusMeta map[string]interface{} `json:"status_meta,omitempty"`
+	// StatusMetaProvider is the provider that reported StatusMeta ("claudecode", "codex-cli"), so a chat that
+	// switched provider never shows the previous provider's context or plan windows as its own.
+	StatusMetaProvider        string `json:"status_meta_provider,omitempty"`
+	DurationMs                int64  `json:"duration_ms,omitempty"`
+	PreValidationStatus       string `json:"pre_validation_status,omitempty"`
+	PreValidationSummary      string `json:"pre_validation_summary,omitempty"`
+	PreValidationPassedChecks int    `json:"pre_validation_passed_checks,omitempty"`
+	PreValidationFailedChecks int    `json:"pre_validation_failed_checks,omitempty"`
+	PreValidationTotalChecks  int    `json:"pre_validation_total_checks,omitempty"`
 	// RateLimited is set when the rendered pane content matches any
 	// known provider rate-limit / quota-exhausted message (see
 	// rate_limit.go). The terminal stays "running" from the store's
@@ -408,17 +411,18 @@ func (s *Store) ListRaw(sessionID string) []Snapshot {
 }
 
 // MainAgentStatusMeta returns the status meta (context use, plan windows) of the session's
-// newest main-agent terminal that reported any, with that terminal's tmux session.
-func (s *Store) MainAgentStatusMeta(sessionID string) (map[string]interface{}, string, bool) {
+// newest main-agent terminal that reported any, with that terminal's tmux session and the provider
+// that reported the meta ("" when unknown).
+func (s *Store) MainAgentStatusMeta(sessionID string) (meta map[string]interface{}, tmux string, provider string, ok bool) {
 	if strings.TrimSpace(sessionID) == "" {
-		return nil, "", false
+		return nil, "", "", false
 	}
 	for _, snapshot := range s.ListRaw(sessionID) {
 		if currentTerminalIsMainAgent(snapshot) && len(snapshot.Status.StatusMeta) > 0 {
-			return snapshot.Status.StatusMeta, snapshot.TmuxSession, true
+			return snapshot.Status.StatusMeta, snapshot.TmuxSession, snapshot.Status.StatusMetaProvider, true
 		}
 	}
-	return nil, "", false
+	return nil, "", "", false
 }
 
 // SessionHasBusyCodingTmux reports whether the session has a coding-agent tmux
@@ -2462,6 +2466,7 @@ func preserveEphemeralStatusFields(status *Status, previous Status) {
 	}
 	if status.StatusMeta == nil {
 		status.StatusMeta = previous.StatusMeta
+		status.StatusMetaProvider = previous.StatusMetaProvider
 	}
 	// Keep the previous ProviderLabel when the freshly-derived one is empty, or
 	// when the previous one carries a model detail (the "provider · model" form
@@ -3251,6 +3256,7 @@ func (s *Store) handleStatusLine(sessionID string, event storeevents.Event) {
 		snapshot.Status.ProviderLabel = providerLabel
 		if statusMeta != nil {
 			snapshot.Status.StatusMeta = statusMeta
+			snapshot.Status.StatusMetaProvider = provider
 		}
 		snapshot.UpdatedAt = now
 		s.byID[terminalID] = snapshot
@@ -3298,6 +3304,7 @@ func (s *Store) handleStatusLine(sessionID string, event storeevents.Event) {
 			CostUSD:                  costUSD,
 			ProviderLabel:            providerLabel,
 			StatusMeta:               statusMeta,
+			StatusMetaProvider:       provider,
 		},
 		CreatedAt: now,
 		UpdatedAt: now,

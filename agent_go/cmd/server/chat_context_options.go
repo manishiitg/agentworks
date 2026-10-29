@@ -15,6 +15,7 @@ import (
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
 // Context options of one chat tab (PLAT-872-71), shown in the composer's model menu and offered to the chat's
@@ -98,17 +99,52 @@ func chatContextRuntime(owner string, tab chatContextTab) (provider, model, tran
 	return provider, model, transport, hasHandle
 }
 
+// chatProviderKey reduces the names one provider goes by ("claude-code", "claudecode", "codex-cli") to one key,
+// so usage is matched to the provider that reported it.
+func chatProviderKey(provider string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(provider) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	key := b.String()
+	for _, suffix := range []string{"cli", "code"} {
+		key = strings.TrimSuffix(key, suffix)
+	}
+	return key
+}
+
+func sameChatProvider(a, b string) bool {
+	return chatProviderKey(a) != "" && chatProviderKey(a) == chatProviderKey(b)
+}
+
+// chatTmuxProvider is the provider a coding CLI's tmux session belongs to ("mlp-claude-code-…"); "" when unknown.
+func chatTmuxProvider(tmux string) string {
+	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli", "pi-cli", "muse-cli", "agy-cli", "gemini-cli"} {
+		if strings.HasPrefix(tmux, "mlp-"+provider+"-") {
+			return provider
+		}
+	}
+	return ""
+}
+
 // chatContextUsage is the chat's context at its last model call and, for its owner, the plan windows of its
 // account: from the native transcript reader (Codex, Pi), else from the chat's main coding terminal (the CLI's
 // statusline and stream usage, Claude). A window the CLI did not report comes from the model's metadata.
+// Only figures reported by this provider count: after a switch, the previous provider's numbers stay hidden
+// until the new one reports its own.
 func (api *StreamingAPI) chatContextUsage(sessionID, provider, model string, withLimits bool) (used, window int, limits []chatUsageLimit) {
 	api.nativeCostsMu.Lock()
 	a := api.nativeCosts[sessionID]
 	api.nativeCostsMu.Unlock()
 	if a != nil {
 		a.mu.Lock()
-		usage := a.usage
+		usage, source := a.usage, a.state.Provider
 		a.mu.Unlock()
+		if !sameChatProvider(source, provider) {
+			usage = nativeusage.PrivateUsage{}
+		}
 		used, window = int(usage.ContextUsed), int(usage.ContextWindow)
 		if withLimits {
 			for _, limit := range usage.Limits {
@@ -125,12 +161,14 @@ func (api *StreamingAPI) chatContextUsage(sessionID, provider, model string, wit
 		}
 	}
 	if api.terminalStore != nil && (used == 0 || (withLimits && len(limits) == 0)) {
-		if meta, tmux, ok := api.terminalStore.MainAgentStatusMeta(sessionID); ok {
+		if meta, tmux, source, ok := api.terminalStore.MainAgentStatusMeta(sessionID); ok {
 			merged := map[string]interface{}{}
-			for key, value := range meta {
-				merged[key] = value
+			if sameChatProvider(source, provider) {
+				for key, value := range meta {
+					merged[key] = value
+				}
 			}
-			if tmux != "" {
+			if tmux != "" && sameChatProvider(chatTmuxProvider(tmux), provider) {
 				for key, value := range cachedTerminalCLIUsage(tmux, time.Now()).meta {
 					merged[key] = value
 				}
@@ -192,14 +230,37 @@ func productChatTab(tab chatContextTab) bool {
 	return limitsSideChats(tab.ProfileID)
 }
 
+// chatEngineProvider is the provider of a chat's own engine choice on the Crew's Models page.
+func (api *StreamingAPI) chatEngineProvider(owner, profileID, engine string) string {
+	if api.agentProfiles != nil {
+		if profile, err := api.agentProfiles.Resolve(profileID, 0, owner); err == nil {
+			if option, ok := findProviderOptionByID(profile.Runtime.ProviderOptions, engine); ok && strings.TrimSpace(option.Provider) != "" {
+				return strings.TrimSpace(option.Provider)
+			}
+		}
+	}
+	return strings.TrimSpace(engine) // the product's engine ids are its provider ids
+}
+
 func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) chatContextView {
 	sessionID := tab.Record.SessionID
 	provider, model, transport, _ := chatContextRuntime(owner, tab)
+	// A provider or account chosen for the next message but not run yet has reported nothing: show no usage
+	// rather than the previous provider's or account's.
+	switched := false
 	if own := tab.Identity; own.Engine != "" && own.ModelID != "" {
 		model = own.ModelID // chosen for the next message, before it ran
+		if chosen := api.chatEngineProvider(owner, tab.ProfileID, own.Engine); !sameChatProvider(chosen, provider) {
+			provider, switched = chosen, true
+		}
+		if own.ConnectionID != "" && strings.TrimSpace(tab.Record.ConnectionID) != "" && own.ConnectionID != strings.TrimSpace(tab.Record.ConnectionID) {
+			switched = true
+		}
 	}
 	view := chatContextView{SessionID: sessionID}
-	view.UsedTokens, view.WindowTokens, view.Limits = api.chatContextUsage(sessionID, provider, model, true)
+	if !switched {
+		view.UsedTokens, view.WindowTokens, view.Limits = api.chatContextUsage(sessionID, provider, model, true)
+	}
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(provider)), transport) {
 		view.IdleCompaction = &chatContextSwitch{On: !tab.Identity.IdleCompactionOff}
 		view.Hint = chatContextIdleHint

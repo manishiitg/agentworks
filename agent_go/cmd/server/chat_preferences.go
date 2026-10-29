@@ -53,7 +53,7 @@ func (api *StreamingAPI) handleChatPreferences(w http.ResponseWriter, r *http.Re
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 		decoder.DisallowUnknownFields()
 		if decoder.Decode(&body) != nil || body.Show == nil {
-			http.Error(w, "Choose whether to show context usage.", http.StatusBadRequest)
+			http.Error(w, "Choose whether to show usage in the chat box.", http.StatusBadRequest)
 			return
 		}
 		update = body.Show

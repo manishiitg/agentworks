@@ -83,7 +83,7 @@ func externalTools() ([]externalTool, error) {
 		p["query"] = externalString("Filter workflow labels and IDs.")
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and schedule counts only. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
 		externalAgentMessageDefinition(add)
-		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide Context beside the model in all your chats. Off by default. Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
+		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide context and plan use in the chat box of all your chats ("Show in chat box"). Off by default. Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
 		externalServerProductDefinitions(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
 		add("get_workflow", "Read one workflow manifest and the caller's access level.", false, true, nil)

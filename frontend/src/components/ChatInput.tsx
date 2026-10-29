@@ -672,7 +672,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const micRef = useRef<MicButtonHandle>(null)
   const micStateRef = useRef<MicState>('idle')
   const [micBannerHost, setMicBannerHost] = useState<HTMLDivElement | null>(null)
-  const handleMicStateChange = useCallback((s: MicState) => { micStateRef.current = s }, [])
+  // While dictating, the mic keeps the send corner even if the box already has text.
+  const [micActive, setMicActive] = useState(false)
+  const handleMicStateChange = useCallback((s: MicState) => { micStateRef.current = s; setMicActive(s !== 'idle') }, [])
 
 
   const inputText = localInputText
@@ -1433,7 +1435,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const crewModelLabel = activeTab?.metadata?.agentProfileChatModelLabel
     ? composerModelLabel(activeTab.metadata.agentProfileChatModelLabel, mainAgentRuntimeLLM?.provider || activeTab.metadata.agentProfileChatProvider)
     : null
-  // The status line under the composer goes with the model menu: Goal/Relay Builders who can change the workflow,
+  // The usage chip in the chat box goes with the model menu: Goal/Relay Builders who can change the workflow,
   // and the Crew/Code tab's owner (not agent tabs, not Run). The server still answers only the tab's owner.
   const chatStatusBarOffered = !isViewOnly && (isWorkflowPhaseChat
     ? Boolean(canWriteCommandWorkflow && isInteractiveWorkflowBuilderChat && workflowPhaseWorkspacePath)
@@ -2923,6 +2925,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       autoSubmitOnStop={isSparkQuillProfile ? () => readVoiceAutoSendPref() : undefined}
     />
   )
+  // Compact chat box: the mic holds the send corner until there is something to send (or while dictating).
+  const micInSendSlot = compactComposerActions && !nativeTerminalTools && Boolean(micEl) && (!hasValidQuery || micActive)
   const attachmentEl = (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -3617,12 +3621,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     : label
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
-                {showContextIndicator && typeof contextPercent === 'number' && <span className="whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground" role="status" aria-label={`Context ${contextPercent}%`}>Context {contextPercent}%</span>}
+                {showContextIndicator && !chatStatusBarOffered && typeof contextPercent === 'number' && <span className="whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground" role="status" aria-label={`Context ${contextPercent}%`}>Context {contextPercent}%</span>}
                 {(agentProfileId === 'work' || isGoalBuilderChat) && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} workflowPath={isGoalBuilderChat ? workflowPhaseWorkspacePath : undefined} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} />
               </div>
+              {/* The person's "Show in chat box" choice: context and plan use at the right end of this row; the server answers only the tab's owner. */}
+              {chatStatusBarOffered && showContextIndicator && tabSessionId && !nativeTerminalTools && <div className="flex min-w-0 flex-1 justify-end px-1 [container-type:inline-size]">
+                <Suspense fallback={null}><ChatStatusBar sessionId={tabSessionId} busy={isTurnInFlight} /></Suspense>
+              </div>}
               <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
@@ -3632,10 +3640,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         className="h-7 w-7 rounded-full p-0 bg-diff-del/15 text-diff-del hover:bg-diff-del/25 hover:text-diff-del">
                         <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />
                       </Button>}
-                      {!nativeTerminalTools && <span className={showStopButton && foregroundTurnActive ? 'max-md:hidden' : 'contents'}>{micEl}</span>}
+                      {!nativeTerminalTools && !compactComposerActions && <span className={showStopButton && foregroundTurnActive ? 'max-md:hidden' : 'contents'}>{micEl}</span>}
                       {/* Chat and task actions share the popup; Enter follows the selected delivery mode. */}
-                      {/* The arrow keeps its place while the box is empty, so typing never moves the row. */}
-                      <span data-send-slot className={compactComposerActions && !hasValidQuery ? 'invisible' : 'contents'} aria-hidden={compactComposerActions && !hasValidQuery ? true : undefined}><Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
+                      {/* Compact chat box: the mic and the send arrow share one corner slot, like ChatGPT. Empty box: the
+                          mic; once there is something to send: the arrow (Steer/Queue while a turn runs). Without a mic
+                          the arrow keeps its place while empty, so typing never moves the row. */}
+                      {micInSendSlot ? <span data-send-slot className="contents">{micEl}</span> : <span data-send-slot className={compactComposerActions && !hasValidQuery ? 'invisible' : 'contents'} aria-hidden={compactComposerActions && !hasValidQuery ? true : undefined}><Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
                         {!compactComposerActions && deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
                       </Button>}>
                       <ChatSendModeButton
@@ -3650,14 +3660,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onOpenChange={setSendOptionsOpen}
                         onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
                       />
-                      </Suspense></span>
+                      </Suspense></span>}
                     </div>
                 </div>
               </div>
             </ChatComposerControls>
         </ChatComposerForm>
-        {/* This chat's status line (model, context, plan limits); the server answers only the tab's owner. */}
-        {chatStatusBarOffered && tabSessionId && <Suspense fallback={null}><ChatStatusBar sessionId={tabSessionId} modelLabel={(isWorkflowPhaseChat ? goalModelLabel : crewModelLabel) ?? undefined} busy={isTurnInFlight} /></Suspense>}
         <input
           ref={fileUploadInputRef}
           type="file"

@@ -39,7 +39,7 @@ export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange,
   </Menu.Root>
 }
 
-/** Opens this chat's model menu when the status bar under the composer is clicked (ChatStatusBar). */
+/** Opens this chat's model menu when its usage chip in the chat box is clicked (ChatStatusBar). */
 export function useOpenFromStatusBar(sessionId: string | undefined, open: () => void) {
   const openRef = useRef(open)
   openRef.current = open
