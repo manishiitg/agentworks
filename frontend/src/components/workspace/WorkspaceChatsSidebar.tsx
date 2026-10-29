@@ -377,7 +377,8 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const origin = row.originLabel || (trigger === 'Scheduled' ? 'Schedule' : trigger) || ''
     const SourceIcon = origin === 'Slack' ? Slack : origin === 'WhatsApp' ? MessageCircle : trigger === 'Webhook' ? Webhook : scheduled ? CalendarClock : MessageSquare
     const sourceLabel = origin || (scheduled ? 'Schedule' : runChat ? 'Run' : 'Chat')
-    const hasSourceIcon = !!workspaceEntry || !!origin || scheduled
+    // A schedule shows only in the hover label (owner, 2026-10-29); channels like Slack keep their icon.
+    const hasSourceIcon = !!workspaceEntry || (!!origin && origin !== 'Schedule')
     // Repeat times only when they distinguish otherwise identical runs. Exact
     // timestamps and origins remain in the hover/accessibility labels.
     const repeatedRun = (scheduled || runChat) && rows.some(other => other.id !== row.id && (other.scheduled || other.workflowSessionKind === 'run') &&
@@ -387,11 +388,13 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const details = [
       duplicateWorkspaceName ? PRODUCT_SURFACE_LABELS[row.surface] : '',
       row.waiting ? 'Needs you' : '',
-      repeatedRun || scheduled || runChat ? date : '',
+      repeatedRun ? date : '',
     ]
       .filter(Boolean)
       .join(' · ')
     const canClose = !!tab && canCloseWorkspaceChatTab(tab, tabs)
+    // Someone else's chat in a shared project shows their first name.
+    const startedBy = row.history?.user_id && user?.id && row.history.user_id !== user.id ? row.history.username?.trim().split(/[\s@]/)[0] : ''
     // One fixed slot at the row's right edge for every row, so spinners and dots line up; on hover-capable
     // devices the close x takes the same slot (phones never show it).
     const status = opening === row.id || (row.group === 'Running' && !row.waiting) ? (
@@ -425,7 +428,10 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             <ProjectIcon icon={workspaceEntry.icon} title={workspaceEntry.title} surface={row.surface} />
           </span>}
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] leading-5">{title}</span>
+            <span className="flex items-center gap-1.5">
+              <span className="truncate text-[13px] leading-5">{title}</span>
+              {startedBy && <span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] leading-4 text-muted-foreground">{startedBy}</span>}
+            </span>
             {(details || (hasSourceIcon && !workspaceEntry)) && (
               <span
                 className={`mt-1 flex items-center gap-1 truncate text-[10px] leading-3 ${row.waiting ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'}`}
@@ -586,33 +592,8 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2">
-        {PROJECT_SIDEBAR_ORDER.map(surface => {
-          const entries = workspaces.map((workspace, index) => ({ workspace, index })).filter(({ workspace }) => workspace.surface === surface)
-          if (!entries.length) return null
-          const key = sidebarExpansionKey(scope, 'product', surface)
-          const isOpen = expanded[key] ?? true
-          const panelId = `sidebar-product-${surface}`
-          const chats = entries.flatMap(({ workspace }) => workspace.chats)
-          const running = chats.filter(row => row.group === 'Running' && !row.waiting).length
-          const waiting = chats.filter(row => row.waiting).length
-          return <section key={surface} aria-label={`${PRODUCT_SURFACE_LABELS[surface]} projects`} className="mb-3">
-            <h2>
-              <button type="button" aria-expanded={isOpen} aria-controls={panelId}
-                onClick={() => toggleExpanded(key, true)}
-                className="mb-1 flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <span className="flex-1">{PRODUCT_SURFACE_LABELS[surface]}</span>
-                {!isOpen && (running > 0 || waiting > 0) && <span className={`text-[10px] tabular-nums ${waiting ? 'text-[hsl(var(--warning))]' : 'text-[hsl(var(--info))]'}`}>
-                  {[running ? `${running} working` : '', waiting ? `${waiting} needs you` : ''].filter(Boolean).join(' · ')}
-                </span>}
-                <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} aria-hidden="true" />
-              </button>
-            </h2>
-            <div id={panelId} hidden={!isOpen}>
-              {entries.map(({ workspace, index }) => renderWorkspace(workspace, index, isOpen))}
-            </div>
-          </section>
-        })}
-        {workspaces.map((workspace, index) => !PROJECT_SIDEBAR_ORDER.some(surface => surface === workspace.surface) && !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
+        {/* One list of projects, most recent first; each project's icon says Crew, Goal or Relay (owner, 2026-10-29). */}
+        {workspaces.map((workspace, index) => PROJECT_SIDEBAR_ORDER.some(surface => surface === workspace.surface) || !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
         {directory?.scope === scope && !directory.authoritative && (
           <button className="px-2 py-3 text-left text-xs text-muted-foreground underline" onClick={() => setDirectoryTick(value => value + 1)}>
             Some projects could not load. Try again.

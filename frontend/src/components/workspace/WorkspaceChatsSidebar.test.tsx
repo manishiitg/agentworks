@@ -171,20 +171,9 @@ it('keeps saved project icons on every sidebar row layout and falls back for mis
     goal: { session_id: 'goal-main', sessions: { 'goal-main': { is_builder: true, kind: 'builder' } } },
     flow: { session_id: 'flow-main', sessions: { 'flow-main': { is_builder: true, kind: 'builder' }, 'flow-run': { kind: 'run' } } },
   }
-  await render(async (host, rerender) => {
-    expect([...host.querySelectorAll('section[aria-label$=" projects"]')].map(section => section.getAttribute('aria-label'))).toEqual(['Crew projects', 'Goals projects', 'Flows projects'])
-    const crewSection = host.querySelector('section[aria-label="Crew projects"]')!
-    const crewToggle = crewSection.querySelector<HTMLButtonElement>('h2 button')!
-    const crewPanel = host.querySelector<HTMLElement>(`#${crewToggle.getAttribute('aria-controls')}`)!
-    const goalsToggle = host.querySelector<HTMLButtonElement>('section[aria-label="Goals projects"] h2 button')!
-    expect(crewToggle.getAttribute('aria-expanded')).toBe('true')
-    await act(async () => crewToggle.click())
-    expect(crewPanel.hidden).toBe(true)
-    expect(goalsToggle.getAttribute('aria-expanded')).toBe('true')
-    await rerender()
-    expect(crewToggle.getAttribute('aria-expanded')).toBe('false')
-    await act(async () => crewToggle.click())
-    expect(crewPanel.hidden).toBe(false)
+  await render(async host => {
+    // One list of projects with no Crew/Goals/Flows headings (owner, 2026-10-29).
+    expect(host.querySelector('section[aria-label$=" projects"]')).toBeNull()
     const crew = host.querySelector<HTMLButtonElement>('[title="Crew · Before first chat"]')!
     const upload = crew.querySelector('img')!
     expect(upload.getAttribute('src')).toBe(image)
@@ -338,7 +327,8 @@ it('labels the parent source and returns from inspection to the parent chat', as
   await render(async host=>{
     expect(host.querySelector('[title^="Daily briefing · Goals"]')?.getAttribute('aria-label')).toContain('Schedule')
     expect(host.querySelector('[title="Customer question · Goals"]')?.getAttribute('aria-label')).toContain('WhatsApp')
-    expect(host.querySelector('[title^="Daily briefing · Goals"] [title="Schedule"] svg')).not.toBeNull()
+    // A schedule shows only in the hover label, not as an icon and date line.
+    expect(host.querySelector('[title^="Daily briefing · Goals"] [title="Schedule"] svg')).toBeNull()
     expect(host.querySelector('[title="Customer question · Goals"] [title="WhatsApp"] svg')).not.toBeNull()
     const main=host.querySelector<HTMLButtonElement>('[title="Planning · Goals"]')!
     expect(main.textContent).toBe('Planning')
