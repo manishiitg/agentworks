@@ -144,7 +144,6 @@ import type { Skill } from '../types/skills'
 import { getClipboardImageFiles } from './clipboardImages'
 import { shouldUsePastedTextAttachment } from '../utils/chatPasteBehavior'
 import { isMainAgentTerminal } from '../utils/terminalIdentity'
-import { terminalSessionUsageLines, terminalUsageLines } from './terminalUsage'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 
@@ -1340,12 +1339,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return (entry?.integration_kind === 'coding_agent' && !entry.deprecated) || FALLBACK_CODING_AGENT_PROVIDERS.has(provider)
   }, [primaryLLM?.provider, effectiveProviderForSteer, providerManifest])
 
-  // The terminal snapshot already carries the coding CLI's structured status
-  // line. Surface it next to the model in the composer so a user can see plan
-  // usage (for example "5h 11% · 7d 22%") without opening the terminal.
-  // The same snapshot feeds the terminal icon's hover (plan usage with reset
-  // times), so it is also fetched whenever the live terminal is offered —
-  // including product surfaces, where the lime chip itself stays hidden.
+  // The terminal snapshot carries the coding CLI's status details (never plan
+  // limits: the chat's usage chip is the one place for those). Surface them next
+  // to the model in the composer; the snapshot is also fetched whenever the live
+  // terminal is offered, including product surfaces, where this chip stays hidden.
   const showChatInputStatusChip = !hideRuntimeStatus && !isProductSurface
   const { showContextIndicator } = useChatPreferences()
   const { data: chatInputTerminalStatus } = useQuery({
@@ -1372,19 +1369,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       ? rawExtras.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
       : []
   }, [chatInputMainTerminal])
-  const contextPercent = activeSession?.context_usage_percent ?? chatInputMainTerminal?.status?.status_meta?.context_usage_percent
   const chatInputStatusLine = showChatInputStatusChip ? chatInputStatusExtras.join(' · ') : ''
-  // Plan usage windows with reset times in the browser's timezone, appended
-  // to the terminal icon's hover text.
-  const terminalUsage = useMemo(
-    () => terminalUsageLines(chatInputMainTerminal?.status?.status_meta),
-    [chatInputMainTerminal],
-  )
-  // Context fill, tokens, cost and other CLI details, below the plan windows.
-  const terminalSessionUsage = useMemo(
-    () => terminalSessionUsageLines(chatInputMainTerminal?.status),
-    [chatInputMainTerminal],
-  )
 
   const mainAgentRuntimeLLM = useMemo(() => {
     // Match resolveLockedLLM, including the product-profile binding exception.
@@ -1435,13 +1420,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const crewModelLabel = activeTab?.metadata?.agentProfileChatModelLabel
     ? composerModelLabel(activeTab.metadata.agentProfileChatModelLabel, mainAgentRuntimeLLM?.provider || activeTab.metadata.agentProfileChatProvider)
     : null
-  // The usage chip in the chat box goes with the model menu: Goal/Relay Builders who can change the workflow,
-  // and the Crew/Code tab's owner (not agent tabs, not Run). The server still answers only the tab's owner.
-  const chatStatusBarOffered = !isViewOnly && (isWorkflowPhaseChat
-    ? Boolean(canWriteCommandWorkflow && isInteractiveWorkflowBuilderChat && workflowPhaseWorkspacePath)
-    : Boolean(agentProfileId === 'work' && agentProfileProjectId && activeTab?.metadata?.agentProfileCanOpenModels
-      && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`)))
-
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const durableQueueRef = useRef<DurableChatQueueHandle>(null)
@@ -2865,8 +2843,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const botPlatform = activeTab?.metadata?.botPlatform
     const terminalTitle = [
       `${terminalViewSelected ? 'Return to conversation' : 'Open live view'}${mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}`,
-      ...terminalUsage.map(line => `${line.text}${line.high ? ' (high)' : ''}`),
-      ...terminalSessionUsage,
     ].join('\n')
     return (
       <div data-tour="chat-input-area" data-testid="tour-chat-input-area" className={`${inputPadX} ${isProductSurface ? 'py-1' : 'py-2'}`}>
@@ -3206,7 +3182,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   onOpenCommands={productCommandsAvailable ? openCommandMenu : undefined}
                   onOpenLiveView={activeTabId && shouldShowLiveTerminalControl(liveTerminalOffered, isProductSurface, isInteractiveWorkflowBuilderChat, showProductTerminalControl)
                     ? () => chooseViewMode(activeTabId, 'terminal') : undefined}
-                  liveViewTitle={[mainAgentRuntimeLabel, ...terminalUsage.map(line => line.text), ...terminalSessionUsage].filter(Boolean).join('\n')}
+                  liveViewTitle={mainAgentRuntimeLabel || undefined}
                   showAgents={agentProfileId === 'work' || isGoalBuilderChat}
                   onOpenChange={setSendOptionsOpen}
                   sendOptions={{
@@ -3578,24 +3554,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         {terminalViewSelected ? 'Return to conversation' : 'Open live view'}
                         {mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}
                       </p>
-                      {terminalUsage.map((line, index) => (
-                        <p
-                          key={`${line.label}-${index}`}
-                          data-testid="chat-input-terminal-usage"
-                          className={`font-mono text-[11px] ${line.high ? 'font-semibold text-amber-400' : 'opacity-80'}`}
-                        >
-                          {line.text}
-                        </p>
-                      ))}
-                      {terminalSessionUsage.map((line, index) => (
-                        <p
-                          key={`session-${index}`}
-                          data-testid="chat-input-terminal-session-usage"
-                          className="font-mono text-[11px] opacity-70"
-                        >
-                          {line}
-                        </p>
-                      ))}
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -3621,14 +3579,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     : label
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
-                {showContextIndicator && !chatStatusBarOffered && typeof contextPercent === 'number' && <span className="whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground" role="status" aria-label={`Context ${contextPercent}%`}>Context {contextPercent}%</span>}
                 {(agentProfileId === 'work' || isGoalBuilderChat) && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} workflowPath={isGoalBuilderChat ? workflowPhaseWorkspacePath : undefined} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} />
               </div>
-              {/* The person's "Show in chat box" choice: context and plan use at the right end of this row; the server answers only the tab's owner. */}
-              {chatStatusBarOffered && showContextIndicator && tabSessionId && !nativeTerminalTools && <div className="flex min-w-0 flex-1 justify-end px-1 [container-type:inline-size]">
+              {/* The person's "Show in chat box" choice: context and plan use at the right end of this row, shown whenever the server returns a view (it answers only the tab's owner). */}
+              {showContextIndicator && tabSessionId && !nativeTerminalTools && <div className="flex min-w-0 flex-1 justify-end px-1 [container-type:inline-size]">
                 <Suspense fallback={null}><ChatStatusBar sessionId={tabSessionId} busy={isTurnInFlight} /></Suspense>
               </div>}
               <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">

@@ -1,6 +1,6 @@
 import type { CostAggregate } from '../../services/api-types'
 import { inputBreakdown } from '../../utils/costTokens'
-import { formatTokens } from '../workflow/costs/helpers'
+import { formatTokens } from '../../utils/formatTokens'
 
 export default function CostTokenBreakdown({ usage, compact = false }: { usage: Partial<CostAggregate>; compact?: boolean }) {
   const { total: input, fresh, cached, writes } = inputBreakdown(usage)

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
@@ -80,7 +81,10 @@ type chatContextView struct {
 	Hint           string             `json:"idle_compaction_hint,omitempty"`
 }
 
-const chatContextIdleHint = "Long chats are summarised after about 50 minutes idle, so your next message costs less."
+// idleCompactHint says when "Auto-compact when idle" acts, from the idle sweep's own setting.
+func idleCompactHint() string {
+	return fmt.Sprintf("Long chats are summarised after about %d minutes idle, so the next message costs less.", int(idleCompactConfigFromEnv().IdleFrom.Minutes()))
+}
 
 // chatContextRuntime is the provider, model and transport the chat last ran with, and whether a native
 // conversation is saved to resume.
@@ -130,8 +134,9 @@ func chatTmuxProvider(tmux string) string {
 	return ""
 }
 
-// chatContextUsage is the chat's context at its last model call and, for its owner, the plan windows of its
-// account: from the native transcript reader (Codex, Pi), else from the chat's main coding terminal (the CLI's
+// chatContextUsage is what a provider reported for a chat: the context at its last model call and the plan
+// windows of its account. Callers that show a chat's figures use chatUsage, which applies the current-provider
+// rule; this is its source (and the compaction's size check for the provider a chat last ran on). Figures come // from the native transcript reader (Codex, Pi), else from the chat's main coding terminal (the CLI's
 // statusline and stream usage, Claude). A window the CLI did not report comes from the model's metadata.
 // Only figures reported by this provider count: after a switch, the previous provider's numbers stay hidden
 // until the new one reports its own.
@@ -296,25 +301,126 @@ func chatUsageConnection(lastConnection string, next AgentProfileEffectiveChatMo
 	return strings.TrimSpace(lastConnection)
 }
 
-func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) chatContextView {
-	sessionID := tab.Record.SessionID
+// chatUsageSubject is whose figures a chat shows: the provider, model and account its next message uses.
+type chatUsageSubject struct {
+	owner, provider, model, connection string
+	// switched: that provider or account has not reported for this chat yet, so its own figures are unknown.
+	switched bool
+}
+
+// chatUsageSubjectForTab resolves the subject of an owner's tab, and the transport the chat last ran with.
+func (api *StreamingAPI) chatUsageSubjectForTab(owner string, tab chatContextTab) (chatUsageSubject, string) {
 	provider, model, transport, _ := chatContextRuntime(owner, tab)
 	next, known := api.chatNextModel(owner, tab)
 	provider, model, switched := chatUsageTarget(provider, model, tab.Record.ConnectionID, next, known)
+	return chatUsageSubject{owner: owner, provider: provider, model: model, switched: switched,
+		connection: chatUsageConnection(tab.Record.ConnectionID, next, known, switched)}, transport
+}
+
+const chatUsageSubjectTTL = 15 * time.Second
+
+var chatUsageSubjects = struct {
+	sync.Mutex
+	bySession map[string]cachedChatUsageSubject
+}{bySession: map[string]cachedChatUsageSubject{}}
+
+type cachedChatUsageSubject struct {
+	subject chatUsageSubject
+	expires time.Time
+}
+
+// chatUsageSubjectForSession is the subject for callers that know only the session (terminal status, polled
+// often, so it is kept for a few seconds). A chat with no tab in its owner's registry (a workflow chat) shows
+// the provider that reported last.
+func (api *StreamingAPI) chatUsageSubjectForSession(sessionID string) chatUsageSubject {
+	chatUsageSubjects.Lock()
+	cached, found := chatUsageSubjects.bySession[sessionID]
+	chatUsageSubjects.Unlock()
+	if found && time.Now().Before(cached.expires) {
+		return cached.subject
+	}
+	owner := GetDefaultUserID()
+	if IsMultiUserMode() {
+		owner = api.idleCompactOwner(sessionID, "") // the chat's tab owner, as for its compaction
+	}
+	subject := chatUsageSubject{owner: owner, provider: api.chatReportedProvider(sessionID)}
+	if tab, found := chatContextTabForSession(context.Background(), owner, sessionID); found {
+		subject, _ = api.chatUsageSubjectForTab(owner, tab)
+	}
+	chatUsageSubjects.Lock()
+	chatUsageSubjects.bySession[sessionID] = cachedChatUsageSubject{subject: subject, expires: time.Now().Add(chatUsageSubjectTTL)}
+	chatUsageSubjects.Unlock()
+	return subject
+}
+
+// chatReportedProvider is the provider that last reported usage for a chat; "" when none did.
+func (api *StreamingAPI) chatReportedProvider(sessionID string) string {
+	api.nativeCostsMu.Lock()
+	a := api.nativeCosts[sessionID]
+	api.nativeCostsMu.Unlock()
+	if a != nil {
+		a.mu.Lock()
+		provider := a.state.Provider
+		a.mu.Unlock()
+		if strings.TrimSpace(provider) != "" {
+			return provider
+		}
+	}
+	if api.terminalStore != nil {
+		if _, tmux, source, ok := api.terminalStore.MainAgentStatusMeta(sessionID); ok {
+			return firstNonEmptyTrimmed(source, chatTmuxProvider(tmux))
+		}
+	}
+	return ""
+}
+
+// chatUsage is the one reader of a chat's context and plan use, for every place that shows them (the chat's
+// usage chip and model menu, its terminal status). Only the subject's provider and account count: after a
+// switch nothing is shown until the new one reports. Plan limits are read only withLimits, which only the
+// chat's owner gets (/api/chat-context); when the chat has reported none, its provider is asked directly.
+func (api *StreamingAPI) chatUsage(sessionID string, subject chatUsageSubject, withLimits bool) (used, window int, limits []chatUsageLimit) {
+	if !subject.switched {
+		used, window, limits = api.chatContextUsage(sessionID, subject.provider, subject.model, withLimits)
+	}
+	if withLimits && len(limits) == 0 {
+		limits = api.probedChatLimits(subject.owner, subject.provider, subject.connection)
+	}
+	return used, window, limits
+}
+
+// chatCompactRefusal is why a chat cannot be compacted from here ("" when it can), apart from it being busy
+// right now: the one check behind both offering "Compact now" and doing it.
+func chatCompactRefusal(sessionID string) (idleCompactChat, int, string) {
+	idleCompacts.mu.Lock()
+	followed := idleCompacts.chats[sessionID]
+	var chat idleCompactChat
+	if followed != nil {
+		chat = *followed
+	}
+	idleCompacts.mu.Unlock()
+	switch {
+	case followed == nil || chat.lastPerson.IsZero() || chat.lastTurnEnd.IsZero():
+		return chat, http.StatusConflict, "Send a message in this chat first; then it can be compacted."
+	case !llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(chat.provider)), chat.transport):
+		return chat, http.StatusConflict, "This chat's model cannot be compacted from here."
+	case !chat.hasHandle:
+		return chat, http.StatusConflict, "This chat has no saved conversation to compact yet."
+	}
+	return chat, 0, ""
+}
+
+func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) chatContextView {
+	sessionID := tab.Record.SessionID
+	subject, transport := api.chatUsageSubjectForTab(owner, tab)
 	view := chatContextView{SessionID: sessionID}
-	if !switched {
-		view.UsedTokens, view.WindowTokens, view.Limits = api.chatContextUsage(sessionID, provider, model, true)
-	}
-	if len(view.Limits) == 0 {
-		// Nothing reported by the chat yet: ask the provider for the account the next message uses.
-		view.Limits = api.probedChatLimits(owner, provider, chatUsageConnection(tab.Record.ConnectionID, next, known, switched))
-	}
-	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(provider)), transport) {
+	view.UsedTokens, view.WindowTokens, view.Limits = api.chatUsage(sessionID, subject, true)
+	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(subject.provider)), transport) {
 		view.IdleCompaction = &chatContextSwitch{On: !tab.Identity.IdleCompactionOff}
-		view.Hint = chatContextIdleHint
-		view.CanCompact = true
+		view.Hint = idleCompactHint()
 	}
-	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(provider, model)
+	_, _, refusal := chatCompactRefusal(sessionID)
+	view.CanCompact = refusal == ""
+	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)
 	return view
 }
 
@@ -335,15 +441,9 @@ func (api *StreamingAPI) chatContextBusy(owner, sessionID string) string {
 // owner, lock and chat row as the idle sweep. It answers at once; the chat shows the compaction.
 func (api *StreamingAPI) compactChatNow(owner string, tab chatContextTab, afterTurn bool) (int, string) {
 	sessionID := tab.Record.SessionID
-	idleCompacts.mu.Lock()
-	followed := idleCompacts.chats[sessionID]
-	var chat idleCompactChat
-	if followed != nil {
-		chat = *followed
-	}
-	idleCompacts.mu.Unlock()
-	if followed == nil || chat.lastPerson.IsZero() || chat.lastTurnEnd.IsZero() {
-		return http.StatusConflict, "Send a message in this chat first; then it can be compacted."
+	chat, status, refusal := chatCompactRefusal(sessionID)
+	if refusal != "" && chat.lastPerson.IsZero() {
+		return status, refusal
 	}
 	// The compaction turn runs, and is charged, as the chat's tab owner: only that person may ask for it.
 	runAs := api.idleCompactOwner(sessionID, chat.personUser)
@@ -351,11 +451,8 @@ func (api *StreamingAPI) compactChatNow(owner string, tab chatContextTab, afterT
 		log.Printf("[IDLE_COMPACT] session=%s owner=%s caller=%s action=refuse reason=compact_now_not_owner", sessionID, runAs, owner)
 		return http.StatusForbidden, "Only this chat's owner can compact it."
 	}
-	if !llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(chat.provider)), chat.transport) {
-		return http.StatusConflict, "This chat's model cannot be compacted from here."
-	}
-	if !chat.hasHandle {
-		return http.StatusConflict, "This chat has no saved conversation to compact yet."
+	if refusal != "" {
+		return status, refusal
 	}
 	if busy := api.chatContextBusy(owner, sessionID); busy != "" {
 		if afterTurn && api.sessionTurnRunning(sessionID) && idleCompacts.running(sessionID) == nil {

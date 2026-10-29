@@ -80,7 +80,7 @@ it('keeps collapsed chips to model, duration, and total tokens', async () => {
     expect(host.textContent).toContain('2m 0s')
     expect(host.textContent).toContain('12.4k tok total')
     expect(host.textContent).toContain('1 exec')
-    expect(host.textContent).not.toContain('10.0k in')
+    expect(host.textContent).not.toContain('10k in')
     expect(host.textContent).not.toContain('2.4k out')
     expect(host.textContent).not.toContain('instr')
   } finally {

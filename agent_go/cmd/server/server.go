@@ -364,7 +364,6 @@ type ActiveSessionInfo struct {
 	DisplayStatus               string           `json:"display_status,omitempty"`
 	CanSteer                    bool             `json:"can_steer,omitempty"`
 	RuntimeState                *RuntimeSnapshot `json:"runtime_state,omitempty"`
-	ContextUsagePercent         *int             `json:"context_usage_percent,omitempty"`
 }
 
 // StreamingAPI represents the streaming API server

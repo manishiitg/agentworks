@@ -126,14 +126,14 @@ it('shows cost by account with the split by work and person', async () => {
     by_user: [{ id: 'alice', name: 'Alice', ...muse }],
   } as CostOverview)
   const container = await render()
-  expect(container.textContent).toContain('Total input1.0K')
+  expect(container.textContent).toContain('Total input1k')
   expect(container.textContent).toContain('Fresh input200')
   expect(container.textContent).toContain('80.0% cached')
   expect(container.textContent).toContain('Output tokens25')
   expect(container.textContent).toContain('Cached input800')
-  expect(container.textContent).toContain('1.0K input · 25 output')
+  expect(container.textContent).toContain('1k input · 25 output')
   expect(container.textContent).not.toContain('LLM calls')
-  expect(container.textContent).not.toContain('1.8K')
+  expect(container.textContent).not.toContain('1.8k')
  })
 
 it('separates Code workspaces from other product projects and searches owner emails', async () => {

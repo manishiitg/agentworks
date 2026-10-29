@@ -2008,6 +2008,11 @@ func dedupeCurrentMainAgentSnapshots(snapshots []Snapshot) []Snapshot {
 	return out
 }
 
+// IsMainAgentTerminal reports whether a terminal is its chat's main agent (not a turn, step or background agent).
+func IsMainAgentTerminal(snapshot Snapshot) bool {
+	return currentTerminalIsMainAgent(snapshot)
+}
+
 func currentTerminalIsMainAgent(snapshot Snapshot) bool {
 	if strings.Contains(snapshot.TerminalID, ":turn-") {
 		return false

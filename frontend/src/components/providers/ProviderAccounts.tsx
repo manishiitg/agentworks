@@ -12,7 +12,7 @@ const ByokSetup = lazy(() => import('./ByokSetup'))
 const ByokModelBrowser = lazy(() => import('./ByokModelBrowser'))
 import { byokServiceOf } from '../../utils/byok'
 import { allowedModelsSummary, allowedModelsText } from '../../utils/allowedModels'
-import { formatTokens, parseTokenAmount } from '../../utils/tokenLimits'
+import { parseTokenAmount } from '../../utils/tokenLimits'
 import {
   llmConfigService,
   providerApiErrorText,
@@ -23,6 +23,7 @@ import {
   type ProviderConnection,
   type ProviderSetupSession,
 } from '../../services/llm-config-api'
+import { formatTokens } from '../../utils/formatTokens'
 
 // Providers with a browser login the server can sign out (the CLI's own logout).
 const SIGN_OUT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'])

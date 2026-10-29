@@ -13,6 +13,7 @@ import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ConversationContinuityNotice } from './ConversationContinuityNotice'
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
 import { withClosedQuestions } from '../utils/codingAgentQuestions'
+import { formatTokens } from '../utils/formatTokens'
 
 // The agent's foreground and background status travel in separate event
 // updates. During a hand-off both can briefly read false even though work is
@@ -41,11 +42,6 @@ function messageTime(timestamp?: string): string {
   return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(2).replace(/\.00$/, '')}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1).replace(/\.0$/, '')}k`
-  return String(tokens)
-}
 
 // These notices are overwhelmingly step completions, so they are labelled as
 // such — but a failed background step is delivered through the same channel,
@@ -296,9 +292,9 @@ export function CleanConversationSurface({
                 <div className={`mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-2 text-[10px] font-medium text-slate-400 ${item.role === 'assistant' && item.usage ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}>
                   {item.role === 'assistant' && item.usage ? (
                     <p className="flex flex-wrap gap-x-3 gap-y-1" data-testid="clean-assistant-usage">
-                      <span>Input {formatTokenCount(item.usage.inputTokens)}</span>
-                      <span>Output {formatTokenCount(item.usage.outputTokens)}</span>
-                      {item.usage.cacheTokens > 0 ? <span>Cache {formatTokenCount(item.usage.cacheTokens)}</span> : null}
+                      <span>Input {formatTokens(item.usage.inputTokens)}</span>
+                      <span>Output {formatTokens(item.usage.outputTokens)}</span>
+                      {item.usage.cacheTokens > 0 ? <span>Cache {formatTokens(item.usage.cacheTokens)}</span> : null}
                       {item.usage.isEstimated ? <span>Estimated</span> : null}
                     </p>
                   ) : <span />}

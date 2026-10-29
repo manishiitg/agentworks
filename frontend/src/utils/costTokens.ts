@@ -1,4 +1,5 @@
 import type { CostAggregate } from '../services/api-types'
+import { formatTokens } from './formatTokens'
 
 // A priced subtotal is not the total when other usage has no known price.
 export const costAmountLabel = (
@@ -9,7 +10,6 @@ export const costAmountLabel = (
   if (incomplete && usage.total_cost_usd === 0) return 'Not priced'
   return `${format(usage.total_cost_usd)}${incomplete ? ' (incomplete)' : ''}`
 }
-import { formatTokens } from '../components/workflow/costs/helpers'
 
 export const inputTokens = (usage?: Partial<CostAggregate>) => {
   if (usage?.input_tokens !== undefined) return usage.input_tokens

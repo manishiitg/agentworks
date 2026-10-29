@@ -57,6 +57,7 @@ import { projectExecutionTreeTerminals } from '../utils/terminalExecutionProject
 import { hydrateTabEvents } from '../utils/sessionRestore'
 import { hydrateExecutionConversation } from '../utils/executionConversationRestore'
 import { isExecutionConversationTab } from '../utils/sessionEventSource'
+import { formatTokens } from '../utils/formatTokens'
 
 // hasAnsiCodes returns true when the string contains at least one CSI escape.
 // Used to decide whether to take the colored-render path or fall back to the
@@ -2612,12 +2613,6 @@ function terminalMatchesWorkflow(terminal: TerminalSnapshot, workflowPath?: stri
   return terminalKey === target
 }
 
-function formatTokens(n?: number): string {
-  if (n === undefined || n === null) return '–'
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
-}
 
 function formatStatusFooterCost(usd?: number): string {
   if (usd === undefined || usd === null || usd === 0) return ''

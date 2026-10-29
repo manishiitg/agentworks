@@ -40,6 +40,7 @@ import { withToolCallVisibility } from '../utils/toolCallVisibility'
 import { formatDurationCompact } from '../utils/duration'
 import { formatElapsed, turnDoneWord } from './chat/workingWords'
 import { liveUsageSummary, type LiveUsageSummary } from './terminalUsage'
+import { ContextMeter } from './chat/ContextMeter'
 import { formatToolCallArguments, formatToolCallResult } from '../utils/toolCallFormatting'
 import type { PollingEvent, TerminalSnapshot } from '../services/api-types'
 import { parseProductInteraction, type ProductInteraction } from '../../shared/session/interactions'
@@ -128,9 +129,8 @@ const ACTIVITY_TEXT: Record<string, string> = {
   'background running': 'Background agent running…',
   'waiting for input': 'Waiting for your input',
 }
-// The right side of the same row carries the coding CLI's live context fill and
-// a plan-limit warning (PLAT-554). Both are single truncating lines inside the
-// min-h-7 row; it grows by one small line only when a tip appears under the working line.
+// The right side of the same row carries the chat's live context fill (PLAT-554), a
+// single truncating line inside the min-h-7 row; it grows by one small line only when a tip appears under the working line.
 const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryContext }) => {
   const activity = context?.activity
   const working = activity !== undefined && activity.state !== 'ready'
@@ -145,16 +145,11 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
           <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
         </>}
     </>}
-    {(usage?.contextText || usage?.warning) && <div className="ml-auto flex min-w-0 shrink items-center gap-2">
-      {usage.warning && <span data-testid="transcript-usage-warning" className="truncate font-medium text-amber-500" title="Plan usage is high">
-        {usage.warning.text}
-      </span>}
-      {usage.contextText && <span data-testid="transcript-context-meter" className="flex shrink-0 items-center gap-1.5" title={usage.contextTitle}>
-        {usage.contextPercent !== undefined && <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-          <span className={`block h-full rounded-full ${usage.contextPercent >= 85 ? 'bg-amber-500' : 'bg-cyan-500/70'}`} style={{ width: `${Math.max(2, usage.contextPercent)}%` }} />
-        </span>}
+    {usage?.contextText && <div className="ml-auto flex min-w-0 shrink items-center gap-2">
+      <span data-testid="transcript-context-meter" className="flex shrink-0 items-center gap-1.5" title={usage.contextTitle}>
+        {usage.windowTokens > 0 && <ContextMeter decorative className="w-12" used={usage.usedTokens} windowTokens={usage.windowTokens} />}
         <span className="tabular-nums">{usage.contextText}</span>
-      </span>}
+      </span>
     </div>}
   </div>
 }
@@ -1273,7 +1268,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   }, [hasOlder, onLoadOlder, scroll])
 
   const statusMeta = terminal?.status?.status_meta as Record<string, unknown> | undefined
-  const usageKey = statusMeta ? JSON.stringify([statusMeta.context_used_tokens, statusMeta.context_window_tokens, statusMeta.rate_limit_windows, statusMeta.status_extras]) : ''
+  const usageKey = statusMeta ? JSON.stringify([statusMeta.context_used_tokens, statusMeta.context_window_tokens]) : ''
   // Keyed on the values, not the snapshot object: every terminal poll creates
   // a new object and would otherwise re-render the footer for nothing.
   // eslint-disable-next-line react-hooks/exhaustive-deps

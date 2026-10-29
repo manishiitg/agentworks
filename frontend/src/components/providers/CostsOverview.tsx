@@ -3,12 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { CostAggregate, CostOverview, CostOverviewItem } from '../../services/api-types'
-import { formatTokens } from '../workflow/costs/helpers'
+
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 import type { WorkSession } from '../../products/work/workSessions'
 import CostExplorer from './CostExplorer'
 import { inputTokens, pricingCoverageText, costAmountLabel } from '../../utils/costTokens'
 import { AccountCostList } from './AccountCosts'
+import { formatTokens } from '../../utils/formatTokens'
 
 const RANGES = [
   { days: 7, label: '7 days' },

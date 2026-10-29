@@ -15,11 +15,11 @@ it('keeps canonical input/output in daily, model, activity and execution details
     combinedDailyCostSummaries={[{ date: '2026-09-30', workflowCost: 0, evaluationCost: 0, builderCost: 0, pulseCost: 0, totalCost: 0, workflowTokens: 0, evaluationTokens: 0, builderTokens: 1025, pulseTokens: 0, totalTokens: 1025, totalInputTokens: 1000, totalOutputTokens: 25, llmDurationMS: 0, runCount: 0 }]}
     dailyActivityBreakdown={new Map([['2026-09-30', categories]])} runDailyCostSummaries={[]} expandedDailyDates={new Set(['2026-09-30'])}
     setExpandedDailyDates={() => {}} costHistory={null} loadingOlder={false} loadOlderCosts={async () => {}} />)
-  expect(html).toContain('1.0K input · 25 output')
+  expect(html).toContain('1k input · 25 output')
   expect(html).toContain('Input tokens')
   expect(html).toContain('Output tokens')
   expect(html).toContain('Not priced')
-  expect(html).not.toContain('1.8K')
+  expect(html).not.toContain('1.8k')
   expect(html).not.toContain('>Calls<')
 })
 

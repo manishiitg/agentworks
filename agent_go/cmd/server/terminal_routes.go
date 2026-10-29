@@ -1527,7 +1527,7 @@ func isMissingTmuxTargetError(err error) bool {
 }
 
 func (api *StreamingAPI) enrichTerminalSnapshot(ctx context.Context, planTypes *terminalPlanTypeResolver, snapshot terminals.Snapshot) terminals.Snapshot {
-	snapshot = api.nativeUsageSnapshot(ctx, snapshot)
+	snapshot = api.nativeUsageSnapshot(snapshot)
 	active, exists := api.getActiveSession(snapshot.SessionID)
 	if !exists || active == nil {
 		enrichedSnapshot := snapshot.WithContext(terminals.Context{})
@@ -1559,7 +1559,7 @@ func (api *StreamingAPI) terminalSnapshotForList(ctx context.Context, planTypes 
 }
 
 func (api *StreamingAPI) enrichTerminalSnapshotMetadata(ctx context.Context, planTypes *terminalPlanTypeResolver, snapshot terminals.Snapshot) terminals.Snapshot {
-	snapshot = api.nativeUsageSnapshot(ctx, snapshot)
+	snapshot = api.nativeUsageSnapshot(snapshot)
 	active, exists := api.getActiveSession(snapshot.SessionID)
 	if !exists || active == nil {
 		enrichedSnapshot := snapshot.WithContext(terminals.Context{})
@@ -1852,9 +1852,8 @@ func compactTerminalStatusMetaForList(meta map[string]interface{}) map[string]in
 	}
 	const maxEntries = 12
 	out := make(map[string]interface{}, min(len(meta), maxEntries))
-	// Plan-usage structures the composer renders (statusline chip + terminal
-	// icon hover) are lists, which the scalar-only compaction below would drop.
-	// Keep them — ahead of the entry cap — when they stay small.
+	// The CLI's status extras are a list, which the scalar-only compaction below
+	// would drop. Keep it — ahead of the entry cap — when it stays small.
 	for _, key := range terminalListStatusMetaStructuredKeys {
 		if value, ok := compactTerminalStatusMetaStructuredValueForList(meta[key]); ok {
 			out[key] = value
@@ -1885,9 +1884,9 @@ func compactTerminalStatusMetaForList(meta map[string]interface{}) map[string]in
 }
 
 // terminalListStatusMetaStructuredKeys are status_meta list values that
-// survive metadata-only terminal lists: llmtypes.StatusExtrasMetaKey
-// (display strings) and llmtypes.RateLimitWindowsMetaKey (structured windows).
-var terminalListStatusMetaStructuredKeys = []string{"status_extras", "rate_limit_windows"}
+// survive metadata-only terminal lists: llmtypes.StatusExtrasMetaKey (display
+// strings). Plan windows never reach a terminal (nativeUsageSnapshot).
+var terminalListStatusMetaStructuredKeys = []string{"status_extras"}
 
 const terminalListStatusMetaStructuredMaxBytes = 2048
 

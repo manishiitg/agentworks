@@ -1,5 +1,6 @@
 import React from 'react'
 import type { StepTokenUsageEvent as GeneratedStepTokenUsageEvent } from '../../../generated/event-types'
+import { formatTokens } from '../../../utils/formatTokens'
 
 interface StepTokenUsageEventDisplayProps {
   event: GeneratedStepTokenUsageEvent
@@ -12,15 +13,6 @@ export const StepTokenUsageEventDisplay: React.FC<StepTokenUsageEventDisplayProp
   const contextUsagePercent = event.context_usage_percent as number | undefined
   const modelContextWindow = event.metadata?.model_context_window as number | undefined
 
-  // Helper function to format token count (e.g., 1000000 -> "1M", 200000 -> "200k")
-  const formatTokenCount = (tokens: number): string => {
-    if (tokens >= 1_000_000) {
-      return `${(tokens / 1_000_000).toFixed(1)}M`.replace('.0', '')
-    } else if (tokens >= 1_000) {
-      return `${(tokens / 1_000).toFixed(0)}k`
-    }
-    return tokens.toString()
-  }
   
   return (
     <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md p-2">
@@ -90,7 +82,7 @@ export const StepTokenUsageEventDisplay: React.FC<StepTokenUsageEventDisplayProp
                 <span className="ml-1">{contextUsagePercent.toFixed(1)}%</span>
                 {modelContextWindow !== undefined && modelContextWindow > 0 && (
                   <span className="text-gray-600 dark:text-gray-400">
-                    {' ('}{formatTokenCount(modelContextWindow)}{')'}
+                    {' ('}{formatTokens(modelContextWindow)}{')'}
                   </span>
                 )}
               </span>

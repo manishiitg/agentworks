@@ -596,7 +596,6 @@ func (api *StreamingAPI) buildActiveSessionInfoSummary(session *ActiveSessionInf
 	}
 
 	enriched := *session
-	enriched.ContextUsagePercent = api.nativeSessionContextPercent(session.SessionID)
 	enriched.HasRetainedTmuxSession = api.sessionHasRetainedCodingTmux(session.SessionID)
 
 	if api.bgAgentRegistry != nil {

@@ -5,16 +5,11 @@ import { agentApi } from '../../services/api'
 import type { ChatContextView } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { useChatPreferences } from '../../hooks/useChatPreferences'
+import { formatTokens } from '../../utils/formatTokens'
+import { ContextMeter } from '../../components/chat/ContextMeter'
 
 export const menuRowClass = 'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
 export const menuLabelClass = 'px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground'
-
-/** 312000 -> "312K", 1000000 -> "1M". */
-export function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}M`
-  if (value >= 1_000) return `${Math.round(value / 1_000)}K`
-  return String(value)
-}
 
 /** "5h 4% · 7d 85% (resets 11:30 PM)": the reset shown is the fullest window's, with its date when not today. */
 export function chatLimitsText(limits: ChatContextView['limits']): string {
@@ -57,7 +52,6 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
   if (!view) return null
   const used = view.used_tokens ?? 0
   const windowTokens = view.window_tokens ?? 0
-  const percent = windowTokens > 0 ? Math.min(100, Math.round((used / windowTokens) * 100)) : 0
   const limits = chatLimitsText(view.limits)
   const offersSomething = Boolean(view.idle_compaction || view.can_compact || view.can_fresh)
   if (!(used > 0 && windowTokens > 0) && !limits && !offersSomething) return null
@@ -82,11 +76,9 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
     <Menu.Separator className="my-1 h-px bg-border first:hidden" />
     <Menu.Label className={menuLabelClass}>Context</Menu.Label>
     {limits && <div className="px-2.5 pb-1 text-[11px] text-muted-foreground" title="Your account's plan use, as the provider reports it">{modelLabel ? `${modelLabel} · ` : ''}{limits}</div>}
-    {used > 0 && windowTokens > 0 && <div className="px-2.5 pb-1.5 pt-0.5" role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={windowTokens} aria-valuenow={used}>
+    {used > 0 && windowTokens > 0 && <div className="px-2.5 pb-1.5 pt-0.5">
       <div className="text-xs text-muted-foreground">{formatTokens(used)} of {formatTokens(windowTokens)} used</div>
-      <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
-        <div className={`h-full rounded-full ${percent > 50 ? 'bg-amber-500' : 'bg-primary'}`} style={{ width: `${Math.max(percent, 2)}%` }} />
-      </div>
+      <ContextMeter className="mt-1" used={used} windowTokens={windowTokens} />
     </div>}
     {view.idle_compaction && <Menu.CheckboxItem className={`${menuRowClass} items-start`} checked={view.idle_compaction.on} disabled={busy} onSelect={keepOpen}
       onCheckedChange={checked => void send({ idle_compaction: checked === true })}>
