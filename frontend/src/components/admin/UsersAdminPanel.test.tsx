@@ -57,7 +57,7 @@ describe('Shared user roles and product access', () => {
     await act(async () => (host.querySelector('[aria-label="Details for gw@example.com"]') as HTMLElement).click())
     expect(host.querySelector('[aria-label="Vault audit for gw@example.com"]')).toBeNull()
     expect(host.textContent).toContain('Vault audit')
-    expect(host.textContent).toContain('Daily 1,000')
+    expect(host.textContent).toContain('Daily 1k')
     expect(host.textContent).toContain('Use admin MCP')
     expect(host.querySelector('input[aria-label*="token limit"]')).toBeNull()
     expect(host.querySelector('[aria-label="Vault reader for gw@example.com"]')).toBeNull()

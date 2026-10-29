@@ -11,9 +11,9 @@ import { Input } from '../ui/Input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { enabledProductSurfaces, PRODUCT_SURFACE_LABELS, isProductSurface } from '../../products/productSurfaceConfig'
 import { selectableProducts } from './selectableProducts'
-import { formatTokens, sharedAccountLabel } from '../../utils/tokenLimits'
+import { sharedAccountLabel } from '../../utils/tokenLimits'
 import { allowedModelsText } from '../../utils/allowedModels'
-
+import { formatTokens } from '../../utils/formatTokens'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce

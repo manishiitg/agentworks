@@ -4,11 +4,12 @@ import CostPricingNotice from '../../providers/CostPricingNotice'
 import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
 import { DollarSign } from 'lucide-react'
 import { formatStartedAt } from '../../../utils/duration'
-import { formatCost, formatUSD, formatTokens } from './helpers'
+import { formatCost, formatUSD } from './helpers'
 import { costAmountLabel } from '../../../utils/costTokens'
 import type { CostsData } from './useCostsData'
 import { WorkspaceViewHeader } from '../WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../WorkspaceViewIconButton'
+import { formatTokens } from '../../../utils/formatTokens'
 
 type CostsHeaderProps = Pick<CostsData, 'loading' | 'loadAllCosts'> & {
   startedAt?: string | null

@@ -1,19 +1,6 @@
 // Shared-account token limits (PLAT-683): formatting and parsing for the
 // admin Users page and the person's own Models panel.
 
-/** 1234567 -> "1.2M"; small numbers stay exact. */
-export function formatTokens(n: number | undefined): string {
-  const v = Math.max(0, Math.round(n || 0))
-  if (v >= 1_000_000_000) return `${trim(v / 1_000_000_000)}B`
-  if (v >= 1_000_000) return `${trim(v / 1_000_000)}M`
-  if (v >= 10_000) return `${trim(v / 1_000)}k`
-  return v.toLocaleString('en-US')
-}
-
-function trim(x: number): string {
-  return x >= 100 ? x.toFixed(0) : x.toFixed(1).replace(/\.0$/, '')
-}
-
 /** "5M", "250k", "1,000,000" or "" (unlimited = 0). Returns null when unreadable. */
 export function parseTokenAmount(text: string): number | null {
   const t = text.trim().replace(/[,_\s]/g, '').toLowerCase()

@@ -436,12 +436,6 @@ const durationFromTimestamps = (start: unknown, end: unknown): number => {
   return endMs - startMs
 }
 
-export const formatTokenCount = (tokens: number): string => {
-  if (!tokens) return '0'
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens >= 10_000_000 ? 1 : 2)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(tokens >= 100_000 ? 0 : 1)}k`
-  return `${tokens}`
-}
 
 export const formatDuration = (durationMs: number): string => {
   if (!durationMs) return '0s'

@@ -1,5 +1,6 @@
 import React from 'react'
 import { Activity, Terminal } from 'lucide-react'
+import { formatTokens } from '../../../utils/formatTokens'
 
 export interface StatusLineEvent {
   provider?: string
@@ -21,23 +22,19 @@ interface StatusLineEventDisplayProps {
   compact?: boolean
 }
 
-function formatTokenCount(value?: number): string | null {
-  if (!value || value <= 0) return null
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace('.0', '')}M`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace('.0', '')}k`
-  return value.toLocaleString()
-}
 
 function formatCost(value?: number): string | null {
   if (!value || value <= 0) return null
   return value < 0.01 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`
 }
 
+const shownTokens = (value?: number) => (value && value > 0 ? formatTokens(value) : null)
+
 export const StatusLineEventDisplay: React.FC<StatusLineEventDisplayProps> = ({ event, compact = false }) => {
-  const inputTokens = formatTokenCount(event.total_input_tokens ?? event.input_tokens)
-  const outputTokens = formatTokenCount(event.total_output_tokens ?? event.output_tokens)
-  const cacheReadTokens = formatTokenCount(event.cache_read_input_tokens)
-  const cacheWriteTokens = formatTokenCount(event.cache_creation_input_tokens)
+  const inputTokens = shownTokens(event.total_input_tokens ?? event.input_tokens)
+  const outputTokens = shownTokens(event.total_output_tokens ?? event.output_tokens)
+  const cacheReadTokens = shownTokens(event.cache_read_input_tokens)
+  const cacheWriteTokens = shownTokens(event.cache_creation_input_tokens)
   const cost = formatCost(event.cost_usd)
   const time = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : null
 

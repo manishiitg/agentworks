@@ -1,8 +1,9 @@
 import React from 'react'
 import { DollarSign, Award, TrendingUp, TrendingDown } from 'lucide-react'
-import { formatUSD, formatTokens, formatTimestampLabel } from './helpers'
+import { formatUSD, formatTimestampLabel } from './helpers'
 import StageCostCard from './StageCostCard'
 import type { CostsData } from './useCostsData'
+import { formatTokens } from '../../../utils/formatTokens'
 
 type CostsSummarySectionsProps = Pick<
   CostsData,

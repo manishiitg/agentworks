@@ -17,6 +17,7 @@ import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { formatToolCallResult } from '../../utils/toolCallFormatting'
 import { isWebSearchToolCall } from '../../utils/webSearchToolCall'
 import { WebSearchToolCallDisplay } from '../events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
+import { formatTokens } from '../../utils/formatTokens'
 
 // Type definitions for conversation structure
 export interface ConversationPart {
@@ -130,12 +131,6 @@ const formatDuration = (durationMs?: number) => {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
 }
 
-const formatTokens = (tokens?: number) => {
-  const value = asNumber(tokens)
-  if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`
-  if (value >= 1000) return `${Math.round(value / 1000)}k`
-  return value.toLocaleString()
-}
 
 const timingTokenTotal = (call: LLMCallTiming) => (
   asNumber(call.total_tokens) ||

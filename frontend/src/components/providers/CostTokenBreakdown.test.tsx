@@ -6,9 +6,9 @@ import CostTokenBreakdown from './CostTokenBreakdown'
 describe('CostTokenBreakdown', () => {
   it('derives fresh input from the normalized total (live numbers)', () => {
     const html = renderToStaticMarkup(<CostTokenBreakdown compact usage={{ input_tokens: 53990000, cache_read_tokens: 46710000, completion_tokens: 322254 }} />)
-    expect(html).toContain('53.99M')
-    expect(html).toContain('7.28M')
-    expect(html).toContain('46.71M')
+    expect(html).toContain('54M')
+    expect(html).toContain('7.3M')
+    expect(html).toContain('46.7M')
     expect(html).toContain('86.5% cached')
     expect(html).not.toContain('641')
   })

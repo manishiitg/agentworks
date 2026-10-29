@@ -44,6 +44,30 @@ func TestChatContextUsageHidesPreviousProviderAfterSwitch(t *testing.T) {
 		t.Fatalf("after the switch to Claude, Codex usage must not show: %d / %d, limits %v", used, window, limits)
 	}
 
+	// The chat's terminal status reads the same figures (chatUsage): Codex's context while Codex is current,
+	// nothing after the switch, and never a plan window (those are shown only by the usage chip).
+	main := terminals.Snapshot{SessionID: session, TmuxSession: tmux, ExecutionKind: "main_agent", Status: terminals.Status{StatusMeta: map[string]interface{}{
+		llmtypes.ContextUsedTokensMetaKey: 274000, llmtypes.ContextWindowTokensMetaKey: 475000, llmtypes.RateLimitWindowsMetaKey: codexWindows,
+		llmtypes.StatusExtrasMetaKey: []interface{}{"ctx 58%", "7d 21%"},
+	}}}
+	status := func(subject chatUsageSubject) map[string]interface{} {
+		chatUsageSubjects.Lock()
+		chatUsageSubjects.bySession[session] = cachedChatUsageSubject{subject: subject, expires: time.Now().Add(time.Minute)}
+		chatUsageSubjects.Unlock()
+		return api.nativeUsageSnapshot(main).Status.StatusMeta
+	}
+	t.Cleanup(func() {
+		chatUsageSubjects.Lock()
+		delete(chatUsageSubjects.bySession, session)
+		chatUsageSubjects.Unlock()
+	})
+	if meta := status(chatUsageSubject{provider: "codex-cli", model: "gpt-6.1-sol"}); chatMetaInt(meta[llmtypes.ContextUsedTokensMetaKey]) != 274000 || meta[llmtypes.RateLimitWindowsMetaKey] != nil {
+		t.Fatalf("codex terminal status = %v", meta)
+	}
+	if meta := status(chatUsageSubject{provider: "claude-code", model: "claude-opus-5-5", switched: true}); meta[llmtypes.ContextUsedTokensMetaKey] != nil || meta[llmtypes.ContextWindowTokensMetaKey] != nil || len(meta[llmtypes.StatusExtrasMetaKey].([]interface{})) != 0 {
+		t.Fatalf("after the switch to Claude, the terminal status still shows Codex usage: %v", meta)
+	}
+
 	// The owner's laptop: a Crew main chat with no model of its own follows the Crew's model, now Claude Opus
 	// 5.5, while its last run was Codex. Its next message runs on Claude, so nothing is shown until Claude replies.
 	profile := engineModelTestProfile()

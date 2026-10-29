@@ -6,10 +6,11 @@ import { inputTokens, totalTokens, tokenSummary } from '../../../utils/costToken
 import type { CostAggregate } from '../../../services/api-types'
 import { Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import { phaseLabel as costPhaseLabel } from '../../../utils/costActivityBreakdown'
-import { formatUSD, formatCost, formatTokens, formatDuration, getRunFolderDisplayName } from './helpers'
+import { formatUSD, formatCost, formatDuration, getRunFolderDisplayName } from './helpers'
 import { buildModelCostRows } from './CostsModelSection'
 import type { CostsData } from './useCostsData'
 import CostsScheduleSection from './CostsScheduleSection'
+import { formatTokens } from '../../../utils/formatTokens'
 
 const recordedCost = (usage: CostAggregate) =>
   usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(usage.total_cost_usd)

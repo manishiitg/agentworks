@@ -35,17 +35,6 @@ export const formatUSD = (amount?: number) => {
   return usdFormatter.format(amount)
 }
 
-// Format token count (e.g., 1,234,567 -> 1.23M)
-export const formatTokens = (count?: number) => {
-  if (!count) return '0'
-  if (count >= 1000000) {
-    return (count / 1000000).toFixed(2) + 'M'
-  }
-  if (count >= 1000) {
-    return (count / 1000).toFixed(1) + 'K'
-  }
-  return count.toString()
-}
 
 /** Readable cost totals; exact precision remains available in usage details. */
 export const formatCost = (amount: number) => amount > 0 && amount < 0.01
