@@ -242,21 +242,48 @@ func (api *StreamingAPI) chatEngineProvider(owner, profileID, engine string) str
 	return strings.TrimSpace(engine) // the product's engine ids are its provider ids
 }
 
+// chatNextModel is the provider, model and account the chat's next message will use. A Crew/Code tab resolves it
+// exactly as its model chip and Models page do (effectiveProfileChatModel): its own choice, else the Crew's model.
+// Other chats only know their own choice. ok is false when nothing is known beyond the last run.
+func (api *StreamingAPI) chatNextModel(owner string, tab chatContextTab) (AgentProfileEffectiveChatModel, bool) {
+	own := tab.Identity
+	if productChatTab(tab) && api.agentProfiles != nil {
+		if profile, err := api.agentProfiles.Resolve(tab.ProfileID, 0, owner); err == nil {
+			projectID, _, _ := strings.Cut(strings.TrimSpace(tab.Record.ConversationKey), ":")
+			if binding, _, err := resolveConversationBindingForUser(context.Background(), owner, profile, projectID); err == nil {
+				if next, err := effectiveProfileChatModel(profile, binding, tab.Record, own); err == nil && strings.TrimSpace(next.Provider) != "" {
+					return next, true
+				}
+			}
+		}
+	}
+	if own.Engine != "" && own.ModelID != "" {
+		return AgentProfileEffectiveChatModel{Provider: api.chatEngineProvider(owner, tab.ProfileID, own.Engine),
+			AgentProfileChatModel: AgentProfileChatModel{Engine: own.Engine, ModelID: own.ModelID, ConnectionID: own.ConnectionID}}, true
+	}
+	return AgentProfileEffectiveChatModel{}, false
+}
+
+// chatUsageTarget is the provider and model whose usage the chat shows: the ones its next message will use.
+// switched is true when that provider, or its account, is not the one the chat last ran on; nothing has been
+// reported for it yet, so no figures are shown rather than the previous provider's or account's.
+func chatUsageTarget(lastProvider, lastModel, lastConnection string, next AgentProfileEffectiveChatModel, known bool) (provider, model string, switched bool) {
+	if !known {
+		return lastProvider, lastModel, false
+	}
+	provider, model = lastProvider, firstNonEmptyTrimmed(next.ModelID, lastModel)
+	if !sameChatProvider(next.Provider, lastProvider) {
+		return strings.TrimSpace(next.Provider), model, true
+	}
+	connection, last := strings.TrimSpace(next.ConnectionID), strings.TrimSpace(lastConnection)
+	return provider, model, connection != "" && last != "" && connection != last
+}
+
 func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) chatContextView {
 	sessionID := tab.Record.SessionID
 	provider, model, transport, _ := chatContextRuntime(owner, tab)
-	// A provider or account chosen for the next message but not run yet has reported nothing: show no usage
-	// rather than the previous provider's or account's.
-	switched := false
-	if own := tab.Identity; own.Engine != "" && own.ModelID != "" {
-		model = own.ModelID // chosen for the next message, before it ran
-		if chosen := api.chatEngineProvider(owner, tab.ProfileID, own.Engine); !sameChatProvider(chosen, provider) {
-			provider, switched = chosen, true
-		}
-		if own.ConnectionID != "" && strings.TrimSpace(tab.Record.ConnectionID) != "" && own.ConnectionID != strings.TrimSpace(tab.Record.ConnectionID) {
-			switched = true
-		}
-	}
+	next, known := api.chatNextModel(owner, tab)
+	provider, model, switched := chatUsageTarget(provider, model, tab.Record.ConnectionID, next, known)
 	view := chatContextView{SessionID: sessionID}
 	if !switched {
 		view.UsedTokens, view.WindowTokens, view.Limits = api.chatContextUsage(sessionID, provider, model, true)
