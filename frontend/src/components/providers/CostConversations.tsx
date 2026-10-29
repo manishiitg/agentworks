@@ -66,6 +66,8 @@ function TurnDetails({ conversation }: { conversation: CostConversation }) {
   const executions = Object.entries(conversation.by_execution || {}).sort(([, a], [, b]) => b.first_seen.localeCompare(a.first_seen))
   useEffect(() => {
     let cancelled = false
+    setMessages(null)
+    setStatus('')
     // This read has the chat's own access check, separate from cost visibility.
     void import('../../services/api').then(async ({ agentApi }) => {
       const result: Record<string, string> = {}
