@@ -14,11 +14,11 @@ import { TooltipProvider } from '../ui/tooltip'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { PRODUCT_SURFACE_LABELS, type ProductSurface } from '../../products/productSurfaceConfig'
+import type { ProductSurface } from '../../products/productSurfaceConfig'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterAll(() => vi.unstubAllGlobals())
 
-it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(surface => [false, true].map(active => ({ surface, active }))))('uses the shared title picker in $surface (active=$active)', async ({ surface, active }) => {
+it.each((['agentworks', 'work', 'relays'] as ProductSurface[]).flatMap(surface => [false, true].map(active => ({ surface, active }))))('uses the shared title picker in $surface (active=$active)', async ({ surface, active }) => {
   auth.user.allowed_products = [surface]
   useProductNavigationToolbarStore.setState({ target: null, workspaceTrigger: null, pickerOpen: false })
   useAppStore.setState({ adminPage: null, showWorkflowsOverview: false, showSchedulesOverview: false })
@@ -42,9 +42,8 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
       await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Switch workspace"]')!.click())
     }
     expect(host.textContent).toContain('Existing workspaces')
-    const productButtons = host.querySelectorAll('[aria-label="Products"] button')
-    expect(productButtons).toHaveLength(1)
-    expect(productButtons[0].getAttribute('aria-label')).toBe(PRODUCT_SURFACE_LABELS[surface])
+    // The project picker lists projects only; switching products lives elsewhere (owner, 2026-10-29).
+    expect(host.querySelectorAll('[aria-label="Products"] button')).toHaveLength(0)
     const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Switch workspace"]')!
     trigger.focus()
     await act(async () => trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))

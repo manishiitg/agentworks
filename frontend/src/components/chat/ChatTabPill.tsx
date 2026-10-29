@@ -165,6 +165,8 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
+      {/* A short mark under the selected tab only (owner, 2026-10-29); absolute, so the tab keeps its height. */}
+      {isActive && <span aria-hidden="true" data-tab-active-mark className="pointer-events-none absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-foreground/70" />}
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
