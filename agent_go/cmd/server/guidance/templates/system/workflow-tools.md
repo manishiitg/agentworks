@@ -95,7 +95,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 - **`runs(action="step_prompts", step_id, attempt?, iteration?)`** — System prompt and user message for a step.
 - **`settings action=get`** — Inspect the workflow's current MCP servers, selected skills, available secrets, notification content instructions and configured team delivery, LLM config, and schedules. Use this instead of `cat workflow.json` when you need the full workflow config. For the global installed skill catalog, use `skills action=list`.
 - **`models action=get`** — Per-step LLM overrides.
-- **`help(action="command", kind="review-artifact-drift", focus?)`** *(Workshop only)* — Full artifact drift audit for scheduled AgentWorks or an explicit user request, including the plan-drift repair procedure and a read-only dependency checklist. Ordinary edits and targeted tests use `builder-reference/references/plan-change-impact.md` for one combined compatibility check in the current agent.
+- **`help(action="command", kind="run-plan-drift", focus?)`** *(Workshop only)* — Full artifact drift audit for scheduled AgentWorks or an explicit user request, including the plan-drift repair procedure and a read-only dependency checklist. Ordinary edits and targeted tests use `builder-reference/references/plan-change-impact.md` for one combined compatibility check in the current agent.
 
 {{if ne .WorkshopMode "run"}}
 ## Plan Modification (Workshop mode)

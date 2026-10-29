@@ -325,8 +325,6 @@ type CommandBinding struct {
 	Name        string `json:"name" yaml:"name"`
 	Description string `json:"description" yaml:"description"`
 	Icon        string `json:"icon,omitempty" yaml:"icon,omitempty"`
-	// Aliases resolve to this command without adding menu entries.
-	Aliases []string `json:"aliases,omitempty" yaml:"aliases,omitempty"`
 	// MenuHidden keeps a retained shortcut executable without a menu row.
 	MenuHidden bool `json:"menu_hidden,omitempty" yaml:"menu_hidden,omitempty"`
 	// File is the product-relative path holding the prompt. It is resolved by

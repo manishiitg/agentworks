@@ -36,7 +36,7 @@ func TestInteractivePlanEditsDoNotRequireFullDriftAudit(t *testing.T) {
 		}
 	}
 
-	audit, err := renderFromRegistry("review-artifact-drift", tmplData{}, allKinds)
+	audit, err := renderFromRegistry("run-plan-drift", tmplData{}, allKinds)
 	if err != nil {
 		t.Fatal(err)
 	}

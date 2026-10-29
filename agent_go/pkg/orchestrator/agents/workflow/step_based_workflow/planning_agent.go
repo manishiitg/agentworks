@@ -3798,7 +3798,7 @@ func clearDriftReviewAfterPlanUpdateRetried(ctx context.Context, workspacePath, 
 	return cleared, err
 }
 
-const planEditImpactGuidance = "After related edits are complete, do one combined compatibility check in the current agent before the targeted test. For small internal edits with unchanged outputs, DB writes, routing, and behavior, confirm compatibility briefly and test. For output, DB, routing, or behavior changes, inspect and reconcile only affected dependencies before testing. Stop once affected consumers are compatible; unrelated backlog and missing audit receipts must not delay the test. Read builder-reference/references/plan-change-impact.md for the procedure. Do not launch a separate drift reviewer for each edit or test retry; reserve the full review-artifact-drift audit for scheduled AgentWorks or an explicit user request."
+const planEditImpactGuidance = "After related edits are complete, do one combined compatibility check in the current agent before the targeted test. For small internal edits with unchanged outputs, DB writes, routing, and behavior, confirm compatibility briefly and test. For output, DB, routing, or behavior changes, inspect and reconcile only affected dependencies before testing. Stop once affected consumers are compatible; unrelated backlog and missing audit receipts must not delay the test. Read builder-reference/references/plan-change-impact.md for the procedure. Do not launch a separate drift reviewer for each edit or test retry; reserve the full run-plan-drift audit for scheduled AgentWorks or an explicit user request."
 
 // planEditImpactGuidancePointer replaces planEditImpactGuidance on repeated plan edits of the same workflow.
 // The full paragraph (~700 characters) used to come back on every edit, most of each update response.
@@ -3851,7 +3851,7 @@ func buildPlanStepDependentArtifactReviewNotice(stepID string, fieldChanges []Pl
 		b.WriteString("- Cleared step_config.agent_configs.description_reviewed because the reviewed step contract may now be stale.\n")
 	}
 	if driftReviewCleared {
-		b.WriteString("- Flagged step_config.agent_configs.drift_review.needs_review=true — the plan_drift_review AgentWorks module will now treat this step as due until it (or the manual review-artifact-drift slash command) records fresh evidence via record_plan_drift_review.\n")
+		b.WriteString("- Flagged step_config.agent_configs.drift_review.needs_review=true — the plan_drift_review AgentWorks module will now treat this step as due until it (or the manual run-plan-drift slash command) records fresh evidence via record_plan_drift_review.\n")
 	}
 	if driftReviewFlagFailed {
 		b.WriteString("- ⚠️ FAILED to flag drift_review.needs_review after two attempts — plan_drift_review may NOT notice this step changed until it happens to be re-edited later. Report this failure explicitly in your final response rather than treating the edit as fully clean; do not attempt to write drift_review yourself (it is not an update_step_config field — only record_plan_drift_review may set it).\n")

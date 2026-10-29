@@ -45,8 +45,7 @@ type kindMeta struct {
 	Group          string // builder | review | improve | report | kb | learning | db
 	Description    string // shown to the agent in the kind enum
 	Modes          []string
-	AliasOf        string // compatibility kind rendered from the canonical template
-	RawTemplate    bool   // expose runtime template source without evaluating its conditions/placeholders
+	RawTemplate    bool // expose runtime template source without evaluating its conditions/placeholders
 	PanelSkill     string
 	PanelReference string
 
@@ -79,14 +78,11 @@ var allKinds = map[string]kindMeta{
 	"design-plan": {Group: "builder", Description: "Comprehensive workflow plan and dependent-artifact review with better design recommendations", Modes: []string{"workshop"}},
 
 	// Reviews record concrete evidence and unresolved owner decisions.
-	"review-artifact-drift": {Group: "review", Description: "Manual Plan Drift: check affected compatibility and prompt quality, apply bounded safe repairs through the scheduled candidate/receipt contract, and persist remaining dependency findings", Modes: []string{"workshop"}},
+	"run-plan-drift": {Group: "review", Description: "Manual Plan Drift: check affected compatibility and prompt quality, apply bounded safe repairs through the scheduled candidate/receipt contract, and persist remaining dependency findings", Modes: []string{"workshop"}},
 
 	// Improvements — evidence-driven reliability and strategy flows
-	"setup-goals":    {Group: "improve", AliasOf: "define-success", Description: "Set up primary and secondary outcome goals, primary and supporting metrics, collection and targets for new or existing workflows", Modes: []string{"workshop"}},
-	"define-success": {Group: "improve", Description: "Set up primary and secondary outcome goals and measurable progress; also available as setup-goals", Modes: []string{"workshop"}},
-	// The explicit plan review command uses the same review guide.
-	"run-plan-drift":      {Group: "review", AliasOf: "review-artifact-drift", Description: "Same as review-artifact-drift: the /run-plan-drift command", Modes: []string{"workshop"}},
-	"design-reporting-ui": {Group: "report", Description: "Create or update user-designed db/reports/*.html views using the platform runtime and shared toolbar discovery: live goal/measurement/cost helpers, optional prebuilt metric widgets and daisyUI, report-owned approval buttons, live outside data via window.report.run scripts in code/reports/, and direct requests via window.report.sendChatMessage.", Modes: []string{"workshop"}},
+	"setup-goals":      {Group: "improve", Description: "Set up primary and secondary outcome goals, primary and supporting metrics, collection and targets for new or existing workflows", Modes: []string{"workshop"}},
+	"design-dashboard": {Group: "report", Description: "Create or update user-designed db/reports/*.html views using the platform runtime and shared toolbar discovery: live goal/measurement/cost helpers, optional prebuilt metric widgets and daisyUI, report-owned approval buttons, live outside data via window.report.run scripts in code/reports/, and direct requests via window.report.sendChatMessage.", Modes: []string{"workshop"}},
 }
 
 // referenceKinds is the registry of system reference docs — content that
@@ -134,7 +130,7 @@ var referenceKinds = map[string]kindMeta{
 	"plan-editing-tools":    {Group: "system", Description: "Consolidated typed plan mutation arguments, native handler reuse and plan/config validation-store boundaries", Modes: []string{"workshop"}},
 	"plan-design":           {Group: "system", Description: "Plan-design playbook: step boundaries, step-type selection, context flow, validation/failure design, anti-patterns, step-types reference. Load when designing a new plan or restructuring an existing one in DESIGN phase.", Modes: []string{"workshop"}},
 	"step-description":      {Group: "system", Description: "Write agent prompts with the correct authority boundary: description and its task rules execute as the first user turn alone, and optional items are later user turns, skills/learnings carry reusable HOW, and validation_schema defines the load-bearing output shape. Load before writing or editing a step description, sequence items, or validation schema.", Modes: []string{"workshop"}},
-	"plan-change-impact":    {Group: "system", Description: "Plan-change impact analysis: when a step changes (add/remove/reorder, output contract, db writes, or behavior) trace and reconcile the blast radius across downstream steps, measurement, the report dashboard, db, learnings, and KB — by searching the workspace for references to the change's surface, then fixing the clear ones and flagging the judgment calls. The planning/changelog is the work-list; record an impact summary and let review-artifact-drift be the audit backstop. After related edits, do one combined compatibility check in the current agent before the targeted test; reserve a full drift audit for AgentWorks or an explicit user request. Load before treating a plan change as done.", Modes: []string{"workshop"}},
+	"plan-change-impact":    {Group: "system", Description: "Plan-change impact analysis: when a step changes (add/remove/reorder, output contract, db writes, or behavior) trace and reconcile the blast radius across downstream steps, measurement, the report dashboard, db, learnings, and KB — by searching the workspace for references to the change's surface, then fixing the clear ones and flagging the judgment calls. The planning/changelog is the work-list; record an impact summary and let run-plan-drift be the audit backstop. After related edits, do one combined compatibility check in the current agent before the targeted test; reserve a full drift audit for AgentWorks or an explicit user request. Load before treating a plan change as done.", Modes: []string{"workshop"}},
 	"measurement-plan":      {Group: "system", Description: "Shared Builder measurement contract: ordinary steps record DB measurements and period history independently of folder identities; record_goal_observations for AgentWorks goal-progress history; legacy evaluation artifacts are read-only history. Load before editing measurement.", Modes: []string{"workshop"}},
 	"llm-provider-config":   {Group: "system", Description: "Model Library and provider-auth management for multi-agent chat and workflow workshop: discover provider models, validate candidates, optionally save reusable provider/model/options configurations, preserve reasoning_effort, and never read or edit config/ files directly. Load when the user asks which LLMs exist, wants a reusable saved configuration, or needs provider auth.", Modes: []string{"multi-agent", "workshop"}},
 	"llm-selection":         {Group: "system", Description: "Choosing the LLM that runs workflow work: provider-profile vs explicit Builder/high/medium/low roles via set_workflow_llm_config, per-step overrides (execution_tier, execution_llm, validation_llm), precedence rules, cost review tools, and provider auth. Load when picking, pinning, or changing which model executes a workflow step (not media generation — see workspace-media-tools for that).", Modes: []string{"workshop"}},
@@ -213,9 +209,6 @@ func renderFromRegistry(kind string, data tmplData, registry map[string]kindMeta
 	meta, ok := registry[kind]
 	if !ok {
 		return "", fmt.Errorf("unknown kind %q", kind)
-	}
-	if meta.AliasOf != "" {
-		return renderFromRegistry(meta.AliasOf, data, registry)
 	}
 	rel := path.Join("templates", meta.Group, kind+".md")
 	body, err := readKindTemplate(meta, rel)
@@ -318,7 +311,7 @@ type DefinitionToolRegistrar interface {
 func RegisterGuidanceTool(agent DefinitionToolRegistrar, currentMode string, logger loggerv2.Logger) {
 	desc := "Get the canonical guided-flow text for any workflow command. " +
 		"Call this tool — and follow the returned instructions verbatim — when (1) the user invokes a slash command " +
-		"like /design-plan or /define-success. A command dispatch can supply the exact " +
+		"like /design-plan or /setup-goals. A command dispatch can supply the exact " +
 		"" +
 		"kind and focus; when the dispatch message explicitly states kind=... and focus=... " +
 		"use those exact values. Pass the " +
@@ -449,7 +442,7 @@ func buildSystemToolsSkillWithMCP(mode string, mcpManagement bool) *llmtypes.Ski
 	if !mcpManagement {
 		referenceExamples = strings.ReplaceAll(referenceExamples, "`integration-discovery` before connecting a new third-party service/MCP server, ", "")
 	}
-	proceduralGuidance := "- `get_workflow_command_guidance(kind, focus?)` — canonical procedural flows (design-plan, run-plan-drift, define-success, etc.). The returned text is your instructions for that turn; follow it verbatim.\n"
+	proceduralGuidance := "- `get_workflow_command_guidance(kind, focus?)` — canonical procedural flows (design-plan, run-plan-drift, setup-goals, etc.). The returned text is your instructions for that turn; follow it verbatim.\n"
 	if strings.EqualFold(strings.TrimSpace(mode), "run") {
 		referenceExamples = "`runtime-context` before answering from workflow state, `running-steps` before execution, or `human-in-the-loop` when work needs a user decision"
 		proceduralGuidance = ""

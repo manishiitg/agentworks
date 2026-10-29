@@ -1,5 +1,5 @@
 Set up outcome goals and measurable progress for this workflow. This is the
-shared flow for /setup-goals, legacy /define-success, and first-time AgentWorks setup.
+shared flow for /setup-goals and first-time AgentWorks setup.
 {{if .Focus}}
 User context: {{.Focus}}
 {{end}}

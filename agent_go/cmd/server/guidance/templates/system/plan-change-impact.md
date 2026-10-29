@@ -16,7 +16,7 @@ Do one combined compatibility check in the current agent after the related edits
 
 - **Small internal or cosmetic edits:** when outputs, DB writes, routing, and behavior remain compatible, confirm that briefly and proceed to the test. Judge the actual change, not just the field name: description/message edits can change behavior. Record unaffected surfaces as `not_applicable` with a short reason; no broad workspace audit is needed.
 - **Output, DB, routing, or behavior changes:** trace the affected dependencies using the procedure below and reconcile them before testing. Cover downstream steps, reports, evals, validation, and saved guidance only where the change reaches them. A known broken dependency needed by the test must be fixed first.
-- **Full drift audit:** reserve `review-artifact-drift` for scheduled AgentWorks or an explicit user request. A targeted test request does not request a full audit. The `drift_review.needs_review` flag tracks stale evidence for AgentWorks; it does not block interactive testing or require an immediate background reviewer.
+- **Full drift audit:** reserve `run-plan-drift` for scheduled AgentWorks or an explicit user request. A targeted test request does not request a full audit. The `drift_review.needs_review` flag tracks stale evidence for AgentWorks; it does not block interactive testing or require an immediate background reviewer.
 
 Combine all changelog entries from the same repair into that one check and record dispositions for each inspected entry. Reuse evidence while the relevant artifacts remain unchanged. If a test needs another edit, recheck only its new impact; if no artifacts changed, a retry needs no new dependency review. Never mark a full drift audit complete based only on this targeted check.
 
@@ -64,7 +64,7 @@ Every plan-mod tool call is auto-written to `planning/changelog/changelog-*.json
 
 Do **not** edit or delete changelog files directly. The current agent records evidence-backed findings/dispositions and marks only inspected entries through `mark_changelog_artifact_reviewed`. AgentWorks uses those saved records to avoid repeating unchanged checks.
 
-The full `review-artifact-drift` audit is a backstop inside the same AgentWorks or Builder conversation when due or explicitly requested. Inspect changed steps and affected dependent artifacts directly, asking Builder for repairs as needed. It is not a prerequisite for a normal test run.
+The full `run-plan-drift` audit is a backstop inside the same AgentWorks or Builder conversation when due or explicitly requested. Inspect changed steps and affected dependent artifacts directly, asking Builder for repairs as needed. It is not a prerequisite for a normal test run.
 
 ## Scope note
 The discipline **scales to the change**. A change that is purely internal to a step (same output contract, same db writes, same described behavior) has no blast radius — confirm that quickly and move on. A renamed output field touches downstream + report + eval + db; a reworded description that keeps the same contract may only touch learnings. Trace what the surface actually reaches, not a fixed checklist for its own sake.

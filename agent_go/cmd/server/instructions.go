@@ -210,7 +210,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, assumptions, examples. **Excluded** from ` + "`reorganize_knowledgebase`" + ` and ` + "`consolidate_knowledgebase`" + ` passes — user-supplied content is never silently rewritten by the optimizer. Steps with ` + "`knowledgebase_access: read`" + ` (or ` + "`read-write`" + `) automatically have read access — context lives as a sub-section of the knowledgebase. The saved context is available to authorized workflow steps.
 
 **Operating model and run history:**
-- ` + "`/define-success`" + ` records the confirmed operating-model assessment (primary type, secondary traits, plan stability, runtime mode, business-context accumulation, and cadence) as a typed decision record. It is historical reasoning, not a permanent Goal/Profile card. Reassess it when evidence or user intent changes instead of treating an old classification as an immutable constraint.
+- ` + "`/setup-goals`" + ` records the confirmed operating-model assessment (primary type, secondary traits, plan stability, runtime mode, business-context accumulation, and cadence) as a typed decision record. It is historical reasoning, not a permanent Goal/Profile card. Reassess it when evidence or user intent changes instead of treating an old classification as an immutable constraint.
 ### Log Layout (inside ` + "`runs/iteration-{N}/{group-name}/logs/{step-id}/`" + `)
 - ` + "`validation-{N}.json`" + ` — validation attempts for the step
 - ` + "`execution/execution-attempt-{A}-iteration-{I}.json`" + ` — execution result per attempt
@@ -276,14 +276,13 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
 
   Builder-mode audits:
     - design-plan            → design review: is the plan following best practices (step types, stores, validation, flow)
-    - design-reporting-ui    → dashboard authoring flow, submitted by /design-dashboard
+    - design-dashboard       → dashboard authoring flow, submitted by /design-dashboard
 
   Reviews (recommend, don't apply; record owner decisions):
-    - review-artifact-drift  → Plan Drift: plan-changelog-to-artifact drift audit, submitted by /run-plan-drift (run-plan-drift is an alias kind)
+    - run-plan-drift         → Plan Drift: plan-changelog-to-artifact drift audit, submitted by /run-plan-drift
 
   Improvements:
-    - setup-goals              → goal and metric setup, submitted by /setup-goals
-    - define-success           → compatibility alias for setup-goals; use the same setup flow
+    - setup-goals            → goal and metric setup, submitted by /setup-goals
 
 **Optional parameters:**
   - ` + "`focus`" + `       : strongly recommended; the conversation-derived instruction/context for this command. Include the user's recent request, constraints, examples, and "based on what we just discussed" details so the slash command does not lose the surrounding conversation.
