@@ -7,26 +7,13 @@ DEPLOY = Path(__file__).resolve().parents[1]
 
 
 class DeploymentRetentionTest(unittest.TestCase):
-    def test_release_installers_require_agent_and_workspace_health(self):
-        installers = {
-            'aws-ec2/server/build-and-activate.sh': (8000, 8080),
-            'aws-ec2/rootless/migrate-once.sh': (8000, 8080),
-        }
-        for name, (agent, workspace) in installers.items():
-            with self.subTest(script=name):
-                script = (DEPLOY / name).read_text()
-                self.assertIn('prune-releases.py', script)
-                self.assertIn('--apply', script)
-                self.assertIn(f'--health-url http://127.0.0.1:{agent}/api/health', script)
-                self.assertIn(f'--health-url http://127.0.0.1:{workspace}/health', script)
-
     def test_every_release_builder_packages_the_shared_helper(self):
         for name in ('aws-ec2/server/build-and-activate.sh', 'rootless-linux/build-and-activate.sh'):
             with self.subTest(script=name):
                 self.assertIn('/deploy/common/prune-releases.py', (DEPLOY / name).read_text())
 
-    def test_shared_rootless_builder_checks_both_product_health_endpoints(self):
-        script = (DEPLOY / 'rootless-linux/build-and-activate.sh').read_text()
+    def test_shared_activation_prunes_only_with_both_health_endpoints(self):
+        script = (DEPLOY / 'common/activate-release.sh').read_text()
         self.assertIn('--health-url "http://127.0.0.1:$AGENT_PORT/api/health"', script)
         self.assertIn('--health-url "http://127.0.0.1:$WORKSPACE_PORT/health"', script)
 

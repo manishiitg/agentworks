@@ -145,17 +145,19 @@ class VaultInstallTest(unittest.TestCase):
         runtime = (rts / 'server/runtime-config.js').read_text()
         unit = (rts / 'rootless/video-studio-agent.service').read_text()
         import re
-        for expected in re.findall(r"grep -Fq '([^']+)' ", script[:script.index('RELEASE_ID=')]):
+        # Required settings only; `grep -Fq X file && {` is a must-not-contain check.
+        for expected in re.findall(r"grep -Fq '([^']+)' \"[^\"]+\" (?!&& \{)", script[:script.index('RELEASE_ID=')]):
             self.assertIn(expected, runtime + unit + (rts / 'rootless/video-studio-workspace.service').read_text())
     def test_both_deployments_build_bootstrap_and_health_check(self):
         repo = ROOT.parents[1]
+        # Both deploy paths check the staged release, then the shared activation renders, bootstraps and starts Vault.
         for path in ('deploy/rootless-linux/build-and-activate.sh', 'deploy/aws-ec2/server/build-and-activate.sh'):
             script = (repo / path).read_text()
-            for call in ('vault_build', 'vault_prepare', 'vault_install', 'vault_start'):
-                self.assertIn(call, script)
-            branch = script.index('if [[ -n "$PREBUILT" ]]; then', script.index('source "$REPO_ROOT/deploy/common/slots.sh"'))
-            self.assertLess(script.index('source "$REPO_ROOT/deploy/common/vault.sh"'), branch)
-            self.assertLess(script.index('vault_check_build'), script.index('vault_prepare'))
+            self.assertLess(script.index('source "$REPO_ROOT/deploy/common/vault.sh"'), script.index('vault_check_build'))
+            self.assertLess(script.index('vault_check_build'), script.index('\nactivate_release\n'))
+        shared = (ROOT / 'activate-release.sh').read_text()
+        self.assertLess(shared.index('vault_prepare'), shared.index('systemctl --user stop "$UNIT_PREFIX-agent"'))
+        self.assertLess(shared.index('vault_install'), shared.index('vault_start'))
         bundle = (ROOT / 'build-release.sh').read_text()
         self.assertIn('vault_build "$REPO_ROOT" "$OUT"', bundle)
         common = (ROOT / 'vault.sh').read_text()
