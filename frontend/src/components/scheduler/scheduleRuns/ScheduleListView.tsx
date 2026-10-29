@@ -109,12 +109,12 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
               {job.group_names && job.group_names.length > 1 && (
                 <span title={job.group_names.join(', ')}>Groups: {job.group_names.join(', ')}</span>
               )}
-              {job.entity_type === 'product' && (
+              {(job.entity_type === 'product' || Boolean(job.run_destinations?.length)) && (
                 <label className="inline-flex items-center gap-1.5">
                   <span>Runs in</span>
                   <select
                     aria-label={`Run destination for ${job.name}`}
-                    value={job.run_destination === 'isolated' ? 'isolated' : job.chat_id || 'main'}
+                    value={job.run_destination === 'isolated' || job.run_destination === 'new' ? job.run_destination : job.chat_id || 'main'}
                     disabled={isReadOnlyUser || isRunningJob}
                     onChange={event => void handleRunDestination(job, event.target.value)}
                     className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"

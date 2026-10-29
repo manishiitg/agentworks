@@ -186,7 +186,12 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 	if manifest != nil && manifest.Kind == "relay" {
 		pauseProduct = "relays"
 	}
+	destination, chatKey, chatID, destinations := goalScheduleDestinationView(manifest, workspacePath, sched)
 	return ScheduledJobResponse{
+		RunDestination:           destination,
+		ChatKey:                  chatKey,
+		ChatID:                   chatID,
+		RunDestinations:          destinations,
 		pauseProduct:             pauseProduct,
 		Kind:                     normalizeTriggerKind(sched.Kind),
 		StepID:                   workflowWebhookDTO(sched).StepID,
@@ -747,6 +752,14 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			AfterDelayMinutes:        req.AfterDelayMinutes,
 			DependencyDeadline:       strings.TrimSpace(req.DependencyDeadline),
 		}
+		var chatID *string
+		if req.ChatID != "" {
+			chatID = &req.ChatID
+		}
+		if err := applyGoalScheduleDestination(r.Context(), manifest, req.WorkspacePath, &newSched, req.RunDestination, chatID); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		manifest.Schedules = append(manifest.Schedules, newSched)
 		if err := ValidateManifest(manifest); err != nil {
@@ -967,6 +980,14 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			sched.GroupNames = validGroupNames
 		}
 		if err := validateScheduleRequest(scheduleTypeOrDefault(sched.ScheduleType), sched.CronExpression, sched.CalendarItems); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		destination := ""
+		if req.RunDestination != nil {
+			destination = *req.RunDestination
+		}
+		if err := applyGoalScheduleDestination(r.Context(), manifest, workspacePath, sched, destination, req.ChatID); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

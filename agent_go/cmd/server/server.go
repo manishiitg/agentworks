@@ -12950,6 +12950,9 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err := validateScheduleRuntimePolicy(newSched); err != nil {
 				return "", err
 			}
+			if err := applyGoalScheduleDestination(ctx, manifest, workspacePath, &newSched, policy.RunDestination, policy.ChatID); err != nil {
+				return "", err
+			}
 			manifest.Schedules = append(manifest.Schedules, newSched)
 			if err := ValidateManifest(manifest); err != nil {
 				return "", err
@@ -13173,6 +13176,9 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					sched.DependencyDeadline = strings.TrimSpace(policy.DependencyDeadline)
 				}
 				if err := validateScheduleRuntimePolicy(*sched); err != nil {
+					return "", err
+				}
+				if err := applyGoalScheduleDestination(ctx, manifest, workspacePath, sched, policy.RunDestination, policy.ChatID); err != nil {
 					return "", err
 				}
 			}

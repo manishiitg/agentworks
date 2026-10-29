@@ -88,6 +88,7 @@ func workflowScheduleFromAction(record projectactions.Schedule) (WorkflowSchedul
 		TeamPolicyRevision: input.TeamPolicyRevision, RunAs: record.RunAs}
 	if record.Action.Type == "message" {
 		s.WorkshopMode = "workshop"
+		s.ChatKey, s.Conversation = record.Action.Tab, record.Action.Conversation
 	}
 	if len(record.When.Dates) > 0 {
 		s.ScheduleType = "calendar"
@@ -122,7 +123,8 @@ func actionFromWorkflowSchedule(project projectactions.Project, caller string, s
 		RunAs: caller, Input: raw, Action: projectactions.Action{Type: "run"},
 		When: projectactions.When{Cron: s.CronExpression, Timezone: scheduleTimezoneOrDefault(s.Timezone)}}
 	if len(s.Messages) > 0 {
-		record.Action.Type = "message"
+		// Only a message schedule has a chat; a plan run always starts its own run.
+		record.Action = projectactions.Action{Type: "message", Tab: s.ChatKey, Conversation: s.Conversation}
 	}
 	if s.RunAs != "" {
 		record.RunAs = s.RunAs

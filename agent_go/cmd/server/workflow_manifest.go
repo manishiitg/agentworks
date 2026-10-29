@@ -416,6 +416,12 @@ type WorkflowSchedule struct {
 	// that has not released this occurrence by then expires visibly instead of
 	// leaking into the next operating day.
 	DependencyDeadline string `json:"dependency_deadline,omitempty"`
+	// ChatKey and Conversation choose where a message schedule runs, as for a
+	// Crew (common record action.tab / action.conversation): one of RunAs's
+	// Builder tabs, or the schedule's own conversation ("isolated"). Both empty
+	// is the Goal default, a new conversation each fire (PLAT-871-28).
+	ChatKey      string `json:"-"`
+	Conversation string `json:"-"`
 }
 
 // ShouldResumePrevious reports whether a scheduled run should resume the

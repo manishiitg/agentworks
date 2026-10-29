@@ -10,7 +10,7 @@ import { selectWorkflowPreset } from '../../../utils/workflowNavigation'
 import { scheduleTabLabel } from '../../../utils/scheduleTabLabel'
 import { resolveWorkflowTabForSession } from '../../../utils/workflowTabResolution'
 import { hydrateExecutionConversation } from '../../../utils/executionConversationRestore'
-import type { ScheduledJob, ScheduledJobRun, SchedulerConfig, SkippedWhilePaused } from '../../../services/api-types'
+import type { ScheduledJob, ScheduledJobRun, SchedulerConfig, SkippedWhilePaused, UpdateScheduledJobRequest } from '../../../services/api-types'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import { useLiveRefetch } from '../../../hooks/useLiveRefetch'
 import {
@@ -518,20 +518,22 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     } catch { /* ignore */ }
   }
 
-  // destination is "main", "isolated" or a tab's chat id (the server lists the choices).
+  // destination is "main", "isolated", "new" (Goals) or a tab's chat id (the server lists the choices).
   const handleRunDestination = async (job: ScheduledJob, destination: string) => {
     try {
-      const request = destination === 'isolated'
-        ? { run_destination: 'isolated' as const }
-        : { run_destination: 'crew_chat' as const, chat_id: destination === 'main' ? '' : destination }
+      const request: UpdateScheduledJobRequest = destination === 'isolated' || destination === 'new'
+        ? { run_destination: destination as 'isolated' | 'new' }
+        : { run_destination: 'crew_chat', chat_id: destination === 'main' ? '' : destination }
       const updated = await schedulerApi.updateJob(job.id, request)
       setJobs(previous => previous.map(candidate => candidate.id === job.id ? retainDurationAverage(updated, candidate) : candidate))
       const label = job.run_destinations?.find(item => item.id === destination)?.label
       useChatStore.getState().addToast(destination === 'isolated'
         ? `“${job.name}” will run in its own automation conversation.`
-        : destination === 'main'
-          ? `“${job.name}” will run in the main chat.`
-          : `“${job.name}” will run in the ${label || 'chosen'} tab.`, 'success')
+        : destination === 'new'
+          ? `“${job.name}” will start a new conversation each time.`
+          : destination === 'main'
+            ? `“${job.name}” will run in the main chat.`
+            : `“${job.name}” will run in the ${label || 'chosen'} tab.`, 'success')
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unable to change run destination'
       useChatStore.getState().addToast(detail, 'error')

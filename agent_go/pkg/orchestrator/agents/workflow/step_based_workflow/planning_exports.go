@@ -287,6 +287,11 @@ type ScheduleRuntimePolicy struct {
 	AfterTerminalStatus      string
 	AfterDelayMinutes        int
 	DependencyDeadline       string
+	// RunDestination and ChatID choose where a schedule with messages runs,
+	// as the Schedules screen does (new, crew_chat with chat_id, isolated).
+	// Empty and nil keep the current choice.
+	RunDestination string
+	ChatID         *string
 	// Set* is used only by update_schedule. It distinguishes an omitted field
 	// from an explicit empty/zero value, so changing one policy does not erase
 	// the other three.
@@ -2292,4 +2297,15 @@ func undeclaredRunVariables(manifest *VariablesManifest, values map[string]strin
 	sort.Strings(unknown)
 	sort.Strings(names)
 	return fmt.Sprintf("Unknown variable(s) %s. Declared variables: %s. Put other per-run instructions in human_inputs for the step that needs them.", strings.Join(unknown, ", "), strings.Join(names, ", "))
+}
+
+// scheduleDestinationArguments reads run_destination and chat_id from a
+// schedule tool call; a missing chat_id is nil.
+func scheduleDestinationArguments(args map[string]interface{}) (string, *string) {
+	destination, _ := args["run_destination"].(string)
+	var chatID *string
+	if value, ok := args["chat_id"].(string); ok {
+		chatID = &value
+	}
+	return destination, chatID
 }

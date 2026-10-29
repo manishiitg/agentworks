@@ -461,6 +461,10 @@ type externalScheduleSummary struct {
 
 	CalendarItems   int    `json:"calendar_items,omitempty"`
 	ConcurrencyMode string `json:"concurrency_mode,omitempty"`
+	// Where a message schedule runs, and the choices (PLAT-871-28).
+	RunDestination  string                   `json:"run_destination,omitempty"`
+	ChatID          string                   `json:"chat_id,omitempty"`
+	RunDestinations []ScheduleRunDestination `json:"run_destinations,omitempty"`
 }
 
 func (api *StreamingAPI) externalListSchedules(w http.ResponseWriter, r *http.Request, workflow DiscoveredWorkflow) {
@@ -471,7 +475,9 @@ func (api *StreamingAPI) externalListSchedules(w http.ResponseWriter, r *http.Re
 	}
 	schedules := []externalScheduleSummary{}
 	for _, sched := range manifest.Schedules {
+		destination, _, chatID, destinations := goalScheduleDestinationView(manifest, workflow.WorkspacePath, sched)
 		schedules = append(schedules, externalScheduleSummary{
+			RunDestination: destination, ChatID: chatID, RunDestinations: destinations,
 			ID: sched.ID, Name: sched.Name, ScheduleType: scheduleTypeOrDefault(sched.ScheduleType),
 			CronExpression: sched.CronExpression, Timezone: sched.Timezone, Enabled: sched.Enabled,
 			TimingSummary: scheduleTimingSummary(ScheduledJobResponse{ScheduleType: sched.ScheduleType, CronExpression: sched.CronExpression, CalendarItems: sched.CalendarItems, Timezone: sched.Timezone}),

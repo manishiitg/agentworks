@@ -2791,10 +2791,11 @@ export interface ScheduledJob {
   updated_at?: string
   built_in?: boolean
   managed_by?: 'built-in' | 'slash-command' | string
-  run_destination?: 'crew_chat' | 'isolated'
-  /** The tab a Crew schedule runs in; empty is the main chat. */
+  /** new (a Goal message schedule's default): a new conversation each time. */
+  run_destination?: 'crew_chat' | 'isolated' | 'new'
+  /** The tab a Crew or Goal schedule runs in; empty is the main chat. */
   chat_id?: string
-  /** Where this Crew schedule can run, listed by the server: main chat, each tab, own conversation. */
+  /** Where this Crew or Goal message schedule can run, listed by the server: main chat, each tab, own conversation. */
   run_destinations?: { id: string; label: string }[]
 }
 
@@ -2860,7 +2861,7 @@ export interface UpdateScheduledJobRequest {
   cron_expression?: string
   timezone?: string
   enabled?: boolean
-  run_destination?: 'crew_chat' | 'isolated'
+  run_destination?: 'crew_chat' | 'isolated' | 'new'
   /** Move a Crew schedule to a tab (its chat id); an empty string moves it back to the main chat. */
   chat_id?: string
 }

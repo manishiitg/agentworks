@@ -58,6 +58,10 @@ func (api *StreamingAPI) scheduleCollisionCheck(workspacePath, sessionID, trigge
 		if run == nil {
 			return nil
 		}
+		// A message schedule running in this Builder tab (PLAT-871-28) runs its own steps here.
+		if run.ScheduleID != "" && s.getRuntimeStateByKey(workflowScheduleRuntimeKey(workspacePath, run.ScheduleID)).LastSessionID == sessionID {
+			return nil
+		}
 		if force, ok := args["force"].(bool); ok && force {
 			log.Printf("[SCHEDULE_GUARD] force override session=%s operation=%s schedule=%s run=%s", sessionID, operation, run.ScheduleID, run.RunID)
 			return nil

@@ -5457,6 +5457,14 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type": "integer", "minimum": 0,
 					"description": "Optional delay after the prerequisite terminal receipt before this schedule may start.",
 				},
+				"run_destination": map[string]interface{}{
+					"type": "string", "enum": []string{"new", "crew_chat", "isolated"},
+					"description": "Only for a schedule with messages: new (a new conversation each time, the default), crew_chat (the schedule owner's Builder chat named by chat_id) or isolated (the schedule's own conversation, kept across runs). A plan run always starts a new run.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "With run_destination crew_chat: main for the main Builder chat, or a tab id from manage_builder_chats list.",
+				},
 				"dependency_deadline": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional local HH:MM deadline after which this dependent occurrence expires instead of running stale.",
@@ -5543,6 +5551,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if value, ok := args["after_delay_minutes"].(float64); ok {
 				policy.AfterDelayMinutes = int(value)
 			}
+			policy.RunDestination, policy.ChatID = scheduleDestinationArguments(args)
 			return iwm.schedulerFuncs.CreateSchedule(ctx, iwm.schedulerWorkspacePath, name, cronExpr, timezone, groupNames, routeSelections, mode, messages, directMessagesReason, workshopMode, resumePrevious, policy)
 		},
 		"workflow",
@@ -5757,6 +5766,14 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"after_delay_minutes": map[string]interface{}{
 					"type": "integer", "minimum": 0, "description": "Delay after prerequisite completion. Zero clears it.",
 				},
+				"run_destination": map[string]interface{}{
+					"type": "string", "enum": []string{"new", "crew_chat", "isolated"},
+					"description": "Only for a schedule with messages: new (a new conversation each time, the default), crew_chat (the schedule owner's Builder chat named by chat_id) or isolated (the schedule's own conversation, kept across runs). A plan run always starts a new run.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "With run_destination crew_chat: main for the main Builder chat, or a tab id from manage_builder_chats list.",
+				},
 				"dependency_deadline": map[string]interface{}{
 					"type": "string", "description": "Local HH:MM deadline, or an empty string to clear it.",
 				},
@@ -5874,6 +5891,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			if _, ok7 := args["dependency_deadline"]; ok7 && policy == nil {
 				policy = &ScheduleRuntimePolicy{}
+			}
+			if destination, chatID := scheduleDestinationArguments(args); destination != "" || chatID != nil {
+				if policy == nil {
+					policy = &ScheduleRuntimePolicy{}
+				}
+				policy.RunDestination, policy.ChatID = destination, chatID
 			}
 			if policy != nil {
 

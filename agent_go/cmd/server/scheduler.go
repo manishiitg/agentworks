@@ -2727,7 +2727,11 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	invocationStartedAt := time.Now().UTC()
 	sctx.ProducedRunEvidence = false
 
-	sessionID := s.newScheduleSessionID(sctx)
+	sessionID, chatTitle, inTab := goalScheduleConversation(ctx, sctx)
+	chosenConversation := sessionID != ""
+	if !chosenConversation {
+		sessionID = s.newScheduleSessionID(sctx)
+	}
 	if sctx.WebhookInput != nil && sctx.Schedule.IsFunctionTrigger() && strings.HasPrefix(sctx.WebhookInput.DeliveryID, "fn-") {
 		ctx = virtualtools.WithFeedbackOperation(ctx, sctx.WebhookInput.DeliveryID)
 		if call := lookupCrewFunctionCall(sctx.WebhookInput.DeliveryID); call != nil {
@@ -2769,6 +2773,15 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		len(messages), sctx.Schedule.ID, sessionID, sctx.WorkspacePath, runFolder)
 
 	baseReqMap := s.buildWorkshopRequest(ctx, sctx, runID)
+	if inTab {
+		// Delivered like another agent's message into a Goal tab (agent_messaging.go):
+		// the tab keeps its person's role and runtime, the turn waits behind a running
+		// turn in that tab, and a schedule trigger never sticks to the tab's session.
+		baseReqMap["is_auto_notification"] = true
+		baseReqMap["triggered_by"] = "auto_notification"
+		baseReqMap["session_title"] = chatTitle
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] schedule %s runs in Builder tab %s (session=%s)", sctx.Schedule.ID, sctx.Schedule.ChatKey, sessionID)
+	}
 	if sctx.WebhookInput != nil {
 		baseReqMap["execution_options"].(map[string]interface{})["selected_run_folder"] = runFolder
 		s.stateStoreMu.RLock()
@@ -2814,7 +2827,7 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 
 		// Resume the workflow's latest thread (same CLI) on the first message
 		// only — later messages already share this run's live session.
-		if i == 0 {
+		if i == 0 && !chosenConversation {
 			if resumed := s.maybeResumeLatestWorkflowThread(ctx, sctx, reqMap, sessionID); resumed != "" {
 				s.sessionLogf(sctx, sessionID, "[SCHEDULER] Resuming latest workflow thread %s for schedule %s", resumed, sctx.Schedule.ID)
 			}
@@ -2849,7 +2862,9 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		// First message of the workshop sequence — stamp schedule name on
 		// the session for frontend tab labeling. Subsequent calls are
 		// no-ops (helper guards against overwriting an existing Title).
-		s.stampScheduleNameOnSession(sessionID, sctx)
+		if !inTab {
+			s.stampScheduleNameOnSession(sessionID, sctx)
+		}
 
 		// The turn ending is not the work ending. Wait for every step this turn
 		// started, hand the agent their results as its next turn, and repeat
