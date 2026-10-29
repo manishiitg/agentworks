@@ -269,7 +269,6 @@ export interface ChatContextView {
   used_tokens?: number
   window_tokens?: number
   limits?: { label: string; used_percent: number; resets_at?: string }[]
-  context_1m?: { on: boolean }
   idle_compaction?: { on: boolean }
   idle_compaction_hint?: string
   can_compact: boolean

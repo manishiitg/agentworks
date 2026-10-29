@@ -9,22 +9,28 @@ export const menuRowClass = 'flex cursor-pointer items-center gap-2 rounded-md p
 export const menuLabelClass = 'px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground'
 
 /** 312000 -> "312K", 1000000 -> "1M". */
-function formatTokens(value: number): string {
+export function formatTokens(value: number): string {
   if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}M`
   if (value >= 1_000) return `${Math.round(value / 1_000)}K`
   return String(value)
 }
 
-/** "5h: 4% · 7d: 85% (resets Oct 29, 11:30 PM)": the reset shown is the fullest window's. */
+/** "5h 4% · 7d 85% (resets 11:30 PM)": the reset shown is the fullest window's, with its date when not today. */
 export function chatLimitsText(limits: ChatContextView['limits']): string {
   if (!limits?.length) return ''
-  const parts = limits.map(limit => `${limit.label}: ${Math.round(limit.used_percent)}%`)
+  const parts = limits.map(limit => `${limit.label} ${Math.round(limit.used_percent)}%`)
   const fullest = [...limits].sort((a, b) => b.used_percent - a.used_percent)[0]
   const resets = fullest?.resets_at ? new Date(fullest.resets_at) : null
+  const today = resets && resets.toDateString() === new Date().toDateString()
   const when = resets && !Number.isNaN(resets.getTime())
-    ? ` (resets ${resets.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })})` : ''
+    ? ` (resets ${resets.toLocaleString(undefined, today ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })})` : ''
   return parts.join(' · ') + when
 }
+
+/** Sent when the menu changes a chat's context, so the status bar under the composer shows the server's new view. */
+export const chatContextChangedEvent = 'agentworks:chat-context-changed'
+/** Sent by the status bar under the composer to open that chat's model menu. */
+export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 
 /**
  * The "Context" group of a chat's model menu (PLAT-872-71): how full this chat is, its account's plan limits,
@@ -46,15 +52,16 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
   const windowTokens = view.window_tokens ?? 0
   const percent = windowTokens > 0 ? Math.min(100, Math.round((used / windowTokens) * 100)) : 0
   const limits = chatLimitsText(view.limits)
-  const offersSomething = Boolean(view.context_1m || view.idle_compaction || view.can_compact || view.can_fresh)
+  const offersSomething = Boolean(view.idle_compaction || view.can_compact || view.can_fresh)
   if (!(used > 0 && windowTokens > 0) && !limits && !offersSomething) return null
 
-  const send = async (body: { context_1m?: boolean; idle_compaction?: boolean; action?: 'compact' | 'fresh' }) => {
+  const send = async (body: { idle_compaction?: boolean; action?: 'compact' | 'fresh' }) => {
     if (busy) return
     setBusy(true)
     try {
       const result = await agentApi.setChatContext({ session_id: sessionId, ...body })
       setView(result.context)
+      window.dispatchEvent(new CustomEvent(chatContextChangedEvent, { detail: result.context }))
       if (result.message) useChatStore.getState().addToast(result.message, 'success')
     } catch (cause) {
       const reason = (cause as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -74,11 +81,6 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
         <div className={`h-full rounded-full ${percent > 50 ? 'bg-amber-500' : 'bg-primary'}`} style={{ width: `${Math.max(percent, 2)}%` }} />
       </div>
     </div>}
-    {view.context_1m && <Menu.CheckboxItem className={menuRowClass} checked={view.context_1m.on} disabled={busy} onSelect={keepOpen}
-      onCheckedChange={checked => void send({ context_1m: checked === true })}>
-      <span className="min-w-0 flex-1 truncate">1M context</span>
-      <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
-    </Menu.CheckboxItem>}
     {view.idle_compaction && <Menu.CheckboxItem className={`${menuRowClass} items-start`} checked={view.idle_compaction.on} disabled={busy} onSelect={keepOpen}
       onCheckedChange={checked => void send({ idle_compaction: checked === true })}>
       <span className="min-w-0 flex-1">

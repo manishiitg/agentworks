@@ -1255,7 +1255,7 @@ export const agentApi = {
   },
 
   /** Changes this chat's context switches or runs compact/fresh; answers with the new view and a message to show. */
-  setChatContext: async (body: { session_id: string; context_1m?: boolean; idle_compaction?: boolean; action?: 'compact' | 'fresh' }): Promise<{ context: ChatContextView; message?: string }> => {
+  setChatContext: async (body: { session_id: string; idle_compaction?: boolean; action?: 'compact' | 'fresh' }): Promise<{ context: ChatContextView; message?: string }> => {
     const response = await api.post('/api/chat-context', body)
     return response.data
   },

@@ -18,7 +18,7 @@ import (
 )
 
 // Context options of one chat tab (PLAT-872-71), shown in the composer's model menu and offered to the chat's
-// own models/sessions tools and MCP: how full the context is, the account's plan windows, "1M context",
+// own models/sessions tools and MCP: how full the context is, the account's plan windows,
 // "Auto-compact when idle", "Compact now" and "Fresh chat". The server decides every value and what is
 // offered; the browser only shows it. Only the tab's owner reads or changes them.
 
@@ -72,7 +72,6 @@ type chatContextView struct {
 	// Limits are the plan windows the provider reported for this chat's own account; empty when unknown.
 	Limits []chatUsageLimit `json:"limits,omitempty"`
 	// A switch is present only when this chat's model and provider offer it.
-	Context1M      *chatContextSwitch `json:"context_1m,omitempty"`
 	IdleCompaction *chatContextSwitch `json:"idle_compaction,omitempty"`
 	CanCompact     bool               `json:"can_compact"`
 	CanFresh       bool               `json:"can_fresh"`
@@ -188,7 +187,7 @@ func appendChatUsageLimit(limits []chatUsageLimit, name string, percent float64,
 }
 
 // productChatTab reports whether a tab's turns run through the product chat path (Crew and Code tabs), where
-// the per-tab model, "1M context" and "Fresh chat" apply.
+// the per-tab model and "Fresh chat" apply.
 func productChatTab(tab chatContextTab) bool {
 	return limitsSideChats(tab.ProfileID)
 }
@@ -199,15 +198,8 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	if own := tab.Identity; own.Engine != "" && own.ModelID != "" {
 		model = own.ModelID // chosen for the next message, before it ran
 	}
-	if tab.Identity.Context1M {
-		model = claudecode.With1MContext(model)
-	}
 	view := chatContextView{SessionID: sessionID}
 	view.UsedTokens, view.WindowTokens, view.Limits = api.chatContextUsage(sessionID, provider, model, true)
-	claude := strings.EqualFold(provider, "claude-code")
-	if productChatTab(tab) && claude && claudecode.Supports1MContext(model) {
-		view.Context1M = &chatContextSwitch{On: tab.Identity.Context1M}
-	}
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(provider)), transport) {
 		view.IdleCompaction = &chatContextSwitch{On: !tab.Identity.IdleCompactionOff}
 		view.Hint = chatContextIdleHint
@@ -322,7 +314,6 @@ func (api *StreamingAPI) freshChat(ctx context.Context, owner string, tab chatCo
 // switches are saved.
 type chatContextRequest struct {
 	SessionID      string `json:"session_id"`
-	Context1M      *bool  `json:"context_1m,omitempty"`
 	IdleCompaction *bool  `json:"idle_compaction,omitempty"`
 	Action         string `json:"action,omitempty"` // "compact" or "fresh"
 }
@@ -334,12 +325,8 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	if !found {
 		return http.StatusNotFound, map[string]any{"error": "Only this chat's owner can change its context options."}
 	}
-	view := api.chatContextViewFor(owner, tab)
-	if input.Context1M != nil && view.Context1M == nil && *input.Context1M {
-		return http.StatusUnprocessableEntity, map[string]any{"error": "1M context is available only for Claude Opus and Sonnet chats."}
-	}
-	if input.Context1M != nil || input.IdleCompaction != nil {
-		identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, input.Context1M, input.IdleCompaction, owner)
+	if input.IdleCompaction != nil {
+		identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, *input.IdleCompaction, owner)
 		if err != nil {
 			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
 		}
@@ -348,9 +335,6 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	status, message := http.StatusOK, ""
 	switch strings.TrimSpace(input.Action) {
 	case "":
-		if input.Context1M != nil {
-			message = "Applies from the next message."
-		}
 	case "compact":
 		status, message = api.compactChatNow(owner, tab, afterTurn)
 	case "fresh":
@@ -392,34 +376,27 @@ func (api *StreamingAPI) handleChatContext(w http.ResponseWriter, r *http.Reques
 	writeAgentProfileJSON(w, status, out)
 }
 
-// chatContextArgs reads the context fields of a models/sessions tool call: booleans, or "true"/"false" text
-// from callers that pass every argument as a string.
-func chatContextArgs(args map[string]any) (context1M, idleCompaction *bool, err error) {
-	read := func(key string) (*bool, error) {
-		value, exists := args[key]
-		if !exists || value == nil {
+// chatContextArgs reads the idle_compaction field of a models/sessions tool call: a boolean, or "true"/"false"
+// text from callers that pass every argument as a string.
+func chatContextArgs(args map[string]any) (idleCompaction *bool, err error) {
+	value, exists := args["idle_compaction"]
+	if !exists || value == nil {
+		return nil, nil
+	}
+	switch v := value.(type) {
+	case bool:
+		return &v, nil
+	case string:
+		if strings.TrimSpace(v) == "" {
 			return nil, nil
 		}
-		switch v := value.(type) {
-		case bool:
-			return &v, nil
-		case string:
-			if strings.TrimSpace(v) == "" {
-				return nil, nil
-			}
-			parsed, perr := strconv.ParseBool(strings.TrimSpace(v))
-			if perr != nil {
-				return nil, fmt.Errorf("%s must be true or false", key)
-			}
-			return &parsed, nil
+		parsed, perr := strconv.ParseBool(strings.TrimSpace(v))
+		if perr != nil {
+			return nil, fmt.Errorf("idle_compaction must be true or false")
 		}
-		return nil, fmt.Errorf("%s must be true or false", key)
+		return &parsed, nil
 	}
-	if context1M, err = read("context_1m"); err != nil {
-		return nil, nil, err
-	}
-	idleCompaction, err = read("idle_compaction")
-	return context1M, idleCompaction, err
+	return nil, fmt.Errorf("idle_compaction must be true or false")
 }
 
 // externalChatContext answers an MCP call that changes one of the caller's chats, with the same checks as the screen.

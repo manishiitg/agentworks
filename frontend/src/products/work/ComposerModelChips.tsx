@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { BarChart3, Check, ChevronDown, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -8,7 +8,7 @@ import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { workChatModelsQueryKey } from './useWorkChatModels'
 import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
-import ChatContextItems, { menuLabelClass, menuRowClass } from './ChatContextItems'
+import ChatContextItems, { menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
 const rowClass = menuRowClass
@@ -39,6 +39,20 @@ export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange,
   </Menu.Root>
 }
 
+/** Opens this chat's model menu when the status bar under the composer is clicked (ChatStatusBar). */
+export function useOpenFromStatusBar(sessionId: string | undefined, open: () => void) {
+  const openRef = useRef(open)
+  openRef.current = open
+  useEffect(() => {
+    if (!sessionId) return
+    const listener = (event: Event) => {
+      if ((event as CustomEvent<{ sessionId?: string }>).detail?.sessionId === sessionId) openRef.current()
+    }
+    window.addEventListener(openChatContextMenuEvent, listener)
+    return () => window.removeEventListener(openChatContextMenuEvent, listener)
+  }, [sessionId])
+}
+
 /**
  * Model and reasoning chips for a Crew/Code chat's composer. The choices are the
  * ones the Models page offers for this chat's current coding agent; the server
@@ -57,6 +71,9 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId) || ''
   const [saving, setSaving] = useState(false)
   const [cursorOpen, setCursorOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const usesCursorPicker = useRef(false)
+  useOpenFromStatusBar(sessionId, () => (usesCursorPicker.current ? setCursorOpen : setMenuOpen)(true))
   const profileId = meta?.agentProfileId || ''
   const projectId = meta?.agentProfileProjectId || ''
   const key = meta?.agentProfileConversationKey
@@ -98,7 +115,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // Quick ways out of the menu: the full Models page (provider and account) and this project's usage.
   const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
   const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
-  // This chat's Context group (PLAT-872-71): meter, plan limits, 1M context, auto-compact, compact now, fresh chat.
+  // This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat.
   const contextItems = sessionId ? <ChatContextItems sessionId={sessionId} modelLabel={label} /> : null
   const footer = <>
     {contextItems}
@@ -110,6 +127,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // by company, one row per model, variants as chips, older versions folded away.
   const cursorChoices = selectedOption.provider === 'cursor-cli' && !cursorSelectionDisabled
     ? cursorModels.filter(model => models.some(choice => choice.id === model.model_id)) : []
+  usesCursorPicker.current = cursorChoices.length > 1
   const cursorPicker = cursorChoices.length > 1 && <Chip label={label} ariaLabel={`Model: ${label}`} disabled={saving} open={cursorOpen} onOpenChange={setCursorOpen} wide>
     {/* The menu's type-to-jump would take the search box's keys. */}
     <div onKeyDown={event => event.stopPropagation()}>
@@ -122,7 +140,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   if (phone) {
     if (!showModel && !showEffort && !sessionId) return <>{fallback}</>
     const combined = effortLabel ? `${label} · ${effortLabel}` : label
-    return <Chip label={combined} ariaLabel={`Model: ${combined}`} disabled={saving}>
+    return <Chip label={combined} ariaLabel={`Model: ${combined}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen}>
       {showModel && <ChoiceItems title="Model" choices={models} value={currentModel} onPick={pickModel} />}
       {showModel && showEffort && <Menu.Separator className="my-1 h-px bg-border" />}
       {showEffort && <ChoiceItems title="Reasoning" choices={levels} value={currentEffort} onPick={pickEffort} />}
@@ -131,7 +149,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   }
   return <>
     {cursorPicker || (showModel || sessionId
-      ? <Chip label={label} ariaLabel={`Model: ${label}`} disabled={saving}>{showModel && <ChoiceItems choices={models} value={currentModel} onPick={pickModel} />}{footer}</Chip>
+      ? <Chip label={label} ariaLabel={`Model: ${label}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen}>{showModel && <ChoiceItems choices={models} value={currentModel} onPick={pickModel} />}{footer}</Chip>
       : fallback)}
     {showEffort && effortLabel && <Chip label={effortLabel} ariaLabel={`Reasoning: ${effortLabel}`} disabled={saving}><ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} /></Chip>}
   </>

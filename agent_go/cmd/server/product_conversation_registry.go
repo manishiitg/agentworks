@@ -108,8 +108,6 @@ type ProductAgentIdentity struct {
 	Engine          string `json:"engine,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	// Context1M runs this chat's Claude Opus/Sonnet model with its 1M-token window (PLAT-872-71).
-	Context1M bool `json:"context_1m,omitempty"`
 	// IdleCompactionOff stops the idle sweep from compacting this chat; it is on unless the person turned it off.
 	IdleCompactionOff bool `json:"idle_compaction_off,omitempty"`
 }
@@ -224,8 +222,8 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 	return identity, nil
 }
 
-// setChatContextOptions saves a chat's context choices (nil keeps a choice) and logs the change with its actor.
-func (store productConversationRegistryStore) setChatContextOptions(ctx context.Context, userID, profileID, conversationKey string, context1M, idleCompaction *bool, actor string) (ProductAgentIdentity, error) {
+// setChatContextOptions saves a chat's "Auto-compact when idle" choice and logs the change with its actor.
+func (store productConversationRegistryStore) setChatContextOptions(ctx context.Context, userID, profileID, conversationKey string, idleCompaction bool, actor string) (ProductAgentIdentity, error) {
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
@@ -242,12 +240,7 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
 	identity := document.Agents[entryKey]
-	if context1M != nil {
-		identity.Context1M = *context1M
-	}
-	if idleCompaction != nil {
-		identity.IdleCompactionOff = !*idleCompaction
-	}
+	identity.IdleCompactionOff = !idleCompaction
 	identity.UpdatedBy = strings.TrimSpace(actor)
 	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	document.Agents[entryKey] = identity
@@ -255,7 +248,7 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[CHAT_CONTEXT] %s set chat %s context_1m=%t idle_compaction=%t", identity.UpdatedBy, entryKey, identity.Context1M, !identity.IdleCompactionOff)
+	log.Printf("[CHAT_CONTEXT] %s set chat %s idle_compaction=%t", identity.UpdatedBy, entryKey, !identity.IdleCompactionOff)
 	return identity, nil
 }
 
