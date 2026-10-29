@@ -5568,7 +5568,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// response so a fast waiter can never observe an unregistered root.
 	req.userID = currentUserID
 	api.trackConversationTurnStart(queryID, sessionID, req)
-	api.startCrewTurnSnapshot(queryID, sessionID, req)
+	if idleRun == nil {
+		// An idle compaction changes no files; capturing them would show a
+		// reply-files card for a turn nobody sent.
+		api.startCrewTurnSnapshot(queryID, sessionID, req)
+	}
 
 	// Return immediate response with query ID
 	response := QueryResponse{
