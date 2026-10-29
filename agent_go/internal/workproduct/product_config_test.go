@@ -311,22 +311,18 @@ func TestRenderPromptSucceedsAgainstAPromptContext(t *testing.T) {
 	if rendered == "" {
 		t.Fatal("expected non-empty rendered prompt")
 	}
+	// Rules that keep work correct when the prompt is short: where standing
+	// rules and durable work go, the managed database, read-only # workflows,
+	// folder grants and secret handling.
 	for _, required := range []string{
-		"general-purpose, chat-first agent",
-		"Coding is a first-class capability",
-		"not the only kind of work",
-		"questions, research, analysis, writing, planning",
-		"## Working contract",
-		"relevant attached skill before using or configuring",
-		"only backend-authorized tools grant access",
-		"workflow selected with `#` is",
-		"general-purpose",
-		"Read the relevant attached skill",
-		"Read `crew-builder`",
-		"panel-dashboard",
-		"## How to talk to the user",
-		"runs a small business and is not technical",
-		"Use business words, never platform words alone",
+		"PROJECT_INSTRUCTIONS.md",
+		"never to AGENTS.md",
+		"never /tmp",
+		"WORK_FOLDER_<ALIAS>",
+		"never open `db.sqlite`",
+		"selected with `#` is reference only",
+		"confirm it by name only",
+		"[AGENTWORKS SESSION]",
 	} {
 		if !strings.Contains(rendered, required) {
 			t.Fatalf("rendered Crew prompt is missing %q", required)
@@ -368,7 +364,7 @@ func TestWorkPromptIncludesConfiguredIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render Crew prompt: %v", err)
 	}
-	for _, required := range []string{"## Project agent identity", "it never changes permissions", "Name: Nova"} {
+	for _, required := range []string{"Follow this saved identity", "Name: Nova"} {
 		if !strings.Contains(rendered, required) {
 			t.Fatalf("rendered Crew prompt is missing %q", required)
 		}
