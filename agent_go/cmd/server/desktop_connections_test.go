@@ -226,7 +226,7 @@ func TestDesktopConnectionProofNeverReachesChildProcesses(t *testing.T) {
 	}
 }
 
-// PLAT-746-211: only the Vite origin named in the private bootstrap may use
+// PLAT-746-213: only the Vite origin named in the private bootstrap may use
 // saved accounts across origins; another loopback app and missing proof fail.
 func TestDesktopConnectionDevelopmentOrigin(t *testing.T) {
 	desktopTestEnvironment(t)

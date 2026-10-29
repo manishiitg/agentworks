@@ -72,7 +72,7 @@ test('desktop bootstrap goes over fd 3 and is absent from process lists and work
   } finally { child.kill(); await once(child, 'exit'); }
 });
 
-// PLAT-746-211: Vite and the agent listen on different origins in the local launcher.
+// PLAT-746-213: Vite and the agent listen on different origins in the local launcher.
 test('development window selects connections on Vite and sends proof only to its backend', async () => {
   const origin = 'http://127.0.0.1:18743', appOrigin = 'http://127.0.0.1:51733';
   const frame = { url: appOrigin + '/crew' }, contents = { id: 4, mainFrame: frame };
