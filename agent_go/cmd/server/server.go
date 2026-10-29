@@ -9036,24 +9036,6 @@ func createServerLogger() loggerv2.Logger {
 
 // --- ACTIVE SESSION MANAGEMENT ---
 
-// scheduledRequestBypassesWorkflowBusy reports whether an incoming
-// workflow-builder request is scheduled work that must not be refused because a
-// user has a builder chat open.
-//
-// trackedExecutionBlocksNewWorkflowBuilderChat already encodes the same rule in
-// the other direction: a running scheduled execution does not block a user from
-// opening a chat. Only that half was applied, so the pairing worked one way —
-// a user could always start a chat, but a schedule fired while a chat was open
-// was rejected outright (in ~5ms, before any work began) with "Stop the running
-// chat before starting a new one", which is not something a cron job can do.
-//
-// The rule is symmetric by intent: scheduled work uses the workflow-builder
-// phase as an implementation detail, not as a real interactive chat, so it
-// neither blocks nor is blocked by one.
-func scheduledRequestBypassesWorkflowBusy(sessionID, triggeredBy string) bool {
-	return isScheduledSessionIdentity(sessionID, triggeredBy)
-}
-
 func isScheduledSessionIdentity(sessionID, triggeredBy string) bool {
 	trigger := strings.ToLower(strings.TrimSpace(triggeredBy))
 	id := strings.ToLower(strings.TrimSpace(sessionID))
