@@ -27,7 +27,6 @@ var (
 	withCostBillingUser          = costobserver.WithBillingUser
 	costAccountIDFor             = costobserver.AccountIDFor
 	inferCostScope               = costobserver.InferScope
-	scopeForScheduledTurn        = costobserver.ScopeForScheduledTurn
 	scopeForAutomationSource     = costobserver.ScopeForAutomationSource
 	costFirstNonEmpty            = costobserver.FirstNonEmpty
 	extractCacheTokens           = costobserver.ExtractCacheTokens
