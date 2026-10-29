@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { FolderOpen, RefreshCw } from 'lucide-react'
 import { workspaceGitApi, type GitRepo } from '../../services/workspaceGit'
 import { GitReview } from './GitReview'
@@ -35,14 +35,17 @@ export function ChatFileReview(props: ReviewProps) {
     <WorkspaceViewHeader title="Files" subtitle="Review changes" />
     <p className="p-3 text-sm">Loading…</p>
   </section>
+  // When the Crew folder itself is not a repository, files outside the
+  // repositories stay reviewable as this chat's changes ("This chat").
   return repos.length
-    ? <GitReview workspacePath={props.workspacePath} repos={repos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse} />
+    ? <GitReview workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
+      renderChat={repos.some(repo => repo.root === '') ? undefined : bar => <SnapshotReview {...props} bar={bar} />} />
     : <SnapshotReview {...props} />
 }
 
 /** All requests and sends stay with that chat; the server resolves and
  * authorizes its saved boundaries. */
-function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse }: ReviewProps) {
+function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: ReviewProps & { bar?: ReactNode }) {
   const [reviewId, setReviewId] = useState('')
   const [result, setResult] = useState<Result | null>(null)
   const [revision, refresh] = useReviewRevision()
@@ -83,7 +86,8 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse }: ReviewPro
       <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>
       <button type="button" aria-label="Browse files" title="Browse files" onClick={onBrowse} className={iconButton}><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
     </>} />
-    <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">This folder isn't a Git project, so changes come from this chat's saved copies.</p>
+    {bar}
+    <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{bar ? 'Every file this chat changed, in and outside Git, from its saved copies.' : "This folder isn't a Git project, so changes come from this chat's saved copies."}</p>
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="max-h-[35%] shrink-0 overflow-auto sm:max-h-56">
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}

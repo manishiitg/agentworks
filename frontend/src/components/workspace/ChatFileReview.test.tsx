@@ -101,6 +101,19 @@ describe('Studio review comments', () => {
       expect(workspaceGitApi.diff).toHaveBeenCalledWith('Crew/example', 'app', 'lib.py')
       expect(host.textContent).toContain('new git')
       expect(host.textContent).not.toContain('Changes in this chat')
+      expect(host.querySelector('select[aria-label="File version"]')).not.toBeNull()
+      // A clicked line goes to this chat naming repo, file, side, line and the comparison.
+      await act(async () => (host.querySelector('[aria-label="Comment on after line 1"]') as HTMLButtonElement).click())
+      await act(async () => {
+        const gitBox = host.querySelector('textarea')!
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(gitBox, 'Keep the old name')
+        gitBox.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await act(async () => button('Send to this chat').click())
+      expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ tabId: 'exact', message: 'In app, file lib.py, after line 1 (changes not committed yet, compared with the latest commit):\n\nKeep the old name' })
+      // The Crew folder is not itself a repository: its other changes stay reviewable.
+      await act(async () => button('This chat').click())
+      expect(host.textContent).toContain('Every file this chat changed')
     } finally { state.sessionId = 'chat-a'; state.reviewed = false; await act(async () => root.unmount()); host.remove() }
   })
 })

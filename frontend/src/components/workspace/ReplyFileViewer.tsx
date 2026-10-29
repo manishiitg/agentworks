@@ -14,13 +14,21 @@ type Version = 'current' | 'changes'
 const missingFile = 'This file no longer exists in the project.'
 const isMissing = (cause: unknown) => (cause as { response?: { status?: number } })?.response?.status === 404
 
+/** Where Changes comes from when it is not the chat's saved comparison (Git
+ * review): the diff loader and the words that name a clicked line in the
+ * message sent to this chat. The parent keys the viewer on what these read. */
+export type DiffSource = {
+  load: () => Promise<{ diff: string; truncated: boolean }>
+  lineContext: (anchor: DiffLineAnchor) => string
+}
+
 /** Two views: Current is the live project file in the normal file viewer (never a
- * saved copy), Changes is the saved comparison diff. */
-export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: { selection: SavedFileSelection; tabId: string; onBack: () => void; embedded?: boolean }) {
+ * saved copy), Changes is the saved comparison diff, or diffSource's diff. */
+export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, diffSource }: { selection: SavedFileSelection; tabId: string; onBack: () => void; embedded?: boolean; diffSource?: DiffSource }) {
   const { reference, change, query } = selection
   const [version, setVersion] = useState<Version>('changes')
   const [content, setContent] = useState<{ text: string; bytes?: ArrayBuffer } | null>(null)
-  const [comparison, setComparison] = useState<ReviewResult['comparison']>()
+  const [comparison, setComparison] = useState<{ diff?: string; truncated?: boolean }>()
   const [error, setError] = useState('')
   const [anchor, setAnchor] = useState<DiffLineAnchor | null>(null)
   const [comment, setComment] = useState('')
@@ -51,6 +59,11 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: 
         } catch (cause) { throw isMissing(cause) ? new Error(missingFile) : cause }
         return
       }
+      if (diffSource) {
+        const data = await diffSource.load()
+        if (!controller.signal.aborted) setComparison(data)
+        return
+      }
       const { data } = await api.get<ReviewResult>(reviewEndpoint, { params: { ...params, op: 'snapshot_compare' }, signal: controller.signal })
       if (!data.comparison) throw new Error(data.history.note || 'This saved comparison is no longer available.')
       if (!controller.signal.aborted) setComparison(data.comparison)
@@ -63,7 +76,8 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: 
     const identity = captureChatIdentity()
     setSending(true); setError('')
     try {
-      const { data } = await api.get<{ context: string }>(reviewEndpoint, { params: { ...params, op: 'snapshot_compare', side: anchor.side, line: anchor.line } })
+      const data = diffSource ? { context: diffSource.lineContext(anchor) }
+        : (await api.get<{ context: string }>(reviewEndpoint, { params: { ...params, op: 'snapshot_compare', side: anchor.side, line: anchor.line } })).data
       assertChatIdentityCurrent(identity)
       if (useChatStore.getState().chatTabs[tabId]?.sessionId !== reference.sessionId) throw new Error('This chat changed. Reopen the file before sending.')
       if (!data.context) throw new Error('Choose a saved line again.')
@@ -82,7 +96,7 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false }: 
     </header>
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="min-h-0 flex-1 overflow-auto">
-      {!error && (version === 'changes' ? !comparison ? <p className="p-3 text-sm">Loading comparison…</p> : change.binary ? <p className="p-3 text-sm">This file is not text, so there are no line changes to show. Choose Current to see the file.</p> : <DiffRenderer content={comparison.diff || ''} onSelectLine={setAnchor} maxHeightClassName="max-h-none" />
+      {!error && (version === 'changes' ? !comparison ? <p className="p-3 text-sm">Loading comparison…</p> : change.binary ? <p className="p-3 text-sm">This file is not text, so there are no line changes to show. Choose Current to see the file.</p> : !comparison.diff?.trim() ? <p className="p-3 text-sm">No line changes to show for this file. Choose Current to see it.</p> : <DiffRenderer content={comparison.diff || ''} onSelectLine={setAnchor} maxHeightClassName="max-h-none" />
         : !content ? <p className="p-3 text-sm">Loading file…</p>
         : <Suspense fallback={<p className="p-3 text-sm">Loading viewer…</p>}>
           <FileViewer editable source={{ selectedFile: { name, path: `${reference.workspacePath}/${change.path}` }, fileContent: content.text, binaryFileData: content.bytes ?? null, loadingFileContent: false, showFileContent: true, setShowFileContent: show => { if (!show) onBack() }, openTabs: [], openFile: () => {}, closeFile: onBack, revealFolder: onBack }} /></Suspense>)}
