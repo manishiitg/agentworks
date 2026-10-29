@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { FolderOpen, RefreshCw } from 'lucide-react'
+import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { shownFilePath } from '../../utils/replyFileChanges'
 import api from '../../services/api'
 import { ReplyFileViewer } from './ReplyFileViewer'
@@ -10,6 +12,8 @@ const startedFrom = (message?: { text: string; at?: string }) => {
   const at = message.at ? new Date(message.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
   return ` since your message “${message.text}”${at ? ` (${at})` : ''}. Earlier changes are no longer saved.`
 }
+
+const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 /** Mounted with an account/server/chat key by its owner. All requests and sends
  * stay with that chat; the server resolves and authorizes its saved boundaries. */
@@ -47,12 +51,16 @@ export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
   const changes: Change[] = result?.comparison?.changes ?? []
   const selected = changes.find(change => change.path === selectedPath) ?? changes[0]
   return <section className="flex h-full min-h-0 flex-col" aria-label="Changes in this chat">
-    <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-      <strong className="mr-auto">{reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'}</strong>
-      <button type="button" className="text-xs underline" onClick={refresh}>Refresh</button>
-      <button type="button" className="text-xs underline" onClick={onBrowse}>Browse files</button>
-      {!!result?.history.reviews?.length && <details className="w-full text-xs"><summary className="cursor-pointer">Review history</summary><div className="mt-2 flex flex-wrap gap-3"><button type="button" className="underline" onClick={() => setReviewId('')}>Changes since your last review</button>{[...result.history.reviews].reverse().map(point => <button type="button" className="underline" key={point.snapshot_id} onClick={() => setReviewId(point.snapshot_id)}>Reviewed {new Date(point.reviewed_at).toLocaleString()}</button>)}</div></details>}
-    </header>
+    {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
+    <WorkspaceViewHeader title="Files" subtitle={reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
+      {!!result?.history.reviews?.length && <select aria-label="Review history" title="Review history" value={reviewId} onChange={event => setReviewId(event.target.value)}
+        className="max-w-40 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground">
+        <option value="">Since your last review</option>
+        {[...result.history.reviews].reverse().map(point => <option key={point.snapshot_id} value={point.snapshot_id}>Reviewed {new Date(point.reviewed_at).toLocaleString()}</option>)}
+      </select>}
+      <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>
+      <button type="button" aria-label="Browse files" title="Browse files" onClick={onBrowse} className={iconButton}><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
+    </>} />
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="max-h-[35%] shrink-0 overflow-auto sm:max-h-56">
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
