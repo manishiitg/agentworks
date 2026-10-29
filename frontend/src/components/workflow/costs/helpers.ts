@@ -47,6 +47,11 @@ export const formatTokens = (count?: number) => {
   return count.toString()
 }
 
+/** Readable cost totals; exact precision remains available in usage details. */
+export const formatCost = (amount: number) => amount > 0 && amount < 0.01
+  ? '<$0.01'
+  : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
+
 export const formatDuration = (milliseconds?: number) => {
   if (!milliseconds || milliseconds <= 0) return '—'
   const seconds = Math.round(milliseconds / 1000)

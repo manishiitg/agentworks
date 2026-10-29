@@ -19,7 +19,7 @@ it('shows fresh/cache split and opens the associated chat without starting a run
   try {
     await act(async () => { root.render(<CostConversations rows={[row]} />); await new Promise(resolve => setTimeout(resolve, 10)) })
     expect(host.textContent).toContain('Five-minute health check')
-    expect(host.textContent).toContain('1 recorded turn / agent run')
+    expect(host.textContent).toContain('1 turn')
     expect(host.textContent).toContain('Fresh input200')
     expect(host.textContent).toContain('Cached input800')
     expect(host.textContent).toContain('80.0% cached')

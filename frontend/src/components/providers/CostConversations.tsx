@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ChatHistoryConversation, CostConversation } from '../../services/api-types'
-import { formatUSD } from '../workflow/costs/helpers'
+import { formatCost, formatUSD } from '../workflow/costs/helpers'
 import CostPricingNotice from './CostPricingNotice'
 import CostTokenBreakdown from './CostTokenBreakdown'
 
@@ -70,21 +70,36 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
       const executions = Object.entries(row.by_execution || {}).sort(([, a], [, b]) => b.first_seen.localeCompare(a.first_seen))
       return <details key={key} className="rounded-lg border border-border p-3">
         <summary className="cursor-pointer text-sm font-medium">
-          {titles[`${row.workflow_id}:${row.session_id}`] || row.session_id} <span className="float-right ml-2 font-mono">{row.total_cost_usd === 0 && row.unpriced_call_count ? 'Not priced' : formatUSD(row.total_cost_usd)}</span>
-          <span className="mt-1 block text-xs font-normal text-muted-foreground">{executions.length} recorded {executions.length === 1 ? 'turn / agent run' : 'turns / agent runs'} · {row.first_seen.slice(0, 10)} to {row.last_seen.slice(0, 10)} (UTC)</span>
+          <span className="inline-flex w-[calc(100%-1rem)] min-w-0 items-start justify-between gap-3 align-top">
+            <span className="min-w-0">
+              <span className="block break-words">{titles[`${row.workflow_id}:${row.session_id}`] || (row.session_id.startsWith('work:project:') ? 'Main chat' : 'Untitled chat')}</span>
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{executions.length} {executions.length === 1 ? 'turn' : 'turns'}</span>
+            </span>
+            <span className="shrink-0 tabular-nums" title={formatUSD(row.total_cost_usd)}>{row.total_cost_usd === 0 && row.unpriced_call_count ? 'Not priced' : formatCost(row.total_cost_usd)}</span>
+          </span>
         </summary>
-        <div className="mt-3"><CostTokenBreakdown compact usage={row} /></div>
-        <div className="mt-2"><CostPricingNotice usage={row} /></div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>{row.first_seen.slice(0, 10)} to {row.last_seen.slice(0, 10)} (UTC)</span>
+          <CostPricingNotice usage={row} />
+        </div>
+        <details className="mt-3 text-xs">
+          <summary className="w-fit cursor-pointer text-muted-foreground hover:text-foreground">Token usage</summary>
+          <div className="mt-2"><CostTokenBreakdown compact usage={row} /></div>
+          <p className="mt-2 text-muted-foreground">Exact recorded cost: {formatUSD(row.total_cost_usd)}</p>
+        </details>
         <button type="button" className="mt-3 text-xs text-primary underline" onClick={() => setChat(chat === key ? null : key)}>{chat === key ? 'Hide chat' : 'View chat'}</button>
         {chat === key && <ChatPreview key={key} conversation={row} />}
-        <div className="mt-3 max-h-[30rem] space-y-2 overflow-auto">
+        <details className="mt-3 border-t border-border pt-3">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">Per-turn details</summary>
+          <div className="mt-2 max-h-[30rem] space-y-2 overflow-auto">
           {executions.map(([id, turn]) => <details key={id} className="rounded border border-border p-2">
             <summary className="cursor-pointer text-xs">{new Date(turn.first_seen).toISOString().replace('T', ' ').slice(0, 19)} UTC · {turn.scope.replaceAll('_', ' ')} <span className="float-right font-mono">{turn.total_cost_usd === 0 && turn.unpriced_call_count ? 'Not priced' : formatUSD(turn.total_cost_usd)}</span></summary>
             <div className="mt-2"><CostTokenBreakdown compact usage={turn} /></div>
             <p className="mt-2 text-xs text-muted-foreground">Models: {Object.keys(turn.by_model || {}).join(', ') || 'Not recorded'}</p>
             <div className="mt-1"><CostPricingNotice usage={turn} /></div>
           </details>)}
-        </div>
+          </div>
+        </details>
       </details>
     })}
     {ordered.length > limit && <button type="button" className="text-xs text-primary underline" onClick={() => setLimit(current => current + 20)}>More conversations</button>}

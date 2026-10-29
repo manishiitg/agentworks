@@ -4,9 +4,9 @@ import CostConversations from '../../providers/CostConversations'
 import React from 'react'
 import { inputTokens, totalTokens, tokenSummary } from '../../../utils/costTokens'
 import type { CostAggregate } from '../../../services/api-types'
-import { Loader2, TrendingUp } from 'lucide-react'
+import { Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import { phaseLabel as costPhaseLabel } from '../../../utils/costActivityBreakdown'
-import { formatUSD, formatTokens, formatDuration, getRunFolderDisplayName } from './helpers'
+import { formatUSD, formatCost, formatTokens, formatDuration, getRunFolderDisplayName } from './helpers'
 import { buildModelCostRows } from './CostsModelSection'
 import type { CostsData } from './useCostsData'
 import CostsScheduleSection from './CostsScheduleSection'
@@ -53,7 +53,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">By activity</h3>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {activityBreakdown.filter(category => hasUsage(category.total)).map(category => {
                       return (
                       <div key={category.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -74,11 +74,10 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
 
               {/* Daily Costs */}
               {combinedDailyCostSummaries.length > 0 && (
-                <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+                <section className="min-w-0 rounded-lg border border-border bg-card p-3 sm:p-4">
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
-                        <TrendingUp className="w-4 h-4 text-primary" />
                         Daily costs
                       </h3>
 
@@ -90,10 +89,8 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                       <thead>
                         <tr className="text-muted-foreground border-b border-border pb-2">
                           <th className="text-left font-medium pb-2">Date (UTC)</th>
-                          <th className="text-right font-medium pb-2">Input</th>
-                          <th className="text-right font-medium pb-2">Cached</th>
-                          <th className="text-right font-medium pb-2">Output</th>
-                          <th className="text-right font-medium pb-2">Total</th>
+                          <th className="text-right font-medium pb-2">Activity</th>
+                          <th className="text-right font-medium pb-2">Cost</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
@@ -107,45 +104,43 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                             <React.Fragment key={entry.date}>
                               <tr className="hover:bg-accent/50 transition-colors">
                                 <td className="py-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium text-foreground">{entry.date}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => setExpandedDailyDates(current => {
-                                        const next = new Set(current)
-                                        if (next.has(entry.date)) next.delete(entry.date)
-                                        else next.add(entry.date)
-                                        return next
-                                      })}
-                                      className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-                                      aria-expanded={isExpanded}
-                                    >
-                                      <span aria-hidden="true" className="text-sm leading-none">{isExpanded ? '−' : '+'}</span>
-                                      <span className="sr-only">{isExpanded ? 'Hide daily activity details' : 'Show daily activity details'}</span>
-                                    </button>
-                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedDailyDates(current => {
+                                      const next = new Set(current)
+                                      if (next.has(entry.date)) next.delete(entry.date)
+                                      else next.add(entry.date)
+                                      return next
+                                    })}
+                                    className="flex min-h-9 items-center gap-2 rounded text-left font-medium text-foreground hover:text-primary"
+                                    aria-expanded={isExpanded}
+                                    aria-label={`${isExpanded ? 'Hide' : 'Show'} daily activity details for ${entry.date}`}
+                                  >
+                                    {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+                                    {entry.date}
+                                  </button>
                                 </td>
-                                <td className="py-2 text-right font-mono text-muted-foreground">{entry.totalInputTokens === undefined ? '—' : formatTokens(entry.totalInputTokens)}</td>
-                                <td className="py-2 text-right font-mono text-muted-foreground">{dayUsage ? formatTokens(dayUsage.cache_read_tokens) : '—'}</td>
-                                <td className="py-2 text-right font-mono text-muted-foreground">{entry.totalOutputTokens === undefined ? '—' : formatTokens(entry.totalOutputTokens)}</td>
-                                <td className="py-2 text-right font-bold text-green-600 dark:text-green-400">{entry.totalCost === 0 && (dayUsage?.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(entry.totalCost)}</td>
+                                <td className="py-2 text-right text-muted-foreground">
+                                  {Object.keys(dayUsage?.by_conversation || {}).length > 0
+                                    ? `${Object.keys(dayUsage?.by_conversation || {}).length} chats`
+                                    : entry.runCount > 0 ? `${entry.runCount} runs` : '—'}
+                                  {entry.llmDurationMS > 0 && <span className="mt-0.5 block text-[10px]">{formatDuration(entry.llmDurationMS)} AI time</span>}
+                                </td>
+                                <td className="py-2 text-right font-semibold tabular-nums text-foreground" title={formatUSD(entry.totalCost)}>{entry.totalCost === 0 && (dayUsage?.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatCost(entry.totalCost)}</td>
                               </tr>
                               {isExpanded && (
                                 <tr className="bg-muted/20">
-                                  <td colSpan={5} className="p-3">
-                                    {dayUsage && <CostTokenBreakdown compact usage={dayUsage} />}
-                                    {dayUsage && <div className="mt-2"><CostPricingNotice usage={dayUsage} /></div>}
-                                    <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
-                                      {!projectMode && <span>{entry.runCount.toLocaleString()} runs</span>}
-                                      <span>LLM time {formatDuration(entry.llmDurationMS)}</span>
-                                    </div>
+                                  <td colSpan={3} className="p-3">
+                                    {dayUsage && <CostPricingNotice usage={dayUsage} />}
                                     <CostConversations rows={Object.values(dayUsage?.by_conversation || {})} />
-                                    {!categories && modelRows.length === 0 && dailyRuns.length === 0 ? (
+                                    {!dayUsage && !categories && modelRows.length === 0 && dailyRuns.length === 0 ? (
                                       <p className="text-xs text-muted-foreground">Activity details unavailable.</p>
                                     ) : (
                                       <details className="mt-3 rounded-md border border-border p-3">
-                                        <summary className="cursor-pointer text-xs font-medium text-foreground">Activity and model details</summary>
+                                        <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">Usage and model details</summary>
                                         <div className="mt-3 space-y-3">
+                                        {dayUsage && <CostTokenBreakdown compact usage={dayUsage} />}
+                                        <p className="text-xs text-muted-foreground">Exact daily cost: {formatUSD(entry.totalCost)}</p>
                                         {dailyRuns.length > 0 && (
                                           <div className="overflow-hidden rounded-md border border-border bg-card">
                                             <div className="border-b border-border px-3 py-2">
@@ -295,7 +290,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                       </button>
                     </div>
                   )}
-                </div>
+                </section>
               )}
   </>
 )

@@ -1,75 +1,64 @@
-import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
 import React from 'react'
 import type { CostSummary } from '../../../services/api-types'
 import CostPricingNotice from '../../providers/CostPricingNotice'
-import { DollarSign, Coins } from 'lucide-react'
+import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
+import { DollarSign } from 'lucide-react'
 import { formatStartedAt } from '../../../utils/duration'
-import { formatUSD, formatTokens } from './helpers'
+import { formatCost, formatUSD, formatTokens } from './helpers'
 import { costAmountLabel } from '../../../utils/costTokens'
 import type { CostsData } from './useCostsData'
 import { WorkspaceViewHeader } from '../WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../WorkspaceViewIconButton'
 
-type CostsHeaderProps = Pick<CostsData, 'overallSummary' | 'aggregateSummary' | 'phaseCostSummary' | 'loading' | 'loadAllCosts'> & {
-  scopedCosts?: CostSummary | null
+type CostsHeaderProps = Pick<CostsData, 'loading' | 'loadAllCosts'> & {
   startedAt?: string | null
   headerAction?: React.ReactNode
 }
 
-// Header content only; InspectorShell owns the row wrapper.
-// Layout follows the inspector standard (see LogsHeader): title left,
-// Ask AI + refresh right-aligned in the title row, view-specific summary in
-// a strip below instead of jumbled with the actions.
-const CostsHeader: React.FC<CostsHeaderProps> = ({
-  startedAt,
-  scopedCosts,
-  overallSummary,
-  aggregateSummary,
-  phaseCostSummary,
-  loading,
-  loadAllCosts,
-  headerAction,
-}) => (
-  <div className="min-w-0 flex-1">
+type CostsOverviewProps = Pick<CostsData, 'overallSummary' | 'aggregateSummary' | 'phaseCostSummary'> & {
+  scopedCosts?: CostSummary | null
+}
+
+// Only the title/actions stay fixed. Totals and disclosures scroll with content.
+export function CostsOverview({ scopedCosts, overallSummary, aggregateSummary, phaseCostSummary }: CostsOverviewProps) {
+  if (!overallSummary) return null
+  const usage = { ...scopedCosts?.total, total_cost_usd: overallSummary.totalCost }
+  return <section aria-label="Cost summary" className="min-w-0 rounded-lg border border-border bg-card p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p className="text-xs text-muted-foreground">Total recorded cost · USD</p>
+        <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums text-foreground" title={formatUSD(overallSummary.totalCost)}>
+          {costAmountLabel(usage, formatCost)}
+        </p>
+      </div>
+      {scopedCosts && <CostPricingNotice usage={scopedCosts.total} />}
+    </div>
+    <p className="mt-2 text-xs text-muted-foreground">For the activity recorded below.</p>
+    <details className="mt-3 border-t border-border pt-3 text-xs">
+      <summary className="w-fit cursor-pointer font-medium text-muted-foreground hover:text-foreground">Usage details</summary>
+      <div className="mt-3 space-y-3">
+        <CostTokenBreakdown compact usage={{ input_tokens: overallSummary.totalInputTokens, cache_read_tokens: overallSummary.cacheReadTokens, cache_write_tokens: overallSummary.cacheWriteTokens, completion_tokens: overallSummary.totalOutputTokens }} />
+        <p className="text-muted-foreground">Exact recorded cost: {formatUSD(overallSummary.totalCost)}</p>
+        {!scopedCosts && <p className="text-muted-foreground">{formatTokens(overallSummary.totalInputTokens)} input · {formatTokens(overallSummary.totalOutputTokens)} output</p>}
+        {aggregateSummary && <p className="text-muted-foreground">{aggregateSummary.totalRuns} run{aggregateSummary.totalRuns !== 1 ? 's' : ''}</p>}
+        {aggregateSummary && aggregateSummary.totalToolCost > 0 && <p className="text-muted-foreground">AI {formatUSD(aggregateSummary.totalLLMCost)} · Tools {formatUSD(aggregateSummary.totalToolCost)}</p>}
+        {phaseCostSummary && !scopedCosts && <p className="text-muted-foreground">Builder {formatUSD(phaseCostSummary.totalCost)}</p>}
+      </div>
+    </details>
+  </section>
+}
+
+const CostsHeader: React.FC<CostsHeaderProps> = ({ startedAt, loading, loadAllCosts, headerAction }) => (
+  <div className="min-w-0 shrink-0">
     <WorkspaceViewHeader
       bare
       icon={DollarSign}
       title="Cost Analysis"
-      context={startedAt ? (
-        <span className="text-xs font-normal text-muted-foreground">{formatStartedAt(startedAt)}</span>
-      ) : undefined}
+      context={startedAt ? <span className="text-xs font-normal text-muted-foreground">{formatStartedAt(startedAt)}</span> : undefined}
       actions={<>
         {headerAction}
         <WorkspaceViewIconButton label="Refresh costs" onClick={loadAllCosts} disabled={loading} spinning={loading} />
       </>}
-      below={overallSummary ? (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
-        <div className="font-semibold text-foreground">
-          {costAmountLabel({ ...scopedCosts?.total, total_cost_usd: overallSummary.totalCost }, formatUSD)}
-        </div>
-        {!scopedCosts && <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Coins className="w-3.5 h-3.5" />
-          {formatTokens(overallSummary.totalInputTokens)} input · {formatTokens(overallSummary.totalOutputTokens)} output
-        </div>}
-        {aggregateSummary && (
-          <div className="text-muted-foreground">
-            {aggregateSummary.totalRuns} run{aggregateSummary.totalRuns !== 1 ? 's' : ''}
-          </div>
-        )}
-        {aggregateSummary && aggregateSummary.totalToolCost > 0 && (
-          <div className="text-muted-foreground">
-            LLM {formatUSD(aggregateSummary.totalLLMCost)} | Tools {formatUSD(aggregateSummary.totalToolCost)}
-          </div>
-        )}
-        {phaseCostSummary && !scopedCosts && (
-          <div className="text-muted-foreground">
-            Builder {formatUSD(phaseCostSummary.totalCost)}
-          </div>
-        )}
-        {scopedCosts && <div className="w-full"><CostTokenBreakdown compact usage={{ input_tokens: overallSummary.totalInputTokens, cache_read_tokens: overallSummary.cacheReadTokens, cache_write_tokens: overallSummary.cacheWriteTokens, completion_tokens: overallSummary.totalOutputTokens }} /></div>}
-        {scopedCosts && <CostPricingNotice usage={scopedCosts.total} />}
-        </div>
-      ) : undefined}
     />
   </div>
 )

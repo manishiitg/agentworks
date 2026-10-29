@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import InspectorShell from './InspectorShell'
 import { useCostsData } from './costs/useCostsData'
-import CostsHeader from './costs/CostsHeader'
+import CostsHeader, { CostsOverview } from './costs/CostsHeader'
 import CostsDailySection from './costs/CostsDailySection'
 import CostsSummarySections from './costs/CostsSummarySections'
 import RunCostsSection from './costs/RunCostsSection'
@@ -66,11 +66,7 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
       headerClassName={headerRowClass}
       header={
         <CostsHeader
-          scopedCosts={data.scopedCosts}
           startedAt={startedAt}
-          overallSummary={overallSummary}
-          aggregateSummary={aggregateSummary}
-          phaseCostSummary={phaseCostSummary}
           loading={loading}
           loadAllCosts={loadAllCosts}
           headerAction={headerAction}
@@ -78,7 +74,7 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
       }
     >
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-background">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-background p-3 sm:p-4">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Loader2 className="w-8 h-8 animate-spin mb-3 text-primary" />
@@ -102,7 +98,8 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
               <p className="text-sm mt-2">{emptyHint}</p>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4">
+              <CostsOverview scopedCosts={data.scopedCosts} overallSummary={overallSummary} aggregateSummary={aggregateSummary} phaseCostSummary={phaseCostSummary} />
               <CostsDailySection
                 projectMode={projectMode}
                 scopedCosts={data.scopedCosts}
