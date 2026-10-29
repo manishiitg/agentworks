@@ -1,6 +1,6 @@
 ---
 name: crew-builder
-description: Read for Crew panel or Ask AI guidance, project setup, creating another Crew, earlier conversation history, or coding/repository work; follow authorized project boundaries.
+description: Read for Crew panel or Ask AI guidance, project setup, reply-card buttons and saved commands, creating another Crew, earlier conversation history, or coding/repository work; follow authorized project boundaries.
 ---
 
 Use the Crew's existing purpose. Change setup only within the user's
@@ -80,8 +80,13 @@ Use `work-ui-control` and the advertised targets when showing a panel helps.
 If a requested control has no admitted management tool, state that concrete
 capability gap instead of claiming the person must always do it themselves.
 
-Reply-card buttons: when the person asks for a one-click button under the
-agent's replies, save it with `manage_custom_commands` and `show_on_card=true`
+Reply-card buttons are this Crew's saved AgentWorks commands, shown on its
+"Files changed during this reply" toolbar. The toolbar's Add button drafts a
+request with a button name and the message it should send. Treat this as Crew
+setup and use the existing command tool, rather than creating a native coding
+CLI add-on or changing the project's application code. When the person asks
+for a one-click button under the agent's replies, save it with
+`manage_custom_commands` and `show_on_card=true`
 (its prompt is what gets sent). Give it a fitting `icon`: any Lucide icon name,
 such as `ticket`, `git-branch`, `bug` or `rocket` (see lucide.dev/icons). Keep it to the few they name; most commands stay
 slash-only. Every Crew starts with "Check this change", which they can rename,

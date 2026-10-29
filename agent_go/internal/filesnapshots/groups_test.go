@@ -174,6 +174,13 @@ func TestCardActionsFollowViewerAndPullRequest(t *testing.T) {
 	if got := placed(actions); !reflect.DeepEqual(got, want) {
 		t.Fatalf("editor, passing checks: %v", got)
 	}
+	// Add must identify the platform surface and existing setup path; a vague
+	// request previously sent a coding agent into its native add-on authoring.
+	for _, context := range []string{"AgentWorks", "Files changed during this reply", "crew-builder", "manage_custom_commands", "show_on_card=true"} {
+		if !strings.Contains(actions[len(actions)-1].Prompt, context) {
+			t.Fatalf("Add button draft is missing %q", context)
+		}
+	}
 	if !strings.Contains(actions[1].Prompt, "on branch fix-tts. Stage only the files listed here, by name") || !strings.Contains(actions[2].Prompt, "Never push the default branch") || !strings.Contains(actions[2].Prompt, "\n- app/tts.py\n") {
 		t.Fatalf("commit and push prompts: %q / %q", actions[1].Prompt, actions[2].Prompt)
 	}

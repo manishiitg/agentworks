@@ -18,7 +18,7 @@ function replyCard(lookedUp: boolean) {
     if (lookedUp && status.checks === 'failing') actions.push({ id: 'fix-checks:app', kind: 'fix', label: 'Fix failing checks', icon: 'wrench', placement: 'more', prompt: 'fix prompt', group: 'app' })
     const commands = ['check-this-change', ...state.extraCommands]
     commands.forEach((name, i) => actions.push({ id: `command:${name}`, kind: 'command', label: name, aria_label: name === 'check-this-change' ? 'Check this change' : `Run ${name}`, description: `Run ${name}`, placement: i < 2 ? 'row' : 'more', prompt: `${name} prompt` }))
-    actions.push({ id: 'add_button', kind: 'builtin', label: 'Add button', description: 'Add your own button to this card.', icon: 'plus', placement: 'row', prompt: 'Add a button called ___ that sends: ___' })
+    actions.push({ id: 'add_button', kind: 'builtin', label: 'Add button', description: 'Save a reusable button on this Crew\'s file-change toolbar.', icon: 'plus', placement: 'row', prompt: 'Add an AgentWorks reply-card button using crew-builder and manage_custom_commands with show_on_card=true.' })
     if (lookedUp && status.checks === 'failing') actions.push({ id: 'fix-checks:app:link', kind: 'fix', label: 'Fix failing checks', icon: 'wrench', placement: 'pr_line', prompt: 'fix prompt', group: 'app' })
   }
   return { groups: [crewFiles, lookedUp ? { ...group, pr: status } : group], actions, can_edit: state.canBuild }
@@ -88,7 +88,7 @@ describe('reply card groups', () => {
     await act(async () => button(host, 'Check this change')!.click())
     expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[0][0].message).toBe('check-this-change prompt')
     await act(async () => button(host, 'Add button')!.click())
-    expect(openWorkspacePaneChatWithDraft).toHaveBeenCalledWith({ tabId: 'tab1', message: 'Add a button called ___ that sends: ___' })
+    expect(openWorkspacePaneChatWithDraft).toHaveBeenCalledWith({ tabId: 'tab1', message: 'Add an AgentWorks reply-card button using crew-builder and manage_custom_commands with show_on_card=true.' })
   })
   it('undo shows what comes back and what stays, then shows the server error text as is', async () => {
     const host = await render(true)
