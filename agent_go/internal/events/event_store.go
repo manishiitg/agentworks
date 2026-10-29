@@ -267,6 +267,7 @@ func pruneEventsForRetention(events []Event, maxEvents int) ([]Event, int) {
 // Event represents a generic event that can be stored and retrieved
 // Both MCP agent and orchestrator events now use the same AgentEvent structure
 type Event struct {
+	UsageExecutionID  string             `json:"usage_execution_id,omitempty"`
 	ID                string             `json:"id"`
 	Type              string             `json:"type"`
 	Timestamp         time.Time          `json:"timestamp"`
@@ -328,6 +329,9 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	}
 	if e.ExecutionID != "" {
 		result["execution_id"] = e.ExecutionID
+	}
+	if e.UsageExecutionID != "" {
+		result["usage_execution_id"] = e.UsageExecutionID
 	}
 	if e.ParentExecutionID != "" {
 		result["parent_execution_id"] = e.ParentExecutionID

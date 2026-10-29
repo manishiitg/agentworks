@@ -1003,6 +1003,13 @@ export const agentApi = {
     return response.data
   },
 
+  getUsageTurnMessages: async (sessionId: string, workspacePath: string, executionIds: string[]): Promise<{ messages: Record<string, string> }> => {
+    const params = new URLSearchParams({ workspace_path: workspacePath })
+    executionIds.forEach(id => params.append('execution_id', id))
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/usage-messages?${params}`)
+    return response.data
+  },
+
   listChatHistorySessions: async (limit = 80, offset = 0, workspacePath?: string, kind?: import('./api-types').ChatHistorySessionKind): Promise<{ sessions: ChatHistorySession[] }> => {
     const params: Record<string, string | number> = { limit, offset }
     if (workspacePath) params.workspace_path = workspacePath

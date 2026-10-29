@@ -2771,6 +2771,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/reconnect", api.handleReconnectSession).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/status", api.handleGetSessionStatus).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/instructions", api.handleGetSessionInstructions).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/usage-messages", api.handleUsageTurnMessages).Methods("GET")
 	// The product raw view receives only its owning chat's main terminal. All
 	// child-pane enumeration and controls remain behind runtime diagnostics.
 	apiRouter.HandleFunc("/sessions/{session_id}/main-terminal", api.handleGetMainTerminal).Methods("GET", "OPTIONS")
@@ -7894,7 +7895,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Observers are runtime construction inputs, so attach them to the draft
 		// before finalization instead of mutating the live agent afterward.
-		eventObserver := events.NewEventObserverWithLogger(api.eventStore, sessionID, queryLogger)
+		eventObserver := events.NewEventObserverWithLogger(api.eventStore, sessionID, queryLogger, queryID)
 		costObs := newCostObserver(
 			api.costLedger,
 			sessionID,

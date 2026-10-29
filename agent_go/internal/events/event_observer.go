@@ -12,9 +12,10 @@ import (
 
 // EventObserver implements AgentEventListener to capture agent events
 type EventObserver struct {
-	store     *EventStore
-	sessionID string
-	logger    loggerv2.Logger
+	usageExecutionID string
+	store            *EventStore
+	sessionID        string
+	logger           loggerv2.Logger
 }
 
 // NewEventObserver creates a new event observer
@@ -27,11 +28,16 @@ func NewEventObserver(store *EventStore, sessionID string) *EventObserver {
 }
 
 // NewEventObserverWithLogger creates a new event observer with an injected logger
-func NewEventObserverWithLogger(store *EventStore, sessionID string, logger loggerv2.Logger) *EventObserver {
+func NewEventObserverWithLogger(store *EventStore, sessionID string, logger loggerv2.Logger, usageExecutionID ...string) *EventObserver {
+	id := ""
+	if len(usageExecutionID) > 0 {
+		id = usageExecutionID[0]
+	}
 	return &EventObserver{
-		store:     store,
-		sessionID: sessionID,
-		logger:    logger,
+		usageExecutionID: id,
+		store:            store,
+		sessionID:        sessionID,
+		logger:           logger,
 	}
 }
 
@@ -44,6 +50,10 @@ func (eo *EventObserver) HandleEvent(ctx context.Context, event *events.AgentEve
 		Timestamp: event.Timestamp,
 		SessionID: eo.sessionID,
 		Data:      event, // Use only the original AgentEvent
+	}
+
+	if event.Type == events.UserMessage {
+		storeEvent.UsageExecutionID = eo.usageExecutionID
 	}
 
 	// No special handling - pass event data directly to frontend

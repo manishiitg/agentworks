@@ -1,5 +1,4 @@
 import CostPricingNotice from '../../providers/CostPricingNotice'
-import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
 import CostConversations from '../../providers/CostConversations'
 import React from 'react'
 import { inputTokens, totalTokens, tokenSummary } from '../../../utils/costTokens'
@@ -142,14 +141,6 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                   <td colSpan={3} className="p-3">
                                     {dayUsage && <CostPricingNotice usage={dayUsage} />}
                                     <CostConversations rows={Object.values(dayUsage?.by_conversation || {})} />
-                                    {!dayUsage && !categories && modelRows.length === 0 && dailyRuns.length === 0 ? (
-                                      <p className="text-xs text-muted-foreground">Activity details unavailable.</p>
-                                    ) : (
-                                      <details className="mt-3 rounded-md border border-border p-3">
-                                        <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">Usage and model details</summary>
-                                        <div className="mt-3 space-y-3">
-                                        {dayUsage && <CostTokenBreakdown compact usage={dayUsage} />}
-                                        <p className="text-xs text-muted-foreground">Exact daily cost: {formatUSD(entry.totalCost)}</p>
                                         {dailyRuns.length > 0 && (
                                           <div className="overflow-hidden rounded-md border border-border bg-card">
                                             <div className="border-b border-border px-3 py-2">
@@ -175,6 +166,10 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                             </div>
                                           </div>
                                         )}
+                                    {!dayUsage && !categories && modelRows.length === 0 && dailyRuns.length === 0 ? (
+                                      <p className="text-xs text-muted-foreground">Activity details unavailable.</p>
+                                    ) : Object.keys(dayUsage?.by_conversation || {}).length === 0 ? (
+                                      <div className="mt-3 space-y-3">
                                         {modelRows.length > 0 && (
                                           <div className="overflow-hidden rounded-md border border-border bg-card">
                                             <div className="border-b border-border px-3 py-2">
@@ -274,9 +269,8 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                             </div>
                                           )
                                         })}
-                                        </div>
-                                      </details>
-                                    )}
+                                      </div>
+                                    ) : null}
                                   </td>
                                 </tr>
                               )}
