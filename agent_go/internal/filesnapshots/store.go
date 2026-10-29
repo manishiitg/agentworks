@@ -39,7 +39,11 @@ const MaxFileBytes = 25 << 20
 // mostly per-file cost; a warm capture's changed set is far below it.
 const maxImportBytes = 256 << 20
 const maxDiffBytes = 1 << 20
-const keepTurns = 50
+
+// Replies kept per Crew, across all its chats (plus reviewed ones, up to 14
+// days). Unchanged files are shared, so each kept reply costs about the files
+// it changed (0.05-1.5 MB per reply measured).
+const keepTurns = 200
 
 // Record contains no prompt, transcript or account credentials.
 type Record struct {
