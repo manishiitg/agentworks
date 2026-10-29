@@ -1277,6 +1277,8 @@ func completePlanChangelogEntry(entry *PlanChangelogEntry) {
 	}
 	if entry.DependencyClass == "" {
 		switch {
+		case strings.HasPrefix(entry.Target, "knowledgebase/"):
+			entry.DependencyClass = "knowledge_base"
 		case strings.Contains(tool, "evaluation"):
 			entry.DependencyClass = "evaluation_contract"
 		case strings.Contains(tool, "learning"):

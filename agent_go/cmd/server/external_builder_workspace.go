@@ -123,6 +123,13 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	if err != nil || !strings.HasPrefix(rootPath, "Workflow/") || len(strings.Split(rootPath, "/")) != 2 {
 		return wf.Result{}, errors.New("invalid workflow root")
 	}
+	// The change log entry is written after the workspace lock is released.
+	var logKnowledge func()
+	defer func() {
+		if logKnowledge != nil {
+			logKnowledge()
+		}
+	}()
 	release, lockErr := wf.LockWorkspace(ctx, filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(rootPath)))
 	if lockErr != nil {
 		return wf.Result{}, lockErr
@@ -210,6 +217,9 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	if err = root.Rename(tmp, p); err != nil {
 		_ = finishExternalBuilderEdit(versionID, "failed", "replacement failed")
 		return wf.Result{}, err
+	}
+	logKnowledge = func() {
+		logWorkflowKnowledgeChange(ctx, rootPath, p, "write_file", before.Content, before.Exists, content)
 	}
 	if err = finishExternalBuilderEdit(versionID, "completed", ""); err != nil {
 		return wf.Result{}, fmt.Errorf("file was written but audit confirmation failed: %w", err)

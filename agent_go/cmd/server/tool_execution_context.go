@@ -135,6 +135,10 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		}
 		ctx = context.WithValue(ctx, UserContextKey, &copy)
 		ctx = context.WithValue(ctx, common.UserIDKey, copy.UserID)
+		if strings.TrimSpace(copy.Username) != "" {
+			// Change log entries name the person, not only the account ID.
+			ctx = context.WithValue(ctx, common.UsernameKey, copy.Username)
+		}
 		ctx = workspace.WithDatabaseCaller(ctx, dataCaller)
 		// All registered step/delegated tool sessions retain the authenticated
 		// root controller. A child may not invent a different browser owner.

@@ -1382,8 +1382,10 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 				// This typed save already passed policy validation. Its audit
 				// writes must work even after ownership transfers to another user.
 				logCtx = context.WithValue(ctx, teamCommitPermitKey{}, true)
-				logCtx = step_based_workflow.WithWorkflowSettingsOrigin(logCtx, teamActor(ctx))
 			}
+			// Every settings save names the person who made it (website,
+			// Builder chat or MCP caller, or the owner an automatic job runs as).
+			logCtx = withChangelogActor(logCtx)
 			step_based_workflow.LogCanonicalArtifactChange(
 				logCtx, workspacePath, "write_workflow_manifest",
 				"Recorded workflow.json field changes for artifact drift review.",

@@ -95,11 +95,23 @@ func WithExternalBuilderPlanOrigin(ctx context.Context, operationID, grantID, us
 	})
 }
 
-// WithWorkflowSettingsOrigin attributes a typed settings save to its trusted
-// authenticated actor, including ownership and route-assignment changes.
-func WithWorkflowSettingsOrigin(ctx context.Context, userID string) context.Context {
+// WithWorkflowSettingsOrigin attributes a change (a typed settings save, a
+// knowledge base edit, a team source edit) to its trusted authenticated actor.
+// Every workflow change log entry must say who made it; an empty userID leaves
+// the context unchanged so a system write is never attributed to nobody-as-user.
+func WithWorkflowSettingsOrigin(ctx context.Context, userID, username string) context.Context {
+	userID, username = strings.TrimSpace(userID), strings.TrimSpace(username)
+	if userID == "" {
+		return ctx
+	}
 	origin, _ := ctx.Value(planChangeOriginContextKey{}).(PlanChangeOrigin)
-	origin.UserID = strings.TrimSpace(userID)
+	if origin.UserID != userID {
+		origin.Username = ""
+	}
+	origin.UserID = userID
+	if username != "" {
+		origin.Username = username
+	}
 	if origin.Type == "" || origin.Type == "other" {
 		origin.Type = "user_action"
 	}
@@ -110,6 +122,17 @@ func planChangeOriginFromContext(ctx context.Context, workspacePath string) Plan
 	origin, _ := ctx.Value(planChangeOriginContextKey{}).(PlanChangeOrigin)
 	if strings.TrimSpace(origin.Type) == "" {
 		origin.Type = "other"
+	}
+	// Tools that write the change log without the origin decorator (the
+	// Builder's update_step_config, automatic fixers running as the owner)
+	// still run under the authenticated user; record that person.
+	if origin.UserID == "" {
+		if userID, _ := ctx.Value(common.UserIDKey).(string); strings.TrimSpace(userID) != "" {
+			origin.UserID = strings.TrimSpace(userID)
+			if username, _ := ctx.Value(common.UsernameKey).(string); strings.TrimSpace(username) != "" && strings.TrimSpace(username) != "-" {
+				origin.Username = strings.TrimSpace(username)
+			}
+		}
 	}
 	if origin.SessionID == "" {
 		origin.SessionID = strings.TrimSpace(mcpexecutor.SessionIDFromContext(ctx))

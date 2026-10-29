@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -158,6 +159,56 @@ func TestExternalBuilderManagedFileTools(t *testing.T) {
 		if entry.Path == "db" || entry.Path == "db/db.sqlite" || entry.Path == "link" {
 			t.Fatal("private list entry", entry)
 		}
+	}
+}
+
+// Every workflow change log entry names the person who made it (PLAT-861):
+// settings saves recorded no user, and knowledge base edits were not logged.
+func TestWorkflowChangelogRecordsActingPerson(t *testing.T) {
+	server, store := newFakeWorkspaceServer(t)
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	store.files["Workflow/test/workflow.json"] = `{"schema_version":1,"id":"test","label":"Old label"}`
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("AUTH_SECRET", "builder-changelog-actor-test-secret")
+	if err := os.MkdirAll(filepath.Join(docs, "Workflow", "test"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	claims := &UserClaims{UserID: "user-a", Username: "alex", AccessToken: &accesstokens.Token{ID: "grant"}, ExternalBuilderOperationID: "op"}
+	ctx := context.WithValue(context.Background(), UserContextKey, claims)
+
+	manifest, _, err := ReadWorkflowManifest(ctx, "Workflow/test")
+	if err != nil || manifest == nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	manifest.Label = "New label"
+	if err := WriteWorkflowManifest(ctx, "Workflow/test", manifest); err != nil {
+		t.Fatalf("settings save: %v", err)
+	}
+	if _, err := externalBuilderWriteFile(ctx, "Workflow/test", "knowledgebase/notes/repo-map.md", "# Repo map\n", wf.MissingRevision); err != nil {
+		t.Fatalf("knowledge write: %v", err)
+	}
+
+	found := map[string]bool{}
+	for name, raw := range store.files {
+		if !strings.HasPrefix(name, "Workflow/test/planning/changelog/changelog-") {
+			continue
+		}
+		var log step_based_workflow.PlanChangelog
+		if err := json.Unmarshal([]byte(raw), &log); err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range log.Entries {
+			key := entry.Tool + " " + entry.Target
+			if entry.Origin.UserID != "user-a" || entry.Origin.Username != "alex" {
+				t.Fatalf("%s recorded origin %#v, want the caller", key, entry.Origin)
+			}
+			found[key] = true
+		}
+	}
+	if !found["write_workflow_manifest workflow.json"] || !found["write_file knowledgebase/notes/repo-map.md"] {
+		t.Fatalf("missing change log entries: %v", found)
 	}
 }
 
