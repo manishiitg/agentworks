@@ -41,7 +41,6 @@ import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { NewProjectMenu } from './NewProjectMenu'
-import SidebarStepInspections from './SidebarStepInspections'
 import { inspectionKey } from '../../utils/stepInspection'
 import { workflowTriggerLabel } from '../../utils/workflowSessionKinds'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
@@ -353,7 +352,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const toggleSection = (id: string) =>
     toggleExpanded(sidebarExpansionKey(scope, 'project', id))
   const workspaces = sidebarWorkspaceGroups(rows, directory?.scope === scope ? directory.projects : [], presets)
-  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: { title: string; icon?: string }, visible = true, disclosure?: { panelId: string; expanded: boolean; onToggle: () => void }) => {
+  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: { title: string; icon?: string }) => {
     const tab = row.tabId ? tabs[row.tabId] : undefined
     const inspecting = tab?.metadata?.stepInspections?.items.some(item => inspectionKey(item) === tab.metadata?.stepInspections?.activeId)
     const selected = row.tabId === selectedTab && product === row.surface && !globalPageOpen && !providersOpen && !inspecting
@@ -422,7 +421,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               useChatStore.getState().addToast('Could not open this chat.', 'error')
             )
           }}
-          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${disclosure ? 'pr-14' : 'pr-9'} ${selected ? 'bg-foreground/[0.08] text-foreground shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'text-foreground/75 [@media(hover:hover)]:hover:bg-muted [@media(hover:hover)]:hover:text-foreground'}`}
+          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pr-9 ${selected ? 'bg-foreground/[0.08] text-foreground shadow-[inset_2px_0_0_hsl(var(--primary))]' : 'text-foreground/75 [@media(hover:hover)]:hover:bg-muted [@media(hover:hover)]:hover:text-foreground'}`}
         >
           {workspaceEntry && <span className="shrink-0" title={sourceLabel} aria-hidden="true">
             <ProjectIcon icon={workspaceEntry.icon} title={workspaceEntry.title} surface={row.surface} />
@@ -449,19 +448,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             {status}
           </span>
         )}
-        {disclosure && (
-          <button
-            type="button"
-            aria-label={`${disclosure.expanded ? 'Collapse' : 'Expand'} ${title}`}
-            aria-expanded={disclosure.expanded}
-            aria-controls={disclosure.panelId}
-            title={disclosure.expanded ? 'Collapse steps' : 'Show steps'}
-            onClick={disclosure.onToggle}
-            className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ChevronDown aria-hidden="true" className={`h-3 w-3 transition-transform ${disclosure.expanded ? '' : '-rotate-90'}`} />
-          </button>
-        )}
         {canClose && (
           <button
             type="button"
@@ -483,19 +469,11 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           </button>
         )}
       </div>
-      {row.surface === 'agentworks' && <div id={disclosure?.panelId} hidden={disclosure ? !disclosure.expanded : undefined}><SidebarStepInspections
-        row={row}
-        workspace={row.workspace || presets.find(preset => preset.id === row.workflowId)?.selectedFolder?.filepath || ''}
-        scope={scope}
-        visible={visible && (!disclosure || disclosure.expanded)}
-        selected={product === row.surface && !globalPageOpen && !providersOpen}
-        onOpen={() => open(row)}
-      /></div>}
       </div>
     )
   }
   const isResourceWorkspace = (surface: string) => surface === 'knowledgebase' || surface === 'mcp-gateway'
-  const renderWorkspace = (workspace: (typeof workspaces)[number], index: number, sectionVisible = true) => {
+  const renderWorkspace = (workspace: (typeof workspaces)[number], index: number) => {
     if (workspace.surface === 'work' && workspace.chats.length === 0) return <button
       key={workspace.id}
       type="button"
@@ -520,9 +498,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const only = workspace.chats.length === 1 ? workspace.chats[0] : null
     const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
     const primaryOnly = only && !only.scheduled && only.workflowSessionKind !== 'run' && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
-    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace, sectionVisible,
-      only.surface === 'agentworks' ? { panelId, expanded: !hidden, onToggle: () => toggleSection(workspace.id) } : undefined
-    )}</div>
+    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace)}</div>
     return (
       <section key={workspace.id} className="mb-2">
         <button
@@ -556,8 +532,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               unnamedChats.length > 1 && unnamedChats.includes(row.id)
                 ? unnamedChats.indexOf(row.id) + 1
                 : undefined,
-              undefined,
-              sectionVisible && !hidden
             )
           )}
         </div>

@@ -64,7 +64,6 @@ vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mock
 vi.mock('../../hooks/useWorkflowBuilderBindings', () => ({ useWorkflowBuilderBindings: () => mocks.builders }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useResumePreviousChat', () => ({ useResumePreviousChat: () => mocks.resume }))
-vi.mock('./SidebarStepInspections', () => ({ default: ({ visible }: { visible: boolean }) => <div data-testid="step-inspections" data-visible={visible} /> }))
 vi.mock('../../utils/chatIdentity', () => ({
   captureChatIdentity: () => 1,
   isChatIdentityCurrent: () => true,
@@ -349,46 +348,6 @@ it('links to the dashboard library in the shared sidebar and marks its deep link
       expect(link.getAttribute('aria-current')).toBe('page')
     })
   } finally { window.history.replaceState({}, '', '/') }
-})
-
-it('collapses a single Goal without closing its chat and remembers the project preference', async () => {
-  mocks.product = 'agentworks'
-  mocks.presets = [{ id: 'goal', label: 'ICICI corporate', selectedFolder: { filepath: 'Workflow/icici' } }]
-  mocks.tabs = {
-    main: { tabId: 'main', sessionId: 'main', name: 'ICICI corporate', createdAt: 1, isStreaming: true,
-      metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'goal', agentProfileBuilder: true } },
-  }
-  mocks.builders = { goal: { session_id: 'main', sessions: { main: { is_builder: true, kind: 'builder' } } } }
-  mocks.history.mockResolvedValue({ sessions: [] })
-  await render(async host => {
-    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="Expand ICICI corporate"]')!
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    const panel = host.querySelector<HTMLDivElement>(`#${toggle.getAttribute('aria-controls')}`)!
-    expect(panel.hidden).toBe(true)
-    expect(panel.querySelector('[data-visible="false"]')).not.toBeNull()
-    await act(async () => toggle.click())
-    expect(toggle.getAttribute('aria-expanded')).toBe('true')
-    expect(panel.hidden).toBe(false)
-    expect(panel.querySelector('[data-visible="true"]')).not.toBeNull()
-    expect(mocks.openTab).not.toHaveBeenCalled()
-    expect(mocks.close).not.toHaveBeenCalled()
-    await act(async () => host.querySelector<HTMLButtonElement>('[title="ICICI corporate · Goals"]')!.click())
-    expect(mocks.openTab).toHaveBeenCalledWith('main')
-    expect(panel.hidden).toBe(false)
-  })
-  await render(async (host, rerender) => {
-    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="Collapse ICICI corporate"]')!
-    expect(toggle.getAttribute('aria-expanded')).toBe('true')
-    await act(async () => toggle.click())
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    expect(host.querySelector('[aria-label="Running"]')).not.toBeNull()
-    mocks.user = { ...mocks.user, id: 'bob' }
-    await rerender()
-    expect(host.querySelector('[aria-label="Expand ICICI corporate"]')).not.toBeNull()
-  })
-  await render(async host => {
-    expect(host.querySelector('[aria-label="Expand ICICI corporate"]')).not.toBeNull()
-  })
 })
 
 it('keeps Brain and Vault available without chats while respecting product access', async () => {
