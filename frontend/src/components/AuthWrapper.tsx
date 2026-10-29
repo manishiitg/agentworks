@@ -10,7 +10,8 @@ import { SharedFolder } from "../pages/SharedFolder";
 import { ReportPage } from "../pages/ReportPage";
 import { DashboardShortLink } from "./DashboardShortLink";
 import { Loader2 } from "lucide-react";
-import { WorkspaceConnectionSwitcher } from "./WorkspaceConnectionSwitcher";
+import { DesktopConnectConsent } from "../pages/DesktopConnectConsent";
+import { DesktopConnections } from "./workspace/DesktopConnections";
 import { DesktopAppOnlyGate } from "./DesktopAppOnlyGate";
 import { isDesktopAppOnlyMode } from "../services/api";
 import { DashboardsPageContext } from '../contexts/DashboardsPageContext';
@@ -195,13 +196,20 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   if (!isMultiUserModeChecked || isLoading || (!isMultiUserMode && !isAuthenticated && !singleUserAuthAttempted)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-        <WorkspaceConnectionSwitcher placement="auth" />
+
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
           <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
         </div>
       </div>
     );
+  }
+
+  if (window.location.pathname === '/desktop/connect') {
+    return isAuthenticated ? <DesktopConnectConsent /> : <Login />;
+  }
+  if (activeWorkspaceId !== 'local' && !isAuthenticated) {
+    return <main className="flex min-h-screen bg-background text-foreground"><aside className="w-72 border-r border-border p-3"><DesktopConnections /></aside><div className="p-8"><h1 className="text-xl font-semibold">This server is unavailable</h1><p className="mt-2 text-muted-foreground">Reconnect or choose another server in the sidebar. Your work stays on its server.</p></div></main>;
   }
 
   if (messagingOnly) {
@@ -216,7 +224,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   if ((sharedFilePath || sharedFolderPath) && !isAuthenticated) {
     return (
       <>
-        <WorkspaceConnectionSwitcher placement="auth" />
+
         <Login />
       </>
     );
@@ -277,7 +285,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   if (!isAuthenticated) {
     return (
       <>
-        <WorkspaceConnectionSwitcher placement="auth" />
+
         <Login />
       </>
     );

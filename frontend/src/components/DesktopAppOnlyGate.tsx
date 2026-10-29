@@ -31,10 +31,10 @@ export function DesktopAppOnlyGate() {
           </div>
 
           <p className="mb-5 text-sm leading-6 text-gray-600 dark:text-gray-300">
-            This server is configured for desktop-only use. Download and open the Mac app first, then connect this signed-in workspace from the browser.
+            This server is configured for desktop-only use. Download and open the Mac app first, then choose Connect server in its sidebar.
           </p>
 
-          <DesktopConnectButton variant="inline" />
+          <DesktopConnectButton />
         </div>
       </div>
     </div>

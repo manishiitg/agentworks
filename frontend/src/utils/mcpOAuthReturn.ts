@@ -1,3 +1,15 @@
+export function desktopConsentReturnPath(value: string | null): string | null {
+  if (!value?.startsWith('/desktop/connect?')) return null
+  const url = new URL(value, 'https://agentworks.invalid')
+  const state = url.searchParams.get('state'), challenge = url.searchParams.get('challenge')
+  if (!state || !challenge || !/^[A-Za-z0-9_-]{43}$/.test(state) || !/^[A-Za-z0-9_-]{43}$/.test(challenge)) return null
+  try {
+    const cb = new URL(url.searchParams.get('callback') || '')
+    if (cb.protocol !== 'http:' || cb.hostname !== '127.0.0.1' || !cb.port || cb.pathname !== '/connected' || cb.search || cb.hash || cb.username || cb.password) return null
+    return `/desktop/connect?${new URLSearchParams({ state, challenge, callback: cb.href })}`
+  } catch { return null }
+}
+
 const PREFIX = 'agentworks:mcp-consent:oauth:'
 
 export function mcpConsentReturnPath(value: string | null): string | null {
@@ -20,7 +32,7 @@ export function cliConsentReturnPath(value: string | null): string | null {
 
 export function connectionConsentReturnPath(value: string | null): string | null {
 	if (value && /^\/mcp\/elicitation\/[a-f0-9-]{36}$/.test(value)) return value
-  return mcpConsentReturnPath(value) || cliConsentReturnPath(value)
+  return desktopConsentReturnPath(value) || mcpConsentReturnPath(value) || cliConsentReturnPath(value)
 }
 
 export function rememberMcpConsentReturnPath(value: string | null, state: string): void {

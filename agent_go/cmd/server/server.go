@@ -2440,6 +2440,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Multi-provider OAuth routes
 	apiRouter.HandleFunc("/auth/start", api.handleAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/callback", api.handleAuthCallback).Methods("GET")
+	apiRouter.HandleFunc("/desktop-connections", api.handleDesktopConnections).Methods("GET", "POST")
+	apiRouter.HandleFunc("/desktop-connections/sign-in/{state}", api.handleDesktopSignInStatus).Methods("GET")
+	apiRouter.HandleFunc("/desktop-connections/{connection}/inventory", api.handleDesktopConnectionInventory).Methods("GET")
+	apiRouter.HandleFunc("/desktop-connections/{connection}", api.handleDesktopConnections).Methods("DELETE")
+	apiRouter.PathPrefix("/connections/{connection}/{path:.*}").HandlerFunc(api.handleDesktopConnectionProxy)
 	apiRouter.HandleFunc("/auth/desktop/connect", api.handleDesktopConnect).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/desktop/exchange", api.handleDesktopConnectExchange).Methods("POST", "OPTIONS")
 

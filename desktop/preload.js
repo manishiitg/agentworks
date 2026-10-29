@@ -8,7 +8,11 @@ try {
   // Older/test shells can continue using renderer localStorage.
 }
 
+const desktopConnection = ipcRenderer.sendSync('get-desktop-connection');
+
 contextBridge.exposeInMainWorld('electronAPI', {
+  getDesktopConnection: () => desktopConnection,
+  openDesktopConnection: (id, route) => ipcRenderer.invoke('open-desktop-connection', id, route),
   isWalkthroughDismissed: key => walkthroughDismissals.has(key),
   dismissWalkthrough: key => {
     walkthroughDismissals.add(key);

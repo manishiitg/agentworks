@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { authApi, getAuthToken, setAuthToken, clearAuthToken } from '../services/api'
 import type { AuthUser, AuthProvider } from '../services/api'
-import { getWorkspaceScopedStorageKey } from './useWorkspaceConnectionStore'
+import { getWorkspaceScopedStorageKey, getRawActiveWorkspaceId } from './useWorkspaceConnectionStore'
 import { switchChatAccount, migrateLegacyChatStateForVerifiedAccount } from './useChatStore'
 import { invalidateChatIdentity } from '../utils/chatIdentity'
 
@@ -114,7 +114,7 @@ export const useAuthStore = create<AuthState>()(
             const response = await authApi.getAuthMode()
             if (!response.multi_user_mode) migrateLegacyChatStateForVerifiedAccount(null)
             set({
-              isMultiUserMode: response.multi_user_mode,
+              isMultiUserMode: response.multi_user_mode || getRawActiveWorkspaceId() !== 'local',
               isMultiUserModeChecked: true,
               providers: response.providers || [],
               registrationEnabled: response.registration_enabled === true,

@@ -42,9 +42,10 @@ it('restores all product toolbar selections after remount and isolates projects 
     await act(async () => render())
     expect(host.querySelectorAll('[aria-pressed="true"]')).toHaveLength(PRODUCT_SURFACES.length)
     expect(readWorkspaceViewPreference('work', 'other-project', normalize)).toBeNull()
-    localStorage.setItem('workspace-connection-store', JSON.stringify({state:{activeWorkspaceId:'other-server'}}))
+    const previousElectron = window.electronAPI
+    window.electronAPI = { getDesktopConnection: () => 'other-server' }
     expect(readWorkspaceViewPreference('work', 'same-project', normalize)).toBeNull()
-    localStorage.removeItem('workspace-connection-store')
+    window.electronAPI = previousElectron
     writeWorkspaceViewPreference('work', 'same-project', 'removed-view')
     expect(readWorkspaceViewPreference('work', 'same-project', normalize, () => 'selected')).toBeNull()
     expect(readWorkspaceViewPreference('work', 'same-project', normalize)).toBe('selected')

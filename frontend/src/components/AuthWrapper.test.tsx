@@ -22,9 +22,7 @@ vi.mock("../pages/ReportPage", () => ({
     </div>
   ),
 }));
-vi.mock("./WorkspaceConnectionSwitcher", () => ({
-  WorkspaceConnectionSwitcher: () => null,
-}));
+vi.mock("./workspace/DesktopConnections", () => ({ DesktopConnections: () => null }));
 vi.mock("./DesktopAppOnlyGate", () => ({ DesktopAppOnlyGate: () => null }));
 vi.mock("../services/api", () => ({ isDesktopAppOnlyMode: () => false }));
 import { useAuthStore } from "../stores/useAuthStore";

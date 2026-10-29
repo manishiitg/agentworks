@@ -1,3 +1,4 @@
+import { DesktopConnections } from './DesktopConnections'
 import { requestServiceChat } from '../../utils/serviceChatNavigation'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -566,6 +567,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2">
+        <DesktopConnections>
         {/* One list of projects, most recent first; each project's icon says Crew, Goal or Relay (owner, 2026-10-29). */}
         {workspaces.map((workspace, index) => PROJECT_SIDEBAR_ORDER.some(surface => surface === workspace.surface) || !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
         {directory?.scope === scope && !directory.authoritative && (
@@ -584,6 +586,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         {history && !history.error && !workspaces.length && directory?.scope === scope && directory.authoritative && (
           <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>
         )}
+        </DesktopConnections>
       </div>
       <SharedToolShortcuts />
       {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}

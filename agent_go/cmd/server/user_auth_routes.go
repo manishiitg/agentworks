@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -77,7 +78,8 @@ type DesktopConnectResponse struct {
 }
 
 type DesktopConnectExchangeRequest struct {
-	Code string `json:"code"`
+	Code     string `json:"code"`
+	Verifier string `json:"verifier"`
 }
 
 // OAuth state management for CSRF protection
@@ -99,6 +101,7 @@ type oauthStateEntry struct {
 }
 
 type desktopConnectEntry struct {
+	Challenge string
 	User      UserClaims
 	CreatedAt time.Time
 	ExpiresAt time.Time
@@ -182,11 +185,12 @@ func validateAndConsumeState(state string) (*oauthStateEntry, bool) {
 	return entry, true
 }
 
-func storeDesktopConnectCode(code string, user *UserClaims) time.Time {
+func storeDesktopConnectCode(code string, user *UserClaims, challenge string) time.Time {
 	expiresAt := time.Now().Add(desktopConnectExpiration)
 	desktopConnectCodesMu.Lock()
 	defer desktopConnectCodesMu.Unlock()
 	desktopConnectCodes[code] = &desktopConnectEntry{
+		Challenge: challenge,
 		User:      *user,
 		CreatedAt: time.Now(),
 		ExpiresAt: expiresAt,
@@ -194,7 +198,7 @@ func storeDesktopConnectCode(code string, user *UserClaims) time.Time {
 	return expiresAt
 }
 
-func consumeDesktopConnectCode(code string) (*desktopConnectEntry, bool) {
+func consumeDesktopConnectCode(code, verifier string) (*desktopConnectEntry, bool) {
 	desktopConnectCodesMu.Lock()
 	defer desktopConnectCodesMu.Unlock()
 	entry, ok := desktopConnectCodes[code]
@@ -202,7 +206,8 @@ func consumeDesktopConnectCode(code string) (*desktopConnectEntry, bool) {
 		return nil, false
 	}
 	delete(desktopConnectCodes, code)
-	if time.Now().After(entry.ExpiresAt) {
+	hash := sha256.Sum256([]byte(verifier))
+	if time.Now().After(entry.ExpiresAt) || entry.Challenge == "" || entry.Challenge != base64.RawURLEncoding.EncodeToString(hash[:]) {
 		return nil, false
 	}
 	return entry, true
@@ -525,11 +530,18 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 
 func (api *StreamingAPI) handleDesktopConnect(w http.ResponseWriter, r *http.Request) {
 	user := GetUserFromContext(r.Context())
-	if user == nil {
+	if user == nil || user.AccessToken != nil {
 		http.Error(w, `{"error": "Not authenticated"}`, http.StatusUnauthorized)
 		return
 	}
 
+	var request struct {
+		Challenge string `json:"challenge"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&request) != nil || len(request.Challenge) != 43 {
+		http.Error(w, `{"error":"Start sign-in from the Mac app."}`, 400)
+		return
+	}
 	code, err := generateDesktopConnectCode()
 	if err != nil {
 		log.Printf("[AUTH] Failed to generate desktop connect code: %v", err)
@@ -538,7 +550,7 @@ func (api *StreamingAPI) handleDesktopConnect(w http.ResponseWriter, r *http.Req
 	}
 
 	serverURL := getBaseURL(r)
-	expiresAt := storeDesktopConnectCode(code, user)
+	expiresAt := storeDesktopConnectCode(code, user, request.Challenge)
 	connectURL := fmt.Sprintf("runloop://connect?server=%s&code=%s", url.QueryEscape(serverURL), url.QueryEscape(code))
 
 	w.Header().Set("Content-Type", "application/json")
@@ -562,7 +574,7 @@ func (api *StreamingAPI) handleDesktopConnectExchange(w http.ResponseWriter, r *
 		return
 	}
 
-	entry, ok := consumeDesktopConnectCode(strings.TrimSpace(req.Code))
+	entry, ok := consumeDesktopConnectCode(strings.TrimSpace(req.Code), req.Verifier)
 	if !ok {
 		http.Error(w, `{"error": "Invalid or expired connect code"}`, http.StatusUnauthorized)
 		return

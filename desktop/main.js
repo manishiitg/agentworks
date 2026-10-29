@@ -47,6 +47,8 @@ ipcMain.on('dismiss-walkthrough', (_event, key) => {
 let dynamicAgentPort = 0;
 let dynamicWorkspacePort = 0;
 const workspaceApiToken = crypto.randomBytes(32).toString('hex');
+let desktopConnectionsInstalled = false;
+const desktopConnectionSecret = crypto.randomBytes(32).toString('hex');
 
 const HEALTH_TIMEOUT_MS = 90000;
 const HEALTH_POLL_MS = 500;
@@ -1020,6 +1022,8 @@ function spawnWorkspace(userDataPath) {
       ...process.env, 
       DOCS_DIR: docsDir,
       RUNLOOP_USER_DATA_DIR: userDataPath,
+      AGENTWORKS_DESKTOP_SECRET: desktopConnectionSecret,
+      AGENTWORKS_DESKTOP_HOST: `127.0.0.1:${dynamicAgentPort}`,
       AGENTWORKS_STATE_ROOT: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'),
       LOCAL_MODE: 'true',
       DATA_DIR: dataDir,
@@ -1150,6 +1154,8 @@ function spawnAgent(userDataPath) {
       // per-user fallback for direct launches, but Desktop owns a more precise
       // application data root and should pass it explicitly.
       RUNLOOP_USER_DATA_DIR: userDataPath,
+      AGENTWORKS_DESKTOP_SECRET: desktopConnectionSecret,
+      AGENTWORKS_DESKTOP_HOST: `127.0.0.1:${dynamicAgentPort}`,
       AGENTWORKS_STATE_ROOT: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'),
       WORKSPACE_API_URL: `http://127.0.0.1:${dynamicWorkspacePort}`,
       WORKSPACE_DOCS_PATH: docsDir,
@@ -1638,6 +1644,13 @@ function createWindow(initialUrl) {
     }
   });
 
+  if (!desktopConnectionsInstalled) {
+  desktopConnectionsInstalled = true;
+  require('./lib/connections').installDesktopConnections({
+    session: mainWindow.webContents.session, ipcMain, getWindow: () => mainWindow,
+    origin: `http://127.0.0.1:${dynamicAgentPort}`, secret: desktopConnectionSecret,
+  });
+  }
   mainWindow.loadURL(targetUrl);
 
   ['minimize', 'hide', 'restore', 'show', 'focus'].forEach((eventName) => {

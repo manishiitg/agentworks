@@ -41,7 +41,7 @@ export default function WelcomeAiReadiness({ products, onSetup, crewReadyView }:
       } })
     }).catch(() => { if (current) setCheck({ scope, status: 'error' }) })
     return () => { current = false }
-  }, [scope, productKey, profile?.token, user, revision])
+  }, [scope, productKey, user, revision])
 
   useEffect(() => {
     // Coming back to the tab rechecks only while no account is ready (one may have just been connected elsewhere);

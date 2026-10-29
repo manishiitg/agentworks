@@ -33,7 +33,7 @@ function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {})
 }
 import { useChatStore } from '../stores/useChatStore'
 import { useModeStore } from '../stores/useModeStore'
-import { getActiveWorkspaceProfile, useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
+import { getRawActiveWorkspaceId } from '../stores/useWorkspaceConnectionStore'
 import { GATEWAY_LOGIN_HEADER, gatewayLoginTarget, redirectToGatewayLogin } from '../utils/gatewayAuth'
 import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/apiTiming'
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
@@ -247,16 +247,12 @@ function logResolvedUrlOnce(key: string, payload: Record<string, unknown>) {
 }
 
 export function getApiBaseUrl(): string {
-  const activeWorkspace = getActiveWorkspaceProfile()
-  if (activeWorkspace.type === 'remote' && activeWorkspace.apiBaseUrl) {
-    logResolvedUrlOnce('apiBaseUrl', {
-      source: 'workspace-profile',
-      workspaceId: activeWorkspace.id,
-      resolved: activeWorkspace.apiBaseUrl,
-    })
-    return activeWorkspace.apiBaseUrl
-  }
+  const local = getLocalApiBaseUrl()
+  const id = getRawActiveWorkspaceId()
+  return id === 'local' ? local : `${local}/api/connections/${id}`
+}
 
+export function getLocalApiBaseUrl(): string {
   const runtime = getRuntimeConfig()
   if (runtime.apiBaseUrl) {
     logResolvedUrlOnce('apiBaseUrl', { source: 'runtime-config', resolved: runtime.apiBaseUrl, runtime })
@@ -287,15 +283,7 @@ export function getApiBaseUrl(): string {
 }
 
 function getWorkspaceApiBaseUrl(): string {
-  const activeWorkspace = getActiveWorkspaceProfile()
-  if (activeWorkspace.type === 'remote' && activeWorkspace.workspaceApiBaseUrl) {
-    logResolvedUrlOnce('workspaceApiBaseUrl', {
-      source: 'workspace-profile',
-      workspaceId: activeWorkspace.id,
-      resolved: activeWorkspace.workspaceApiBaseUrl,
-    })
-    return activeWorkspace.workspaceApiBaseUrl
-  }
+  if (getRawActiveWorkspaceId() !== 'local') return `${getApiBaseUrl()}/api/wp`
 
   const runtime = getRuntimeConfig()
   if (runtime.workspaceApiBaseUrl) {
@@ -507,25 +495,13 @@ export function setSessionId(sessionId: string): void {
 const AUTH_TOKEN_KEY = 'auth_token'
 
 export function getAuthToken(): string | null {
-  const activeWorkspace = getActiveWorkspaceProfile()
-  if (activeWorkspace.token) return activeWorkspace.token
-
-  // One-time compatibility fallback for pre-workspace local installs.
-  if (activeWorkspace.id === 'local') {
-    return localStorage.getItem(AUTH_TOKEN_KEY)
-  }
-  return null
+  // Every desktop request authenticates the local owner. Only the backend
+  // substitutes a saved remote session, after checking the app proof.
+  return localStorage.getItem(AUTH_TOKEN_KEY)
 }
-
-export function setAuthToken(token: string): void {
-  useWorkspaceConnectionStore.getState().setActiveWorkspaceToken(token)
-}
-
+export function setAuthToken(token: string): void { localStorage.setItem(AUTH_TOKEN_KEY, token) }
 export function clearAuthToken(): void {
-  useWorkspaceConnectionStore.getState().setActiveWorkspaceToken(undefined)
-  if (getActiveWorkspaceProfile().id === 'local') {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
-  }
+  if (getRawActiveWorkspaceId() === 'local') localStorage.removeItem(AUTH_TOKEN_KEY)
 }
 
 // --- Axios request interceptor to inject session ID and auth token ---
@@ -2945,22 +2921,9 @@ export const authApi = {
     return response.data
   },
 
-  createDesktopConnect: async (): Promise<DesktopConnectResponse> => {
-    const response = await api.post('/api/auth/desktop/connect')
+  createDesktopConnect: async (challenge: string): Promise<DesktopConnectResponse> => {
+    const response = await api.post('/api/auth/desktop/connect', { challenge })
     return response.data
-  },
-
-  exchangeDesktopConnect: async (serverUrl: string, code: string): Promise<AuthResponse> => {
-    const response = await fetch(`${serverUrl.replace(/\/+$/, '')}/api/auth/desktop/exchange`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-    })
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(text || `Desktop connect failed (${response.status})`)
-    }
-    return response.json()
   },
 
   // Logout

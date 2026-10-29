@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from 'vitest'
-import { cliConsentReturnPath, consumeMcpConsentReturnPath, mcpConsentReturnPath, rememberMcpConsentReturnPath } from './mcpOAuthReturn'
+import { desktopConsentReturnPath, cliConsentReturnPath, consumeMcpConsentReturnPath, mcpConsentReturnPath, rememberMcpConsentReturnPath } from './mcpOAuthReturn'
 
 const path = `/oauth/consent?request=mcp_req_${'a'.repeat(64)}`
 
@@ -49,4 +49,16 @@ it('keeps a Vault consent request through platform sign-in', () => {
   rememberMcpConsentReturnPath(vault, 'vault-sign-in')
   expect(consumeMcpConsentReturnPath('vault-sign-in')).toBe(vault)
   expect(mcpConsentReturnPath(vault + '&redirect=https://evil.example')).toBeNull()
+})
+
+it('desktop sign-in returns only to its loopback callback and survives browser OAuth', () => {
+  const params = new URLSearchParams({ state: 's'.repeat(43), challenge: 'c'.repeat(43), callback: 'http://127.0.0.1:54321/connected' })
+  const link = `/desktop/connect?${params}`
+  expect(desktopConsentReturnPath(link)).not.toBeNull()
+  rememberMcpConsentReturnPath(link, 'desktop-state')
+  expect(consumeMcpConsentReturnPath('desktop-state')).toBe(desktopConsentReturnPath(link))
+  for (const callback of ['https://example.com/connected', 'http://127.0.0.1.evil.example:54321/connected', 'http://user@127.0.0.1:54321/connected', 'http://127.0.0.1:54321/other']) {
+    params.set('callback', callback)
+    expect(desktopConsentReturnPath(`/desktop/connect?${params}`)).toBeNull()
+  }
 })

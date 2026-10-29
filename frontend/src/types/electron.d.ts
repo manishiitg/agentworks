@@ -8,6 +8,8 @@ interface ElectronUpdateProgress {
 }
 
 interface ElectronBridge {
+  getDesktopConnection?: () => string | null
+  openDesktopConnection?: (id: string, route: string) => Promise<void>
   isWalkthroughDismissed?: (key: string) => boolean
   dismissWalkthrough?: (key: string) => void
   getApiBaseUrl?: () => string

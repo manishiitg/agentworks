@@ -1,3 +1,4 @@
+import { getRawActiveWorkspaceId } from '../stores/useWorkspaceConnectionStore'
 export const PRODUCT_SURFACES = ['agentworks', 'relays', 'sparkquill', 'work', 'mcp-gateway', 'llm-gateway', 'knowledgebase', 'bullpen'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
@@ -31,6 +32,7 @@ export function isProductSurface(value: unknown): value is ProductSurface {
  * remain restricted. Server defaults and dedicated allowlists are preserved.
  */
 export function enabledProductSurfaces(): ProductSurface[] {
+  if (getRawActiveWorkspaceId() !== 'local') return ['agentworks', 'work']
   const configured = runtimeConfig()?.enabledProductSurfaces
   if (isLocalProductInstallation()) {
     const local = Array.isArray(configured) ? configured.filter(isProductSurface).filter(surface => surface === 'agentworks' || surface === 'work' || surface === 'bullpen') : []
@@ -79,10 +81,12 @@ export function gatewayBaseUrl(): string | null {
 
 /** Installation location, including local builds that also enable server products. */
 export function isLocalDeployment(): boolean {
+  if (getRawActiveWorkspaceId() !== 'local') return false
   return import.meta.env.VITE_DEPLOYMENT_MODE === 'local' || runtimeConfig()?.deploymentMode === 'local'
 }
 
 export function isLocalProductInstallation(): boolean {
+  if (getRawActiveWorkspaceId() !== 'local') return false
   // Packaged local assets omit server entries. Source development uses the
   // local-full build profile and explicitly advertises the launcher opt-in.
   return import.meta.env.VITE_DEPLOYMENT_MODE === 'local' || (runtimeConfig()?.deploymentMode === 'local' && runtimeConfig()?.localServerProducts !== true)
