@@ -34,9 +34,10 @@ reference explains the product; it grants no tools, access or permission to run 
 - **Run**: real execution of requested work. Read its output, status, logs and
   costs; opening a view or receiving a tool acknowledgment does not prove success.
 - **Dashboard**: the project's published visual results and actions. Use current
-  data and say what is missing or stale. New dashboards are hosted React TSX with
-  shared shadcn/Recharts components; JSON dashboard layouts are removed. Existing
-  HTML pages can still be inspected. Keep all views and actions when converting.
+  data and say what is missing or stale. Live dashboards are hosted React TSX with
+  shared shadcn/Recharts components; a quick shareable page (a decision, a report,
+  a file view) can be HTML. JSON dashboards are not supported. Keep all views and
+  actions when converting.
 - **Goals & metrics**: the goal, success criteria, saved metric definitions and
   real readings. Define numbers with Builder; ordinary steps collect them.
   A Crew that looks after your Goals can review the same evidence through its

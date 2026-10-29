@@ -100,7 +100,6 @@ try {
   console.log('TSX managed compile, data, React interaction, CSS, refresh, mobile, preview refusal and frozen export PASS')
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)) }
 
-// Migrate a saved JSON publication, then prove the same controls in TSX.
-execFileSync('go', ['test', './migrations/dashboardjson', '-run', '^TestSavedJSONMigrationPreservesIdentityAndHistory$', '-count=1'], { cwd: path.join(repo, 'workspace'), env: { ...process.env, DASHBOARD_MIGRATION_TEST_FIXTURE: path.join(output, 'migrated.html') }, stdio: 'inherit' })
+// Prove the automatic default TSX dashboard and HTML pages in the browser.
 execFileSync('go', ['test', './cmd/server', '-run', '^TestDefaultDashboardHTMLShowsOnlyDeclaredThings$', '-count=1'], { cwd: path.join(repo, 'agent_go'), env: { ...process.env, GOWORK: 'off', DASHBOARD_DEFAULT_TEST_FIXTURE: path.join(output, 'default.html') }, stdio: 'inherit' })
 execFileSync('node', ['scripts/test-dashboard-migration-browser.mjs'], { cwd: frontend, env: { ...process.env, DASHBOARD_MIGRATION_QA_DIR: output }, stdio: 'inherit' })

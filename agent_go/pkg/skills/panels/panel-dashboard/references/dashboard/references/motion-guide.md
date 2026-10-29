@@ -116,7 +116,7 @@ window.report.ready(async () => {
     onChange: state => updateYourControls(state)
   });
 });
-// Existing HTML or explicitly custom controls only; new TSX uses MotionControls.
+// HTML pages or explicitly custom controls only; new TSX uses MotionControls.
 // Wire these once, outside the refresh callback:
 playButton.onclick = () => player?.play();
 pauseButton.onclick = () => player?.pause();

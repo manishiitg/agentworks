@@ -60,9 +60,10 @@ this Crew; Skills is in Build, Memory in Setup, and Access in Share. Back
 returns to the project menu or the parent list of nested details. Help popups
 and tours are removed; give the explanation directly in chat.
 
-New dashboards are managed TSX using shared shadcn/Recharts components, kept
-in this project's dashboard list. Read `panel-dashboard` before authoring;
-JSON layouts are removed and existing HTML can still be inspected. Dashboard
+Live dashboards are managed TSX using shared shadcn/Recharts components, kept
+in this project's dashboard list; a quick shareable page (a decision, a report,
+a file view) can be HTML. Read `panel-dashboard` before authoring; JSON
+dashboards are not supported. Dashboard
 Ask/Chat widgets are for shared Run users; Builders use their existing chat.
 Static export packages the same saved dashboard and its authorized snapshot,
 without live private tools or credentials. Use the current detailed procedure,

@@ -81,13 +81,13 @@ Import ordinary CSS for responsive design; the shared base theme is supplied.
 Arbitrary Tailwind utility classes are not compiled from dashboard source. Keep
 styles customizable and preserve the person's visual design. Read and inspect the
 existing page, data and controls before converting; carry every view and action
-across. When converting a JSON dashboard remove index.json in the same update.
-Keep the same dashboard_id so its list entry, shared link and publication history
+across. Keep the same dashboard_id so its list entry, shared link and publication history
 remain intact. Confirm publish with dashboard action=list and dashboard action=link.
 
-HTML-only authoring is deprecated for new dashboards. Existing HTML pages and
-revisions continue to render, edit, publish, restore, share and export. Existing
-saved HTML history stays available. Saved JSON dashboard revisions migrate once to TSX with a plain backup, retaining dashboard identities, saved revision paths, data reads, actions and access. Do not submit index.json or suggest a separate JSON renderer.
+Two formats, two jobs: TSX for live dashboards with data, buttons and functions;
+HTML (index.html) for a quick shareable page such as a decision, a report or a
+file view. HTML pages render, edit, publish, restore, share and export like TSX.
+JSON dashboards are not supported: do not submit index.json.
 
 ## Shared controls and charts
 
@@ -200,8 +200,7 @@ A request to “move dashboards to React” means author index.tsx through the m
 tools, retaining the same dashboard_id and publishing it in the existing list.
 Inspect the existing pages, design, data and controls first. Preserve each view,
 live query, script and explicit action; do not replace data with a build-time
-copy or require npm run sync-data. Remove index.json in the same update when
-converting JSON. Existing HTML history remains available through restore.
+copy or require npm run sync-data. Earlier HTML revisions stay available through restore.
 
 Use the authorized report APIs; no new data/auth server is needed. Only create a
 standalone React application when the person explicitly asks for that separate
@@ -223,10 +222,10 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
    Omit the project selector for cross-project discovery; paginate with limit/offset.
    `published_only: true` matches the Dashboards page. Removing access removes
    discovery and blocks the link.
-2. `dashboard action=get` reads the source and revision. Existing HTML may use its
+2. `dashboard action=get` reads the source and revision. An HTML page may use its
    returned document_path and stays intact when adopted into a managed bundle.
 3. `dashboard action=create` takes dashboard_id (lowercase slug), title and files.
-   New pages supply index.tsx and optional relative source/assets. JSON dashboard entries are not accepted; HTML-only editing remains for compatibility.
+   Live dashboards supply index.tsx and optional relative source/assets; a quick shareable page may supply index.html. JSON dashboards are not supported.
    Images/fonts use matching base64 data URLs. Optional scripts go under scripts/.
    Maximum:100 files and8 MiB per bundle.
 4. `dashboard action=update` takes changed files/title, optional remove paths and
@@ -247,7 +246,7 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
 Use `{{dashboard_assets}}` and `{{dashboard_scripts}}` for immutable bundle paths.
 For example a data declaration can run `{{dashboard_scripts}}/summary.py`; the
 script contract below still applies. The HTML widget/API examples below are
-references for existing HTML pages, not instructions for new dashboard authoring.
+for HTML pages; TSX dashboards use the shared components instead.
 
 External connections need `dashboards:read` for discovery, source reads and links.
 Drafts and publication use existing product authoring consent: `builder:chat` for
@@ -264,7 +263,7 @@ Connections gain no new scopes automatically; expiry and revocation remain enfor
 
 A dashboard button or link **can send a predefined request directly to the
 project's chat**. In managed TSX use `report.sendChatMessage(message, options?)`
-from the supplied `report` prop; existing HTML uses `window.report.sendChatMessage`.
+from the supplied `report` prop; HTML pages use `window.report.sendChatMessage`.
 `AskButton`, `ChatPanel` and `report.chat.open()` are separate conversation
 widgets: opening them does not submit anything. Their Run-only visibility and
 `report.chat.available` do not decide whether a direct chat action can send.
@@ -310,7 +309,7 @@ Preview and static exports cannot send messages. In the external MCP App,
 press Send; do not report that draft as sent. Surface the host's error or next
 step rather than silently falling back or claiming completion.
 
-## Existing HTML: optional native chat widgets
+## HTML pages: optional native chat widgets
 
 In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
@@ -373,7 +372,7 @@ another origin. Dashboard widgets are for shared Run users only: `chat.available
 availability before calling widget controls. These widgets require the managed dashboard
 host; loose HTML documents do not acquire native chat through markup alone.
 
-## Existing HTML: function buttons
+## HTML pages: function buttons
 
 In a managed Crew or workflow dashboard, a button can open a native form for one
 of this project's published functions. Mark it with the function's name:
@@ -395,7 +394,7 @@ support these buttons. The chat’s `/` menu lists the same published functions.
 Current project access and each function’s allowed people are checked by the
 server when called.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product -->
 
-## Existing HTML APIs and the shared script contract
+## HTML page APIs and the shared script contract
 
 The dashboard runs inside the shared report host. Load data in
 `window.report.ready(async () => { ... })`; the host repeats it on refresh.

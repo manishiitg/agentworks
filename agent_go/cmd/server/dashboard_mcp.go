@@ -16,7 +16,7 @@ var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "ge
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("get_dashboard_catalog", "Read the managed React TSX authoring contract, supported runtime imports, starter source, shared shadcn component props and Recharts imports. Use before authoring index.tsx. HTML authoring is deprecated; existing HTML remains supported; saved JSON dashboards migrate to TSX. Data, Ask, functions and sharing use the existing project contracts.", false, false, map[string]any{})
+	add("get_dashboard_catalog", "Read the managed React TSX authoring contract, supported runtime imports, starter source, shared shadcn component props and Recharts imports. Use before authoring. Two formats: TSX (index.tsx) for live dashboards with data, buttons and functions; HTML (index.html) for a quick shareable page such as a decision, a report or a file view. JSON dashboards are not supported. Data, Ask, functions and sharing use the existing project contracts.", false, false, map[string]any{})
 	for _, name := range []string{"upload_dashboard_asset", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
@@ -40,7 +40,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			props["workspace"] = externalString("Optional project root. Omit (and workflow_id/crew_id) to discover dashboards across accessible projects.")
 		}
 		if action != "list" {
-			props["document_path"] = externalString("Existing HTML dashboard path from the dashboard list, for get/validate/preview/link.")
+			props["document_path"] = externalString("HTML page path from the dashboard list, for get/validate/preview/link.")
 			props["dashboard_id"] = externalString("Dashboard slug returned by the dashboard list, or the new slug when creating one.")
 			if action == "create" || action == "update" || action == "publish" || action == "restore" {
 				required = append(required, "dashboard_id")
@@ -49,7 +49,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		if action == "create" || action == "update" {
 			props["title"] = externalString("Dashboard title (at most 200 characters).")
 			props["motion"] = map[string]any{"type": "boolean", "description": "true lists this dashboard under Motion dashboards. Use for authored interactive playback; this label does not add animation. Defaults to false on create; omitted on update preserves it. Publish the revision to change the live label."}
-			props["files"] = map[string]any{"type": "object", "maxProperties": 100, "additionalProperties": map[string]any{"type": "string"}, "description": "File contents by dashboard-relative path. Binary images/fonts use matching base64 data URLs. index.tsx is the React dashboard source; default-export a component and optionally export async loadData(report). Relative TSX/TS/JS/JSON/CSS imports are bundled by the server; see dashboard action=catalog for runtime modules. The server generates index.html/dashboard-app.js/dashboard-app.css. Use shared shadcn components from @agentworks/dashboard and charts from recharts. JSON dashboard specifications are removed; remove index.json when converting to TSX. index.html-only authoring is deprecated and retained for existing HTML compatibility. Assets may be HTML/TSX/TS/CSS/JS/JSON/SVG/text/CSV, Python/JS scripts go under scripts/. Use {{dashboard_assets}} and {{dashboard_scripts}} in source to address this exact revision."}
+			props["files"] = map[string]any{"type": "object", "maxProperties": 100, "additionalProperties": map[string]any{"type": "string"}, "description": "File contents by dashboard-relative path. Binary images/fonts use matching base64 data URLs. index.tsx is the React dashboard source; default-export a component and optionally export async loadData(report). Relative TSX/TS/JS/JSON/CSS imports are bundled by the server; see dashboard action=catalog for runtime modules. The server generates index.html/dashboard-app.js/dashboard-app.css. Use shared shadcn components from @agentworks/dashboard and charts from recharts. index.html alone makes a quick shareable HTML page (a decision, a report or a file view). JSON dashboards are not supported. Assets may be HTML/TSX/TS/CSS/JS/JSON/SVG/text/CSV, Python/JS scripts go under scripts/. Use {{dashboard_assets}} and {{dashboard_scripts}} in source to address this exact revision."}
 			if action == "create" {
 				required = append(required, "title", "files")
 			} else {
@@ -72,9 +72,9 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		}
 		descriptions := map[string]string{
 			"upload":   "Upload an attachment to a Crew using the same route and limits as its chat. The server selects the caller’s upload area. Requires current Crew access and crews:run or crews:write. Returns a saved path for chat/functions; never edits dashboard source.",
-			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Existing HTML dashboards are included.",
+			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. HTML pages are included.",
 			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing product authoring consent.",
-			"create":   "Create a managed React TSX dashboard draft from index.tsx (dashboard action=catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. Existing JSON and deprecated HTML bundles remain supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
+			"create":   "Create a managed React TSX dashboard draft from index.tsx (dashboard action=catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. TSX is for live dashboards with data, buttons and functions; HTML (index.html) is for a quick shareable page. JSON dashboards are not supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
 			"update":   "Update supplied draft files/title and optionally remove files, preserving omitted files. Creates an immutable revision; published viewers keep seeing the published bundle.",
 			"validate": "Validate the exact dashboard revision with the same HTML, SQL schema and referenced-file checks as the app Builder.",
 			"preview":  "Render the exact dashboard revision with the app's real browser runtime; returns state, data/script errors and screenshots. Requires project edit rights, dashboards:read and runs:execute (live scripts may use your allowed selected sources).",
@@ -326,7 +326,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 		return strings.Compare(rows[i]["workspace"].(string)+"/"+rows[i]["dashboard_id"].(string), rows[j]["workspace"].(string)+"/"+rows[j]["dashboard_id"].(string)) < 0
 	})
 	start, end := dashboardPageBounds(rows, limit, offset)
-	externalJSON(w, map[string]any{"dashboards": rows[start:end], "total": len(rows), "next_offset": end, "has_more": end < len(rows), "unavailable_projects": failed, "authentication": "Sign in with current project access; URLs grant no access.", "note": "Private Code dashboards remain owner-only. For existing HTML documents use document_path with validation/preview/link."})
+	externalJSON(w, map[string]any{"dashboards": rows[start:end], "total": len(rows), "next_offset": end, "has_more": end < len(rows), "unavailable_projects": failed, "authentication": "Sign in with current project access; URLs grant no access.", "note": "Private Code dashboards remain owner-only. For HTML pages use document_path with validation/preview/link."})
 }
 
 func dashboardDiscoveryRow(target dashboardTarget, d dashboards.Dashboard) map[string]any {

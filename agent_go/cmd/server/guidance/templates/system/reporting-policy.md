@@ -1,7 +1,8 @@
 ## Dashboard authoring policy
 
-New dashboards use managed React TSX (index.tsx). HTML authoring is deprecated;
-existing HTML dashboards keep their renderer and saved revisions. JSON dashboard layouts are removed; saved JSON revisions migrate to TSX.
+Dashboards have two formats: managed React TSX (index.tsx) for live dashboards
+with data, buttons and functions, and HTML (index.html) for a quick shareable
+page such as a decision, a report or a file view. JSON dashboards are not supported.
 Layout, styling and content follow the designer's preferences. The platform
 provides a finished default theme and task-appropriate design guidance. Authored
 layouts remain fully customizable.
@@ -20,7 +21,7 @@ and shared widget/API examples. Use dashboard action=catalog for the current
 component contracts. The sections below cover this Goal's own report data and
 runtime; a dashboard edit does not authorize plan or execution changes.
 
-### Existing HTML page contract
+### HTML page contract
 
 - Write one or more complete `.html` documents under
   `db/reports/`. Use separate documents for genuinely distinct destinations;

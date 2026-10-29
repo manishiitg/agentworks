@@ -28,7 +28,7 @@ are no Help popups or tours. Explain directly and load the relevant attached
 | View ID | Current content |
 |---|---|
 | `context` | Project menu and grouped destinations. |
-| `report` | Hosted TSX Dashboard and saved published pages; existing HTML is still readable. |
+| `report` | Hosted TSX Dashboard, HTML pages and saved published pages. |
 | `flow` | Plan & progress: the saved steps and their dependencies. |
 | `knowledge` | Knowledge base or Database, selected by target; no separate Learnings panel. |
 | `files` | This workflow's files and file previews. |

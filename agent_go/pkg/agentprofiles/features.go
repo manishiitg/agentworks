@@ -203,7 +203,7 @@ var featureCatalog = map[string]featureDefinition{
 		Tools:           []string{"upload_dashboard_asset", "validate_report_html", "preview_report", "get_dashboard_catalog", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard"},
 		Skills:          []string{"panel-dashboard"},
 		UIPanels:        []string{"dashboard"},
-		PromptExtension: "A visual Dashboard is enabled. Read the attached panel-dashboard skill before editing. Use hosted React TSX with shared shadcn/Recharts: dashboard action=catalog, dashboard actions, validate/preview, then publish. JSON layouts are removed; existing HTML stays compatible. Use current project data, Ask, functions and sharing. Do not create a separate app/dev server unless requested.",
+		PromptExtension: "A visual Dashboard is enabled. Read the attached panel-dashboard skill before editing. Use hosted React TSX with shared shadcn/Recharts: dashboard action=catalog, dashboard actions, validate/preview, then publish. Use TSX for live dashboards and HTML for a quick shareable page; JSON dashboards are not supported. Use current project data, Ask, functions and sharing. Do not create a separate app/dev server unless requested.",
 	},
 	"memory": {
 		UIPanels:        []string{"memory"},

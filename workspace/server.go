@@ -9,7 +9,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/handlers"
-	"github.com/manishiitg/coding-agent-loop/workspace/migrations/dashboardjson"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 
@@ -78,14 +77,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	} else if backup != "" {
 		fmt.Printf("[CREW_STATE_MIGRATION] moved=%d backup=%s\n", count, backup)
-	}
-
-	// One-off source migration, before any workspace requests or processes.
-	// Remove this package after every server has moved to TSX.
-	if count, backup, err := dashboardjson.Run(docsDir); err != nil {
-		fmt.Printf("[DASHBOARD_MIGRATION] incomplete; workspace remains available: %v\n", err)
-	} else if count > 0 {
-		fmt.Printf("[DASHBOARD_MIGRATION] migrated %d saved dashboard revisions to TSX; backup=%s\n", count, backup)
 	}
 
 	// Create default workspace subdirectories.

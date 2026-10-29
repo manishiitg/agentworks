@@ -1,5 +1,5 @@
 Create or update the workflow's Dashboard using the user's requested design.
-Use managed React TSX (index.tsx) by default. HTML is deprecated for new dashboards; preserve existing HTML unless asked to convert. Saved JSON dashboards migrate to TSX.
+Use managed React TSX (index.tsx) for live dashboards with data, buttons and functions. Use HTML (index.html) for a quick shareable page such as a decision, a report or a file view. JSON dashboards are not supported.
 Load the platform usage references first:
 `read_skill(skills=[{"name":"builder-reference","path":"references/reporting-policy.md"}])`
 and
@@ -106,7 +106,7 @@ prefer `query` when the data is already stored in `db/`.
 ## Validation
 
 For managed TSX dashboards, run `dashboard action=validate` and `dashboard action=preview`, repair errors,
-then `dashboard action=publish`. For existing HTML, run `dashboard action=validate` for every
+then `dashboard action=publish`. For HTML pages, run `dashboard action=validate` for every
 changed document and repair errors.
 It checks document structure, literal SQL, referenced files and dependencies.
 Dynamic queries/paths require separate verification.
