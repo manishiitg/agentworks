@@ -48,8 +48,11 @@ let dynamicAgentPort = 0;
 let dynamicWorkspacePort = 0;
 const workspaceApiToken = crypto.randomBytes(32).toString('hex');
 let desktopConnectionsInstalled = false;
+let desktopAgentReady = false;
+const currentDesktopOrigin = () => desktopAgentReady && agentProcess && agentProcess.exitCode === null && !agentProcess.killed
+  ? `http://127.0.0.1:${dynamicAgentPort}` : null;
 const desktopConnectionSecret = crypto.randomBytes(32).toString('hex');
-const { withoutDesktopBootstrap, desktopAgentEnvironment } = require('./lib/connections');
+const { withoutDesktopBootstrap } = require('./lib/connections');
 
 const HEALTH_TIMEOUT_MS = 90000;
 const HEALTH_POLL_MS = 500;
@@ -542,7 +545,9 @@ function restartServers() {
         return waitForHealth(agentHealthUrl, workspaceHealthUrl);
       })
       .then(() => {
-        mainWindow.reload(); // Reload frontend to reconnect
+        desktopAgentReady = true;
+        const previous = new URL(mainWindow.webContents.getURL());
+        mainWindow.loadURL(currentDesktopOrigin() + previous.pathname + previous.search);
       })
       .catch(err => {
         showErrorAndExit('Failed to restart servers: ' + err);
@@ -1184,8 +1189,9 @@ function spawnAgent(userDataPath) {
 
     spawnServer({
       name: 'agent', bin, args, preferredPort: 45678, cwd,
+      bootstrap: port => ({ secret: desktopConnectionSecret, host: `127.0.0.1:${port}`, auth_secret: env.AUTH_SECRET }),
       env: (port) => ({
-        ...desktopAgentEnvironment(env, port, desktopConnectionSecret),
+        ...withoutDesktopBootstrap(env),
         // OAuth tools run without an incoming browser request, so they need a
         // callback origin in the process environment. Use the port selected by
         // the desktop launcher; an explicit deployment value still wins.
@@ -1541,6 +1547,7 @@ ipcMain.on('restart-to-install', () => {
 });
 
 function killChildren() {
+  desktopAgentReady = false;
   if (workspaceProcess) {
     try {
       workspaceProcess.kill('SIGTERM');
@@ -1645,7 +1652,7 @@ function createWindow(initialUrl) {
   desktopConnectionsInstalled = true;
   require('./lib/connections').installDesktopConnections({
     session: mainWindow.webContents.session, ipcMain, getWindow: () => mainWindow,
-    origin: `http://127.0.0.1:${dynamicAgentPort}`, secret: desktopConnectionSecret,
+    getOrigin: currentDesktopOrigin, secret: desktopConnectionSecret,
   });
   }
   mainWindow.loadURL(targetUrl);
@@ -1744,6 +1751,7 @@ app.whenReady().then(async () => {
     const agentHealthUrl = `http://127.0.0.1:${dynamicAgentPort}/api/health`;
     const workspaceHealthUrl = `http://127.0.0.1:${dynamicWorkspacePort}/health`;
     await waitForHealth(agentHealthUrl, workspaceHealthUrl);
+    desktopAgentReady = true;
     await clearFrontendCacheIfVersionChanged();
   } catch (err) {
     showErrorAndExit(err.message || String(err));

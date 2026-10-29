@@ -18,14 +18,17 @@ const DYNAMIC_PORT_RE = /DynamicPort: (\d+)/;
 //   cwd, env       passed to spawn
 //   log            a bounded log writer ({ write })
 //   onExit(code, signal)   optional
-function spawnServer({ name, bin, args, preferredPort, cwd, env, log, onExit, echoToConsole = false }) {
+function spawnServer({ name, bin, args, preferredPort, cwd, env, log, onExit, bootstrap, echoToConsole = false }) {
   return detect(preferredPort).then((port) => new Promise((resolve, reject) => {
     const finalArgs = args.map((a) => (a === spawnServer.PORT_PLACEHOLDER ? String(port) : a));
     // Some per-process settings (notably the local OAuth callback origin)
     // depend on the port detect() actually selected. Accept an env factory so
     // callers never have to guess the preferred port or persist a stale one.
     const resolvedEnv = typeof env === 'function' ? env(port) : env;
-    const child = spawn(bin, finalArgs, { cwd, env: resolvedEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    const options = { cwd, env: resolvedEnv, stdio: ['ignore', 'pipe', 'pipe'] };
+    const child = bootstrap
+      ? require('./connections').spawnWithBootstrap(bin, finalArgs, options, bootstrap(port))
+      : spawn(bin, finalArgs, options);
     let portFound = false;
     let crewUpdateFailed = false;
 

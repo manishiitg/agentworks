@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getAuthMode: vi.fn(), login: vi.fn(), handleOAuthCallback: vi.fn(), logout: vi.fn(), getCurrentUser: vi.fn(),
-  getAuthToken: vi.fn(), setAuthToken: vi.fn(), clearAuthToken: vi.fn(), switchChatAccount: vi.fn(),
+  getAuthToken: vi.fn(), setAuthToken: vi.fn(), clearAuthToken: vi.fn(), switchChatAccount: vi.fn(), desktopRequest: vi.fn(),
 }))
 vi.mock('../services/api', () => ({
   authApi: mocks, getAuthToken: mocks.getAuthToken, setAuthToken: mocks.setAuthToken, clearAuthToken: mocks.clearAuthToken,
 }))
+vi.mock('../services/desktopConnections', () => ({ desktopRequest: mocks.desktopRequest }))
 vi.mock('./useChatStore', () => ({ switchChatAccount: mocks.switchChatAccount, migrateLegacyChatStateForVerifiedAccount: vi.fn() }))
 import { useAuthStore } from './useAuthStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
@@ -58,6 +59,26 @@ describe('authentication conversation boundary', () => {
     expect(mocks.setAuthToken).toHaveBeenLastCalledWith('bob-token')
     expect(mocks.clearAuthToken).toHaveBeenCalledTimes(1)
   })
+  it('signs out through the remote account before deleting its saved credential', async () => {
+    const open = vi.fn()
+    window.electronAPI = { getDesktopConnection: () => 'saved', openDesktopConnection: open } as unknown as typeof window.electronAPI
+    let finishLogout!: () => void
+    mocks.logout.mockImplementation(() => new Promise<void>(resolve => { finishLogout = resolve }))
+    try {
+      const pending = useAuthStore.getState().logout()
+      await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce())
+      expect(mocks.desktopRequest).not.toHaveBeenCalled()
+      finishLogout()
+      await pending
+      expect(mocks.desktopRequest).toHaveBeenCalledWith('/saved', 'DELETE')
+      expect(open).toHaveBeenCalledWith('local', '/home')
+      mocks.logout.mockRejectedValueOnce(new Error('unavailable'))
+      mocks.desktopRequest.mockClear()
+      await expect(useAuthStore.getState().logout()).rejects.toThrow('unavailable')
+      expect(mocks.desktopRequest).not.toHaveBeenCalled()
+    } finally { delete window.electronAPI }
+  })
+
   it('does not infer single-user mode from a failed authentication-mode request', async () => {
     mocks.getAuthMode.mockRejectedValue(new Error('offline'))
     await useAuthStore.getState().checkAuthMode()

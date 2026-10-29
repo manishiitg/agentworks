@@ -157,10 +157,10 @@ func GetDefaultUserID() string {
 // for the same pattern.
 var startupAuthSecret []byte
 
-// InitAuthSecretCache reads AUTH_SECRET into memory. Call once at server
+// InitAuthSecretCache reads the configured signing secret into memory. Call once at server
 // startup, before ClearAuthSecretFromEnv.
 func InitAuthSecretCache() {
-	startupAuthSecret = []byte(strings.TrimSpace(os.Getenv("AUTH_SECRET")))
+	startupAuthSecret = GetAuthSecret()
 }
 
 // ClearAuthSecretFromEnv removes AUTH_SECRET from the process environment so
@@ -187,10 +187,13 @@ func ValidateAuthSecretValue(secret string) error {
 	return nil
 }
 
-// GetAuthSecret returns the JWT signing secret: the live env var when set
-// (tests, CLI commands), else the startup cache (server after clearing).
+// GetAuthSecret uses the private desktop bootstrap when present; other launches
+// use the live environment (tests, CLI commands), then the startup cache.
 // The returned slice is a copy; callers must not retain or mutate it.
 func GetAuthSecret() []byte {
+	if desktopStartup.AuthSecret != "" {
+		return []byte(desktopStartup.AuthSecret)
+	}
 	if v := strings.TrimSpace(os.Getenv("AUTH_SECRET")); v != "" {
 		return []byte(v)
 	}
@@ -342,7 +345,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Token is valid, add claims to context
-		ctx :=productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))
+		ctx := productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

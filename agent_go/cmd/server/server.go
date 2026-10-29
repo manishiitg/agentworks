@@ -1822,7 +1822,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// and the services key cache from here on. Mirrors the MCP token handling
 	// below, but earlier, so even startup-time spawns never see the secret.
 	InitAuthSecretCache()
-	services.CacheSecretsKey()
+	services.CacheSecretsKey(string(GetAuthSecret()))
 	ClearAuthSecretFromEnv()
 	// Import AUTH_USERS into config/users.json and apply ADMIN_USERS once the
 	// workspace API (which stores that file) answers. Retried briefly because

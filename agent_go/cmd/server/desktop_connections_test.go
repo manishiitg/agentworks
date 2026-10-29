@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	llm "github.com/manishiitg/mcpagent/llm"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -186,24 +185,43 @@ func TestDesktopConnectionSSEFlushesBeforeCompletion(t *testing.T) {
 	}
 }
 
-// The proof unlocks all saved remote accounts; coding agents must not inherit it.
+// PLAT-746-207: exercise package startup over a real inherited pipe. Unsetenv
+// alone cannot hide the initial environment from ps on macOS.
 func TestDesktopConnectionProofNeverReachesChildProcesses(t *testing.T) {
-	t.Setenv("AGENTWORKS_DESKTOP_SECRET", "app-proof")
-	t.Setenv("AGENTWORKS_DESKTOP_HOST", "127.0.0.1:18743")
-	secret, host := consumeDesktopBootstrap()
-	if secret != "app-proof" || host != "127.0.0.1:18743" {
-		t.Fatal("startup lost app bootstrap")
-	}
-	for _, env := range [][]string{minimalChildEnv(), providerConnectionSetupEnvironment("desktop-proof-test", &llm.ProviderAPIKeys{}, true), os.Environ()} {
-		for _, value := range env {
-			if strings.HasPrefix(value, "AGENTWORKS_DESKTOP_") {
-				t.Fatal("app bootstrap inherited by child")
+	if os.Getenv("DESKTOP_BOOTSTRAP_TEST_CHILD") == "1" {
+		if desktopBootstrapSecret != "pipe-proof" || desktopBootstrapHost != "127.0.0.1:18743" || string(GetAuthSecret()) != "pipe-signing-secret" {
+			t.Fatal("startup lost private bootstrap")
+		}
+		InitAuthSecretCache()
+		if string(GetAuthSecret()) != "pipe-signing-secret" {
+			t.Fatal("cache lost pipe secret")
+		}
+		for _, value := range os.Environ() {
+			if strings.HasPrefix(value, "AGENTWORKS_DESKTOP_") || strings.HasPrefix(value, "AUTH_SECRET=") || strings.HasPrefix(value, "AGENTWORKS_BOOTSTRAP_FD=") {
+				t.Fatal("bootstrap inherited by child")
 			}
 		}
-		cmd := exec.Command("sh", "-c", `test -z "${AGENTWORKS_DESKTOP_SECRET+x}" && test -z "${AGENTWORKS_DESKTOP_HOST+x}"`)
-		cmd.Env = env
-		if err := cmd.Run(); err != nil {
-			t.Fatal("child received desktop bootstrap")
+		return
+	}
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Close()
+	defer write.Close()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDesktopConnectionProofNeverReachesChildProcesses$")
+	for _, value := range os.Environ() {
+		if !strings.HasPrefix(value, "AUTH_SECRET=") && !strings.HasPrefix(value, "AGENTWORKS_DESKTOP_") && !strings.HasPrefix(value, "AGENTWORKS_BOOTSTRAP_FD=") {
+			cmd.Env = append(cmd.Env, value)
 		}
+	}
+	cmd.Env = append(cmd.Env, "AGENTWORKS_BOOTSTRAP_FD=3", "DESKTOP_BOOTSTRAP_TEST_CHILD=1")
+	cmd.ExtraFiles = []*os.File{read}
+	if _, err := io.WriteString(write, `{"secret":"pipe-proof","host":"127.0.0.1:18743","auth_secret":"pipe-signing-secret"}`); err != nil {
+		t.Fatal(err)
+	}
+	write.Close()
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("bootstrap child: %v %s", err, output)
 	}
 }

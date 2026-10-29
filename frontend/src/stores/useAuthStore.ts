@@ -217,6 +217,8 @@ export const useAuthStore = create<AuthState>()(
         logout: async () => {
           if (getRawActiveWorkspaceId() !== 'local') {
             const { desktopRequest } = await import('../services/desktopConnections')
+            // Use the scoped proxy while the saved remote credential still exists.
+            await authApi.logout()
             await desktopRequest(`/${getRawActiveWorkspaceId()}`, 'DELETE')
             await window.electronAPI?.openDesktopConnection?.('local', '/home')
             return

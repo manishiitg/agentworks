@@ -25,15 +25,33 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Capture at package startup, before any coding CLI or terminal can inherit it.
-// Unlike user-selected task secrets, this proves control of the app window.
-var desktopBootstrapSecret, desktopBootstrapHost = consumeDesktopBootstrap()
+// Read once before startup can launch children. Never put these credentials in
+// the initial process environment: macOS exposes it even after os.Unsetenv.
+var desktopStartup = consumeDesktopBootstrap()
+var desktopBootstrapSecret, desktopBootstrapHost = desktopStartup.Secret, desktopStartup.Host
 
-func consumeDesktopBootstrap() (string, string) {
-	secret, host := os.Getenv("AGENTWORKS_DESKTOP_SECRET"), os.Getenv("AGENTWORKS_DESKTOP_HOST")
-	_ = os.Unsetenv("AGENTWORKS_DESKTOP_SECRET")
-	_ = os.Unsetenv("AGENTWORKS_DESKTOP_HOST")
-	return secret, host
+type desktopBootstrap struct {
+	Secret     string `json:"secret"`
+	Host       string `json:"host"`
+	AuthSecret string `json:"auth_secret"`
+}
+
+func consumeDesktopBootstrap() desktopBootstrap {
+	if os.Getenv("AGENTWORKS_BOOTSTRAP_FD") != "3" {
+		return desktopBootstrap{}
+	}
+	_ = os.Unsetenv("AGENTWORKS_BOOTSTRAP_FD")
+	pipe := os.NewFile(3, "desktop-bootstrap")
+	if pipe == nil {
+		panic("Desktop bootstrap pipe unavailable")
+	}
+	defer pipe.Close()
+	var value desktopBootstrap
+	if json.NewDecoder(io.LimitReader(pipe, 16384)).Decode(&value) != nil || value.Secret == "" || value.Host == "" || ValidateAuthSecretValue(value.AuthSecret) != nil {
+		panic("Invalid desktop bootstrap")
+	}
+	value.AuthSecret = strings.TrimSpace(value.AuthSecret)
+	return value
 }
 
 type desktopConnection struct {

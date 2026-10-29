@@ -404,10 +404,9 @@ func LoadProviderKeys(ctx context.Context, workspaceURL string) (map[string]inte
 var cachedSecretsKey []byte
 
 // CacheSecretsKey stores the derived key for use after AUTH_SECRET is cleared
-// from the environment. Called once at server startup while the env var is
-// still set.
-func CacheSecretsKey() {
-	cachedSecretsKey = deriveSecretsKeyFromEnv()
+// from the environment. Desktop supplies its secret from a private startup pipe.
+func CacheSecretsKey(secret string) {
+	cachedSecretsKey = deriveSecretsKeyFromValue(secret)
 }
 
 // deriveSecretsKey derives the AES-256 key from AUTH_SECRET using HMAC-SHA256.
@@ -428,7 +427,11 @@ func deriveSecretsKey() []byte {
 }
 
 func deriveSecretsKeyFromEnv() []byte {
-	secret := strings.TrimSpace(os.Getenv("AUTH_SECRET"))
+	return deriveSecretsKeyFromValue(os.Getenv("AUTH_SECRET"))
+}
+
+func deriveSecretsKeyFromValue(value string) []byte {
+	secret := strings.TrimSpace(value)
 	if secret == "" {
 		return nil
 	}

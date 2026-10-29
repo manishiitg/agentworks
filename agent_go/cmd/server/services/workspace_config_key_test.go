@@ -9,7 +9,7 @@ func TestSecretsKeyCacheSurvivesEnvClearing(t *testing.T) {
 	prev := cachedSecretsKey
 	defer func() { cachedSecretsKey = prev }()
 	t.Setenv("AUTH_SECRET", "cache-test-secret")
-	CacheSecretsKey()
+	CacheSecretsKey(os.Getenv("AUTH_SECRET"))
 	want := deriveSecretsKey()
 	if want == nil {
 		t.Fatal("deriveSecretsKey() = nil with AUTH_SECRET set")
