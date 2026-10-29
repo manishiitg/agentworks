@@ -72,19 +72,19 @@ def main():
     template = (REPO / "scripts/testdata/plat296_projection_test.go.tmpl").read_text()
     definitions = {
         "codexcli": {
-            "PROMPT_WRITER": "return writeCodexProjectAgentsFile(dir, marker, restore)",
+            "PROMPT_WRITER": "return writeCodexProjectAgentsFile(dir, marker)",
             "SKILL_WRITER": "err = (&CodexCLIAdapter{}).ProjectSkills(dirs[role], []*llmtypes.Skill{skill})",
             "PROMPT_FILE": "AGENTS.md", "SKILLS_DIR": ".agents/skills",
         },
         "claudecode": {
-            "PROMPT_WRITER": "path, err := writeClaudeCodeProjectInstructionFile(dir, marker, restore); return func(){removeFiles([]string{path})}, err",
+            "PROMPT_WRITER": "path, err := writeClaudeCodeProjectInstructionFile(dir, marker); return func(){removeFiles([]string{path})}, err",
             "SKILL_WRITER": "err = (&ClaudeCodeInteractiveAdapter{}).ProjectSkills(dirs[role], []*llmtypes.Skill{skill})",
             "PROMPT_FILE": "CLAUDE.md", "SKILLS_DIR": ".claude/skills",
         },
     }
     definitions.update({
         "cursorcli": {
-            "PROMPT_WRITER": "opts := &llmtypes.CallOptions{}; WithRestoreProjectFiles(restore)(opts); return prepareCursorProjectFiles(dir, marker, opts, marker)",
+            "PROMPT_WRITER": "return prepareCursorProjectFiles(dir, marker, &llmtypes.CallOptions{}, marker)",
             "SKILL_WRITER": "err = (&CursorCLIAdapter{}).ProjectSkills(dirs[role], []*llmtypes.Skill{skill})",
             "PROMPT_FILE": ".cursor/rules/mlp-system.mdc", "SKILLS_DIR": ".cursor/skills",
         },

@@ -19,9 +19,6 @@ func WithPlatformCodingProviders(profile Profile) Profile {
 	var options []ProviderOption
 	models := PlatformModelMetadata()
 	for _, contract := range llm.CodingAgentProviderContracts() {
-		if contract.Deprecated {
-			continue
-		}
 		provider := string(contract.Provider)
 		defaults, ok := llm.GetCodingAgentDefaultTierModels(contract.Provider)
 		if !ok {

@@ -228,28 +228,26 @@ func TestPLAT296WorkflowCLIDirectories(t *testing.T) {
 		"cursorcli": "cursor-cli", "picli": "pi-cli",
 	} {
 		for _, first := range []string{"owner", "run"} {
-			for _, cleanup := range []string{"remove", "restore"} {
-				key := provider + "/private-control/" + first + "/" + cleanup
-				folder := key + "/Workflow/testing"
-				shared := codingAgentWorkspaceWorkingDir(folder)
-				if err := os.MkdirAll(filepath.Join(shared, "planning"), 0700); err != nil {
+			key := provider + "/private-control/" + first
+			folder := key + "/Workflow/testing"
+			shared := codingAgentWorkspaceWorkingDir(folder)
+			if err := os.MkdirAll(filepath.Join(shared, "planning"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(shared, "planning", "plan.json"), plan, 0600); err != nil {
+				t.Fatal(err)
+			}
+			directories[key] = map[string]string{}
+			for _, role := range []string{"owner", "run"} {
+				mode := "workshop"
+				if role == "run" {
+					mode = "run"
+				}
+				dir, err := workflowCLIWorkingDir(folder, role, "test-"+role, cliProvider, mode)
+				if err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(shared, "planning", "plan.json"), plan, 0600); err != nil {
-					t.Fatal(err)
-				}
-				directories[key] = map[string]string{}
-				for _, role := range []string{"owner", "run"} {
-					mode := "workshop"
-					if role == "run" {
-						mode = "run"
-					}
-					dir, err := workflowCLIWorkingDir(folder, role, "test-"+role, cliProvider, mode)
-					if err != nil {
-						t.Fatal(err)
-					}
-					directories[key][role] = dir
-				}
+				directories[key][role] = dir
 			}
 		}
 	}

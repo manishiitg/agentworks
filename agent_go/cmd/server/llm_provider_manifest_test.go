@@ -15,7 +15,7 @@ import (
 
 func TestProviderRuntimeDerivesFromSDKContracts(t *testing.T) {
 	for _, contract := range llm.CodingAgentProviderContracts() {
-		if contract.Transport != llm.CodingAgentTransportTmux || contract.Deprecated {
+		if contract.Transport != llm.CodingAgentTransportTmux {
 			continue
 		}
 		if got := providerRuntime(string(contract.Provider)); got != contract.RuntimeBinary {
@@ -58,7 +58,7 @@ func TestCertifiedCLIVersionsMeetFloors(t *testing.T) {
 		t.Fatalf("parse certified versions: %v", err)
 	}
 	for _, contract := range llm.CodingAgentProviderContracts() {
-		if contract.Transport != llm.CodingAgentTransportTmux || contract.Deprecated {
+		if contract.Transport != llm.CodingAgentTransportTmux {
 			continue
 		}
 		certified, ok := claimed.Versions[string(contract.Provider)]
