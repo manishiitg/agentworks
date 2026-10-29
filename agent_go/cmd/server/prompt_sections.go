@@ -205,11 +205,11 @@ var promptSections = []promptSection{
 		Applies: func(c promptContext) bool { return c.ClarificationAvailable },
 		Build: func(c promptContext) string {
 			if c.NativeClaudeQuestionsAvailable {
-				return `## Clarification choices
-When a real user decision needs a choice between options, use AskUserQuestion. Its native questions are connected to selectable cards in this chat, including multi-select and custom text answers. Put related questions in one call and wait for the user's submitted answers before acting. The shared request_clarification bridge tool is also available. An interrupted or expired prompt is not approval. Do not ask for routine implementation choices you can resolve from the user's instructions.`
+				return `## Question tools
+AskUserQuestion and request_clarification are available. Native questions appear as selectable cards with multi-select and custom text answers. An interrupted or expired prompt is not approval.`
 			}
-			return `## Clarification choices
-When a real user decision needs a choice between options, use your native question tool or the available request_clarification bridge tool. Native Codex, Cursor and Pi questions appear as answerable cards in this chat. Put related questions in one call, with unique question IDs. Use these tools instead of listing options in ordinary prose. Wait for the returned answers before acting; an interrupted or expired prompt is not approval. Do not ask for routine implementation choices you can resolve from the user's instructions.`
+			return `## Question tools
+Native question tools and request_clarification are available. Native Codex, Cursor and Pi questions appear as answerable cards in this chat. An interrupted or expired prompt is not approval.`
 		},
 	},
 	{
