@@ -131,10 +131,16 @@ export function formatCompactionDuration(ms: number): string {
 
 /** The row text; unknown parts are omitted. */
 export function contextCompactionText(info: ContextCompactionInfo): string {
+  const failed = info.outcome === 'failed' || info.outcome === 'aborted'
+  // Idle compaction (PLAT-872): the server tidied a long chat during a break.
+  if (info.trigger === 'idle' && !info.stale && !(info.phase === 'end' && failed)) {
+    if (info.phase === 'start') return 'Tidying this chat while you were away…'
+    const sizes = info.tokensBefore > 0 && info.tokensAfter > 0 ? ` (${formatCompactTokens(info.tokensBefore)} → ${formatCompactTokens(info.tokensAfter)})` : ''
+    return `While you were away, this chat was tidied to save cost${sizes}`
+  }
   if (info.phase === 'start') {
     return info.stale ? 'Context compaction started (no result recorded)' : 'Compacting context…'
   }
-  const failed = info.outcome === 'failed' || info.outcome === 'aborted'
   let head = failed ? (info.outcome === 'aborted' ? 'Context compaction aborted' : 'Context compaction failed') : 'Compacted context'
   if (info.durationMs > 0) head += ` (${formatCompactionDuration(info.durationMs)})`
   const parts = [head]
