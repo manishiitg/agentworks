@@ -47,7 +47,7 @@ import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
 
 const ReplyFileViewer = lazy(() => import('../../components/workspace/ReplyFileViewer').then(module => ({ default: module.ReplyFileViewer })))
-const ChatFileReview = lazy(() => import('../../components/workspace/ChatFileReview').then(module => ({ default: module.ChatFileReview })))
+const ChatFileReview = lazy(() => import('../../components/workspace/ChatFileReview.tsx').then(module => ({ default: module.ChatFileReview })))
 const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
 const ReportView = lazy(() => import('../../components/workflow/ReportViewer').then(module => ({ default: module.ReportView })))
