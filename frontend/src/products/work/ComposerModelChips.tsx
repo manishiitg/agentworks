@@ -14,9 +14,9 @@ const rowClass = 'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.
 const labelClass = 'px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground'
 const contentClass = 'z-[100] max-h-[min(360px,var(--radix-dropdown-menu-content-available-height))] w-[min(260px,calc(100vw-24px))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg'
 
-type Choice = { id: string; label: string }
+export type Choice = { id: string; label: string }
 
-function ChoiceItems({ title, choices, value, onPick }: { title?: string; choices: Choice[]; value?: string; onPick: (id: string) => void }) {
+export function ChoiceItems({ title, choices, value, onPick }: { title?: string; choices: Choice[]; value?: string; onPick: (id: string) => void }) {
   return <>
     {title && <Menu.Label className={labelClass}>{title}</Menu.Label>}
     <Menu.RadioGroup value={value} onValueChange={onPick}>
@@ -28,7 +28,7 @@ function ChoiceItems({ title, choices, value, onPick }: { title?: string; choice
   </>
 }
 
-function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean }) {
+export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean }) {
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
     <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={chipClass}>
       <span className="min-w-0 truncate">{label}</span>

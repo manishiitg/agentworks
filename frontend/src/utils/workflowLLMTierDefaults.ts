@@ -1,4 +1,4 @@
-import type { AgentLLMConfig, DelegationTierConfig, LLMProvider } from '../services/api-types'
+import type { AgentLLMConfig, DelegationTierConfig, LLMProvider, PresetLLMConfig } from '../services/api-types'
 import type {
   ProviderDefaultTierModels,
   ProviderManifestEntry,
@@ -245,4 +245,40 @@ export function getWorkflowLLMOptions(
   })
 
   return options
+}
+
+function workflowProviderDefaults(provider: string | undefined, providerManifest: ProviderManifestEntry[]): WorkflowTierDefaults | null {
+  const option = provider ? getWorkflowProviderOptions(providerManifest).find(candidate => candidate.provider === provider) : undefined
+  return option ? getWorkflowLLMTierDefaults(option, providerManifest) : null
+}
+
+/** The model a workflow's Builder chat is set to: its pinned Builder role, else its provider's Builder default. */
+export function workflowBuilderLLM(config: PresetLLMConfig | null | undefined, providerManifest: ProviderManifestEntry[] = []): AgentLLMConfig | null {
+  if (!config) return null
+  if (config.mode === 'explicit') return config.builder_llm ?? null
+  const builder = workflowProviderDefaults(config.provider, providerManifest)?.builder
+  return builder ? { ...builder, connection_id: config.connection_id } : null
+}
+
+/**
+ * The workflow setting with only the Builder chat moved to `builder`, as the Models
+ * page's Builder row saves it: the other roles keep what they run on today.
+ */
+export function withWorkflowBuilderLLM(config: PresetLLMConfig, builder: AgentLLMConfig, providerManifest: ProviderManifestEntry[] = []): PresetLLMConfig {
+  const defaults = config.mode === 'explicit' ? null : workflowProviderDefaults(config.provider, providerManifest)
+  const keep = (current: AgentLLMConfig | undefined, fallback: AgentLLMConfig | undefined) =>
+    (config.mode === 'explicit' ? current : undefined) ?? (fallback ? { ...fallback, connection_id: config.connection_id } : undefined)
+  const tier1 = keep(config.tiered_config?.tier_1, defaults?.tier1) ?? builder
+  return {
+    ...config,
+    schema_version: 2,
+    mode: 'explicit',
+    builder_llm: builder,
+    background_llm: keep(config.background_llm, defaults?.pulse),
+    tiered_config: {
+      tier_1: tier1,
+      tier_2: keep(config.tiered_config?.tier_2, defaults?.tier2) ?? builder,
+      tier_3: keep(config.tiered_config?.tier_3, defaults?.tier3) ?? builder,
+    },
+  }
 }

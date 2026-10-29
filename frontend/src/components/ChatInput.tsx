@@ -128,6 +128,7 @@ const CodingProvidersPanel = lazy(() => import('./providers/CodingProvidersPanel
 const ChatSendModeButton = lazy(() => import('./chat/ChatSendModeButton').then(module => ({ default: module.ChatSendModeButton })))
 const DurableChatQueue = lazy(() => import('./chat/DurableChatQueue').then(module => ({ default: module.DurableChatQueue })))
 const ComposerModelChips = lazy(() => import('../products/work/ComposerModelChips'))
+const BuilderModelChips = lazy(() => import('./workflow/BuilderModelChips'))
 import type { PlannerFile, LLMProvider, TerminalSnapshot } from '../services/api-types'
 import type { LLMOption } from '../types/llm'
 import { useAppStore, useMCPStore, useLLMStore, useChatStore } from '../stores'
@@ -3588,12 +3589,17 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </Tooltip>
                 )}
                 {!compactComposerActions && attachmentEl}
-                {isGoalBuilderChat && goalModelLabel && (
-                  canWriteCommandWorkflow && isInteractiveWorkflowBuilderChat ? <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Model: ${goalModelLabel}`} title={`${goalModelLabel} — open Models`}
+                {isWorkflowPhaseChat && goalModelLabel && (() => {
+                  if (!(canWriteCommandWorkflow && isInteractiveWorkflowBuilderChat)) return <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" aria-label={`Model: ${goalModelLabel}`} title={goalModelLabel}>{goalModelLabel}</span>
+                  const label = <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Model: ${goalModelLabel}`} title={`${goalModelLabel} — open Models`}
                     onClick={() => useWorkflowStore.getState().openWorkspaceView('identity', 'llm')}>
                     {goalModelLabel}
-                  </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" aria-label={`Model: ${goalModelLabel}`} title={goalModelLabel}>{goalModelLabel}</span>
-                )}
+                  </button>
+                  // Goal and Flow Builders pick the model and reasoning here, like Crew; everyone else sees the label.
+                  return workflowPhaseWorkspacePath
+                    ? <Suspense fallback={label}><BuilderModelChips workspacePath={workflowPhaseWorkspacePath} label={goalModelLabel} fallback={label} /></Suspense>
+                    : label
+                })()}
                 {(agentProfileId === 'work') && agentProfileProjectId && activeTabId && crewModelLabel && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`) && (() => {
                   const label = activeTab.metadata.agentProfileCanOpenModels ? <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground" title={`${activeTab.metadata.agentProfileChatModelOverride ? 'Own model' : 'Same as Crew'} · ${activeTab.metadata.agentProfileChatModelLabel} — open Models`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId: agentProfileProjectId, conversationKey: activeTab?.metadata?.agentProfileConversationKey } }))}>
                     {crewModelLabel}
