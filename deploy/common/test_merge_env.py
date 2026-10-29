@@ -41,6 +41,20 @@ class MergeEnvTest(unittest.TestCase):
             self.assertEqual((tmp / "out").read_text(), "PATH=/unit\nTOKEN=new\nA=1\n")
             self.assertEqual((tmp / "keys").read_text().split(), ["A", "TOKEN"])
 
+    def test_first_run_removes_a_global_secret_no_longer_provided(self):
+        # The old AWS deploy stripped every GLOBAL_SECRET_* line before writing the current set; a deleted global secret
+        # must leave .env at the next deploy even before .env.managed-keys exists. Without --from-file (rootless) it stays.
+        import tempfile
+        from merge_env import main
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / ".env").write_text("GLOBAL_SECRET_OLD=x\nGLOBAL_SECRET_KEEP=1\nBY_HAND=1\n")
+            (tmp / "secrets").write_text("GLOBAL_SECRET_KEEP=2\n")
+            main([str(tmp / ".env"), str(tmp / "out"), str(tmp / "keys"), "", "--from-file", str(tmp / "secrets")])
+            self.assertEqual((tmp / "out").read_text(), "GLOBAL_SECRET_KEEP=2\nBY_HAND=1\n")
+            main([str(tmp / ".env"), str(tmp / "rootless"), str(tmp / "keys2"), "/bin", "A=1"])
+            self.assertIn("GLOBAL_SECRET_OLD=x", (tmp / "rootless").read_text())
+
     def test_a_duplicated_managed_key_is_written_once(self):
         managed = parse_entries("/bin", ["A=1"])
         out = merge("A=0\nA=9\nPATH=/bin\n", managed, set())

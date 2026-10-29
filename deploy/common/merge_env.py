@@ -9,7 +9,9 @@ Only keys this tool wrote itself are ever removed: a line someone added by hand 
 usage: merge_env.py SOURCE DESTINATION KEYS_FILE PATH_VALUE [--from-file FILE] [KEY=value ...]
 
 An empty PATH_VALUE leaves PATH to the unit files. --from-file reads more KEY=value lines from FILE, so secret values
-never appear on a command line.
+never appear on a command line. That file is the full set of global secrets: with it, every GLOBAL_SECRET_* key it does not
+list is removed, even on the first run before the deploy remembers any keys (a deleted global secret must not stay behind).
+Without --from-file nothing changes for GLOBAL_SECRET_* lines.
 """
 import sys
 from pathlib import Path
@@ -49,17 +51,21 @@ def merge(text, managed, previously_managed):
 
 def main(argv):
     source, destination, keys_file, runtime_path, *args = argv
-    entries = []
+    entries, from_file = [], False
     while args:
         arg = args.pop(0)
         if arg == "--from-file":
+            from_file = True
             entries += [line for line in Path(args.pop(0)).read_text().splitlines() if line.strip() and not line.startswith("#")]
         else:
             entries.append(arg)
     managed = parse_entries(runtime_path, entries)
     keys_path = Path(keys_file)
     previous = set(keys_path.read_text().split()) if keys_path.exists() else set()
-    Path(destination).write_text(merge(Path(source).read_text(), managed, previous))
+    text = Path(source).read_text()
+    if from_file:
+        previous |= {line.partition("=")[0] for line in text.splitlines() if line.startswith("GLOBAL_SECRET_") and "=" in line}
+    Path(destination).write_text(merge(text, managed, previous))
     keys_path.write_text("\n".join(sorted(managed)) + "\n")
     keys_path.chmod(0o600)
 
