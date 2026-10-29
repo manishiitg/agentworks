@@ -140,7 +140,8 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   }
   // PR status is a GitHub call: it loads once the card is open and never holds the header or file list.
   // A reply saved without a summary loads its groups this way at once.
-  const isOpen = open ?? latest
+  // Every card starts closed; the person opens the one they want.
+  const isOpen = open ?? false
   const lookUpPullRequests = !hasSummary || (isOpen && !!summary?.groups.some(onGitHub))
   useEffect(() => {
     if (!lookUpPullRequests) return

@@ -46,11 +46,14 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 HTMLElement.prototype.scrollIntoView ??= () => {}
 
 // The reply event carries the summary the server computed at capture time, with the actions every viewer gets.
-async function render(canBuild: boolean, total = 2, latestSnapshotId?: string, withSummary = true) {
+// Cards start closed; most cases open the card first, as a person would.
+async function render(canBuild: boolean, total = 2, latestSnapshotId?: string, withSummary = true, opened = true) {
   state.canBuild = canBuild; state.total = total
   const summary = withSummary ? { files: total, added: 6, removed: 1, groups: total ? [crewFiles, group] : [], actions: [review] } : undefined
   const host = document.createElement('div'); document.body.append(host)
   await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId, summary }} />))
+  const title = button(host, 'Files changed during this reply')
+  if (opened && title) await act(async () => title.click())
   return host
 }
 const openMore = async (host: HTMLElement) => act(async () => { const trigger = button(host, 'More actions')!; trigger.focus(); trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
@@ -103,7 +106,10 @@ describe('reply card groups', () => {
     expect(button(host, 'More actions')).toBeUndefined()
     expect(button(host, 'Undo this reply')).toBeUndefined()
   })
-  it('draws the row in the server\'s order; the latest reply is open, an older one is collapsed', async () => {
+  it('draws the row in the server\'s order; every card starts closed, even the latest', async () => {
+    const closed = await render(true, 2, undefined, true, false)
+    expect(closed.querySelector('[aria-expanded="false"]')).not.toBeNull()
+    expect(button(closed, 'Undo this reply')).toBeUndefined()
     const latest = await render(true)
     expect(latest.textContent).toContain('Files changed during this reply · 2 files')
     expect(latest.textContent).toContain('+4')
@@ -111,7 +117,7 @@ describe('reply card groups', () => {
     expect(latest.querySelector('section > div:first-child [aria-hidden].w-px')).not.toBeNull()
     expect(button(latest, 'Undo this reply')).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
-    const older = await render(true, 2, 'newer')
+    const older = await render(true, 2, 'newer', true, false)
     expect(older.textContent).not.toContain('PR #305')
     expect(button(older, 'Check this change')).toBeDefined()
     // Undo lives only inside the opened card, under the file list.
@@ -119,7 +125,7 @@ describe('reply card groups', () => {
   })
   it('renders from the reply event without the comparison; PR status loads only for an open card', async () => {
     vi.mocked(api.get).mockClear()
-    const older = await render(true, 2, 'newer')
+    const older = await render(true, 2, 'newer', true, false)
     expect(older.textContent).toContain('Files changed during this reply · 2 files')
     expect(older.textContent).toContain('+6')
     expect(snapshotOps()).toEqual(['reply_card'])
@@ -128,7 +134,7 @@ describe('reply card groups', () => {
     expect(snapshotOps()).toEqual(['reply_card', 'reply_card+pr'])
     // A reply saved before summaries were sent still loads its card.
     vi.mocked(api.get).mockClear()
-    const saved = await render(true, 2, undefined, false)
+    const saved = await render(true, 2, undefined, false, false)
     expect(saved.textContent).toContain('Files changed during this reply · 2 files')
     expect(snapshotOps()).toEqual(['snapshot_compare', 'reply_card+pr'])
   })
