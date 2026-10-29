@@ -304,3 +304,55 @@ func TestWorkspaceGitCommitLinks(t *testing.T) {
 		}
 	}
 }
+
+// Branch / PR review (PLAT-746-200) compares with the default branch from the
+// merge-base, like a pull request: the feature branch's own upstream is never
+// the base (that would hide pushed work), and later commits on main are not
+// shown as this branch's changes.
+func TestWorkspaceGitBranchCompareUsesMergeBaseNotUpstream(t *testing.T) {
+	_, repo := gitTestEnv(t)
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	gitRun(t, filepath.Dir(remote), "init", "-q", "--bare", "remote.git")
+	gitRun(t, repo, "remote", "add", "origin", remote)
+	gitRun(t, repo, "push", "-q", "origin", "main")
+	gitRun(t, repo, "checkout", "-q", "-b", "feature")
+	writeFile(t, filepath.Join(repo, "pushed.txt"), "pushed\n")
+	gitRun(t, repo, "add", "pushed.txt")
+	gitRun(t, repo, "commit", "-q", "-m", "pushed", "pushed.txt")
+	gitRun(t, repo, "push", "-q", "-u", "origin", "feature")
+	writeFile(t, filepath.Join(repo, "local.txt"), "local\n")
+	gitRun(t, repo, "add", "local.txt")
+	gitRun(t, repo, "commit", "-q", "-m", "local", "local.txt")
+	gitRun(t, repo, "checkout", "-q", "main")
+	writeFile(t, filepath.Join(repo, "mainonly.txt"), "main\n")
+	gitRun(t, repo, "add", "mainonly.txt")
+	gitRun(t, repo, "commit", "-q", "-m", "main later", "mainonly.txt")
+	gitRun(t, repo, "push", "-q", "origin", "main")
+	gitRun(t, repo, "checkout", "-q", "feature")
+
+	q := url.Values{"workspace_path": {gitTestProject}, "op": {"branch_compare"}, "repo": {"app"}}
+	code, body := gitGet(t, "alice", q)
+	if code != http.StatusOK || body["branch"] != "feature" || body["base"] != "origin/main" || body["unpushed"] != float64(1) {
+		t.Fatalf("compare: %d %v", code, body)
+	}
+	files := map[string]string{}
+	for _, f := range body["files"].([]any) {
+		files[f.(map[string]any)["path"].(string)] = f.(map[string]any)["status"].(string)
+	}
+	if len(files) != 2 || files["pushed.txt"] != "added" || files["local.txt"] != "added" {
+		t.Fatalf("files: %v", files)
+	}
+	baseSHA, headSHA := body["base_sha"].(string), body["head_sha"].(string)
+	first, _ := exec.Command("git", "-C", repo, "rev-parse", "main~1").Output()
+	if baseSHA != strings.TrimSpace(string(first)) {
+		t.Fatalf("base_sha %s is not the merge-base %s", baseSHA, first)
+	}
+	code, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"branch_diff"}, "repo": {"app"}, "file": {"pushed.txt"}, "base_sha": {baseSHA}, "head_sha": {headSHA}})
+	if code != http.StatusOK || !strings.Contains(body["diff"].(string), "+pushed") {
+		t.Fatalf("branch_diff: %d %v", code, body)
+	}
+	q.Set("base", "--output=/tmp/x")
+	if code, _ := gitGet(t, "alice", q); code != http.StatusBadRequest {
+		t.Fatalf("option-looking base accepted: %d", code)
+	}
+}

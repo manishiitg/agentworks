@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { FolderOpen, RefreshCw } from 'lucide-react'
+import { workspaceGitApi, type GitRepo } from '../../services/workspaceGit'
+import { GitReview } from './GitReview'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { shownFilePath } from '../../utils/replyFileChanges'
 import api from '../../services/api'
 import { ReplyFileViewer } from './ReplyFileViewer'
-import { markFilesReviewed, reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type FileChange as Change } from './chatFileReviewData'
+import { reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type FileChange as Change } from './chatFileReviewData'
 
 // Older replies' saved copies are cleared to save space; name the message the comparison starts from.
 const startedFrom = (message?: { text: string; at?: string }) => {
@@ -15,16 +17,36 @@ const startedFrom = (message?: { text: string; at?: string }) => {
 
 const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-/** Mounted with an account/server/chat key by its owner. All requests and sends
- * stay with that chat; the server resolves and authorizes its saved boundaries. */
-export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
-  workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void
-}) {
+type ReviewProps = { workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
+
+/** Mounted with an account/server/chat key by its owner. A folder holding Git
+ * repositories is reviewed with Git (Uncommitted or Branch / PR); any other
+ * folder keeps "Changes in this chat" from the chat's saved copies. Git is
+ * never set up here. */
+export function ChatFileReview(props: ReviewProps) {
+  const [repos, setRepos] = useState<GitRepo[] | null>(null)
+  const [revision, setRevision] = useState(0)
+  useEffect(() => {
+    let live = true
+    void workspaceGitApi.status(props.workspacePath).then(found => { if (live) setRepos(found) }).catch(() => { if (live) setRepos(current => current ?? []) })
+    return () => { live = false }
+  }, [props.workspacePath, revision])
+  if (!repos) return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
+    <WorkspaceViewHeader title="Files" subtitle="Review changes" />
+    <p className="p-3 text-sm">Loading…</p>
+  </section>
+  return repos.length
+    ? <GitReview workspacePath={props.workspacePath} repos={repos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse} />
+    : <SnapshotReview {...props} />
+}
+
+/** All requests and sends stay with that chat; the server resolves and
+ * authorizes its saved boundaries. */
+function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse }: ReviewProps) {
   const [reviewId, setReviewId] = useState('')
   const [result, setResult] = useState<Result | null>(null)
   const [revision, refresh] = useReviewRevision()
   const [error, setError] = useState('')
-  const [sending, setSending] = useState(false)
   const [selectedPath, setSelectedPath] = useState('')
   const [loadingMore, setLoadingMore] = useState(false)
   const baseline = result?.history.baseline_snapshot_id
@@ -61,6 +83,7 @@ export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
       <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>
       <button type="button" aria-label="Browse files" title="Browse files" onClick={onBrowse} className={iconButton}><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
     </>} />
+    <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">This folder isn't a Git project, so changes come from this chat's saved copies.</p>
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="max-h-[35%] shrink-0 overflow-auto sm:max-h-56">
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
@@ -81,6 +104,5 @@ export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
         selection={{ reference: { workspacePath, sessionId, snapshotId: '' }, change: selected, query: { session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }}
         tabId={tabId} onBack={onBrowse} />
     </div>}
-    {!reviewId && result?.history.can_review && through && <div className="border-t px-3 py-2 text-xs">{result.history.baseline_snapshot_id === through ? 'Reviewed up to here' : <button type="button" disabled={sending} className="rounded border px-3 py-1" onClick={() => { setSending(true); void markFilesReviewed(workspacePath,sessionId,through).catch(() => setError('Could not save the review point. Refresh and try again.')).finally(() => setSending(false)) }}>Mark as reviewed</button>}</div>}
   </section>
 }

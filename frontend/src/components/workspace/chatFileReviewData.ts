@@ -22,7 +22,3 @@ export function useReviewRevision() {
   useEffect(() => { const update = () => refresh(value => value + 1); window.addEventListener(reviewChanged, update); return () => window.removeEventListener(reviewChanged, update) }, [])
   return [revision, () => refresh(value => value + 1)] as const
 }
-export async function markFilesReviewed(workspacePath: string, sessionId: string, snapshotId: string) {
-  await api.post(reviewEndpoint, null, { params: { workspace_path: workspacePath, session_id: sessionId, snapshot_id: snapshotId, op: 'snapshot_review' } })
-  window.dispatchEvent(new Event(reviewChanged))
-}

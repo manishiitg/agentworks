@@ -433,6 +433,8 @@ func workspaceGitResolveRepo(realBase, repoRel string) (dir string, status int, 
 //	op=diff&repo=&file=    unified diff of one file against HEAD
 //	op=log&repo=[&file=]   recent commits (of one file when given)
 //	op=show&repo=&file=&commit=  one commit's diff for one file
+//	op=branch_compare&repo=[&base=]  files the current branch adds on top of its base
+//	op=branch_diff&repo=&file=&base_sha=&head_sha=  one file of that comparison
 //
 // It sits behind the file-read check on workspace_path.
 func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Request) {
@@ -488,11 +490,27 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 		writeWorkspaceGitJSON(w, status, map[string]string{"error": message})
 		return
 	}
-	serveWorkspaceGitRead(w, r, ctx, repoDir)
+	serveWorkspaceGitRead(w, r, ctx, repoDir, workspaceGitCrewOwner(r))
+}
+
+// workspaceGitCrewOwner is the owner of the Crew holding workspace_path ("" when
+// the path is not a Crew). Pull request lookups use only that person's
+// connected GitHub account, as the reply card does; never the server's own.
+func workspaceGitCrewOwner(r *http.Request) string {
+	clean, ok := workspaceGitCanonicalPath(r, requestWorkflowWorkspacePath(r))
+	root := workspaceGitDocsRoot()
+	if !ok || root == "" {
+		return ""
+	}
+	if roots, bound, err := crewroot.Lookup(root, clean); bound && err == nil {
+		return roots.Owner
+	}
+	return ""
 }
 
 // Shared read implementation; callers must authorize and select the repository.
-func serveWorkspaceGitRead(w http.ResponseWriter, r *http.Request, ctx context.Context, repoDir string) {
+// githubOwner names whose GitHub connection may look up the branch's pull request.
+func serveWorkspaceGitRead(w http.ResponseWriter, r *http.Request, ctx context.Context, repoDir, githubOwner string) {
 	query := r.URL.Query()
 	op := query.Get("op")
 	file := ""
@@ -522,11 +540,18 @@ func serveWorkspaceGitRead(w http.ResponseWriter, r *http.Request, ctx context.C
 			// No HEAD yet (a fresh repo): fall back to the staged diff.
 			out, _ = workspaceGitCommand(ctx, repoDir, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-color", "--", file).Output()
 		}
+		if len(out) == 0 {
+			out = workspaceGitUntrackedDiff(ctx, repoDir, file)
+		}
 		truncated := false
 		if len(out) > workspaceGitMaxDiffBytes {
 			out, truncated = out[:workspaceGitMaxDiffBytes], true
 		}
 		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"diff": string(out), "truncated": truncated})
+	case "branch_compare":
+		serveWorkspaceGitBranchCompare(w, ctx, repoDir, query.Get("base"), githubOwner)
+	case "branch_diff":
+		serveWorkspaceGitBranchDiff(w, ctx, repoDir, file, query.Get("base_sha"), query.Get("head_sha"))
 	case "show":
 		// One commit's diff for one file (file history).
 		commit := query.Get("commit")

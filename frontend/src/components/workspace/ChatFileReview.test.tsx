@@ -21,12 +21,13 @@ import { openChatFiles } from './chatFileNavigation'
 import { ReplyFileViewer } from './ReplyFileViewer'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { ChatFileReview } from './ChatFileReview'
+import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
   it('pins the displayed historical line and sends only to the originating chat; refuses a replaced chat', async () => {
     const host = document.createElement('div'); document.body.append(host)
-    const root = createRoot(host)
+    let root = createRoot(host)
     try {
       await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
       const button = (text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text))!
@@ -85,10 +86,21 @@ describe('Studio review comments', () => {
       expect(host.querySelector('[role="alert"]')?.textContent).toBe('This file no longer exists in the project.')
       expect(host.querySelector('[data-testid="file-content"]')).toBeNull()
       await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
-      await act(async () => button('Mark as reviewed').click())
-      expect(api.post).toHaveBeenCalledWith('/api/workspace-snapshots', null, { params: { workspace_path: 'Crew/example', session_id: 'chat-a', snapshot_id: 'last', op: 'snapshot_review' } })
-      expect(host.textContent).toContain('Reviewed up to here')
-      expect(host.textContent).not.toContain('Looks good')
+      // PLAT-746-200: coding review has no review state of its own.
+      expect(host.textContent).not.toContain('Mark as reviewed')
+
+      // A folder with a Git repository is reviewed with Git: the first changed
+      // file's diff against the latest commit opens without a click.
+      await act(async () => root.unmount())
+      root = createRoot(host)
+      vi.mocked(workspaceGitApi.status).mockResolvedValueOnce([{ root: 'app', branch: 'feature', ahead: 0, behind: 0, files: [{ path: 'lib.py', status: 'modified' }] }])
+      vi.mocked(workspaceGitApi.diff).mockResolvedValueOnce({ diff: '@@ -1 +1 @@\n-old git\n+new git\n', truncated: false })
+      await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect(host.textContent).toContain('Branch / PR')
+      expect(host.textContent).toContain('feature · 1 file not committed yet')
+      expect(workspaceGitApi.diff).toHaveBeenCalledWith('Crew/example', 'app', 'lib.py')
+      expect(host.textContent).toContain('new git')
+      expect(host.textContent).not.toContain('Changes in this chat')
     } finally { state.sessionId = 'chat-a'; state.reviewed = false; await act(async () => root.unmount()); host.remove() }
   })
 })

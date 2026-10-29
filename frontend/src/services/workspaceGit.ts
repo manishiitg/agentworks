@@ -62,6 +62,29 @@ export interface GitBlameLine {
   uncommitted?: boolean
 }
 
+export interface GitBranchFile {
+  path: string
+  status: 'added' | 'deleted' | 'modified'
+  added: number
+  removed: number
+  binary?: boolean
+}
+
+/** What the current branch adds on top of its base, like a pull request's "Files changed". */
+export interface GitBranchCompare {
+  branch: string
+  base: string
+  /** The merge-base and HEAD the file list was made from; pass both to branchDiff. */
+  base_sha?: string
+  head_sha?: string
+  unpushed: number
+  files: GitBranchFile[]
+  truncated?: boolean
+  pr?: { number: number; url: string; base: string }
+  /** The server's sentence when nothing could be compared. */
+  note?: string
+}
+
 export type GitAction =
   | { op: 'pull' | 'push' }
   | { op: 'stage' | 'unstage' | 'discard'; files: string[] }
@@ -108,6 +131,15 @@ export const workspaceGitApi = {
   async blame(workspacePath: string, repo: string, file: string): Promise<{ lines: GitBlameLine[]; truncated: boolean }> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'blame', repo, file } })
     return { lines: (response.data?.lines as GitBlameLine[] | undefined) ?? [], truncated: !!response.data?.truncated }
+  },
+  /** base empty: the server picks the pull request's target, else the default branch. */
+  async branchCompare(workspacePath: string, repo: string, base?: string): Promise<GitBranchCompare> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'branch_compare', repo, base: base || undefined } })
+    return response.data as GitBranchCompare
+  },
+  async branchDiff(workspacePath: string, repo: string, file: string, baseSha: string, headSha: string): Promise<{ diff: string; truncated: boolean }> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'branch_diff', repo, file, base_sha: baseSha, head_sha: headSha } })
+    return { diff: String(response.data?.diff ?? ''), truncated: !!response.data?.truncated }
   },
   async show(workspacePath: string, repo: string, file: string, commit: string): Promise<{ diff: string; truncated: boolean }> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'show', repo, file, commit } })
