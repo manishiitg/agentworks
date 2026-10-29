@@ -11,11 +11,12 @@ import (
 )
 
 // One tool per object (PLAT-738): a merged tool takes an action and runs the
-// existing tool for it. The existing tools stay in the catalog as hidden
-// aliases, so old clients and the CLI keep calling them by name; lists and
-// the tool menu show only the merged tool, narrowed to the actions this
-// connection may use. A call is translated to its member before any check,
-// so every scope, owner and validation rule stays the member's.
+// existing tool for it. The existing tools stay in the catalog as internal
+// members only: a client reaches them through the merged tool and action,
+// never by the old name (PLAT-856). Lists and the tool menu show the merged
+// tool, narrowed to the actions this connection may use. A call is translated
+// to its member before any check, so every scope, owner and validation rule
+// stays the member's.
 //
 // A member may be "workflowTool|crewTool": the call runs the second when it
 // names a crew_id, else the first. A merged tool with one action takes it
@@ -170,9 +171,7 @@ func externalCatalogTool(name string) (externalTool, bool) {
 	return externalTool{}, false
 }
 
-// externalMergedForClaims narrows a merged tool to the actions this
-// connection may call and describes each one with its required fields.
-// ok is false when no action is allowed.
+// externalMemberNames splits a "workflowTool|crewTool" member spec.
 func externalMemberNames(spec string) []string { return strings.Split(spec, "|") }
 
 // externalMergedRequired: the action is required unless the tool has just one.
