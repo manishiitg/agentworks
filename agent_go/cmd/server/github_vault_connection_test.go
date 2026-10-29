@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -43,7 +45,7 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 		}
 	}))
 	t.Cleanup(github.Close)
-	oldAPI, oldStore, oldRemove, oldValue, oldCLI := githubAPIURL, githubStoreToken, githubRemoveToken, githubTokenValue, githubReadCLIToken
+	oldAPI, oldStore, oldRemove, oldValue, oldCLI, oldAccounts := githubAPIURL, githubStoreToken, githubRemoveToken, githubTokenValue, githubReadCLIToken, githubReadCLIAccounts
 	githubAPIURL = github.URL
 	stored := map[string]string{}
 	githubStoreToken = func(_ context.Context, _ *StreamingAPI, person, value string) (string, string, error) {
@@ -53,13 +55,24 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	githubRemoveToken = func(_ context.Context, _ *StreamingAPI, person, _ string) error { delete(stored, person); return nil }
 	githubTokenValue = func(*githubAccountRecord) string { return stored["alice"] }
 	cliReads := 0
-	githubReadCLIToken = func(context.Context) (string, error) { cliReads++; return cliToken, nil }
+	accountReads := 0
+	githubReadCLIAccounts = func(context.Context) ([]string, error) {
+		accountReads++
+		return []string{"alice-cli", "other-cli"}, nil
+	}
+	selectedLogin := ""
+	githubReadCLIToken = func(_ context.Context, login string) (string, error) {
+		cliReads++
+		selectedLogin = login
+		return cliToken, nil
+	}
 	t.Cleanup(func() {
 		githubAPIURL = oldAPI
 		githubStoreToken = oldStore
 		githubRemoveToken = oldRemove
 		githubTokenValue = oldValue
 		githubReadCLIToken = oldCLI
+		githubReadCLIAccounts = oldAccounts
 	})
 	api := &StreamingAPI{}
 	call := func(method, body string) *httptest.ResponseRecorder {
@@ -82,15 +95,24 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 			t.Fatal("used another person's OS login")
 		}
 	}
-	if cliReads != 0 {
+	if cliReads != 0 || accountReads != 0 {
 		t.Fatal("read gh credentials before caller eligibility")
 	}
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("LOCAL_MODE", "true")
 	t.Setenv("DEFAULT_USER_ID", "alice")
-	result = call(http.MethodPost, `{"method":"gh"}`)
-	if result.Code != 200 || cliReads != 1 || stored["alice"] != cliToken {
+	for _, body := range []string{`{"method":"gh"}`, `{"method":"gh","login":"not-signed-in"}`, `{"method":"gh","login":"other-cli"}`} {
+		if denied := call(http.MethodPost, body); denied.Code == 200 {
+			t.Fatal("imported an unchosen, absent, or mismatched account")
+		}
+		if rec := readGitHubRecord("alice"); rec == nil || rec.Login != "alice-pat" {
+			t.Fatal("failed choice replaced the saved account")
+		}
+	}
+	cliReads = 0
+	result = call(http.MethodPost, `{"method":"gh","login":"alice-cli"}`)
+	if result.Code != 200 || cliReads != 1 || selectedLogin != "alice-cli" || stored["alice"] != cliToken {
 		t.Fatalf("local gh import failed: %d %s", result.Code, result.Body.String())
 	}
 	if rec := readGitHubRecord("alice"); rec == nil || rec.Source != "gh" || rec.Login != "alice-cli" {
@@ -100,8 +122,8 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	if gone.Code != 200 || readGitHubRecord("alice") != nil || len(stored) != 0 || !strings.Contains(gone.Body.String(), "gh login is unchanged") {
 		t.Fatalf("disconnect changed native identity: %d %s", gone.Code, gone.Body.String())
 	}
-	githubReadCLIToken = func(context.Context) (string, error) { return "", errors.New(cliToken) }
-	failed := call(http.MethodPost, `{"method":"gh"}`)
+	githubReadCLIToken = func(context.Context, string) (string, error) { return "", errors.New(cliToken) }
+	failed := call(http.MethodPost, `{"method":"gh","login":"alice-cli"}`)
 	rejected := call(http.MethodPost, `{"method":"pat","token":"rejected-fixture"}`)
 	for _, value := range []string{pat, cliToken, "rejected-fixture"} {
 		if strings.Contains(result.Body.String()+gone.Body.String()+failed.Body.String()+rejected.Body.String()+logs.String(), value) {
@@ -111,12 +133,47 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 }
 
 func TestGitHubCLIEnvironmentDoesNotBorrowInjectedTokens(t *testing.T) {
-	for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_DEBUG"} {
+	for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_DEBUG", "GH_FORCE_TTY"} {
 		t.Setenv(key, "fixture-secret")
 	}
 	for _, value := range githubCLIEnvironment() {
 		if strings.Contains(value, "fixture-secret") {
 			t.Fatal("inherited GitHub credential/debug environment reached gh")
 		}
+	}
+}
+
+// Drive the real command path with a synthetic CLI: enumerate names and read
+// only --user, never auth switch. A failed account check must not hide valid ones.
+func TestGitHubCLIEnumeratesAccountsAndReadsNamedToken(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("shell unavailable")
+	}
+	dir := t.TempDir()
+	program := `#!/bin/sh
+case "$*" in
+  "auth status --hostname github.com")
+    echo 'Logged in to github.com account first-user (keyring)' >&2
+    echo 'Logged in to github.com account second-user (keyring)' >&2
+    echo 'Token: fixture-secret-must-not-be-returned' >&2
+    exit 1 ;;
+  "auth token --hostname github.com --user second-user") echo fixture-selected-token ;;
+  *) echo 'fixture-secret-unexpected-command' >&2; exit 1 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(program), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	accounts, err := githubReadCLIAccounts(t.Context())
+	if err != nil || strings.Join(accounts, ",") != "first-user,second-user" {
+		t.Fatalf("account names: %v %v", accounts, err)
+	}
+	token, err := githubReadCLIToken(t.Context(), "second-user")
+	if err != nil || token != "fixture-selected-token" {
+		t.Fatal("did not read the selected account")
+	}
+	if _, err := githubReadCLIToken(t.Context(), "missing"); err == nil || strings.Contains(err.Error(), "fixture-secret") {
+		t.Fatal("raw CLI error escaped")
 	}
 }

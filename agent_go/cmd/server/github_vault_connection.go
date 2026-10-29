@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -21,18 +22,43 @@ func githubCLIEnvironment() []string {
 	for _, value := range os.Environ() {
 		key, _, _ := strings.Cut(value, "=")
 		switch strings.ToUpper(key) {
-		case "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_DEBUG", "GH_PROMPT_DISABLED":
+		case "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_DEBUG", "GH_PROMPT_DISABLED", "GH_FORCE_TTY":
 			continue
 		}
 		env = append(env, value)
 	}
-	return append(env, "GH_PROMPT_DISABLED=1")
+	return append(env, "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
 }
 
-var githubReadCLIToken = func(ctx context.Context) (string, error) {
+var githubCLIAccountLine = regexp.MustCompile(`Logged in to github\.com account ([A-Za-z0-9][A-Za-z0-9-]{0,38})(?:\s|$)`)
+
+// Only account names leave this reader. Raw CLI output/errors may contain
+// credential details and must never reach a response or log.
+var githubReadCLIAccounts = func(ctx context.Context) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", "auth", "token", "--hostname", "github.com")
+	cmd := exec.CommandContext(ctx, "gh", "auth", "status", "--hostname", "github.com")
+	cmd.Env = githubCLIEnvironment()
+	output, _ := cmd.CombinedOutput()
+	accounts := []string{}
+	seen := map[string]bool{}
+	for _, match := range githubCLIAccountLine.FindAllStringSubmatch(string(output), -1) {
+		login := match[1]
+		if !seen[strings.ToLower(login)] {
+			accounts = append(accounts, login)
+			seen[strings.ToLower(login)] = true
+		}
+	}
+	if len(accounts) == 0 {
+		return accounts, errors.New("No signed-in GitHub CLI accounts were found. Sign in with GitHub CLI or use a personal access token.")
+	}
+	return accounts, nil
+}
+
+var githubReadCLIToken = func(ctx context.Context, login string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "auth", "token", "--hostname", "github.com", "--user", login)
 	cmd.Env = githubCLIEnvironment()
 	output, err := cmd.Output()
 	if err != nil {
@@ -53,7 +79,7 @@ func githubCLIAvailable(person string) bool {
 
 // Every connection source writes the same owner-scoped encrypted secret and
 // account record. PR status and the existing Crew secret selection reuse it.
-func (api *StreamingAPI) saveGitHubAccount(ctx context.Context, person, token, scopes, source string) (*githubAccountRecord, error) {
+func (api *StreamingAPI) saveGitHubAccount(ctx context.Context, person, token, scopes, source, expectedLogin string) (*githubAccountRecord, error) {
 	if !personVaultActive(person) {
 		return nil, errors.New("Your account cannot keep its own Vault items.")
 	}
@@ -64,6 +90,9 @@ func (api *StreamingAPI) saveGitHubAccount(ctx context.Context, person, token, s
 	login, err := githubLogin(ctx, token)
 	if err != nil {
 		return nil, err
+	}
+	if expectedLogin != "" && !strings.EqualFold(login, expectedLogin) {
+		return nil, errors.New("GitHub returned a different account. Choose your account again.")
 	}
 	vaultID, secretName, err := githubStoreToken(ctx, api, person, token)
 	if err != nil {
@@ -81,10 +110,11 @@ func (api *StreamingAPI) saveGitHubAccount(ctx context.Context, person, token, s
 	return &rec, nil
 }
 
-func (api *StreamingAPI) connectGitHubAccount(ctx context.Context, person, method, token, redirect string) (map[string]any, error) {
+func (api *StreamingAPI) connectGitHubAccount(ctx context.Context, person, method, token, login, redirect string) (map[string]any, error) {
 	if !personVaultActive(person) {
 		return nil, errors.New("Your account cannot keep its own Vault items.")
 	}
+	expectedLogin := ""
 	switch method {
 	case "oauth":
 		link, err := startGitHubConnect(person, redirect)
@@ -93,8 +123,24 @@ func (api *StreamingAPI) connectGitHubAccount(ctx context.Context, person, metho
 		if !localGitHubCLIAllowed(person) {
 			return nil, errors.New("Use a personal access token or browser sign-in here. This computer's gh login is available only to its local owner.")
 		}
-		var err error
-		token, err = githubReadCLIToken(ctx)
+		accounts, err := githubReadCLIAccounts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		login = strings.TrimSpace(login)
+		if login == "" && len(accounts) == 1 {
+			login = accounts[0]
+		}
+		for _, account := range accounts {
+			if strings.EqualFold(account, login) {
+				expectedLogin = account
+				break
+			}
+		}
+		if expectedLogin == "" {
+			return nil, errors.New("Choose which GitHub CLI account to use.")
+		}
+		token, err = githubReadCLIToken(ctx, expectedLogin)
 		if err != nil {
 			return nil, errors.New("No saved gh login could be read. Use a personal access token or sign in with GitHub CLI first.")
 		}
@@ -102,7 +148,7 @@ func (api *StreamingAPI) connectGitHubAccount(ctx context.Context, person, metho
 	default:
 		return nil, errors.New("Choose gh, a personal access token (pat), or browser sign-in (oauth).")
 	}
-	rec, err := api.saveGitHubAccount(ctx, person, token, "", method)
+	rec, err := api.saveGitHubAccount(ctx, person, token, "", method, expectedLogin)
 	if err != nil {
 		return nil, err
 	}

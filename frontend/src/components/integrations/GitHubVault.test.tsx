@@ -36,3 +36,19 @@ it('shows the saved identity without offering the server operator gh login; disc
   await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Disconnect')!.click())
   expect(host.textContent).toContain('The token itself is unchanged.')
 })
+it('imports the chosen local gh account only after Use account is clicked', async()=>{
+  api.get.mockResolvedValueOnce({data:{connected:true,login:'first-user',source:'gh',app_ready:false,gh_available:true,gh_accounts:['first-user','second-user']}})
+    .mockResolvedValue({data:{connected:true,login:'second-user',source:'gh',app_ready:false,gh_available:true,gh_accounts:['first-user','second-user']}})
+  api.post.mockResolvedValue({data:{connected:true,login:'second-user',source:'gh'}})
+  const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
+  clean=()=>{act(()=>root.unmount());host.remove()}
+  await act(async()=>root.render(<GitHubVaultCard/>))
+  const picker=host.querySelector<HTMLSelectElement>('select')!
+  expect(picker.value).toBe('first-user')
+  expect(api.post).not.toHaveBeenCalled()
+  await act(async()=>{picker.value='second-user';picker.dispatchEvent(new Event('change',{bubbles:true}))})
+  expect(api.post).not.toHaveBeenCalled()
+  await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Use account')!.click())
+  expect(api.post).toHaveBeenCalledWith('/api/vault/github/connect',{method:'gh',login:'second-user'})
+  expect(host.textContent).toContain('GitHub · second-user')
+})

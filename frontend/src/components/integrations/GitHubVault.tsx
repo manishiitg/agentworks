@@ -3,7 +3,7 @@ import api from '../../services/api'
 import { Button } from '../ui/Button'
 import { CompanySignInSetup } from './CompanySignInSetup'
 
-interface GitHubStatus { app_ready: boolean; connected: boolean; gh_available: boolean; source?: string; login?: string; summary?: string; approval_page?: string }
+interface GitHubStatus { app_ready: boolean; connected: boolean; gh_available: boolean; gh_accounts?: string[]; gh_accounts_note?: string; source?: string; login?: string; summary?: string; approval_page?: string }
 
 const errorText = (cause: unknown, fallback: string) => {
   const data = (cause as { response?: { data?: { error?: string } | string } })?.response?.data
@@ -16,16 +16,22 @@ export function GitHubVaultCard() {
   const [status, setStatus] = useState<GitHubStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [token, setToken] = useState('')
+  const [ghLogin, setGhLogin] = useState('')
   const tokenId = useId()
   const [message, setMessage] = useState<string | null>(null)
   const load = useCallback(async () => {
-    try { setStatus((await api.get<GitHubStatus>('/api/vault/github')).data) } catch (cause) { setMessage(errorText(cause, 'Could not read your GitHub connection.')) }
+    try {
+      const next = (await api.get<GitHubStatus>('/api/vault/github')).data
+      setStatus(next)
+      const accounts = next.gh_accounts ?? []
+      setGhLogin(current => accounts.includes(current) ? current : next.login && accounts.includes(next.login) ? next.login : accounts.length === 1 ? accounts[0] : '')
+    } catch (cause) { setMessage(errorText(cause, 'Could not read your GitHub connection.')) }
   }, [])
   useEffect(() => { void load() }, [load])
   const connect = async (method: 'gh' | 'pat' | 'oauth') => {
     setBusy(true); setMessage(null)
     try {
-      const result = (await api.post<{ auth_url?: string; login?: string }>('/api/vault/github/connect', { method, ...(method === 'pat' ? { token } : {}) })).data
+      const result = (await api.post<{ auth_url?: string; login?: string }>('/api/vault/github/connect', { method, ...(method === 'pat' ? { token } : method === 'gh' ? { login: ghLogin } : {}) })).data
       if (result.auth_url) { window.location.assign(result.auth_url); return }
       setMessage(`Connected as ${result.login}.`)
       await load()
@@ -44,9 +50,17 @@ export function GitHubVaultCard() {
     {status.gh_available && <div className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-border p-3">
       <div className="min-w-0 flex-1">
         <h4 className="text-sm font-medium">Use your GitHub CLI login</h4>
-        <p className="mt-1 text-xs text-muted-foreground">Save a copy of the account signed in with gh on this computer. Later gh account changes or logout won’t change this connection; reconnect here to update it.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Choose an account saved on this computer. Your terminal’s active account stays unchanged.</p>
       </div>
-      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void connect('gh')}>Use gh</Button>
+      <div className="flex w-full flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor={`${tokenId}-gh`}>GitHub account</label>
+        <select id={`${tokenId}-gh`} value={ghLogin} disabled={busy || !status.gh_accounts?.length} onChange={event => setGhLogin(event.target.value)} className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm">
+          <option value="">Choose an account</option>
+          {status.gh_accounts?.map(login => <option key={login} value={login}>{login}{status.login === login ? ' · Connected' : ''}</option>)}
+        </select>
+        <Button type="button" size="sm" variant="outline" disabled={busy || !ghLogin} onClick={() => void connect('gh')}>Use account</Button>
+      </div>
+      {status.gh_accounts_note && <p className="text-xs text-muted-foreground">{status.gh_accounts_note}</p>}
     </div>}
     <form className="space-y-2 rounded-md border border-border p-3" onSubmit={event => { event.preventDefault(); void connect('pat') }}>
       <label htmlFor={tokenId} className="block text-sm font-medium">Personal access token</label>
@@ -73,7 +87,6 @@ export function GitHubVaultCard() {
         <h3 className="text-sm font-medium">GitHub{status.connected ? ` · ${status.login}` : ''}</h3>
         <p className="text-xs text-muted-foreground">{status.connected ? `${sourceName(status.source)}. Git and pull requests in your Crews use this saved account.` : 'Connect your account for Git work and pull requests in your Crews.'}</p>
         {status.connected && <p className="mt-1 text-xs text-muted-foreground">{status.summary}</p>}
-        {status.connected && status.source === 'gh' && <p className="mt-1 text-xs text-muted-foreground">Saved copy of your gh login. Reconnect here after switching accounts in gh.</p>}
         {status.connected && status.approval_page && <a className="text-xs underline" href={status.approval_page} target="_blank" rel="noreferrer">Open the approval page on GitHub</a>}
       </div>
       {status.connected && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>}

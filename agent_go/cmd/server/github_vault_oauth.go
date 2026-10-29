@@ -353,7 +353,7 @@ func (api *StreamingAPI) completeGitHubConnect(ctx context.Context, person, stat
 	if err != nil {
 		return nil, err
 	}
-	return api.saveGitHubAccount(ctx, person, token, scopes, "oauth")
+	return api.saveGitHubAccount(ctx, person, token, scopes, "oauth", "")
 }
 
 func exchangeGitHubCode(ctx context.Context, clientID, clientSecret, code, redirect string) (token, scopes string, err error) {
@@ -408,6 +408,13 @@ func githubLogin(ctx context.Context, token string) (string, error) {
 func gitHubStatus(ctx context.Context, person string) map[string]any {
 	clientID, _, ready := githubApp()
 	out := map[string]any{"app_ready": ready, "connected": false, "gh_available": githubCLIAvailable(person), "method_order": []string{"gh", "pat", "oauth"}}
+	if out["gh_available"] == true {
+		accounts, err := githubReadCLIAccounts(ctx)
+		out["gh_accounts"] = accounts
+		if err != nil {
+			out["gh_accounts_note"] = err.Error()
+		}
+	}
 	if rec := readGitHubRecord(person); rec != nil {
 		if checked, err := time.Parse(time.RFC3339, rec.OrgsCheckedAt); err != nil || time.Since(checked) > githubOrgRefresh {
 			if token := githubTokenValue(rec); token != "" {
@@ -503,13 +510,14 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/connect"):
 		var body struct {
 			Method string `json:"method"`
+			Login  string `json:"login"`
 			Token  string `json:"token"`
 		}
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&body) != nil {
 			writeAgentProfileError(w, http.StatusBadRequest, "Choose a GitHub connection method.")
 			return
 		}
-		result, err := api.connectGitHubAccount(r.Context(), person, body.Method, body.Token, deriveOAuthRedirectURI(r))
+		result, err := api.connectGitHubAccount(r.Context(), person, body.Method, body.Token, body.Login, deriveOAuthRedirectURI(r))
 		if err != nil {
 			writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 			return
@@ -542,7 +550,7 @@ func (api *StreamingAPI) githubVaultOperation(ctx context.Context, person, opera
 		out = gitHubStatus(ctx, person)
 	case "github_connect":
 		var err error
-		out, err = api.connectGitHubAccount(ctx, person, argString(args, "method"), argString(args, "token"), api.mcpToolOAuthRedirect(ctx, person))
+		out, err = api.connectGitHubAccount(ctx, person, argString(args, "method"), argString(args, "token"), argString(args, "login"), api.mcpToolOAuthRedirect(ctx, person))
 		if err != nil {
 			return "", err
 		}
