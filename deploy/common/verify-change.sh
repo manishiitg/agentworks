@@ -58,7 +58,7 @@ if [[ "$INNER" == 0 ]]; then
   id -u "$USER_AS" >/dev/null 2>&1 || { echo "Account $USER_AS does not exist; set VERIFY_AS" >&2; exit 1; }
   WORK="$BUILDS/.work/verify-${SHA:0:8}-$(date -u +%Y%m%d%H%M%S)"
   CACHE="$BUILDS/.verify-cache"
-  mkdir -p "$WORK" "$CACHE/go-build" "$CACHE/gomod" "$CACHE/npm"
+  mkdir -p "$WORK" "$CACHE/go-build-$slot" "$CACHE/gomod" "$CACHE/npm"
   # Full logs of failing steps stay for two days (the scratch folder is deleted with the run).
   install -d -m 1777 "$BUILDS/.verify-logs"
   find "$BUILDS/.verify-logs" -type f -mtime +2 -delete 2>/dev/null || true
@@ -81,7 +81,7 @@ if [[ "$INNER" == 0 ]]; then
   SELF="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
   cp "$SELF" "$WORK/verify-change.sh"; chmod 0755 "$WORK/verify-change.sh"; chown "$USER_AS:$GROUP_AS" "$WORK/verify-change.sh"
   # Not exec: the trap must still remove the scratch folder and the lock (fd 8) stays held.
-  runuser -u "$USER_AS" -- env "PATH=$PATH" "HOME=$WORK/home" "VERIFY_STARTED=$STARTED" "VERIFY_CACHE=$CACHE" \
+  runuser -u "$USER_AS" -- env "PATH=$PATH" "HOME=$WORK/home" "VERIFY_STARTED=$STARTED" "VERIFY_CACHE=$CACHE" "VERIFY_SLOT=$slot" \
     bash "$WORK/verify-change.sh" --inner --work "$WORK" --url "$URL" --sha "$SHA" --builds-dir "$BUILDS"
   exit $?
 fi
@@ -89,11 +89,12 @@ fi
 # ---- inner (unprivileged): the checks ------------------------------------------------------------------------------------------
 mkdir -p "$WORK/home"
 CACHE="${VERIFY_CACHE:?}"
-export GOCACHE="$CACHE/go-build" GOMODCACHE="$CACHE/gomod" npm_config_cache="$CACHE/npm"
+# One Go build cache per verify slot: the slot lock is held for the whole run, so a wipe never removes objects a concurrent
+# verification is still linking (a shared cache wiped mid-build failed with "no such file", 2026-10-29).
+export GOCACHE="$CACHE/go-build-${VERIFY_SLOT:?}" GOMODCACHE="$CACHE/gomod" npm_config_cache="$CACHE/npm"
 # Test binaries grow the Go cache past the disk (67G filled the build host; on 2026-10-28 a day of runs reached 56G with nothing a
-# day old, the disk filled and the server's own service crash-looped). Over 20G, wipe it; a concurrent run that misses an entry
-# just rebuilds it.
-if [[ -d "$GOCACHE" ]] && (( $(du -sk "$GOCACHE" | cut -f1) > 20 * 1024 * 1024 )); then
+# day old, the disk filled and the server's own service crash-looped). Over 10G per slot, wipe that slot's cache.
+if [[ -d "$GOCACHE" ]] && (( $(du -sk "$GOCACHE" | cut -f1) > 10 * 1024 * 1024 )); then
   find "$GOCACHE" -mindepth 1 -delete 2>/dev/null || true
 fi
 export GOWORK=off GOTOOLCHAIN=local GOFLAGS="-modcacherw" NODE_OPTIONS=--max-old-space-size=4096
