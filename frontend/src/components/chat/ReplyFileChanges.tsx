@@ -3,7 +3,7 @@ import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowDownToLine, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
 import api from '../../services/api'
 import { useReviewRevision, type ReviewResult } from '../workspace/chatFileReviewData'
-import type { ReplyCardAction, ReplyFileChangesRef, ReplyFileGroup, ReplyPullRequest } from '../../utils/replyFileChanges'
+import { shownFilePath, type ReplyCardAction, type ReplyFileChangesRef, type ReplyFileGroup, type ReplyPullRequest } from '../../utils/replyFileChanges'
 import { useProjectMode } from '../../products/work/codeLocalFiles'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -22,7 +22,7 @@ type FileGroup = ReplyFileGroup
 // Git status (PR, checks, next step) is only looked up for a checkout on GitHub.
 const onGitHub = (group: FileGroup) => group.kind === 'repo' && !!group.github_repo && !!group.branch
 
-const ownName = (path: string, root: string) => root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
+const ownName = (path: string, root: string) => root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : shownFilePath(path)
 function prLine(pr: PullRequest) {
   const checks = pr.checks && pr.checks !== 'none' ? ` · checks ${pr.checks}` : ''
   const review = pr.review === 'approved' ? ' · approved' : pr.review === 'changes_requested' ? ' · changes requested' : pr.state === 'open' ? ' · no review yet' : ''

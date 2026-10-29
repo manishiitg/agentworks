@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { shownFilePath } from '../../utils/replyFileChanges'
 import api from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
@@ -72,7 +73,7 @@ export function ChatFileReview({ workspacePath, sessionId, tabId, onBrowse }: {
       <div className="grid gap-1 border-b border-border p-2">
         {result?.comparison && <p className="p-2 text-xs text-muted-foreground">{result.total_changes ?? changes.length} changed files{!reviewId && !result.history.reviews?.length && !result.history.available ? startedFrom(result.history.start_message) : ''}</p>}
         {changes.map(change => <button type="button" key={change.path} className="flex gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50" onClick={() => { if (through) openChatFiles(sessionId, { reference: { workspacePath, sessionId, snapshotId: '' }, change, query: { session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }) }}>
-          <span className="min-w-0 flex-1 break-all">{change.path}</span><span>{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span><span className="text-diff-add">{!change.binary && `+${change.added ?? 0}`}</span><span className="text-diff-del">{change.binary ? 'Binary' : `−${change.removed ?? 0}`}</span>
+          <span className="min-w-0 flex-1 break-all">{shownFilePath(change.path)}</span><span>{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span><span className="text-diff-add">{!change.binary && `+${change.added ?? 0}`}</span><span className="text-diff-del">{change.binary ? 'Binary' : `−${change.removed ?? 0}`}</span>
         </button>)}
         {!!result?.next_offset && <button type="button" disabled={loadingMore} className="p-2 text-xs underline" onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Show more files'}</button>}
         {result?.comparison && changes.length === 0 && <p className="p-2 text-sm">No changes since this review point.</p>}

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { shownFilePath } from '../../utils/replyFileChanges'
 import api, { agentApi, workspaceApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, assertChatIdentityCurrent } from '../../utils/chatIdentity'
@@ -80,7 +81,7 @@ export function ReplyFileViewer({ selection, tabId, onBack }: { selection: Saved
   }
   return <section className="flex h-full min-h-0 flex-col" aria-label="File versions">
     <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-      <strong className="min-w-0 flex-1 break-all text-sm">{change.path}</strong>
+      <strong className="min-w-0 flex-1 break-all text-sm">{shownFilePath(change.path)}</strong>
       <select aria-label="File version" value={version} className="rounded border border-border bg-background p-1 text-xs" onChange={event => setVersion(event.target.value as Version)}>
         <option value="current">Current</option><option value="after" disabled={change.status === 'D'}>{query ? 'After comparison' : 'After this reply'}</option><option value="before" disabled={change.status === 'A'}>{query ? 'Before comparison' : 'Before this reply'}</option><option value="changes">Changes</option>
       </select>

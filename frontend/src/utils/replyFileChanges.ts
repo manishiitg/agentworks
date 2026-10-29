@@ -11,6 +11,9 @@ export type ReplyCardAction = { id: string; kind: 'builtin' | 'git_step' | 'fix'
 // actions are the ones every viewer gets, shown until the card's own request returns this viewer's list.
 export type ReplyFileSummary = { files: number; added: number; removed: number; groups: ReplyFileGroup[]; actions?: ReplyCardAction[] }
 
+/** A Crew's own files live under _files/; that folder name is noise on screen. */
+export const shownFilePath = (path: string) => path.startsWith('_files/') ? path.slice('_files/'.length) : path
+
 export interface ReplyFileChangesRef {
   snapshotId: string
   workspacePath: string
