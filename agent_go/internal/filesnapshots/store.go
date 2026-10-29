@@ -508,11 +508,11 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 }
 
 // Warm is the resumable initial index build: it fills the Crew's persisted
-// private indexes off the send path, in batches of maxImportBytes, without a
-// reply record, so later send-path captures reuse them and fit their budget.
-// It stays separate from replies: a cold Crew (67k files) cannot be read in
-// the send path's 2 s, and a capture still running when the message is
-// delivered must never become that reply's before-state (PLAT-746-158).
+// private indexes in the background, in batches of maxImportBytes, without a
+// reply record, so later before-captures reuse them and fit their time bound.
+// It stays separate from replies: a reply's before-capture runs beside the
+// send and never delays it, and a Crew with no index yet gets no baseline for
+// that reply while this builds one (PLAT-746-163, owner decision 2026-10-29).
 // Each batch is committed (indexes plus headRef) before the next starts, so a
 // build stopped by limit keeps every finished batch and the next continues
 // from there. One runs at a time per Crew (ErrWarming).
