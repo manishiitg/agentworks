@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"github.com/spf13/viper"
 )
@@ -42,24 +43,52 @@ type workspaceSkillDocument struct {
 	SourceType  string `json:"source_type,omitempty"`
 }
 
+// skillWorkspace is where one workspace keeps its skills. A Crew bound in the
+// server's registry keeps them under its resource root (.agentworks/ of a
+// laptop folder) and its settings in private storage, the same split the file
+// tools use; everything else keeps both in its docs folder.
+type skillWorkspace struct {
+	dir    string // skill installs, skills-lock.json
+	config string // workflow.json and planning/
+	native string // a laptop Crew's own folder: native CLIs also find provider skills there
+}
+
 func skillWorkspaceDir(docs, workspace string) (string, error) {
+	w, err := skillWorkspaceRoots(docs, workspace)
+	return w.dir, err
+}
+
+func skillWorkspaceRoots(docs, workspace string) (skillWorkspace, error) {
 	ref, ok := workspaceref.Parse(workspace)
 	if !ok || ref.String() != workspace || strings.Contains(workspace, "..") {
-		return "", fmt.Errorf("invalid workspace_path")
+		return skillWorkspace{}, fmt.Errorf("invalid workspace_path")
 	}
 	logical := ref.Logical()
 	if !(strings.HasPrefix(logical, "Workflow/") || strings.HasPrefix(logical, "Crew/") || (ref.HasOwner() && (logical == "Chats" || strings.HasPrefix(logical, "Chats/")))) {
-		return "", fmt.Errorf("skills require a project or workflow workspace")
+		return skillWorkspace{}, fmt.Errorf("skills require a project or workflow workspace")
+	}
+	if roots, bound, err := crewroot.Lookup(docs, workspace); bound || err != nil {
+		if err != nil {
+			return skillWorkspace{}, err
+		}
+		if workspace != roots.Virtual {
+			return skillWorkspace{}, fmt.Errorf("skills require the Crew's root workspace")
+		}
+		w := skillWorkspace{dir: roots.Resources, config: roots.Private}
+		if roots.Local {
+			w.native = roots.Files
+		}
+		return w, nil
 	}
 	dir := filepath.Join(docs, filepath.FromSlash(workspace))
 	if err := refuseSymlinkComponents(docs, dir); err != nil {
-		return "", err
+		return skillWorkspace{}, err
 	}
 	info, err := os.Lstat(dir)
 	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("workspace does not exist")
+		return skillWorkspace{}, fmt.Errorf("workspace does not exist")
 	}
-	return dir, nil
+	return skillWorkspace{dir: dir, config: dir}, nil
 }
 
 // Keep unknown configuration fields when removing an attachment.
@@ -132,13 +161,48 @@ func skillLocations(dir, name string) []string {
 	return found
 }
 
+type skillLocation struct{ base, folder, path string }
+
+// locations lists one skill's copies, resource root first. A laptop Crew's own
+// folder adds only the native provider folders (.claude/skills and the like)
+// its CLI already reads, reported under the issued _files path.
+func (w skillWorkspace) locations(name string) []skillLocation {
+	var found []skillLocation
+	for _, folder := range skillLocations(w.dir, name) {
+		rel, _ := filepath.Rel(w.dir, folder)
+		found = append(found, skillLocation{w.dir, folder, filepath.ToSlash(rel)})
+	}
+	if w.native != "" {
+		for _, root := range nativeSkillRoots() {
+			folder := filepath.Join(w.native, filepath.FromSlash(root), name)
+			if refuseSymlinkComponents(w.native, filepath.Join(folder, "SKILL.md")) != nil {
+				continue
+			}
+			if info, err := os.Stat(filepath.Join(folder, "SKILL.md")); err == nil && info.Mode().IsRegular() {
+				found = append(found, skillLocation{w.native, folder, crewroot.FilesSegment + "/" + root + "/" + name})
+			}
+		}
+	}
+	return found
+}
+
+func nativeSkillRoots() []string {
+	var roots []string
+	for _, root := range workspaceSkillRoots {
+		if strings.HasSuffix(root, "/skills") {
+			roots = append(roots, root)
+		}
+	}
+	return roots
+}
+
 var errLegacySkillLink = errors.New("legacy skill contains a link")
 
 // A one-time compatibility migration copies only saved attachments, including
 // step attachments, with binary assets intact. The old store is never an
 // inventory or runtime fallback. Keep it on disk for other, unmigrated projects.
-func migrateWorkspaceSkills(docs, workspace, dir string, manifest, steps map[string]interface{}) error {
-	marker := filepath.Join(dir, ".workspace-skills-v1")
+func migrateWorkspaceSkills(docs, workspace, dir, state string, manifest, steps map[string]interface{}) error {
+	marker := filepath.Join(state, ".workspace-skills-v1")
 	if _, err := os.Lstat(marker); err == nil {
 		return nil
 	}
@@ -204,24 +268,24 @@ func migrateWorkspaceSkills(docs, workspace, dir string, manifest, steps map[str
 	return os.WriteFile(marker, []byte("Workspace skills migrated.\n"), 0644)
 }
 
-func workspaceSkillState(req workspaceSkillRequest) (string, map[string]interface{}, map[string]interface{}, error) {
+func workspaceSkillState(req workspaceSkillRequest) (skillWorkspace, map[string]interface{}, map[string]interface{}, error) {
 	docs := viper.GetString("docs-dir")
-	dir, err := skillWorkspaceDir(docs, req.WorkspacePath)
+	w, err := skillWorkspaceRoots(docs, req.WorkspacePath)
 	if err != nil {
-		return "", nil, nil, err
+		return w, nil, nil, err
 	}
-	manifest, err := skillConfig(dir, "workflow.json")
+	manifest, err := skillConfig(w.config, "workflow.json")
 	if err != nil {
-		return "", nil, nil, err
+		return w, nil, nil, err
 	}
-	steps, err := skillConfig(dir, "planning/step_config.json")
+	steps, err := skillConfig(w.config, "planning/step_config.json")
 	if err != nil {
-		return "", nil, nil, err
+		return w, nil, nil, err
 	}
-	if err := migrateWorkspaceSkills(docs, req.WorkspacePath, dir, manifest, steps); err != nil {
-		return "", nil, nil, err
+	if err := migrateWorkspaceSkills(docs, req.WorkspacePath, w.dir, w.config, manifest, steps); err != nil {
+		return w, nil, nil, err
 	}
-	return dir, manifest, steps, nil
+	return w, manifest, steps, nil
 }
 func handleWorkspaceSkillList(c *gin.Context) {
 	var req workspaceSkillRequest
@@ -231,47 +295,53 @@ func handleWorkspaceSkillList(c *gin.Context) {
 	}
 	workspaceSkillsMu.Lock()
 	defer workspaceSkillsMu.Unlock()
-	dir, manifest, steps, err := workspaceSkillState(req)
+	w, manifest, steps, err := workspaceSkillState(req)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	dir := w.dir
 	used := skillUsage(manifest, steps)
 	// Report provenance only when recorded by the installer. Directory names
 	// and the skill's own prose do not establish who installed a file.
 	lock, _ := skillConfig(dir, "skills-lock.json")
 	lockSkills, _ := lock["skills"].(map[string]interface{})
 	names := map[string]bool{}
-	for _, root := range workspaceSkillRoots {
-		base := filepath.Join(dir, filepath.FromSlash(root))
-		if refuseSymlinkComponents(dir, base) != nil {
-			continue
-		}
-		entries, _ := os.ReadDir(base)
-		for _, entry := range entries {
-			if entry.IsDir() && safeSkillName(entry.Name()) {
-				names[entry.Name()] = true
+	scan := func(top string, roots []string) {
+		for _, root := range roots {
+			base := filepath.Join(top, filepath.FromSlash(root))
+			if refuseSymlinkComponents(top, base) != nil {
+				continue
+			}
+			entries, _ := os.ReadDir(base)
+			for _, entry := range entries {
+				if entry.IsDir() && safeSkillName(entry.Name()) {
+					names[entry.Name()] = true
+				}
 			}
 		}
 	}
+	scan(dir, workspaceSkillRoots)
+	if w.native != "" {
+		scan(w.native, nativeSkillRoots())
+	}
 	documents := []workspaceSkillDocument{}
 	for name := range names {
-		locations := skillLocations(dir, name)
+		locations := w.locations(name)
 		if len(locations) == 0 {
 			continue
 		}
-		folder := locations[0]
+		folder := locations[0].folder
 		file := filepath.Join(folder, "SKILL.md")
-		if err := refuseSymlinkComponents(dir, file); err != nil {
+		if err := refuseSymlinkComponents(locations[0].base, file); err != nil {
 			continue
 		}
 		content, err := os.ReadFile(file)
 		if err != nil {
 			continue
 		}
-		rel, _ := filepath.Rel(dir, file)
 		_, markerErr := os.Lstat(filepath.Join(folder, ".agentworks-managed"))
-		doc := workspaceSkillDocument{Name: name, FilePath: filepath.ToSlash(rel), Content: string(content), Managed: markerErr == nil, UsedBy: used[name]}
+		doc := workspaceSkillDocument{Name: name, FilePath: locations[0].path + "/SKILL.md", Content: string(content), Managed: markerErr == nil, UsedBy: used[name]}
 		doc.BrainSource, doc.BrainEdited = brainSkillSource(folder)
 		if entry, ok := lockSkills[name].(map[string]interface{}); ok {
 			doc.Source, _ = entry["source"].(string)
@@ -331,11 +401,14 @@ func handleWorkspaceSkillDelete(c *gin.Context) {
 	}
 	workspaceSkillsMu.Lock()
 	defer workspaceSkillsMu.Unlock()
-	dir, manifest, steps, err := workspaceSkillState(req)
+	w, manifest, steps, err := workspaceSkillState(req)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	// Uninstall removes only the workspace's own copies, never files in a
+	// laptop Crew's project folder.
+	dir := w.dir
 	locations := skillLocations(dir, req.Name)
 	// Provider projections with no owned source are managed by the platform.
 	if len(locations) > 0 {
@@ -359,7 +432,7 @@ func handleWorkspaceSkillDelete(c *gin.Context) {
 		}
 	}
 	if caps, ok := manifest["capabilities"].(map[string]interface{}); ok && removeSkillReference(caps, "selected_skills", req.Name) {
-		if err := saveSkillConfig(dir, "workflow.json", manifest); err != nil {
+		if err := saveSkillConfig(w.config, "workflow.json", manifest); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
@@ -375,7 +448,7 @@ func handleWorkspaceSkillDelete(c *gin.Context) {
 		}
 	}
 	if changed {
-		if err := saveSkillConfig(dir, "planning/step_config.json", steps); err != nil {
+		if err := saveSkillConfig(w.config, "planning/step_config.json", steps); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
@@ -415,11 +488,12 @@ func handleWorkspaceSkillImport(c *gin.Context) {
 	}
 	workspaceSkillsMu.Lock()
 	defer workspaceSkillsMu.Unlock()
-	dir, _, _, err := workspaceSkillState(workspaceSkillRequest{WorkspacePath: req.WorkspacePath})
+	w, _, _, err := workspaceSkillState(workspaceSkillRequest{WorkspacePath: req.WorkspacePath})
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	dir := w.dir
 	target := filepath.Join(dir, "skills")
 	if err := refuseSymlinkComponents(dir, target); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -461,21 +535,22 @@ func handleWorkspaceSkillFiles(c *gin.Context) {
 	}
 	workspaceSkillsMu.Lock()
 	defer workspaceSkillsMu.Unlock()
-	dir, _, _, err := workspaceSkillState(req)
+	w, _, _, err := workspaceSkillState(req)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	locations := skillLocations(dir, req.Name)
+	locations := w.locations(req.Name)
 	if len(locations) == 0 {
 		c.JSON(404, gin.H{"error": "skill not found"})
 		return
 	}
+	dir := locations[0].base
 	var files []struct {
 		RelPath string
 		Content []byte
 	}
-	root := locations[0]
+	root := locations[0].folder
 	total := int64(0)
 	err = filepath.WalkDir(root, func(file string, entry os.DirEntry, err error) error {
 		if err != nil {

@@ -91,3 +91,48 @@ func TestSettingsVariableActionsReachUpdateVariableWithItsAction(t *testing.T) {
 	}
 	t.Fatal("no settings group")
 }
+
+// A Crew could not select its own saved skill: skills action=select reached
+// update_project_skill_selection without its own select/deselect action and
+// failed "schema missing action". The same collision hid mcp/vault selection
+// and the Flow Run chat's read_relay; each public action now sets the native one.
+func TestSelectorSourcesReceiveTheirOwnAction(t *testing.T) {
+	for _, tc := range []struct {
+		tool, family, field string
+		native              []any
+		public              map[string]string
+	}{
+		{"update_project_skill_selection", "skills", "skill", []any{"select", "deselect"}, map[string]string{"select": "select", "deselect": "deselect"}},
+		{"update_project_mcp_server_selection", "mcp", "server", []any{"select", "deselect"}, map[string]string{"select": "select", "deselect": "deselect"}},
+		{"update_project_global_secret_selection", "vault", "name", []any{"select", "deselect"}, map[string]string{"select": "select", "deselect": "deselect"}},
+		{"read_relay", "relay", "version", []any{"source", "releases"}, map[string]string{"get": "source", "releases": "releases"}},
+	} {
+		var got map[string]any
+		schema := map[string]any{"type": "object", "additionalProperties": false, "required": []any{"action"}, "properties": map[string]any{
+			"action": map[string]any{"type": "string", "enum": tc.native}, tc.field: map[string]any{"type": "string"}}}
+		jobs, err := Project([]mcpagent.ToolDefinition{{Name: tc.tool, InputSchema: schema,
+			Execute: func(_ context.Context, args map[string]any) (string, error) { got = args; return "ok", nil }}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, job := range jobs {
+			if job.Name != tc.family {
+				continue
+			}
+			found = true
+			for public, native := range tc.public {
+				got = nil
+				if _, err := job.Execute(t.Context(), map[string]any{"action": public, tc.field: "example"}); err != nil {
+					t.Fatalf("%s action=%s: %v", tc.family, public, err)
+				}
+				if got["action"] != native || got[tc.field] != "example" {
+					t.Fatalf("%s action=%s reached %s as %v", tc.family, public, tc.tool, got)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("no %s group for %s", tc.family, tc.tool)
+		}
+	}
+}

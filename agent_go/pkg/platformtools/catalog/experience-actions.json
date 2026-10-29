@@ -244,8 +244,18 @@
   {
     "family": "relay",
     "name": "get",
-    "member": "read_relay",
-    "description": "Use the current relay get operation."
+    "member": "read_relay__source",
+    "description": "Read a published version's relay.py (default the active one).",
+    "source": "read_relay",
+    "source_action": "source"
+  },
+  {
+    "family": "relay",
+    "name": "releases",
+    "member": "read_relay__releases",
+    "description": "List the active and previous published versions with their functions.",
+    "source": "read_relay",
+    "source_action": "releases"
   },
   {
     "family": "metrics",

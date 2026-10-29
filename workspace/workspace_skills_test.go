@@ -280,3 +280,68 @@ func TestBrainSkillSourceReportsEditsSinceInstall(t *testing.T) {
 		t.Fatal("a changed file must count as edited")
 	}
 }
+
+// A Crew bound to a laptop folder keeps its skills in <folder>/.agentworks/skills
+// and its settings in private storage. The inventory read only the docs folder,
+// so a saved skill there could not be selected (skills action=select refused it).
+func TestWorkspaceSkillsReadABoundCrewsResourceRoot(t *testing.T) {
+	base := t.TempDir()
+	base, _ = filepath.EvalSymlinks(base)
+	docs, project, state := filepath.Join(base, "docs"), filepath.Join(base, "project"), filepath.Join(base, "state")
+	private := filepath.Join(docs, "_system", "crew-data", "stable-id")
+	write := func(path, data string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	skill := func(name string) string { return "---\nname: " + name + "\ndescription: test skill\n---\nBody.\n" }
+	write(filepath.Join(project, ".agentworks", "skills", "review", "SKILL.md"), skill("review"))
+	write(filepath.Join(project, ".agentworks", "skills", "review", "notes.md"), "notes")
+	write(filepath.Join(project, ".claude", "skills", "native", "SKILL.md"), skill("native"))
+	write(filepath.Join(project, "skills", "unrelated", "SKILL.md"), skill("unrelated"))
+	write(filepath.Join(private, "workflow.json"), `{"capabilities":{"selected_skills":["review"]}}`)
+	raw, _ := json.Marshal(map[string]any{"projects": map[string]any{"work/example": map[string]any{"product": "work", "folder": "example", "owner_id": "owner", "project_id": "stable-id", "local_root": project}}})
+	write(filepath.Join(state, "ownership", "projects.json"), string(raw))
+	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	old := viper.GetString("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", old) })
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/list", handleWorkspaceSkillList)
+	router.POST("/files", handleWorkspaceSkillFiles)
+	call := func(route, body string) []byte {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest("POST", route, strings.NewReader(body)))
+		if rec.Code != 200 {
+			t.Fatalf("%s %d %s", route, rec.Code, rec.Body.String())
+		}
+		return rec.Body.Bytes()
+	}
+	var inventory struct {
+		Documents []workspaceSkillDocument `json:"documents"`
+	}
+	if err := json.Unmarshal(call("/list", `{"workspace_path":"Crew/example"}`), &inventory); err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string]string{}
+	for _, doc := range inventory.Documents {
+		paths[doc.Name] = doc.FilePath
+		if doc.Name == "review" && (len(doc.UsedBy) != 1 || doc.UsedBy[0] != "Main chat") {
+			t.Fatalf("selection in private workflow.json not reported: %+v", doc)
+		}
+	}
+	if len(paths) != 2 || paths["review"] != "skills/review/SKILL.md" || paths["native"] != "_files/.claude/skills/native/SKILL.md" {
+		t.Fatalf("bound Crew inventory: %v", paths)
+	}
+	if !strings.Contains(string(call("/files", `{"workspace_path":"Crew/example","name":"review"}`)), "notes.md") {
+		t.Fatal("bound Crew skill bundle missing its files")
+	}
+}

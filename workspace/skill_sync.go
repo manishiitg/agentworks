@@ -101,7 +101,7 @@ func projectSkillsDir(docsDir, target string) (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(project, "skills")
-	if err := refuseSymlinkComponents(docsDir, dir); err != nil {
+	if err := refuseSymlinkComponents(project, dir); err != nil {
 		return "", err
 	}
 	if err := os.Mkdir(dir, 0755); err != nil && !os.IsExist(err) {

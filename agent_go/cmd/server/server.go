@@ -13313,7 +13313,7 @@ func skillSelectionHintForContext(ctx context.Context, productID, skillNames str
 func skillSelectionHint(productID, skillNames string) string {
 
 	if strings.EqualFold(strings.TrimSpace(productID), "work") {
-		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future Crew turns, call update_project_skill_selection(action=\"select\", skill=\"<folder-name>\"); Crew persists that selection in workflow.json and also shows it in Setup > Skills.", skillNames)
+		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future Crew turns, call skills(action=\"select\", skill=\"<folder-name>\"); Crew persists that selection in workflow.json and also shows it in Setup > Skills.", skillNames)
 	}
 	return fmt.Sprintf("Use update_workflow_config to add %s to the workflow's selected skills.", skillNames)
 }

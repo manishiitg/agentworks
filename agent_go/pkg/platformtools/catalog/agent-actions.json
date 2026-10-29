@@ -37,8 +37,18 @@
   {
     "family": "skills",
     "name": "select",
-    "member": "update_project_skill_selection",
-    "description": "Select which installed skills this project uses."
+    "member": "update_project_skill_selection__select",
+    "description": "Select an installed skill for this project's later turns.",
+    "source": "update_project_skill_selection",
+    "source_action": "select"
+  },
+  {
+    "family": "skills",
+    "name": "deselect",
+    "member": "update_project_skill_selection__deselect",
+    "description": "Stop attaching a selected skill to this project's later turns.",
+    "source": "update_project_skill_selection",
+    "source_action": "deselect"
   },
   {
     "family": "skills",
@@ -206,8 +216,18 @@
   {
     "family": "mcp",
     "name": "select",
-    "member": "update_project_mcp_server_selection",
-    "description": "Select the connections this project uses."
+    "member": "update_project_mcp_server_selection__select",
+    "description": "Select a connection for this project.",
+    "source": "update_project_mcp_server_selection",
+    "source_action": "select"
+  },
+  {
+    "family": "mcp",
+    "name": "deselect",
+    "member": "update_project_mcp_server_selection__deselect",
+    "description": "Stop using a selected connection in this project.",
+    "source": "update_project_mcp_server_selection",
+    "source_action": "deselect"
   },
   {
     "family": "mcp",
@@ -616,8 +636,18 @@
   {
     "family": "vault",
     "name": "select",
-    "member": "update_project_global_secret_selection",
-    "description": "Select existing Vault secrets for this project."
+    "member": "update_project_global_secret_selection__select",
+    "description": "Select an existing Vault secret for this project.",
+    "source": "update_project_global_secret_selection",
+    "source_action": "select"
+  },
+  {
+    "family": "vault",
+    "name": "deselect",
+    "member": "update_project_global_secret_selection__deselect",
+    "description": "Stop using a selected Vault secret in this project.",
+    "source": "update_project_global_secret_selection",
+    "source_action": "deselect"
   },
   {
     "family": "vault",
