@@ -43,4 +43,42 @@ const { spawnWithBootstrap } = require('../../desktop/lib/connections');
   } finally {
     child.kill('SIGKILL'); await completed;
   }
+  // Repeat through the development launcher, using a different Vite origin.
+  const net = require('node:net');
+  const probe = net.createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
+  const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
+  fs.mkdirSync(path.join(scratch, 'configs'), { recursive: true });
+  fs.copyFileSync(path.join(scratch, 'mcp.json'), path.join(scratch, 'configs/mcp_servers_clean.json'));
+  const { startDevelopmentAgent } = require('../../desktop/lib/devAgent');
+  const apiOrigin = `http://127.0.0.1:${port}`, appOrigin = 'http://127.0.0.1:51733';
+  const managed = await startDevelopmentAgent({
+    env: { PATH: process.env.PATH, HOME: scratch, TMPDIR: scratch,
+      AGENTWORKS_DEV_AGENT_BINARY: binary, AGENTWORKS_DEV_AGENT_CWD: scratch,
+      MCP_AGENT_SERVER_URL: apiOrigin, CLI_UPDATE_ENABLED: 'false', CLI_UPDATE_DRY_RUN: 'true',
+      AGENTWORKS_STATE_ROOT: path.join(scratch, 'state'), WORKSPACE_DOCS_PATH: path.join(scratch, 'docs'),
+      WORKSPACE_API_URL: 'http://127.0.0.1:1', AGENTWORKS_LOCAL_VAULT: '0' },
+    secret: bootstrap.secret, authSecret: bootstrap.auth_secret, appOrigin, log: { write() {} },
+  });
+  try {
+    const login = await fetch(apiOrigin + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(login.status, 200, 'local sign-in failed');
+    const { token } = await login.json();
+    assert.ok(token, 'local sign-in did not return a token');
+    const headers = { Authorization: `Bearer ${token}`, Origin: appOrigin, 'Sec-Fetch-Site': 'same-site', 'X-AgentWorks-Desktop': bootstrap.secret };
+    const response = await fetch(apiOrigin + '/api/desktop-connections', { headers });
+    assert.equal(response.status, 200, 'Vite cannot list desktop connections');
+    assert.equal(response.headers.get('access-control-allow-origin'), appOrigin);
+    assert.deepEqual((await response.json()).connections, []);
+    for (const overrides of [{ Origin: 'http://127.0.0.1:51734' }, { 'X-AgentWorks-Desktop': '' }]) {
+      const denied = await fetch(apiOrigin + '/api/desktop-connections', { headers: { ...headers, ...overrides } });
+      assert.equal(denied.status, 403, 'untrusted caller reached desktop connections');
+    }
+    const preflight = await fetch(apiOrigin + '/api/desktop-connections', { method: 'OPTIONS', headers: { Origin: appOrigin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization,x-agentworks-desktop' } });
+    assert.equal(preflight.status, 200);
+    assert.match(preflight.headers.get('access-control-allow-headers'), /x-agentworks-desktop/i);
+    const listing = spawnSync('ps', ['eww', '-p', String(managed.child.pid)], { encoding: 'utf8' });
+    assert.equal(listing.status, 0);
+    assert.equal(listing.stdout.includes(bootstrap.secret) || listing.stdout.includes(bootstrap.auth_secret), false, 'development bootstrap leaked through ps');
+    console.log('Development backend sign-in, connection gate, CORS and ps checks passed.');
+  } finally { const exit = once(managed.child, 'exit'); managed.child.kill('SIGKILL'); await exit; }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

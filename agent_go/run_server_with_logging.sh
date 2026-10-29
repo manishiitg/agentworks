@@ -1262,6 +1262,12 @@ fi
 
 ensure_local_auth_secret
 
+# Desktop receives the signing secret through stdin, then sends it to its agent
+# child over fd 3. Do not expose it in Vite/workspace/Electron's initial env.
+if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
+    export -n AUTH_SECRET
+fi
+
 if [ "$LOCAL_ENV_CREATED" = true ]; then
     echo ""
     echo "✨ Local setup is ready."
@@ -2212,14 +2218,16 @@ start_electron() {
     echo "- DEV_URL: $dev_url" >> "$ELECTRON_LOG_PATH"
     echo "=========================================" >> "$ELECTRON_LOG_PATH"
 
-    if [ "$BACKGROUND_MODE" = true ]; then
-        nohup bash -lc "cd \"$DESKTOP_DIR\" && DEV_URL=\"$dev_url\" exec \"$ELECTRON_BIN\" ." >> "$ELECTRON_LOG_PATH" 2>&1 &
-    else
-        (
-            cd "$DESKTOP_DIR" || exit 1
-            DEV_URL="$dev_url" exec "$ELECTRON_BIN" .
-        ) >> "$ELECTRON_LOG_PATH" 2>&1 &
-    fi
+    (
+        [ "$BACKGROUND_MODE" != true ] || trap '' HUP
+        cd "$DESKTOP_DIR" || exit 1
+        if [ -n "${AGENTWORKS_DEV_AGENT_BINARY:-}" ]; then
+            # printf is a shell builtin: the value never becomes a process arg.
+            printf '%s' "$AUTH_SECRET" | env -u AUTH_SECRET DEV_URL="$dev_url" "$ELECTRON_BIN" .
+        else
+            exec env -u AUTH_SECRET DEV_URL="$dev_url" "$ELECTRON_BIN" .
+        fi
+    ) >> "$ELECTRON_LOG_PATH" 2>&1 &
 
     ELECTRON_PID=$!
     echo "✅ Electron process started (PID: $ELECTRON_PID)"
@@ -2510,9 +2518,26 @@ if [ -f "$FRONTEND_DIR/package.json" ]; then
 fi
 
 # Run the server with all the enhanced configuration
-echo "🚀 Starting server with 'go run'..."
+echo "🚀 Starting local backend..."
 
-if [ "$BACKGROUND_MODE" = true ]; then
+if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
+    # go run does not preserve fd 3 for its compiled child. Build once, then let
+    # Electron own the backend exactly as the packaged app does.
+    export AGENTWORKS_DEV_AGENT_BINARY="${SCRIPT_DIR}/.bin/agent-server-dev"
+    export AGENTWORKS_DEV_AGENT_CWD="$SCRIPT_DIR"
+    export AGENTWORKS_DEV_AGENT_LOG="$LOG_PATH"
+    echo "🔨 Building the local desktop backend..."
+    go build -ldflags "$GO_LDFLAGS" -o "$AGENTWORKS_DEV_AGENT_BINARY" main.go || exit 1
+    start_frontend_dev || exit 1
+    start_electron || exit 1
+    SERVER_PID="$ELECTRON_PID"
+    wait_for_agent_health || exit 1
+    echo "✅ Desktop and connected servers are ready at $FRONTEND_URL"
+    if [ "$BACKGROUND_MODE" != true ]; then
+        echo "   Press Ctrl+C to stop all."
+        wait "$ELECTRON_PID"
+    fi
+elif [ "$BACKGROUND_MODE" = true ]; then
     # Background mode: run in background and capture PID
     echo "🔄 Starting server in background mode..."
     nohup go run -ldflags "$GO_LDFLAGS" main.go server \

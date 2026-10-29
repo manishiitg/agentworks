@@ -49,9 +49,11 @@ let dynamicWorkspacePort = 0;
 const workspaceApiToken = crypto.randomBytes(32).toString('hex');
 let desktopConnectionsInstalled = false;
 let desktopAgentReady = false;
+let developmentAuthSecret;
 const currentDesktopOrigin = () => desktopAgentReady && agentProcess && agentProcess.exitCode === null && !agentProcess.killed
-  ? `http://127.0.0.1:${dynamicAgentPort}` : null;
+  ? (process.env.AGENTWORKS_DEV_AGENT_BINARY ? new URL(process.env.MCP_AGENT_SERVER_URL).origin : `http://127.0.0.1:${dynamicAgentPort}`) : null;
 const desktopConnectionSecret = crypto.randomBytes(32).toString('hex');
+const currentDesktopAppOrigin = () => process.env.DEV_URL ? new URL(process.env.DEV_URL).origin : currentDesktopOrigin();
 const { withoutDesktopBootstrap } = require('./lib/connections');
 
 const HEALTH_TIMEOUT_MS = 90000;
@@ -537,17 +539,17 @@ function restartServers() {
   setTimeout(() => {
     const userDataPath = app.getPath('userData');
     startAgentPromptLogPruning(userDataPath);
-    spawnWorkspace(userDataPath)
+    const started = process.env.AGENTWORKS_DEV_AGENT_BINARY ? spawnDevelopmentAgent() : spawnWorkspace(userDataPath)
       .then(() => spawnAgent(userDataPath))
       .then(() => {
         const agentHealthUrl = `http://127.0.0.1:${dynamicAgentPort}/api/health`;
         const workspaceHealthUrl = `http://127.0.0.1:${dynamicWorkspacePort}/health`;
         return waitForHealth(agentHealthUrl, workspaceHealthUrl);
-      })
-      .then(() => {
+      });
+    started.then(() => {
         desktopAgentReady = true;
         const previous = new URL(mainWindow.webContents.getURL());
-        mainWindow.loadURL(currentDesktopOrigin() + previous.pathname + previous.search);
+        mainWindow.loadURL(currentDesktopAppOrigin() + previous.pathname + previous.search);
       })
       .catch(err => {
         showErrorAndExit('Failed to restart servers: ' + err);
@@ -1050,6 +1052,19 @@ function spawnWorkspace(userDataPath) {
       resolve();
     }).catch(reject);
   });
+}
+
+async function spawnDevelopmentAgent() {
+  const { startDevelopmentAgent } = require('./lib/devAgent');
+  developmentAuthSecret ??= fs.readFileSync(0, 'utf8').trim();
+  const result = await startDevelopmentAgent({
+    env: process.env, appOrigin: currentDesktopAppOrigin(), secret: desktopConnectionSecret,
+    authSecret: developmentAuthSecret,
+    log: createBoundedLogWriter(path.resolve(process.env.AGENTWORKS_DEV_AGENT_CWD, process.env.AGENTWORKS_DEV_AGENT_LOG)),
+  });
+  agentProcess = result.child;
+  dynamicAgentPort = result.port;
+  desktopAgentReady = true;
 }
 
 function spawnAgent(userDataPath) {
@@ -1652,7 +1667,7 @@ function createWindow(initialUrl) {
   desktopConnectionsInstalled = true;
   require('./lib/connections').installDesktopConnections({
     session: mainWindow.webContents.session, ipcMain, getWindow: () => mainWindow,
-    getOrigin: currentDesktopOrigin, secret: desktopConnectionSecret,
+    getOrigin: currentDesktopOrigin, getAppOrigin: currentDesktopAppOrigin, secret: desktopConnectionSecret,
   });
   }
   mainWindow.loadURL(targetUrl);
@@ -1685,10 +1700,14 @@ app.whenReady().then(async () => {
   createMenu();
   createTray();
   
-  // If DEV_URL is set (e.g. http://localhost:5173), skip spawning servers and just load that URL
+  // The local launcher keeps Vite/workspace separate, but Electron owns the
+  // agent child so connection credentials use the same private pipe as releases.
   const devUrl = process.env.DEV_URL;
   if (devUrl) {
-    console.log(`[main] DEV_URL detected: ${devUrl}. Skipping local server spawn.`);
+    if (process.env.AGENTWORKS_DEV_AGENT_BINARY) {
+      try { await spawnDevelopmentAgent(); }
+      catch (error) { showErrorAndExit(error.message); return; }
+    }
     createWindow(devUrl);
     return;
   }

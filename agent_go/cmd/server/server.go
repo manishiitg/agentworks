@@ -3585,7 +3585,7 @@ func (api *StreamingAPI) corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		// X-User-ID: the workspace client sends it on /api/wp calls; the gateway overwrites it with
 		// the signed-in user (workspace_proxy.go), so allowing it only lets the preflight pass.
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-User-ID")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-User-ID, X-AgentWorks-Desktop")
 		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing, X-Queued-Steer-Unavailable, X-Renewed-Token")
 		if originAllowed {
 			w.Header().Set("Timing-Allow-Origin", origin)
