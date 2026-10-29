@@ -91,6 +91,7 @@ type idleCompactCandidate struct {
 	BackgroundWork bool
 	Stopped        bool
 	LimitReached   bool // the tab owner is at a token limit
+	Disabled       bool // the project's owner turned idle compaction off
 	LastActivity   time.Time
 	LastPerson     time.Time
 	AttemptedAt    time.Time // last idle compaction attempt
@@ -109,6 +110,8 @@ func idleCompactDecide(c idleCompactCandidate, cfg idleCompactConfig, now time.T
 		return false, false, "outside_idle_window"
 	}
 	switch {
+	case c.Disabled:
+		return true, false, "disabled"
 	case !c.Interactive:
 		return true, false, "not_interactive"
 	case c.LastPerson.IsZero() || now.Sub(c.LastPerson) > cfg.PersonWithin:
@@ -382,7 +385,23 @@ func (api *StreamingAPI) idleCompactCandidateFor(sessionID, owner string, chat i
 	c.Stopped = api.isSessionMarkedStopped(sessionID)
 	c.ContextTokens, c.ContextWindow = api.idleCompactContextSize(sessionID)
 	c.LimitReached = api.sharedAccountTokenLimitHit(context.Background(), owner, chat.provider) != nil
+	c.Disabled = !idleCompactProjectEnabled(chat.personReq.SelectedFolder)
 	return c
+}
+
+// idleCompactProjectEnabled reads the project's models setting
+// (capabilities.llm_config.idle_compaction in its workflow.json). The chat's
+// project is the folder its last person turn ran in (a Crew, Goal, Relay or
+// Pulse). An unknown project or an unset value means on.
+func idleCompactProjectEnabled(workspacePath string) bool {
+	if strings.TrimSpace(workspacePath) == "" {
+		return true
+	}
+	caps, found, err := LoadManifestForExecution(context.Background(), workspacePath)
+	if err != nil || !found || caps == nil || caps.LLMConfig == nil || caps.LLMConfig.IdleCompaction == nil {
+		return true
+	}
+	return *caps.LLMConfig.IdleCompaction
 }
 
 // idleCompactContextSize is the chat's context at its last model call, as the

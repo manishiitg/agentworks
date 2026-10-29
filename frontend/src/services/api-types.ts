@@ -1716,6 +1716,7 @@ export interface PresetLLMConfig {
   background_llm?: AgentLLMConfig
   // Feature toggles
   use_knowledgebase?: boolean           // nil/true = enabled (default), false = disabled
+  idle_compaction?: boolean             // nil/true = long idle chats are tidied (default), false = off
 
   tiered_config?: {
     tier_1: AgentLLMConfig

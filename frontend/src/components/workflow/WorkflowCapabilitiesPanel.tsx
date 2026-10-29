@@ -8,6 +8,7 @@ import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import PlaybooksPanel from '../playbooks/PlaybooksPanel'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import { ChatDisplayPreferences } from '../chat/ChatDisplayPreferences'
+import { IdleCompactionSetting } from './IdleCompactionSetting'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { ProjectMcpSetupPanel } from '../integrations/ProjectMcpSetupPanel'
@@ -453,11 +454,24 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                     scopeNoun={relayMode ? 'Flow Builder' : 'workflow'}
                     builderOnly={relayMode}
                     onChange={(llm_config) => {
-                      const next = { ...capabilities, llm_config }
+                      // A model change keeps the idle compaction choice.
+                      const idle_compaction = capabilities.llm_config?.idle_compaction
+                      const next = { ...capabilities, llm_config: llm_config.idle_compaction === undefined && idle_compaction !== undefined ? { ...llm_config, idle_compaction } : llm_config }
                       setCapabilities(next)
                       void persist(next)
                     }}
-                  /></>
+                  />
+                  <div className="mt-4">
+                    <IdleCompactionSetting
+                      enabled={capabilities.llm_config?.idle_compaction !== false}
+                      disabledTitle={canWriteWorkflow ? 'Choose a model first, then change this setting.' : 'Only the owner can change this.'}
+                      onChange={canWriteWorkflow && capabilities.llm_config ? (enabled => {
+                        const next = { ...capabilities, llm_config: { ...capabilities.llm_config!, idle_compaction: enabled } }
+                        setCapabilities(next)
+                        return persist(next, true)
+                      }) : undefined}
+                    />
+                  </div></>
                 )}
 
                 {!relayMode && activeIdentityTab === 'upgrades' && (
