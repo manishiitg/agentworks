@@ -155,13 +155,13 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       aria-label={tooltip}
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
-      className={`group relative flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-t-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
-        // The open tab: bold text and a thin accent line under it, no filled box.
+      className={`group relative flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-t-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
+        // Selection uses the label's contrast; retain the same tab height without an accent line.
         isActive
-          ? 'border-primary font-semibold text-foreground'
+          ? 'font-semibold text-foreground'
           : productSurface
-          ? 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
-          : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
+          ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
