@@ -539,11 +539,6 @@ func teamWorkspacePath(input string) (string, string) {
 	}
 	return strings.Join(parts[:2], "/"), strings.Join(parts[2:], "/")
 }
-func workflowTeamAllowsConcurrent(root string) bool {
-	m, ok, e := ReadWorkflowManifest(context.Background(), root)
-	// A Flow has no Builder lock: its owners build together (owner, 2026-10-16), and a publish says whose version it replaced.
-	return e == nil && ok && (m.Team != nil || m.Kind == "relay")
-}
 func teamManagedWrite(ctx context.Context, path, content string) (func(), error) {
 	readCurrent := readFileFromWorkspace
 	if supplied, ok := ctx.Value(teamCommitReadKey{}).(func(context.Context, string) (string, bool, error)); ok {
