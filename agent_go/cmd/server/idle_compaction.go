@@ -12,7 +12,9 @@ import (
 	"sync"
 	"time"
 
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	agentevents "github.com/manishiitg/mcpagent/events"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -441,6 +443,7 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	httpReq.Header.Set("X-Session-ID", sessionID)
 	httpReq.Header.Set("X-User-ID", owner)
 	recorder := &internalResponseCapture{header: make(http.Header)}
+	startedAt := time.Now()
 	api.handleQuery(recorder, httpReq)
 	if recorder.status >= http.StatusBadRequest {
 		logSkip("turn_refused_" + strconv.Itoa(recorder.status))
@@ -468,6 +471,61 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	}
 	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d idle_min=%d action=%s reason=%q before=%d after=%d cache_read=%d cache_write=%d",
 		sessionID, chat.provider, owner, tokens, idleMin, action, reason, before, result.TokensAfter, result.CacheReadTokens, result.CacheWriteTokens)
+	if action == "compacted" {
+		api.recordIdleCompactionInChat(sessionID, chat.provider, before, result.TokensAfter, startedAt)
+	}
+}
+
+// recordIdleCompactionInChat adds the one "tidied while you were away" row to
+// the chat: a context_compaction end with trigger idle, the shape the
+// transcript already renders. The CLI's own compaction events do not reliably
+// reach the chat from a compaction-only call, so the server records the
+// result itself; if one already arrived, nothing is added (one row per
+// compaction).
+func (api *StreamingAPI) recordIdleCompactionInChat(sessionID, provider string, before, after int, startedAt time.Time) {
+	if api.eventStore == nil {
+		return
+	}
+	if idleCompactionEventSince(api.eventStore.LastEventsRaw(sessionID, 200), startedAt) {
+		log.Printf("[IDLE_COMPACT] session=%s chat row already recorded by the CLI stream", sessionID)
+		return
+	}
+	now := time.Now()
+	data := &agentevents.ContextCompactionEvent{
+		BaseEventData: agentevents.BaseEventData{Timestamp: now},
+		Provider:      provider,
+		Phase:         "end",
+		Trigger:       "idle",
+		Outcome:       "success",
+		TokensBefore:  before,
+		TokensAfter:   after,
+		StartedAt:     startedAt.UTC().Format(time.RFC3339Nano),
+		EndedAt:       now.UTC().Format(time.RFC3339Nano),
+		DurationMs:    now.Sub(startedAt).Milliseconds(),
+	}
+	wrapped := agentevents.NewAgentEvent(data)
+	wrapped.SessionID = sessionID
+	id := "idle-compaction-" + sessionID + "-" + strconv.FormatInt(now.UnixNano(), 10)
+	err := api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.ContextCompaction), Timestamp: now, SessionID: sessionID, Data: wrapped})
+	log.Printf("[IDLE_COMPACT] session=%s chat row recorded event=%s err=%v", sessionID, id, err)
+}
+
+// idleCompactionEventSince reports whether an idle compaction end is already
+// among the chat's events since the compaction started.
+func idleCompactionEventSince(events []storeevents.Event, since time.Time) bool {
+	for i := len(events) - 1; i >= 0; i-- {
+		event := events[i]
+		if event.Timestamp.Before(since) {
+			return false
+		}
+		if event.Type != string(agentevents.ContextCompaction) || event.Data == nil {
+			continue
+		}
+		if c, ok := event.Data.Data.(*agentevents.ContextCompactionEvent); ok && c.Phase == "end" && c.Trigger == "idle" {
+			return true
+		}
+	}
+	return false
 }
 
 // compactIdleTurn is the compaction-only end of handleQuery's turn: the agent
@@ -483,6 +541,11 @@ func (api *StreamingAPI) compactIdleTurn(ctx context.Context, sessionID string, 
 	if !run.begin(cancel) {
 		run.finish(llmtypes.IdleCompactResult{Reason: "person_message"}, nil)
 		return
+	}
+	if api.eventStore != nil {
+		// The Working line says the chat is being tidied, not "running".
+		api.eventStore.BeginIdleCompaction(sessionID)
+		defer api.eventStore.EndIdleCompaction(sessionID)
 	}
 	result, err := mcpagent.CompactAgentSessionIdle(compactCtx, agent)
 	if err != nil && compactCtx.Err() != nil {

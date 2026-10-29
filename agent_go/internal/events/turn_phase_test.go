@@ -70,6 +70,24 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 	}
 }
 
+// PLAT-872-71 (seen live): an idle compaction's own model-call events showed the chat as "running". The
+// compaction phase holds until it ends, and the person's next message starts a fresh turn.
+func TestIdleCompactionPhaseIsNotRunning(t *testing.T) {
+	es := NewEventStore(100)
+	defer es.Stop()
+	es.EnableTurnPhase()
+	const session = "idle-compaction-phase"
+	es.BeginIdleCompaction(session)
+	add(es, session, "llm_generation_start", &mcpevents.LLMGenerationStartEvent{ModelID: "codex"})
+	add(es, session, "llm_generation_end", &mcpevents.LLMGenerationEndEvent{})
+	es.EndIdleCompaction(session)
+	add(es, session, "user_message", nil)
+	want := []string{"compacting: Tidying this chat while you were away", "starting: Starting the agent"}
+	if got := phaseEvents(es, session); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("phases = %q, want %q", got, want)
+	}
+}
+
 // After a restart the live turn state is gone; the stored events decide whether a turn is still open (PLAT-861-228).
 func TestPersistedTurnOpenFollowsTheStoredEvents(t *testing.T) {
 	es := NewEventStore(100)

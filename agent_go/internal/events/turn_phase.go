@@ -18,6 +18,7 @@ import (
 //	retrying         a launch or call failed and the next attempt is waiting
 //	waiting_for_you  the agent asked a question and waits for the answer
 //	running          the agent produced output
+//	compacting       an idle compaction is tidying the chat (PLAT-872); no person turn is running
 //
 // A change is announced as one "turn_phase" event (application-defined, carried as GenericEventData). It is not
 // stored in the durable history: the in-memory session events replay it, and a chat without one keeps the old line.
@@ -28,6 +29,8 @@ const (
 	turnPhaseRetrying       = "retrying"
 	turnPhaseWaitingForYou  = "waiting_for_you"
 	turnPhaseRunning        = "running"
+	turnPhaseCompacting     = "compacting"
+	turnPhaseCompactingText = "Tidying this chat while you were away"
 	turnPhaseStaleAfter     = 6 * time.Hour
 	turnPhaseRetrySuffix    = " - retrying original model"
 	turnPhaseWaitingMessage = "Waiting for your answer"
@@ -88,6 +91,8 @@ func turnPhaseText(s *turnPhaseState) string {
 		return text
 	case turnPhaseWaitingForYou:
 		return turnPhaseWaitingMessage
+	case turnPhaseCompacting:
+		return turnPhaseCompactingText
 	}
 	return ""
 }
@@ -171,6 +176,18 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 
 	}
 	st := turnPhases[sessionID]
+	if st != nil && st.phase == turnPhaseCompacting {
+		// The idle compaction's own model-call events are not a person's turn;
+		// only EndIdleCompaction, a person's message or a turn end leaves this phase.
+		switch event.Type {
+		case "user_message", "unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error":
+			delete(turnPhases, sessionID)
+			st = nil
+		default:
+			turnPhasesMu.Unlock()
+			return
+		}
+	}
 	var announce *turnPhaseState
 	set := func(phase string) {
 		if st == nil {
@@ -252,6 +269,36 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 	}
 	turnPhasesMu.Unlock()
+	es.announceTurnPhase(sessionID, announce, now)
+}
+
+// BeginIdleCompaction shows the idle compaction (PLAT-872) as the chat's turn
+// phase, so the Working line says the chat is being tidied instead of
+// "running" while the CLI compacts.
+func (es *EventStore) BeginIdleCompaction(sessionID string) {
+	if sessionID == "" || !es.turnPhaseOn() {
+		return
+	}
+	now := time.Now()
+	st := &turnPhaseState{phase: turnPhaseCompacting, updated: now}
+	st.announce = fmt.Sprintf("%s|%s|%s|%d|%d|%s", st.phase, st.label, st.reason, st.attempt, st.total, st.nextIn)
+	turnPhasesMu.Lock()
+	turnPhases[sessionID] = st
+	turnPhasesMu.Unlock()
+	copied := *st
+	es.announceTurnPhase(sessionID, &copied, now)
+}
+
+// EndIdleCompaction clears the compaction phase; the next person turn starts fresh.
+func (es *EventStore) EndIdleCompaction(sessionID string) {
+	turnPhasesMu.Lock()
+	if st := turnPhases[sessionID]; st != nil && st.phase == turnPhaseCompacting {
+		delete(turnPhases, sessionID)
+	}
+	turnPhasesMu.Unlock()
+}
+
+func (es *EventStore) announceTurnPhase(sessionID string, announce *turnPhaseState, now time.Time) {
 	if announce == nil {
 		return
 	}
