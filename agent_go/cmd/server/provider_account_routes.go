@@ -51,9 +51,8 @@ type providerAccountView struct {
 	Configured *bool `json:"configured,omitempty"`
 	// Identity is who the account is signed in as (an email or plan name
 	// the CLI reports), so people can see whose login a shared account uses.
-	Identity     string `json:"identity,omitempty"`
-	CanManage    bool   `json:"can_manage"`
-	CanViewUsage bool   `json:"can_view_usage"`
+	Identity  string `json:"identity,omitempty"`
+	CanManage bool   `json:"can_manage"`
 }
 
 // serverAccountEnvNames lists the installation variables that carry a
@@ -122,11 +121,6 @@ func serverAccountProviders() []string {
 	return getSupportedProviders()
 }
 
-// providerHasUsageCommand reports whether provider has a usage action.
-func providerHasUsageCommand(provider string) bool {
-	return providerUsageCommands[provider] != ""
-}
-
 // GET  /api/provider-connections[?workspace_path=&product=] lists the
 // accounts the caller may see, marking which they may use there.
 // POST /api/provider-connections adds a user account.
@@ -184,7 +178,6 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 			AvailabilityEditable: admin && !availability.Pinned,
 			Usable:               usable,
 			CanManage:            admin,
-			CanViewUsage:         providerHasUsageCommand(provider) && (admin || usable),
 		}
 		views = append(views, view)
 	}
@@ -215,7 +208,6 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 		}
 		view.Usable = !personalProviderConnectionsLocked(record.Provider)
 		view.CanManage = own
-		view.CanViewUsage = providerHasUsageCommand(record.Provider) && (own || view.Usable)
 		if !view.CanManage {
 			view.Sharing = nil
 			view.OwnerUserID = ""

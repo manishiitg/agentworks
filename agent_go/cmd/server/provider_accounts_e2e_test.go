@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -19,7 +17,6 @@ import (
 	"github.com/gorilla/mux"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -322,7 +319,7 @@ func TestProviderAccountsSharedWithPersonAndCrew(t *testing.T) {
 		t.Fatalf("carol used an account not shared with her: %v", err)
 	}
 	view, ok := findAccountView(env.list(t, "bob", ""), account.ID)
-	if !ok || view.Relation != "shared_with_you" || !view.Usable || !view.CanViewUsage {
+	if !ok || view.Relation != "shared_with_you" || !view.Usable {
 		t.Fatalf("bob's view: %+v", view)
 	}
 	if strings.Contains(mustJSON(t, env.list(t, "bob", "")), "alice-codex-key") {
@@ -404,166 +401,6 @@ func TestProviderAccountsServerSignInAdminOnly(t *testing.T) {
 	if !strings.Contains(output, "login-home:"+accountHome) || strings.Contains(output, "login-home:"+env.home+"\n") {
 		t.Fatalf("private browser login ran outside the account HOME: %q", output)
 	}
-}
-
-// Test 7: "Usage" on a private Muse account runs /usage in that account's
-// HOME, not the server's. The CLI is faked; see
-// TestProviderAccountsLiveMuseUsage for the live CLI.
-func TestProviderAccountsUsageRunsInAccountHome(t *testing.T) {
-	env := newProviderAccountsEnv(t, "")
-	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "server-chat-token")
-	originalReader := readNativeAccountUsage
-	readNativeAccountUsage = func(ctx context.Context, provider string, environment []string) (llmtypes.AccountUsage, error) {
-		if provider != "claude-code" || envValue(environment, "CLAUDE_CODE_OAUTH_TOKEN") != "server-chat-token" {
-			t.Fatal("server usage lost the configured chat credential")
-		}
-		return llmtypes.AccountUsage{Windows: []llmtypes.AccountUsageWindow{{Label: "server-usage", UsedPercent: 42}}}, nil
-	}
-	t.Cleanup(func() { readNativeAccountUsage = originalReader })
-	original := providerSetupCommands
-	providerSetupCommands = map[string]map[string]providerSetupCommand{
-		"muse-cli": {"usage": {command: "/bin/sh", args: []string{"-c", `printf '❯\n'; IFS= read -r command; printf 'submitted:%s home:%s\n' "$command" "$HOME"; sleep 1`}}},
-	}
-	t.Cleanup(func() { providerSetupCommands = original })
-	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "muse-cli", "display_name": "Alice Muse", "auth_method": "cli_login"})
-	usage := func(user, provider, connectionID string) *httptest.ResponseRecorder {
-		return env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", user, map[string]interface{}{"provider": provider, "action": "usage", "connection_id": connectionID}, nil)
-	}
-	w := usage("alice", "muse-cli", account.ID)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("usage: %d %s", w.Code, w.Body.String())
-	}
-	waitSetupOutput(t, env.api, w, "❯")
-	var started struct {
-		Session providerSetupSnapshot `json:"session"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &started); err != nil {
-		t.Fatal(err)
-	}
-	session, ok := env.api.providerSetupManager().get(started.Session.ID)
-	if !ok {
-		t.Fatal("usage session was not retained")
-	}
-	if err := session.userInput("/usage\r"); err != nil {
-		t.Fatal(err)
-	}
-	output := waitSetupOutput(t, env.api, w, "submitted:")
-	accountHome, _ := providerConnectionHome(account.ID)
-	if !strings.Contains(output, "submitted:/usage home:"+accountHome) {
-		t.Fatalf("usage did not run /usage in the account HOME: %q", output)
-	}
-	// A private account's usage is the owner's (and admins') only.
-	if w := usage("bob", "muse-cli", account.ID); w.Code != http.StatusForbidden {
-		t.Fatalf("bob saw Alice's private usage: %d", w.Code)
-	}
-	// A member sees server-account usage as text the server collected; they
-	// never get a terminal.
-	w = usage("bob", "claude-code", "")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "server-usage") {
-		t.Fatalf("member server usage: %d %s", w.Code, w.Body.String())
-	}
-	if w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "muse-cli", "action": "inspect"}, nil); w.Code != http.StatusForbidden {
-		t.Fatalf("member inspected the server account: %d", w.Code)
-	}
-	for _, action := range []string{"authenticate", "inspect"} {
-		if w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "claude-code", "action": action}, nil); w.Code != http.StatusForbidden {
-			t.Fatalf("member opened a Claude %s terminal: %d", action, w.Code)
-		}
-	}
-	closeProviderSetups(env.api)
-}
-
-// Usage for someone who does not manage the account runs without a
-// terminal: the server sends /usage, returns the text, ends the session,
-// and drops every input.
-func TestProviderAccountsUsageForNonManagersIsNotInteractive(t *testing.T) {
-	env := newProviderAccountsEnv(t, "")
-	original, settle := providerSetupCommands, providerUsageSettle
-	providerUsageSettle = 300 * time.Millisecond
-	providerSetupCommands = map[string]map[string]providerSetupCommand{
-		"muse-cli": {"usage": {command: "/bin/sh", args: []string{"-c", `printf '\033[1m❯\033[0m\n'; while IFS= read -r line; do printf 'got:%s home:%s\n' "$line" "$HOME"; done`}}},
-	}
-	t.Cleanup(func() { providerSetupCommands, providerUsageSettle = original, settle })
-	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "muse-cli", "display_name": "Alice Muse", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"bob"}}})
-	for _, action := range []string{"authenticate", "inspect"} {
-		if w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "muse-cli", "action": action, "connection_id": account.ID}, nil); w.Code != http.StatusForbidden {
-			t.Fatalf("non-owner %s: %d", action, w.Code)
-		}
-	}
-	w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "muse-cli", "action": "usage", "connection_id": account.ID}, nil)
-	var body struct {
-		UsageOutput string                 `json:"usage_output"`
-		Session     *providerSetupSnapshot `json:"session"`
-	}
-	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Session != nil {
-		t.Fatalf("non-owner usage: %d %s", w.Code, w.Body.String())
-	}
-	accountHome, _ := providerConnectionHome(account.ID)
-	if !strings.Contains(body.UsageOutput, "got:/usage home:"+accountHome) || strings.Contains(body.UsageOutput, "\x1b") {
-		t.Fatalf("usage text: %q", body.UsageOutput)
-	}
-	manager := env.api.providerSetupManager()
-	manager.mu.Lock()
-	remaining := len(manager.sessions)
-	manager.mu.Unlock()
-	if remaining != 0 {
-		t.Fatalf("the usage session was left running: %d", remaining)
-	}
-
-	// A read-only session drops browser input (what the stream handler sends).
-	session, err := manager.start("bob", "muse-cli", "usage", 80, 24, nil, nil, false, account.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	session.mu.Lock()
-	session.readOnly = true
-	session.mu.Unlock()
-	_ = session.userInput("cat ~/.muse/credentials\r")
-	time.Sleep(600 * time.Millisecond)
-	if strings.Contains(session.outputText(), "got:cat") {
-		t.Fatalf("read-only session accepted input: %q", session.outputText())
-	}
-	closeProviderSetups(env.api)
-}
-
-// Test 7, live: needs a signed-in Muse CLI account. Set
-// AGENTWORKS_LIVE_MUSE_ACCOUNT_HOME to a HOME that holds a `muse login`.
-func TestProviderAccountsLiveMuseUsage(t *testing.T) {
-	liveHome := os.Getenv("AGENTWORKS_LIVE_MUSE_ACCOUNT_HOME")
-	if liveHome == "" {
-		t.Skip("needs AGENTWORKS_LIVE_MUSE_ACCOUNT_HOME (a HOME with a muse login)")
-	}
-	if _, err := exec.LookPath("muse"); err != nil {
-		t.Skip("muse CLI not installed")
-	}
-	env := newProviderAccountsEnv(t, "")
-	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "muse-cli", "display_name": "Live Muse", "auth_method": "cli_login"})
-	home, _ := providerConnectionHome(account.ID)
-	_ = os.MkdirAll(filepath.Dir(home), 0o700)
-	if err := os.Symlink(liveHome, home); err != nil {
-		t.Fatal(err)
-	}
-	w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "alice", map[string]interface{}{"provider": "muse-cli", "action": "usage", "connection_id": account.ID}, nil)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("usage: %d %s", w.Code, w.Body.String())
-	}
-	var started struct {
-		Session providerSetupSnapshot `json:"session"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &started); err != nil {
-		t.Fatal(err)
-	}
-	session, ok := env.api.providerSetupManager().get(started.Session.ID)
-	if !ok {
-		t.Fatal("usage session was not retained")
-	}
-	// This live check explicitly drives the otherwise manual terminal.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go driveProviderUsage(ctx, session)
-	output := waitSetupOutputFor(t, env.api, w, "/usage", 60*time.Second)
-	t.Logf("live muse usage output: %s", output)
-	closeProviderSetups(env.api)
 }
 
 // Test 6: a turn on Alice's shared account, run by Bob in W, lands under
@@ -970,77 +807,6 @@ func TestProviderAccountsMultipleCodexCLILogins(t *testing.T) {
 	for _, account := range env.list(t, "bob", "") {
 		if account.ID == a.ID || account.ID == b.ID {
 			t.Fatal("private login exposed to another person")
-		}
-	}
-}
-
-// PLAT-872-52: native quota reads keep the existing account authorization and
-// selected HOME. Owners, admins and permitted colleagues receive text, no PTY.
-func TestProviderAccountsNativeUsageKeepsSelectionAndAccess(t *testing.T) {
-	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli"} {
-		t.Run(provider, func(t *testing.T) {
-			env := newProviderAccountsEnv(t, "")
-			t.Setenv("CURSOR_AUTH_TOKEN", "ambient-account")
-			account := env.addAccount(t, "alice", map[string]interface{}{"provider": provider, "display_name": "Selected account", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"bob"}}})
-			wantHome, _ := providerConnectionHome(account.ID)
-			original := readNativeAccountUsage
-			calls := 0
-			readNativeAccountUsage = func(ctx context.Context, gotProvider string, environment []string) (llmtypes.AccountUsage, error) {
-				calls++
-				if gotProvider != provider || envValue(environment, "HOME") != wantHome || envValue(environment, "CURSOR_AUTH_TOKEN") != "" || envValue(environment, "AUTH_SECRET") != "" {
-					t.Fatal("quota probe used a different account environment")
-				}
-				return llmtypes.AccountUsage{Windows: []llmtypes.AccountUsageWindow{{Label: "Weekly", UsedPercent: 42}}}, nil
-			}
-			t.Cleanup(func() { readNativeAccountUsage = original })
-			for _, user := range []string{"alice", "bob", "admin", "carol"} {
-				before := calls
-				w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", user, map[string]interface{}{"provider": provider, "action": "usage", "connection_id": account.ID}, nil)
-				if user == "carol" {
-					if w.Code != http.StatusForbidden || calls != before {
-						t.Fatal("private usage probe ran for unauthorized caller")
-					}
-					continue
-				}
-				if w.Code != http.StatusOK || calls != before+1 || !strings.Contains(w.Body.String(), "42.0% used") || strings.Contains(w.Body.String(), `"session"`) {
-					t.Fatalf("usage did not return native text: %d %s", w.Code, w.Body.String())
-				}
-			}
-		})
-	}
-}
-
-// PLAT-872-52: terminal backup is for probe failures, not unavailable quotas.
-func TestProviderAccountsNativeUsageFallbackOnlyOnFailure(t *testing.T) {
-	env := newProviderAccountsEnv(t, "")
-	originalReader, originalCommands := readNativeAccountUsage, providerSetupCommands
-	t.Cleanup(func() {
-		readNativeAccountUsage = originalReader
-		providerSetupCommands = originalCommands
-		closeProviderSetups(env.api)
-	})
-	providerSetupCommands = map[string]map[string]providerSetupCommand{
-		"claude-code": {"usage": {command: "/bin/sh", args: []string{"-c", "read answer"}}},
-		"codex-cli":   {"usage": {command: "/bin/sh", args: []string{"-c", "read answer"}}},
-	}
-	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli"} {
-		for _, failure := range []bool{false, true} {
-			readNativeAccountUsage = func(context.Context, string, []string) (llmtypes.AccountUsage, error) {
-				if failure {
-					return llmtypes.AccountUsage{}, fmt.Errorf("fixture probe failed")
-				}
-				return llmtypes.AccountUsage{}, nil
-			}
-			w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "admin", map[string]interface{}{"provider": provider, "action": "usage"}, nil)
-			terminal := failure && provider != "cursor-cli"
-			if terminal {
-				if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"session"`) {
-					t.Fatalf("missing terminal backup: %s %d %s", provider, w.Code, w.Body.String())
-				}
-				closeProviderSetups(env.api)
-			} else if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "unavailable") || strings.Contains(w.Body.String(), `"session"`) {
-				t.Fatalf("unavailable spawned a terminal: %s %d %s", provider, w.Code, w.Body.String())
-			}
 		}
 	}
 }

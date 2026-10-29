@@ -19,10 +19,9 @@ vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (selector: (value: typ
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (selector: (value: typeof state) => unknown) => selector(state) }))
 vi.mock('./projectProduct', async original => ({ ...await original<typeof import('./projectProduct')>(), useProjectProduct: () => state.product }))
 vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ default: (props: typeof state.configurationProps) => { state.configurationProps = props; return null } }))
-vi.mock('../../components/providers/GuidedProviderTerminal', () => ({ default: () => null }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../services/llm-config-api', () => ({
-  llmConfigService: { getProviderConnections: vi.fn(async () => []), getProviderModels: vi.fn(async () => ({ models: [] })), checkProviderUsage: vi.fn(async () => ({ usage_output: 'Current usage' })) },
+  llmConfigService: { getProviderConnections: vi.fn(async () => []), getProviderModels: vi.fn(async () => ({ models: [] })) },
 }))
 vi.mock('../../utils/agentProfileCapabilities', async importOriginal => ({
   ...await importOriginal<typeof import('../../utils/agentProfileCapabilities')>(),
@@ -51,7 +50,7 @@ function museFixture() {
     options: { reasoning_effort: 'max' },
   }]
   state.providerManifest = [{
-    id: 'muse-cli', integration_kind: 'coding_agent', runtime_available: true, usable: true, usage_supported: true,
+    id: 'muse-cli', integration_kind: 'coding_agent', runtime_available: true, usable: true,
     models: ['muse-spark-1.3-contributor', 'muse-spark-1.3'].map(model_id => ({
       model_id, model_name: model_id, provider: 'muse-cli', context_window: 1000000,
       input_cost_per_1m: 0, output_cost_per_1m: 0,
@@ -221,19 +220,11 @@ it('shows the account the chat runs on: recorded, else the own default', async (
   ] as never)
   const own = await render()
   expect(own.host.querySelector('[data-testid="account-limits"]')?.textContent).toBe('Your own account · not limited')
-  const checkUsage = async (host: HTMLElement) => {
-    const button = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.trim() === 'Check usage')!
-    await act(async () => button.click())
-  }
-  await checkUsage(own.host)
-  expect(llmConfigService.checkProviderUsage).toHaveBeenLastCalledWith('muse-cli', 'mine', false)
   await act(async () => { root?.unmount() }); document.body.innerHTML = ''
   Object.assign(metadata, { agentProfileChatProvider: 'muse-cli', agentProfileChatConnectionID: 'global:muse-cli' })
   const shared = await render()
   expect(shared.host.querySelector('[data-testid="account-limits"]')?.textContent).toMatch(/^Shared account/)
   expect(state.configurationProps.llmConfig?.connection_id).toBe('global:muse-cli')
-  await checkUsage(shared.host)
-  expect(llmConfigService.checkProviderUsage).toHaveBeenLastCalledWith('muse-cli', 'global:muse-cli', false)
   delete metadata.agentProfileChatProvider; delete metadata.agentProfileChatConnectionID
   vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([])
 })
