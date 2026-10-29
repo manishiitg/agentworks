@@ -27,6 +27,8 @@ type projectVaultItem struct {
 	Status    string `json:"status"`
 	Selected  bool   `json:"selected"`
 	CanSelect bool   `json:"can_select"`
+	// UsedIn names the person's own projects that use this item (only for Yours), so they know what removing it affects.
+	UsedIn []string `json:"used_in,omitempty"`
 }
 
 // One checkbox edits one existing setting through the same native services as
@@ -431,6 +433,14 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				seen[key] = true
 				item.Source = source
 				heading.Items = append(heading.Items, item)
+			}
+		}
+	}
+	if yours := &headings[0]; len(yours.Items) > 0 {
+		used := api.personalUsedIn(ctx, person)
+		for i, item := range yours.Items {
+			if item.Kind == "mcp" || item.Kind == "shared_secret" || item.Kind == "computer" {
+				yours.Items[i].UsedIn = used.forItem(item.Kind, item.ID)
 			}
 		}
 	}

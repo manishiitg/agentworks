@@ -82,6 +82,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
             {(flat||item.source)&&<span className="text-xs text-muted-foreground">{flat?(item.kind==='project_secret'?'This project':item.source||groupName):`(${item.source})`}</span>}
             {renderItemActions?.(item)}
             {!secret && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={status}><span aria-label={status} className={`h-2 w-2 rounded-full ${healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />{status}</span>}
+            {item.used_in && item.used_in.length > 0 && <span className="basis-full pl-10 text-xs text-muted-foreground">Used in: {item.used_in.join(', ')}</span>}
           </div>
   }
   const seen = new Set<string>()

@@ -7,6 +7,8 @@ export interface ProjectVaultItem {
   source?: string
   status: 'connected' | 'needs_attention' | 'stored' | 'online' | 'offline'
   selected: boolean; can_select: boolean
+  /** Names of the person's own projects that use this item (Yours only). */
+  used_in?: string[]
 }
 export interface ProjectVaultGroup {
   id: string; name: string; sharing: string; project: boolean; items: ProjectVaultItem[]
