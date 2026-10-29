@@ -649,51 +649,9 @@ func (o *Observer) appendToWorkspaceLedger(entry costledger.Entry) {
 	}
 }
 
-// matchPhaseScope classifies the scope signals a phase/step identifier can
-// carry. It returns "" when none of them apply, so each caller keeps its own
-// default rather than inheriting another path's.
-func matchPhaseScope(values ...string) string {
-	joined := strings.ToLower(strings.TrimSpace(strings.Join(values, " ")))
-	switch {
-	case strings.Contains(joined, "post_run_monitor"), strings.Contains(joined, "pulse"):
-		return ScopePulse
-	}
-	return ""
-}
-
-// ScopeForScheduledLLMRole maps the scheduler's explicit llm_config_source
-// marker to a cost scope, and returns "" when the request carries none.
-//
-// This marker is the only *reliable* Pulse signal on the chat/query path. A
-// scheduled Pulse turn runs in the same session, with the same agent mode and
-// the same workflow-builder phase id, as the workflow-orchestration turns that
-// precede it — so neither the mode nor the phase can tell them apart. The
-// scheduler already stamps this field when it swaps in the Pulse
-// LLM, so the intent is known at the source and only needs to be honored here.
-func ScopeForScheduledLLMRole(llmConfigSource string) string {
-	switch strings.ToLower(strings.TrimSpace(llmConfigSource)) {
-	case "scheduled_pulse":
-		return ScopePulse
-	}
-	return ""
-}
-
-// ScopeForScheduledTurn classifies the parent scheduler turn itself. The
-// explicit lifecycle flag is authoritative because Pulse can intentionally use
-// the workflow's Builder model and therefore has no llm_config_source marker.
-func ScopeForScheduledTurn(pulseLifecycleTurn bool, llmConfigSource string) string {
-	if pulseLifecycleTurn {
-		return ScopePulse
-	}
-	return ScopeForScheduledLLMRole(llmConfigSource)
-}
-
 // InferScope names the scope for a chat-session agent — the chat/query path
 // and delegate() sub-agents. Anything not otherwise identified is chat.
 func InferScope(agentMode, phaseID string) string {
-	if scope := matchPhaseScope(phaseID); scope != "" {
-		return scope
-	}
 	mode := strings.ToLower(strings.TrimSpace(agentMode))
 	switch {
 	case strings.Contains(mode, "workflow"):
@@ -712,9 +670,6 @@ func InferScope(agentMode, phaseID string) string {
 // the agent's name, because both are driven by the same controller type and
 // the same agent mode.
 func InferWorkflowScope(agentMode string, hasRunFolder bool, identifiers ...string) string {
-	if scope := matchPhaseScope(identifiers...); scope != "" {
-		return scope
-	}
 	if hasRunFolder {
 		return ScopeWorkflowExecution
 	}

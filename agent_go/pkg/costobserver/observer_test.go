@@ -157,8 +157,6 @@ func TestInferScope(t *testing.T) {
 	}{
 		{"chat", "", ScopeChat},
 		{"simple", "", ScopeChat},
-		{"chat", "post_run_monitor", ScopePulse},
-		{"chat", "pulse-fixer", ScopePulse},
 		{"multi-agent", "", ScopeChat},
 		{"workflow", "", ScopeBuilder},
 	}
@@ -177,12 +175,6 @@ func TestInferWorkflowScope(t *testing.T) {
 		identifiers  []string
 		want         string
 	}{
-		{
-			name:        "pulse reviewer stage",
-			agentMode:   "simple",
-			identifiers: []string{"pulse-reviewer-stores-health-1785", "Background: Autopilot reviewer - stores-health", ""},
-			want:        ScopePulse,
-		},
 		{
 			name:         "live workflow step",
 			agentMode:    "simple",

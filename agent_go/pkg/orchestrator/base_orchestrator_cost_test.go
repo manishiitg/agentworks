@@ -224,9 +224,6 @@ func TestAttachCostObserverRecordsBackgroundAgentSpend(t *testing.T) {
 	if row.scope == costobserver.ScopeUnknown || row.scope == "" {
 		t.Errorf("scope = %q — a named launch path must never fall back to unknown", row.scope)
 	}
-	if row.scope != costobserver.ScopePulse {
-		t.Errorf("scope = %q, want %q", row.scope, costobserver.ScopePulse)
-	}
 	if row.sessionID != agentSessionID {
 		t.Errorf("session_id = %q, want %q", row.sessionID, agentSessionID)
 	}

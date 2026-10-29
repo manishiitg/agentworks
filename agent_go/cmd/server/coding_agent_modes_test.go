@@ -1623,14 +1623,6 @@ func TestRequestLLMConfigOverridesManifestOnlyForAgentProfileSource(t *testing.T
 		t.Fatal("agent-profile LLM config should override workflow manifest phase LLM")
 	}
 
-	// A scheduler Pulse turn no longer overrides the manifest: the whole
-	// scheduled conversation stays on the Builder model, and background_llm is
-	// applied by the workshop to the background review agents instead.
-	req.LLMConfigSource = "scheduled_pulse"
-	if requestLLMConfigOverridesManifest(req) {
-		t.Fatal("the retired scheduled_pulse source must not override the workflow manifest")
-	}
-
 	req.LLMConfigSource = "manual"
 	if requestLLMConfigOverridesManifest(req) {
 		t.Fatal("manual request LLM config should keep workflow manifest as source of truth")
