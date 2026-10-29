@@ -156,17 +156,15 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       aria-label={tooltip}
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
-      className={`group relative flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-t-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
-        // Selection uses the label's contrast; retain the same tab height without an accent line.
+      className={`group relative flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-md py-1 text-xs'} ${
+        // A soft background identifies the selected tab without changing its height.
         isActive
-          ? 'font-semibold text-foreground'
+          ? 'bg-muted font-semibold text-foreground'
           : productSurface
           ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
-      {/* A short mark under the selected tab only (owner, 2026-10-29); absolute, so the tab keeps its height. */}
-      {isActive && <span aria-hidden="true" data-tab-active-mark className="pointer-events-none absolute bottom-0 left-2 h-0.5 w-6 rounded-full bg-foreground/70" />}
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
