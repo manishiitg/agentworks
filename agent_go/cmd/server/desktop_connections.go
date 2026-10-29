@@ -405,6 +405,7 @@ type desktopProject struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Kind string `json:"kind"`
+	Mode string `json:"mode,omitempty"`
 }
 
 func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
@@ -431,6 +432,9 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			path, method, body := "/api/workflows/manifests", "GET", ""
 			if kind == "crew" {
 				path, method, body = "/api/workspaces", "POST", `{"action":"list","detail":"navigation"}`
+				if id != "local" {
+					body = `{"action":"list"}`
+				}
 			}
 			req, err := http.NewRequestWithContext(r.Context(), method, base+path, strings.NewReader(body))
 			if err != nil {
@@ -453,6 +457,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 				Workspaces []struct {
 					ID   string `json:"id"`
 					Name string `json:"name"`
+					Mode string `json:"mode"`
 				} `json:"workspaces"`
 				Workflows []struct {
 					Manifest struct {
@@ -468,11 +473,11 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			}
 			projects := []desktopProject{}
 			for _, p := range inventory.Workspaces {
-				projects = append(projects, desktopProject{p.ID, p.Name, "crew"})
+				projects = append(projects, desktopProject{p.ID, p.Name, "crew", p.Mode})
 			}
 			for _, p := range inventory.Workflows {
 				if p.Manifest.Kind != "relay" {
-					projects = append(projects, desktopProject{p.Manifest.ID, p.Manifest.Label, "goal"})
+					projects = append(projects, desktopProject{p.Manifest.ID, p.Manifest.Label, "goal", ""})
 				}
 			}
 			results <- result{projects: projects, status: 200}

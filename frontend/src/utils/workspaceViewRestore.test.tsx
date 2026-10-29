@@ -48,7 +48,8 @@ it('restores all product toolbar selections after remount and isolates projects 
     window.electronAPI = previousElectron
     writeWorkspaceViewPreference('work', 'same-project', 'removed-view')
     expect(readWorkspaceViewPreference('work', 'same-project', normalize, () => 'selected')).toBeNull()
-    expect(readWorkspaceViewPreference('work', 'same-project', normalize)).toBe('selected')
+    // Removed views keep using the current default, not a legacy selection (PLAT-551).
+    expect(readWorkspaceViewPreference('work', 'same-project', normalize)).toBeNull()
     expect(readWorkspaceViewPreference('work', 'legacy-project', normalize, () => 'selected')).toBe('selected')
     expect(readWorkspaceViewPreference('work', 'legacy-project', normalize)).toBe('selected')
   } finally { act(() => root.unmount()) }

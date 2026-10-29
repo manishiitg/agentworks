@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, Globe, Laptop, Plus } from 'lucide-react'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../../services/desktopConnections'
 import { getLocalApiBaseUrl } from '../../services/api'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { followAppLink } from '../../utils/appNavigation'
+import { openAppProduct } from '../../utils/appNavigation'
 
 const local: DesktopConnection = { id: 'local', name: 'Local', server: '' }
 export function DesktopConnections({ children }: { children?: ReactNode }) {
@@ -92,16 +92,17 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
         {!collapsed[c.id] && <div className="space-y-1">
           {c.user && <p className="truncate px-3 text-[11px] text-muted-foreground" title={c.server}>{c.user.email || c.user.username}</p>}
           {current && c.id !== 'local' && <p className="px-3 text-xs text-muted-foreground">Chats run on {c.name}</p>}
-          {current && children ? children : <>
-            {items?.projects.map(project => {
+          {current && children}
+          <>
+            {items?.projects.filter(project => !current || !children || project.mode === 'run').map(project => {
               const path = project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`
-              return <a key={`${project.kind}:${project.id}`} href={path} onClick={e => { if (current) followAppLink(e); else { e.preventDefault(); open(c.id, path) } }} className="block truncate rounded-lg px-4 py-2 text-[13px] hover:bg-muted" title={project.name}>
+              return <button key={`${project.kind}:${project.id}`} onClick={() => { if (current) openAppProduct({ surface: project.kind === 'crew' ? 'work' : 'agentworks', id: project.id }); else open(c.id, path) }} className="block w-full truncate rounded-lg px-4 py-2 text-left text-[13px] hover:bg-muted" title={project.name}>
                 <span className="mr-2 text-[10px] text-muted-foreground">{project.kind === 'crew' ? 'Crew' : 'Goal'}</span>{project.name}
-              </a>
+              </button>
             })}
-            {!items && <p role="status" className="px-4 py-2 text-xs text-muted-foreground">Loading projects…</p>}
-            {items?.status === 'connected' && !items.projects.length && <p className="px-4 py-2 text-xs text-muted-foreground">No accessible Crews or Goals.</p>}
-          </>}
+            {!items && (!current || !children) && <p role="status" className="px-4 py-2 text-xs text-muted-foreground">Loading projects…</p>}
+            {(!current || !children) && items?.status === 'connected' && !items.projects.length && <p className="px-4 py-2 text-xs text-muted-foreground">No accessible Crews or Goals.</p>}
+          </>
           {items?.status === 'unavailable' && <button onClick={() => void refresh()} className="px-3 text-xs text-muted-foreground underline">Server unavailable · Retry</button>}
           {c.id !== 'local' && <div className="flex gap-3 px-3 text-xs text-muted-foreground">
             <button onClick={() => { setName(c.name); setServer(c.server); setAdding(true) }}>{items?.status === 'sign_in' ? 'Sign in again' : 'Reconnect'}</button>
@@ -116,7 +117,6 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
       <label className="block text-xs">Server address<input required type="url" value={server} onChange={e => setServer(e.target.value)} placeholder="https://example.com" className="mt-1 w-full rounded border border-border bg-background p-2 text-sm" /></label>
       <label className="block text-xs">Name<input value={name} onChange={e => setName(e.target.value)} placeholder="My team" className="mt-1 w-full rounded border border-border bg-background p-2 text-sm" /></label>
       <button disabled={busy || !!pending} className="rounded bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">{pending ? 'Waiting for browser sign-in…' : busy ? 'Opening…' : 'Sign in with browser'}</button>
-      {pending && <button type="button" onClick={() => setPending(null)} className="ml-2 text-xs underline">Cancel</button>}
     </form>}
     {error && <p role="alert" className="px-3 text-xs text-destructive">{error}</p>}
   </div>
