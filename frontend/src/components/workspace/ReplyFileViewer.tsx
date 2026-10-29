@@ -10,6 +10,8 @@ import { reviewEndpoint, type ReviewResult } from './chatFileReviewData'
 import type { SavedFileSelection } from './chatFileNavigation'
 
 const FileViewer = lazy(() => import('../FileContentViewer').then(module => ({ default: module.FileContentViewerBody })))
+export const INLINE_REVIEW_FILE_LIMIT = 50
+
 type Version = 'current' | 'changes'
 const missingFile = 'This file no longer exists in the project.'
 const isMissing = (cause: unknown) => (cause as { response?: { status?: number } })?.response?.status === 404
@@ -24,7 +26,7 @@ export type DiffSource = {
 
 /** Two views: Current is the live project file in the normal file viewer (never a
  * saved copy), Changes is the saved comparison diff, or diffSource's diff. */
-export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, diffSource }: { selection: SavedFileSelection; tabId: string; onBack: () => void; embedded?: boolean; diffSource?: DiffSource }) {
+export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, flow = false, diffSource }: { selection: SavedFileSelection; tabId: string; onBack: () => void; embedded?: boolean; flow?: boolean; diffSource?: DiffSource }) {
   const { reference, change, query } = selection
   const [version, setVersion] = useState<Version>('changes')
   const [content, setContent] = useState<{ text: string; bytes?: ArrayBuffer } | null>(null)
@@ -86,7 +88,7 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, di
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not send to this chat.') }
     finally { setSending(false) }
   }
-  return <section className="flex h-full min-h-0 flex-col" aria-label="File versions">
+  return <section data-review-file={change.path} className={`flex min-h-0 flex-col ${flow ? 'shrink-0 scroll-mt-2' : 'h-full'}`} aria-label="File versions">
     <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
       <strong className="min-w-0 flex-1 break-all text-sm">{shownFilePath(change.path)}</strong>
       <select aria-label="File version" value={version} className="rounded border border-border bg-background p-1 text-xs" onChange={event => setVersion(event.target.value as Version)}>
@@ -95,7 +97,7 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, di
       {!embedded && <button type="button" className="text-xs underline" onClick={onBack}>Browse files</button>}
     </header>
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
-    <div className="min-h-0 flex-1 overflow-auto">
+    <div className={flow ? version === 'changes' ? 'min-w-0' : 'h-[60vh] min-h-64 overflow-auto' : 'min-h-0 flex-1 overflow-auto'}>
       {!error && (version === 'changes' ? !comparison ? <p className="p-3 text-sm">Loading comparison…</p> : change.binary ? <p className="p-3 text-sm">This file is not text, so there are no line changes to show. Choose Current to see the file.</p> : !comparison.diff?.trim() ? <p className="p-3 text-sm">No line changes to show for this file. Choose Current to see it.</p> : <DiffRenderer content={comparison.diff || ''} onSelectLine={setAnchor} maxHeightClassName="max-h-none" />
         : !content ? <p className="p-3 text-sm">Loading file…</p>
         : <Suspense fallback={<p className="p-3 text-sm">Loading viewer…</p>}>

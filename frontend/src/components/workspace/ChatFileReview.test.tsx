@@ -2,11 +2,11 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false }))
+const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2 }))
 const replies = [{ snapshot_id: 'first', end_sequence: 2 }, { snapshot_id: 'last', end_sequence: 4 }]
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
-  return { data: { history: { replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: [{ path: 'main.ts', status: 'M', added: 1, removed: 1 }, { path: 'second.ts', status: 'M', added: 1, removed: 1 }], snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
+  return { data: { history: { replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
 }), post: vi.fn(async () => { state.reviewed = true; return { data: {} } }) }, agentApi: { getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: 'current contents' } })) }, workspaceApi: { get: vi.fn() } }))
 vi.mock('../../services/workspaceGit', () => ({ workspaceGitApi: { status: vi.fn(async () => []), diff: vi.fn() } }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { exact: { sessionId: state.sessionId } } }) } }))
@@ -25,6 +25,23 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('shows all 50 saved diffs, keeping the picker for 51 files', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      state.fileCount = 50
+      await act(async () => root.render(<ChatFileReview key="50" workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(50)
+      expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ file: 'file-49.ts', session_id: 'chat-a', through_snapshot_id: 'last', baseline_snapshot_id: 'start' }) }))
+      state.fileCount = 51
+      await act(async () => root.render(<ChatFileReview key="51" workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(1)
+      const last = Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes('file-50.ts'))!
+      await act(async () => last.click())
+      expect(host.querySelector('[data-review-file]')?.getAttribute('data-review-file')).toBe('file-50.ts')
+    } finally { state.fileCount = 2; await act(async () => root.unmount()); host.remove() }
+  })
+
   it('pins the displayed historical line and sends only to the originating chat; refuses a replaced chat', async () => {
     const host = document.createElement('div'); document.body.append(host)
     let root = createRoot(host)
@@ -33,9 +50,9 @@ describe('Studio review comments', () => {
       const button = (text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(text))!
       expect(host.textContent).toContain('Changes in this chat')
       expect(host.textContent).not.toContain('since your last review')
-      // The first file opens without a click, and selecting another changes the
-      // embedded viewer rather than navigating to a separate file screen.
-      expect(api.get).toHaveBeenLastCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ session_id: 'chat-a', through_snapshot_id: 'last', baseline_snapshot_id: 'start', file: 'main.ts' }) }))
+      // Small sets show every file without a click, with the same pinned comparison.
+      // The file list only jumps within that view.
+      expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ session_id: 'chat-a', through_snapshot_id: 'last', baseline_snapshot_id: 'start', file: 'main.ts' }) }))
       expect(host.textContent).toContain('old')
       expect(host.textContent).not.toContain('Looks good')
       expect(host.querySelector('select')?.value).toBe('changes')
@@ -43,7 +60,7 @@ describe('Studio review comments', () => {
       expect(host.textContent).toContain('new second')
       expect(api.get).toHaveBeenLastCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ file: 'second.ts', through_snapshot_id: 'last', baseline_snapshot_id: 'start' }) }))
       expect(openChatFiles).not.toHaveBeenCalled()
-      expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(1)
+      expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(2)
       expect(host.textContent).not.toContain('Uncommitted')
       const selection = { reference: { workspacePath: 'Crew/example', sessionId: 'chat-a', snapshotId: '' }, change: { path: 'main.ts', status: 'M' }, query: { session_id: 'chat-a', through_snapshot_id: 'last', baseline_snapshot_id: 'start' } }
       await act(async () => root.render(<ReplyFileViewer selection={selection} tabId="exact" onBack={() => undefined} />))

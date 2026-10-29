@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { FolderOpen, RefreshCw } from 'lucide-react'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
-import { ReplyFileViewer } from './ReplyFileViewer'
+import { INLINE_REVIEW_FILE_LIMIT, ReplyFileViewer } from './ReplyFileViewer'
 import { workspaceGitApi, type GitBranchCompare, type GitChangedFile, type GitRepo } from '../../services/workspaceGit'
 
 type Scope = 'uncommitted' | 'branch' | 'chat'
@@ -30,6 +30,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
   const [branches, setBranches] = useState<string[]>([])
   const [compare, setCompare] = useState<GitBranchCompare | null>(null)
   const [selected, setSelected] = useState<{ repo: string; path: string } | null>(null)
+  const viewers = useRef<HTMLDivElement>(null)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   const folder = workspacePath.split('/').filter(Boolean).pop() || 'Project'
@@ -59,7 +60,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
   const repoLabel = (root: string) => root || 'the Crew folder'
   // Changes for the selected file, and how a clicked line is named in the
   // message to this chat (repo, file, side, line and which comparison).
-  const diffSource = current && !current.path.endsWith('/') ? {
+  const sourceFor = (current: Row) => !current.path.endsWith('/') ? {
     load: () => scope === 'branch' && baseSha && headSha
       ? workspaceGitApi.branchDiff(workspacePath, current.repo, current.path, baseSha, headSha)
       : workspaceGitApi.diff(workspacePath, current.repo, current.path),
@@ -67,6 +68,13 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
       ? `branch ${compare?.branch || 'this version'} compared with ${compare?.base}, ${baseSha.slice(0, 7)}..${headSha.slice(0, 7)}`
       : 'changes not committed yet, compared with the latest commit'}):`,
   } : undefined
+  const inline = rows.length > 0 && rows.length <= INLINE_REVIEW_FILE_LIMIT && !(scope === 'branch' && compare?.truncated)
+  const filePath = (row: Row) => row.repo ? `${row.repo}/${row.path}` : row.path
+  const selectFile = (row: Row) => {
+    setSelected({ repo: row.repo, path: row.path })
+    if (inline) Array.from(viewers.current?.querySelectorAll<HTMLElement>('[data-review-file]') ?? [])
+      .find(element => element.dataset.reviewFile === filePath(row))?.scrollIntoView?.({ block: 'start' })
+  }
   const uncommittedCount = repos.reduce((sum, item) => sum + item.files.length, 0)
   const note = scope === 'uncommitted'
     ? uncommittedCount === 0 ? 'Nothing to commit: every file matches the latest commit.'
@@ -113,7 +121,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
         if (!items.length) return null
         return <div key={root} className="grid gap-0.5">
           {grouped && <p className="px-2 pt-1 text-[11px] uppercase tracking-wide text-muted-foreground">{repoName(root)}{repos.find(item => item.root === root)?.branch ? ` · ${repos.find(item => item.root === root)?.branch}` : ''}</p>}
-          {items.map(row => <button type="button" key={`${row.repo}:${row.path}`} aria-pressed={current === row} onClick={() => setSelected({ repo: row.repo, path: row.path })}
+          {items.map(row => <button type="button" key={`${row.repo}:${row.path}`} aria-pressed={current === row} onClick={() => selectFile(row)}
             className={`flex gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50 ${current === row ? 'bg-muted font-medium' : ''}`}>
             <span className="min-w-0 flex-1 break-all">{row.path}</span>
             {row.label && <span className="text-muted-foreground">{row.label}</span>}
@@ -123,10 +131,13 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, onRefresh, o
       })}
       {compare?.truncated && <p className="p-2 text-xs text-muted-foreground">Only the first files are listed.</p>}
     </div>
-    {current && <div className="min-h-0 flex-1 border-t border-border">
-      {diffSource ? <ReplyFileViewer key={`${scope}:${current.repo}:${current.path}:${baseSha}:${headSha}:${revision}`} embedded diffSource={diffSource} tabId={tabId} onBack={onBrowse}
-        selection={{ reference: { workspacePath, sessionId, snapshotId: '' }, change: { path: current.repo ? `${current.repo}/${current.path}` : current.path, status: current.label, binary: current.binary } }} />
-        : <p className="p-3 text-sm">A new folder. Open it with Browse files to see what is inside.</p>}
+    {current && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${inline ? 'overflow-y-auto' : ''}`}>
+      {(inline ? rows : [current]).map(row => {
+        const diffSource = sourceFor(row)
+        return diffSource ? <ReplyFileViewer key={`${scope}:${row.repo}:${row.path}:${baseSha}:${headSha}:${revision}`} embedded flow={inline} diffSource={diffSource} tabId={tabId} onBack={onBrowse}
+          selection={{ reference: { workspacePath, sessionId, snapshotId: '' }, change: { path: filePath(row), status: row.label, binary: row.binary } }} />
+          : <p key={filePath(row)} data-review-file={filePath(row)} className="p-3 text-sm">{filePath(row)}: A new folder. Open it with Browse files to see what is inside.</p>
+      })}
     </div>}
   </section>
 }

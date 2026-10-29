@@ -1,11 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { FolderOpen, RefreshCw } from 'lucide-react'
 import { workspaceGitApi, type GitRepo } from '../../services/workspaceGit'
 import { GitReview } from './GitReview'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { shownFilePath } from '../../utils/replyFileChanges'
 import api from '../../services/api'
-import { ReplyFileViewer } from './ReplyFileViewer'
+import { INLINE_REVIEW_FILE_LIMIT, ReplyFileViewer } from './ReplyFileViewer'
 import { reviewEndpoint as endpoint, useReviewRevision, type ReviewResult as Result, type FileChange as Change } from './chatFileReviewData'
 
 // Older replies' saved copies are cleared to save space; name the message the comparison starts from.
@@ -50,6 +50,7 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
   const [revision, refresh] = useReviewRevision()
   const [error, setError] = useState('')
   const [selectedPath, setSelectedPath] = useState('')
+  const viewers = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const baseline = result?.history.baseline_snapshot_id
   const params = { workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, baseline_snapshot_id: baseline }
@@ -74,6 +75,12 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
   }
   const changes: Change[] = result?.comparison?.changes ?? []
   const selected = changes.find(change => change.path === selectedPath) ?? changes[0]
+  const inline = changes.length > 0 && (result?.total_changes ?? changes.length) <= INLINE_REVIEW_FILE_LIMIT && !result?.next_offset
+  const selectFile = (path: string) => {
+    setSelectedPath(path)
+    if (inline) Array.from(viewers.current?.querySelectorAll<HTMLElement>('[data-review-file]') ?? [])
+      .find(element => element.dataset.reviewFile === path)?.scrollIntoView?.({ block: 'start' })
+  }
   return <section className="flex h-full min-h-0 flex-col" aria-label="Changes in this chat">
     {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
     <WorkspaceViewHeader title="Files" subtitle={reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
@@ -93,7 +100,7 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
       {result && !result.comparison && <p className="p-3 text-sm">{result.history.note}</p>}
       <div className="grid gap-1 border-b border-border p-2">
         {result?.comparison && <p className="p-2 text-xs text-muted-foreground">{result.total_changes ?? changes.length} changed files{!reviewId && !result.history.reviews?.length && !result.history.available ? startedFrom(result.history.start_message) : ''}</p>}
-        {changes.map(change => <button type="button" key={change.path} aria-pressed={selected?.path === change.path} className={`flex gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50 ${selected?.path === change.path ? 'bg-muted font-medium' : ''}`} onClick={() => setSelectedPath(change.path)}>
+        {changes.map(change => <button type="button" key={change.path} aria-pressed={selected?.path === change.path} className={`flex gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50 ${selected?.path === change.path ? 'bg-muted font-medium' : ''}`} onClick={() => selectFile(change.path)}>
           <span className="min-w-0 flex-1 break-all">{shownFilePath(change.path)}</span><span>{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span><span className="text-diff-add">{!change.binary && `+${change.added ?? 0}`}</span><span className="text-diff-del">{change.binary ? 'Binary' : `−${change.removed ?? 0}`}</span>
         </button>)}
         {!!result?.next_offset && <button type="button" disabled={loadingMore} className="p-2 text-xs underline" onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Show more files'}</button>}
@@ -102,10 +109,10 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
       {(result?.comparison?.uncaptured_changes ?? 0) > 0 && <p role="status" className="p-3 text-xs text-muted-foreground">{result?.comparison?.uncaptured_changes} files could not be compared.</p>}
       {result?.comparison?.note && <p className="px-3 py-2 text-xs text-muted-foreground">{result.comparison.note}</p>}
     </div>
-    {selected && through && <div className="min-h-0 flex-1 border-t border-border">
-      <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${selected.path}`} embedded
-        selection={{ reference: { workspacePath, sessionId, snapshotId: '' }, change: selected, query: { session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }}
-        tabId={tabId} onBack={onBrowse} />
+    {selected && through && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${inline ? 'overflow-y-auto' : ''}`}>
+      {(inline ? changes : [selected]).map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.path}`} embedded flow={inline}
+        selection={{ reference: { workspacePath, sessionId, snapshotId: '' }, change, query: { session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }}
+        tabId={tabId} onBack={onBrowse} />)}
     </div>}
   </section>
 }
