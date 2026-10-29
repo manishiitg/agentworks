@@ -988,7 +988,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const adminPage = useAppStore(state => state.adminPage)
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
-  const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
+  const handledLegacyViewEvents = useRef<{ session?: string; count: number; since: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length, since: Date.now() })
   const selectWorkspaceView = useCallback((view: WorkWorkspaceView, navigation = true) => {
     const allowedView = isWorkWorkspaceViewEnabled(view, undefined) ? view : 'files'
     setWorkspaceView(allowedView)
@@ -1099,17 +1099,20 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   useEffect(() => {
     const session = activeSessionId ?? undefined
     if (handledLegacyViewEvents.current.session !== session) {
-      handledLegacyViewEvents.current = { session, count: legacyViewEvents.length }
+      handledLegacyViewEvents.current = { session, count: legacyViewEvents.length, since: Date.now() }
       return
     }
     for (const event of legacyViewEvents.slice(handledLegacyViewEvents.current.count)) {
+      // The chat's history loads after it opens; an old "open the dashboard" must not
+      // replay (it took phones straight to the dashboard). A minute covers clock skew.
+      if (event.at && event.at < handledLegacyViewEvents.current.since - 60_000) continue
       const view = event.payload.view
       if (typeof view === 'string') {
         openWorkPresentationView(view)
         if (event.payload.action === 'refresh') setWorkspaceViewRefresh(value => value + 1)
       }
     }
-    handledLegacyViewEvents.current = { session, count: legacyViewEvents.length }
+    handledLegacyViewEvents.current = { ...handledLegacyViewEvents.current, session, count: legacyViewEvents.length }
   }, [activeSessionId, legacyViewEvents, openWorkPresentationView])
 
   const changeWorkRuntime = useCallback(async (selection: WorkRuntimeSelection) => {

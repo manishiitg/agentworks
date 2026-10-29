@@ -12,6 +12,8 @@ export type PresentationUpdatedEvent = {
   title: string
   workspacePath: string
   payload: Record<string, unknown>
+  /** When the server emitted it (ms, 0 when unknown). */
+  at: number
   activity: {
     label: string
     destination: string
@@ -45,6 +47,7 @@ export function parsePresentationUpdatedEvent(event: PollingEvent): Presentation
     title: asString(data.title),
     workspacePath: asString(data.workspace_path),
     payload: (data.payload as Record<string, unknown> | undefined) ?? {},
+    at: Date.parse(event.timestamp || '') || 0,
     activity: {
       label: asString(data.activity?.label),
       destination: asString(data.activity?.destination),

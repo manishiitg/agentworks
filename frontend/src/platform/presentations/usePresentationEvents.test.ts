@@ -35,6 +35,7 @@ describe('parsePresentationUpdatedEvent', () => {
       title: 'Launch video',
       workspacePath: 'Chats/Example Product/projects/demo',
 		payload: { path: 'outputs/final.mp4' },
+		at: 0,
 		activity: { label: 'Video ready', destination: 'Videos panel', detail: 'Ready to review' },
     })
   })
@@ -56,7 +57,7 @@ describe('parsePresentationUpdatedEvent', () => {
   it('defaults title, workspace path, and payload rather than throwing when absent', () => {
     const parsed = parsePresentationUpdatedEvent(typedEvent({ presentation_id: 'x', kind: 'media.video' }))
 		expect(parsed).toEqual({
-			presentationId: 'x', kind: 'media.video', title: '', workspacePath: '', payload: {},
+			presentationId: 'x', kind: 'media.video', title: '', workspacePath: '', payload: {}, at: 0,
 			activity: { label: '', destination: '', detail: '' },
 		})
   })
