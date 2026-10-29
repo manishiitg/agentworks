@@ -192,7 +192,7 @@ func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite
 	}
 	sort.Strings(folders)
 	for _, p := range folders {
-		plan.Note += fmt.Sprintf("Undo leaves %s alone: this reply created it as a new Git folder (%d files). Delete the folder if you don't want it. ", p, leftNew[p])
+		plan.Note += fmt.Sprintf("Undo leaves %s alone: it is a new Git folder from this reply whose starting files could not be read (%d files). Delete the folder if you don't want it. ", p, leftNew[p])
 	}
 	plan.Note = strings.TrimSpace(plan.Note)
 	return plan, r, nil

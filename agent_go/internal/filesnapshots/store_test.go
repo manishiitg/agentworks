@@ -1113,9 +1113,9 @@ func TestRefreshedStatPersistsForUnchangedContent(t *testing.T) {
 // PLAT-746-165: a linked worktree the agent added during a reply showed every
 // checked-out file as added (3,081 files). Its baseline is the commit it was
 // added at: only the reply's own edits show, including one it committed, the
-// chat's combined changes agree, Undo restores just those edits, a checkout
-// made from scratch (git init) is left to the person, and removing the
-// worktree later reports no deletions.
+// chat's combined changes agree, Undo restores just those edits (and still
+// removes files of a checkout the agent made from scratch with git init),
+// and removing the worktree later reports no deletions.
 func TestNewCheckoutComparesAgainstItsCheckedOutCommit(t *testing.T) {
 	f := newCrew(t)
 	ctx := t.Context()
@@ -1185,10 +1185,10 @@ func TestNewCheckoutComparesAgainstItsCheckedOutCommit(t *testing.T) {
 		t.Fatalf("chat changes = %v, want %v", got, want)
 	}
 	plan, err := f.s.ApplyUndo(ctx, first, all, all)
-	if err != nil || len(plan.Restore) != 7 || !strings.Contains(plan.Note, "fresh") {
+	if err != nil || len(plan.Restore) != 8 || plan.Note != "" {
 		t.Fatalf("undo: %v %+v", err, plan)
 	}
-	for rel, want := range map[string]string{"wt/a.txt": "a\n", "wt/b.txt": "b\n", "wt/c.txt": "c\n", "wt/d.txt": "d\n", "wt/new.txt": "<missing>", "wt/more.txt": "more\n", "fresh/x.txt": "x\n", "wt2/e.txt": "<missing>", "wt3/a.txt": "a\n", "wt3/e.txt": "e\n"} {
+	for rel, want := range map[string]string{"wt/a.txt": "a\n", "wt/b.txt": "b\n", "wt/c.txt": "c\n", "wt/d.txt": "d\n", "wt/new.txt": "<missing>", "wt/more.txt": "more\n", "fresh/x.txt": "<missing>", "wt2/e.txt": "<missing>", "wt3/a.txt": "a\n", "wt3/e.txt": "e\n"} {
 		if got := read(rel); got != want {
 			t.Fatalf("after undo %s = %q, want %q", rel, got, want)
 		}
