@@ -80,8 +80,8 @@ func canonicalCrewWorkspaceRoot(workspacePath string) string {
 // project of any owner: a shared Crew/<id> path, a physical per-user path,
 // or the caller's own logical path, under Chats/Work/projects/<project>.
 func isCrewProjectPath(workspacePath string) bool {
-	product, _, ok := projectProductForPath(workspacePath)
-	return ok && projectSupportsRunAudience(product.ProfileID)
+	_, _, ok := projectProductForPath(workspacePath)
+	return ok
 }
 
 // crewProjectOwnedByCaller reports whether the caller owns the crew project
@@ -118,18 +118,7 @@ func crewProjectOwnedByCallerStrict(callerID, workspacePath string) bool {
 // manifest path, so registry operations on them never touch the owner's
 // manifest.
 func resolveConversationBindingForUser(ctx context.Context, userID string, profile agentprofiles.Profile, requestedKey string) (productConversationBinding, bool, error) {
-	if isProjectProfileID(profile.ID) && !projectSupportsRunAudience(profile.ID) {
-		// A private-only origin conversation belongs only to its owner.
-		project, err := resolveCrewProjectBinding(ctx, userID, profile, requestedKey, "")
-		if err != nil {
-			return productConversationBinding{}, true, err
-		}
-		if !project.OwnedByCaller {
-			return productConversationBinding{}, true, fmt.Errorf("Code access denied")
-		}
-		return project.Binding, project.OwnedByCaller, nil
-	}
-	if !projectSupportsRunAudience(profile.ID) {
+	if !isProjectProfileID(profile.ID) {
 		binding, err := resolveProductConversationBinding(ctx, userID, profile, requestedKey)
 		if err != nil {
 			return productConversationBinding{}, true, err
@@ -160,7 +149,7 @@ func crewBuilderDiskHiddenFromUser(userID, workflowPath string) bool {
 // project: a work-profile turn whose folder is a crew project the caller
 // does not own. Owner turns, landing chats, and non-crew turns are false.
 func isCrewReaderTurn(req QueryRequest, callerID string) bool {
-	if !projectSupportsRunAudience(req.AgentProfileID) {
+	if !isProjectProfileID(req.AgentProfileID) {
 		return false
 	}
 	folder := strings.TrimSpace(req.SelectedFolder)
@@ -203,7 +192,7 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	}
 	// Only origins with a Run audience resolve under another owner. This is
 	// independent of the legacy product ID retained by storage and sessions.
-	if !projectSupportsRunAudience(profile.ID) {
+	if !isProjectProfileID(profile.ID) {
 		return denied()
 	}
 	// Projects are private to their owner when project sharing is switched off (project_sharing.go).
@@ -331,7 +320,7 @@ func crewReaderWorkspaceRoots(profileRoot string, reader bool) (readRoots, write
 // only ever narrow what an owner's turn may do.
 func crewGuestCallerForTurn(req QueryRequest, currentUserID string) string {
 	guest := strings.TrimSpace(req.CrewGuestCaller)
-	if guest == "" || !projectSupportsRunAudience(req.AgentProfileID) {
+	if guest == "" || !isProjectProfileID(req.AgentProfileID) {
 		return ""
 	}
 	folder := strings.TrimSpace(req.SelectedFolder)

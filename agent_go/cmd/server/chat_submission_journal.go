@@ -577,12 +577,8 @@ func durableSubmissionProject(owner, session string) (string, error) {
 	// when the process-local binding disappeared; never guess from a session name.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	roots := []string{"Workflow"}
-	for _, product := range projectProducts {
-		roots = append(roots, workspaceref.PhysicalPath(owner, product.ProjectsRoot))
-	}
 	// Crews that moved to the shared root (PLAT-442 step 4): only the owner's own are this owner's.
-	roots = append(roots, workspaceref.SharedCrewRoot)
+	roots := []string{"Workflow", workspaceref.PhysicalPath(owner, crewProduct.ProjectsRoot), workspaceref.SharedCrewRoot}
 	projects := map[string]bool{}
 	for _, root := range roots {
 		if err := ctx.Err(); err != nil {

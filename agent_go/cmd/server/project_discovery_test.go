@@ -19,7 +19,6 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 		t.Run(origin, func(t *testing.T) {
 			f := newMultiUserFixture(t, legacyIdentityLayout())
 			profile, folder, id := f.Crew, fixtureCrewFolder, fixtureCrewID
-			product, _ := projectProductForProfile(origin)
 			old := f.Layout.CrewPhysical(fixtureUserA, folder)
 			current := workspaceref.SharedProjectPath(folder)
 			if err := os.MkdirAll(filepath.Join(f.Docs, "Crew"), 0755); err != nil {
@@ -109,7 +108,7 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			if count != 1 || strings.Contains(string(w), "workspace_path") {
 				t.Fatalf("navigation count=%d or MCP shape changed: %s", count, w)
 			}
-			if items, err := listWorkspaceProjectsForOwner(ctx, fixtureUserA, fixtureUserA, "", product); err != nil || len(items) != 1 {
+			if items, err := listCrewProjectsForOwner(ctx, fixtureUserA, fixtureUserA, ""); err != nil || len(items) != 1 {
 				t.Fatalf("Builder directory=%v err=%v", items, err)
 			}
 			// A missing current manifest cannot redirect deletion to the old location.

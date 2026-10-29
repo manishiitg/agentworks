@@ -153,7 +153,7 @@ func (api *StreamingAPI) handleListSharedProjects(w http.ResponseWriter, r *http
 		writeAgentProfileError(w, http.StatusNotFound, "shared projects not found")
 		return
 	}
-	if !projectSupportsRunAudience(profile.ID) {
+	if !isProjectProfileID(profile.ID) {
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
 		return
 	}

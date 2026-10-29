@@ -443,7 +443,7 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 			externalError(w, http.StatusBadRequest, "update_failed", err.Error())
 			return
 		}
-		crew, manifest, summary, ok = api.externalCrewResolve(ctx, claims, workspaceExternalID(manifest.Product, manifest.ID))
+		crew, manifest, summary, ok = api.externalCrewResolve(ctx, claims, manifest.ID)
 		if !ok {
 			externalJSON(w, map[string]any{"crew_id": manifest.ID, "updated": true})
 			return

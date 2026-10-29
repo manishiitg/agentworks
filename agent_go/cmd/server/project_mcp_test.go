@@ -512,7 +512,7 @@ func TestProjectMCPCrewStableIDUsesCanonicalFunctionSurface(t *testing.T) {
 			t.Fatal("stable selector refused", selector)
 		}
 	}
-	body, _ := json.Marshal(map[string]any{"name": "functions", "arguments": map[string]any{"action": "list", "crew_id": a.ID}})
+	body, _ := json.Marshal(map[string]any{"name": "functions", "arguments": map[string]any{"action": "list", "project": a.ID}})
 	rec := httptest.NewRecorder()
 	api.handleExternalCall(rec, adminRequest("POST", "/api/external/call", string(body), claims, nil))
 	out := map[string]any{}

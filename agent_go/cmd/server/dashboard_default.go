@@ -120,9 +120,7 @@ func (api *StreamingAPI) defaultDashboardInfoFor(ctx context.Context, claims *Us
 	info := defaultDashboardInfo{Kind: target.Kind, Title: target.Title}
 	switch target.Kind {
 	case "crew":
-		origin := crewProfileID
-
-		crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, workspaceExternalID(origin, target.ID))
+		crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, target.ID)
 		if !ok {
 			return info, dashboardFailure(404, "project unavailable")
 		}
