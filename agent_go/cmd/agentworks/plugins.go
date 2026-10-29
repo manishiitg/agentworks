@@ -447,9 +447,6 @@ func receiptAfterEmit(ctx context.Context, root string, o *options, req agentwor
 	var receipts sync.WaitGroup
 	defer receipts.Wait()
 	for _, m := range messages {
-		if m.Kind == "status" {
-			continue // the helper already recorded delivery
-		}
 		receipts.Add(1)
 		go func(m agentworksclient.AgentLiveMessage) {
 			defer receipts.Done()

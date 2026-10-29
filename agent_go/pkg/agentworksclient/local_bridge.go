@@ -156,11 +156,7 @@ type localSession struct {
 	HookTransport    string    `json:"hook_transport,omitempty"`
 	lateNotice       string    // set when an attach finished after its command had given up; said once on the next prompt
 	museWatch        *museWatchState
-	// One-off pre-349 migration marker. New lifecycle events never set it.
-	// A successful exact-native reattach drops it with the replaced record.
-	// Remove after the saved pre-fix records have returned or been retired.
-	LegacyLifecycleMigration bool `json:"offline_explicit,omitempty"`
-	OwnCLI                   bool `json:"own_cli,omitempty"`
+	OwnCLI           bool `json:"own_cli,omitempty"`
 	// Also marks an extra network this chat joined next to its own (--also);
 	// Network is that login's name. The chat's own attachment has neither.
 	Also             bool            `json:"also,omitempty"`
@@ -1005,60 +1001,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 	}
 	s := b.sessions[key]
-	migrateLifecycle := false
-	if s != nil && s.LegacyLifecycleMigration && !s.ServerClosed && (s.NativeRemote != "" || s.Also) && (in.Action == "resume" || in.Action == "attach" && in.Also && in.Automatic) {
-		remote := s.NativeRemote
-		if s.Also {
-			if primary := b.sessions[primaryKey]; primary != nil {
-				remote = primary.NativeRemote
-			}
-		}
-		var verified string
-		var current struct {
-			AgentID    string           `json:"agent_id"`
-			Attachment *AgentAttachment `json:"attachment"`
-		}
-		var inspectErr error
-		client, name := s.client, s.Attachment.AgentName
-		if b.options.NativeRoute != nil && remote != "" && in.HostKey != "" && client != nil {
-			b.unlocked(func() {
-				verified = b.options.NativeRoute(in.Provider, in.SessionID, in.HostKey, remote)
-				if verified == "" {
-					return
-				}
-				var raw json.RawMessage
-				raw, inspectErr = client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "inspect", "agent_name": name}, true)
-				if inspectErr == nil {
-					inspectErr = json.Unmarshal(raw, &current)
-				}
-			})
-		}
-		if b.sessions[key] != s || b.stopped[key] || s.ServerClosed || verified == "" || inspectErr != nil || current.AgentID == "" {
-			return LocalBridgeReply{Offline: true, Attachment: s.Attachment, Error: "Waiting to verify this exact chat and its old connection before repairing it."}
-		}
-		if current.AgentID != s.Attachment.AgentID || current.Attachment != nil && current.Attachment.ID != s.Attachment.ID {
-			s.ServerClosed, s.Offline, s.LegacyLifecycleMigration = true, true, false
-			s.LastError = "This name is connected to another chat. Ask to connect this chat again if you want to move it back."
-			_ = b.save()
-			log.Printf("[BRIDGE-MIGRATION] outcome=connected_elsewhere agent=%s attachment=%s", name, s.Attachment.ID)
-			return LocalBridgeReply{Stopped: true, Offline: true, Attachment: s.Attachment, Error: s.LastError}
-		}
-		// Only the old hook's now-vacant lease needs the one-time fence reset.
-		// An existing lease keeps its fence; a different live attachment won above.
-		in.AttachmentID = s.Attachment.ID
-		if current.Attachment == nil {
-			in.AttachmentID = ""
-		}
-		migrateLifecycle = true
-		log.Printf("[BRIDGE-MIGRATION] outcome=attempt agent=%s attachment=%s", name, s.Attachment.ID)
-	}
 	if in.Action == "attach" && in.Also && in.Automatic {
 		if s == nil {
 			return LocalBridgeReply{Stopped: true}
 		}
-		if !migrateLifecycle {
-			in.AttachmentID = s.Attachment.ID
-		}
+		in.AttachmentID = s.Attachment.ID
 	}
 	if in.Action == "attach" && in.Automatic && (b.stopped[key] || s != nil && s.ServerClosed) {
 		return LocalBridgeReply{Stopped: true, Error: "This chat was disconnected. Ask to connect it again when you want messages."}
@@ -1343,9 +1290,6 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		res := network()
 		b.reacquire(away)
 		if res.fail != nil {
-			if migrateLifecycle {
-				log.Printf("[BRIDGE-MIGRATION] outcome=failed agent=%s attachment=%s", s.Attachment.AgentName, s.Attachment.ID)
-			}
 			if res.fail.Stopped && s != nil && b.sessions[key] == s {
 				s.ServerClosed, s.Offline = true, true
 				s.LastError = "This chat's name is connected elsewhere. Ask to connect it again if you want to move the name back."
@@ -1424,9 +1368,6 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		b.refreshNativeWakeStreams()
-		if s != nil && s.LegacyLifecycleMigration {
-			log.Printf("[BRIDGE-MIGRATION] outcome=reconnected agent=%s attachment=%s", next.Attachment.AgentName, next.Attachment.ID)
-		}
 		// A replaced chat stays disconnected when its next hook runs. Only an
 		// explicit attach from that chat may take the name back.
 		if b.stopped == nil {
@@ -1854,7 +1795,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			// Muse's receive tool is how messages are read: give the setup text and
 			// any waiting messages together instead of an apparently empty inbox.
 		}
-		providerForTransport := map[string]string{"claude_session": "claude", "claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_desktop": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}
+		providerForTransport := map[string]string{"claude_session": "claude", "claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_desktop": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}
 		if providerForTransport[in.Transport] != s.Attachment.Provider {
 			return LocalBridgeReply{Error: "unsupported delivery adapter for this provider"}
 		}
@@ -2699,7 +2640,7 @@ func (b *localBridge) autoUpdateLoop(ctx context.Context) {
 	}
 }
 
-// acknowledgeLines records completed handling of server-authored lines in one call.
+// acknowledgeLines records delivery of person ping notifications.
 func (b *localBridge) acknowledgeLines(s *localSession, ids []string, transport string) {
 	client, attachment := s.client, s.Attachment
 	go func() {
@@ -2707,7 +2648,7 @@ func (b *localBridge) acknowledgeLines(s *localSession, ids []string, transport 
 		defer cancel()
 		for _, id := range ids {
 			if _, err := client.Call(ctx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": id, "delivery": "delivered", "transport": transport}); err != nil {
-				log.Printf("[BRIDGE] could not acknowledge status line %s: %v", id, err)
+				log.Printf("[BRIDGE] could not acknowledge ping %s: %v", id, err)
 				return
 			}
 		}

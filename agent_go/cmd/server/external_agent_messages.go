@@ -471,7 +471,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"attachment_id":          externalString("Exact attachment generation in the channel event; required for receipt acknowledgements."),
 		"message_id":             externalString("Incoming message ID being acknowledged or removed with delete; for ping_person, a message this agent sent that is still waiting for a reply (one ping per message: the target's person gets a desktop notification)."),
 		"delivery":               externalString("The one receipt: delivered, once this chat received the message. It does not claim that work is finished."),
-		"transport":              externalString("Receipt route: codex_queue, codex_hook, claude_channel, claude_hook, muse_session, tmux or mailbox."),
+		"transport":              externalString("Receipt route: codex_queue, codex_desktop, codex_hook, claude_channel, claude_session, claude_hook, cursor_hook, muse_hook, agy_hook, pi_hook, pi_extension or mailbox."),
 		"agent_name":             externalString("Account-owned registered name. Register/unregister selects it; send selects the named sender; read without inbox_id polls all incoming contacts for this name. Only its allowed connections can use it."),
 		"expected_agent_id":      externalString("CLI register identity fence: the saved agent must belong to this same account. Does not select or attach a chat."),
 		"provider":               externalString("CLI register only: observed provider of this chat, used to refuse taking an active conversation's name. Does not attach a chat."),

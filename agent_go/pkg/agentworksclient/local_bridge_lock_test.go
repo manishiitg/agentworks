@@ -667,18 +667,14 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 			Expected string `json:"attachment_id"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body.Action == "inspect" {
-			_, _ = w.Write([]byte(`{"agent_id":"agent-background","attachment":null}`))
-			return
-		}
 		if body.Action == "detach" {
 			detaches.Add(1)
 		}
 		if body.Action == "attach" {
 			if body.Session == "background" {
 				attempt := backgroundAttachments.Add(1)
-				if attempt == 1 && body.Expected != "" || attempt > 1 && body.Expected != "background-renewed" {
-					t.Error("legacy lifecycle repair was not limited to the first reattach")
+				if attempt == 1 && body.Expected != "lease-background" || attempt > 1 && body.Expected != "background-renewed" {
+					t.Error("recovery did not retain the saved attachment")
 				}
 				if nameReplaced.Load() {
 					w.WriteHeader(http.StatusConflict)
@@ -710,7 +706,6 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	background := seed("background", "lease-background", false)
 	background.NativeRemote = "desktop+unix:///fixture.sock"
 	background.ReadPosition = 7
-	background.LegacyLifecycleMigration = true
 	closed := seed("closed", "lease-closed", true)
 	closed.NativeRemote = background.NativeRemote
 	if err = atomicLiveJSON(filepath.Join(root, "sessions.json"), map[string]*localSession{
@@ -784,7 +779,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	if err := readLiveJSON(filepath.Join(root, "sessions.json"), &restored); err != nil {
 		t.Fatal(err)
 	}
-	if s := restored[localBridgeKey("codex", "background")]; s == nil || s.ReadPosition != 7 || s.ParentConfigPath != config || s.LegacyLifecycleMigration {
+	if s := restored[localBridgeKey("codex", "background")]; s == nil || s.ReadPosition != 7 || s.ParentConfigPath != config {
 		t.Fatalf("background recovery lost the saved login or read position: %+v", s)
 	}
 	// A real SessionEnd-style IPC request must leave the server lease intact
@@ -1171,31 +1166,6 @@ func TestNativeRecoveryBatchesRotatePastOldChats(t *testing.T) {
 	last, _ := nativeRecoveryBatch(saved, cursor)
 	if last[0].ID != "lease-00" || last[1].ID != "lease-64" {
 		t.Fatal("recovery did not wrap after checking the oldest chat")
-	}
-}
-
-func TestLegacyLifecycleRepairDoesNotReclaimMovedNames(t *testing.T) {
-	var attaches atomic.Int32
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Action string `json:"action"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body.Action == "attach" {
-			attaches.Add(1)
-		}
-		_, _ = w.Write([]byte(`{"agent_id":"own-agent","attachment":{"attachment_id":"other-chat-lease"}}`))
-	}))
-	defer remote.Close()
-	root := t.TempDir()
-	client, _ := New(remote.URL, "fixture")
-	key := localBridgeKey("codex", "saved-chat")
-	s := &localSession{LegacyLifecycleMigration: true, Offline: true, AccountSenders: true, NativeRemote: "desktop+unix:///fixture.sock", client: client, Attachment: AgentAttachment{ID: "old-ended-lease", AgentID: "own-agent", AgentName: "saved-name", Provider: "codex", SessionID: "saved-chat"}}
-	b := &localBridge{root: root, sessions: map[string]*localSession{key: s}, changed: make(chan struct{}), options: LocalBridgeOptions{NativeRoute: func(string, string, string, string) string { return s.NativeRemote }}}
-	ctx := context.Background()
-	out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "resume", Provider: "codex", SessionID: "saved-chat", HostKey: "actual-process", AttachmentID: "old-ended-lease"})
-	if !out.Stopped || attaches.Load() != 0 || !s.ServerClosed || s.LegacyLifecycleMigration {
-		t.Fatalf("legacy repair reclaimed a moved name: %+v attaches=%d", out, attaches.Load())
 	}
 }
 

@@ -61,7 +61,7 @@ func (b *localBridge) refreshNativeWakeStreams() {
 							if s.ParentConfigPath != path || s.Attachment.AgentID != hint.AgentID {
 								continue
 							}
-							if hint.AttachmentID != s.Attachment.ID && !(s.LegacyLifecycleMigration && hint.AttachmentID == "") {
+							if hint.AttachmentID != s.Attachment.ID {
 								continue
 							}
 							s.latestSequence = max(s.latestSequence, hint.Sequence)
@@ -171,7 +171,7 @@ func (b *localBridge) queueNativeWake(s *localSession) bool {
 		}
 		b.mu.Lock()
 		p, _, valid := b.nativeWakeTarget(source)
-		valid = valid && p == primary && source.Attachment.ID == attachment.ID && current.AgentID == attachment.AgentID && (current.Attachment != nil && current.Attachment.ID == attachment.ID || current.Attachment == nil && source.LegacyLifecycleMigration)
+		valid = valid && p == primary && source.Attachment.ID == attachment.ID && current.AgentID == attachment.AgentID && current.Attachment != nil && current.Attachment.ID == attachment.ID
 		if err == nil && valid {
 			source.ReadPosition = 0
 			_ = b.save()

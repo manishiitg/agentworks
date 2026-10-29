@@ -115,11 +115,6 @@ func AutomaticDeliveryReceipt(transport string) bool {
 }
 
 func MessageBlock(m AgentLiveMessage, attachmentID string, transport string) string {
-	if m.Kind == "status" {
-		// Written by the server, not a peer: a plain status for the chat to pass on. It asks for nothing.
-		body, _ := sanitizeAgentMessageBody(m.Message)
-		return "AgentWorks status (information only, no reply needed):\n" + body
-	}
 	var b strings.Builder
 	if network := sanitizeAgentMessageToken(m.Network); network != "" {
 		// From another network this chat joined: say so before the sender, every time.
@@ -148,15 +143,12 @@ func MessageBlock(m AgentLiveMessage, attachmentID string, transport string) str
 }
 
 // WaitingLine opens a prompt's delivery text: how many peer messages are being handed over and from whom, so the
-// chat (and its person) sees the backlog at a glance. Server status lines are not messages and are not counted.
+// chat (and its person) sees the backlog at a glance. Person pings are consumed by the helper before this.
 func WaitingLine(messages []AgentLiveMessage, now time.Time) string {
 	count := 0
 	senders := map[string]bool{}
 	var oldest time.Time
 	for _, m := range messages {
-		if m.Kind == "status" {
-			continue
-		}
 		count++
 		if name := sanitizeAgentMessageToken(m.Sender); name != "" {
 			senders[name] = true
