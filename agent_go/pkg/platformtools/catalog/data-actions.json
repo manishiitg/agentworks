@@ -329,5 +329,33 @@
     "member": "undo_crew_reply",
     "description": "Preview, then undo, the file changes of one saved reply; files changed again later are skipped. No Git commit.",
     "external_members": "undo_crew_reply"
+  },
+  {
+    "family": "files",
+    "name": "git_status",
+    "member": "crew_git_status",
+    "description": "List the Crew's Git repositories with their branch and files not committed yet. Read only.",
+    "external_members": "crew_git_status"
+  },
+  {
+    "family": "files",
+    "name": "git_diff",
+    "member": "crew_git_diff",
+    "description": "Show one file's changes not committed yet, compared with the latest commit.",
+    "external_members": "crew_git_diff"
+  },
+  {
+    "family": "files",
+    "name": "git_branch_compare",
+    "member": "crew_git_branch_compare",
+    "description": "List what the current branch adds on top of its base, like a pull request's changed files.",
+    "external_members": "crew_git_branch_compare"
+  },
+  {
+    "family": "files",
+    "name": "git_branch_diff",
+    "member": "crew_git_branch_diff",
+    "description": "Show one file's changes between the commits returned by git_branch_compare.",
+    "external_members": "crew_git_branch_diff"
   }
 ]

@@ -444,6 +444,7 @@ func projectServiceTool(name string) bool {
 	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "create_workflow", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
 		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change", "list_crew_snapshots", "compare_crew_snapshot", "review_crew_snapshot", "undo_crew_reply",
+		"crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff",
 		"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "project_functions_calls",
 		"list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "list_review_chats", "read_review_chat", "get_review_audit":
 		return true

@@ -513,6 +513,10 @@ chat:
       - compare_crew_snapshot
       - review_crew_snapshot
       - undo_crew_reply
+      - crew_git_status
+      - crew_git_diff
+      - crew_git_branch_compare
+      - crew_git_branch_diff
       - search_crew_files
       - read_crew_file
       - project_functions_calls

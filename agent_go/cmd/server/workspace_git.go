@@ -463,24 +463,7 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	query := r.URL.Query()
 	op := query.Get("op")
 	if op == "" || op == "status" {
-		repos := []workspaceGitRepo{}
-		for _, dir := range workspaceGitFindRepos(realBase) {
-			real, ok := workspaceGitConfined(realBase, dir)
-			if !ok {
-				continue
-			}
-			repo, err := workspaceGitStatus(ctx, real)
-			if err != nil {
-				continue
-			}
-			rel, _ := filepath.Rel(realBase, real)
-			if rel == "." {
-				rel = ""
-			}
-			repo.Root = filepath.ToSlash(rel)
-			repos = append(repos, repo)
-		}
-		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": repos})
+		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": workspaceGitStatusRepos(ctx, realBase)})
 		return
 	}
 
@@ -506,6 +489,29 @@ func workspaceGitCrewOwner(r *http.Request) string {
 		return roots.Owner
 	}
 	return ""
+}
+
+// workspaceGitStatusRepos lists every repository under realBase with its
+// branch and changed files (Root relative to realBase).
+func workspaceGitStatusRepos(ctx context.Context, realBase string) []workspaceGitRepo {
+	repos := []workspaceGitRepo{}
+	for _, dir := range workspaceGitFindRepos(realBase) {
+		real, ok := workspaceGitConfined(realBase, dir)
+		if !ok {
+			continue
+		}
+		repo, err := workspaceGitStatus(ctx, real)
+		if err != nil {
+			continue
+		}
+		rel, _ := filepath.Rel(realBase, real)
+		if rel == "." {
+			rel = ""
+		}
+		repo.Root = filepath.ToSlash(rel)
+		repos = append(repos, repo)
+	}
+	return repos
 }
 
 // Shared read implementation; callers must authorize and select the repository.

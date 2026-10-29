@@ -20,6 +20,8 @@ import (
 
 var externalCrewTools = map[string]bool{
 	"list_crew_snapshots": true, "compare_crew_snapshot": true, "review_crew_snapshot": true, "undo_crew_reply": true,
+	// Git review reads (external_crew_git.go), the Files review panel's reads.
+	"crew_git_status": true, "crew_git_diff": true, "crew_git_branch_compare": true, "crew_git_branch_diff": true,
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true,
 	"ask_crew": true, "write_crew_file": true, "suggest_crew_change": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
@@ -327,6 +329,8 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			}
 		}
 		api.serveCrewFileSnapshots(w, r, crew.Binding.WorkspacePath, op, str("snapshot_id"), str("file"))
+	case "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff":
+		api.externalCrewGit(w, r, crew.Binding.WorkspacePath, name, args)
 	case "get_crew":
 		externalJSON(w, externalCrewDescription(ctx, crew, manifest, summary))
 	case "suggest_crew_change":
