@@ -97,6 +97,9 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 		t.Fatal("snapshot was not prepared")
 	}
 	snapshot := value.(*crewTurnSnapshot)
+	// The send does not wait for the before-capture; the test's edits below
+	// come after it, as the accepted-risk rule assumes.
+	<-snapshot.beforeDone
 	api.trackSyntheticConversationTurnStart("child", "session", "turn", "child task")
 	api.eventStore.AddEvent("session", storeevents.Event{ID: "reply", Type: "unified_completion", SessionID: "session"})
 	api.bindCrewSnapshotCompletion("turn", 0)
