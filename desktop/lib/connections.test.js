@@ -25,3 +25,16 @@ test('saved remote sessions are available only to the app top frame, never dashb
     assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], 'app-proof');
   });
 });
+
+test('only the agent server receives app proof, bound to the port actually selected', () => {
+  const { withoutDesktopBootstrap, desktopAgentEnvironment } = require('./connections');
+  const { spawnSync } = require('node:child_process');
+  const env = { PATH: process.env.PATH, AGENTWORKS_DESKTOP_SECRET: 'inherited', AGENTWORKS_DESKTOP_HOST: 'stale' };
+  const workspaceEnv = withoutDesktopBootstrap(env);
+  const child = spawnSync(process.execPath, ['-e', "process.exit(Object.keys(process.env).some(k => k.startsWith('AGENTWORKS_DESKTOP_')) ? 1 : 0)"], { env: workspaceEnv });
+  assert.equal(child.status, 0);
+  assert.equal(env.AGENTWORKS_DESKTOP_SECRET, 'inherited');
+  const agentEnv = desktopAgentEnvironment(env, 49152, 'app-proof');
+  assert.equal(agentEnv.AGENTWORKS_DESKTOP_SECRET, 'app-proof');
+  assert.equal(agentEnv.AGENTWORKS_DESKTOP_HOST, '127.0.0.1:49152');
+});

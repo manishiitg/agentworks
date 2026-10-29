@@ -1,13 +1,16 @@
+import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, Globe, Laptop, Plus } from 'lucide-react'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../../services/desktopConnections'
 import { getLocalApiBaseUrl } from '../../services/api'
-import { getRawActiveWorkspaceId, useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { followAppLink } from '../../utils/appNavigation'
 
 const local: DesktopConnection = { id: 'local', name: 'Local', server: '' }
 export function DesktopConnections({ children }: { children?: ReactNode }) {
-  const available = !!window.electronAPI?.getDesktopConnection?.()
+  return window.electronAPI?.getDesktopConnection?.() ? <ConnectedServers>{children}</ConnectedServers> : <>{children}</>
+}
+function ConnectedServers({ children }: { children?: ReactNode }) {
   const active = getRawActiveWorkspaceId()
   const [connections, setConnections] = useState<DesktopConnection[]>([local])
   const [inventory, setInventory] = useState<Record<string, DesktopInventory>>({})
@@ -35,12 +38,11 @@ export function DesktopConnections({ children }: { children?: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!available) return
     void refresh()
     const onFocus = () => void refresh()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [available, refresh])
+  }, [refresh])
   useEffect(() => {
     if (!pending) return
     let disposed = false
@@ -75,7 +77,6 @@ export function DesktopConnections({ children }: { children?: ReactNode }) {
     catch (e) { setError((e as Error).message) }
   }
 
-  if (!available) return <>{children}</>
   return <div className="space-y-3" aria-label="Connected servers">
     {connections.map(c => {
       const current = c.id === active, items = inventory[c.id]

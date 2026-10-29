@@ -1,12 +1,10 @@
+import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { create } from 'zustand'
 
 export type WorkspaceConnectionType = 'local' | 'remote'
 export interface WorkspaceProfile { id: string; name: string; type: WorkspaceConnectionType; apiBaseUrl: string }
 
-// Selected by Electron, never by a link or renderer-persisted remote credential.
-export function getRawActiveWorkspaceId(): string {
-  return typeof window === 'undefined' ? 'local' : window.electronAPI?.getDesktopConnection?.() || 'local'
-}
+export { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 export function getWorkspaceScopedStorageKey(key: string): string {
   const id = getRawActiveWorkspaceId()
   return id === 'local' ? key : `${key}:${id}`

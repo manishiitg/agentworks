@@ -1,4 +1,4 @@
-import { getRawActiveWorkspaceId } from '../stores/useWorkspaceConnectionStore'
+import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 export const PRODUCT_SURFACES = ['agentworks', 'relays', 'sparkquill', 'work', 'mcp-gateway', 'llm-gateway', 'knowledgebase', 'bullpen'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]

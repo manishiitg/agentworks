@@ -49,6 +49,7 @@ let dynamicWorkspacePort = 0;
 const workspaceApiToken = crypto.randomBytes(32).toString('hex');
 let desktopConnectionsInstalled = false;
 const desktopConnectionSecret = crypto.randomBytes(32).toString('hex');
+const { withoutDesktopBootstrap, desktopAgentEnvironment } = require('./lib/connections');
 
 const HEALTH_TIMEOUT_MS = 90000;
 const HEALTH_POLL_MS = 500;
@@ -1022,8 +1023,6 @@ function spawnWorkspace(userDataPath) {
       ...process.env, 
       DOCS_DIR: docsDir,
       RUNLOOP_USER_DATA_DIR: userDataPath,
-      AGENTWORKS_DESKTOP_SECRET: desktopConnectionSecret,
-      AGENTWORKS_DESKTOP_HOST: `127.0.0.1:${dynamicAgentPort}`,
       AGENTWORKS_STATE_ROOT: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'),
       LOCAL_MODE: 'true',
       DATA_DIR: dataDir,
@@ -1038,7 +1037,7 @@ function spawnWorkspace(userDataPath) {
     // spawnServer (lib/servers.js) falls forward to the next free port.
     spawnServer({
       name: 'workspace', bin, args: ['server', '--port', spawnServer.PORT_PLACEHOLDER, '--docs-dir', docsDir],
-      preferredPort: 45679, env, log: logStream, echoToConsole: true,
+      preferredPort: 45679, env: withoutDesktopBootstrap(env), log: logStream, echoToConsole: true,
     }).then(({ child, port }) => {
       workspaceProcess = child;
       dynamicWorkspacePort = port;
@@ -1154,8 +1153,6 @@ function spawnAgent(userDataPath) {
       // per-user fallback for direct launches, but Desktop owns a more precise
       // application data root and should pass it explicitly.
       RUNLOOP_USER_DATA_DIR: userDataPath,
-      AGENTWORKS_DESKTOP_SECRET: desktopConnectionSecret,
-      AGENTWORKS_DESKTOP_HOST: `127.0.0.1:${dynamicAgentPort}`,
       AGENTWORKS_STATE_ROOT: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'),
       WORKSPACE_API_URL: `http://127.0.0.1:${dynamicWorkspacePort}`,
       WORKSPACE_DOCS_PATH: docsDir,
@@ -1188,7 +1185,7 @@ function spawnAgent(userDataPath) {
     spawnServer({
       name: 'agent', bin, args, preferredPort: 45678, cwd,
       env: (port) => ({
-        ...env,
+        ...desktopAgentEnvironment(env, port, desktopConnectionSecret),
         // OAuth tools run without an incoming browser request, so they need a
         // callback origin in the process environment. Use the port selected by
         // the desktop launcher; an explicit deployment value still wins.

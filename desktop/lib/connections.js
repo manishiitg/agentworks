@@ -37,4 +37,10 @@ function installDesktopConnections({ session, ipcMain, getWindow, origin, secret
     await getWindow().loadURL(origin + route);
   });
 }
-module.exports = { isAppFrame, connectionRequest, installDesktopConnections };
+function withoutDesktopBootstrap(env) {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !key.startsWith('AGENTWORKS_DESKTOP_')));
+}
+function desktopAgentEnvironment(env, port, secret) {
+  return { ...withoutDesktopBootstrap(env), AGENTWORKS_DESKTOP_SECRET: secret, AGENTWORKS_DESKTOP_HOST: `127.0.0.1:${port}` };
+}
+module.exports = { isAppFrame, connectionRequest, installDesktopConnections, withoutDesktopBootstrap, desktopAgentEnvironment };
