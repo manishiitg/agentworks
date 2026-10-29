@@ -1108,18 +1108,15 @@ type productProjectManifest struct {
 	OwnerID string `json:"owner_id,omitempty"`
 	// Role marks a platform-made Crew ("agentworks": the person's own AgentWorks agent). Only the server sets it;
 	// creation and import refuse a spec that names one.
-	Role string `json:"role,omitempty"`
-	// LegacyPaths are the places a Crew lived before the Crew move (PLAT-442 step 4), the migration's record of
-	// the old spellings that must keep resolving; carried so manifest rewrites keep them.
-	LegacyPaths      []string `json:"legacy_paths,omitempty"`
-	ID               string   `json:"id"`
-	Title            string   `json:"title,omitempty"`
-	Label            string   `json:"label,omitempty"`
-	Description      string   `json:"description,omitempty"`
-	ChatInstructions string   `json:"chat_instructions,omitempty"`
-	SessionID        string   `json:"session_id,omitempty"`
-	CreatedAt        string   `json:"created_at,omitempty"`
-	UpdatedAt        string   `json:"updated_at,omitempty"`
+	Role             string `json:"role,omitempty"`
+	ID               string `json:"id"`
+	Title            string `json:"title,omitempty"`
+	Label            string `json:"label,omitempty"`
+	Description      string `json:"description,omitempty"`
+	ChatInstructions string `json:"chat_instructions,omitempty"`
+	SessionID        string `json:"session_id,omitempty"`
+	CreatedAt        string `json:"created_at,omitempty"`
+	UpdatedAt        string `json:"updated_at,omitempty"`
 	Identity         struct {
 		Name string `json:"name,omitempty"`
 		Icon string `json:"icon,omitempty"`
