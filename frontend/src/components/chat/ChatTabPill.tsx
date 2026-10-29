@@ -36,6 +36,7 @@ const ALLOW_MAKE_SCHEDULE_INTERACTIVE = false
 // The state reads at a glance on a tab you are not looking at (owner 2026-10-06):
 // a spinner while working, amber when it waits for you, red when the server says
 // the last turn failed, green when it finished since you last looked, grey when idle.
+// A selected ready tab uses a red dot; activity indicators keep their state colors.
 // Needs you / Working / Failed use the same words as the agent menu and Home (PLAT-746-158).
 type TabStatus = 'waiting' | 'busy' | 'failed' | 'completed' | 'ready'
 const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
@@ -167,9 +168,9 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
-        {!isBlank && (!productSurface || status !== 'ready') && (status === 'busy'
+        {!isBlank && (!productSurface || status !== 'ready' || isActive) && (status === 'busy'
           ? <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
-          : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
+          : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} rounded-full ${isActive && status === 'ready' ? 'bg-red-400' : dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
       </span>
       {isRenaming ? (
         <input
