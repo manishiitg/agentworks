@@ -1,7 +1,6 @@
 package agentworksproduct
 
 import (
-	"slices"
 	"strings"
 	"testing"
 )
@@ -18,7 +17,6 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 	}
 	byName := map[string]string{}
 	hidden := map[string]bool{}
-	aliases := map[string][]string{}
 	for _, cmd := range manifest.Profile.Commands {
 		if cmd.Name == "" {
 			t.Fatal("command with empty name")
@@ -31,15 +29,11 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 		}
 		byName[cmd.Name] = cmd.Prompt
 		hidden[cmd.Name] = cmd.MenuHidden
-		for _, alias := range cmd.Aliases {
-			aliases[alias] = append(aliases[alias], cmd.Name)
-		}
-		aliases[cmd.Name] = append(aliases[cmd.Name], cmd.Name)
 	}
 	for name, wantKind := range map[string]string{
 		"design-plan":      `kind="design-plan"`,
-		"run-plan-drift":   `kind="review-artifact-drift"`,
-		"design-dashboard": `kind="design-reporting-ui"`,
+		"run-plan-drift":   `kind="run-plan-drift"`,
+		"design-dashboard": `kind="design-dashboard"`,
 		"setup-goals":      `kind="setup-goals"`,
 	} {
 		prompt, ok := byName[name]
@@ -57,19 +51,13 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 	}
 	// Removed reviewer commands are absent.
 	// Owner 2026-10-08: one Pulse, no separate reviewers. The old reviewer
-	// commands and their aliases are gone.
+	// commands are gone.
 	for _, retired := range []string{"run-goal-work", "strategy-auditor", "goal-advisor", "run-technical-review", "pulse-review",
 		"run-architecture-review", "pulse-review-execution-health", "pulse-review-database", "pulse-fixer", "merge-pulse-issues",
 		// Saved-code quality is part of Workflow Review (owner, 2026-10-08).
 		"review-code"} {
-		if len(aliases[retired]) > 0 {
+		if _, ok := byName[retired]; ok {
 			t.Fatalf("%s is retired with the old reviewers but is still a command", retired)
 		}
-	}
-	if !slices.Equal(aliases["define-success"], []string{"setup-goals"}) {
-		t.Fatalf("setup-goals alias define-success = %v", aliases["define-success"])
-	}
-	if !slices.Equal(aliases["publish"], []string{"share"}) {
-		t.Fatalf("share keeps /publish as an alias, got %v", aliases["publish"])
 	}
 }

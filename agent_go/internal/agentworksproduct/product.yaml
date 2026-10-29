@@ -35,18 +35,15 @@ profile:
     - name: run-plan-drift
       description: Check the plan still fits its steps, reports and schedules; fix small breaks
       icon: refresh-cw
-      aliases: [review-artifact-drift]
       menu_hidden: true
       file: commands/run-plan-drift.md
     - name: design-dashboard
       description: Design this workflow's dashboard from its real data
       icon: check-circle
-      aliases: [design-reporting-ui]
       file: commands/design-dashboard.md
     - name: setup-goals
       description: Say what this workflow is for and how to tell it is working
       icon: target
-      aliases: [define-success]
       file: commands/setup-goals.md
     - name: run
       description: Run the workflow, or one step, now
@@ -63,7 +60,6 @@ profile:
     - name: share
       description: Share the dashboard with everyone, chosen people or only you
       icon: share-2
-      aliases: [publish]
       file: commands/share.md
     - name: connect
       description: Let people reach it from Slack and other AI tools

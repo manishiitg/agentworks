@@ -11,7 +11,7 @@ definitions and observations. There is no extra reviewer-authored report.
 
 - Goals can run without configured metrics. Goals & metrics shows missing setup
   and offers the shared setup conversation.
-- Existing workflow: `/setup-goals`, its `/define-success` alias, or the Goals & metrics
+- Existing workflow: `/setup-goals` or the Goals & metrics
   setup button runs the same flow. Existing runs are not stopped.
 - Setup is idempotent. Existing targets/constraints are preserved unless the user
   agrees to change them. Historical goal prose is not automatically rewritten.

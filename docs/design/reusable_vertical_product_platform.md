@@ -1458,7 +1458,7 @@ instead of asking every builder to author "what happened" from scratch,
 which had builders adding a step or table whose only job was feeding this
 tab. A custom activity view is now something the parent explicitly asks
 for, not the agent's default judgment call. Updated: reporting-policy.md,
-design-reporting-ui.md, improve-report.md (item 8 now also flags a
+design-dashboard.md, improve-report.md (item 8 now also flags a
 report-only step/table as unnecessary complexity when it duplicates
 run_summary data).
 

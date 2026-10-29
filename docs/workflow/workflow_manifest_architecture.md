@@ -175,7 +175,7 @@ Two optional top-level fields configure hard behavioral gates the auto-improveme
 
 `schema_version` controls the JSON shape. `version` controls product-managed workflow behavior. Contract `1.0.21` defines an idempotent artifact-ownership migration: it removes shared AgentWorks bridge/auth, Folder Guard, managed-tool, discovery, and coding-session mechanics from workflow-authored Plan/Learnings/KB prose while preserving semantic behavior and target-specific HOW. The owner starts that migration manually in Builder; schedules keep running the saved contract and do not stamp it. Ambiguous rewrites block the version stamp rather than guessing. The prior `1.0.20` contract remains the schema-5 executive Pulse journal upgrade.
 
-The stable Goal lives only in `soul/soul.md`. `/define-success` records operating-model reasoning as a dated Reflection / Hansei entry in `builder/improve.html`; there is no permanent Workflow Profile card that can silently become an immutable constraint.
+The stable Goal lives only in `soul/soul.md`. `/setup-goals` records operating-model reasoning as a dated Reflection / Hansei entry in `builder/improve.html`; there is no permanent Workflow Profile card that can silently become an immutable constraint.
 
 For the design rationale and worked examples, see [auto_improvement_framework.md](auto_improvement_framework.md).
 

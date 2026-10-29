@@ -117,7 +117,7 @@ func externalUnavailableToolNames() []string {
 		seen := map[string]bool{}
 		// Operations guidance can name that live outside the product tool lists.
 		known := append(agentworksproduct.ChatTools("builder"), agentworksproduct.RunTools()...)
-		known = append(known, "get_goal_metrics", "review-artifact-drift")
+		known = append(known, "get_goal_metrics", "run-plan-drift")
 		for _, name := range known {
 			if !exposed[name] && !seen[name] {
 				seen[name] = true

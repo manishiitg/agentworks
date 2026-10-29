@@ -235,9 +235,9 @@ func TestExternalGuidanceTopicsDiscloseUnavailableTools(t *testing.T) {
 		vocab[name] = true
 	}
 	// Operations guidance can name that live outside product.yaml:
-	// get_goal_metrics is Go-registered, review-artifact-drift is a
+	// get_goal_metrics is Go-registered, run-plan-drift is a
 	// get_workflow_command_guidance kind, not a tool.
-	supplemental := []string{"get_goal_metrics", "review-artifact-drift"}
+	supplemental := []string{"get_goal_metrics", "run-plan-drift"}
 	for _, name := range supplemental {
 		vocab[name] = true
 	}
