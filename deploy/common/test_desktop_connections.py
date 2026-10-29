@@ -17,7 +17,9 @@ with tempfile.TemporaryDirectory(prefix="desktop-proof-") as scratch:
     subprocess.run(["go", "build", "-o", binary, "."], cwd=root / "agent_go", check=True)
     # The server can spawn SDK helpers; kill this fixture's process group before
     # removing its temporary HOME, even if a startup assertion fails.
-    child = subprocess.Popen(["node", str(root / "deploy/common/check_desktop_process.cjs"), binary, scratch], start_new_session=True)
+    workspace_binary = str(Path(scratch) / "workspace-server")
+    subprocess.run(["go", "build", "-o", workspace_binary, "."], cwd=root / "workspace", check=True)
+    child = subprocess.Popen(["node", str(root / "deploy/common/check_desktop_process.cjs"), binary, scratch, workspace_binary], start_new_session=True)
     try:
         if child.wait(timeout=180) != 0:
             raise RuntimeError("Desktop real-process check failed")
