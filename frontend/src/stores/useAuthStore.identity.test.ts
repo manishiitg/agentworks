@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// The store installs persistence at import time, before beforeEach runs.
+vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
+
 const mocks = vi.hoisted(() => ({
   getAuthMode: vi.fn(), login: vi.fn(), handleOAuthCallback: vi.fn(), logout: vi.fn(), getCurrentUser: vi.fn(),
   getAuthToken: vi.fn(), setAuthToken: vi.fn(), clearAuthToken: vi.fn(), switchChatAccount: vi.fn(), desktopRequest: vi.fn(),
