@@ -1,17 +1,16 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrainCircuit, ChevronDown, Gauge, KeyRound, Loader2 } from 'lucide-react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { BrainCircuit, ChevronDown, KeyRound } from 'lucide-react'
 import { TierModelSelector } from '../../components/ui/TierModelSelector'
 import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
-import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
 import { agentApi } from '../../services/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { workChatModelsQueryKey } from './useWorkChatModels'
 import { isProjectProductId } from './projectProduct'
 import type { AgentProfileChatModel, AgentProfileSideChat, LLMProvider, PresetLLMConfig } from '../../services/api-types'
-import { llmConfigService, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
+import { llmConfigService, type ProviderConnection } from '../../services/llm-config-api'
 import ModalPortal from '../../components/ui/ModalPortal'
 // Loaded on first use: the key setup is rare and kept the eager bundle over budget (PLAT-717).
 const ByokSetup = lazy(() => import('../../components/providers/ByokSetup'))
@@ -106,24 +105,6 @@ export function WorkModelsPanel({
   const { options, accounts, providerManifest, refresh: refreshSources } = sources
   const [refreshing, setRefreshing] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
-  const [usageSession, setUsageSession] = useState<ProviderSetupSession | null>(null)
-  // What the server collected for someone who may see usage but not open a terminal on the account.
-  const [usageText, setUsageText] = useState<string | null>(null)
-  const usageSessionRef = useRef<ProviderSetupSession | null>(null)
-  const [usageStarting, setUsageStarting] = useState(false)
-  const [usageError, setUsageError] = useState<string | null>(null)
-  const [usageConflict, setUsageConflict] = useState(false)
-
-  useEffect(() => {
-    usageSessionRef.current = usageSession
-  }, [usageSession])
-
-  useEffect(() => () => {
-    const current = usageSessionRef.current
-    if (current?.status === 'running') {
-      void llmConfigService.cancelProviderSetup(current.id).catch(() => undefined)
-    }
-  }, [])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -187,35 +168,6 @@ export function WorkModelsPanel({
   const currentModelLabel = selectableModels.find(model => model.model_id === currentModelId)?.model_name
     || currentModelId
     || 'Provider default'
-  const selectedProviderManifest = providerManifest.find(provider => provider.id === selectedOption?.provider)
-  const usageSupported = Boolean(
-    selectedOption?.provider
-    && selectedProviderManifest?.usage_supported
-    && selectedProviderManifest?.usable,
-  )
-
-  const checkUsage = async (replaceRunning = false) => {
-    if (!selectedOption?.provider || !usageSupported) return
-    setUsageStarting(true)
-    setUsageError(null)
-    setUsageConflict(false)
-    try {
-      setUsageText(null)
-      // Use the same account displayed for this chat, including a recorded or personal default. The server decides what the caller may
-      // do with it: a terminal for the account's owner and admins, read-only text for anyone else it is available to.
-      const result = await llmConfigService.checkProviderUsage(selectedOption.provider, inUseConnectionId, replaceRunning)
-      if (result.session) setUsageSession(result.session)
-      else setUsageText(result.usage_output || 'No usage output.')
-    } catch (error) {
-      const status = (error as { response?: { status?: number } })?.response?.status
-      const responseMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setUsageError(responseMessage || (error instanceof Error ? error.message : 'Could not check provider usage'))
-      setUsageConflict(status === 409)
-    } finally {
-      setUsageStarting(false)
-    }
-  }
-
   const saveKeyPicks = async (picks: string[]) => {
     if (!inUseAccount) return
     try {
@@ -404,51 +356,6 @@ export function WorkModelsPanel({
           </ModalPortal>
         )}
         <ProviderChangeNotice turnRunning={Boolean(tab?.isStreaming)} runningProvider={activeRuntime?.provider} selectedProvider={selectedOption?.provider} />
-        {usageSupported && (
-          <section className="mt-5 border-t border-border pt-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="text-sm font-medium text-foreground">Provider usage</h3>
-                              </div>
-              <button
-                type="button"
-                onClick={() => void checkUsage()}
-                disabled={usageStarting || usageSession?.status === 'running'}
-                className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {usageStarting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Gauge className="h-3.5 w-3.5" />}
-                Check usage
-              </button>
-            </div>
-            {usageText && (
-              <pre aria-label="Provider usage output" className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs text-foreground">{usageText}</pre>
-            )}
-            {usageSession && (
-              <div className="mt-3">
-                <GuidedProviderTerminal
-                  session={usageSession}
-                  onFinished={setUsageSession}
-                  onClose={() => setUsageSession(null)}
-                />
-              </div>
-            )}
-            {usageError && (
-              <div className="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/25 dark:text-red-300">
-                <p>{usageError}</p>
-                {usageConflict && (
-                  <button
-                    type="button"
-                    onClick={() => void checkUsage(true)}
-                    disabled={usageStarting}
-                    className="mt-2 rounded-md border border-red-300 bg-background px-2.5 py-1.5 font-medium hover:bg-red-100 disabled:opacity-50 dark:border-red-800 dark:hover:bg-red-950/50"
-                  >
-                    End existing usage check and retry
-                  </button>
-                )}
-              </div>
-            )}
-          </section>
-        )}
         </fieldset>
     </>
   )

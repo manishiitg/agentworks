@@ -70,7 +70,8 @@ type chatContextView struct {
 	// UsedTokens and WindowTokens are the context at the chat's last model call; 0 means not reported yet.
 	UsedTokens   int `json:"used_tokens,omitempty"`
 	WindowTokens int `json:"window_tokens,omitempty"`
-	// Limits are the plan windows the provider reported for this chat's own account; empty when unknown.
+	// Limits are the plan windows of this chat's own account: as its session reported them, else as its
+	// provider answered a direct quota request for that account (chat_usage_probe.go); empty when unknown.
 	Limits []chatUsageLimit `json:"limits,omitempty"`
 	// A switch is present only when this chat's model and provider offer it.
 	IdleCompaction *chatContextSwitch `json:"idle_compaction,omitempty"`
@@ -199,8 +200,8 @@ func chatMetaInt(value interface{}) int {
 	return int(n)
 }
 
-// appendChatUsageLimit keeps the 5-hour and 7-day windows under short labels. Other windows are left out
-// rather than named by a guess.
+// appendChatUsageLimit keeps the 5-hour, 7-day and monthly windows under short labels. Other windows are left
+// out rather than named by a guess.
 func appendChatUsageLimit(limits []chatUsageLimit, name string, percent float64, resets time.Time) []chatUsageLimit {
 	label := ""
 	switch name {
@@ -208,6 +209,8 @@ func appendChatUsageLimit(limits []chatUsageLimit, name string, percent float64,
 		label = "5h"
 	case "seven_day", "window_10080m":
 		label = "7d"
+	case "month":
+		label = "month"
 	}
 	if label == "" || math.IsNaN(percent) {
 		return limits
@@ -279,6 +282,20 @@ func chatUsageTarget(lastProvider, lastModel, lastConnection string, next AgentP
 	return provider, model, connection != "" && last != "" && connection != last
 }
 
+// chatUsageConnection is the account the chat's next message uses: its own choice, else the one it last ran on.
+// After a switch to another provider with no account named, it is unknown ("").
+func chatUsageConnection(lastConnection string, next AgentProfileEffectiveChatModel, known, switched bool) string {
+	if known {
+		if connection := strings.TrimSpace(next.ConnectionID); connection != "" {
+			return connection
+		}
+		if switched {
+			return ""
+		}
+	}
+	return strings.TrimSpace(lastConnection)
+}
+
 func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) chatContextView {
 	sessionID := tab.Record.SessionID
 	provider, model, transport, _ := chatContextRuntime(owner, tab)
@@ -287,6 +304,10 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	view := chatContextView{SessionID: sessionID}
 	if !switched {
 		view.UsedTokens, view.WindowTokens, view.Limits = api.chatContextUsage(sessionID, provider, model, true)
+	}
+	if len(view.Limits) == 0 {
+		// Nothing reported by the chat yet: ask the provider for the account the next message uses.
+		view.Limits = api.probedChatLimits(owner, provider, chatUsageConnection(tab.Record.ConnectionID, next, known, switched))
 	}
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(provider)), transport) {
 		view.IdleCompaction = &chatContextSwitch{On: !tab.Identity.IdleCompactionOff}

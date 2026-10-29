@@ -69,7 +69,6 @@ export interface ProviderConnection {
   /** Who the account is signed in as, when the CLI reports it. */
   identity?: string
   can_manage?: boolean
-  can_view_usage?: boolean
 }
 
 /** A non-interactive account check. Never carries a credential. */
@@ -138,7 +137,6 @@ export interface ProviderManifestEntry {
   auth_configured: boolean
   auth_source?: string
   usable: boolean
-  usage_supported?: boolean
   setup_hint?: string
   deprecated?: boolean
   deprecation_reason?: string
@@ -258,7 +256,7 @@ export interface GetModelMetadataResponse {
   models: ModelMetadata[]
 }
 
-export type ProviderSetupAction = 'authenticate' | 'inspect' | 'usage' | 'install'
+export type ProviderSetupAction = 'authenticate' | 'inspect' | 'install'
 
 export interface ProviderSetupSession {
   id: string
@@ -269,8 +267,6 @@ export interface ProviderSetupSession {
   error?: string
   created_at: string
   updated_at: string
-  usage_command?: string
-  input_limit?: number
 }
 
 // Create axios instance for LLM configuration API (use Vite env so deploy URL works)
@@ -424,30 +420,6 @@ export const llmConfigService = {
       replace_running: replaceRunning || undefined,
     })
     return response.data.session
-  },
-
-  // Usage for one account. The owner and admins get a terminal session;
-  // anyone else gets the text the server collected (never a terminal).
-  // With no connectionId it is the server's own account (admins, and anyone it is available to).
-  checkProviderUsage: async (
-    provider: string,
-    connectionId?: string,
-    replaceRunning?: boolean,
-  ): Promise<{ session?: ProviderSetupSession; usage_output?: string }> => {
-    const response = await llmConfigApi.post('/api/provider-setup/sessions', {
-      provider,
-      action: 'usage',
-      connection_id: connectionId,
-      cols: 100,
-      rows: 24,
-      replace_running: replaceRunning || undefined,
-    }, {
-      // The server starts the CLI and then waits up to 45 s for its usage answer
-      // (providerUsageCollectTimeout); Codex alone takes over 30 s, so the shared
-      // 30 s limit failed every check with "timeout of 30000ms exceeded" (PLAT-717).
-      timeout: 90000,
-    })
-    return response.data
   },
 
   /** Status of one account; verify adds the real login check (Claude Code). */
