@@ -3,7 +3,7 @@ name: panel-channels
 description: Connect Google, Slack, WhatsApp or email and use the selected account.
   Share working entry points through those channels.
 metadata:
-  version: 2.0.0
+  version: 2.0.1
   panel-tools:
     work:
     - get_slack_bot_settings

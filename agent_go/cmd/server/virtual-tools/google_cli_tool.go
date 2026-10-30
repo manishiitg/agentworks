@@ -31,7 +31,7 @@ func createGoogleCLITool() llmtypes.Tool {
 	description := fmt.Sprintf(
 		"Run a gogcli (`gog`) command against a Google account connection the user has authorized for a specific service. "+
 			"Use this for Gmail search/message retrieval and, when the connection explicitly enables agent writes, Gmail drafts and send/reply; also use it for Google Drive, Sheets, Docs, Slides, and Calendar. Workflow summaries use the saved notification channels automatically. "+
-			"Before calling this tool, check installed skills; if necessary install `https://github.com/openclaw/gogcli` with `install_skill`, then load `gog` and the relevant `gog-*` service skill with `read_skill`. Those versioned skills, not this description, define current command syntax. "+
+			"Before calling this tool, check installed skills; if missing, install only `openclaw/gogcli@gog` and the one `gog-*` service skill the task needs (for example `openclaw/gogcli@gog-gmail`) with `install_skill`, never the whole repository, then load them with `read_skill`. Those versioned skills, not this description, define current command syntax. "+
 			"args is the argument list to pass to `gog`, EXCLUDING the `gog` binary name and any account or authentication flags. "+
 			"The FIRST element must be one of: %s — whichever the connection was authorized for. "+
 			"Never pass --access-token, --account, --client, or --home: the server injects the authorized connection's credential automatically, and passing "+

@@ -11,7 +11,7 @@ func TestGoogleCLIToolDelegatesCommandSyntaxToUpstreamSkills(t *testing.T) {
 		t.Fatal("google_workspace_cli is missing its function definition")
 	}
 	description := tool.Function.Description
-	if !strings.Contains(description, "install_skill") || !strings.Contains(description, "https://github.com/openclaw/gogcli") || !strings.Contains(description, "`gog-*` service skill") {
+	if !strings.Contains(description, "install_skill") || !strings.Contains(description, "openclaw/gogcli@gog") || !strings.Contains(description, "never the whole repository") || !strings.Contains(description, "`gog-*` service skill") {
 		t.Fatalf("tool description does not direct the agent to versioned gog skills: %q", description)
 	}
 	if !strings.Contains(description, "Gmail drafts and send/reply") || !strings.Contains(description, "explicitly enables agent writes") {
