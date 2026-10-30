@@ -483,7 +483,7 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 func (api *StreamingAPI) registerGoalOwnerTabTools(reg definitionToolRegistrar, user, root string) error {
 	return reg.RegisterCustomTool("manage_builder_chats", "Manage this Goal or Relay's named Builder tabs. list/read: see the project tabs. open: create your own named tab. rename/pin/order/close: only your own tabs; keep your main Builder. To talk in your tab over MCP use builder action=chat with its session_id. Agent messages use send_message with target and chat_id from list_agents. Plans and runs remain shared.", goalOwnerTabSchema(false), func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, user)
-		clean := map[string]interface{}{"workspace_path": root, "action": args["action"], "chat_id": args["chat_id"], "name": args["name"], "pinned": args["pinned"], "chat_ids": args["chat_ids"]}
+		clean := map[string]interface{}{"workspace_path": root, "action": args["action"], "chat_id": args["chat_id"], "session_id": args["session_id"], "name": args["name"], "pinned": args["pinned"], "chat_ids": args["chat_ids"]}
 		body, err := json.Marshal(clean)
 		if err != nil {
 			return "", err
