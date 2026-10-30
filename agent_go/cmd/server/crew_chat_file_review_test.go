@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -284,5 +285,71 @@ func TestChatReviewRecentRepositoriesRespectsFileGrants(t *testing.T) {
 	got := h.recentRepositories("_files/", func(name string) bool { return !strings.HasPrefix(name, "hidden/") })
 	if strings.Join(got, ",") != "new,old" {
 		t.Fatalf("expected newest, allowed, unique Crew-relative checkouts: %v", got)
+	}
+}
+
+// The sidebar's outside-Git count must open that group before paging, even
+// when a checkout sorts first and has more than one page of changes.
+func TestChatFileReviewOutsideGitScope(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	api, events := newDurableChatAPI(t, "chat-a", "alice")
+	store := filesnapshots.Store{Root: t.TempDir(), Private: t.TempDir()}
+	repo := filepath.Join(store.Root, "app-worktree")
+	if err := os.MkdirAll(repo, 0700); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.com"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git: %v %s", err, out)
+		}
+	}
+	git("init", "-q")
+	git("commit", "--allow-empty", "-qm", "start")
+	if _, err := store.Begin(t.Context(), "turn"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 105; i++ {
+		if err := os.WriteFile(filepath.Join(repo, fmt.Sprintf("file-%03d.txt", i)), []byte("repo\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(store.Root, "notes.txt"), []byte("outside\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Finish(t.Context(), "turn"); err != nil {
+		t.Fatal(err)
+	}
+	events.AddEvent("chat-a", storeevents.Event{ID: "ref", Type: "reply_file_changes", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("reply_file_changes", map[string]any{"snapshot_id": filesnapshots.ID("turn"), "workspace_path": "", "start_sequence": 0, "end_sequence": 2}))})
+	call := func(user, group string, allow func(string) bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/?session_id=chat-a&group_kind="+group, nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
+		w := httptest.NewRecorder()
+		api.serveChatFileReview(w, req, crewroot.Roots{Files: store.Root}, "", "snapshot_compare", "", "", store, allow)
+		return w
+	}
+	var page struct {
+		Total      int                      `json:"total_changes"`
+		Next       int                      `json:"next_offset"`
+		Comparison filesnapshots.Comparison `json:"comparison"`
+	}
+	w := call("alice", "", func(string) bool { return true })
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || page.Total != 106 || page.Next == 0 {
+		t.Fatalf("fixture must span pages: %v %s", err, w.Body.String())
+	}
+	if w := call("alice", "unknown", func(string) bool { return true }); w.Code != 400 {
+		t.Fatalf("unknown group: %d", w.Code)
+	}
+	w = call("alice", "crew_files", func(string) bool { return true })
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || w.Code != 200 || page.Total != 1 || page.Next != 0 || len(page.Comparison.Changes) != 1 || page.Comparison.Changes[0].Path != "notes.txt" {
+		t.Fatalf("outside-Git group: %v status=%d %s", err, w.Code, w.Body.String())
+	}
+	if w := call("bob", "crew_files", func(string) bool { return true }); w.Code != 404 {
+		t.Fatalf("private chat exposed: %d", w.Code)
+	}
+	w = call("alice", "crew_files", func(string) bool { return false })
+	if strings.Contains(w.Body.String(), "notes.txt") {
+		t.Fatal("revoked path exposed")
 	}
 }

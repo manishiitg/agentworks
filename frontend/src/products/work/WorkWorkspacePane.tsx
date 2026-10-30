@@ -226,10 +226,11 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const contextMode = useProjectMode(activeSessionId || '')
   const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewOutsideGit, setReviewOutsideGit] = useState(false)
   const [savedFile, setSavedFile] = useState<SavedFileSelection | null>(null)
   useEffect(() => { setReviewOpen(false); setSavedFile(null) }, [tabId, contextMode, accessKey])
   useWorkspaceViewTarget('files', target => {
-    setSavedFile(null); setReviewOpen(target === 'review')
+    setSavedFile(null); setReviewOpen(target === 'review' || target === 'review-outside-git'); setReviewOutsideGit(target === 'review-outside-git')
     if (target.startsWith('saved:')) {
       try {
         const selection = JSON.parse(target.slice(6)) as SavedFileSelection
@@ -314,7 +315,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{savedFile && contextMode === 'dev' ? <ReplyFileViewer key={JSON.stringify(savedFile)} selection={savedFile} tabId={tabId} onBack={() => { setSavedFile(null); setReviewOpen(true) }} /> : reviewOpen && contextMode === 'dev' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}`} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => setReviewOpen(false)} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{savedFile && contextMode === 'dev' ? <ReplyFileViewer key={JSON.stringify(savedFile)} selection={savedFile} tabId={tabId} onBack={() => { setSavedFile(null); setReviewOpen(true) }} /> : reviewOpen && contextMode === 'dev' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${reviewOutsideGit}`} outsideGit={reviewOutsideGit} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => setReviewOpen(false)} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
 

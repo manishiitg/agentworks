@@ -193,6 +193,15 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		externalError(w, status, "not_found", message)
 		return
 	}
+	outsideGit := r.URL.Query().Get("group_kind") == "crew_files"
+	if kind := r.URL.Query().Get("group_kind"); kind != "" && (!outsideGit || (op != "snapshot_compare" && op != "snapshot_file")) {
+		externalError(w, 400, "invalid_group", "Choose a saved file group.")
+		return
+	}
+	compareAllow := allow
+	if outsideGit {
+		compareAllow = filesnapshots.OutsideGitPaths(roots.Files, allow)
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), crewSnapshotTimeout)
 	defer cancel()
 	history, err := api.chatFileReviewHistory(ctx, store, sessionID, root)
@@ -304,7 +313,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		}
 		file = strings.TrimPrefix(file, prefix)
 	}
-	comparison, err := store.CompareBoundaries(ctx, first, last, side, file, allow)
+	comparison, err := store.CompareBoundaries(ctx, first, last, side, file, compareAllow)
 	if err != nil {
 		if file != "" {
 			externalError(w, 404, "snapshot_unavailable", "This saved file comparison is unavailable or you cannot read it.")
@@ -316,6 +325,13 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	comparison.Record.ExecutionID = ""
+	if outsideGit {
+		if file != "" && len(comparison.Changes) == 0 {
+			externalError(w, 404, "not_found", "Choose a file outside Git from this comparison.")
+			return
+		}
+		log.Printf("[FILE_REVIEW] outside_git session=%s files=%d", sessionID, len(comparison.Changes))
+	}
 	if op == "snapshot_file" {
 		content, err := store.ReadComparedFile(ctx, comparison, file, r.URL.Query().Get("side"))
 		if err != nil {
@@ -382,7 +398,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 			start, startSide = history.Reviews[len(history.Reviews)-1].ID, "after"
 		}
 		if history.Available || startSide == "after" {
-			if net, err := store.CompareBoundaries(ctx, start, last, startSide, "", allow); err == nil {
+			if net, err := store.CompareBoundaries(ctx, start, last, startSide, "", compareAllow); err == nil {
 				value := reviewSummary(net)
 				sinceReview = &value
 			}

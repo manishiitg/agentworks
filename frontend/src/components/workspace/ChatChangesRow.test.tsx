@@ -37,3 +37,14 @@ it('shows failed status with retry, keeps loaded rows on refresh and scopes the 
     expect(host.querySelector('[role="alert"]')).toBeNull()
   } finally { await act(async () => root.unmount()); host.remove() }
 })
+
+it('opens the outside-Git group rather than the whole chat comparison', async () => {
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host); const onOpen = vi.fn()
+  try {
+    get.mockResolvedValueOnce({ data: { groups: [{ kind: 'crew_files', root: '', name: 'Other files', total_files: 29 }] } })
+    await act(async () => root.render(<ChatChangesRow workspacePath="Crew/example" sessionId="chat-a" onOpen={onOpen} />))
+    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    expect(onOpen).toHaveBeenCalledWith(true)
+  } finally { await act(async () => root.unmount()); host.remove() }
+})

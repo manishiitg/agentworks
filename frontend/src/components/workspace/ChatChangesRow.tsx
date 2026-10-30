@@ -27,7 +27,7 @@ function repoSummary(group: ChatGroup) {
 }
 
 /** Where this chat's work stands (PLAT-746): per repository from Git, other files as saved. The server decides. */
-export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspacePath: string; sessionId: string; onOpen: () => void }) {
+export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspacePath: string; sessionId: string; onOpen: (outsideGit?: boolean) => void }) {
   const [groups, setGroups] = useState<ChatGroup[] | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -45,12 +45,12 @@ export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspace
     return () => controller.abort()
   }, [workspacePath, sessionId, revision, savedEvents, retry])
   const notice = error && <p role="alert" className="px-1 text-xs text-muted-foreground">{error} <button type="button" className="underline hover:text-foreground" onClick={() => setRetry(value => value + 1)}>Retry</button></p>
-  if (!groups?.length) return <div><WorkspaceContextRow icon={FileDiff} onClick={onOpen} detail={error ? 'Unavailable' : groups === null ? 'Loading…' : undefined}>Changes in this chat</WorkspaceContextRow>{notice}</div>
+  if (!groups?.length) return <div><WorkspaceContextRow icon={FileDiff} onClick={() => onOpen()} detail={error ? 'Unavailable' : groups === null ? 'Loading…' : undefined}>Changes in this chat</WorkspaceContextRow>{notice}</div>
   return <div className="space-y-0.5">
     {notice}
     {groups.map(group => {
       if (group.kind !== 'repo') {
-        return <WorkspaceContextRow key="other" icon={FileDiff} onClick={onOpen} detail={`${group.total_files} changed`}>Other files</WorkspaceContextRow>
+        return <WorkspaceContextRow key="other" icon={FileDiff} onClick={() => onOpen(true)} detail={`${group.total_files} changed`}>Other files</WorkspaceContextRow>
       }
       const expanded = open === group.root
       const uncommitted = group.uncommitted ?? []
@@ -60,7 +60,7 @@ export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspace
           {group.branch && <p className="text-muted-foreground">Branch {group.branch}</p>}
           <section aria-label="Not committed" className="space-y-1">
             <div className="flex items-center gap-2"><span className="font-medium">Not committed</span><span className="flex-1" />
-              {uncommitted.length > 0 && <button type="button" onClick={onOpen} className="rounded-md border border-border px-2 py-0.5 hover:bg-muted">Review</button>}</div>
+              {uncommitted.length > 0 && <button type="button" onClick={() => onOpen()} className="rounded-md border border-border px-2 py-0.5 hover:bg-muted">Review</button>}</div>
             {uncommitted.length ? <ul className="space-y-0.5 font-mono">{uncommitted.map(file => <li key={file.path} className="flex gap-2">
               <span className={file.status === 'A' ? 'text-diff-add' : file.status === 'D' ? 'text-diff-del' : 'text-amber-500'}>{file.status}</span>
               <span className="min-w-0 flex-1 truncate" title={file.path}>{file.path.split('/').slice(-2).join('/')}</span>

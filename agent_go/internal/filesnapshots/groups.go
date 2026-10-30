@@ -131,6 +131,15 @@ func checkoutRoot(root, file string, cache map[string]string) string {
 	return found
 }
 
+// OutsideGitPaths narrows an existing path grant using the same checkout
+// classification as GroupChanges. Apply it before comparing or paging files.
+func OutsideGitPaths(root string, allow func(string) bool) func(string) bool {
+	cache := map[string]string{}
+	return func(file string) bool {
+		return allow(file) && checkoutRoot(root, file, cache) == ""
+	}
+}
+
 // GroupChanges groups a reply's changes by Git checkout; other changes are one
 // "Crew files (not in Git)" group. newRepos are the checkouts that appeared
 // during the reply (Comparison.NewRepos): their changes are already only the

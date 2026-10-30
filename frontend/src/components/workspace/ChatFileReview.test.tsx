@@ -28,6 +28,19 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('keeps outside-Git review requests scoped and skips unrelated repository discovery', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    vi.mocked(api.get).mockClear(); vi.mocked(workspaceGitApi.status).mockClear()
+    try {
+      await act(async () => root.render(<ChatFileReview outsideGit workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect(host.textContent).toContain('Files outside Git')
+      expect(vi.mocked(api.get).mock.calls.some(([, options]) => options?.params?.op === 'snapshot_compare' && options.params.group_kind === 'crew_files')).toBe(true)
+      expect(workspaceGitApi.status).not.toHaveBeenCalled()
+      expect(host.querySelector('[aria-label="What to review"]')).toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('offers the same PR watch in the file changes panel, only to a person allowed to control the chat', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)

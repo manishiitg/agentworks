@@ -19,7 +19,7 @@ const startedFrom = (message?: { text: string; at?: string }) => {
 
 const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-type ReviewProps = { workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
+type ReviewProps = { outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
 
 /** Mounted with an account/server/chat key by its owner. A folder holding Git
  * repositories is reviewed with Git (Uncommitted or Branch / PR); any other
@@ -31,6 +31,7 @@ export function ChatFileReview(props: ReviewProps) {
   const [revision, setRevision] = useState(0)
   useEffect(() => {
     let live = true
+    if (props.outsideGit) { setRepos([]); setRecentRepos([]); return }
     void Promise.all([
       workspaceGitApi.status(props.workspacePath),
       api.get<ReviewHistory>(endpoint, { params: { workspace_path: props.workspacePath, session_id: props.sessionId, op: 'snapshots' } })
@@ -38,13 +39,13 @@ export function ChatFileReview(props: ReviewProps) {
     ]).then(([found, recent]) => { if (live) { setRecentRepos(recent); setRepos(found) } })
       .catch(() => { if (live) setRepos(current => current ?? []) })
     return () => { live = false }
-  }, [props.workspacePath, props.sessionId, revision])
+  }, [props.workspacePath, props.sessionId, revision, props.outsideGit])
   if (!repos) return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
     <WorkspaceViewHeader title="Files" subtitle="Review changes" />
     <p className="p-3 text-sm">Loading…</p>
   </section>
   // "This chat" is always offered and opens first, Git project or not.
-  return repos.length
+  return repos.length && !props.outsideGit
     ? <GitReview workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} recentRepos={recentRepos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
       renderChat={bar => <SnapshotReview {...props} bar={bar} />} />
     : <SnapshotReview {...props} />
@@ -52,7 +53,7 @@ export function ChatFileReview(props: ReviewProps) {
 
 /** All requests and sends stay with that chat; the server resolves and
  * authorizes its saved boundaries. */
-function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: ReviewProps & { bar?: ReactNode }) {
+function SnapshotReview({ outsideGit = false, workspacePath, sessionId, tabId, onBrowse, bar }: ReviewProps & { bar?: ReactNode }) {
   const [reviewId, setReviewId] = useState('')
   const [result, setResult] = useState<Result | null>(null)
   const [revision, refresh] = useReviewRevision()
@@ -63,18 +64,19 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
   const viewers = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const baseline = result?.history.baseline_snapshot_id
-  const params = { workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, baseline_snapshot_id: baseline }
+  const groupParams: Record<string, string> = outsideGit ? { group_kind: 'crew_files' } : {}
+  const params = { ...groupParams, workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, baseline_snapshot_id: baseline }
   useEffect(() => {
     const controller = new AbortController()
     setResult(null); setError(''); setPullRequests([]); setCanWatch(false)
-    void api.get<{ groups?: ReplyFileGroup[]; history?: { can_review?: boolean } }>(endpoint, { params: { workspace_path: workspacePath, session_id: sessionId, op: 'chat_status' }, signal: controller.signal })
+    if (!outsideGit) void api.get<{ groups?: ReplyFileGroup[]; history?: { can_review?: boolean } }>(endpoint, { params: { workspace_path: workspacePath, session_id: sessionId, op: 'chat_status' }, signal: controller.signal })
       .then(({ data }) => { if (!controller.signal.aborted) { setPullRequests((data.groups ?? []).filter(group => group.kind === 'repo' && !!group.pr?.number)); setCanWatch(data.history?.can_review === true) } })
       .catch(() => { /* The saved comparison loads independently of GitHub status. */ })
-    void api.get<Result>(endpoint, { params: { workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, op: 'snapshot_compare' }, signal: controller.signal })
+    void api.get<Result>(endpoint, { params: { ...groupParams, workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, op: 'snapshot_compare' }, signal: controller.signal })
       .then(({ data }) => { if (!controller.signal.aborted) setResult(data) })
       .catch(() => { if (!controller.signal.aborted) setError('Could not load this saved comparison. Refresh and try again.') })
     return () => controller.abort()
-  }, [workspacePath, sessionId, reviewId, revision])
+  }, [workspacePath, sessionId, reviewId, revision, outsideGit])
   const through = result?.history.last_snapshot_id
   const loadMore = async () => {
     if (!result?.next_offset || !result.comparison) return
@@ -96,7 +98,7 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
   }
   return <section className="flex h-full min-h-0 flex-col" aria-label="Changes in this chat">
     {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
-    <WorkspaceViewHeader title="Files" subtitle={reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
+    <WorkspaceViewHeader title="Files" subtitle={outsideGit ? 'Files outside Git' : reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
       {!!result?.history.reviews?.length && <select aria-label="Review history" title="Review history" value={reviewId} onChange={event => setReviewId(event.target.value)}
         className="max-w-40 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground">
         <option value="">Since your last review</option>
@@ -113,7 +115,7 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
         {canWatch && <PRWatcherControls group={group} sessionId={sessionId} />}
       </div>)}
     </div>}
-    <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{bar ? 'Every file this chat changed, in and outside Git, from its saved copies.' : "This folder isn't a Git project, so changes come from this chat's saved copies."}</p>
+    <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{outsideGit ? 'Files outside Git changed during this chat, from its saved copies.' : bar ? 'Every file this chat changed, in and outside Git, from its saved copies.' : "This folder isn't a Git project, so changes come from this chat's saved copies."}</p>
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="max-h-[35%] shrink-0 overflow-auto sm:max-h-56">
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
@@ -131,7 +133,7 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
     </div>
     {selected && through && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${inline ? 'overflow-y-auto' : ''}`}>
       {(inline ? changes : [selected]).map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.path}`} embedded flow={inline}
-        selection={{ reference: { workspacePath, sessionId, snapshotId: '' }, change, query: { session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }}
+        selection={{ reference: { workspacePath, sessionId, snapshotId: '' }, change, query: { ...groupParams, session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }}
         tabId={tabId} onBack={onBrowse} />)}
     </div>}
   </section>
