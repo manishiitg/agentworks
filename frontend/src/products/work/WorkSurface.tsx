@@ -33,7 +33,6 @@ import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { activateTab } from '../../utils/activateTab'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
@@ -450,14 +449,7 @@ function useWorkChatTab(
 
         retireWorkActivityCopies(canonicalTabId)
 
-        if (useChatStore.getState().activeTabId === canonicalTabId &&
-          (useChatStore.getState().tabEvents[conversation.session_id]?.length ?? 0) === 0) {
-          await hydrateTabEvents(conversation.session_id, {
-            workspacePath: target.workspacePath,
-            fallbackToChatHistory: true,
-            preferChatHistory: true,
-          })
-        }
+        // ChatArea owns loading the selected conversation, including the main tab.
         if (!savedRuntime) {
           const restored = await restoreWorkRuntimeSelection(canonicalTabId, conversation.session_id, target.workspacePath)
           if (restored) await legacyRuntimeHandlerRef.current(restored)

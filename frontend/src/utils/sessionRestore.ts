@@ -238,13 +238,17 @@ export async function hydrateTabEvents(
   sessionId: string,
   options: Parameters<typeof loadTabEvents>[1] = {},
 ): Promise<RuntimeSessionState> {
-  try {
-    return await loadTabEvents(sessionId, options)
-  } finally {
-    // Rows, empty or error: the first load is over, so the pane may decide
-    // between the conversation and the new-chat landing screen.
+  const identity = captureChatIdentity()
+  const requestKey = `${identity}:${sessionId}`
+  const pending = loadTabEvents(sessionId, options)
+  const version = hydrateRequestVersions.get(requestKey)
+  const result = await pending
+  assertChatIdentityCurrent(identity)
+  // A failed or superseded request is not proof that this chat is empty.
+  if (hydrateRequestVersions.get(requestKey) === version) {
     useChatStore.getState().markTabHistoryLoaded(sessionId)
   }
+  return result
 }
 
 async function loadTabEvents(

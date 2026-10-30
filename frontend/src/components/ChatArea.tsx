@@ -816,7 +816,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const tabEvents = useChatStore((state) =>
     activeSessionId ? state.tabEvents[activeSessionId] || EMPTY_EVENTS : EMPTY_EVENTS
   )
-  useFormattedTranscriptHydration(
+  const historyRestore = useFormattedTranscriptHydration(
     activeSessionId,
     activeEventViewMode === 'formatted',
     activeTab?.metadata?.agentProfileWorkspace ||
@@ -1194,12 +1194,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     hasEvents: transcriptEvents.length > 0,
     isStreaming: activeTabStreaming,
   })
-  // Some tabs are never hydrated by their opener (a new side chat): load here
-  // so the pending state always ends. A duplicate request is version-guarded.
-  useEffect(() => {
-    if (!activeHistoryPending || !activeSessionId) return
-    void hydrateTabEvents(activeSessionId, { workspacePath: activeTab?.metadata?.agentProfileWorkspace }).catch(() => {})
-  }, [activeHistoryPending, activeSessionId, activeTab?.metadata?.agentProfileWorkspace])
+  // useFormattedTranscriptHydration owns the history request. Starting another
+  // here doubled first-tab reads and let the two responses race (PLAT-746-249).
   const resumePending =
     activeTabHasRestoredConversation &&
     !hasConversationContent &&
@@ -2547,6 +2543,12 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       // opening SSE. Otherwise connectSSE defaults to since=0 and the server
       // replays the raw retained event window before the current chat appears.
       if (useChatStore.getState().tabEventIndices[sid] === undefined) {
+        // The visible formatted chat already has a history loader. Wait for it
+        // before opening the stream; background/execution tabs restore here.
+        if (sid === activeSessionId && activeEventViewMode === 'formatted' && !isExecutionConversationTab(tab)) {
+          if (activeHistoryLoaded) connectSessionStream(sid)
+          continue
+        }
         if (sseRestoreInFlightRef.current.has(sid)) continue
         sseRestoreInFlightRef.current.add(sid)
         const restore = isExecutionConversationTab(tab)
@@ -2585,7 +2587,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       stopPolling()
     }
 
-  }, [tabsWithActiveSessions, connectSSE, disconnectSSE, handleSSEMessage, handleSSEStatus, handleSSEFallback, pollingInterval, startPolling, stopPolling, pollEvents])
+  }, [tabsWithActiveSessions, activeSessionId, activeEventViewMode, activeHistoryLoaded, connectSSE, disconnectSSE, handleSSEMessage, handleSSEStatus, handleSSEFallback, pollingInterval, startPolling, stopPolling, pollEvents])
 
   // The account-scoped store owns session transports. Closing a tab or changing
   // accounts tears them down there; unmounting a view must not disconnect the
@@ -3664,6 +3666,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             fill
             compact={previousChatsCompact}
           />
+        ) : historyRestore.error && transcriptEvents.length === 0 ? (
+          <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
+            <p>{historyRestore.error}</p>
+            <button type="button" className="text-primary hover:underline" onClick={historyRestore.retry}>Try again</button>
+          </div>
         ) : EffectiveContentRenderer && selectedModeCategory !== 'workflow' ? (
           <EffectiveContentRenderer
             runtimeActivity={runtimeActivity}
@@ -3676,7 +3683,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             streamingStatus={streamingStatus}
             hasOlder={historyPagination?.hasMore ?? false}
             loadingOlder={olderHistory.loading}
-            historyError={olderHistory.error}
+            historyError={historyRestore.error || olderHistory.error}
             onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
             landingContent={landingContent}
             onRetryLastMessage={retryLastProductMessage}
@@ -3747,9 +3754,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     streamingStatus={streamingStatus}
                     hasOlder={historyPagination?.hasMore ?? false}
                     loadingOlder={olderHistory.loading}
-                    error={olderHistory.error}
+                    loading={activeHistoryPending}
+                    error={historyRestore.error || olderHistory.error}
                     onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
-                    onRetry={loadOlderConversationPage}
+                    onRetry={historyRestore.error ? historyRestore.retry : loadOlderConversationPage}
                   />
             )}
 
@@ -3817,9 +3825,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     streamingStatus={streamingStatus}
                     hasOlder={historyPagination?.hasMore ?? false}
                     loadingOlder={olderHistory.loading}
-                    error={olderHistory.error}
+                    loading={activeHistoryPending}
+                    error={historyRestore.error || olderHistory.error}
                     onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
-                    onRetry={loadOlderConversationPage}
+                    onRetry={historyRestore.error ? historyRestore.retry : loadOlderConversationPage}
                   />
             )}
           </>

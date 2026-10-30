@@ -1302,7 +1302,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       : completed
         ? 'This agent completed.'
         : 'Waiting for this agent to begin.'
-    const detail = error || (completed || failed
+    const detail = loading ? 'Fetching saved messages…' : error || (completed || failed
       ? 'Conversation details are not available for this retained run.'
       : 'Its conversation will appear here when the first event arrives.')
     return (
