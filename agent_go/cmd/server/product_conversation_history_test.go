@@ -108,44 +108,44 @@ func TestConversationTitleComesFromTheFirstMessage(t *testing.T) {
 	}
 }
 
-func TestResolveProductResumeTargetUsesOwnedWorkProjectOnce(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-
-	conversationDir := filepath.Join(root, "_users", "alice", "Chats", "Work", "projects", "demo", "builder", "conversation", "2026-09-15")
+// PLAT-872-78: a shared Crew chat's history must be found, or switching its coding agent (Cursor to Claude) starts the
+// chat with no history: the fallback continues a saved conversation only on the same provider.
+func TestResolveProductResumeTargetFindsSharedCrewChat(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	crew := registerTestCrew(t, "demo-12345678", "alice", true)
+	private, ok := resolveLocalWorkflowDir(crew)
+	if !ok {
+		t.Fatal("crew storage not resolved")
+	}
+	conversationDir := filepath.Join(private, "builder", "conversation", "2026-10-28")
 	if err := os.MkdirAll(conversationDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	conversationPath := filepath.Join(conversationDir, chatHistoryConversationFileName("saved-chat"))
-	if err := os.WriteFile(conversationPath, []byte(`{
-  "session_id": "saved-chat",
-  "workshop_mode": "workshop",
-  "conversation_history": [{"Role":"human","Parts":[{"Text":"remember this"}]}],
-  "runtime": {
-    "kind": "coding_agent",
-    "provider": "claude-code",
-    "transport": "tmux",
-    "external_session_id": "claude-native-saved",
-    "resume_supported": true
-  }
+	for session, text := range map[string]string{"crew-chat": "remember this", "other-chat": "another chat in this Crew"} {
+		if err := os.WriteFile(filepath.Join(conversationDir, chatHistoryConversationFileName(session)), []byte(`{
+  "session_id": "`+session+`",
+  "conversation_history": [{"Role":"human","Parts":[{"Text":"`+text+`"}]}],
+  "runtime": {"kind": "coding_agent", "provider": "cursor-cli", "transport": "sdk", "resume_supported": true}
 }`), 0o600); err != nil {
-		t.Fatal(err)
+			t.Fatal(err)
+		}
 	}
 
-	target, ok, err := resolveProductResumeTarget("alice", ProductConversationRecord{
-		SessionID:     "saved-chat",
-		WorkspacePath: "/data/docs/_users/alice/Chats/Work/projects/demo",
-	})
-	if err != nil || !ok || target == nil {
-		t.Fatalf("resolve target: ok=%v target=%#v err=%v", ok, target, err)
+	target, found, err := resolveProductResumeTarget("alice", ProductConversationRecord{SessionID: "crew-chat", WorkspacePath: crew})
+	if err != nil || !found || target == nil {
+		t.Fatalf("shared Crew chat not found: found=%v target=%#v err=%v", found, target, err)
 	}
-	if target.SessionID != "saved-chat" || target.WorkspacePath != "Chats/Work/projects/demo" || target.provider() != "claude-code" {
-		t.Fatalf("unexpected target: %#v", target)
+	// Only this chat's own history, never another chat saved in the same Crew folder.
+	if target.SessionID != "crew-chat" || len(target.History) != 1 || !target.crossesProvider("claude-code") ||
+		target.History[0].Parts[0].(llmtypes.TextContent).Text != "remember this" {
+		t.Fatalf("target = %#v, want this chat's history and the saved provider", target)
 	}
-	if !strings.Contains(target.ConversationPath, "Chats/Work/projects/demo/builder/conversation") || len(target.History) != 1 {
-		t.Fatalf("target lost path or history: %#v", target)
+	// A Run person never resumes from the owner's Builder history, even by naming its session. (Their own store is
+	// central; with no workspace service in this test that lookup errors, which is not a result.)
+	if target, found, _ := resolveProductResumeTarget("bob", ProductConversationRecord{SessionID: "crew-chat", WorkspacePath: crew}); found || target != nil {
+		t.Fatalf("Run person resumed the owner's chat: found=%v target=%#v", found, target)
 	}
-
 }
 
 func TestResolvedResumeTargetHydratesAndKeepsOnePersistenceDestination(t *testing.T) {
