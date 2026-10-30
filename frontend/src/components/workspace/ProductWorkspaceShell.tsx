@@ -10,7 +10,7 @@ import { WorkspacePanelVisibilityContext } from './WorkspacePanelToggle'
 export function ProductWorkspaceShell({
   chatOpen, panelOpen, splitRatio, mobilePreview = false, laptopPreview = false, mobilePaneWidth, mobilePane, onMobilePaneChange, splitRef,
   onOpenChat, onOpenWorkspace, onCloseWorkspace, tabs, toolbar, chat, workspace, divider,
-  chatProps, workspaceProps, testId, compactContext = false, toolbarWhenPanelClosed = false, navigationActive = true, retainChat = false, retainWorkspace = false, showChatReopenControl = true,
+  chatProps, workspaceProps, testId, compactContext = false, toolbarWhenPanelClosed = false, showToolbar = true, navigationActive = true, retainChat = false, retainWorkspace = false, showChatReopenControl = true,
 }: {
   chatOpen: boolean; panelOpen: boolean; splitRatio: number; mobilePreview?: boolean; laptopPreview?: boolean; mobilePaneWidth?: number | null
   /** Products with a phone pane switch keep both panes mounted while hiding the inactive one. */
@@ -22,6 +22,8 @@ export function ProductWorkspaceShell({
   tabs: ReactNode; toolbar: ReactNode; chat: ReactNode; workspace: ReactNode; divider: ReactNode
   chatProps?: HTMLAttributes<HTMLElement>; workspaceProps?: HTMLAttributes<HTMLElement>
   compactContext?: boolean; toolbarWhenPanelClosed?: boolean
+  /** Shared dashboards supply their own header, without the Builder chat tabs. */
+  showToolbar?: boolean
   /** Retained hidden workspaces release shared header controls to the visible page. */
   navigationActive?: boolean
   testId?: string
@@ -43,9 +45,9 @@ export function ProductWorkspaceShell({
       <PanelLeftOpen className="h-4 w-4" /><span className="[writing-mode:vertical-rl] text-[10px] font-semibold uppercase tracking-wider">Chat</span>
     </button>}
     <div ref={splitRef} className={layout.gridClassName} style={layout.gridStyle}>
-      <WorkspaceTopToolbar className={layout.toolbarClassName} navigationActive={navigationActive}>
+      {showToolbar && <WorkspaceTopToolbar className={layout.toolbarClassName} navigationActive={navigationActive}>
         {tabs}{layout.showPanel || toolbarWhenPanelClosed ? toolbar : null}
-      </WorkspaceTopToolbar>
+      </WorkspaceTopToolbar>}
       {(layout.showChat || retainChat) && <main {...chatProps} hidden={!layout.showChat} style={{ ...chatProps?.style, ...(!layout.showChat ? { display: 'none' } : {}) }} className={chatClassName}>{chat}</main>}
       {layout.showDivider && divider}
       {(layout.showPanel || retainWorkspace) && <aside {...workspaceProps} hidden={!layout.showPanel} style={{ ...workspaceProps?.style, ...(!layout.showPanel ? { display: 'none' } : {}) }} className={workspaceClassName}><div className="flex h-full min-h-0 min-w-0 flex-col">{workspace}</div></aside>}

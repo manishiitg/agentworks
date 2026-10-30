@@ -9,16 +9,17 @@ let root: Root | undefined
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = '' })
 
 describe('shared product workspace visibility', () => {
-  it('shows the dashboard alone without mounting or reopening a hidden outer chat', async () => {
+  it('shows the shared dashboard without an empty tab header or hidden outer chat (PLAT-746)', async () => {
     const mounted = vi.fn()
     function Chat() { useEffect(() => { mounted() }, []); return <p>Outer conversation</p> }
     const host = document.createElement('div'); document.body.append(host); root = createRoot(host)
     await act(async () => root?.render(<ProductWorkspaceShell
-      chatOpen={false} panelOpen splitRatio={.38} showChatReopenControl={false}
+      chatOpen={false} panelOpen splitRatio={.38} showChatReopenControl={false} showToolbar={false}
       onOpenChat={() => {}} onOpenWorkspace={() => {}}
       tabs={null} toolbar={null} chat={<Chat />} workspace={<p>Dashboard Ask</p>} divider="Resize"
     />))
     expect(host.textContent).toContain('Dashboard Ask')
+    expect(host.querySelector('[data-terminal-focus-chrome="toolbar"]')).toBeNull()
     expect(host.querySelector('main')).toBeNull()
     expect(host.querySelector('[aria-label="Show chat panel"]')).toBeNull()
     expect(host.textContent).not.toContain('Resize')
@@ -39,6 +40,7 @@ describe('shared product workspace visibility', () => {
     }
     const render = (mobilePane?: 'chat' | 'workspace') => act(async () => root?.render(<Fixture mobilePane={mobilePane} />))
     await render()
+    expect(host.querySelector('[data-terminal-focus-chrome="toolbar"]')?.textContent).toContain('Access chat')
     expect(host.querySelectorAll('[aria-label="Close workspace panel"]')).toHaveLength(1)
     expect(host.querySelector('[data-workspace-panel-edge]')).toBeNull()
     expect(host.querySelector('main')?.className).toMatch(/^flex /)
