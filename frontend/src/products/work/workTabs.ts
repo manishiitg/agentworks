@@ -2,6 +2,24 @@ import type { ChatTab } from '../../stores/useChatStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { isProjectProductId } from './projectProduct'
 
+// Retire only browser projections. Closing a normal tab would cancel its shared
+// session; its events and backend conversation must stay intact (PLAT-746-224).
+export function retireWorkActivityCopies(tabId: string): void {
+  useChatStore.setState(state => {
+    const target = state.chatTabs[tabId]
+    if (!target?.sessionId || target.metadata?.isViewOnly) return state
+    const duplicates = Object.values(state.chatTabs).filter(tab =>
+      tab.tabId !== tabId && tab.sessionId === target.sessionId && tab.metadata?.isViewOnly === true &&
+      tab.metadata?.agentProfileId === target.metadata?.agentProfileId &&
+      tab.metadata?.agentProfileProjectId === target.metadata?.agentProfileProjectId,
+    )
+    if (!duplicates.length) return state
+    const chatTabs = { ...state.chatTabs }
+    for (const tab of duplicates) delete chatTabs[tab.tabId]
+    return { chatTabs, activeTabId: duplicates.some(tab => tab.tabId === state.activeTabId) ? tabId : state.activeTabId }
+  })
+}
+
 export type WorkRuntimeSelection = {
   connectionId?: string
   engine: string

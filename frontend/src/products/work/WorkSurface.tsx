@@ -56,7 +56,7 @@ import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
+import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { productMode, updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode } from '../../platform/chat/productProjects'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
@@ -448,22 +448,7 @@ function useWorkChatTab(
         chatStore.setTabMetadata(canonicalTabId, { ...projectMetadata, agentProfileMCPSelectionInitialized: true })
         chatStore.setTabConfig(canonicalTabId, { selectedServers: savedServers, selectedSkills: savedSkills })
 
-        // Earlier UI versions could open the canonical session as a read-only
-        // history tab. Remove only those local duplicate projections; the
-        // server-owned conversation and its events remain attached to Chat.
-        useChatStore.setState(state => {
-          const duplicateIds = Object.values(state.chatTabs)
-            .filter(tab => tab.tabId !== canonicalTabId && tab.metadata?.isViewOnly === true &&
-              belongsToWorkProject(tab, target.id) && tab.sessionId === conversation.session_id)
-            .map(tab => tab.tabId)
-          if (duplicateIds.length === 0) return state
-          const nextTabs = { ...state.chatTabs }
-          for (const duplicateId of duplicateIds) delete nextTabs[duplicateId]
-          return {
-            chatTabs: nextTabs,
-            activeTabId: duplicateIds.includes(state.activeTabId || '') ? canonicalTabId : state.activeTabId,
-          }
-        })
+        retireWorkActivityCopies(canonicalTabId)
 
         if ((useChatStore.getState().tabEvents[conversation.session_id]?.length ?? 0) === 0) {
           await hydrateTabEvents(conversation.session_id, {
@@ -660,8 +645,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const tabs = Object.values(state.chatTabs)
           const existing = tabs.find(tab => tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id))
           if (existing) {
-            const active = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
-            if (active?.metadata?.isViewOnly && active.sessionId === chat.session_id) activateTab(existing.tabId)
+            retireWorkActivityCopies(existing.tabId)
             if (existing.metadata?.agentProfileTabOwnerID !== chat.tab_owner_id || existing.metadata?.agentProfileTabOwnerName !== chat.tab_owner_name || existing.metadata?.agentProfileTabCanWrite !== chat.can_write) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id, agentProfileTabOwnerName: chat.tab_owner_name, agentProfileTabCanWrite: chat.can_write })
             // A tab this browser kept from before the project's product changed still names the old one, which hides it
             // from this strip; the server's list decides which project and product the chat is in.
@@ -699,6 +683,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const previous = previousActive ? state.chatTabs[previousActive] : undefined
           if (previous?.metadata?.isViewOnly && previous.sessionId === chat.session_id) activateTab(tabId)
           else if (previousActive) activateTab(previousActive)
+          retireWorkActivityCopies(tabId)
           await hydrateTabEvents(chat.session_id, {
             workspacePath: primary.metadata?.agentProfileWorkspace,
             fallbackToChatHistory: true,

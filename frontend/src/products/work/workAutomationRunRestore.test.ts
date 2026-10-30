@@ -100,7 +100,7 @@ afterEach(() => {
 })
 
 describe('openWorkAutomationRunChat', () => {
-  // PLAT-746-222: Active work created a history copy of a scheduled side chat.
+  // PLAT-746-224: Active work created a history copy of a scheduled side chat.
   it.each([true, false])('opens the server-listed chat without a history copy (already open: %s)', async alreadyOpen => {
     const session = runSession()
     const chat = { conversation_key: 'news-id:chat:replies', session_id: session.session_id, name: 'Replies', can_write: false }
