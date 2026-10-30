@@ -6,7 +6,7 @@ import { ContextMeter } from '../../components/chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
 
 /**
- * The compact usage chip at the right end of the chat box's bottom row, shown when the person turned on
+ * The compact usage chip beside the model controls in the chat box's bottom row, shown when the person turned on
  * "Show in chat box": context used of its window with a mini bar, and the account's plan use
  * ("288K/475K ▓▓░ · 7d 20%"). Everything comes from /api/chat-context, which only answers the chat's own tab
  * owner. It reads again when a turn ends. A click opens the chat's model menu. When the row is narrow the
