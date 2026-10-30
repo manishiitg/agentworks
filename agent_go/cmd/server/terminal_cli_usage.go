@@ -15,7 +15,7 @@ import (
 // terminalCLIUsage is a coding CLI's own usage report for one tmux pane, as
 // read from its local files (never a model call).
 type terminalCLIUsage struct {
-	meta         map[string]interface{} // status_extras / rate_limit_windows
+	meta         map[string]interface{} // statusCLIMetaKeys
 	inputTokens  int
 	outputTokens int
 	cacheRead    int
@@ -35,6 +35,14 @@ var terminalCLIUsageCache = struct {
 	byTmux map[string]terminalCLIUsage
 }{byTmux: map[string]terminalCLIUsage{}}
 
+// statusCLIMetaKeys are the status fields copied from the CLI's report: plan
+// usage and the context fill. Without the context numbers a launch-only chat
+// showed no context figure once the "ctx N%" extra was dropped (PLAT-872-71).
+var statusCLIMetaKeys = []string{
+	llmtypes.StatusExtrasMetaKey, llmtypes.RateLimitWindowsMetaKey,
+	llmtypes.ContextUsedTokensMetaKey, llmtypes.ContextWindowTokensMetaKey,
+}
+
 // readTerminalCLIUsage reads the CLI's usage for a pane. A var so tests can
 // stub it.
 var readTerminalCLIUsage = func(tmux string) terminalCLIUsage {
@@ -45,7 +53,7 @@ var readTerminalCLIUsage = func(tmux string) terminalCLIUsage {
 			return terminalCLIUsage{}
 		}
 		meta := map[string]interface{}{}
-		for _, key := range []string{llmtypes.StatusExtrasMetaKey, llmtypes.RateLimitWindowsMetaKey} {
+		for _, key := range statusCLIMetaKeys {
 			if value, present := status.Metadata[key]; present {
 				meta[key] = value
 			}
