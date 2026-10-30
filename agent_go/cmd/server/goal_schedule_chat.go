@@ -38,12 +38,13 @@ func goalScheduleChats(ctx context.Context, owner, presetID, workspace string) (
 		return nil, err
 	}
 	mainKey := crewOwnerDefaultChatKey(presetID, owner)
+	history := chatHistorySessionsByID(owner, workspace)
 	out := []goalScheduleChat{}
 	for _, record := range records {
 		if strings.Trim(record.WorkspacePath, "/") != strings.Trim(workspace, "/") || record.SessionID == "" {
 			continue
 		}
-		name := firstNonEmptyTrimmed(identities[record.ConversationKey].Name, record.Title, "Builder")
+		name, _ := goalTabPresentation(record, identities[record.ConversationKey], history[record.SessionID])
 		out = append(out, goalScheduleChat{Key: record.ConversationKey, Name: name, SessionID: record.SessionID, Main: record.ConversationKey == mainKey})
 	}
 	sort.SliceStable(out, func(i, j int) bool {

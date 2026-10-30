@@ -252,7 +252,7 @@ func (api *StreamingAPI) externalBuilderOperationCall(w http.ResponseWriter, r *
 		return
 	}
 	if name == "builder_tabs" {
-		body, _ := json.Marshal(map[string]any{"preset_query_id": workflow.Manifest.ID, "workspace_path": workflow.WorkspacePath, "action": args["tab_action"], "chat_id": args["chat_id"], "name": args["name"], "pinned": args["pinned"], "chat_ids": args["chat_ids"]})
+		body, _ := json.Marshal(map[string]any{"preset_query_id": workflow.Manifest.ID, "workspace_path": workflow.WorkspacePath, "action": args["tab_action"], "chat_id": args["chat_id"], "session_id": args["session_id"], "name": args["name"], "pinned": args["pinned"], "chat_ids": args["chat_ids"]})
 		forwarded := r.Clone(context.WithValue(r.Context(), UserContextKey, claims))
 		forwarded.Body = io.NopCloser(bytes.NewReader(body))
 		api.handleGoalOwnerTabs(w, forwarded)
