@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -39,6 +40,11 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		{"root", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "."}, true},
 		{"bob", http.MethodGet, "/api/wp/api/documents/config/users.json", nil, false},
 		{"bob", http.MethodGet, "/api/wp/api/documents/_system/costs.jsonl", nil, false},
+		// PLAT-856-418: split mailbox history remains under the same system fence.
+		{"bob", http.MethodGet, "/api/wp/api/documents/_system/agent_messages/conversations.history.json", nil, false},
+		{"bob", http.MethodPut, "/api/wp/api/documents/_system/agent_messages/conversations.history.json", map[string]any{"content": "[]"}, false},
+		{"root", http.MethodGet, "/api/wp/api/documents/_system/agent_messages/conversations.history.json", nil, true},
+		{"root", http.MethodPut, "/api/wp/api/documents/_system/agent_messages/conversations.history.json", map[string]any{"content": "[]"}, true},
 		{"bob", http.MethodGet, "/api/wp/api/search?query=x", nil, false},
 		// Reads of a workflow follow its access record.
 		{"bob", http.MethodGet, "/api/wp/api/documents/Workflow/private/notes.md", nil, false},
@@ -77,22 +83,24 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		{"alice", http.MethodPut, "/api/wp/api/documents/Chats/Code/projects/test-code/workflow.json", map[string]any{"content": "{}"}, true},
 		{"alice", http.MethodGet, "/api/wp/api/documents/Chats/Code/projects/test-code/product.json", nil, true},
 	} {
-		var body []byte
-		if tc.body != nil {
-			body, _ = json.Marshal(tc.body)
-		}
-		req := httptest.NewRequest(tc.method, tc.url, bytes.NewReader(body))
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: tc.user, Username: tc.user}))
-		status, detail, cleanup := workspaceProxyCrossUserBlock(req, tc.user)
-		if cleanup != nil {
-			cleanup()
-		}
-		if allowed := status == 0; allowed != tc.allowed {
-			t.Errorf("%s %s %s %v: status=%d (%s), want allowed=%v", tc.user, tc.method, tc.url, tc.body, status, detail, tc.allowed)
-		}
+		t.Run(tc.user+"_"+tc.method+"_"+strings.ReplaceAll(tc.url, "/", "_"), func(t *testing.T) {
+			var body []byte
+			if tc.body != nil {
+				body, _ = json.Marshal(tc.body)
+			}
+			req := httptest.NewRequest(tc.method, tc.url, bytes.NewReader(body))
+			if body != nil {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: tc.user, Username: tc.user}))
+			status, detail, cleanup := workspaceProxyCrossUserBlock(req, tc.user)
+			if cleanup != nil {
+				cleanup()
+			}
+			if allowed := status == 0; allowed != tc.allowed {
+				t.Errorf("%s %s %s %v: status=%d (%s), want allowed=%v", tc.user, tc.method, tc.url, tc.body, status, detail, tc.allowed)
+			}
+		})
 	}
 }
 
