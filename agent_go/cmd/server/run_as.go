@@ -46,6 +46,8 @@ type turnRunAsInput struct {
 	CLIWorkingDir    string
 	SharedWorkingDir string
 	CallerID         string
+	// ConnectionID is the provider account the turn runs on ("" or global:<provider> is the server's own account).
+	ConnectionID string
 }
 
 // runAsDeps are the lookups the decision needs; tests replace them.
@@ -106,8 +108,18 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 		return appAccount
 	}
 	// An isolated runtime folder belongs to the app account (app-owned, mode 0700): the CLI starts there, so it
-	// runs there as the app account whatever project it links to.
+	// runs there as the app account whatever project it links to. A Crew's runtime in its owner's slot state folder is
+	// that slot's: every turn in the Crew, the owner's and a Run person's, runs as the owner's slot (PLAT-872-84).
 	if in.CLIWorkingDir != "" && in.CLIWorkingDir != in.SharedWorkingDir {
+		if slot, owner := crewOwnerSlot(in.WorkingFolder); slot != "" && isProjectProfileID(in.ProfileID) && inSlotStateFolder(in.CLIWorkingDir, slot) {
+			// Only the server's own account reaches a slot (from its environment). Any provider-connection account
+			// keeps its login in files the slot could read, so the turn stays on the app account.
+			if connection := strings.TrimSpace(in.ConnectionID); connection != "" && !strings.HasPrefix(connection, "global:") {
+				log.Printf("[RUN_AS] Crew %s stays on the app account: its account %s keeps its login in files, which cannot run in the owner's slot yet", in.WorkingFolder, connection)
+				return appAccount
+			}
+			return owned(owner)
+		}
 		return appAccount
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
