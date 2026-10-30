@@ -37,7 +37,8 @@ func TestWrappedShellsCannotReachTheCLIsLogins(t *testing.T) {
 		t.Helper()
 		policy := LandlockPolicy{ReadPaths: []string{work, logins}, WritePaths: []string{work}, WorkDir: work, PrivateTmp: true,
 			ShellWrap: &ShellWrap{ScrubEnv: []string{"FAKE_LOGIN_TOKEN"},
-				Inner: LandlockPolicy{ReadPaths: []string{work}, WritePaths: []string{work}, WorkDir: work, PrivateTmp: true}}}
+				// As the provider sends it: no private_tmp on the inner layer.
+				Inner: LandlockPolicy{ReadPaths: []string{work}, WritePaths: []string{work}, WorkDir: work}}}
 		config := filepath.Join(t.TempDir(), "agentworks-landlock-test.json")
 		raw, _ := json.Marshal(policy)
 		if err := os.WriteFile(config, raw, 0o600); err != nil {
