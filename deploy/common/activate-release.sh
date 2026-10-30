@@ -27,11 +27,17 @@
 # deploy/common/slots.sh and deploy/common/vault.sh must be sourced first. The caller's EXIT trap calls activate_recover.
 
 ACTIVATE_STOPPED=0
+ACTIVATE_MAILBOX_BACKUP=""
 
 # Restart the services if the deploy fails while they are stopped, and Vault if it was stopped for its bootstrap.
 activate_recover() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$ACTIVATE_STOPPED" == 1 ]]; then
+    # An old-format release must never restart against split metadata. Keep
+    # the plain original backup when a caller switches current back on failure.
+    if [[ -n "${ACTIVATE_MAILBOX_BACKUP:-}" && "$(readlink -f "$APP_ROOT/current")" != "$(readlink -f "$RELEASE_DIR")" ]]; then
+      python3 "$REPO_ROOT/scripts/migrations/split-agent-mailbox.py" "$DOCS_ROOT/_system/agent_messages/conversations.json" --restore-backup "$ACTIVATE_MAILBOX_BACKUP" || return 1
+    fi
     systemctl --user restart "$UNIT_PREFIX-workspace" "$UNIT_PREFIX-agent" "$UNIT_PREFIX-gateway" >/dev/null 2>&1 || true
   fi
 }
@@ -231,6 +237,12 @@ except Exception:
       [[ -f "$file" ]] && systemctl --user enable --now "$(basename "$file")"
     done
   fi
+  # PLAT-856-418: last cutover step before starting new units; the old
+  # writer is stopped. Every server converts on its next authorized deploy.
+  local mailbox_conversion
+  mailbox_conversion="$(python3 "$REPO_ROOT/scripts/migrations/split-agent-mailbox.py" "$DOCS_ROOT/_system/agent_messages/conversations.json")"
+  echo "$mailbox_conversion"
+  ACTIVATE_MAILBOX_BACKUP="$(jq -r '.backup // empty' <<< "$mailbox_conversion")"
   systemctl --user restart "$UNIT_PREFIX-workspace"
   sleep 2
   vault_start "$UNIT_PREFIX" "$VAULT_PORT"
