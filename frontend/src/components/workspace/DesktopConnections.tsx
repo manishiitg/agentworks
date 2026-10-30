@@ -5,13 +5,12 @@ import { desktopRequest, type DesktopConnection, type DesktopInventory } from '.
 import { getLocalApiBaseUrl, getDesktopApiBaseUrl } from '../../services/api'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { isLocalDeployment } from '../../products/productSurfaceConfig'
-import { getRuntimeAppName, runtimeBrandingConfig } from '../../runtime-branding'
 import { SidebarProjectRow, SidebarServerGroup, openSidebarProject } from './SidebarServerGroup'
 
 const local: DesktopConnection = { id: 'local', name: 'Local', server: '' }
 export function DesktopConnections({ children }: { children?: ReactNode }) {
   if (!window.electronAPI?.getDesktopConnection?.()) {
-    const name = window.electronAPI || isLocalDeployment() ? 'Local' : getRuntimeAppName(runtimeBrandingConfig()) || window.location.hostname
+    const name = window.electronAPI || isLocalDeployment() ? 'Local' : 'Server'
     return <SidebarServerGroup id="local" name={name}>{children}
       {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
     </SidebarServerGroup>
