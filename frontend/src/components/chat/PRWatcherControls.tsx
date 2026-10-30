@@ -19,7 +19,7 @@ export function PRWatcherControls({ group, sessionId }: { group: ReplyFileGroup;
   if (!projectId || tab?.metadata?.agentProfileId !== 'work' || group.pr?.state !== 'open' || !group.pr.number || !group.github_repo) return null
   const refresh = async () => {
     const result = await conditionTriggersApi.list(projectId, 'work')
-    setWatchers(result.triggers.filter(item => item.github_pr?.repository === group.github_repo && item.github_pr.number === group.pr?.number && item.github_pr.worktree === group.root))
+    setWatchers(result.triggers.filter(item => item.github_pr?.repository === group.github_repo && item.github_pr.number === group.pr?.number && (item.github_pr.worktree ?? '') === group.root && item.github_pr.session_id === sessionId))
   }
   const showError = (e: unknown) => setError(axios.isAxiosError(e) && typeof e.response?.data === 'string' ? e.response.data : 'Could not update this PR watch. Try again.')
   const toggle = async () => {
@@ -68,7 +68,7 @@ export function PRWatcherControls({ group, sessionId }: { group: ReplyFileGroup;
         </label>
         <p className="text-muted-foreground">Repository collaborators are included. Bot logins are optional; separate them with commas.</p>
       </> : <p className="text-muted-foreground">Checks the current PR commit every minute, even for long runs. Sends one result here, then finishes.</p>}
-      <button type="button" disabled={busy} className="self-start rounded border border-border px-2 py-1 hover:bg-muted disabled:opacity-50" onClick={() => void create()}>{busy ? 'Saving…' : mode === 'autofix' ? 'Start auto-fix' : 'Start watch'}</button>
+      <button type="button" disabled={busy || watchers.some(item => item.github_pr?.mode === mode && item.enabled && !item.completed_at)} className="self-start rounded border border-border px-2 py-1 hover:bg-muted disabled:opacity-50" onClick={() => void create()}>{busy ? 'Saving…' : mode === 'autofix' ? 'Start auto-fix' : 'Start watch'}</button>
       {error && <p role="alert" className="text-destructive">{error}</p>}
     </div>}
   </span>

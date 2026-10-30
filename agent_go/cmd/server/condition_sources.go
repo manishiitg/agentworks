@@ -113,6 +113,9 @@ func (c *conditionService) authorizeProductSource(ctx context.Context, job produ
 		if err := c.authorizeGitHubPR(ctx, job); err != nil {
 			return err
 		}
+		if err := githubWatchChatCurrent(ctx, job, cfg.GitHubPR); err != nil {
+			return err
+		}
 		if _, err := githubWatcherToken(job.UserID, cfg.GitHubPR); err != nil {
 			return err
 		}

@@ -229,6 +229,16 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		if !ok {
 			return nil, errors.New("trigger definition is required")
 		}
+		// Pausing never depends on a working external connection or a live chat.
+		if action == "update" && job.Schedule.Condition.GitHubPR != nil && len(trigger) == 1 && trigger["enabled"] == false {
+			schedule := job.Schedule
+			schedule.Enabled = false
+			saved, err := c.saveCaller(ctx, job, schedule)
+			if err != nil {
+				return nil, err
+			}
+			return conditionJobView(saved), nil
+		}
 		doc := map[string]interface{}{}
 		if action == "update" {
 			doc = conditionView(job.Schedule)
@@ -328,6 +338,9 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 					}
 				} else {
 					cfg.Target.ChatID = chats.Self.ID
+					if cfg.GitHubPR != nil && chats.Self.IsMain {
+						cfg.Target.ChatID = codeChatMainName
+					}
 				}
 			}
 		}

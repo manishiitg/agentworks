@@ -144,6 +144,9 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 	if err := writeGitHubRecord("owner", githubAccountRecord{Login: "different-account"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := c.manage(ctx, "owner", "work", "checks", map[string]interface{}{"action": "update", "id": id, "expected_revision": result.(map[string]interface{})["revision"], "trigger": map[string]interface{}{"enabled": false}}); err != nil {
+		t.Fatal("disconnected watcher cannot be stopped", err)
+	}
 	if _, err := githubWatcherToken("owner", cfg.GitHubPR); err == nil {
 		t.Fatal("silently switched saved GitHub identity")
 	}

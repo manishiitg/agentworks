@@ -55,6 +55,8 @@ type Target struct {
 // Payload becomes named function arguments, or event data for messages/triggers.
 // Target selection and constant arguments are never taken from script output.
 type GitHubPR struct {
+	ChatKey    string   `json:"chat_key,omitempty"`
+	SessionID  string   `json:"session_id,omitempty"`
 	Repository string   `json:"repository"`
 	Number     int      `json:"number"`
 	Mode       string   `json:"mode"` // checks, deployment, autofix

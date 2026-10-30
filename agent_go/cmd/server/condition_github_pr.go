@@ -71,6 +71,7 @@ func (c *conditionService) prepareGitHubPR(ctx context.Context, job productSched
 			return errors.New("create a new PR watcher to change its repository, mode, worktree or chat")
 		}
 		p.Login, p.Branch, p.HeadSHA = old.Login, old.Branch, old.HeadSHA
+		p.ChatKey, p.SessionID = old.ChatKey, old.SessionID
 		_, err := githubWatcherToken(job.UserID, p)
 		return err
 	}
@@ -86,7 +87,34 @@ func (c *conditionService) prepareGitHubPR(ctx context.Context, job productSched
 		return errors.New("choose an open pull request")
 	}
 	p.HeadSHA, p.Branch = head.Head.SHA, head.Head.Ref
-
+	if session := chatSessionIDFromContext(ctx); session != "" {
+		chats, err := c.s.api.codeChatsFor(ctx, job.UserID, session, job.WatcherSource.Path)
+		if err != nil || chats.ProjectID != job.ProjectID {
+			return errors.New("the originating chat is unavailable")
+		}
+		p.ChatKey, p.SessionID = chats.Self.Key, chats.Self.SessionID
+	} else {
+		profile, err := c.s.registry.Resolve(crewProfileID, 0, job.UserID)
+		if err != nil {
+			return err
+		}
+		key := job.ProjectID
+		if cfg.Target.ChatID != codeChatMainName {
+			key += codeChatSideMarker + cfg.Target.ChatID
+			if !projectChatExists(ctx, job.UserID, crewProfileID, job.ProjectID, key) {
+				return errors.New("choose one of your existing Crew chats")
+			}
+		}
+		binding, err := resolveProductConversationBinding(ctx, job.UserID, profile, key)
+		if err != nil {
+			return err
+		}
+		record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, job.UserID, profile, binding, "")
+		if err != nil {
+			return err
+		}
+		p.ChatKey, p.SessionID = record.ConversationKey, record.SessionID
+	}
 	return nil
 }
 
@@ -337,4 +365,19 @@ func githubWatchEventCurrent(ctx context.Context, owner string, cfg conditiontri
 		return false, err
 	}
 	return head.State == "open" && head.MergedAt == nil && ev.Payload["head_sha"] == head.Head.SHA, nil
+}
+
+// Exact chat identity is server-selected at creation, not reconstructed from a
+// title or an active tab. A closed/replaced conversation never falls back.
+func githubWatchChatCurrent(ctx context.Context, job productScheduleJob, p *conditiontrigger.GitHubPR) error {
+	records, err := defaultProductConversationRegistryStore().projectChats(ctx, job.UserID, crewProfileID, job.ProjectID)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if record.ConversationKey == p.ChatKey && record.SessionID == p.SessionID && workspacePathsMatchForUser(job.UserID, record.WorkspacePath, job.WatcherSource.Path) {
+			return nil
+		}
+	}
+	return errors.New("the PR watcher's original chat was closed or replaced; create a new watcher in the chat you want")
 }
