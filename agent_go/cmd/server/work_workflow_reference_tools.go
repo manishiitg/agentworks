@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -87,7 +88,8 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 		}
 		raw, found, readErr := store.read(ctx, candidate)
 		if readErr != nil {
-			return nil, fmt.Errorf("read Crew manifest %s: %w", candidate, readErr)
+			log.Printf("[CREW_LIST] stage=reference manifest=%q cause=%v", candidate, readErr)
+			continue
 		}
 		if !found {
 			continue

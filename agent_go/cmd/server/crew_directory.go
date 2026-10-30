@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -314,7 +315,11 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 		}
 
 		manifest, err := readCrewProjectManifests(ctx, profile.ID, projectRoot)
-		if err != nil || seenProjects[manifest.ID] {
+		if err != nil {
+			log.Printf("[CREW_LIST] stage=directory root=%q cause=%v", projectRoot, err)
+			continue
+		}
+		if seenProjects[manifest.ID] {
 			continue
 		}
 		seenProjects[manifest.ID] = true
@@ -329,6 +334,9 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
 	raw, found, err := readFileFromWorkspace(ctx, projectRoot+"/product.json")
 	if err != nil || !found {
+		if err != nil {
+			log.Printf("[CREW_MANIFEST] stage=read root=%q cause=%v", projectRoot, err)
+		}
 		return productProjectManifest{}, errSharedProjectNotFound
 	}
 	var manifest productProjectManifest

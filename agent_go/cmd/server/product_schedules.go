@@ -26,7 +26,7 @@ const projectScheduleJobPrefix = "product-project:"
 const productScheduleStateFile = "product-schedules.json"
 
 const (
-	runDestinationChat = "chat"
+	runDestinationChat     = "chat"
 	runDestinationIsolated = "isolated"
 )
 
@@ -373,7 +373,8 @@ func (s *ProjectActionDispatcher) projectJobsForUser(ctx context.Context, userID
 	for _, candidate := range paths {
 		raw, found, readErr := store.read(ctx, candidate)
 		if readErr != nil {
-			return nil, readErr
+			log.Printf("[SCHEDULES] skipping project manifest=%q: %v", candidate, readErr)
+			continue
 		}
 		if !found {
 			continue
@@ -390,7 +391,8 @@ func (s *ProjectActionDispatcher) projectJobsForUser(ctx context.Context, userID
 		if isProjectProfileID(profile.ID) {
 			runtimePath = projectRuntimeManifestPath(profile.ID, filepath.ToSlash(filepath.Dir(candidate)))
 			if runtimeRaw, runtimeFound, runtimeErr := s.readFile(ctx, runtimePath); runtimeErr != nil {
-				return nil, runtimeErr
+				log.Printf("[SCHEDULES] skipping project runtime=%q: %v", runtimePath, runtimeErr)
+				continue
 			} else if runtimeFound {
 				var runtimeManifest productProjectManifest
 				if err := json.Unmarshal([]byte(runtimeRaw), &runtimeManifest); err != nil {

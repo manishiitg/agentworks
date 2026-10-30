@@ -454,6 +454,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, "")
 	if err != nil {
+		log.Printf("[PRODUCT_CONVERSATION] stage=query-resolve profile=%s key=%q caller=%q cause=%v", profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context()), err)
 		writeAgentProfileQueryError(w, err)
 		return
 	}
@@ -464,6 +465,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	input.interactive = true
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {
+		log.Printf("[PRODUCT_CONVERSATION] stage=query-prepare profile=%s key=%q caller=%q cause=%v", profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context()), err)
 		writeAgentProfileQueryError(w, err)
 		return
 	}

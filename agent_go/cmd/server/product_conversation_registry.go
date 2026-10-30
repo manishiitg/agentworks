@@ -1251,6 +1251,12 @@ func resolveProductProjectBindingInRoot(
 			if !ownerOK(folder) {
 				continue
 			}
+			// The registry identifies the requested Crew before any file read.
+			// An unrelated missing or unreadable Crew must not block this one.
+			record, found := defaultProjectOwners().sharedRootRecord(folder)
+			if !found || record.ProjectID != resourceProjectID {
+				continue
+			}
 		}
 		// The workspace listing can return a folder both nested under its root
 		// and as a top-level item, which repeats the same file path. That is one

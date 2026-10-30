@@ -134,6 +134,7 @@ func (api *StreamingAPI) agentProfileConversationSlot(w http.ResponseWriter, r *
 	}
 	binding, canBuild, err := resolveConversationBindingForUser(r.Context(), userID, profile, conversationKey)
 	if err != nil {
+		log.Printf("[PRODUCT_CONVERSATION] stage=slot profile=%s key=%q caller=%q cause=%v", profile.ID, conversationKey, userID, err)
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return "", profileAndBinding{}, false
 	}

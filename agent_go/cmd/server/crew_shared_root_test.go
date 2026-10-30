@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -15,6 +16,47 @@ const (
 	fixtureLegacyCrewFolder = "beta-b2c3d4e5"
 	fixtureLegacyCrewID     = "b2c3d4e5-0000"
 )
+
+// PLAT-856-416: a stale registry entry returned workspace HTTP 500 and
+// prevented opening another, correctly shared Crew, even after it was found.
+func TestCrewBindingAndListsIgnoreUnrelatedUnreadableCrew(t *testing.T) {
+	f := newMultiUserFixture(t, sharedIdentityLayout())
+	f.WithSharing(true)
+	const brokenFolder = "z-broken-11111111"
+	const brokenID = "11111111-0000"
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: brokenFolder, ProjectID: brokenID, OwnerID: fixtureUserA, Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	ws := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/Crew/"+brokenFolder+"/") {
+			http.Error(w, "Crew folder is missing", http.StatusInternalServerError)
+			return
+		}
+		f.Mock.ServeHTTP(w, r)
+	}))
+	defer ws.Close()
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+
+	for _, user := range []string{fixtureUserA, fixtureUserB} {
+		binding, err := resolveCrewProjectBinding(f.Ctx(user), user, f.Crew, fixtureCrewID, "")
+		if err != nil || binding.Binding.ResourceID != fixtureCrewID || binding.OwnerID != fixtureUserA {
+			t.Fatalf("healthy Crew for %s: binding=%+v err=%v", user, binding, err)
+		}
+		items, err := listCrewProjectsForOwner(f.Ctx(user), user, fixtureUserA, "")
+		if err != nil || len(items) != 1 || items[0]["id"] != fixtureCrewID {
+			t.Fatalf("healthy Crew picker for %s: items=%v err=%v", user, items, err)
+		}
+	}
+	if _, err := resolveCrewProjectBinding(f.Ctx(fixtureUserA), fixtureUserA, f.Crew, brokenID, ""); err == nil {
+		t.Fatal("opening the broken Crew itself must still fail")
+	}
+	if err := defaultProjectOwners().SetPrivate("work", fixtureCrewFolder, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, ""); err == nil {
+		t.Fatal("an unrelated broken Crew must not bypass the target's sharing check")
+	}
+}
 
 // withLegacyCrew adds a second Crew owned by A that stays in A's own tree, next to the fixture's (shared-root) Crew:
 // the half-migrated state a server is in while the move runs.
