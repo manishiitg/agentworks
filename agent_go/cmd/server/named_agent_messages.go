@@ -97,11 +97,16 @@ func namedAgentOperationAllowed(claims *UserClaims, send bool) bool {
 // Read a fresh store snapshot. Mutation callers already hold agentMessageMu;
 // authorization fails closed if storage is unavailable.
 func namedAgentByID(ctx context.Context, userID, id string) (namedMessageAgent, error) {
-	s, err := readAgentMessageStore(ctx)
+	start := time.Now()
+	// Record this lookup's caller, so repeated per-message admission checks are
+	// distinguishable from a single event-stream scan.
+	caller := agentMailboxReadCaller()
+	entry, err := readIndependentAgentMessageSnapshot(ctx)
+	defer func() { agentMailboxTiming("lookup", start, 0, time.Since(start), caller) }()
 	if err != nil {
 		return namedMessageAgent{}, err
 	}
-	for _, a := range s.Agents {
+	for _, a := range entry.store.Agents {
 		if a.ID == id && a.UserID == userID {
 			return cloneNamedAgent(a), nil
 		}

@@ -24,7 +24,7 @@ type agentSnapshotEntry struct {
 	etag    string
 	digest  [32]byte
 	valid   bool
-	store   agentMessageStore
+	store   agentMessageStore // Immutable shared state; callers must clone before editing.
 	content string
 }
 
@@ -159,6 +159,25 @@ func fetchAgentMessageSnapshot(ctx context.Context, key agentSnapshotKey, prior 
 		return agentSnapshotEntry{}, err
 	}
 	return agentSnapshotEntry{key: key, etag: res.Header.Get("ETag"), digest: digest, valid: true, store: store, content: content}, nil
+}
+
+// Independently validate without joining a snapshot flight. Lookup callers
+// only inspect this immutable entry; mutations decode their own private store.
+func readIndependentAgentMessageSnapshot(ctx context.Context) (agentSnapshotEntry, error) {
+	key := agentSnapshotKey{getWorkspaceAPIURL() + "/api/documents/" + agentMessagesPath, agentMessageVersion.Load()}
+	agentSnapshotCache.Lock()
+	prior := agentSnapshotCache.entry
+	agentSnapshotCache.Unlock()
+	entry, err := fetchAgentMessageSnapshot(ctx, key, prior)
+	if err != nil {
+		return agentSnapshotEntry{}, err
+	}
+	agentSnapshotCache.Lock()
+	if agentMessageVersion.Load() == key.generation {
+		agentSnapshotCache.entry = entry
+	}
+	agentSnapshotCache.Unlock()
+	return entry, nil
 }
 
 func cloneNamedAgent(a namedMessageAgent) namedMessageAgent {
