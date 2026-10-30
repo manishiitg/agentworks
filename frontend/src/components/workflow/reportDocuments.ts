@@ -8,6 +8,7 @@ export type ReportDocument = {
   path: string
   order: number
   motion?: boolean
+  artifact?: boolean
 }
 
 export type ReportDocumentCatalog = {
@@ -111,17 +112,19 @@ export async function loadReportDocumentCatalog(workspacePath: string): Promise<
 
   const managedTitles: Record<string, string> = {}
   const motionByPath: Record<string, boolean> = {}
+  const artifactByPath: Record<string, boolean> = {}
   try {
     let offset = 0
     let hasMore = true
     while (hasMore) {
-      const { data } = await api.post<{ dashboards?: { document_path: string; title: string; managed: boolean; motion?: boolean; published_revision?: string }[]; has_more?: boolean }>('/api/dashboards', { workspace: workspacePath, action: 'list', published_only: true, limit: 200, offset })
+      const { data } = await api.post<{ dashboards?: { document_path: string; title: string; managed: boolean; motion?: boolean; artifact?: boolean; published_revision?: string }[]; has_more?: boolean }>('/api/dashboards', { workspace: workspacePath, action: 'list', published_only: true, limit: 200, offset })
       const dashboards = data.dashboards || []
       for (const dashboard of dashboards) {
         if (dashboard.managed && !dashboard.published_revision) continue
         if (!paths.includes(dashboard.document_path)) paths.push(dashboard.document_path)
         managedTitles[dashboard.document_path] = dashboard.title
         motionByPath[dashboard.document_path] = dashboard.motion === true
+        artifactByPath[dashboard.document_path] = dashboard.artifact === true
       }
       offset += dashboards.length
       hasMore = Boolean(data.has_more) && dashboards.length > 0 && offset <= 10000
@@ -156,7 +159,7 @@ export async function loadReportDocumentCatalog(workspacePath: string): Promise<
     }
   }))
   const catalog = buildReportDocumentCatalog(paths, manifestText, Object.fromEntries(htmlEntries))
-  return { ...catalog, documents: catalog.documents.map(document => ({ ...document, motion: motionByPath[document.path] === true })) }
+  return { ...catalog, documents: catalog.documents.map(document => ({ ...document, motion: motionByPath[document.path] === true, artifact: artifactByPath[document.path] === true })) }
 }
 
 function selectionKey(workspacePath: string): string {

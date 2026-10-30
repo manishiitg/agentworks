@@ -1,5 +1,6 @@
 import { WorkspaceImage } from './WorkspaceImage'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
+import { PanelsTopLeft } from 'lucide-react'
 import { dashboardWorkspaceLink, openDashboardWorkspaceLink } from '../../services/dashboardDirectory'
 import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -1335,9 +1336,14 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
                     e.stopPropagation()
                   }
                 }}
-                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline break-words overflow-wrap-anywhere"
+                // A dashboard or artifact link reads as something to open, not a raw URL (PLAT-750).
+                className={!untrustedContent && dashboardWorkspaceLink(externalHref)
+                  ? 'inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-0.5 align-middle font-medium text-foreground no-underline hover:bg-muted'
+                  : 'text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline break-words overflow-wrap-anywhere'}
               >
-                {children}
+                {!untrustedContent && dashboardWorkspaceLink(externalHref)
+                  ? <><PanelsTopLeft aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="truncate">{children}</span></>
+                  : children}
               </a>
             )
           },

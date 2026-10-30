@@ -1,17 +1,19 @@
-import { ChevronRight, CirclePlay, LayoutDashboard, type LucideIcon } from 'lucide-react'
+import { ChevronRight, CirclePlay, FileText, LayoutDashboard, type LucideIcon } from 'lucide-react'
 import type { ReportDocument } from '../workflow/reportDocuments'
 import { reportDocumentLabel } from '../workflow/reportDocumentLabels'
 import { DashboardCreateDraftButton, type DashboardChatTarget } from '../workflow/DashboardEmptyState'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
 
-/** One dashboard identity and link; the server's saved label groups playback pages. */
+/** One dashboard identity and link; the server's saved labels group playback pages and artifacts. */
 export function WorkspaceDashboardMenu({ documents, onSelect, createTarget }: {
   documents: readonly ReportDocument[]
   onSelect: (path?: string) => void
   createTarget?: DashboardChatTarget
 }) {
-  const regular = documents.filter(document => !document.motion)
-  const motion = documents.filter(document => document.motion)
+  const regular = documents.filter(document => !document.motion && !document.artifact)
+  const motion = documents.filter(document => document.motion && !document.artifact)
+  // Finished pages made in a chat to share one idea (PLAT-750).
+  const artifacts = documents.filter(document => document.artifact)
   const group = (title: string, rows: readonly ReportDocument[], Icon: LucideIcon, help = false) => <details className="group/dashboards">
     <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2.5 rounded-md px-1 py-1.5 text-xs text-foreground/85 hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
       <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -34,5 +36,6 @@ export function WorkspaceDashboardMenu({ documents, onSelect, createTarget }: {
   return <div className="space-y-1">
     {regular.length ? group('Dashboards', regular, LayoutDashboard) : <WorkspaceContextRow icon={LayoutDashboard} onClick={() => onSelect()}>Dashboards</WorkspaceContextRow>}
     {(createTarget || motion.length > 0) && group('Motion dashboards', motion, CirclePlay, true)}
+    {artifacts.length > 0 && group('Artifacts', artifacts, FileText)}
   </div>
 }

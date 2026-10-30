@@ -49,6 +49,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		if action == "create" || action == "update" {
 			props["title"] = externalString("Dashboard title (at most 200 characters).")
 			props["motion"] = map[string]any{"type": "boolean", "description": "true lists this dashboard under Motion dashboards. Use for authored interactive playback; this label does not add animation. Defaults to false on create; omitted on update preserves it. Publish the revision to change the live label."}
+			props["artifact"] = map[string]any{"type": "boolean", "description": "true lists this page under Artifacts: a finished page made in a chat to show or share one idea (a proposal, comparison, plan or mock-up), usually index.html alone, with no live data or functions. Defaults to false on create; omitted on update preserves it. Publish the revision to change the live label."}
 			props["files"] = map[string]any{"type": "object", "maxProperties": 100, "additionalProperties": map[string]any{"type": "string"}, "description": "File contents by dashboard-relative path. Binary images/fonts use matching base64 data URLs. index.tsx is the React dashboard source; default-export a component and optionally export async loadData(report). Relative TSX/TS/JS/JSON/CSS imports are bundled by the server; see dashboard action=catalog for runtime modules. The server generates index.html/dashboard-app.js/dashboard-app.css. Use shared shadcn components from @agentworks/dashboard and charts from recharts. index.html alone makes a quick shareable HTML page (a decision, a report or a file view). JSON dashboards are not supported. Assets may be HTML/TSX/TS/CSS/JS/JSON/SVG/text/CSV, Python/JS scripts go under scripts/. Use {{dashboard_assets}} and {{dashboard_scripts}} in source to address this exact revision."}
 			if action == "create" {
 				required = append(required, "title", "files")
@@ -330,7 +331,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 }
 
 func dashboardDiscoveryRow(target dashboardTarget, d dashboards.Dashboard) map[string]any {
-	row := map[string]any{"dashboard_id": d.ID, "title": d.Title, "motion": d.Motion, "workspace": target.Root, "project_id": target.ID, "project_title": target.Title, "product": target.Kind, "document_path": d.DocumentPath, "revision": d.Revision, "published_revision": d.Published, "managed": d.Managed, "can_edit": target.Edit}
+	row := map[string]any{"dashboard_id": d.ID, "title": d.Title, "motion": d.Motion, "artifact": d.Artifact, "workspace": target.Root, "project_id": target.ID, "project_title": target.Title, "product": target.Kind, "document_path": d.DocumentPath, "revision": d.Revision, "published_revision": d.Published, "managed": d.Managed, "can_edit": target.Edit}
 	switch target.Kind {
 	case "workflow", "relay":
 		row["workflow_id"] = target.ID
