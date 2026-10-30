@@ -11,7 +11,7 @@ import (
 // PLAT-872-84 (owner 2026-10-30): a Crew's coding CLI runs as its owner's slot, so the agent and the owner's terminal
 // are one Linux user. Every turn in the Crew, the owner's and a Run person's, starts its runtime in the owner's slot
 // state folder (group-shared, outside the documents) and declares the owner's slot. A Crew whose owner holds no
-// slot keeps the app account and the app's private state.
+// slot, or a CLI whose server login would reach the slot as a file, keeps the app account and the app's private state.
 func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", filepath.Join(root, "docs"))
@@ -31,6 +31,7 @@ func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
 	t.Setenv("AGENTWORKS_SLOTS", "on")
 	t.Setenv("AGENTWORKS_SLOTS_FILE", table)
 	t.Setenv("AGENTWORKS_SLOTCTL_CONFIG", config)
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token") // the server's Claude login, from the environment only
 
 	crew := registerTestCrew(t, "demo-12345678", "alice", true)
 	shared := codingAgentWorkspaceWorkingDir(crew)
@@ -40,12 +41,17 @@ func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
 		{"owner's turn", `{"slots":{"slot01":"alice"}}`, "alice", "alice", "slot01"},
 		{"Run person's turn", `{"slots":{"slot01":"alice","slot02":"bob"}}`, "bob", "alice", "slot01"},
 		{"owner without a slot", `{"slots":{"slot02":"bob"}}`, "alice", "", ""},
+		{"a CLI whose server login is a file", `{"slots":{"slot01":"alice"}}`, "alice", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := os.WriteFile(table, []byte(tc.slots), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			dir, err := crewCLIWorkingDir(crew, tc.caller, "work:project:demo", "claude-code", tc.caller != "alice")
+			provider := "claude-code"
+			if strings.Contains(tc.name, "file") {
+				provider = "codex-cli"
+			}
+			dir, err := crewCLIWorkingDir(crew, tc.caller, "work:project:demo", provider, tc.caller != "alice")
 			if err != nil {
 				t.Fatal(err)
 			}
