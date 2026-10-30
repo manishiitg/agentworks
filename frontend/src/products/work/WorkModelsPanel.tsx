@@ -24,7 +24,6 @@ import { allowedModelOrFirst } from '../../utils/allowedModels'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import { SharedTokenUsageNotice } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
-import { ChatDisplayPreferences } from '../../components/chat/ChatDisplayPreferences'
 
 export function WorkModelsPanel({
   tabId,
@@ -225,7 +224,6 @@ export function WorkModelsPanel({
   const savedProviderUnusable = Boolean(accounts !== null && selectedOption?.provider && !workProviderIds.includes(selectedOption.provider))
   const body = (
     <>
-        <ChatDisplayPreferences />
         {supportsChatModels && <section className="mb-4 overflow-hidden rounded-xl border border-border" aria-label="Models by chat">
           <button type="button" disabled={chatModelSaving} aria-pressed={!modelTarget} onClick={() => setModelTarget('')} className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${!modelTarget ? 'bg-primary/10' : 'hover:bg-muted'}`}>
             <span className="font-medium">Crew’s model</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
