@@ -18,7 +18,17 @@ func TestWrappedShellsCannotReachTheCLIsLogins(t *testing.T) {
 	if err != nil || !landlockNamespacesAvailable() {
 		t.Skip("needs the Landlock launcher with its namespaces (AGENTWORKS_LANDLOCK_RUNNER)")
 	}
-	work, logins := t.TempDir(), t.TempDir()
+	// Not under /tmp: inside the private namespace every layer gets the command's own /tmp.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("needs a home folder outside /tmp")
+	}
+	logins, err := os.MkdirTemp(home, ".shellwrap-logins-")
+	if err != nil {
+		t.Skip("needs a writable home folder outside /tmp")
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(logins) })
+	work := t.TempDir()
 	token := filepath.Join(logins, "auth.json")
 	if err := os.WriteFile(token, []byte("LOGIN-FILE-SECRET"), 0o600); err != nil {
 		t.Fatal(err)
