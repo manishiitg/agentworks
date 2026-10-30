@@ -1,6 +1,6 @@
 import { useCompactProductNavigation, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { LayoutGrid, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { ProductPickerMenu } from '../workspace/ProductPickerMenu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
@@ -79,9 +79,6 @@ export function TopBarEntitySelector({
     }
   }, [compact, open, onToggle, onClose, sidebarSettings])
 
-  const selectionHint = toolbarKind === 'page' ? 'Switch project' : placeholder === 'Select Automation' ? 'Choose automation' : 'Choose workspace'
-  const sidebarTitle = label ? `${selectionHint} · ${label}` : selectionHint
-
   useLayoutEffect(() => {
     if ((!sidebar && !titleNavigation) || !open) return
     const positionPanel = () => {
@@ -141,10 +138,12 @@ export function TopBarEntitySelector({
 
   return (
     <div ref={rootRef} data-product-settings className={`relative flex min-w-0 items-center ${sidebar ? 'w-full' : ''}`}>
-      <div
+      {/* Compact workspaces switch projects from the sidebar or existing title.
+          Do not revive a second selector when the chat/title is unmounted. */}
+      {!compact && <div
         data-tour={dataTour}
         data-testid={testId}
-        className={`${titleNavigation ? 'hidden' : 'flex'} min-w-0 items-center ${sidebar ? 'w-full' : compact ? '' : 'overflow-hidden rounded-md border border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-800'}`}
+        className={`flex min-w-0 items-center ${sidebar ? 'w-full' : 'overflow-hidden rounded-md border border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-800'}`}
       >
         <Tooltip>
           <TooltipTrigger asChild>
@@ -154,18 +153,18 @@ export function TopBarEntitySelector({
             onClick={onToggle}
             aria-haspopup="menu"
             aria-expanded={open}
-            aria-label={compact && toolbarKind === 'page' ? 'Switch workspace' : label || placeholder}
-            className={`${compact ? `h-8 max-w-[220px] justify-center rounded-lg px-2 text-muted-foreground hover:bg-secondary hover:text-foreground ${open ? 'bg-secondary text-foreground' : ''}` : 'px-3 py-1 hover:bg-gray-100 dark:hover:bg-slate-700'} flex min-w-0 items-center gap-2 transition-colors`}
-            title={compact ? sidebarTitle : title}
+            aria-label={label || placeholder}
+            className="flex min-w-0 items-center gap-2 px-3 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700"
+            title={title}
           >
-            {compact ? <LayoutGrid className="h-4 w-4 shrink-0" /> : leading ?? <div className={`h-2 w-2 shrink-0 rounded-full ${active ? 'bg-green-500' : 'bg-gray-400'}`} />}
-            <span className={`${compact && toolbarKind === 'page' ? 'sr-only' : compact ? 'block' : compactOnNarrow ? 'hidden min-[1180px]:block' : 'block'} max-w-[190px] truncate whitespace-nowrap text-sm font-medium ${active ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>
+            {leading ?? <div className={`h-2 w-2 shrink-0 rounded-full ${active ? 'bg-green-500' : 'bg-gray-400'}`} />}
+            <span className={`${compactOnNarrow ? 'hidden min-[1180px]:block' : 'block'} max-w-[190px] truncate whitespace-nowrap text-sm font-medium ${active ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>
               {label || placeholder}
             </span>
-            {!compact && badge}
+            {badge}
           </button>
           </TooltipTrigger>
-          <TooltipContent side={sidebar ? 'right' : 'bottom'}>{compact ? sidebarTitle : title || label || placeholder}</TooltipContent>
+          <TooltipContent side={sidebar ? 'right' : 'bottom'}>{title || label || placeholder}</TooltipContent>
         </Tooltip>
         {middleControl}
         {onAdd && addLabel && <button
@@ -175,11 +174,11 @@ export function TopBarEntitySelector({
           onClick={() => { onClose(); onAdd() }}
           disabled={addDisabled}
           title={addTitle || addLabel}
-          className={`${compact ? 'hidden' : ''} border-l border-gray-200 px-2 py-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-slate-700 dark:hover:text-gray-200`}
+          className={`border-l border-gray-200 px-2 py-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-slate-700 dark:hover:text-gray-200`}
         >
           <Plus className="h-3 w-3" />
         </button>}
-      </div>
+      </div>}
       {(open || compact) && (
         <div ref={panelRef} hidden={!open} style={sidebar || titleNavigation ? panelPosition : undefined} className={`preset-dropdown ${sidebar || titleNavigation ? 'fixed w-[420px] max-h-[calc(100dvh-64px)] overflow-hidden' : compact ? 'absolute right-0 top-full mt-1 w-[420px] max-h-[calc(100dvh-64px)] overflow-hidden' : 'absolute left-0 top-full mt-1 w-64'} ${compact ? (open ? 'flex flex-col' : 'hidden') : ''} z-50 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-popover text-popover-foreground shadow-xl`}>
           {compact ? <ProductPickerMenu title={placeholder === 'Select Automation' ? 'Automations' : placeholder === 'Select Flow' ? 'Flows' : 'Workspaces'}

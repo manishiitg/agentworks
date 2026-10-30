@@ -57,6 +57,23 @@ try {
     console.log(surface + ' at ' + width + ': names before open; shared menu rename/pin/order/close; own tabs unmarked and other-owner controls absent.')
     await page.close()
   }
+  // PLAT-746-234: full workspace must not revive the duplicate top-right selector.
+  for (const surface of ['work', 'agentworks']) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+    await page.route('**/api/**', route => new URL(route.request().url()).pathname.startsWith('/api/') ? route.fulfill({ json: {} }) : route.continue())
+    await page.goto(server.resolvedUrls.local[0] + `scripts/test-fixtures/project-agent-tabs.html?surface=${surface}&workspaceOnly=1`)
+    await page.getByRole('button', { name: 'Close workspace panel', exact: true }).waitFor()
+    assert.equal(await page.locator('[data-product-settings-trigger]').count(), 0, 'no duplicate selector without chat title')
+    await page.getByRole('button', { name: 'Close workspace panel', exact: true }).click()
+    await page.getByRole('button', { name: 'Open workspace panel', exact: true }).waitFor()
+    await page.screenshot({ path: path.join(output, `workspace-only-${surface}.png`) })
+    await page.getByRole('button', { name: 'Show chat title', exact: true }).click()
+    await page.getByRole('button', { name: 'Switch workspace: Example', exact: true }).click()
+    await page.getByRole('button', { name: 'Existing project', exact: true }).waitFor()
+    assert.equal(await page.locator('[data-product-settings-trigger]').count(), 0)
+    console.log(`${surface}: workspace-only selector absent; panel toggle and existing title picker work.`)
+    await page.close()
+  }
   // PLAT-746-230: real sidebar and header components; only server/network boundaries are fixtures.
   for (const active of ['local', 'a'.repeat(32)]) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
