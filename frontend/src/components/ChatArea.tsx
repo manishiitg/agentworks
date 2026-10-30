@@ -429,6 +429,7 @@ export interface ChatContentRendererProps {
   hasOlder?: boolean
   loadingOlder?: boolean
   historyError?: string
+  onRetryHistory?: () => void
   onLoadOlder?: () => void
   landingContent?: ReactNode
   onRetryLastMessage?: () => void | Promise<void>
@@ -2255,6 +2256,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         // Restore owns the first durable page/cursor; never race it with a
         // recovery read from zero. All later reads preserve the same cursor.
         if (sseRestoreInFlightRef.current.has(effectiveSessionId)) continue
+        // The selected formatted loader owns the first page, including during
+        // a slow read or Retry. Recovery must not replay from zero meanwhile.
+        if (effectiveSessionId === activeSessionIdRef.current &&
+          normalizeEventViewMode(freshTab?.viewMode) === 'formatted' && durableChat &&
+          !useChatStore.getState().tabHistoryLoaded[effectiveSessionId]) continue
         const response = await eventRecovery.poll(effectiveSessionId, useChatStore.getState().sseConnections[effectiveSessionId],
           () => agentApi.getSessionEvents(effectiveSessionId, currentLastEventIndex, { durableChat }))
         if (!response) continue
@@ -3684,6 +3690,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             hasOlder={historyPagination?.hasMore ?? false}
             loadingOlder={olderHistory.loading}
             historyError={historyRestore.error || olderHistory.error}
+            onRetryHistory={historyRestore.error ? historyRestore.retry : loadOlderConversationPage}
             onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
             landingContent={landingContent}
             onRetryLastMessage={retryLastProductMessage}

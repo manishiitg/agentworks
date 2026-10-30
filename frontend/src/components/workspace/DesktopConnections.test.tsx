@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
+import { invalidateChatIdentity } from '../../utils/chatIdentity'
 import { DesktopConnections } from './DesktopConnections'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }))
@@ -9,6 +10,7 @@ vi.mock('../../services/desktopConnections', () => ({ desktopRequest: mocks.requ
 vi.mock('../../services/api', () => ({ getLocalApiBaseUrl: () => 'http://127.0.0.1:18743', getDesktopApiBaseUrl: () => 'http://127.0.0.1:18743' }))
 vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
 vi.mock('../../utils/appNavigation', () => ({ openAppProduct: vi.fn() }))
+beforeEach(() => { invalidateChatIdentity() })
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('identical project IDs open on their owning server while an offline server leaves other groups usable', async () => {
@@ -21,6 +23,7 @@ it('identical project IDs open on their owning server while an offline server le
       { id: first, name: 'First team', server: 'https://one.example.com' },
       { id: second, name: 'Second team', server: 'https://two.example.com' },
     ] }
+    if (path === '/local/inventory') return { status: 'connected', projects: [] }
     if (path === `/${first}/inventory`) return { status: 'unavailable', projects: [] }
     return { status: 'connected', projects: [{ id: 'same-project', name: 'Release crew', kind: 'crew' }] }
   })
@@ -28,7 +31,7 @@ it('identical project IDs open on their owning server while an offline server le
   try {
     await act(async () => root.render(<DesktopConnections><span>Local draft stays here</span></DesktopConnections>))
     expect(host.textContent).toContain('Local draft stays here')
-    expect(host.textContent).toContain('Server unavailable')
+    expect(host.textContent).toContain('First team unavailable')
     const project = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Release crew'))!
     await act(async () => project.click())
     expect(open).toHaveBeenCalledWith(second, '/crew/projects/same-project')
@@ -65,8 +68,8 @@ it('keeps shared projects in the active server beside the owner navigation', asy
     ] : [] })
   const host = document.createElement('div'), root = createRoot(host)
   try {
-    await act(async () => root.render(<DesktopConnections><span>Owned crew</span><span>Weekly goal</span></DesktopConnections>))
-    const group = host.querySelector('section[aria-label="Team projects"]')!
+    await act(async () => root.render(<DesktopConnections projects={[{ id: 'owned', name: 'Owned crew', kind: 'crew' }, { id: 'weekly', name: 'Weekly goal', kind: 'goal' }]} />))
+    const group = host.querySelector('[aria-label="Connected work"]')!
     expect(group.textContent).toContain('Shared crew')
     expect(group.textContent).toContain('Weekly goal')
     expect(group.textContent?.match(/Owned crew/g)).toHaveLength(1)

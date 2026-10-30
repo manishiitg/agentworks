@@ -88,10 +88,8 @@ vi.mock('../../products/productSurfaceConfig', () => ({
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: ({ surface }: { surface: string }) => <svg data-product-icon={surface} /> }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
-import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => {
-  useSidebarExpansionStore.setState({ expanded: {} })
   vi.clearAllMocks()
   mocks.navigation.mockResolvedValue({ workspaces: [] })
   mocks.tabs = {}
@@ -128,20 +126,17 @@ it('lists admitted Crews and Goals before a chat exists, without projecting chat
   ]
   mocks.tabs = { chat: { tabId: 'chat', name: 'Internal research thread', metadata: { agentProfileId: 'work', agentProfileProjectId: 'shared' } } }
   await render(async host => {
-    const group = host.querySelector('section[aria-label="Local projects"]')!
+    const group = host
     expect(group.textContent).toContain('Accounting')
     expect(group.textContent).toContain('Sales')
     expect(group.textContent).not.toContain('Internal research thread')
     expect(group.textContent).not.toContain('Dispatch flow')
     expect(mocks.history).not.toHaveBeenCalled()
     expect(mocks.activeSessions).not.toHaveBeenCalled()
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accounting · Crew"]')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accounting · Crew · Local"]')!.click())
     expect(mocks.openProject).toHaveBeenLastCalledWith({ surface: 'work', id: 'shared' })
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Sales · Goal"]')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Sales · Goal · Local"]')!.click())
     expect(mocks.openProject).toHaveBeenLastCalledWith({ surface: 'agentworks', id: 'goal' })
-    const toggle = group.querySelector<HTMLButtonElement>('[aria-expanded]')!
-    await act(async () => toggle.click())
-    expect(group.querySelector('[hidden]')).not.toBeNull()
     expect(host.querySelector('[aria-label="Search all chats (Ctrl+K or Command+K)"]')).not.toBeNull()
   })
 })

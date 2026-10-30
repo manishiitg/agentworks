@@ -1,28 +1,32 @@
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { MoreHorizontal, Plus, X } from 'lucide-react'
-import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../../services/desktopConnections'
-import { getLocalApiBaseUrl, getDesktopApiBaseUrl } from '../../services/api'
-import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Plus, Server, X } from 'lucide-react'
+import { desktopRequest } from '../../services/desktopConnections'
+import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { isLocalDeployment } from '../../products/productSurfaceConfig'
 import ModalPortal from '../ui/ModalPortal'
-import { SidebarProjectRow, SidebarServerGroup, openSidebarProject } from './SidebarServerGroup'
+import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 
-const local: DesktopConnection = { id: 'local', name: 'Local', server: '' }
-export function DesktopConnections({ children }: { children?: ReactNode }) {
-  if (!window.electronAPI?.getDesktopConnection?.()) {
+type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean }
+export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
+  if (!hasDesktopConnections()) {
     const name = window.electronAPI || isLocalDeployment() ? 'Local' : 'Server'
-    return <SidebarServerGroup id="local" name={name}>{children}
+    return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <h2 className="px-2.5 py-2 text-xs font-medium text-muted-foreground">Your work</h2>
+      {projects.map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project} location={name} onOpen={() => openSidebarProject(project.kind, project.id)} />)}
+      {children}
       {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
-    </SidebarServerGroup>
+    </div>
   }
-  return <ConnectedServers>{children}</ConnectedServers>
+  return <ConnectedServers projects={projects}>{children}</ConnectedServers>
 }
-function ConnectedServers({ children }: { children?: ReactNode }) {
+function ConnectedServers({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
   const active = getRawActiveWorkspaceId()
-  const [connections, setConnections] = useState<DesktopConnection[]>([local])
-  const [inventory, setInventory] = useState<Record<string, DesktopInventory>>({})
+  const { connections, inventory, refresh, error: directoryError } = useConnectedWorkStore()
+  const [filter, setFilter] = useState('all')
+  useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   const [adding, setAdding] = useState(false)
+  const [showConnectForm, setShowConnectForm] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     if (adding) dialog.current?.showModal()
@@ -32,29 +36,14 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-
-  const refresh = useCallback(async () => {
-    try {
-      const data = await desktopRequest<{ connections: DesktopConnection[] }>()
-      const all = [local, ...data.connections]
-      setConnections(all)
-      useWorkspaceConnectionStore.getState().setProfiles(all.map(c => ({ id: c.id, name: c.name, type: c.id === 'local' ? 'local' : 'remote', apiBaseUrl: c.id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${c.id}` })))
-      // The active inventory also supplies shared projects missing from the
-      // owner's navigation. Keep servers independent if another is unavailable.
-      await Promise.allSettled(all.map(async c => {
-        try {
-          const result = await desktopRequest<DesktopInventory>(`/${c.id}/inventory`)
-          setInventory(current => ({ ...current, [c.id]: result }))
-        } catch { setInventory(current => ({ ...current, [c.id]: { projects: [], status: 'unavailable' } })) }
-      }))
-    } catch (e) { setError((e as Error).message) }
-  }, [])
+  const beginConnect = (address = '') => { setError(''); setServer(address); setShowConnectForm(true); setAdding(true) }
 
   useEffect(() => {
     void refresh()
     const onFocus = () => void refresh()
+    const timer = window.setInterval(() => { if (!document.hidden) void refresh() }, 60_000)
     window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
   }, [refresh])
   useEffect(() => {
     if (!pending) return
@@ -90,43 +79,61 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
     catch (e) { setError((e as Error).message) }
   }
 
-  return <div className="space-y-3" aria-label="Connected servers">
-    {connections.map(c => {
-      const current = c.id === active, items = inventory[c.id]
-      const options = (c.id !== 'local' || !current) && <details className="group relative shrink-0">
-        <summary aria-label={`Options for ${c.name}`} title={`Options for ${c.name}`} className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"><MoreHorizontal className="h-3.5 w-3.5" /></summary>
-        <div className="absolute right-0 top-full z-30 min-w-44 rounded-lg border border-border bg-background p-1 text-xs shadow-lg" onClick={event => { const details = event.currentTarget.closest('details'); if (details) details.open = false }}>
-          {c.user && <p className="max-w-60 truncate px-2 py-1 text-muted-foreground">{c.user.email || c.user.username}</p>}
-          {!current && <button type="button" onClick={() => open(c.id, '/home')} className="block w-full rounded px-2 py-2 text-left hover:bg-muted">Open {c.name}</button>}
-          {c.id !== 'local' && <>
-            <button type="button" onClick={() => { setError(''); setServer(c.server); setAdding(true) }} className="block w-full rounded px-2 py-2 text-left hover:bg-muted">Reconnect</button>
-            <button type="button" onClick={() => void disconnect(c.id)} className="block w-full rounded px-2 py-2 text-left hover:bg-muted">Disconnect</button>
-          </>}
-        </div>
-      </details>
-      return <SidebarServerGroup key={c.id} id={c.id} name={c.name} actions={options}>
-        {current && children}
-        {items?.projects.filter(project => !current || !children || project.mode === 'run')
-          .sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
-          .map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} name={project.name} kind={project.kind} onOpen={() => {
-            if (current) openSidebarProject(project.kind, project.id)
-            else open(c.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
-          }} />)}
-        {!items && (!current || !children) && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
-        {(!current || !children) && items?.status === 'connected' && !items.projects.length && <p className="px-2.5 py-2 text-xs text-muted-foreground">No accessible Crews or Goals.</p>}
-        {items?.status === 'unavailable' && <button type="button" onClick={() => void refresh()} className="px-2.5 py-2 text-xs text-muted-foreground underline">Server unavailable · Retry</button>}
-        {items?.status === 'sign_in' && <button type="button" onClick={() => { setError(''); setServer(c.server); setAdding(true) }} className="px-2.5 py-2 text-xs text-muted-foreground underline">Sign in again</button>}
-      </SidebarServerGroup>
-    })}
-    <button onClick={() => { setError(''); setAdding(true) }} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><Plus className="h-3.5 w-3.5" />Connect server</button>
+  const rows = connections.flatMap(connection => {
+    const byId = new Map<string, SidebarProject>()
+    for (const project of inventory[connection.id]?.projects || []) byId.set(`${project.kind}:${project.id}`, project)
+    if (connection.id === active) for (const project of projects) byId.set(`${project.kind}:${project.id}`, project)
+    return [...byId.values()].map(project => ({ ...project, connection }))
+  }).sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id))
+  const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
+  const locations = connections.filter(connection => filter === 'all' || connection.id === filter)
+  const connected = connections.filter(connection => connection.id !== 'local' && inventory[connection.id]?.status === 'connected').length
+  return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
+    <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
+      <h2 className="text-xs font-medium text-muted-foreground">Your work</h2>
+      <select aria-label="Work location" value={filter} onChange={event => setFilter(event.target.value)} className="max-w-[55%] rounded bg-transparent py-1 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <option value="all">All</option>{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.name}</option>)}
+      </select>
+    </div>
+    <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      {visible.map(project => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
+        selected={project.connection.id === active && project.selected} location={project.connection.name}
+        onOpen={() => project.connection.id === active ? openSidebarProject(project.kind, project.id) : open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)} />)}
+      {(filter === 'all' || filter === active) && children}
+      {locations.map(connection => {
+        const status = inventory[connection.id]?.status
+        if (!status) return <p key={connection.id} role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading {connection.name}…</p>
+        if (status === 'unavailable') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => void refresh()}>{connection.name} unavailable · Retry</button>
+        if (status === 'sign_in') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => beginConnect(connection.server)}>{connection.name} · Sign in again</button>
+        return null
+      })}
+      {!visible.length && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews or Goals here yet.</p>}
+    </div>
+    <div className="shrink-0 border-t border-border/50 p-2">
+      <button onClick={() => { setError(''); setShowConnectForm(false); setAdding(true) }} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><Server className="h-3.5 w-3.5" />Connections<span className="ml-auto text-xs">{connected} connected</span></button>
+      {(error || directoryError) && !adding && <p role="alert" className="px-3 text-xs text-destructive">{error || directoryError}</p>}
+    </div>
     <ModalPortal><dialog ref={dialog} aria-labelledby="connect-server-title" aria-describedby="connect-server-description"
       onCancel={() => setAdding(false)} onClick={event => { if (event.target === event.currentTarget) setAdding(false) }}
       className="fixed inset-0 m-auto w-[calc(100vw_-_2rem)] max-w-lg rounded-xl border border-border bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50">
       <div className="p-5">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 id="connect-server-title" className="text-lg font-semibold">Connect server</h2>
-          <button type="button" aria-label="Close connect server" onClick={() => setAdding(false)} className="rounded p-1.5 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
+          <h2 id="connect-server-title" className="text-lg font-semibold">{showConnectForm ? 'Connect server' : 'Connections'}</h2>
+          <button type="button" aria-label="Close connections" onClick={() => setAdding(false)} className="rounded p-1.5 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
         </div>
+        {!showConnectForm ? <div className="space-y-3">
+          <p id="connect-server-description" className="text-sm text-muted-foreground">Your work stays on the computer or server where it runs.</p>
+          {connections.map(connection => <div key={connection.id} className="rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between gap-2"><span className="font-medium">{connection.name}</span><span className="text-xs text-muted-foreground">{inventory[connection.id]?.status === 'connected' ? 'Connected' : inventory[connection.id]?.status === 'sign_in' ? 'Sign in again' : 'Unavailable'}</span></div>
+            {connection.user && <p className="truncate text-xs text-muted-foreground">{connection.user.email || connection.user.username}</p>}
+            <div className="mt-2 flex gap-4 text-xs">
+              <button className="text-primary" onClick={() => open(connection.id, '/home')}>Open</button>
+              {connection.id !== 'local' && <><button className="text-primary" onClick={() => beginConnect(connection.server)}>Reconnect</button><button className="text-muted-foreground" onClick={() => void disconnect(connection.id)}>Disconnect</button></>}
+            </div>
+          </div>)}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <button className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground" onClick={() => beginConnect()}><Plus className="h-4 w-4" />Connect server</button>
+        </div> : <>
         <p id="connect-server-description" className="mb-5 text-sm text-muted-foreground">Paste any link from your server’s browser page. We’ll find the server address for you.</p>
         <form onSubmit={e => { e.preventDefault(); void connect() }} className="space-y-4">
           <label className="block text-sm font-medium">Server address<input autoFocus required type="url" value={server} onChange={e => setServer(e.target.value)} placeholder="Paste a link from your browser" disabled={busy || !!pending} className="mt-2 w-full rounded-md border border-border bg-background p-2.5 text-sm disabled:opacity-60" /></label>
@@ -137,8 +144,9 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
             <button disabled={busy || !!pending} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{pending ? 'Waiting for sign-in…' : busy ? 'Opening…' : 'Sign in with browser'}</button>
           </div>
         </form>
+        <button type="button" className="mt-3 text-xs text-muted-foreground underline" onClick={() => setShowConnectForm(false)}>Back to connections</button>
+        </>}
       </div>
     </dialog></ModalPortal>
-    {error && !adding && <p role="alert" className="px-3 text-xs text-destructive">{error}</p>}
   </div>
 }

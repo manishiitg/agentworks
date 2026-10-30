@@ -153,7 +153,7 @@ export function submitToParentChat(text: string): boolean {
 // `interaction: { kind, render: chat.suggestions }`), if any.
 let suggestionsKind: string | null = null
 
-export function SparkQuillConversation({ events, isStreaming, isRestoring, streamingText, streamingStatus, hasOlder, loadingOlder, historyError, onLoadOlder, landingContent, onSubmitQuery }: ChatContentRendererProps) {
+export function SparkQuillConversation({ events, isStreaming, isRestoring, streamingText, streamingStatus, hasOlder, loadingOlder, historyError, onRetryHistory, onLoadOlder, landingContent, onSubmitQuery }: ChatContentRendererProps) {
   useEffect(() => {
     activeSubmit = onSubmitQuery ?? null
     return () => { if (activeSubmit === onSubmitQuery) activeSubmit = null }
@@ -171,7 +171,7 @@ export function SparkQuillConversation({ events, isStreaming, isRestoring, strea
         hasOlder={hasOlder}
         loadingOlder={loadingOlder}
         onLoadOlder={onLoadOlder}
-        onRetry={onLoadOlder}
+        onRetry={onRetryHistory ?? onLoadOlder}
         surfaceClassName="fl-platform-surface"
         assistantLabel="Quill"
         assistantIcon={<img src="/sparkquill-mark.svg" alt="" width={16} height={16} />}
