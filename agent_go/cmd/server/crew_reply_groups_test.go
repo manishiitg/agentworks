@@ -67,7 +67,7 @@ func TestReplyGroupPullRequestStatusFromOwnersConnection(t *testing.T) {
 	if requests == readCount || groups[0].PR.State != "unavailable" {
 		t.Fatal("another connection reused cached owner status")
 	}
-	// PLAT-746-219: Codex submits COMMENTED reviews, not approval votes.
+	// PLAT-746-220: Codex submits COMMENTED reviews, not approval votes.
 	// Keep those visible without upgrading them to approvals or change requests.
 	for _, tc := range []struct {
 		body, want  string
