@@ -126,6 +126,9 @@ func RunWrappedShell(argv []string) error {
 	if err != nil || abi < 1 {
 		return fmt.Errorf("SANDBOX_UNAVAILABLE: Landlock filesystem ABI unavailable: %w", err)
 	}
+	// A wrapped shell always runs in the command's private /tmp, where the real shells are kept: the inner layer
+	// must let it run them whatever the caller's policy says (without this every wrapped shell exited 126).
+	config.Inner.PrivateTmp = true
 	if err := restrictLandlock(config.Inner, abi); err != nil {
 		return err
 	}
