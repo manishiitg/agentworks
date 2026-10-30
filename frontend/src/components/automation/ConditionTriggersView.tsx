@@ -42,6 +42,12 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     catch (e) { setError(messageOf(e)) }
   }, [scope.projectId, scope.profileId])
   useEffect(() => { setTriggers([]); setCallers([]); setSavedChats([]); setHistory({}); setLoaded(false); void refresh() }, [refresh, refreshToken])
+  useEffect(() => {
+    const timer = window.setInterval(() => { if (!document.hidden) void refresh() }, 30000)
+    const visible = () => { if (!document.hidden) void refresh() }
+    document.addEventListener('visibilitychange', visible)
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', visible) }
+  }, [refresh])
   // The Code chats a watcher can send to: the open side chats of this project (the main chat and "a new chat" are always offered).
   const chatTabs = useChatStore(state => state.chatTabs)
   const sideChats = useMemo<SideChat[]>(() => {

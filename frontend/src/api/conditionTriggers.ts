@@ -36,7 +36,7 @@ function config() {
   return { baseURL: getApiBaseUrl(), headers: token ? { Authorization: `Bearer ${token}` } : {} }
 }
 export const conditionTriggersApi = {
-  list: (projectId: string, profileId = 'code') => axios.get<{ triggers: ConditionTrigger[]; callers?: WatcherCaller[]; chats?: { id: string; name: string }[] }>('/api/condition-triggers', { ...config(), params: { project_id: projectId, profile_id: profileId } }).then(r => r.data),
+  list: (projectId: string, profileId = 'code', includeCompleted = false) => axios.get<{ triggers: ConditionTrigger[]; callers?: WatcherCaller[]; chats?: { id: string; name: string }[] }>('/api/condition-triggers', { ...config(), params: { project_id: projectId, profile_id: profileId, ...(includeCompleted ? { include_completed: true } : {}) } }).then(r => r.data),
   manage: (projectId: string, action: string, id: string, trigger?: Record<string, unknown>, expectedRevision?: string, profileId = 'code') => axios.post('/api/condition-triggers', { project_id: projectId, profile_id: profileId, action, id, ...(trigger ? { trigger } : {}), ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }, config()).then(r => r.data),
   history: (projectId: string, id: string, profileId = 'code') => axios.get<ConditionHistory>(`/api/condition-triggers/${encodeURIComponent(id)}/history`, { ...config(), params: { project_id: projectId, profile_id: profileId } }).then(r => r.data),
 }

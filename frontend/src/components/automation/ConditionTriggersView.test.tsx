@@ -55,9 +55,11 @@ describe('ConditionTriggersView', () => {
       expect(api.manage).toHaveBeenLastCalledWith('project-a', 'update', 'c1', { target: { kind: 'agent', message: 'go', chat_id: '' } }, 'r1', 'code')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
-  it('saves One time with the current revision and shows completed waits without Enable', async () => {
+  it('saves One time and removes a finished wait when the open page refreshes', async () => {
+    vi.useFakeTimers()
+    const visible = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
     const watcher = { id: 'c1', name: 'One ticket', enabled: true, revision: 'r1', script: 'code/triggers/n.py', cron_expression: '*/5 * * * *', timezone: 'UTC', target: { kind: 'agent' } }
-    api.list.mockResolvedValueOnce({ triggers: [watcher] }).mockResolvedValue({ triggers: [{ ...watcher, once: true, enabled: false, completed_at: '2026-10-14T00:00:00Z' }] })
+    api.list.mockResolvedValueOnce({ triggers: [watcher] }).mockResolvedValueOnce({ triggers: [{ ...watcher, once: true }] }).mockResolvedValue({ triggers: [] })
     api.manage.mockResolvedValue({})
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} />))
@@ -66,9 +68,11 @@ describe('ConditionTriggersView', () => {
       const select = host.querySelector('select[aria-label="Mode for One ticket"]') as HTMLSelectElement
       await act(async () => { select.value = 'once'; select.dispatchEvent(new Event('change', { bubbles: true })); await Promise.resolve() })
       expect(api.manage).toHaveBeenCalledWith('project-a', 'update', 'c1', { once: true }, 'r1', 'code')
-      expect(host.textContent).toContain('Done')
-      expect(Array.from(host.querySelectorAll('button')).some(b => b.textContent === 'Enable')).toBe(false)
-    } finally { await act(async () => root.unmount()); host.remove() }
+      expect(host.textContent).toContain('One ticket')
+      await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+      expect(host.textContent).not.toContain('One ticket')
+      expect(host.textContent).toContain('No watchers yet')
+    } finally { await act(async () => root.unmount()); host.remove(); visible.mockRestore(); vi.useRealTimers() }
   })
 
   it('uses the Flow source for listing and creation guidance', async () => {

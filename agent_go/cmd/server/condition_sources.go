@@ -171,7 +171,7 @@ func conditionCallerJobs(owner string, states map[string]productScheduleUserStat
 
 // Everyone with product access can see caller attribution. Detector source,
 // private cursor and credentials remain with the person who owns the caller.
-func (c *conditionService) callersForProduct(ctx context.Context, source productScheduleJob) ([]map[string]interface{}, error) {
+func (c *conditionService) callersForProduct(ctx context.Context, source productScheduleJob, includeCompleted bool) ([]map[string]interface{}, error) {
 	var out []map[string]interface{}
 	for _, owner := range conditionCallerOwners() {
 		jobs, err := c.s.JobsForUser(internalBotRequestContext(ctx, owner), owner)
@@ -199,6 +199,9 @@ func (c *conditionService) callersForProduct(ctx context.Context, source product
 				item["last_dispatch_at"] = last.Format(time.RFC3339)
 			}
 			if (cfg.Once && !ledger.OnceCompletedAt.IsZero()) || !ledger.CompletedAt.IsZero() {
+				if !includeCompleted {
+					continue
+				}
 				item["enabled"] = false
 				completed := ledger.OnceCompletedAt
 				if completed.IsZero() {

@@ -18,7 +18,7 @@ export function PRWatcherControls({ group, sessionId }: { group: ReplyFileGroup;
   const projectId = tab?.metadata?.agentProfileProjectId
   if (!projectId || tab?.metadata?.agentProfileId !== 'work' || group.pr?.state !== 'open' || !group.pr.number || !group.github_repo) return null
   const refresh = async () => {
-    const result = await conditionTriggersApi.list(projectId, 'work')
+    const result = await conditionTriggersApi.list(projectId, 'work', true)
     setWatchers(result.triggers.filter(item => item.github_pr && item.github_pr.repository === group.github_repo && item.github_pr.number === group.pr?.number && (item.github_pr.worktree ?? '') === group.root && item.github_pr.session_id === sessionId))
   }
   const showError = (e: unknown) => setError(axios.isAxiosError(e) && typeof e.response?.data === 'string' ? e.response.data : 'Could not update this PR watch. Try again.')

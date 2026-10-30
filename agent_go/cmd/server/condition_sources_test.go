@@ -76,10 +76,30 @@ func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
 	if _, err := c.engine.Poll(ctx, conditionKey(job), *job.Schedule.Condition, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	pendingList, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list"})
+	if err != nil || len(pendingList.(map[string]interface{})["triggers"].([]interface{})) != 1 {
+		t.Fatal("undelivered one-time wait disappeared", pendingList, err)
+	}
 	c.drain(ctx, job)
 	listed, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list"})
-	if err != nil || len(listed.(map[string]interface{})["callers"].([]map[string]interface{})) != 1 {
-		t.Fatal("caller attribution missing", listed, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := listed.(map[string]interface{})
+	if len(active["triggers"].([]interface{})) != 0 || len(active["callers"].([]map[string]interface{})) != 0 {
+		t.Fatal("completed wait remains in active Watchers", listed)
+	}
+	archived, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list", "include_completed": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := archived.(map[string]interface{})
+	if len(archive["triggers"].([]interface{})) != 1 || len(archive["callers"].([]map[string]interface{})) != 1 {
+		t.Fatal("completed watcher history lost", archived)
+	}
+	history, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "history", "id": id})
+	if err != nil || len(history.(map[string]interface{})["events"].([]conditiontrigger.Row)) != 1 {
+		t.Fatal("completed receipt history lost", history, err)
 	}
 	ledger, err := c.engine.Read(ctx, conditionKey(job))
 	if err != nil || len(ledger.Rows) != 1 || ledger.Rows[0].Status != "dispatched" {

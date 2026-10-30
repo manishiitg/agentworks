@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 )
@@ -140,6 +141,17 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 	cfg := job.Schedule.Condition
 	if cfg.GitHubPR.Login != "selected-owner" || cfg.GitHubPR.HeadSHA != "abc" || cfg.Target.ChatID != "main" || cfg.Script != "" || job.Schedule.CronExpression != "* * * * *" {
 		t.Fatalf("wrong binding: %+v", cfg)
+	}
+	if err := c.engine.Store.Save(ctx, conditionKey(job), conditiontrigger.Ledger{Done: true, CompletedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list"})
+	if err != nil || len(listed.(map[string]interface{})["triggers"].([]interface{})) != 0 {
+		t.Fatal("finished PR watch is still listed", listed, err)
+	}
+	archived, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list", "include_completed": true})
+	if err != nil || len(archived.(map[string]interface{})["triggers"].([]interface{})) != 1 {
+		t.Fatal("finished PR watch cannot be inspected", archived, err)
 	}
 	if _, err := c.manage(ctx, "other", "work", "mail-checks", args); err == nil {
 		t.Fatal("another user started owner's PR watcher")
