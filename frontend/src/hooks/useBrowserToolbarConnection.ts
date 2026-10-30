@@ -4,9 +4,9 @@ import { useLiveRefetch } from './useLiveRefetch'
 import type { ChromeExtensionStatus } from '../components/workflow/ChromeExtensionConnection'
 
 /** Read-only discovery; opening another pane must not hide browser health. */
-export function useBrowserToolbarConnection(workspacePath: string | null | undefined, profileId: string, enabled = true, checkExtension = true): { connected: boolean; label: string } {
+export function useBrowserToolbarConnection(workspacePath: string | null | undefined, profileId: string, enabled = true, checkExtension = true): { connected: boolean; label: string; name?: string } {
   const scope = `${profileId}:${workspacePath}:${enabled}:${checkExtension}`
-  const [connection, setConnection] = useState({ scope: '', connected: false, label: 'Checking…' })
+  const [connection, setConnection] = useState<{ scope: string; connected: boolean; label: string; name?: string }>({ scope: '', connected: false, label: 'Checking…' })
   const refreshRef = useRef<() => void>(() => {})
   useEffect(() => {
     setConnection({ scope, connected: false, label: 'Checking…' })
@@ -23,7 +23,7 @@ export function useBrowserToolbarConnection(workspacePath: string | null | undef
         if (checkExtension) {
           const { data } = await api.get<ChromeExtensionStatus>('/api/browser/extension', config)
           if (data.selected) {
-            if (alive) setConnection({ scope, connected: data.connected, label: data.connected ? 'Connected' : data.browsers?.some(browser => browser.id === data.browser_id && browser.connected) ? 'Connecting…' : 'Browser offline' })
+            if (alive) setConnection({ scope, connected: data.connected, name: data.browsers?.find(browser => browser.id === data.browser_id)?.name, label: data.connected ? 'Connected' : data.browsers?.some(browser => browser.id === data.browser_id && browser.connected) ? 'Connecting…' : 'Browser offline' })
             return
           }
           savedBrowserAvailable = Boolean(data.account_connected)
