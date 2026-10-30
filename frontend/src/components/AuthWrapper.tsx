@@ -9,14 +9,16 @@ import { SharedFile } from "../pages/SharedFile";
 import { SharedFolder } from "../pages/SharedFolder";
 import { ReportPage } from "../pages/ReportPage";
 import { DashboardShortLink } from "./DashboardShortLink";
-import { Loader2 } from "lucide-react";
+import { WorkspaceLoading } from './workspace/WorkspaceLoading';
 import { DesktopConnectConsent } from "../pages/DesktopConnectConsent";
 import { DesktopConnections } from "./workspace/DesktopConnections";
 import { DesktopAppOnlyGate } from "./DesktopAppOnlyGate";
 import { isDesktopAppOnlyMode } from "../services/api";
 import { DashboardsPageContext } from '../contexts/DashboardsPageContext';
 
-const AppShell = lazy(() => import('./workspace/AppShell').then(module => ({ default: module.AppShell })));
+// Fetch the shell while health/auth requests are in flight, not after admission.
+const appShellModule = import('./workspace/AppShell').then(module => ({ default: module.AppShell }));
+const AppShell = lazy(() => appShellModule);
 const ProductRouteBoundary = lazy(() => import("./ProductRouteBoundary").then(module => ({ default: module.ProductRouteBoundary })));
 const AgentBridgeApp = lazy(() => import('../products/bullpen/AgentBridgeApp'));
 const MCPAccountSignIn = lazy(() => import('../pages/MCPAccountSignIn'));
@@ -194,15 +196,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
 
   // Still loading auth mode or local single-user token
   if (!isMultiUserModeChecked || isLoading || (!isMultiUserMode && !isAuthenticated && !singleUserAuthAttempted)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
-        </div>
-      </div>
-    );
+    return <WorkspaceLoading />;
   }
 
   if (window.location.pathname === '/desktop/connect') {
@@ -278,7 +272,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         />
       );
     }
-    return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening workspace…</div>}><AppShell key={`${activeWorkspaceId || 'local'}:${user?.id || 'local'}`}><Suspense fallback={<div role="status" className="grid h-full place-items-center">Opening page…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></AppShell></Suspense></DashboardsPageContext.Provider>;
+    return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<WorkspaceLoading />}><AppShell key={`${activeWorkspaceId || 'local'}:${user?.id || 'local'}`}><Suspense fallback={<div role="status" className="grid h-full place-items-center">Opening page…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></AppShell></Suspense></DashboardsPageContext.Provider>;
   }
 
   // Multi-user mode: require authentication (login only, no registration)
@@ -309,5 +303,5 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     );
   }
 
-  return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening workspace…</div>}><AppShell key={`${activeWorkspaceId || 'local'}:${user?.id || 'local'}`}><Suspense fallback={<div role="status" className="grid h-full place-items-center">Opening page…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></AppShell></Suspense></DashboardsPageContext.Provider>;
+  return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<WorkspaceLoading />}><AppShell key={`${activeWorkspaceId || 'local'}:${user?.id || 'local'}`}><Suspense fallback={<div role="status" className="grid h-full place-items-center">Opening page…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></AppShell></Suspense></DashboardsPageContext.Provider>;
 }
