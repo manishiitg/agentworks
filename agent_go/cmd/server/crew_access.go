@@ -189,6 +189,9 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 			return crewProjectBinding{}, err
 		}
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
+	} else if !errors.Is(err, errProjectNotFound) {
+		log.Printf("[CREW_BINDING] stage=owner profile=%s project=%q caller=%q cause=%v", profile.ID, projectID, callerID, err)
+		return crewProjectBinding{}, err
 	}
 	// Only origins with a Run audience resolve under another owner. This is
 	// independent of the legacy product ID retained by storage and sessions.
@@ -220,6 +223,7 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	}); err == nil {
 		return reader(sharedCrewOwner(filepath.Base(shared.WorkspacePath)), shared)
 	} else if !errors.Is(err, errProjectNotFound) {
+		log.Printf("[CREW_BINDING] stage=shared profile=%s project=%q caller=%q cause=%v", profile.ID, projectID, callerID, err)
 		return denied()
 	}
 	// The query path already carries the verified physical root: resolve
