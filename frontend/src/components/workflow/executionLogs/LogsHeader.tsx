@@ -3,7 +3,6 @@ import type { RunFolderInfo } from '../../../services/api-types'
 import { formatStartedAt } from '../../../utils/duration'
 import { formatDeploymentDateTime } from '../../../utils/displayTime'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
-import { AskAIButton } from '../AskAIButton'
 import { WorkspaceViewHeader } from '../WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../WorkspaceViewIconButton'
 import { formatRunFolderLabel } from './helpers'
@@ -17,10 +16,6 @@ export interface LogsHeaderProps {
   loading: boolean
   loadLogs: () => void
   onRefreshRunFolders?: () => void | Promise<void>
-  headerAction?: React.ReactNode
-  /** Context-aware Ask AI message. When provided it replaces the static headerAction. */
-  askMessage?: string
-  askWorkspacePath?: string | null
   showWebhookPayload?: boolean
   webhookPayloadOpen?: boolean
   onToggleWebhookPayload?: () => void
@@ -36,9 +31,6 @@ export function LogsHeader({
   loading,
   loadLogs,
   onRefreshRunFolders,
-  headerAction,
-  askMessage,
-  askWorkspacePath = null,
   showWebhookPayload = false,
   webhookPayloadOpen = false,
   onToggleWebhookPayload,
@@ -55,7 +47,7 @@ export function LogsHeader({
   const selectedTimestamp = formatRunDateTime(timestampsByFolder.get(selectedRunFolder))
 
   // Scope pickers live in the content row below the header (same as the
-  // Knowledgebase source picker): the header row keeps only Ask AI + refresh.
+  // Knowledgebase source picker): the header row keeps only refresh.
   const showPickers = runFolderOptions.length > 0 || showWebhookPayload
   const pickers = (
     <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
@@ -122,15 +114,13 @@ export function LogsHeader({
     </div>
   )
 
-  // Ask AI left, refresh right — the standard pair order. Refresh also
-  // refreshes the run-folder list itself (onRefreshRunFolders), not just the
+  // Refresh also refreshes the run-folder list itself (onRefreshRunFolders), not just the
   // currently selected folder's logs (loadLogs). Without this, a run folder
   // that appeared after this list was last loaded (e.g. a standalone
   // execute_step run) stays invisible in the dropdown no matter how many
   // times this button is clicked.
   const headerButtons = (
     <>
-    {askMessage ? <AskAIButton workspacePath={askWorkspacePath} message={askMessage} iconOnly /> : headerAction}
     <WorkspaceViewIconButton
       label="Refresh logs and run-folder list"
       onClick={() => {

@@ -14,18 +14,13 @@ import { useMCPStore } from '../../stores'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import MCPConfigPopup from '../MCPConfigPopup'
-import { AskAIButton } from '../workflow/AskAIButton'
 
 interface ConnectorsBrowserProps {
   // The embedded workflow panel uses tighter spacing for a narrow side panel.
   compact?: boolean
   workspacePath?: string | null
-  /** Terminology for the workspace receiving the connection. */
-  workspaceLabel?: string
   /** Name of the conversational agent that helps with setup. */
   assistantLabel?: string
-  /** Optional product-owned chat delivery; workflows use their existing lane. */
-  onAskAI?: (message: string) => void | Promise<void>
   /** Let an embedding scroll the complete page instead of only this list. */
   manageOwnScroll?: boolean
   /** Filter the list by this query instead of the internal search box --
@@ -44,9 +39,7 @@ interface ConnectorsBrowserProps {
 export default function ConnectorsBrowser({
   compact = false,
   workspacePath,
-  workspaceLabel = 'workflow',
   assistantLabel = 'builder',
-  onAskAI,
   manageOwnScroll = true,
   query: externalQuery,
   hideSearch = false,
@@ -165,19 +158,6 @@ export default function ConnectorsBrowser({
               {descriptionFor(serverName)}
             </p>
           </div>
-
-          <div className="flex shrink-0 flex-col items-center gap-1 self-center">
-            <AskAIButton
-              workspacePath={readOnly ? null : workspacePath ?? null}
-              onAsk={onAskAI}
-              iconOnly
-              label={`Ask AI about ${serverName}`}
-              message={connection === 'connected'
-                ? `Help me with the existing ${JSON.stringify(serverName)} MCP connection in this ${workspaceLabel}. Check its current connection status and ${workspaceLabel} selection, then ask what I want to do with it.`
-                : `Help me connect ${JSON.stringify(serverName)} to this ${workspaceLabel}. Check my existing connection first, guide me through sign-in in My MCPs, verify its tools, and select it for this ${workspaceLabel}. Use Vault group permissions for shared access. Do not ask for secrets in chat.`}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            />
-          </div>
         </div>
       </div>
     )
@@ -204,18 +184,9 @@ export default function ConnectorsBrowser({
           <div className="min-w-0 flex-1 basis-48">
             <p className="text-sm font-semibold text-foreground">{"Can't find the app you need?"}</p>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              The {assistantLabel} can connect it privately for you. Use Vault to share access.
+              Ask the {assistantLabel} in chat to connect it privately for you. Use Vault to share access.
             </p>
           </div>
-          <AskAIButton
-            workspacePath={readOnly ? null : workspacePath ?? null}
-            onAsk={onAskAI}
-            label={`Ask ${assistantLabel} to connect`}
-            message={query.trim()
-              ? `Help me add an MCP server for ${JSON.stringify(query.trim())} to this ${workspaceLabel}. Search the catalog and official provider documentation, and complete setup through chat using Vault, including API keys or a real OAuth sign-in link. Verify discovery and never repeat secret values.`
-              : `Help me add an MCP server to this ${workspaceLabel}. Ask which service I want, then find the official endpoint and complete setup through chat using Vault, including API keys or a real OAuth sign-in link. Verify discovery and never repeat secret values.`}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          />
         </div>
       )}
 

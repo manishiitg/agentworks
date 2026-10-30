@@ -5,13 +5,6 @@ import type {
   WorkflowPublishDestinationStatus,
 } from '../../services/api-types'
 
-/** Per-strategy Ask AI wiring. The body builds one message per strategy row. */
-export interface StrategyAskContext {
-  workspacePath: string | null
-  /** e.g. "back up this workflow with" / "publish this workflow to" */
-  strategyVerb: string
-}
-
 export const formatRelativeTime = (dateStr?: string): string => {
   if (!dateStr) return 'Never'
   const date = new Date(dateStr)

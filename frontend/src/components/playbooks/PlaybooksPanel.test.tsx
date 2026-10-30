@@ -45,10 +45,6 @@ vi.mock('../../services/api', () => ({
   }) } }) },
 }))
 
-vi.mock('../workflow/AskAIButton', () => ({
-  AskAIButton: ({ label, message }: { label: string; message: string }) => <button type="button" data-message={message}>{label}</button>,
-}))
-
 vi.mock('../../stores/useWorkflowManifestStore', () => ({
   useWorkflowManifestStore: { getState: () => ({ refreshWorkflows: vi.fn().mockResolvedValue(undefined) }) },
 }))
@@ -82,10 +78,7 @@ it('opens a catalog playbook and installs it for Builder setup', async () => {
     expect(container.textContent).toContain('Agentic Engineering Platform 1 small-team playbook · 0 Crew proposals · 1 Workflow guide')
     expect(container.textContent).toContain('Engineering1')
     expect(container.querySelector('[aria-label="Playbook catalog hierarchy"]')).not.toBeNull()
-    expect(container.textContent).toContain('Ask about this playbook')
     expect(playbooksApi.install).not.toHaveBeenCalled()
-    const askButton = [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Ask about this playbook'))
-    expect(askButton?.getAttribute('data-message')).toContain('Basic Browser Setup')
 
     await click(container.querySelector('[aria-label="Open Basic Browser Setup details"]'))
     expect(playbooksApi.install).not.toHaveBeenCalled()
@@ -103,13 +96,8 @@ it('opens a catalog playbook and installs it for Builder setup', async () => {
 
     await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Use workflow guide')) || null)
     expect(container.textContent).toContain('Workflow guide saved v0.6.0 · draft')
-    expect(container.textContent).toContain('Continue setup in Builder')
     expect(container.textContent).toContain('Builder first inspects the current workflow')
     expect(container.textContent).toContain('Installing guidance is not approval')
-    const setupButton = [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Continue setup in Builder'))
-    expect(setupButton?.getAttribute('data-message')).toContain('summarize what can be reused and what is missing')
-    expect(setupButton?.getAttribute('data-message')).toContain('Ask focused questions for unresolved customer choices')
-    expect(setupButton?.getAttribute('data-message')).toContain('record the answers as customer direction')
 
     await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Back to catalog')) || null)
     await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('← Installed')) || null)
@@ -189,12 +177,6 @@ it('shows Website Growth as a team proposal whose setup continues in Builder cha
     expect(container.textContent).toContain('Proposal saved v0.2.0 · draft')
     expect(agentApi.getPlannerFileContent).toHaveBeenCalledWith('Workflow/growth/skills/agentworks-playbook-website-growth-loop/SETUP.json')
     expect(container.textContent).toContain('1 of 3 checks recorded with evidence')
-    expect(container.textContent).toContain('Continue setup in Builder')
-    const setup = [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Continue setup in Builder'))
-    expect(setup?.getAttribute('data-message')).toContain('Inspect existing Crews and propose a team')
-    expect(setup?.getAttribute('data-message')).toContain('strategy-to-search: strategist → search, growth-priority-brief/v1, required')
-    expect(setup?.getAttribute('data-message')).toContain('blocking validation step before the consumer')
-    expect(setup?.getAttribute('data-message')).toContain('one authorized customer-like case manually')
   } finally {
     await act(async () => root.unmount())
   }

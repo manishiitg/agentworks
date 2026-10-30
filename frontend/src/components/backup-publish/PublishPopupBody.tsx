@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, Check, ChevronRight, Copy, ExternalLink, Eye, EyeOff, Globe, Loader2, LockKeyhole, X } from 'lucide-react'
 import type { WorkflowPublishInfoResponse, WorkflowPublishStrategyInfo } from '../../services/api-types'
 import { formatPublishStateLabel, getPublishStateVisual } from '../workflow/publishStatus'
-import { AskAIButton } from '../workflow/AskAIButton'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 import {
@@ -10,7 +9,6 @@ import {
   findPublishDestinationStatus,
   formatRelativeTime,
   publishDestinationTitle,
-  type StrategyAskContext,
 } from './popupUtils'
 
 export interface PublishPopupProps {
@@ -24,7 +22,6 @@ export interface PublishPopupProps {
   supportedHelp?: string
   defaultTargetLabel: string
   getSummary: (info: WorkflowPublishInfoResponse | null) => string
-  askContext?: StrategyAskContext
   loadAccessSecret?: (secretName: string) => Promise<string>
   loadErrorMessage?: string
   showEnabledBadge?: boolean
@@ -127,7 +124,6 @@ const PublishPopupBody: React.FC<PublishPopupProps> = ({
   supportedHelp,
   defaultTargetLabel,
   getSummary,
-  askContext,
   loadAccessSecret,
   loadErrorMessage = 'Failed to load publish status',
   showEnabledBadge = false,
@@ -270,11 +266,6 @@ const PublishPopupBody: React.FC<PublishPopupProps> = ({
                       </div>
                       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{getSummary(info)}</p>
                       {info?.status?.last_error && <p className="mt-2 text-xs text-destructive">{info.status.last_error}</p>}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {askContext && (
-                        <AskAIButton workspacePath={askContext.workspacePath} label="Set up" message="/share" />
-                      )}
                     </div>
                   </div>
 
@@ -428,13 +419,6 @@ const PublishPopupBody: React.FC<PublishPopupProps> = ({
                             </div>
                             <p className="mt-1 text-xs leading-5 text-muted-foreground">{strategy.description}</p>
                           </div>
-                          {askContext && (
-                            <AskAIButton
-                              workspacePath={askContext.workspacePath}
-                              iconOnly
-                              message={`Help me ${askContext.strategyVerb} ${strategy.label}. Explain what I need and walk me through it.`}
-                            />
-                          )}
                         </div>
                       ))}
                     </div>

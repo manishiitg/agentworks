@@ -1,7 +1,0 @@
-import { buildAskAIMessage } from '../../../utils/askAIMessage'
-export function getGoogleAppsSetupInstructions(): string {
- return 'Inspect manage_google_account(action="list_saved"), list_gmail_connections and actual service grants. Connect/reconnect and permissions live in Integrations → Google apps. Reuse saved accounts with Use here; preserve existing permissions and do not create duplicate logins. Personal Gmail is used through gog. Connecting alone does not start automation. On servers, users choose one personal Gmail account with Use for Crew inboxes (manage_google_account set_inbox_account). Receiving is on by default for each Crew once its owner selects the Gmail inbox account. An explicit off setting stays off. The owner can turn one Crew off or back on through configure_agent_inbox enabled=false/true (MCP: crew_integrations action=configure_agent_inbox). Personal Gmail Watchers run only when explicitly enabled, using check_mode=inbox and email_source=personal_gmail with the same Watcher setup. Only mail addressed to enabled Crews is received, with checks about every 60 seconds. Company receiving setup is unnecessary. Do not configure personal incoming-email addresses, bindings, sender approvals or Gmail rules. Only recommend reconnection if the required grant is missing.'
-}
-export function getGoogleAppsAskAIMessage(noun: string): string {
- return buildAskAIMessage({view:'Google apps',summary:`Help me connect Google apps and choose the access this ${noun} needs.`,instructions:getGoogleAppsSetupInstructions()})
-}

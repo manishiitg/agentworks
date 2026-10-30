@@ -2,31 +2,26 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { knowledgebaseApi, knowledgebaseError, type BrainAccessMode, type KnowledgeProject } from '../../services/knowledgebaseApi'
-import { AskAIButton } from './AskAIButton'
 import { WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT } from './workflowEvents'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { buildAskAIMessage } from '../../utils/askAIMessage'
 import { ProjectBrainLibrary } from './ProjectBrainLibrary'
 import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { integrationProductAvailable } from '../integrations/integrationSections'
-import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 
 // The project's Brain access: Off, Read or Read & write. It never grants permission: the owner's and the output
 // audience's folder roles apply. There are no folder bindings (PLAT-628); steps say in their descriptions which
 // Brain folders they read and write.
-type Props = { workspacePath: string; disabled?: boolean; onAsk?: (message: string) => void | Promise<void> }
+type Props = { workspacePath: string; disabled?: boolean }
 export function ProjectKnowledgebasePanel(props: Props) {
   const actor = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   return <ProjectBrainContents key={`${server}:${actor}:${props.workspacePath}`} {...props} />
 }
-function ProjectBrainContents({ workspacePath, disabled = false, onAsk }: Props) {
+function ProjectBrainContents({ workspacePath, disabled = false }: Props) {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const brainAvailable = integrationProductAvailable('knowledgebase', allowedProducts)
-  const aboutMessage = buildAskAIMessage({ view: 'Brain', summary: 'Help me find or use knowledge in Brain for this project.', instructions: 'Read the panel-data skill. Inspect this project’s Brain access and the knowledge available to me. Help me find, add or reuse notes, files and skills. Explain which knowledge the project can use under its owner and output audience permissions. If I ask to change project access, use inspect_project and set_project_access with the current manifest version. For workflow steps, keep references under Inputs or Guides, writes under Output and limits under Rules. Do not change folder grants unless I ask.' })
-  const assistantInHeader = useWorkspacePanelAssistant(brainAvailable ? { workspacePath, message: aboutMessage } : undefined)
   const [project, setProject] = useState<KnowledgeProject | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -82,7 +77,6 @@ function ProjectBrainContents({ workspacePath, disabled = false, onAsk }: Props)
       <Button size="sm" variant="outline" onClick={() => useProductSurfaceStore.getState().setProductSurface('knowledgebase')}>Open Brain</Button>
       <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Refresh Brain" disabled={loading || busy} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''}/></Button>
     </WorkspacePanelActions>
-    {!assistantInHeader && <AskAIButton workspacePath={disabled ? null : workspacePath} onAsk={disabled ? undefined : onAsk} message={aboutMessage}/>}
     <section aria-label="Brain" className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Project access</h3>{project && <span className="rounded bg-muted px-2 py-1">{options.find(option => option.value === mode)?.label}</span>}</div>
       {error && <p role="alert" className="text-destructive">{error}</p>}

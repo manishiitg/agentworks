@@ -11,7 +11,7 @@ import { WORKFLOW_DECISIONS_REFRESH_EVENT } from './workflowEvents'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 
-// Same timing as AskAIButton's two-click confirm.
+// Two-click confirm: the first click arms, the second sends.
 const OPTION_ARM_TIMEOUT_MS = 4000
 const OPTION_CONFIRM_FLOOR_MS = 600
 
@@ -234,7 +234,7 @@ export function ReportHumanInputPanel({
     }
   }
 
-  // Two-click confirm, as on Ask AI buttons: the first click arms an option,
+  // Two-click confirm: the first click arms an option,
   // a second click within OPTION_ARM_TIMEOUT_MS sends it. A second click
   // faster than OPTION_CONFIRM_FLOOR_MS is the tail of a double-click and is
   // ignored, so a misclick never sends an answer.

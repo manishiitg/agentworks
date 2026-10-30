@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   AlertCircle,
   Ban,
@@ -16,7 +16,6 @@ import { workflowManifestApi } from '../../services/api'
 import { READ_ONLY_TITLE, useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { formatNotificationStateLabel } from './notificationStatus'
 import NotificationInstructions from './NotificationInstructions'
-import { AskAIButton } from './AskAIButton'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 
@@ -24,7 +23,6 @@ interface WorkflowNotificationViewProps {
   workspacePath: string | null
   onStateLoaded?: (state: WorkflowNotificationState) => void
   loadInfo?: () => Promise<WorkflowNotificationInfo>
-  headerAction?: ReactNode
 }
 
 const stateBadgeClass = (state: WorkflowNotificationState): string => {
@@ -43,7 +41,6 @@ export default function WorkflowNotificationView({
   workspacePath,
   onStateLoaded,
   loadInfo,
-  headerAction,
 }: WorkflowNotificationViewProps) {
   const [loading, setLoading] = useState(false)
   const [info, setInfo] = useState<WorkflowNotificationInfo | null>(null)
@@ -173,11 +170,7 @@ export default function WorkflowNotificationView({
               <StateIcon className="mr-1 h-3 w-3" />{formatNotificationStateLabel(state)}
             </span>}
             subtitle={`${scopeName} · ${stateLine}`}
-            actions={<>
-              <AskAIButton workspacePath={workspacePath} label="Change" message="/notify" />
-              {headerAction}
-              <WorkspaceViewIconButton label="Refresh notification status" onClick={() => { void load() }} spinning={loading} />
-            </>}
+            actions={<WorkspaceViewIconButton label="Refresh notification status" onClick={() => { void load() }} spinning={loading} />}
           />
 
           {error && (
@@ -205,19 +198,13 @@ export default function WorkflowNotificationView({
                   <div className="divide-y divide-border">
                     <div className={rowClass}>
                       <span className={labelClass}>Slack</span>
-                      <span className="text-xs text-muted-foreground">Ask to set up team messages</span>
-                      <span className="ml-auto"><AskAIButton workspacePath={workspacePath} iconOnly message={`Help me with Slack notifications for ${scopeName}: connect an account, choose a channel, and check delivery.`} /></span>
+                      <span className="text-xs text-muted-foreground">Ask in chat to set up team messages</span>
                     </div>
                     <div className={rowClass}>
                       <span className={labelClass}><Mail className="h-3.5 w-3.5 text-violet-500" />Gmail</span>
                       <span className={chipMuted}>Account default From: {gmailSender || 'none'}</span>
                       {!gmailReady && !gmailChecking && info.gmail?.summary && <span className={chipWarn}>{info.gmail.summary}</span>}
                       <span className="ml-auto flex items-center gap-2">
-                        <AskAIButton
-                          workspacePath={workspacePath}
-                          iconOnly
-                          message={`Help me with Gmail notifications for ${scopeName}: connecting an account, senders, and recipients. Explain what I need and walk me through it.`}
-                        />
                         <span className={`rounded-full border px-2 py-0.5 text-xs ${gmailReady ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-border bg-background text-muted-foreground'}`}>
                           {gmailChecking ? 'Checking…' : gmailReady ? 'Connected' : 'Not connected'}
                         </span>
@@ -263,11 +250,6 @@ export default function WorkflowNotificationView({
                       <div key={summary.key} className="space-y-2 px-4 py-2.5">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-xs font-medium text-foreground">{summary.title}</span>
-                          <AskAIButton
-                            workspacePath={workspacePath}
-                            iconOnly
-                            message={`Help me change the ${summary.title.toLowerCase()} for ${scopeName}: what it says and where it goes.`}
-                          />
                         </div>
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-1.5">

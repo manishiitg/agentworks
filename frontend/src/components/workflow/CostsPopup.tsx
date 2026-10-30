@@ -18,7 +18,6 @@ interface CostsPopupProps {
   runFolders: string[] // Available run folders
   selectedRunFolder: string | null // Currently selected run folder
   startedAt?: string | null
-  headerAction?: React.ReactNode
   emptyHint?: string
   projectMode?: boolean
 }
@@ -27,7 +26,6 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
   workspacePath,
   selectedRunFolder,
   startedAt,
-  headerAction,
   emptyHint = 'Run the automation to see cost data here.',
   projectMode = false,
 }) => {
@@ -69,7 +67,6 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
           startedAt={startedAt}
           loading={loading}
           loadAllCosts={loadAllCosts}
-          headerAction={headerAction}
         />
       }
     >

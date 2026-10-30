@@ -5,9 +5,6 @@ import type {
   GoalObservation,
   GoalMeasurements,
 } from "../../services/api-types";
-import { AskAIButton } from "./AskAIButton";
-import { GOAL_SETUP_MESSAGE } from "./goalSetupMessage";
-import { TooltipProvider } from "../ui/tooltip";
 import {
   goalMetricGroups,
   supportingMetricLabel,
@@ -269,24 +266,13 @@ export function GoalProgress({
   const { groups, unassigned } = goalMetricGroups(metrics);
   return (
     <section aria-label="Goal progress" className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Progress toward goals</h2>
-        <TooltipProvider>
-          <AskAIButton
-            workspacePath={workspacePath}
-            label={
-              metrics.length ? "Edit goals & numbers" : "Set up goals & numbers"
-            }
-            message={GOAL_SETUP_MESSAGE}
-          />
-        </TooltipProvider>
-      </div>
+      <h2 className="text-sm font-semibold">Progress toward goals</h2>
       {!metrics.length ? (
         <div className="rounded-xl border border-dashed p-5">
           <p className="text-sm font-medium">Measurement setup needed</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Choose primary metrics and their supporting measurements with the
-            builder. Existing workflow runs and history are preserved.
+            Ask in chat to choose primary metrics and their supporting
+            measurements. Existing workflow runs and history are preserved.
           </p>
         </div>
       ) : (

@@ -13,7 +13,6 @@ import { formatTokens } from '../../../utils/formatTokens'
 
 type CostsHeaderProps = Pick<CostsData, 'loading' | 'loadAllCosts'> & {
   startedAt?: string | null
-  headerAction?: React.ReactNode
 }
 
 type CostsOverviewProps = Pick<CostsData, 'overallSummary' | 'aggregateSummary' | 'phaseCostSummary'> & {
@@ -56,17 +55,14 @@ export function CostsOverview({ scopedCosts, overallSummary, aggregateSummary, p
   </section>
 }
 
-const CostsHeader: React.FC<CostsHeaderProps> = ({ startedAt, loading, loadAllCosts, headerAction }) => (
+const CostsHeader: React.FC<CostsHeaderProps> = ({ startedAt, loading, loadAllCosts }) => (
   <div className="min-w-0 shrink-0">
     <WorkspaceViewHeader
       bare
       icon={DollarSign}
       title="Usage & cost"
       context={startedAt ? <span className="text-xs font-normal text-muted-foreground">{formatStartedAt(startedAt)}</span> : undefined}
-      actions={<>
-        {headerAction}
-        <WorkspaceViewIconButton label="Refresh costs" onClick={loadAllCosts} disabled={loading} spinning={loading} />
-      </>}
+      actions={<WorkspaceViewIconButton label="Refresh costs" onClick={loadAllCosts} disabled={loading} spinning={loading} />}
     />
   </div>
 )

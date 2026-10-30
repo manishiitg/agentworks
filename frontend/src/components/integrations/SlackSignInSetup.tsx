@@ -51,7 +51,7 @@ export function SlackSignInSetup({ onSaved, ready }: { onSaved: () => Promise<vo
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" onClick={() => void load()}>Retry</button></p>}
     {notice && <p role="status" className="text-xs">{notice}</p>}
     {!setup && !error && <p className="text-xs text-muted-foreground">Loading sign-in setup…</p>}
-    {setup && !app && ready !== true && <p className="text-xs text-muted-foreground">There are no Slack app settings to edit here. Ask AI to check this server’s Slack sign-in setup.</p>}
+    {setup && !app && ready !== true && <p className="text-xs text-muted-foreground">There are no Slack app settings to edit here. Ask in chat to check this server’s Slack sign-in setup.</p>}
     {app && setup && <details open={!app.configured} className="rounded-lg border border-border p-4">
       <summary className="cursor-pointer text-sm font-medium">{app.configured ? 'Slack sign-in app · Ready' : 'Set up Slack sign-in'}</summary>
       <form className="mt-4 space-y-4 text-sm" aria-label="Slack sign-in app" onSubmit={event => { event.preventDefault(); void save() }}>

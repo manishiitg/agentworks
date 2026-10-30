@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, ChevronRight, Cloud, GitBranch, Loader2, X } from 'lucide-react'
 import type { WorkflowBackupInfoResponse, WorkflowBackupStrategyInfo } from '../../services/api-types'
 import { formatBackupStateLabel, getBackupStateVisual } from '../workflow/backupStatus'
-import { AskAIButton } from '../workflow/AskAIButton'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 import {
@@ -11,7 +10,6 @@ import {
   extractErrorMessage,
   findBackupDestinationStatus,
   formatRelativeTime,
-  type StrategyAskContext,
 } from './popupUtils'
 
 export interface BackupPopupProps {
@@ -22,7 +20,6 @@ export interface BackupPopupProps {
   emptyDestinationsText: string
   destinationsHelp: string
   getSummary: (info: WorkflowBackupInfoResponse | null) => string
-  askContext?: StrategyAskContext
   loadErrorMessage?: string
   showEnabledBadge?: boolean
   headerAction?: React.ReactNode
@@ -36,7 +33,6 @@ const BackupPopupBody: React.FC<BackupPopupProps> = ({
   emptyDestinationsText,
   destinationsHelp,
   getSummary,
-  askContext,
   loadErrorMessage = 'Failed to load backup status',
   showEnabledBadge = false,
   headerAction,
@@ -120,11 +116,6 @@ const BackupPopupBody: React.FC<BackupPopupProps> = ({
                       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{getSummary(info)}</p>
                       {info?.status?.last_error && <p className="mt-2 text-xs text-destructive">{info.status.last_error}</p>}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {askContext && (
-                        <AskAIButton workspacePath={askContext.workspacePath} label="Set up" message="/backup" />
-                      )}
-                    </div>
                   </div>
 
                   <div className="grid border-t border-border text-sm sm:grid-cols-3">
@@ -207,13 +198,6 @@ const BackupPopupBody: React.FC<BackupPopupProps> = ({
                             </div>
                           )}
                         </div>
-                        {askContext && (
-                          <AskAIButton
-                            workspacePath={askContext.workspacePath}
-                            iconOnly
-                            message={`Help me ${askContext.strategyVerb} ${strategy.label}. Explain what I need and walk me through it.`}
-                          />
-                        )}
                       </div>
                     ))}
                   </div>

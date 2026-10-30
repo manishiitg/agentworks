@@ -14,11 +14,10 @@ it('keeps page actions, title and tabs without Help or walkthroughs', () => {
   expect(html).not.toContain('Help')
 })
 
-it('retains standalone contextual chat while omitting automatic Refresh', () => {
+it('omits automatic Refresh from the standard actions', () => {
   const html = renderToStaticMarkup(<TooltipProvider>
-    <WorkspaceViewHeader title="Memory" actions={<WorkspaceViewActions workspacePath="Crew/example" message="Explain memory" onRefresh={() => {}} />} />
+    <WorkspaceViewHeader title="Memory" actions={<WorkspaceViewActions onRefresh={() => {}} />} />
   </TooltipProvider>)
-  expect(html).toContain('Ask AI')
   expect(html).not.toContain('Refresh view')
   expect(html).not.toContain('Walkthrough')
 })

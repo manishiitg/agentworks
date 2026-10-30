@@ -17,7 +17,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update API triggers'
 }
 
-export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const canWrite = useCanWriteWorkflow(workspacePath)
   const [options, setOptions] = useState<APITriggerOptions>(emptyOptions)
   const [issued, setIssued] = useState<WorkflowAPITrigger | null>(null)
@@ -97,10 +97,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
         title="Triggers"
         context={<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{webhooks.length}</span>}
         subtitle="External events that start this workflow."
-        actions={<>
-          {headerAction}
-          <WorkspaceViewIconButton label="Refresh webhooks" onClick={() => { setError(''); void refresh() }} />
-        </>}
+        actions={<WorkspaceViewIconButton label="Refresh webhooks" onClick={() => { setError(''); void refresh() }} />}
         below={<div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
           <span><span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />{activeTriggers} active</span>
           <span>{webhooks.length - activeTriggers} paused</span>

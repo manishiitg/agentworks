@@ -4,7 +4,6 @@ import { Brain, Loader2, Sparkles } from 'lucide-react'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
-import { useWorkspacePanelAssistant } from '../../components/workspace/WorkspacePanelNavigation'
 import { flattenFiles, responseFiles } from '../../utils/plannerFiles'
 import { proxyCrewFileClient, type CrewFileClient } from './sharedCrewFiles'
 
@@ -66,13 +65,11 @@ async function loadCrewSkills(workspacePath: string, files: Pick<CrewFileClient,
   return [...deduplicated.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, readOnly, memoryEnabled = true, skillsEnabled = true, skillsManager }: {
+export function WorkMemoryPanel({ workspacePath, onOpenFile, fileClient, memoryEnabled = true, skillsEnabled = true, skillsManager }: {
   workspacePath: string
-  onAsk: (message: string) => Promise<void>
   onOpenFile: (filePath: string) => void
   /** Shared Crews pass the mediated client; owned Crews use the proxy. */
   fileClient?: CrewFileClient
-  readOnly?: boolean
   memoryEnabled?: boolean
   skillsEnabled?: boolean
   skillsManager?: ReactNode
@@ -80,9 +77,6 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
   const managedSkills = Boolean(skillsManager)
   const [tab, setTab] = useState('memory')
   const activeTab = tab === 'memory' && memoryEnabled ? 'memory' : skillsEnabled ? 'skills' : 'memory'
-  useWorkspacePanelAssistant(activeTab === 'skills' ? { workspacePath, message: readOnly
-    ? 'Explain the custom skills installed in this Crew. This project is read-only for me, so do not offer to change anything.'
-    : 'Help me understand the custom skills installed in this Crew. Explain what each one does. Install, create or uninstall a skill through chat only when I ask.' } : undefined)
   useWorkspaceViewTarget('memory', target => { if ((target === 'memory' && memoryEnabled) || (target === 'skills' && skillsEnabled)) setTab(target) })
   const [content, setContent] = useState('')
   const [skills, setSkills] = useState<CrewSkill[]>([])
@@ -134,11 +128,6 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
         hideHeader={activeTab === 'skills'}
         /* Memory and Skills are separate side-list items (owner, 2026-10-20: every tab independent). */
         actions={activeTab !== 'skills' && <WorkspaceViewActions
-          workspacePath={workspacePath}
-          message={readOnly
-            ? "Review this Crew project's MEMORY.md and its project-local skills. Explain what the Crew remembers and how it uses each skill. This Crew is read-only for me, so do not offer to change anything."
-            : "Review this Crew project's MEMORY.md and its project-local skills. Explain what Crew currently remembers, identify anything stale or missing, and ask what I want to update. Keep project facts in memory and reusable procedures in focused skills inside this project."}
-          onAsk={onAsk}
           onRefresh={refresh}
           refreshing={loading}
           refreshLabel="Refresh memory"

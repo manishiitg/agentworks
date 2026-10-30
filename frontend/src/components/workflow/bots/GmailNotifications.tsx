@@ -1,4 +1,3 @@
-import { useWorkspacePanelHosted } from '../../workspace/WorkspacePanelNavigation'
 import { useEffect, useState } from 'react'
 import { prepareSignInWindow } from '../../../utils/signInWindow'
 import { googleAppApi } from '../../../api/googleApp'
@@ -15,12 +14,10 @@ import { Label } from '../../ui/label'
 import { Textarea } from '../../ui/Textarea'
 import { ToggleRow } from '../../ui/ToggleRow'
 import { READ_ONLY_TITLE } from '../../../hooks/useCanWriteWorkflow'
-import { AskAIButton } from '../AskAIButton'
 import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
 import { GoogleAccountList } from '../../../products/work/GoogleAccountList'
 import PersonalAccountsPanel from '../../integrations/PersonalAccountsPanel'
-import { getGoogleAppsAskAIMessage } from './gmailAskAI'
 
 function gmailBackendLabel(backend: string | undefined): { name: string; install: string } {
   if (backend === 'gog') return { name: 'gog', install: 'gogcli' }
@@ -37,13 +34,10 @@ type GmailNotificationsBots = Pick<WorkflowBots,
   | 'gmailOAuthClientError' | 'removeGmailMailboxAndClient' | 'loadGmailConnections'
 >
 
-export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow', onAsk }: {
+export function GmailNotifications({ bots, workspacePath }: {
   bots: GmailNotificationsBots
   workspacePath: string | null
-  scopeNoun?: 'workflow' | 'project' | 'relay'
-  onAsk?: (message: string) => void | Promise<void>
 }) {
-  const hosted = useWorkspacePanelHosted()
   const [signInUrl, setSignInUrl] = useState('')
   const [tabOpened, setTabOpened] = useState(false)
   useEffect(() => {
@@ -93,14 +87,6 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span>Gmail</span>
               </span>
-            }
-            actions={
-              !hosted && <AskAIButton
-                workspacePath={workspacePath}
-                onAsk={onAsk}
-                label={scopeNoun === 'project' ? 'Ask Crew to set up Gmail' : 'Ask Builder to set up Gmail'}
-                message={getGoogleAppsAskAIMessage(scopeNoun)}
-              />
             }
           >
               {workspacePath && <PersonalAccountsPanel provider="google" workspacePath={workspacePath} onChanged={bots.loadGmailConnections} />}

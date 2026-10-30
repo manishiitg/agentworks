@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 
 const { hookState } = vi.hoisted(() => ({ hookState: { current: null as null | Record<string, unknown> } }))
-const { askMessages } = vi.hoisted(() => ({ askMessages: [] as string[] }))
 vi.mock('./executionLogs/useExecutionLogsData', () => ({ useExecutionLogsData: () => hookState.current }))
 const { stepListProps } = vi.hoisted(() => ({ stepListProps: [] as Array<Record<string, unknown>> }))
 vi.mock('./executionLogs/StepList', () => ({
@@ -30,12 +29,6 @@ vi.mock('../../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: () =
 vi.mock('../../api/secrets', () => ({ secretsApi: {} }))
 vi.mock('../../ui/MarkdownRenderer', () => ({ MarkdownRenderer: () => null, ConversationMarkdownRenderer: () => null }))
 vi.mock('./ConversationViewer', () => ({ ConversationViewer: () => null }))
-vi.mock('./AskAIButton', () => ({
-  AskAIButton: (props: Record<string, unknown>) => {
-    askMessages.push(String(props.message))
-    return <button type="button" data-testid="ask-ai" data-message={String(props.message)}>Ask AI</button>
-  },
-}))
 
 import ExecutionLogsPopup from './ExecutionLogsPopup'
 
@@ -85,7 +78,6 @@ function state(overrides: Record<string, unknown> = {}) {
 }
 
 async function mount() {
-  askMessages.length = 0
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   await act(async () => root.render(
@@ -123,31 +115,6 @@ it('auto-expands the first failed step once', async () => {
   try {
     expect(toggleStep).toHaveBeenCalledWith('step-1')
     expect(toggleStep).toHaveBeenCalledTimes(1)
-  } finally {
-    await unmount()
-  }
-})
-
-it('asks about the run with failures named', async () => {
-  hookState.current = state()
-  const { host, unmount } = await mount()
-  try {
-    expect(host.querySelector('[data-testid="ask-ai"]')).not.toBeNull()
-    expect(host.querySelector('[aria-label="Walkthrough: Execution Logs"]')).toBeNull()
-    const runMessage = askMessages.find(message => message.includes('steps failed'))
-    expect(runMessage).toContain('1 of 2 steps failed: "Classify intent"')
-    expect(runMessage).toContain('rate limit exceeded')
-  } finally {
-    await unmount()
-  }
-})
-
-it('offers an ask when no run is selected', async () => {
-  hookState.current = state({ logs: null, selectedRunFolder: '' })
-  const { host, unmount } = await mount()
-  try {
-    expect(host.textContent).toContain('Select an iteration or group')
-    expect(askMessages.some(message => message.includes('Help me run this workflow'))).toBe(true)
   } finally {
     await unmount()
   }

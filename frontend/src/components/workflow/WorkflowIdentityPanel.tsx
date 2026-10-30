@@ -10,14 +10,11 @@ import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
-import { AskAIButton } from './AskAIButton'
 import { ChatInstructionsCard } from './ChatInstructionsCard'
 import { SoulViewer } from './SoulViewer'
 import { StatusBanner } from './bots/StatusBanner'
 import { IconUploadField } from '../ui/IconUploadField'
 import { RelayDurabilitySetting } from './RelayDurabilitySetting'
-
-const SOUL_EDIT_MESSAGE = 'Review this workflow\'s purpose (soul/soul.md: Objective and Success Criteria) and help me update it. Read the file first, explain what it says in plain words, then ask what I want to change before changing anything.'
 
 // The Identity view's General tab: workflow name, icon, purpose (soul),
 // and deletion. Joins the pane scroll; never owns a scroll container.
@@ -127,13 +124,6 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
         icon={<Target aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Purpose"
         description="What this workflow is for — its Objective and Success Criteria."
-        actions={(
-          <AskAIButton
-            workspacePath={canWriteWorkflow ? workspacePath : null}
-            label="Ask AI to edit"
-            message={SOUL_EDIT_MESSAGE}
-          />
-        )}
       >
         <SoulViewer workspacePath={workspacePath} embedded />
       </SettingsCard>}

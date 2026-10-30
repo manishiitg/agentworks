@@ -5,7 +5,7 @@ import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewAct
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 
-export function WorkPlanPanel({ workspacePath, onAsk, onCreatePlan }: { workspacePath: string; onAsk: (message: string) => Promise<unknown>; onCreatePlan: () => void }) {
+export function WorkPlanPanel({ workspacePath, onCreatePlan }: { workspacePath: string; onCreatePlan: () => void }) {
   const { plan, loading, error, refresh } = usePlanData(workspacePath)
   useLiveRefetch(() => { void refresh() }, {
     kinds: ['plan'],
@@ -20,9 +20,6 @@ export function WorkPlanPanel({ workspacePath, onAsk, onCreatePlan }: { workspac
       icon={Route}
       title="Plan"
       actions={<WorkspaceViewActions
-        workspacePath={workspacePath}
-        message="Explain this Crew project's plan and help me revise it if needed."
-        onAsk={async message => { await onAsk(message) }}
         onRefresh={() => { void refresh() }}
         refreshing={loading}
         refreshLabel="Refresh plan"

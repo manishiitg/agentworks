@@ -16,7 +16,7 @@ import { ProjectAgentBridgePanel } from '../workspace/ProjectAgentBridgePanel'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { integrationProductAvailable, projectIntegrationSections } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
-import { ProjectIntegrationPanel, INTEGRATION_LABELS, integrationPanelQuestion, type IntegrationSection } from '../integrations/ProjectIntegrationPanel'
+import { ProjectIntegrationPanel, INTEGRATION_LABELS, type IntegrationSection } from '../integrations/ProjectIntegrationPanel'
 import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { agentApi, workflowManifestApi } from '../../services/api'
@@ -36,7 +36,6 @@ import { BrowserWorkspacePanel } from './BrowserWorkspacePanel'
 import type { BrowserAutomationMode } from '../BrowserAutomationSettings'
 import { WorkspaceViewActions } from './WorkspaceViewActions'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
-import { getIdentityTabAskAIMessage, getIntegrationTabAskAIMessage, getWorkspaceAskAIMessage, type IdentityTabId, type IntegrationTabId } from './workspaceAskAI'
 import WorkflowIdentityPanel from './WorkflowIdentityPanel'
 import WorkflowFolderAccessView from './WorkflowFolderAccessView'
 import WorkflowUpdatesView from './WorkflowUpdatesView'
@@ -46,9 +45,9 @@ import WorkflowUpdatesView from './WorkflowUpdatesView'
 // panel only carries the per-section copy.
 export type WorkflowCapabilitySection = CapabilityViewId
 
-type McpTab = IntegrationTabId
+type McpTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
-type IdentityTab = IdentityTabId
+type IdentityTab = 'general' | 'secrets' | 'llm' | 'laptop' | 'upgrades'
 
 const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
@@ -335,21 +334,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
           title={section === 'mcp' && sharing ? shareChannel === 'agentbridge' ? 'AgentBridge' : projectChannelLabel(shareChannel) : section === 'mcp' ? connectionLabel : copy.title}
           actions={(
             <WorkspaceViewActions
-              workspacePath={workspacePath}
-              onAsk={section === 'mcp' && sharing && (shareChannel === 'share' || shareChannel === 'agentbridge' || shareChannel === 'slack') ? askInCurrentChat : undefined}
-              message={section === 'mcp'
-                ? !sharing && activeMcpTab==='apps' && pluginTab!=='skills' ? integrationPanelQuestion(integrationSection,connectionLabel) : sharing ? shareChannel === 'slack' ? integrationPanelQuestion(relayMode ? 'slack-account' : 'slack',relayMode ? 'My Slack account' : 'Slack bot') : shareChannel === 'agentbridge' ? 'Show the agents this project can reach, its own named agents and recent AgentBridge messages. Help me contact an agent.' : 'Help me share this project with people or make it available through its existing channels. Explain current access before changing sharing, routes or permissions.' : relayMode && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available')
-                  ? 'Help me choose from the MCP servers and tools already connected to this platform for this Flow. Explain what each agent can use before changing the selection.'
-                  : relayMode && activeMcpTab === 'gmail'
-                    ? 'Help me connect Google apps to this Flow, including Drive, Sheets, Calendar or Gmail. Inspect the authorized connections and service grants, explain what its agents can use, and ask which access is needed. Plan creation needs no Google credentials.'
-                  : getIntegrationTabAskAIMessage(activeMcpTab === 'apps' && (pluginTab === 'secrets' || pluginTab === 'skills') ? pluginTab : activeMcpTab)
-                : section === 'identity'
-                  ? relayMode
-                    ? activeIdentityTab === 'llm'
-                      ? 'Help me choose the Builder model for this Flow. Agent execution models are configured per step through execution_llm, so explain the current Builder choice and ask what I want to change.'
-                      : 'Help me rename this Flow or explain how to delete it. Show its current name and ask what I want to change.'
-                    : getIdentityTabAskAIMessage(activeIdentityTab)
-                  : getWorkspaceAskAIMessage(section)}
               onRefresh={section === 'mcp'
                 ? sharing ? () => setTabNonce(nonce => nonce + 1) : handleMcpRefresh
                 : section === 'identity'
@@ -432,7 +416,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 )}
                 {activeMcpTab === 'gmail' && (
                   <div className="mt-3">
-                    <WorkflowEmailPanel workspacePath={workspacePath} scopeNoun={relayMode ? 'relay' : 'workflow'} />
+                    <WorkflowEmailPanel workspacePath={workspacePath} />
                   </div>
                 )}
                 </>}
@@ -477,14 +461,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 dirty={dirty}
                 saving={saving}
                 onSave={() => void save()}
-                assistantControl={
-                  <WorkspaceViewActions
-                    workspacePath={workspacePath}
-                    message={getWorkspaceAskAIMessage('browser')}
-                    onRefresh={() => useWorkflowStore.getState().refreshWorkspaceView()}
-                    refreshLabel="Refresh Browser"
-                  />
-                }
               />
             )}
             {/* Bots write straight to the shared connector config (routes

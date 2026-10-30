@@ -1,7 +1,7 @@
 import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import { useEffect, useCallback, useRef, useState } from 'react'
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react'
-import { WorkspacePanelBack, useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
+import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
 import { skillsApi } from '../../api/skills'
 import type { Skill } from '../../types/skills'
 import SkillRow from './SkillRow'
@@ -175,12 +175,6 @@ export default function SkillsManagerPanel({
       readOnly={readOnly || uninstalling || !defaults} selectionScopeLabel={selectionScopeLabel} />
   }
   const reading = inventory.find(skill => skill.folder_name === viewedSkill)
-  useWorkspacePanelAssistant(customOnly && loadedScope === scope ? {
-    workspacePath: workspacePath ?? null,
-    message: reading
-      ? `Explain the installed custom skill ${JSON.stringify(reading.folder_name)} in this ${selectionScopeLabel}. Ask what I want to understand or change, and preserve existing permissions.`
-      : `Help me with the custom skills installed in this ${selectionScopeLabel}. Ask what I want to install, create or uninstall, and preserve existing permissions.`,
-  } : undefined)
   return (
     <div className={`${manageOwnScroll ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col'} gap-2`}>
       {(headerAction || showRefresh) && <WorkspacePanelActions>

@@ -5,13 +5,11 @@ import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { workWorkspacePanels } from './workWorkspacePanels'
 import { WorkContextPanel } from './WorkContextPanel'
 import { WorkspacePanelHeader } from '../../components/workspace/WorkspacePanelHeader'
-import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../../components/workspace/WorkspacePanelNavigation'
+import { WorkspacePanelNavigationProvider } from '../../components/workspace/WorkspacePanelNavigation'
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { DollarSign, Laptop, Settings } from 'lucide-react'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
-import { AskAIButton } from '../../components/workflow/AskAIButton'
-import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
@@ -101,7 +99,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   </div>
 })
 
-export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: string; workspacePath: string; onAsk: (message: string) => unknown | Promise<unknown> }) {
+export function WorkBrowserPanel({ tabId, workspacePath }: { tabId: string; workspacePath: string }) {
   const product = useProjectProduct()
   const savedMode = useChatStore(state => state.chatTabs[tabId]?.config.browserMode)
   const savedPort = useChatStore(state => state.chatTabs[tabId]?.config.cdpPort ?? 9222)
@@ -123,8 +121,6 @@ export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: strin
   const [cdpError, setCdpError] = useState<string | null>(null)
   const [cdpChecking, setCdpChecking] = useState(false)
   const [saving, setSaving] = useState(false)
-  // Crew has no workspace refresh token: remount the panel to reload sessions.
-  const [refreshNonce, setRefreshNonce] = useState(0)
   const dirty = browserMode !== canonicalSettings.mode || cdpPort !== canonicalSettings.port
 
   useEffect(() => {
@@ -176,7 +172,6 @@ export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: strin
 
   return (
     <BrowserWorkspacePanel
-      key={refreshNonce}
       workspacePath={workspacePath}
       browserMode={browserMode}
       onBrowserModeChange={setBrowserMode}
@@ -191,15 +186,6 @@ export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: strin
       onSave={save}
       scopeNoun="project"
       profileId={product.profileId}
-      assistantControl={
-        <WorkspaceViewActions
-          workspacePath={workspacePath}
-          message="Help me configure browser access for this project. Ask what site or task it is for before changing anything."
-          onAsk={async message => { await onAsk(message) }}
-          onRefresh={() => setRefreshNonce(nonce => nonce + 1)}
-          refreshLabel="Refresh Browser"
-        />
-      }
     />
   )
 }
@@ -320,8 +306,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
 
   return (
     <WorkspacePanelNavigationProvider workspacePath={workspacePath} view={view} chatTarget={{ tabId }} onOpenChat={onOpenChat}>
-    {view === 'dashboard' && <WorkspacePanelAssistant workspacePath={workspacePath} message={`Help me with this ${noun} project's results page. Explain what it shows in plain words and ask what I want to change.`} />}
-    {view === 'shell' && <WorkspacePanelAssistant workspacePath={workspacePath} message={`Help me understand this ${noun}'s terminal and what I can do here. Explain commands before running anything.`} />}
     <div className="relative flex h-full min-h-0 flex-col bg-background">
       <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly} onBack={() => onViewChange('context')} />
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -347,7 +331,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           selectedGlobalSecrets={selectedGlobalSecrets}
           projectLLMConfig={projectLLMConfig}
           enabledPanels={enabledPanels}
-          onAsk={async message => { await ask(message) }}
           onRuntimeChange={onRuntimeChange}
           nativeAgentTools={nativeAgentTools}
           onNativeAgentToolsChange={shared ? undefined : onNativeAgentToolsChange}
@@ -358,7 +341,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         />}
         {view === 'plan' && <WorkPlanPanel
           workspacePath={workspacePath}
-          onAsk={message => ask(message)}
           onCreatePlan={() => { void openWorkspacePaneChatWithDraft({
             profileId: product.profileId,
             conversationKey: projectId,
@@ -384,10 +366,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         />}
         {view === 'memory' && <WorkMemoryPanel
           workspacePath={workspacePath}
-          onAsk={async message => { await ask(message) }}
           onOpenFile={filePath => { void openProjectFile(filePath) }}
           fileClient={sharedFiles ?? undefined}
-          readOnly={readOnly}
           memoryEnabled={!enabledPanels || enabledPanels.has('memory')}
           skillsEnabled={!enabledPanels || enabledPanels.has('skills')}
           skillsManager={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
@@ -400,38 +380,17 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             emptyDescription={readOnly ? "No dashboard is available right now. Check again, or ask the project owner for help." : 'Live data, forms, agent actions and visual stories. Describe what your team needs in chat.'}
             emptyAction={!readOnly && <DashboardCreateDraftButton target={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }} />}
             sendChatMessage={sendDashboardMessage}
-            headerAction={<AskAIButton
-              workspacePath={workspacePath}
-              message={`Help me with this ${noun} project's results page. Explain what it shows in plain words and ask what I want to change.`}
-              onAsk={async message => { await ask(message) }}
-              iconOnly
-            />}
           />}
-          {view === 'database' && <DatabaseView workspacePath={workspacePath} headerAction={<AskAIButton
-            workspacePath={workspacePath}
-            message={`Help me with this ${noun} project's stored records. Explain what's kept and ask what I want to look at or change.`}
-            onAsk={async message => { await ask(message) }}
-            iconOnly
-          />} />}
+          {view === 'database' && <DatabaseView workspacePath={workspacePath} />}
           {view === 'suggestions' && <div className="flex h-full min-h-0 flex-col">
-            <WorkspaceViewHeader title="Suggestions" actions={<AskAIButton
-                workspacePath={workspacePath}
-                message={`Look at the accepted suggestions in this ${noun}'s Suggestions view and help me make those changes to the ${noun}.`}
-                onAsk={async message => { await ask(message) }}
-                iconOnly
-              />} />
+            <WorkspaceViewHeader title="Suggestions" />
             <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
               <p className="text-sm leading-6 text-muted-foreground">Changes other people using this {noun} asked for. Accepting records your decision; make the change in chat.</p>
               <ReportHumanInputPanel workspacePath={workspacePath} chatTarget={{ profileId: product.profileId, conversationKey: projectId }} source="user_suggestion" showEmptyState />
             </div>
           </div>}
-          {view === 'browser' && <WorkBrowserPanel tabId={tabId} workspacePath={workspacePath} onAsk={ask} />}
-          {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." headerAction={<AskAIButton
-            workspacePath={workspacePath}
-            message={`Help me understand what this ${noun} project costs to run. Explain in plain words where the money goes, then ask what I want to change.`}
-            onAsk={async message => { await ask(message) }}
-            iconOnly
-          />} />}
+          {view === 'browser' && <WorkBrowserPanel tabId={tabId} workspacePath={workspacePath} />}
+          {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." />}
           {view === 'history' && <div className="flex h-full min-h-0 flex-col"><PreviousChatHistoryPanel
               workspacePath={workspacePath}
               activeSessionId={canonicalSessionId || activeSessionId}
@@ -457,11 +416,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             scopeNoun="project"
             productTriggerScope={enabledPanels?.has('triggers') === false ? undefined : { profileId: product.profileId, projectId }}
             workflowScope={{ workflowId: projectId, workspacePath, label: projectTitle }}
-            askAIMessages={{
-              schedules: `Help me manage this project's schedules or authenticated webhook triggers. Each sends exactly one saved instruction to this ${noun} project; do not create workflow routes or workflow executions.`,
-              triggers: `Help me manage this project's authenticated triggers. Each trigger sends one saved instruction to this ${noun} project.`,
-              functions: `Help me with this ${noun}'s functions: typed actions other Crews and workflows can call. List them, explain what each does, and ask what I want to add or change.`,
-            }}
             onAskAI={async message => { await ask(message) }}
           />}
         </Suspense>

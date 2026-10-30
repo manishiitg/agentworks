@@ -3,16 +3,9 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 
-const { askMessages } = vi.hoisted(() => ({ askMessages: [] as string[] }))
 vi.mock('../../services/workflow-notifications', () => ({ loadWorkflowNotificationInfo: vi.fn() }))
 vi.mock('../../services/api', () => ({ workflowManifestApi: { updateWorkflowManifest: vi.fn(async () => ({})) } }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true, READ_ONLY_TITLE: 'Read-only access' }))
-vi.mock('./AskAIButton', () => ({
-  AskAIButton: (props: Record<string, unknown>) => {
-    askMessages.push(String(props.message))
-    return <button type="button" data-testid="ask-ai" data-message={String(props.message)}>{String(props.label ?? 'Ask AI')}</button>
-  },
-}))
 
 import WorkflowNotificationView from './WorkflowNotificationView'
 import { workflowManifestApi } from '../../services/api'
@@ -35,7 +28,6 @@ const info = {
 }
 
 async function mount() {
-  askMessages.length = 0
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   await act(async () => root.render(
@@ -75,18 +67,6 @@ it('lays summaries out as labeled Channels, From, and To lines', async () => {
     expect(host.textContent).toContain('Channels')
     expect(host.textContent).not.toContain('→ me@x.com')
     expect(host.textContent).toContain('me@x.com')
-  } finally {
-    await unmount()
-  }
-})
-
-it('asks per channel and per summary from chat commands', async () => {
-  const { host, unmount } = await mount()
-  try {
-    expect(askMessages).toContain('/notify')
-    expect(askMessages.some(message => message.includes('Slack notifications'))).toBe(true)
-    expect(askMessages.some(message => message.includes('Gmail notifications'))).toBe(true)
-    expect(askMessages.some(message => message.includes('run summary'))).toBe(true)
   } finally {
     await unmount()
   }

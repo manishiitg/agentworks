@@ -150,7 +150,6 @@ export interface WorkflowCanvasProps {
   /** Embed only the reusable read-only Plan canvas, without global workflow view switching. */
   embeddedPlanOnly?: boolean
   openHumanActionsOnMount?: boolean
-  assistantControl?: React.ReactNode
 }
 
 // On-pane controls for the preview (canvas) pane: a Plan/Report segmented switch
@@ -1097,7 +1096,6 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   toolbarOnly = false,
   readOnly = false,
   embeddedPlanOnly = false,
-  assistantControl,
 }, ref) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -2530,7 +2528,6 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
             )}
           </div>
           <div className="flex items-center gap-2">
-            {assistantControl}
             <button
               onClick={() => {
                 loadPlanRefresh()
@@ -2560,7 +2557,6 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
         actionLabel={relayMode ? 'Build graph in chat' : 'Build plan in chat'}
         onAction={onCreatePlan}
         secondaryActions={<>
-          {assistantControl}
           <button
             type="button"
             onClick={() => void (async () => {
@@ -2598,7 +2594,6 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
             </div>
           )}
           <div className={panelHeader?.actions ? 'contents' : 'absolute right-3 top-3 z-20 flex items-center gap-1'}><WorkspacePanelActions>
-            {assistantControl}
             <button type="button" onClick={() => void fitView({ padding: FLOW_FIT_PADDING, duration: 300, minZoom: FLOW_FIT_MIN_ZOOM, maxZoom: FLOW_FIT_MAX_ZOOM })}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
               aria-label={relayMode ? 'Fit graph to view' : 'Fit plan to view'} title={relayMode ? 'Fit graph to view' : 'Fit plan to view'}>

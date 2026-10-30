@@ -28,7 +28,6 @@ interface WorkflowScheduleRunsPanelProps {
   active?: boolean
   onJobsLoaded?: (jobs: ScheduledJob[]) => void
   workflowScope?: WorkflowScope
-  headerAction?: React.ReactNode
   entityType?: 'workflow' | 'product'
   productProfileId?: string
   workflowKind?: 'workflow' | 'relay'
@@ -45,7 +44,7 @@ interface WorkflowScheduleRunsPanelProps {
   onStatus?: (status: ScheduleStatusSnapshot) => void
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, headerAction, entityType = 'workflow', productProfileId, workflowKind, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, workflowKind, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
   const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, workflowKind, canManage, active })
   const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isGloballyPaused, pauseProductLabel, isWorkflowScoped } = panel
   useEffect(() => {
@@ -142,7 +141,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
 
         {automationSection === 'bots' && botContent ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            {!hideHeader && <WorkspaceViewHeader icon={Bot} title="Bots" actions={headerAction} />}
+            {!hideHeader && <WorkspaceViewHeader icon={Bot} title="Bots" />}
             <div className="min-h-0 flex-1 overflow-y-auto">{botContent}</div>
           </div>
         ) : automationSection === 'webhooks' && hasProductWebhooks && productTriggerScope ? (
@@ -151,7 +150,6 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
               scope={productTriggerScope}
               workspacePath={workflowScope?.workspacePath || undefined}
               deliveryHistory={workflowScope?.workspacePath ? <TriggerDeliveryHistoryPanel workspacePath={workflowScope.workspacePath} entityType="product" /> : undefined}
-              headerAction={headerAction}
             />
           </div>
         ) : automationSection === 'webhooks' && workflowScope?.workspacePath ? (
@@ -159,14 +157,13 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
             <WorkflowAPITriggersView
               workspacePath={workflowScope.workspacePath}
               deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workflowScope.workspacePath} entityType="workflow" />}
-              headerAction={headerAction}
             />
           </div>
         ) : <>
 
         {/* Header */}
         {!hideHeader && (
-          <ScheduleRunsHeader panel={panel} onClose={onClose} showClose={!embedded} headerAction={headerAction}
+          <ScheduleRunsHeader panel={panel} onClose={onClose} showClose={!embedded}
             compact={compact} navigation={compact ? viewControls : undefined} />
         )}
 

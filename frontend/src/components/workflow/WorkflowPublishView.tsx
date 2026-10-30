@@ -8,7 +8,6 @@ import PublishPopupBody from '../backup-publish/PublishPopupBody'
 interface WorkflowPublishViewProps {
   workspacePath: string | null
   onStateLoaded?: (state: string) => void
-  headerAction?: React.ReactNode
 }
 
 const FALLBACK_SUPPORTED: WorkflowPublishStrategyInfo[] = [
@@ -82,7 +81,7 @@ const InternetShareSection: React.FC = () => {
   )
 }
 
-const WorkflowPublishView: React.FC<WorkflowPublishViewProps> = ({ workspacePath, onStateLoaded, headerAction }) => {
+const WorkflowPublishView: React.FC<WorkflowPublishViewProps> = ({ workspacePath, onStateLoaded }) => {
   const loadInfo = useCallback(async () => {
     if (!workspacePath) throw new Error('No workflow is selected')
     return agentApi.getWorkflowPublish(workspacePath)
@@ -104,11 +103,10 @@ const WorkflowPublishView: React.FC<WorkflowPublishViewProps> = ({ workspacePath
       subtitle="Publish this automation's dashboards at a public URL"
       emptyDestinationsText="No hosts yet — share the dashboard with /share in chat."
       destinationsHelp="After every run refreshes a configured publication only when something changed."
-      askContext={{ workspacePath, strategyVerb: 'publish this workflow to' }}
       supportedHelp="Suggestions, not a limit — any static host works."
       defaultTargetLabel="dashboard"
       getSummary={getPublishSummary}
-      headerAction={<>{headerAction}<GoalAfterRunToggle workspacePath={workspacePath} option="publish" /></>}
+      headerAction={<GoalAfterRunToggle workspacePath={workspacePath} option="publish" />}
     />
     <InternetShareSection />
     </div>

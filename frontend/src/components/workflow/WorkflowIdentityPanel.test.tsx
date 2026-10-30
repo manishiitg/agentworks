@@ -43,9 +43,6 @@ vi.mock("../../hooks/useCanWriteWorkflow", () => ({
   useCanWriteWorkflow: () => true,
 }));
 
-vi.mock("./AskAIButton", () => ({
-  AskAIButton: ({ label }: { label?: string }) => <button type="button">{label ?? "Ask AI"}</button>,
-}));
 
 vi.mock("./SoulViewer", () => ({
   SoulViewer: () => <div data-testid="soul">soul contents</div>,
@@ -79,7 +76,6 @@ it("renders name, icon, purpose, and delete with save disabled when pristine", a
   const name = host.querySelector('input[placeholder="e.g. Support helper"]') as HTMLInputElement;
   expect(name.value).toBe("Demo");
   expect(host.querySelector('[data-testid="soul"]')).not.toBeNull();
-  expect(host.textContent).toContain("Ask AI to edit");
   expect(host.textContent).toContain("Delete workflow");
   expect(saveButton(host).disabled).toBe(true);
 });
