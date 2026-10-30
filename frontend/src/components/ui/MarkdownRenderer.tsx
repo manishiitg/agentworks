@@ -1,7 +1,7 @@
 import { WorkspaceImage } from './WorkspaceImage'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
 import { PanelsTopLeft } from 'lucide-react'
-import { dashboardWorkspaceLink, openDashboardWorkspaceLink } from '../../services/dashboardDirectory'
+import { dashboardWorkspaceLink } from '../../services/dashboardDirectory'
 import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -1325,12 +1325,6 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
                 rel="noopener noreferrer"
                 onClick={(e) => {
                   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-                  if (!untrustedContent && dashboardWorkspaceLink(externalHref)) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    void openDashboardWorkspaceLink(externalHref).then(opened => { if (!opened) openExternalHref(externalHref) })
-                    return
-                  }
                   if (openExternalHref(externalHref)) {
                     e.preventDefault()
                     e.stopPropagation()

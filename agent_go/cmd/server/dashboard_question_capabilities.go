@@ -136,5 +136,10 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 		}
 	}
 	out.Capability = dashboardQuestionCapabilities(dashboardQuestionPolicy{Authenticated: true, Active: !userAccessForClaims(claims).Disabled, Product: true, View: true, Published: true, AskScope: askScope, Owner: owner})
+	// An Artifact is a finished page to read and share, not a dashboard to ask
+	// (PLAT-750): no chat pane, Ask or function buttons beside it.
+	if out.Snapshot.Artifact {
+		out.Capability.CanAsk, out.Capability.Mode, out.Capability.Reason = false, "", "artifact"
+	}
 	return out, nil
 }
