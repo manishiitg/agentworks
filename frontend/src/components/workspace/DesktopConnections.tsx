@@ -1,3 +1,7 @@
+import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
+import { LocationFilter } from './LocationFilter'
+import { useProjectMenuHistoryStore, projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
+import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
 import { isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -27,9 +31,21 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const connections = connectedLocations(state)
   const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
   const { refresh, error: directoryError } = state
+  // Use the local account's navigation history across connection reloads.
+  // It stores only selectors; admitted inventory still decides visible rows.
+  let owner = ''
+  try { owner = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.user?.id || '' } catch { /* No saved owner yet. */ }
+  const historyScope = owner ? projectMenuHistoryScope('local', owner, 'connected-work', 'sidebar') : ''
+  const recent = useProjectMenuHistoryStore(state => state.recent[historyScope])
+  const visit = useProjectMenuHistoryStore(state => state.visit)
+  const selectedProject = projects.find(project => project.selected)
+  const selectedKey = selectedProject ? connectedProjectKey(active, selectedProject.kind, selectedProject.id) : ''
+  useEffect(() => { if (selectedKey) visit(historyScope, selectedKey) }, [historyScope, selectedKey, visit])
   const [filter, setFilter] = useState('all')
   useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   const [adding, setAdding] = useState(false)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [connectionName, setConnectionName] = useState('')
   const [showConnectForm, setShowConnectForm] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -88,21 +104,26 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     for (const project of inventory[connection.id]?.projects || []) byId.set(`${project.kind}:${project.id}`, project)
     if (connection.id === active) for (const project of projects) byId.set(`${project.kind}:${project.id}`, project)
     return [...byId.values()].map(project => ({ ...project, connection }))
-  }).sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id))
+  }).sort((a, b) => {
+    const rank = (row: typeof a) => { const index = recent?.indexOf(connectedProjectKey(row.connection.id, row.kind, row.id)) ?? -1; return index < 0 ? Infinity : index }
+    return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
+  })
   const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
   const locations = connections.filter(connection => filter === 'all' || connection.id === filter)
   const connected = connections.filter(connection => connection.id !== 'local' && inventory[connection.id]?.status === 'connected').length
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
       <h2 className="text-xs font-medium text-muted-foreground">Your work</h2>
-      <select aria-label="Work location" value={filter} onChange={event => setFilter(event.target.value)} className="max-w-[55%] rounded bg-transparent py-1 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <option value="all">All</option>{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.name}</option>)}
-      </select>
+      <LocationFilter label="Work location" value={filter} onChange={setFilter} connections={connections} />
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       {visible.map(project => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
         selected={project.connection.id === active && project.selected} location={project.connection.name}
-        onOpen={() => project.connection.id === active ? openSidebarProject(project.kind, project.id) : open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)} />)}
+        onOpen={() => {
+          visit(historyScope, connectedProjectKey(project.connection.id, project.kind, project.id))
+          if (project.connection.id === active) openSidebarProject(project.kind, project.id)
+          else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
+        }} />)}
       {(filter === 'all' || filter === active) && children}
       {locations.map(connection => {
         const status = inventory[connection.id]?.status
@@ -114,7 +135,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       {!visible.length && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews or Goals here yet.</p>}
     </div>
     <div className="shrink-0 border-t border-border/50 p-2">
-      <button onClick={() => { setError(''); setShowConnectForm(false); setAdding(true) }} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><Server className="h-3.5 w-3.5" />Connections<span className="ml-auto text-xs">{connected} connected</span></button>
+      <button onClick={() => { setError(''); setShowConnectForm(false); setAdding(true) }} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><Server className="h-3.5 w-3.5" />Connections<span aria-hidden="true" className="text-muted-foreground/40">·</span><span className="text-[11px]">{connected} connected</span></button>
       {(error || directoryError) && !adding && <p role="alert" className="px-3 text-xs text-destructive">{error || directoryError}</p>}
     </div>
     <ModalPortal><dialog ref={dialog} aria-labelledby="connect-server-title" aria-describedby="connect-server-description"
@@ -128,11 +149,24 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
         {!showConnectForm ? <div className="space-y-3">
           <p id="connect-server-description" className="text-sm text-muted-foreground">Your work stays on the computer or server where it runs.</p>
           {connections.map(connection => <div key={connection.id} className="rounded-lg border border-border p-3">
+            {renaming === connection.id ? <form className="mb-2 flex items-center gap-2" onSubmit={event => {
+              event.preventDefault()
+              const name = connectionName.trim()
+              if (!name) return
+              useSidebarExpansionStore.getState().renameConnection(connection.id, name)
+              useConnectedWorkStore.setState(state => ({ connections: state.connections.map(item => item.id === connection.id ? { ...item, name } : item) }))
+              setRenaming(null)
+            }}>
+              <input aria-label="Connection name" autoFocus maxLength={24} required value={connectionName} onChange={event => setConnectionName(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-sm" />
+              <button className="text-xs text-primary">Save</button>
+              <button type="button" onClick={() => setRenaming(null)} className="text-xs text-muted-foreground">Cancel</button>
+            </form> : null}
             <div className="flex items-center justify-between gap-2"><span className="font-medium">{connection.name}</span><span className="text-xs text-muted-foreground">{inventory[connection.id]?.status === 'connected' ? 'Connected' : inventory[connection.id]?.status === 'sign_in' ? 'Sign in again' : 'Unavailable'}</span></div>
+            {connection.server && <p className="mt-1 truncate text-xs text-muted-foreground" title={connection.server}>{connection.server}</p>}
             {connection.user && <p className="truncate text-xs text-muted-foreground">{connection.user.email || connection.user.username}</p>}
             <div className="mt-2 flex gap-4 text-xs">
               <button className="text-primary" onClick={() => open(connection.id, '/home')}>Open</button>
-              {connection.id !== 'local' && <><button className="text-primary" onClick={() => beginConnect(connection.server)}>Reconnect</button><button className="text-muted-foreground" onClick={() => void disconnect(connection.id)}>Disconnect</button></>}
+              {connection.id !== 'local' && <><button className="text-muted-foreground" onClick={() => { setRenaming(connection.id); setConnectionName(connection.name) }}>Rename</button><button className="text-primary" onClick={() => beginConnect(connection.server)}>Reconnect</button><button className="text-muted-foreground" onClick={() => void disconnect(connection.id)}>Disconnect</button></>}
             </div>
           </div>)}
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -6,10 +6,10 @@ import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 export function SidebarProjectRow({ name, kind, icon, selected, location, onOpen }: { name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; onOpen: () => void }) {
   const label = kind === 'crew' ? 'Crew' : 'Goal'
   return <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
-    className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-foreground/[0.08] font-medium text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
+    className={`flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-foreground/[0.08] font-medium text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
     <EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={<ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4 shrink-0" />} />
     <span className="min-w-0 flex-1 truncate">{name}</span>
-    {location && <span className="max-w-[35%] truncate text-[10px] font-normal text-muted-foreground" title={location}>{location}</span>}
+    {location && <span className="w-14 shrink-0 truncate text-right text-[10px] font-normal text-muted-foreground/70" title={location}>{location}</span>}
   </button>
 }
 

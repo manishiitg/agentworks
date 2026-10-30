@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { connectionDisplayName } from '../utils/connectedWorkPresentation'
 import { desktopRequest } from './desktopConnections'
 import { getApiBaseUrl } from './api'
 
@@ -36,4 +37,16 @@ it.each([
 ])('preserves actionable local connection errors (%s)', async (status, body, message) => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status })))
   await expect(desktopRequest('', 'POST', { server: 'https://example.com/crew' })).rejects.toThrow(`${message} (HTTP ${status})`)
+})
+
+// PLAT-746: raw service hostnames crowded both the work name and location menu.
+it.each([
+  ['Team North', 'https://agents.example.com', 'Team North'],
+  ['agents.example.com', 'https://agents.example.com', 'Example'],
+  ['app.example.co.uk', 'https://app.example.co.uk', 'Example'],
+  ['192.0.2.1', 'https://192.0.2.1', 'Server'],
+])('formats a location without changing its address or identity (%s)', (name, server, label) => {
+  const connection = { id: 'remote', name, server }
+  expect(connectionDisplayName(connection)).toBe(label)
+  expect(connection).toEqual({ id: 'remote', name, server })
 })

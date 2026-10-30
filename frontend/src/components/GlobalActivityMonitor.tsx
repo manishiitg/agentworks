@@ -1,3 +1,4 @@
+import { LocationFilter } from './workspace/LocationFilter'
 import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useLLMStore } from '../stores/useLLMStore'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -387,6 +388,7 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
+      if (target instanceof Element && target.closest('[data-location-filter-menu]')) return
       if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -512,9 +514,7 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
         >
           <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
             <span>Active work · {count}</span>
-            {desktop && <select aria-label="Activity location" value={locationFilter} onChange={event => setLocationFilter(event.target.value)} className="max-w-[50%] rounded bg-transparent py-1 text-xs font-normal">
-              <option value="all">All</option>{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.name}</option>)}
-            </select>}
+            {desktop && <LocationFilter label="Activity location" value={locationFilter} onChange={setLocationFilter} connections={connections} />}
           </div>
           <div className="min-h-0 max-h-96 overflow-y-auto pb-1">
             {filteredActivity.map(item => {
