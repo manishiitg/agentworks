@@ -162,9 +162,10 @@ func (o *nativeTerminalObserver) nativeRecordPath() string {
 	switch o.provider {
 	case "claude-code":
 		p, _ := resolveClaudeNativeTranscriptPath(o.workingDir, o.nativeID, home)
-		if p == "" && home != "" {
-			// A launch can write to the OS home even when a private cli-home
-			// exists (laptop SDK chats); the native ID is unique (PLAT-872-77).
+		if p == "" && home != "" && !IsMultiUserMode() {
+			// A laptop SDK chat can write to the OS home even when a private
+			// cli-home exists (PLAT-872-77). A server's OS home is shared by
+			// everyone's chats, so servers keep only the private home.
 			p, _ = resolveClaudeNativeTranscriptPath(o.workingDir, o.nativeID)
 		}
 		return p
