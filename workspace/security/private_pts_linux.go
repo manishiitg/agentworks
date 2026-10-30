@@ -5,9 +5,11 @@ package security
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"syscall"
 
@@ -53,8 +55,24 @@ func runPrivatePTSChild(policy LandlockPolicy, argv []string) error {
 	child.Env = append(os.Environ(), privatePTSChildEnv+"=1")
 	child.SysProcAttr = privateTmpSysProcAttr()
 	child.SysProcAttr.Pdeathsig = syscall.SIGKILL
-	if err := child.Run(); err != nil {
-		return fmt.Errorf("private PTY launcher: %w", err)
+	if err := child.Start(); err != nil {
+		return fmt.Errorf("namespaced launcher: %w", err)
+	}
+	// A stop sent to this launcher (a CLI being closed) reaches the command, which can then exit cleanly.
+	signals := make(chan os.Signal, 4)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGQUIT)
+	defer signal.Stop(signals)
+	go func() {
+		for sig := range signals {
+			_ = child.Process.Signal(sig)
+		}
+	}()
+	if err := child.Wait(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return exit
+		}
+		return fmt.Errorf("namespaced launcher: %w", err)
 	}
 	return nil
 }
