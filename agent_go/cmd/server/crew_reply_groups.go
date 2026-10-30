@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
@@ -109,8 +111,50 @@ func attachPullRequests(ctx context.Context, groups []filesnapshots.Group, token
 		if lookups++; lookups > replyGroupMaxPRLookups {
 			break
 		}
-		g.PR = githubPullRequestStatus(ctx, token, g.GitHubRepo, g.Branch)
+		g.PR = cachedGitHubPullRequestStatus(ctx, token, g.GitHubRepo, g.Branch)
 	}
+}
+
+// Cache only successful reads, shared by cards using the same connection. A
+// changed token gets a different key; the cache never stores the token itself.
+var replyPRCache = struct {
+	sync.Mutex
+	entries map[[32]byte]replyPRCacheEntry
+}{entries: make(map[[32]byte]replyPRCacheEntry)}
+
+type replyPRCacheEntry struct {
+	pr      *filesnapshots.PullRequest
+	expires time.Time
+}
+
+func cachedGitHubPullRequestStatus(ctx context.Context, token, repo, branch string) *filesnapshots.PullRequest {
+	key := sha256.Sum256([]byte(githubAPIURL + "\x00" + token + "\x00" + repo + "\x00" + branch))
+	now := time.Now()
+	replyPRCache.Lock()
+	entry, found := replyPRCache.entries[key]
+	replyPRCache.Unlock()
+	if found && now.Before(entry.expires) {
+		return entry.pr
+	}
+	pr := githubPullRequestStatus(ctx, token, repo, branch)
+	if pr != nil && (pr.State == "unavailable" || pr.Review == "unavailable") {
+		return pr // The person's retry must not be held by a cached failure.
+	}
+	replyPRCache.Lock()
+	defer replyPRCache.Unlock()
+	for k, cached := range replyPRCache.entries {
+		if now.After(cached.expires) {
+			delete(replyPRCache.entries, k)
+		}
+	}
+	if len(replyPRCache.entries) >= 256 {
+		for k := range replyPRCache.entries {
+			delete(replyPRCache.entries, k)
+			break
+		}
+	}
+	replyPRCache.entries[key] = replyPRCacheEntry{pr: pr, expires: time.Now().Add(45 * time.Second)}
+	return pr
 }
 
 func githubGET(ctx context.Context, token, path string, out any) bool {
@@ -216,7 +260,9 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 	}
 	if githubGET(ctx, token, "/repos/"+repo+"/pulls/"+strconv.Itoa(p.Number)+"/reviews?per_page=100", &reviews) {
 		latest := map[string]string{}
+		commented := false
 		for _, r := range reviews { // oldest first: the last decision per person wins
+			commented = commented || r.State == "COMMENTED"
 			if r.State == "APPROVED" || r.State == "CHANGES_REQUESTED" || r.State == "DISMISSED" {
 				latest[r.User.Login] = r.State
 			}
@@ -230,6 +276,11 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 				pr.Review = "approved"
 			}
 		}
+		if pr.Review == "none" && commented {
+			pr.Review = "commented"
+		}
+	} else {
+		pr.Review = "unavailable"
 	}
 	// Only the single-PR read says whether it can merge; "dirty" means conflicts.
 	var detail struct {

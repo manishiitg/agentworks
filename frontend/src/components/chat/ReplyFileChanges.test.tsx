@@ -191,4 +191,17 @@ describe('reply card groups', () => {
     } finally { state.pr = {} }
   })
 
+  it('refreshes a visible card on return and shows commented reviews without claiming approval', async () => {
+    state.pr = {}
+    const host = await render(true)
+    expect(host.textContent).toContain('no review yet')
+    try {
+      state.pr = { review: 'commented' }
+      await act(async () => window.dispatchEvent(new Event('focus')))
+      expect(host.textContent).toContain('review comments')
+      expect(host.textContent).not.toContain('no review yet')
+      expect(host.textContent).not.toContain('approved')
+    } finally { state.pr = {} }
+  })
+
 })
