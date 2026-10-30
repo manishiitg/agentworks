@@ -683,6 +683,13 @@ func TestExternalBuilderTabsShareNativeAndWebsiteControl(t *testing.T) {
 	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "read", "chat_id": opened.Chat.ID}); err != nil {
 		t.Fatal(err)
 	}
+	// PR349: the native wrapper must forward the same advertised session selector.
+	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "read", "session_id": opened.Chat.SessionID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "read", "session_id": "another-project-session"}); err == nil {
+		t.Fatal("native read admitted an unknown session")
+	}
 	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "close", "chat_id": opened.Chat.ID}); err == nil {
 		t.Fatal("native Builder closed another owner's tab")
 	}
