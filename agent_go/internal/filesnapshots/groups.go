@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +31,13 @@ type PullRequest struct {
 	Conflicts     bool     `json:"conflicts,omitempty"`
 }
 
+// Commit is one commit made during a chat.
+type Commit struct {
+	SHA     string `json:"sha"`
+	Subject string `json:"subject"`
+	Files   int    `json:"files"`
+}
+
 // Group is one repository (or the non-Git Crew files) in a reply's changes.
 type Group struct {
 	Kind        string       `json:"kind"` // repo | crew_files
@@ -45,6 +53,12 @@ type Group struct {
 	// NextStep is the one Git step the card offers: share_pr, update_pr,
 	// get_latest or none. Set by the caller with NextStep once PR is known.
 	NextStep string `json:"next_step,omitempty"`
+	// The chat summary's Git state (AddChatGitState): files that differ from
+	// HEAD now, and the commits made since the chat first saw the checkout.
+	// CommitsKnown is false when the chat has no saved starting commit.
+	Uncommitted  []Change `json:"uncommitted,omitempty"`
+	Commits      []Commit `json:"commits,omitempty"`
+	CommitsKnown bool     `json:"commits_known,omitempty"`
 
 	dirty    bool // files differ from HEAD now
 	unpushed int  // commits on HEAD that are on no remote branch
@@ -293,4 +307,65 @@ func GitHubRepo(remote string) string {
 		return ""
 	}
 	return parts[0] + "/" + parts[1]
+}
+
+// chatCommitCap bounds the commits a chat summary lists per checkout.
+const chatCommitCap = 30
+
+var commitID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// AddChatGitState fills a repo group's uncommitted files and, when start (the
+// commit the chat first saw) is known and still an ancestor of HEAD, the
+// commits made since. Read-only.
+func AddChatGitState(ctx context.Context, root string, g *Group, start string, allow func(string) bool) {
+	if g.Kind != "repo" {
+		return
+	}
+	abs := filepath.Join(root, filepath.FromSlash(g.Root))
+	if files, ok := workingTreeEdits(ctx, root, abs, g.Root, allow); ok {
+		if len(files) > GroupFileCap {
+			files = files[:GroupFileCap]
+		}
+		g.Uncommitted = files
+	}
+	// A saved start reaches Git as an argument: only a full commit ID passes.
+	if !commitID.MatchString(start) || gitIn(ctx, root, abs, "merge-base", "--is-ancestor", start, "HEAD").Run() != nil {
+		return
+	}
+	g.CommitsKnown = true
+	out, err := gitIn(ctx, root, abs, "log", "-n", strconv.Itoa(chatCommitCap), "--format=%x1e%H%x1f%s", "--shortstat", start+"..HEAD").Output()
+	if err != nil {
+		g.CommitsKnown = false
+		return
+	}
+	for _, entry := range strings.Split(string(out), "\x1e") {
+		head, rest, _ := strings.Cut(strings.TrimSpace(entry), "\n")
+		sha, subject, ok := strings.Cut(head, "\x1f")
+		if !ok || len(sha) < 40 {
+			continue
+		}
+		c := Commit{SHA: sha, Subject: subject}
+		if n, _, found := strings.Cut(strings.TrimSpace(rest), " file"); found {
+			c.Files, _ = strconv.Atoi(strings.TrimSpace(n))
+		}
+		g.Commits = append(g.Commits, c)
+	}
+}
+
+// ChatStarts returns, for each checkout, the HEAD commit the earliest of the
+// given replies (oldest first) saw before it ran.
+func (s Store) ChatStarts(ids []string) map[string]string {
+	starts := map[string]string{}
+	for _, id := range ids {
+		r, err := s.read(id)
+		if err != nil {
+			continue
+		}
+		for p, head := range r.BeforeHeads {
+			if _, seen := starts[p]; !seen {
+				starts[p] = head
+			}
+		}
+	}
+	return starts
 }

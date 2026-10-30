@@ -112,6 +112,10 @@ func (s Store) repoBaselines(ctx context.Context, r *Record, after map[string]st
 			continue
 		}
 		newRepos[p] = base // replaced by its tree below
+		if r.BeforeHeads == nil {
+			r.BeforeHeads = map[string]string{}
+		}
+		r.BeforeHeads[p] = base
 		for _, row := range bytes.Split(list, []byte{0}) {
 			meta, name, ok := strings.Cut(string(row), "\t")
 			fields := strings.Fields(meta)
@@ -441,4 +445,18 @@ func newRepoWithoutBaseline(r Record, file string) string {
 		}
 	}
 	return ""
+}
+
+// repoHeads reads each checkout's HEAD commit (read-only); a checkout without
+// a commit yet is left out.
+func (s Store) repoHeads(ctx context.Context, repos map[string]string) map[string]string {
+	heads := map[string]string{}
+	for p, dir := range repos {
+		if out, err := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "-q", "HEAD").Output(); err == nil {
+			if head := strings.TrimSpace(string(out)); len(head) >= 40 {
+				heads[p] = head
+			}
+		}
+	}
+	return heads
 }

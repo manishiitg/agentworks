@@ -23,8 +23,9 @@ const replyGroupMaxFailingChecks = 10
 // replyFileGroups groups a reply's changes by Git checkout and, with
 // pullRequests, adds pull request status from the Crew owner's connected
 // GitHub account and each checkout's next Git step. The server's own GitHub
-// login is never used.
-func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, comparison filesnapshots.Comparison, allow func(string) bool, pullRequests bool) []filesnapshots.Group {
+// login is never used. chatStarts (a chat summary only) adds each checkout's
+// uncommitted files and the commits made since the chat's starting commit.
+func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, comparison filesnapshots.Comparison, allow func(string) bool, pullRequests bool, chatStarts map[string]string) []filesnapshots.Group {
 	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
 	if pullRequests {
 		token, connected := "", false
@@ -37,6 +38,12 @@ func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, c
 	for i := range groups {
 		if pullRequests && groups[i].Kind == "repo" {
 			groups[i].NextStep = filesnapshots.NextStep(groups[i])
+		}
+		if chatStarts != nil {
+			filesnapshots.AddChatGitState(ctx, roots.Files, &groups[i], chatStarts[groups[i].Root], allow)
+			for j := range groups[i].Uncommitted {
+				groups[i].Uncommitted[j].Path = prefix + groups[i].Uncommitted[j].Path
+			}
 		}
 		if groups[i].Root != "" {
 			groups[i].Root = prefix + groups[i].Root

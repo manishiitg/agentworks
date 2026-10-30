@@ -214,7 +214,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		api.markChatFilesReviewed(w, r, sessionID, store, history, id)
 		return
 	}
-	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" && op != "reply_card" {
+	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" && op != "reply_card" && op != "chat_status" {
 		externalError(w, 400, "invalid_action", "Choose a saved file comparison.")
 		return
 	}
@@ -338,11 +338,27 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	if op == "snapshot_groups" {
 		comparison.Record.Skipped = nil
-		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow, true)})
+		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow, true, nil)})
+		return
+	}
+	if op == "chat_status" {
+		// Where the chat's work stands (PLAT-746): per checkout what is not
+		// committed, the commits made in this chat and its pull request; other
+		// files as saved. Git decides, so committed work leaves "not committed".
+		replies := append([]chatSnapshotReference(nil), history.Replies...)
+		sort.Slice(replies, func(i, j int) bool { return replies[i].Start < replies[j].Start })
+		ids := make([]string, 0, len(replies))
+		for _, ref := range replies {
+			ids = append(ids, ref.ID)
+		}
+		comparison.Record.Skipped = nil
+		groups := replyFileGroups(ctx, roots, prefix, comparison, allow, true, store.ChatStarts(ids))
+		log.Printf("[FILE_REVIEW] chat_status session=%s groups=%d replies=%d", sessionID, len(groups), len(ids))
+		externalJSON(w, map[string]any{"history": history, "groups": groups})
 		return
 	}
 	if op == "reply_card" {
-		groups := replyFileGroups(ctx, roots, prefix, comparison, allow, lookUpPullRequests)
+		groups := replyFileGroups(ctx, roots, prefix, comparison, allow, lookUpPullRequests, nil)
 		if hasSummary {
 			// The file list stays as captured; the lookup adds only PR status and next step.
 			for i := range summaryGroups {

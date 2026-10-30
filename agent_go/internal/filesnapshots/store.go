@@ -68,6 +68,10 @@ type Record struct {
 	NewRepos        map[string]string `json:"-"`
 	GoneRepos       []string          `json:"-"`
 	BaselineSkipped []string          `json:"-"`
+	// BeforeHeads is each checkout's HEAD commit at the before-capture (a new
+	// checkout: the commit it was checked out at). A chat's earliest head of a
+	// checkout is where its "work done in this chat" starts.
+	BeforeHeads map[string]string `json:"-"`
 }
 
 // CaptureStats explains partial captures without exposing file names or contents.
@@ -113,6 +117,7 @@ type diskRecord struct {
 	NewRepos           map[string]string `json:"new_repos,omitempty"`
 	GoneRepos          []string          `json:"gone_repos,omitempty"`
 	BaselineSkipped    []string          `json:"baseline_skipped,omitempty"`
+	BeforeHeads        map[string]string `json:"before_heads,omitempty"`
 }
 type Change struct {
 	Path    string `json:"path"`
@@ -434,11 +439,12 @@ func (s Store) read(id string) (Record, error) {
 	disk.Record.NewRepos = disk.NewRepos
 	disk.Record.GoneRepos = disk.GoneRepos
 	disk.Record.BaselineSkipped = disk.BaselineSkipped
+	disk.Record.BeforeHeads = disk.BeforeHeads
 	return disk.Record, nil
 }
 func (s Store) save(r Record) error {
 	data, err := json.Marshal(diskRecord{Record: r, Reviewed: r.Reviewed, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState,
-		BeforeRepos: r.BeforeRepos, NewRepos: r.NewRepos, GoneRepos: r.GoneRepos, BaselineSkipped: r.BaselineSkipped})
+		BeforeRepos: r.BeforeRepos, NewRepos: r.NewRepos, GoneRepos: r.GoneRepos, BaselineSkipped: r.BaselineSkipped, BeforeHeads: r.BeforeHeads})
 	if err != nil {
 		return err
 	}
@@ -494,6 +500,7 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 	repos := map[string]string{}
 	r.Before, r.Skipped, r.Omitted, err = s.captureRepos(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes, repos)
 	r.BeforeRepos = sortedKeys(repos)
+	r.BeforeHeads = s.repoHeads(ctx, repos)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 		if sendPath && ctx.Err() != nil {
