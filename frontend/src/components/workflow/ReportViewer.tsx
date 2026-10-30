@@ -30,8 +30,6 @@ import { loadReportDocumentCatalog, selectReportDocument, useSelectedReportDocum
 import { reportDocumentLabel } from './reportDocumentLabels'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { DashboardLayoutActions } from './DashboardLayoutControls'
-import { useWorkspacePanelChatDraft, useWorkspacePanelHosted } from '../workspace/WorkspacePanelNavigation'
-import { ShareDashboardButton } from './ShareDashboardButton'
 
 function debugReportView(event: string, detail?: Record<string, unknown>) {
   if (!import.meta.env.DEV) return
@@ -257,8 +255,6 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
     ? { value: viewTarget.target, token: viewTarget.token }
     : undefined, [viewTarget])
   const [previewPreference, setPreviewPreference] = useState<ReportPreviewDevice>(() => readReportPreviewPreference(workspacePath))
-  const accessDraft = useWorkspacePanelChatDraft()
-  const hosted = useWorkspacePanelHosted()
   const reportChat = useReportChat(workspacePath)
   const dataApi = useReportDataApi(workspacePath, sendChatMessage ?? reportChat.request)
   const selectedDocumentPath = useSelectedReportDocument(workspacePath, documentPath)
@@ -333,7 +329,6 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
         {!hideToolbar && <WorkspaceViewHeader icon={LayoutDashboard} title={title} actions={<>
           {headerAction}
-          {!hosted && !loading && !error && <ShareDashboardButton workspacePath={workspacePath} onAsk={accessDraft} />}
           <button type="button" onClick={refresh} aria-label="Refresh dashboard" title="Refresh dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
             <RefreshCw className="h-3.5 w-3.5" />
           </button>

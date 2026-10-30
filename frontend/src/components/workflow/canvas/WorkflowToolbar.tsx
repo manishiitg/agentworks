@@ -16,8 +16,6 @@ import type { ExecutionOptions } from '../../../services/api-types'
 import { TooltipProvider } from '../../ui/tooltip'
 import { GlobalActivityMonitor } from '../../GlobalActivityMonitor'
 import { useModeStore } from '../../../stores/useModeStore'
-import { ShareDashboardButton } from '../ShareDashboardButton'
-import { openWorkspacePaneChatWithDraft } from '../../../utils/workspacePaneChat'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
 import { useRegisterPanelSwitcher, type PanelSwitcherPanel } from '../../../stores/usePanelSwitcherStore'
 
@@ -61,9 +59,6 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   variablesManifest,
   isLoadingWorkspaceState = false,
   chatTabsSlot,
-  chatTabId,
-  showChatArea,
-  onToggleChatArea,
   className = ''
 }) => {
   // Workspace store for opening folders
@@ -255,8 +250,6 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
           {workflowMode && !globalPageOpen && !providersOpen && <GlobalActivityMonitor />}
 
         </TooltipProvider>
-        {workspacePath && !globalPageOpen && !providersOpen && <ShareDashboardButton workspacePath={workspacePath} tabId={chatTabId}
-          onAsk={message => openWorkspacePaneChatWithDraft(chatTabId ? { tabId: chatTabId, message } : { workspacePath, message })} />}
       </div>
     </WorkspaceTopToolbar>
     {/* Access: this workflow's sharing + (admins) the deployment's users */}

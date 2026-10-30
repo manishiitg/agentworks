@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import { ArrowLeft, Menu } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 
 export type MobileWorkspacePane = 'chat' | 'workspace'
 export const MobileWorkspaceNavigationContext = createContext<{
@@ -12,8 +12,8 @@ export function MobileWorkspaceNavigation() {
   const navigation = useContext(MobileWorkspaceNavigationContext)
   if (!navigation) return null
   const inWorkspace = navigation.pane === 'workspace'
-  const label = inWorkspace ? 'Back to chat' : 'Open workspace menu'
-  const Icon = inWorkspace ? ArrowLeft : Menu
+  const label = inWorkspace ? 'Close workspace panel' : 'Open workspace panel'
+  const Icon = inWorkspace ? PanelRightClose : PanelRightOpen
   return <nav aria-label="Workspace navigation" className="ml-auto flex shrink-0 items-center md:hidden">
     <button type="button" aria-label={label} title={label} aria-expanded={inWorkspace}
       onClick={() => navigation.onChange(inWorkspace ? 'chat' : 'workspace')}

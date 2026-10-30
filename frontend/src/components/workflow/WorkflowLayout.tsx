@@ -10,7 +10,7 @@ import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { PanelLeftOpen } from 'lucide-react'
-import { WorkspacePanelReopen, WorkspacePanelVisibilityContext } from '../workspace/WorkspacePanelToggle'
+import { WorkspacePanelVisibilityContext } from '../workspace/WorkspacePanelToggle'
 import { WorkflowCanvas, type WorkflowCanvasRef } from './canvas'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -2296,7 +2296,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         style={layout.splitLayoutStyle}
       >
         {layout.renderCanvasStandalone && canvasElement}
-        <WorkspacePanelReopen />
 
         {showChatArea && (
           <div

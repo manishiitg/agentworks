@@ -14,14 +14,14 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false 
         <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
         <button
           type="button"
-          aria-label="All views"
+          aria-label="All tools"
           onClick={() =>
             window.dispatchEvent(new CustomEvent('open-quick-switcher', { detail: { query: '@panels ' } }))
           }
           className="flex w-full shrink-0 items-center gap-2.5 border-t border-border px-1 pt-3 text-xs text-muted-foreground hover:text-foreground"
         >
           <Search className="h-3.5 w-3.5" />
-          <span className="flex-1 text-left">Find a view</span>
+          <span className="flex-1 text-left">All tools</span>
           <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px]">
             {typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl+K'}
           </kbd>

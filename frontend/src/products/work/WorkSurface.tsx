@@ -1383,7 +1383,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               divider={null}
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
-              showPanelCloseControl={workspaceView === 'context'}
               toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
               chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               retainWorkspace

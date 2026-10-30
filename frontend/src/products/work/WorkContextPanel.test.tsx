@@ -39,7 +39,7 @@ it('uses the five category groups, opens Build for a new Crew and preserves ever
   await render(async host => {
     expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
     expect([...host.querySelectorAll('details')].map(node => node.open)).toEqual([true, false, false, false, false])
-    for (const label of ['Dashboards', 'Functions', 'Skills', 'Files', 'Database', 'Plan', 'Schedules', 'Watchers', 'Webhooks', 'Browser', 'Chat history', 'Slack bot', 'Vault', 'Access', 'Memory', 'Models', 'Instructions & identity', 'Terminal']) {
+    for (const label of ['Dashboards', 'Functions', 'Skills', 'Files', 'Database', 'Plan', 'Schedules', 'Watchers', 'Webhooks', 'Browser', 'Chat history', 'Slack bot', 'Vault', 'Access & sharing', 'Memory', 'Models', 'Instructions & identity', 'Terminal']) {
       expect([...host.querySelectorAll('button')].filter(node => node.textContent === label), label).toHaveLength(1)
     }
     await act(async () => button(host, 'Webhooks').click())
@@ -87,7 +87,7 @@ it('applies server sharing admission to both normal and recent entries', async (
   mocks.share = false
   useProjectMenuHistoryStore.getState().visit(scope(), 'mcp:share')
   await render(async host => {
-    expect(button(host, 'Access')).toBeUndefined()
+    expect(button(host, 'Access & sharing')).toBeUndefined()
     expect(button(host, 'Owners & collaborators')).toBeUndefined()
     expect(host.querySelector('h2')?.textContent).not.toBe('Recent')
   })
@@ -125,7 +125,7 @@ it('applies feature and sharing admission to starting shortcuts and drops stale 
   mocks.share = false
   useProjectMenuHistoryStore.getState().seedStartHere(scope(), ['mcp:share', 'files', 'shell', 'memory:skills'])
   await render(async (host, update) => {
-    expect(button(host, 'Access')).toBeUndefined()
+    expect(button(host, 'Access & sharing')).toBeUndefined()
     await update('example', new Set(['skills']))
     expect(button(host, 'Files')).toBeUndefined()
     const skills = button(host, 'Skills')

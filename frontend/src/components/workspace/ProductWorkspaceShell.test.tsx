@@ -25,7 +25,7 @@ describe('shared product workspace visibility', () => {
     expect(mounted).not.toHaveBeenCalled()
   })
 
-  it('reopens the selected panel with double chevrons and retains content across desktop and phone switches', async () => {
+  it('reopens the selected panel from the same header control and retains content across desktop and phone switches', async () => {
     const mounted = vi.fn()
     function Reader() { useEffect(() => { mounted() }, []); return <p>Selected knowledge entry</p> }
     const host = document.createElement('div'); document.body.append(host); root = createRoot(host)
@@ -39,18 +39,20 @@ describe('shared product workspace visibility', () => {
     }
     const render = (mobilePane?: 'chat' | 'workspace') => act(async () => root?.render(<Fixture mobilePane={mobilePane} />))
     await render()
+    expect(host.querySelectorAll('[aria-label="Close workspace panel"]')).toHaveLength(1)
+    expect(host.querySelector('[data-workspace-panel-edge]')).toBeNull()
     expect(host.querySelector('main')?.className).toMatch(/^flex /)
     expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)
     const close = host.querySelector<HTMLButtonElement>('[aria-label="Close workspace panel"]')!
-    expect(close.closest('aside')).not.toBeNull()
-    expect(close.closest('[data-terminal-focus-chrome="toolbar"]')).toBeNull()
-    expect(close.querySelector('.lucide-chevrons-right')).not.toBeNull()
+    expect(close.closest('aside')).toBeNull()
+    expect(close.closest('[data-terminal-focus-chrome="toolbar"]')).not.toBeNull()
+    expect(close.querySelector('.lucide-panel-right-close')).not.toBeNull()
     await act(async () => close.click())
     expect(host.querySelector('aside')?.hidden).toBe(true)
     const open = host.querySelector<HTMLButtonElement>('[aria-label="Open workspace panel"]')!
-    expect(open.closest('[data-terminal-focus-chrome="toolbar"]')).toBeNull()
+    expect(open.closest('[data-terminal-focus-chrome="toolbar"]')).not.toBeNull()
     expect(open.getAttribute('aria-expanded')).toBe('false')
-    expect(open.querySelector('.lucide-chevrons-left')).not.toBeNull()
+    expect(open.querySelector('.lucide-panel-right-open')).not.toBeNull()
     await act(async () => open.click())
     expect(host.querySelector('aside')?.hidden).toBe(false)
     await render('workspace')

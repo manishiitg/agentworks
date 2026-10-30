@@ -18,7 +18,7 @@ it('opens the existing Ctrl+K switcher scoped to this product’s registered pan
         </WorkspaceContextCard>
       )
     )
-    const button = host.querySelector('[aria-label="All views"]') as HTMLButtonElement
+    const button = host.querySelector('[aria-label="All tools"]') as HTMLButtonElement
     expect(button.textContent).toMatch(/⌘K|Ctrl\+K/)
     await act(async () => button.click())
     expect(open).toHaveBeenCalledOnce()
