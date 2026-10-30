@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ directory: vi.fn(), header: vi.fn() }))
 vi.mock('../services/desktopConnections', () => ({ desktopRequest: mocks.directory }))
 vi.mock('../services/api', () => ({ agentApi: { getHeaderSummary: mocks.header }, getAuthToken: () => 'local-owner', getLocalApiBaseUrl: () => 'http://localhost', getDesktopApiBaseUrl: () => 'http://localhost' }))
-import { useConnectedWorkStore } from './useConnectedWorkStore'
+import { connectedActivity, connectedLocations, useConnectedWorkStore } from './useConnectedWorkStore'
 import { invalidateChatIdentity } from '../utils/chatIdentity'
 const previous = window.electronAPI
 const remote = 'a'.repeat(32)
@@ -29,6 +29,8 @@ it('keeps disconnected activity visibly stale but clears denied accounts and rej
   request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
   const pending = useConnectedWorkStore.getState().refreshActivity()
   invalidateChatIdentity()
+  expect(connectedActivity(useConnectedWorkStore.getState())).toEqual({})
+  expect(connectedLocations(useConnectedWorkStore.getState()).map(item => item.id)).toEqual(['local'])
   await useConnectedWorkStore.getState().refresh()
   finish(new Response(JSON.stringify({ active_sessions: [{ session_id: 'old-private' }] })))
   await pending

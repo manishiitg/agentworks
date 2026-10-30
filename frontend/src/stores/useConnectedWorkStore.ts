@@ -14,6 +14,7 @@ let ownerIdentity = -1
 
 /** Connection-tagged navigation/activity only. Remote conversations never enter the chat store. */
 export const useConnectedWorkStore = create<{
+  identity: number
   connections: DesktopConnection[]
   inventory: Record<string, DesktopInventory>
   activity: Record<string, LocationActivity>
@@ -22,14 +23,14 @@ export const useConnectedWorkStore = create<{
   refresh: () => Promise<void>
   refreshActivity: () => Promise<void>
 }>(set => ({
-  connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '',
+  identity: captureChatIdentity(), connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '',
   refresh: async () => {
     if (!hasDesktopConnections()) return
     const identity = captureChatIdentity()
     if (ownerIdentity !== identity) {
       ownerIdentity = identity
       directoryPending = undefined; activityPending = undefined
-      set({ connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '' })
+      set({ identity, connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '' })
     }
     if (directoryPending) return directoryPending
     const pending = (async () => {
@@ -99,3 +100,10 @@ export const useConnectedWorkStore = create<{
 function locationApiBase(id: string): string {
   return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${id}`
 }
+
+const noActivity: Record<string, LocationActivity> = {}
+const localOnly = [localConnection]
+// An account switch may render before the refresh effect runs. Never paint the
+// departing account's cached locations/activity during that first frame.
+export const connectedLocations = (state: ReturnType<typeof useConnectedWorkStore.getState>) => isChatIdentityCurrent(state.identity) ? state.connections : localOnly
+export const connectedActivity = (state: ReturnType<typeof useConnectedWorkStore.getState>) => isChatIdentityCurrent(state.identity) ? state.activity : noActivity

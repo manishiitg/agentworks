@@ -1,8 +1,9 @@
+import { isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Plus, Server, X } from 'lucide-react'
 import { desktopRequest } from '../../services/desktopConnections'
-import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { isLocalDeployment } from '../../products/productSurfaceConfig'
 import ModalPortal from '../ui/ModalPortal'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
@@ -22,7 +23,10 @@ export function DesktopConnections({ children, projects = [] }: { children?: Rea
 }
 function ConnectedServers({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
   const active = getRawActiveWorkspaceId()
-  const { connections, inventory, refresh, error: directoryError } = useConnectedWorkStore()
+  const state = useConnectedWorkStore()
+  const connections = connectedLocations(state)
+  const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
+  const { refresh, error: directoryError } = state
   const [filter, setFilter] = useState('all')
   useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   const [adding, setAdding] = useState(false)

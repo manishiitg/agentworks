@@ -27,7 +27,7 @@ import { WorkflowIcon } from './workflow/WorkflowIcon'
 import type { CustomPreset } from '../types/preset'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { activityTypeLabels, botPlatformLabel, crewActivityTitle, sessionOriginLabel, titleWithoutOrigin, type ActivityType } from '../utils/globalActivityPresentation'
-import { hasDesktopConnections, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
+import { connectedLocations, connectedActivity, hasDesktopConnections, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
 import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { openConnectedActivity, restoreConnectedActivity } from '../utils/connectedActivityNavigation'
 import { useLiveRefetch } from '../hooks/useLiveRefetch'
@@ -201,8 +201,8 @@ const noRepresentedSessions: readonly string[] = []
 export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly string[] }> = ({ representedSessionIds = noRepresentedSessions }) => {
   const desktop = hasDesktopConnections()
   const activeLocation = getRawActiveWorkspaceId()
-  const connections = useConnectedWorkStore(state => state.connections)
-  const remoteActivity = useConnectedWorkStore(state => state.activity)
+  const connections = useConnectedWorkStore(connectedLocations)
+  const remoteActivity = useConnectedWorkStore(connectedActivity)
   const [locationFilter, setLocationFilter] = useState('all')
   useEffect(() => { if (locationFilter !== 'all' && !connections.some(connection => connection.id === locationFilter)) setLocationFilter('all') }, [connections, locationFilter])
   const locationName = connections.find(connection => connection.id === activeLocation)?.name || (activeLocation === 'local' ? 'Local' : 'Server')
