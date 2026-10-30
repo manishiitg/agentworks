@@ -3,6 +3,7 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { cn } from '../../lib/utils'
+import { WorkspacePanelToggle } from './WorkspacePanelToggle'
 import { MobileWorkspaceNavigation } from './MobileWorkspaceNavigation'
 import { WORKSPACE_PAGE_GUTTER } from './WorkspacePageContent'
 
@@ -42,7 +43,10 @@ export function WorkspaceTopToolbar({ className = '', children, navigationKind =
       {showNavigation && <div ref={registerLeading} data-product-navigation-leading-slot className="contents empty:hidden" />}
       {children}
       {showNavigation && <div ref={register} data-product-navigation-slot className="ml-auto flex min-w-0 max-w-full flex-wrap items-center empty:hidden" />}
-      <MobileWorkspaceNavigation />
+      {showNavigation && <div data-workspace-panel-control className="order-last ml-auto flex shrink-0 items-center empty:hidden">
+        <WorkspacePanelToggle />
+        <MobileWorkspaceNavigation />
+      </div>}
     </div>
   )
 }

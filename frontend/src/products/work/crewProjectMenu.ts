@@ -46,7 +46,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
     if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
     if (has('dashboard') && canShare) {
-      add('mcp', 'Share', 'Access', UsersRound, 'share')
+      add('mcp', 'Share', 'Access & sharing', UsersRound, 'share')
     }
   }
   add('suggestions', 'Share', 'Suggestions', Hand)

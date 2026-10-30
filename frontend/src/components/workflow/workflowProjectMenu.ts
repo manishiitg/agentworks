@@ -44,7 +44,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   }
   add('mcp', 'Use', 'WhatsApp', MessageSquareText, 'whatsapp', 'Use from other apps')
   add('mcp', 'Use', 'MCP access', Cable, 'cli', 'Use from other apps')
-  if (canShare) add('mcp', 'Share', 'Access', ShieldCheck, 'share')
+  if (canShare) add('mcp', 'Share', 'Access & sharing', ShieldCheck, 'share')
   if (isMultiUser && !relayMode) add('access', 'Share', 'Team', ShieldCheck, 'workflow')
   if (!relayMode) {
     add('publish', 'Setup', 'Publish', Globe)

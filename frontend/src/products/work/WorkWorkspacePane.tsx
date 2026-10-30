@@ -9,7 +9,6 @@ import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../..
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { DollarSign, Laptop, Settings } from 'lucide-react'
-import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
@@ -65,7 +64,7 @@ function sendWorkProjectPaneMessage(projectId: string, message: string, profileI
 
 // Panel lists live in products/productPanels.ts with every other product's panels.
 
-export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', projectId = '', tabId, onOpenChat, workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; projectId?: string; tabId?: string; onOpenChat?: () => void; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
+export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', projectId = '', workspacePath, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; projectId?: string; tabId?: string; onOpenChat?: () => void; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
   const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
@@ -99,10 +98,6 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     <TooltipProvider delayDuration={150}>
       {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
     </TooltipProvider>
-    <span className="max-md:hidden"><ShareDashboardButton workspacePath={workspacePath} tabId={tabId} onAsk={tabId ? async message => {
-      await openWorkspacePaneChatWithDraft({ tabId, message })
-      onOpenChat?.()
-    } : undefined} /></span>
   </div>
 })
 

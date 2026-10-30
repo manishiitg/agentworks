@@ -37,7 +37,7 @@ it.each([false, true])('uses Crew category order and keeps every product destina
   await render(relay)
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Motion dashboards0', 'Use', 'Share', 'Integrations', 'Setup'])
   expect([...host.querySelectorAll<HTMLDetailsElement>('details')].map(node => node.open)).toEqual([true, false, false, false, false, false])
-  for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'Access', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
+  for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'Access & sharing', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   if (relay) {
     for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
     for (const label of ['Goals & metrics', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
@@ -79,10 +79,10 @@ it('isolates history by workspace, product, account and server and ignores stale
 })
 
 it('keeps role and sharing gates for current and recent items', async () => {
-  await render(); await act(async () => button('Access').click())
+  await render(); await act(async () => button('Access & sharing').click())
   state.canShare = false; state.user = { ...state.user, id: 'no-sharing' }; await render()
   await act(async () => useProjectMenuHistoryStore.getState().visit(scope(), 'mcp:share'))
-  expect(button('Access')).toBeUndefined()
+  expect(button('Access & sharing')).toBeUndefined()
   expect(button('Team')).toBeUndefined()
   expect(button('WhatsApp')).toBeDefined()
   state.canWrite = false; await render(); expect(host.textContent).toBe('')
