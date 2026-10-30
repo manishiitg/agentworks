@@ -24,8 +24,9 @@ const errorText = (cause: unknown, fallback: string) => {
 export const ACCESS_CHAT_REQUEST = 'Help me change access to this project. Show who can build it, who can use it and which existing agents are shared, then ask what I want to change.'
 
 /** One Access overview. Changes use the project's visible chat and its existing server tools. */
-export function ShareDashboardButton({ workspacePath, label = 'Share', variant = 'button', onOpen, onAsk, tabId }: {
-  workspacePath: string; label?: string; variant?: 'button' | 'row' | 'panel'; onOpen?: () => void
+export function ShareDashboardButton({ workspacePath, documentPath, label = 'Share', variant = 'button', onOpen, onAsk, tabId }: {
+  /** The open dashboard or artifact; Copy link copies its link rather than the project's first dashboard. */
+  workspacePath: string; documentPath?: string; label?: string; variant?: 'button' | 'row' | 'panel'; onOpen?: () => void
   onAsk?: (message: string) => void | Promise<unknown>; tabId?: string
 }) {
   const user = useAuthStore(state => state.user?.id)
@@ -103,9 +104,9 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   const copyLink = async () => {
     setError(''); setNotice('')
     try {
-      const { data } = await api.post<{ dashboards?: { dashboard_id?: string; short_url?: string; url?: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'list' })
+      const { data } = await api.post<{ dashboards?: { dashboard_id?: string; document_path?: string; short_url?: string; url?: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'list' })
       const rows = (data.dashboards || []).filter(row => row.short_url || row.url)
-      const row = rows.find(item => item.dashboard_id === 'overview') || rows[0]
+      const row = (documentPath && rows.find(item => item.document_path === documentPath)) || rows.find(item => item.dashboard_id === 'overview') || rows[0]
       const link = row?.short_url || row?.url
       if (!link) { setError('There is no published dashboard to link to yet.'); return }
       await navigator.clipboard.writeText(link)
