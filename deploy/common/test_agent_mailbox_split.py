@@ -23,6 +23,11 @@ with tempfile.TemporaryDirectory() as directory:
     metadata['conversations'] = json.loads(store.with_name('conversations.history.json').read_bytes())
     assert metadata == original
     assert next(store.parent.glob('*.before-split-*')).read_bytes() == raw
+    # PLAT-856-421: the stopped-local-app migration driver runs this older
+    # one-off tool before the split converter on every repeat invocation.
+    pair_before = (store.read_bytes(), store.with_name('conversations.history.json').read_bytes())
+    subprocess.run([sys.executable, str(script.with_name('agentbridge-receipts.py')), str(store)], check=True)
+    assert pair_before == (store.read_bytes(), store.with_name('conversations.history.json').read_bytes())
     before = store.stat().st_mtime_ns
     subprocess.run([sys.executable, str(script), str(store)], check=True)
     assert store.stat().st_mtime_ns == before
