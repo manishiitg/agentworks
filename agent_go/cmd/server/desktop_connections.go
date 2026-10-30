@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/gorilla/mux"
 )
@@ -227,7 +228,6 @@ func desktopHTTPClient() *http.Client {
 func (api *StreamingAPI) beginDesktopSignIn(w http.ResponseWriter, r *http.Request, owner string) {
 	var input struct {
 		Server string `json:"server"`
-		Name   string `json:"name"`
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&input) != nil {
 		http.Error(w, `{"error":"Enter the server address."}`, 400)
@@ -280,7 +280,7 @@ func (api *StreamingAPI) beginDesktopSignIn(w http.ResponseWriter, r *http.Reque
 			defer func() { go callbackServer.Shutdown(context.Background()) }()
 			body, _ := json.Marshal(map[string]string{"code": req.URL.Query().Get("code"), "verifier": verifier})
 			response, e := desktopHTTPClient().Post(server.String()+"/api/auth/desktop/exchange", "application/json", bytes.NewReader(body))
-			var auth AuthResponse
+			var auth DesktopConnectExchangeResponse
 			if e == nil {
 				defer response.Body.Close()
 				if response.StatusCode != 200 {
@@ -296,7 +296,16 @@ func (api *StreamingAPI) beginDesktopSignIn(w http.ResponseWriter, r *http.Reque
 			if e == nil {
 				digest := sha256.Sum256([]byte(owner + "\x00" + server.String() + "\x00" + auth.User.ID))
 				id = hex.EncodeToString(digest[:16])
-				name := strings.TrimSpace(input.Name)
+				nameRunes := []rune(strings.Map(func(r rune) rune {
+					if unicode.IsControl(r) {
+						return -1
+					}
+					return r
+				}, auth.ServerName))
+				if len(nameRunes) > 80 {
+					nameRunes = nameRunes[:80]
+				}
+				name := strings.TrimSpace(string(nameRunes))
 				if name == "" {
 					name = server.Hostname()
 				}

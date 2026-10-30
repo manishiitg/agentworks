@@ -18,7 +18,6 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
   const [inventory, setInventory] = useState<Record<string, DesktopInventory>>({})
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [adding, setAdding] = useState(false)
-  const [name, setName] = useState('')
   const [server, setServer] = useState('')
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -54,7 +53,7 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
         const data = await desktopRequest<{ connection_id: string; error: string }>(`/sign-in/${pending}`)
         if (disposed) return
         if (data.error) throw new Error(data.error)
-        if (data.connection_id) { if (data.connection_id === active) { open(active, '/crew'); return }; setPending(null); setAdding(false); setServer(''); setName(''); void refresh(); return }
+        if (data.connection_id) { if (data.connection_id === active) { open(active, '/crew'); return }; setPending(null); setAdding(false); setServer(''); void refresh(); return }
         timer = setTimeout(() => void check(), 1500)
       } catch (e) { if (!disposed) { setPending(null); setError((e as Error).message) } }
     }
@@ -68,7 +67,7 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
   const connect = async () => {
     setBusy(true); setError('')
     try {
-      const result = await desktopRequest<{ state: string; url: string }>('', 'POST', { server, name })
+      const result = await desktopRequest<{ state: string; url: string }>('', 'POST', { server })
       setPending(result.state)
       window.electronAPI?.openExternal?.(result.url)
     } catch (e) { setError((e as Error).message) }
@@ -107,7 +106,7 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
           </>
           {items?.status === 'unavailable' && <button onClick={() => void refresh()} className="px-3 text-xs text-muted-foreground underline">Server unavailable · Retry</button>}
           {c.id !== 'local' && <div className="flex gap-3 px-3 text-xs text-muted-foreground">
-            <button onClick={() => { setName(c.name); setServer(c.server); setAdding(true) }}>{items?.status === 'sign_in' ? 'Sign in again' : 'Reconnect'}</button>
+            <button onClick={() => { setServer(c.server); setAdding(true) }}>{items?.status === 'sign_in' ? 'Sign in again' : 'Reconnect'}</button>
             <button onClick={() => void disconnect(c.id)}>Disconnect</button>
           </div>}
           {!current && c.id === 'local' && <button onClick={() => open('local', '/home')} className="px-3 text-xs text-muted-foreground underline">Open Local</button>}
@@ -117,7 +116,6 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
     <button onClick={() => setAdding(v => !v)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted"><Plus className="h-4 w-4" />Connect server</button>
     {adding && <form onSubmit={e => { e.preventDefault(); void connect() }} className="space-y-2 rounded-lg border border-border p-3">
       <label className="block text-xs">Server address<input required type="url" value={server} onChange={e => setServer(e.target.value)} placeholder="https://example.com" className="mt-1 w-full rounded border border-border bg-background p-2 text-sm" /></label>
-      <label className="block text-xs">Name<input value={name} onChange={e => setName(e.target.value)} placeholder="My team" className="mt-1 w-full rounded border border-border bg-background p-2 text-sm" /></label>
       <button disabled={busy || !!pending} className="rounded bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">{pending ? 'Waiting for browser sign-in…' : busy ? 'Opening…' : 'Sign in with browser'}</button>
     </form>}
     {error && <p role="alert" className="px-3 text-xs text-destructive">{error}</p>}
