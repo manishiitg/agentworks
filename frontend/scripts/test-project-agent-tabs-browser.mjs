@@ -11,8 +11,9 @@ try {
   await mkdir(output, { recursive: true }); await server.listen(); browser = await chromium.launch({ headless: true })
   for (const [surface, width, theme] of [['work', 1280, 'dark'], ['agentworks', 1280, 'dark'], ['relays', 1280, 'light'], ['agentworks', 390, 'dark']]) {
     const page = await browser.newPage({ viewport: { width, height: 760 } })
+    page.on('console', message => { if (message.type() === 'error') console.error('Browser console:', message.text()) })
     const errors = []; page.on('pageerror', error => { errors.push(error.message); console.error('Browser page error:', error.message) })
-    await page.route('**/api/**', route => route.fulfill({ json: {} }))
+    await page.route('**/api/**', route => new URL(route.request().url()).pathname.startsWith('/api/') ? route.fulfill({ json: {} }) : route.continue())
     await page.goto(server.resolvedUrls.local[0] + 'scripts/test-fixtures/project-agent-tabs.html?surface=' + surface + '&theme=' + theme)
     const calls = () => page.getByTestId('calls').textContent().then(value => JSON.parse(value))
     await page.getByRole('button', { name: 'New agent', exact: true }).click()
@@ -53,6 +54,7 @@ try {
   // PLAT-746-230: real sidebar and header components; only server/network boundaries are fixtures.
   for (const active of ['local', 'a'.repeat(32)]) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+    page.on('console', message => { if (message.type() === 'error') console.error('Browser console:', message.text()) })
     const errors = []; page.on('pageerror', error => { errors.push(error.message); console.error('Browser page error:', error.message) })
     await page.addInitScript(active => {
       window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'local', enabledProductSurfaces: ['work', 'agentworks'] }
@@ -66,6 +68,7 @@ try {
     }, active)
     await page.route('**/api/**', route => {
       const url = new URL(route.request().url())
+      if (!url.pathname.startsWith('/api/')) return route.continue()
       if (url.pathname === '/api/desktop-connections') return route.fulfill({ json: { connections: [
         { id: 'a'.repeat(32), name: 'Team', server: 'https://team.example.com' },
         { id: 'b'.repeat(32), name: 'Sandbox', server: 'https://sandbox.example.com' },
