@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
@@ -285,10 +287,13 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		}
 		projectID, input = strings.TrimSpace(body.ProjectID), body.AgentProfileChatModel
 	}
+	// Phase timings: a reasoning change on server C took 14 s with no log of where (PLAT-872-76).
+	started := time.Now()
 	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
 	if !ok {
 		return
 	}
+	slotDone := time.Now()
 	store := defaultProductConversationRegistryStore()
 	if r.Method == http.MethodPost {
 		key := strings.TrimSpace(input.ConversationKey)
@@ -330,7 +335,9 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			return
 		}
 	}
+	saveDone := time.Now()
 	allTabs, err := crewOwnerChatRecords(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath)
+	recordsDone := time.Now()
 	if err != nil {
 		writeAgentProfileError(w, 500, err.Error())
 		return
@@ -375,5 +382,8 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		row.DisplayLabel = chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID)
 		effective = append(effective, row)
 	}
+	log.Printf("[CHAT_MODELS] %s project=%s tabs=%d slot=%s save=%s records=%s rows=%s", r.Method, projectID, len(allTabs),
+		slotDone.Sub(started).Round(time.Millisecond), saveDone.Sub(slotDone).Round(time.Millisecond),
+		recordsDone.Sub(saveDone).Round(time.Millisecond), time.Since(recordsDone).Round(time.Millisecond))
 	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild})
 }
