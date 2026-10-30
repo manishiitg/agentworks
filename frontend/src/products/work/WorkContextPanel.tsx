@@ -93,7 +93,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       {(snapshot?.apps || []).filter(item => item.destination !== 'mcp:connected' && byId.has(item.destination)).map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || Cable} detail={item.detail} attention={item.attention} onClick={() => openID(item.destination)}>{item.label}</Row>)}
       {byId.has('mcp:connected') && <Row icon={Cable} detail={mcpDetail} attention={mcpAttention > 0} onClick={() => openID('mcp:connected')}>MCPs</Row>}
     </Group>
-    {Boolean(snapshot?.automations?.length) && <Group title="Automations">{snapshot!.automations!.map(item => <Row key={item.id} icon={CalendarClock} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}</Group>}
+    {Boolean(snapshot?.automations?.length) && <Group title="Automations">{snapshot!.automations!.map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || CalendarClock} hint={byId.get(item.destination)?.label} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}</Group>}
     {snapshot?.errors.length ? <div className="space-y-1 px-1 text-xs text-muted-foreground">{snapshot.errors.map(error => <p key={error}>{error}</p>)}<button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
 }

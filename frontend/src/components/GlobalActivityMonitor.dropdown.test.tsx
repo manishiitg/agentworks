@@ -198,7 +198,7 @@ describe('global activity monitor dropdown', () => {
   })
 })
 
-it('combines identical session IDs across locations and filters without opening the wrong server', async () => {
+it('omits chats already in desktop tabs but keeps the same ID on another location', async () => {
   const previous = window.electronAPI
   const remote = 'b'.repeat(32)
   const open = vi.fn(async () => {})
@@ -209,10 +209,10 @@ it('combines identical session IDs across locations and filters without opening 
   getHeaderSummary.mockResolvedValue({ active_sessions: [workflowSession({ session_id: 'same', workflow_name: 'Local task' })] })
   const { host, root } = renderMonitor()
   try {
-    await act(async () => root.render(<GlobalActivityMonitor />))
+    await act(async () => root.render(<GlobalActivityMonitor representedSessionIds={['same']} />))
     click(host.querySelector('button[data-testid="tour-active-work-switcher"]'))
     const menu = document.querySelector('[role="menu"]')!
-    expect(menu.textContent).toContain('Local task')
+    expect(menu.textContent).not.toContain('Local task')
     expect(menu.textContent).toContain('Remote approval')
     const select = menu.querySelector('[role="combobox"]')!
     await act(async () => select.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))

@@ -266,8 +266,8 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     [activeTabId, chatTabs, selectedModeCategory, showWorkflowsOverview, showProviders],
   )
   const visibleSessions = useMemo(
-    () => desktop ? activeSessions : visibleActivitySessions(activeSessions, currentSessionId, representedSessionIds),
-    [activeSessions, currentSessionId, representedSessionIds, desktop],
+    () => visibleActivitySessions(activeSessions, currentSessionId, representedSessionIds),
+    [activeSessions, currentSessionId, representedSessionIds],
   )
 
   const visibleActivityKeys = useMemo(() => {
@@ -283,13 +283,13 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   // exposes the same session/preset/workflow, render the backend-backed item once.
   const fallbackBuilderTabs = useMemo(
     () => Object.values(chatTabs).filter(tab =>
-      (desktop || tab.tabId !== activeTabId) &&
-      (desktop || !tab.sessionId || !representedSessionIds.includes(tab.sessionId)) &&
+      tab.tabId !== activeTabId &&
+      (!tab.sessionId || !representedSessionIds.includes(tab.sessionId)) &&
       (!tab.metadata?.agentProfileId || tab.metadata.agentProfileId === 'work') &&
       isLocalActivityFallbackTab(tab) &&
       !activityKeysForTab(tab).some(key => visibleActivityKeys.has(key))
     ),
-    [chatTabs, activeTabId, visibleActivityKeys, representedSessionIds, desktop],
+    [chatTabs, activeTabId, visibleActivityKeys, representedSessionIds],
   )
 
   const sortedSessions = useMemo(() => {

@@ -33,13 +33,13 @@ async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => P
 }
 it('shows actual workspace status without promoting occasional tools, and keeps All tools searchable', async () => {
  mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'My Google', detail:'Google · Connected', destination:'mcp:gmail' }]
- mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Schedule · Paused', destination: 'schedules:schedules' }]
+ mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }]
  await render('dev', async host => {
   expect(host.querySelector('h2')?.textContent).toBe('Changes')
   expect(host.textContent).toContain('MCPs2 · 1 needs attention')
   expect(host.textContent).not.toContain('Notes account'); expect(host.textContent).not.toContain('Other account')
   expect(host.textContent).toContain('My GoogleGoogle · Connected')
-  expect(host.textContent).toContain('Morning summarySchedule · Paused')
+  expect(host.textContent).toContain('Morning summaryPaused')
   for (const label of ['Recent', 'Costs & usage', 'Models', 'Chat history']) expect(host.textContent).not.toContain(label)
   const event = vi.fn(); window.addEventListener('open-quick-switcher', event)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="All tools"]')!.click())

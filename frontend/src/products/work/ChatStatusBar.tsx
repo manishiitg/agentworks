@@ -36,16 +36,16 @@ export default function ChatStatusBar({ sessionId, busy }: { sessionId: string; 
   const windowTokens = view.window_tokens ?? 0
   const meter = used > 0 && windowTokens > 0
   const limits = chatLimitsShort(view.limits)
-  if (!meter && !limits) return null
-  const full = [meter ? `${formatTokens(used)} of ${formatTokens(windowTokens)} context used` : '', chatLimitsText(view.limits)].filter(Boolean).join(' · ')
+  if (!(used > 0) && !limits) return null
+  const full = [used > 0 ? `${formatTokens(used)}${windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} context used` : '', chatLimitsText(view.limits)].filter(Boolean).join(' · ')
 
   return <button type="button" data-testid="chat-status-chip" title={full} aria-label={`${full}. Open the model menu`}
     onClick={() => window.dispatchEvent(new CustomEvent(openChatContextMenuEvent, { detail: { sessionId } }))}
     className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[11px] tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-    {meter && <>
-      <span className="min-w-0 truncate">{formatTokens(used)}/{formatTokens(windowTokens)}</span>
-      <ContextMeter decorative className="w-8 shrink-0 [@container(max-width:110px)]:hidden" used={used} windowTokens={windowTokens} />
+    {used > 0 && <>
+      <span className="min-w-0 truncate">{formatTokens(used)}{windowTokens > 0 ? `/${formatTokens(windowTokens)}` : ' used'}</span>
+      {meter && <ContextMeter decorative className="w-8 shrink-0 [@container(max-width:110px)]:hidden" used={used} windowTokens={windowTokens} />}
     </>}
-    {limits && <span className={`min-w-0 truncate ${meter ? '[@container(max-width:190px)]:hidden' : ''}`}>{meter && <span aria-hidden="true">· </span>}{limits}</span>}
+    {limits && <span className={`min-w-0 truncate ${used > 0 ? '[@container(max-width:190px)]:hidden' : ''}`}>{used > 0 && <span aria-hidden="true">· </span>}{limits}</span>}
   </button>
 }

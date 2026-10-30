@@ -91,3 +91,30 @@ func TestChatContextUsageHidesPreviousProviderAfterSwitch(t *testing.T) {
 		t.Fatalf("unchanged Crew model: provider=%q switched=%v", provider, switched)
 	}
 }
+
+// A transcript can report the last prompt without reporting a context capacity.
+func TestChatContextUsageKeepsUnknownCapacity(t *testing.T) {
+	const session = "reported-context"
+	api := &StreamingAPI{terminalStore: terminals.NewStore(), nativeCosts: map[string]*nativeCostAccountant{
+		session: {state: nativeCostState{Provider: "claude-code"}, usage: nativeusage.PrivateUsage{ContextUsed: 738693}},
+	}}
+	if used, window, _ := api.chatContextUsage(session, "claude-code", "claude-opus-5-5", false); used != 738693 || window != 0 {
+		t.Fatalf("unreported capacity must stay unknown: %d/%d", used, window)
+	}
+	status := func(provider string) {
+		api.terminalStore.HandleEvent(session, storeevents.Event{Type: "status_line", SessionID: session, Timestamp: time.Now(), Data: &agentevents.AgentEvent{
+			Type: agentevents.StreamingStatusLine,
+			Data: &agentevents.StreamingStatusLineEvent{Provider: provider, Metadata: map[string]interface{}{
+				llmtypes.ContextUsedTokensMetaKey: 700000, llmtypes.ContextWindowTokensMetaKey: 1000000,
+			}},
+		}})
+	}
+	status("codex-cli")
+	if used, window, _ := api.chatContextUsage(session, "claude-code", "claude-opus-5-5", false); used != 738693 || window != 0 {
+		t.Fatalf("another provider's capacity must not fill the window: %d/%d", used, window)
+	}
+	status("claude-code")
+	if used, window, _ := api.chatContextUsage(session, "claude-code", "claude-opus-5-5", false); used != 738693 || window != 1000000 {
+		t.Fatalf("same-provider capacity must fill independently of prompt size: %d/%d", used, window)
+	}
+}

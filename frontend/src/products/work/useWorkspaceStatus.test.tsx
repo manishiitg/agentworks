@@ -29,7 +29,7 @@ it('combines selected accounts and the real bot regardless of response order, an
   await act(async()=>finishOld({vaults:[{items:[{id:'old',name:'Old account',kind:'mcp',selected:true,status:'connected'}]}]}))
   expect(value?.snapshot?.apps?.map(item=>item.label)).toEqual(['Actual bot','Chosen notes'])
   expect(host.textContent).not.toContain('Unused notes'); expect(host.textContent).not.toContain('Old account')
-  expect(value?.snapshot?.automations?.map(item=>item.detail)).toEqual(['Schedule · Paused'])
+  expect(value?.snapshot?.automations?.map(item=>item.detail)).toEqual(['Paused'])
   expect(host.textContent).not.toContain('Other project job')
  } finally { await act(async()=>root.unmount()) }
 })

@@ -62,7 +62,7 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
   const windowTokens = view.window_tokens ?? 0
   const limits = chatLimitsText(view.limits)
   const offersSomething = Boolean(view.idle_compaction || view.can_compact || view.can_fresh)
-  if (!(used > 0 && windowTokens > 0) && !limits && !offersSomething) return null
+  if (!(used > 0) && !limits && !offersSomething) return null
 
   const send = async (body: { idle_compaction?: boolean; action?: 'compact' | 'fresh' }) => {
     if (busy) return
@@ -84,9 +84,9 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
     <Menu.Separator className="my-1 h-px bg-border first:hidden" />
     <Menu.Label className={menuLabelClass}>Context</Menu.Label>
     {limits && <div className="px-2.5 pb-1 text-[11px] text-muted-foreground" title="Your account's plan use, as the provider reports it">{modelLabel ? `${modelLabel} · ` : ''}{limits}</div>}
-    {used > 0 && windowTokens > 0 && <div className="px-2.5 pb-1.5 pt-0.5">
-      <div className="text-xs text-muted-foreground">{formatTokens(used)} of {formatTokens(windowTokens)} used</div>
-      <ContextMeter className="mt-1" used={used} windowTokens={windowTokens} />
+    {used > 0 && <div className="px-2.5 pb-1.5 pt-0.5">
+      <div className="text-xs text-muted-foreground">{formatTokens(used)}{windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} used</div>
+      {windowTokens > 0 && <ContextMeter className="mt-1" used={used} windowTokens={windowTokens} />}
     </div>}
     {view.idle_compaction && <Menu.CheckboxItem className={`${menuRowClass} items-start`} checked={view.idle_compaction.on} disabled={busy} onSelect={keepOpen}
       onCheckedChange={checked => void send({ idle_compaction: checked === true })}>

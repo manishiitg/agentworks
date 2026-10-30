@@ -15,7 +15,6 @@ import (
 
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
@@ -137,7 +136,7 @@ func chatTmuxProvider(tmux string) string {
 // chatContextUsage is what a provider reported for a chat: the context at its last model call and the plan
 // windows of its account. Callers that show a chat's figures use chatUsage, which applies the current-provider
 // rule; this is its source (and the compaction's size check for the provider a chat last ran on). Figures come // from the native transcript reader (Codex, Pi), else from the chat's main coding terminal (the CLI's
-// statusline and stream usage, Claude). A window the CLI did not report comes from the model's metadata.
+// statusline and stream usage, Claude). A window the CLI did not report stays unknown.
 // Only figures reported by this provider count: after a switch, the previous provider's numbers stay hidden
 // until the new one reports its own.
 func (api *StreamingAPI) chatContextUsage(sessionID, provider, model string, withLimits bool) (used, window int, limits []chatUsageLimit) {
@@ -166,7 +165,7 @@ func (api *StreamingAPI) chatContextUsage(sessionID, provider, model string, wit
 			}
 		}
 	}
-	if api.terminalStore != nil && (used == 0 || (withLimits && len(limits) == 0)) {
+	if api.terminalStore != nil && (used == 0 || window == 0 || (withLimits && len(limits) == 0)) {
 		if meta, tmux, source, ok := api.terminalStore.MainAgentStatusMeta(sessionID); ok {
 			merged := map[string]interface{}{}
 			if sameChatProvider(source, provider) {
@@ -180,18 +179,16 @@ func (api *StreamingAPI) chatContextUsage(sessionID, provider, model string, wit
 				}
 			}
 			if used == 0 {
-				used, window = chatMetaInt(merged[llmtypes.ContextUsedTokensMetaKey]), chatMetaInt(merged[llmtypes.ContextWindowTokensMetaKey])
+				used = chatMetaInt(merged[llmtypes.ContextUsedTokensMetaKey])
+			}
+			if window == 0 {
+				window = chatMetaInt(merged[llmtypes.ContextWindowTokensMetaKey])
 			}
 			if withLimits && len(limits) == 0 {
 				for _, w := range (&llmtypes.StatusLine{Metadata: merged}).RateLimitWindows() {
 					limits = appendChatUsageLimit(limits, w.Name, w.UsedPercent, w.ResetsAt)
 				}
 			}
-		}
-	}
-	if used > 0 && window <= 0 && strings.EqualFold(strings.TrimSpace(provider), "claude-code") {
-		if meta, err := (&claudecode.ClaudeCodeAdapter{}).GetModelMetadata(model); err == nil && meta != nil {
-			window = meta.ContextWindow
 		}
 	}
 	return used, window, limits
