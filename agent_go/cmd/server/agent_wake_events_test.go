@@ -184,6 +184,31 @@ func TestAgentWakeEventsRespectAccountAndSenderAccess(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no permitted wake")
 	}
+	// PLAT-856-418: hint positions are advisory. A recipient revoked after
+	// receiving a hint must get neither a body nor a later hint; keep the allowed
+	// body read first so this cannot pass because of an unavailable fixture.
+	permitted, e := child.Call(ctx, "messages", map[string]any{"action": "read", "agent_name": "dormant"})
+	if e != nil || !strings.Contains(string(permitted), "permitted private body") {
+		t.Fatalf("allowed body read: %s %v", permitted, e)
+	}
+	var childFamily string
+	if e = store.db.QueryRow(`SELECT family_id FROM tokens WHERE hash=?`, mcpOAuthHash(childConfig.Token)).Scan(&childFamily); e != nil {
+		t.Fatal(e)
+	}
+	if e = store.RevokeFamily(ctx, childFamily, "owner"); e != nil {
+		t.Fatal(e)
+	}
+	refused, e := child.Call(ctx, "messages", map[string]any{"action": "read", "agent_name": "dormant"})
+	apiError = nil
+	if !errors.As(e, &apiError) || (apiError.Status != 401 && apiError.Status != 403) || strings.Contains(string(refused), "permitted private body") {
+		t.Fatalf("revoked recipient body: %s %v", refused, e)
+	}
+	call(owner, map[string]any{"action": "send", "agent_name": "source", "target": "agent:dormant", "message": "must stay inaccessible", "submission_id": "revoked-after-hint"})
+	select {
+	case frame := <-frames:
+		t.Fatalf("revoked recipient got a new hint: %v", frame)
+	case <-time.After(100 * time.Millisecond):
+	}
 	if err = store.RevokeFamily(ctx, strings.TrimPrefix(connection, "oauth-"), "owner"); err != nil {
 		t.Fatal(err)
 	}

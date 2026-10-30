@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -127,5 +128,69 @@ func TestAgentMailboxSplitWritesOnlyChangedPart(t *testing.T) {
 	_, changed, err := readAgentSnapshotFile(path, metadataAfter)
 	if err != nil || changed == tag {
 		t.Fatalf("external history edit remained cached: %v", err)
+	}
+}
+
+// PLAT-856-420: a metadata write failure after durable history must never
+// cause a reused mailbox position and a message hidden behind a read cursor.
+func TestAgentMailboxSequenceSurvivesMetadataWriteFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "conversations.json")
+	initial := []byte(`{"next_agent_sequence":7,"conversations":[{"inbox_id":"inbox-a","messages":[{"agent_sequence":7}]}]}`)
+	if err := saveAgentSnapshotFile(path, initial); err != nil {
+		t.Fatal(err)
+	}
+	next := []byte(`{"next_agent_sequence":8,"conversations":[{"inbox_id":"inbox-a","messages":[{"agent_sequence":7},{"agent_sequence":8}]}]}`)
+	writeFailed := errors.New("metadata write failed")
+	err := saveAgentSnapshotParts(path, next, func(target string, raw []byte, mode os.FileMode) error {
+		if target == path {
+			return writeFailed
+		}
+		return writeFileAtomic(target, raw, mode)
+	})
+	if !errors.Is(err, writeFailed) {
+		t.Fatalf("wrong failure: %v", err)
+	}
+	metadata, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var physical struct {
+		Next int `json:"next_agent_sequence"`
+	}
+	_ = json.Unmarshal(metadata, &physical)
+	if physical.Next != 7 {
+		t.Fatal("failure did not leave old metadata")
+	}
+	info, _ := os.Stat(path)
+	raw, _, err := readAgentSnapshotFile(path, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logical struct {
+		Next          int `json:"next_agent_sequence"`
+		Conversations []struct {
+			Messages []struct {
+				Sequence int `json:"agent_sequence"`
+			} `json:"messages"`
+		} `json:"conversations"`
+	}
+	if err := json.Unmarshal(raw, &logical); err != nil {
+		t.Fatal(err)
+	}
+	if logical.Next != 8 || len(logical.Conversations[0].Messages) != 2 {
+		t.Fatalf("durable message sequence would be reused: next=%d", logical.Next)
+	}
+	// A larger historical counter remains valid even after messages are pruned.
+	if err := saveAgentSnapshotFile(path, []byte(`{"next_agent_sequence":12,"conversations":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+	info, _ = os.Stat(path)
+	raw, _, err = readAgentSnapshotFile(path, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal(raw, &logical)
+	if logical.Next != 12 {
+		t.Fatal("empty history lowered saved counter")
 	}
 }

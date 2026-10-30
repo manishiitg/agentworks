@@ -123,6 +123,16 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 				if !ok || dest.UserID != live.UserID || message.Kind == "ping" || message.Delivery != "stored" || !message.InboxRemovedAt.IsZero() || agentMessagePendingExpired(message, now) {
 					continue
 				}
+				attachment := ""
+				if a.Attachment != nil {
+					attachment = a.Attachment.ID
+				}
+				// Already-announced positions cannot produce another hint in
+				// this attachment. New hints and every body read still recheck
+				// current sender/recipient authority below and at read time.
+				if message.AgentSequence <= sent[a.ID+"|"+attachment] {
+					continue
+				}
 				receiver, checked := receivers[a.ID]
 				if !checked {
 					receiver = agentWakeReceiver(r.Context(), live, a)

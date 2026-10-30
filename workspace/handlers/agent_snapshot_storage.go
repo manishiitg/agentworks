@@ -90,9 +90,29 @@ func loadAgentMailbox(path string, info os.FileInfo) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	var conversations []json.RawMessage
+	var conversations []struct {
+		Messages []struct {
+			Sequence int `json:"agent_sequence"`
+		} `json:"messages"`
+	}
 	if err := json.Unmarshal(history.content, &conversations); err != nil {
 		return nil, "", err
+	}
+	// Durable messages are the lower bound for the mailbox cursor. History
+	// can commit before metadata fails; never reuse an already-durable position.
+	var next int
+	if raw := fields["next_agent_sequence"]; len(raw) > 0 {
+		if err := json.Unmarshal(raw, &next); err != nil {
+			return nil, "", err
+		}
+	}
+	for _, conversation := range conversations {
+		for _, message := range conversation.Messages {
+			next = max(next, message.Sequence)
+		}
+	}
+	if next > 0 {
+		fields["next_agent_sequence"], _ = json.Marshal(next)
 	}
 	delete(fields, "mailbox_storage")
 	fields["conversations"] = history.content
@@ -110,6 +130,10 @@ func loadAgentMailbox(path string, info os.FileInfo) ([]byte, string, error) {
 // from observing a partially replaced pair. Presence-only writes touch metadata
 // alone, while a history change rewrites only history (plus changed metadata).
 func saveAgentSnapshotFile(path string, raw []byte) error {
+	return saveAgentSnapshotParts(path, raw, writeFileAtomic)
+}
+
+func saveAgentSnapshotParts(path string, raw []byte, writePart func(string, []byte, os.FileMode) error) error {
 	agentSnapshotFileCache.Lock()
 	defer agentSnapshotFileCache.Unlock()
 	var fields map[string]json.RawMessage
@@ -153,7 +177,7 @@ func saveAgentSnapshotFile(path string, raw []byte) error {
 		if info, err := os.Lstat(part.path); err == nil && !info.Mode().IsRegular() {
 			return fmt.Errorf("mailbox part is not a regular file")
 		}
-		if err := writeFileAtomic(part.path, part.content, 0600); err != nil {
+		if err := writePart(part.path, part.content, 0600); err != nil {
 			cache.info = nil
 			return err
 		}

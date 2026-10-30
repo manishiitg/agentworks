@@ -57,6 +57,9 @@ def main():
         print(f'AgentBridge receipts: {args.store}: no saved mailbox; no change')
         return
     store = json.loads(args.store.read_text())
+    if store.get('mailbox_storage') == 'history-v1':
+        print('AgentBridge receipts: mailbox already converted; no change')
+        return
     original = json.dumps(store, sort_keys=True)
     if not isinstance(store, dict) or not isinstance(store.get('conversations'), list):
         parser.error('Expected the AgentBridge conversation store')
