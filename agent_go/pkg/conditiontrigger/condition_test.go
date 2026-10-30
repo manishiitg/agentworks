@@ -305,3 +305,48 @@ func TestConditionOncePythonAndRestart(t *testing.T) {
 		t.Fatalf("%+v checks=%d effects=%d err=%v", l, checks, effects, err)
 	}
 }
+
+// A finite check survives a restart after its final event was queued. It must
+// retry delivery, rather than checking again or dropping the notification.
+func TestConditionDoneWaitsForDurableDelivery(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	store := &diskStore{path: filepath.Join(t.TempDir(), "ledger.json")}
+	calls, deliveries := 0, 0
+	cfg := Config{Script: "code/triggers/check.py", SHA256: Hash("test"), Target: Target{Kind: "agent", Message: "report"}}
+	runner := func(context.Context, Config, json.RawMessage) ([]byte, error) {
+		calls++
+		return []byte(`{"events":[{"id":"finished","payload":{}}],"state":{},"done":true}`), nil
+	}
+	dispatcher := func(context.Context, Config, Event, string) (string, error) {
+		deliveries++
+		if deliveries == 1 {
+			return "", errors.New("temporarily unavailable")
+		}
+		return "accepted", nil
+	}
+	e := &Engine{Store: store, Run: runner, Dispatch: dispatcher}
+	if _, err := e.Poll(ctx, "wait", cfg, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Drain(ctx, "wait", cfg, now); err == nil {
+		t.Fatal("expected failed delivery")
+	}
+	e = &Engine{Store: store, Run: runner, Dispatch: dispatcher}
+	if _, err := e.Poll(ctx, "wait", cfg, now.Add(30*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Drain(ctx, "wait", cfg, now.Add(30*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := e.Read(ctx, "wait")
+	if err != nil || calls != 1 || deliveries != 2 || ledger.CompletedAt.IsZero() {
+		t.Fatalf("calls=%d deliveries=%d ledger=%+v err=%v", calls, deliveries, ledger, err)
+	}
+	if _, err := e.Poll(ctx, "wait", cfg, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatal("completed watcher ran again")
+	}
+}

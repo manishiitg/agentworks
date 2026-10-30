@@ -109,6 +109,17 @@ func (c *conditionService) authorizeProductSource(ctx context.Context, job produ
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	if cfg.GitHubPR != nil {
+		if err := c.authorizeGitHubPR(ctx, job); err != nil {
+			return err
+		}
+		if err := githubWatchChatCurrent(ctx, job, cfg.GitHubPR); err != nil {
+			return err
+		}
+		if _, err := githubWatcherToken(job.UserID, cfg.GitHubPR); err != nil {
+			return err
+		}
+	}
 	// Resolve only the caller's current Vault selection. Never pass the
 	// associated product's workspace to credential resolution.
 	names := append([]string{}, cfg.Secrets...)
@@ -187,9 +198,13 @@ func (c *conditionService) callersForProduct(ctx context.Context, source product
 			if !last.IsZero() {
 				item["last_dispatch_at"] = last.Format(time.RFC3339)
 			}
-			if cfg.Once && !ledger.OnceCompletedAt.IsZero() {
+			if (cfg.Once && !ledger.OnceCompletedAt.IsZero()) || !ledger.CompletedAt.IsZero() {
 				item["enabled"] = false
-				item["completed_at"] = ledger.OnceCompletedAt.Format(time.RFC3339)
+				completed := ledger.OnceCompletedAt
+				if completed.IsZero() {
+					completed = ledger.CompletedAt
+				}
+				item["completed_at"] = completed.Format(time.RFC3339)
 			}
 			out = append(out, item)
 			if len(out) >= 200 {
@@ -256,6 +271,9 @@ func (c *conditionService) callerScript(ctx context.Context, job productSchedule
 }
 
 func (c *conditionService) readCallerScript(ctx context.Context, job productScheduleJob) (interface{}, error) {
+	if job.Schedule.Condition.GitHubPR != nil {
+		return map[string]interface{}{"github_pr": job.Schedule.Condition.GitHubPR}, nil
+	}
 	raw, found, err := c.s.readFile(ctx, path.Join(conditionScriptRoot(job), job.Schedule.Condition.Script))
 	if err != nil {
 		return nil, err

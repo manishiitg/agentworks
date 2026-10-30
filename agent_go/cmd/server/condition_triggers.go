@@ -186,7 +186,11 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 		st.LastAttemptAt = started.Format(time.RFC3339)
 		st.LastStatus = "running"
 	})
-	n, err := c.engine.Poll(ctx, conditionKey(job), *job.Schedule.Condition, started)
+	var n int
+	err := c.current(ctx, job, *job.Schedule.Condition)
+	if err == nil {
+		n, err = c.engine.Poll(ctx, conditionKey(job), *job.Schedule.Condition, started)
+	}
 	status, errText := "success", ""
 	backpressure := errors.Is(err, conditiontrigger.ErrBacklog) || errors.Is(err, conditiontrigger.ErrChecking)
 	if err != nil {
@@ -237,7 +241,20 @@ func (c *conditionService) pauseNotification(ctx context.Context, job productSch
 		detail = "Open your private Watcher history to inspect the check."
 	}
 	ctx = conditionContext(ctx, job)
-	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, job.ProjectID)
+	key := job.ProjectID
+	if job.Schedule.Condition != nil && job.Schedule.Condition.GitHubPR != nil {
+		cfg := job.Schedule.Condition.GitHubPR
+		if err := githubWatchChatCurrent(ctx, job, cfg); err != nil {
+			return
+		}
+		profile, err := c.s.registry.Resolve(crewProfileID, 0, job.UserID)
+		if err != nil {
+			return
+		}
+		job.Profile = profile
+		key = cfg.ChatKey
+	}
+	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, key)
 	if err != nil {
 		scheduleLogf("[CONDITION] pause chat unavailable")
 		return
@@ -268,6 +285,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	job := ctx.Value(conditionJobContext{}).(productScheduleJob)
 	if err := c.current(ctx, job, cfg); err != nil {
 		return nil, err
+	}
+	if cfg.GitHubPR != nil {
+		return c.runGitHubPR(ctx, job, cfg, state)
 	}
 	root := conditionScriptRoot(job)
 	source, found, err := c.s.readFile(ctx, path.Join(root, cfg.Script))
@@ -382,9 +402,9 @@ func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
 			scheduleLogf("[CONDITION] %s dispatch: %v", job.ID(), err)
 		}
 	}
-	if job.Schedule.Condition.Once {
+	if job.Schedule.Condition.Once || job.Schedule.Condition.GitHubPR != nil {
 		l, err := c.engine.Read(ctx, conditionKey(job))
-		if err == nil && !l.OnceCompletedAt.IsZero() {
+		if err == nil && (!l.OnceCompletedAt.IsZero() || !l.CompletedAt.IsZero()) {
 			if err := c.s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 				disabled := false
 				st.Enabled = &disabled
@@ -409,6 +429,11 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	job := ctx.Value(conditionJobContext{}).(productScheduleJob)
 	if err := c.current(ctx, job, cfg); err != nil {
 		return "", err
+	}
+	if current, err := githubWatchEventCurrent(ctx, job.UserID, cfg, ev); err != nil {
+		return "", err
+	} else if !current {
+		return "superseded PR head; no chat turn started", nil
 	}
 	caller := c.caller(job)
 	if job.WatcherSource != nil && cfg.Target.Kind == "agent" {
@@ -436,7 +461,9 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	// atChatLimit: the project has no room for another side chat, so a "new chat" event goes to the main
 	// chat with a note saying why instead of being refused (a watcher must not dead-end after its Nth match).
 	atChatLimit := false
-	if chatID != codeChatMainName {
+	if cfg.GitHubPR != nil {
+		chatKey = cfg.GitHubPR.ChatKey
+	} else if chatID != codeChatMainName {
 		chatKey += codeChatSideMarker + chatID
 		switch {
 		case projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey):
@@ -457,6 +484,9 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, job.UserID, job.Profile, binding, "")
 	if err != nil {
 		return "", err
+	}
+	if cfg.GitHubPR != nil && conversation.SessionID != cfg.GitHubPR.SessionID {
+		return "", conditiontrigger.PermanentError{Err: errors.New("the original PR watcher chat was replaced")}
 	}
 	if newTab {
 		_ = RenameChatHistorySession(job.UserID, conversation.SessionID, job.WorkspacePath, newWatcherChatName(job.Schedule.Name, ev.ID))

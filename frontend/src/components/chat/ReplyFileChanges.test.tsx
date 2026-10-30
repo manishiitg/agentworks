@@ -23,6 +23,7 @@ function replyCard(lookedUp: boolean) {
   }
   return { groups: [crewFiles, lookedUp ? { ...group, pr: status } : group], actions, can_edit: state.canBuild }
 }
+vi.mock('./PRWatcherControls', () => ({ PRWatcherControls: () => null }))
 vi.mock('../../services/api', () => ({ default: { post: vi.fn(async () => { if (state.undoError) throw { response: { data: { error: { message: state.undoError } } } }; return { data: { undo: { restore: [{ path: 'app/tts.py' }], skipped: [] } } } }), get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
   if (options.params.op === 'snapshot_undo_preview') return { data: { undo: { restore: [{ path: 'app/tts.py', status: 'M', action: 'restore' }], skipped: [{ path: 'app/x.py', status: 'M', action: 'restore', reason: 'changed_later' }] } } }
   if (options.params.op === 'reply_card') return { data: replyCard(options.params.pull_requests === true) }

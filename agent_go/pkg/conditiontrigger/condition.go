@@ -54,18 +54,32 @@ type Target struct {
 
 // Payload becomes named function arguments, or event data for messages/triggers.
 // Target selection and constant arguments are never taken from script output.
+type GitHubPR struct {
+	ChatKey    string   `json:"chat_key,omitempty"`
+	SessionID  string   `json:"session_id,omitempty"`
+	Repository string   `json:"repository"`
+	Number     int      `json:"number"`
+	Mode       string   `json:"mode"` // checks, deployment, autofix
+	Worktree   string   `json:"worktree,omitempty"`
+	Branch     string   `json:"branch,omitempty"`
+	Login      string   `json:"login,omitempty"`       // selected by the server
+	HeadSHA    string   `json:"head_sha,omitempty"`    // fixed for a one-time wait
+	ReviewBots []string `json:"review_bots,omitempty"` // explicitly chosen by the owner
+}
+
 type Config struct {
-	CheckMode      string   `json:"check_mode,omitempty"`
-	EmailSource    string   `json:"email_source,omitempty"`
-	EmailAccountID string   `json:"email_account_id,omitempty"`
-	EmailSince     int64    `json:"email_since,omitempty"`
-	EventAuthMode  string   `json:"event_auth_mode,omitempty"`
-	EventSecret    string   `json:"event_secret_name,omitempty"`
-	Once           bool     `json:"once,omitempty"`
-	Script         string   `json:"script"`
-	SHA256         string   `json:"sha256"`
-	Secrets        []string `json:"secrets,omitempty"`
-	Target         Target   `json:"target"`
+	GitHubPR       *GitHubPR `json:"github_pr,omitempty"`
+	CheckMode      string    `json:"check_mode,omitempty"`
+	EmailSource    string    `json:"email_source,omitempty"`
+	EmailAccountID string    `json:"email_account_id,omitempty"`
+	EmailSince     int64     `json:"email_since,omitempty"`
+	EventAuthMode  string    `json:"event_auth_mode,omitempty"`
+	EventSecret    string    `json:"event_secret_name,omitempty"`
+	Once           bool      `json:"once,omitempty"`
+	Script         string    `json:"script"`
+	SHA256         string    `json:"sha256"`
+	Secrets        []string  `json:"secrets,omitempty"`
+	Target         Target    `json:"target"`
 }
 
 var secretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -106,11 +120,41 @@ func (c Config) Validate() error {
 			return errors.New("select an existing secret for webhook authentication and set event_secret_name to its name")
 		}
 	}
-	if !strings.HasPrefix(c.Script, "code/triggers/") || path.Clean(c.Script) != c.Script || !strings.HasSuffix(c.Script, ".py") || strings.ContainsAny(c.Script, "\\\x00\r\n") {
-		return errors.New("script must be a Python file under code/triggers")
-	}
-	if b, err := hex.DecodeString(c.SHA256); err != nil || len(b) != sha256.Size {
-		return errors.New("save the script's SHA256 before enabling the watcher")
+	if c.GitHubPR != nil {
+		p := c.GitHubPR
+		if !regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`).MatchString(p.Repository) || strings.Contains(p.Repository, "..") || p.Number < 1 {
+			return errors.New("choose a GitHub repository and pull request number")
+		}
+		if p.Mode != "checks" && p.Mode != "deployment" && p.Mode != "autofix" {
+			return errors.New("GitHub watcher mode must be checks, deployment or autofix")
+		}
+		if p.Login == "" || p.Branch == "" || p.HeadSHA == "" {
+			return errors.New("save the GitHub account and PR head before enabling this watcher")
+		}
+		if len(p.Worktree) > 1024 {
+			return errors.New("worktree path is too long")
+		}
+		if p.Worktree != "" && (path.IsAbs(p.Worktree) || path.Clean(p.Worktree) != p.Worktree || p.Worktree == ".." || strings.HasPrefix(p.Worktree, "../") || strings.ContainsAny(p.Worktree, "\\\x00\r\n")) {
+			return errors.New("worktree must be a project-relative folder")
+		}
+		if c.CheckMode != "" && c.CheckMode != "schedule" || c.EmailSource != "" || len(c.Secrets) != 0 || c.Script != "" || c.Once || c.Target.Kind != "agent" || c.Target.ChatID == "" || c.Target.ChatID == "new" {
+			return errors.New("a GitHub watcher checks on a schedule and sends to one existing Crew chat")
+		}
+		if len(p.ReviewBots) > 10 {
+			return errors.New("choose at most ten review bots")
+		}
+		for _, bot := range p.ReviewBots {
+			if !regexp.MustCompile(`^[A-Za-z0-9_-]+(?:\[bot\])?$`).MatchString(bot) {
+				return errors.New("use the exact GitHub login of each chosen review bot")
+			}
+		}
+	} else {
+		if !strings.HasPrefix(c.Script, "code/triggers/") || path.Clean(c.Script) != c.Script || !strings.HasSuffix(c.Script, ".py") || strings.ContainsAny(c.Script, "\\\x00\r\n") {
+			return errors.New("script must be a Python file under code/triggers")
+		}
+		if b, err := hex.DecodeString(c.SHA256); err != nil || len(b) != sha256.Size {
+			return errors.New("save the script's SHA256 before enabling the watcher")
+		}
 	}
 	if len(c.Secrets) > 20 {
 		return errors.New("select at most 20 secrets")
@@ -154,6 +198,7 @@ type Event struct {
 	Payload map[string]interface{} `json:"payload"`
 }
 type Output struct {
+	Done   bool            `json:"done,omitempty"`
 	Events []Event         `json:"events"`
 	State  json.RawMessage `json:"state"`
 }
@@ -169,6 +214,8 @@ type Row struct {
 	NextAttempt  time.Time `json:"next_attempt,omitempty"`
 }
 type Ledger struct {
+	Done            bool            `json:"done,omitempty"`
+	CompletedAt     time.Time       `json:"completed_at,omitempty"`
 	OnceEventID     string          `json:"once_event_id,omitempty"`
 	OnceRevision    string          `json:"once_revision,omitempty"`
 	OnceCompletedAt time.Time       `json:"once_completed_at,omitempty"`
@@ -262,7 +309,7 @@ func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) 
 	}
 	// Selection survives failed delivery and restart; a one-time wait never
 	// runs the detector again once its event is durably queued.
-	if c.Once && l.OnceEventID != "" {
+	if l.Done || c.Once && l.OnceEventID != "" {
 		return 0, nil
 	}
 	if Pending(l) >= MaxPending {
@@ -326,6 +373,7 @@ func (e *Engine) Poll(ctx context.Context, key string, c Config, now time.Time) 
 		return 0, ErrBacklog
 	}
 	l.State = o.State
+	l.Done = o.Done
 	return n, e.Store.Save(ctx, key, l)
 }
 
@@ -356,8 +404,20 @@ func (e *Engine) Drain(ctx context.Context, key string, c Config, now time.Time)
 			}
 		}
 		if idx == -1 {
+			if l.Done && Pending(l) == 0 && l.CompletedAt.IsZero() {
+				complete := true
+				for _, row := range l.Rows {
+					if row.Status == "failed" || row.Status == "needs_reconciliation" {
+						complete = false
+					}
+				}
+				if complete {
+					l.CompletedAt = now
+					err = e.Store.Save(ctx, key, l)
+				}
+			}
 			m.Unlock()
-			return nil
+			return err
 		}
 		r := l.Rows[idx]
 		previousStatus, previousAttempt := r.Status, r.AttemptAt
