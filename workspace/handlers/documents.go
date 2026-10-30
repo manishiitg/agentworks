@@ -917,6 +917,15 @@ func GetRawDocument(c *gin.Context) {
 		return
 	}
 
+	if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
+		content, _, err := readAgentSnapshotFile(filePath, info)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to read mailbox", Error: err.Error()})
+			return
+		}
+		c.Data(http.StatusOK, "application/json", content)
+		return
+	}
 	if chatlog.IsConversationPath(filePath) {
 		content, err := chatlog.Load(filePath)
 		if err != nil {
@@ -1029,6 +1038,8 @@ func UpdateDocument(c *gin.Context) {
 			return
 		}
 		fileExists = false
+	} else if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
+		writeErr = saveAgentSnapshotFile(filePath, []byte(*req.Content))
 	} else if chatlog.IsConversationPath(filePath) {
 		writeErr = chatlog.Save(filePath, []byte(*req.Content))
 		if errors.Is(writeErr, chatlog.ErrPartialRecord) {
