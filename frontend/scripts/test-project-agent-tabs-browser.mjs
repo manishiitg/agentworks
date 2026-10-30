@@ -16,7 +16,13 @@ try {
     await page.route('**/api/**', route => new URL(route.request().url()).pathname.startsWith('/api/') ? route.fulfill({ json: {} }) : route.continue())
     await page.goto(server.resolvedUrls.local[0] + 'scripts/test-fixtures/project-agent-tabs.html?surface=' + surface + '&theme=' + theme)
     const calls = () => page.getByTestId('calls').textContent().then(value => JSON.parse(value))
-    await page.getByRole('button', { name: 'New agent', exact: true }).click()
+    const openNewAgent = async () => {
+      if (width < 768) {
+        await page.getByRole('button', { name: /^Agents: switch/ }).click()
+        await page.getByRole('button', { name: 'New tab', exact: true }).click()
+      } else await page.getByRole('button', { name: 'New agent', exact: true }).click()
+    }
+    await openNewAgent()
     const input = page.getByRole('textbox', { name: 'Agent name', exact: true })
     await input.waitFor(); assert.equal((await calls()).length, 0)
     await input.press('Enter'); assert.equal((await calls()).length, 0)
@@ -44,7 +50,7 @@ try {
     await menu.getByRole('button', { name: 'Done', exact: true }).click()
     await menu.getByRole('button', { name: 'Close Cost review', exact: true }).click()
     assert.ok((await calls()).some(call => call.action === 'close' && call.data === 'created'))
-    await page.getByRole('button', { name: 'New agent', exact: true }).click(); await input.press('Escape')
+    await openNewAgent(); await input.press('Escape')
     await page.screenshot({ path: path.join(output, 'project-tabs-' + surface + '-' + width + '.png') })
     assert.deepEqual(errors, [])
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), surface + ': no page overflow')
