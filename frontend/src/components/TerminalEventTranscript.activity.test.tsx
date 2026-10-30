@@ -377,6 +377,10 @@ it.each(['query_1791824440777049000', 'synthetic-turn:steer-message-179182444077
 it('keeps a late file comparison on its original reply in both transcript views after reload', async () => {
   const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
     if (config?.params?.op === 'snapshot_file') return { data: new TextEncoder().encode('Saved report from the first reply').buffer } as never
+    if (config?.params?.op === 'reply_card') return { data: { can_edit: false, actions: [], groups: [{ kind: 'crew_files', root: '', name: 'Other files', total_files: 2, files: [
+      { path: 'report.md', status: 'M', added: 2, removed: 1 },
+      { path: 'image.png', status: 'M', binary: true },
+    ] }] } } as never
     return { data: { history: { latest_snapshot_id: '', can_review: false }, comparison: { snapshot: { status: 'complete' }, changes: [
       { path: 'report.md', status: 'M', added: 2, removed: 1 },
       { path: 'image.png', status: 'M', binary: true },
@@ -405,6 +409,7 @@ it('keeps a late file comparison on its original reply in both transcript views 
         const reply = clean ? card.closest('article') : card.closest('[data-testid="terminal-clear-event-first-reply"]')
         expect(reply?.textContent).toContain('First report is ready.')
         expect(reply?.textContent).not.toContain('Second report is ready.')
+        await act(async () => card.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
         const binary = [...card.querySelectorAll('li')].find(row => row.textContent?.includes('image.png'))!
         expect(binary.querySelector('[aria-label*="lines added"]')).toBeNull()
         await act(async () => [...card.querySelectorAll('button')].find(button => button.textContent === 'report.md')!.click())
