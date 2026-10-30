@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { createServer } from 'vite'
@@ -11,7 +11,7 @@ try {
   await mkdir(output, { recursive: true }); await server.listen(); browser = await chromium.launch({ headless: true })
   for (const [surface, width, theme] of [['work', 1280, 'dark'], ['agentworks', 1280, 'dark'], ['relays', 1280, 'light'], ['agentworks', 390, 'dark']]) {
     const page = await browser.newPage({ viewport: { width, height: 760 } })
-    const errors = []; page.on('pageerror', error => errors.push(error.message))
+    const errors = []; page.on('pageerror', error => { errors.push(error.message); console.error('Browser page error:', error.message) })
     await page.route('**/api/**', route => route.fulfill({ json: {} }))
     await page.goto(server.resolvedUrls.local[0] + 'scripts/test-fixtures/project-agent-tabs.html?surface=' + surface + '&theme=' + theme)
     const calls = () => page.getByTestId('calls').textContent().then(value => JSON.parse(value))
@@ -53,7 +53,7 @@ try {
   // PLAT-746-230: real sidebar and header components; only server/network boundaries are fixtures.
   for (const active of ['local', 'a'.repeat(32)]) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
-    const errors = []; page.on('pageerror', error => errors.push(error.message))
+    const errors = []; page.on('pageerror', error => { errors.push(error.message); console.error('Browser page error:', error.message) })
     await page.addInitScript(active => {
       window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'local', enabledProductSurfaces: ['work', 'agentworks'] }
       window.qaConnections = []
@@ -91,6 +91,16 @@ try {
     assert.equal(await page.locator('[data-chat-tab-id="chat-1"]').isVisible(), true, 'open sidebar keeps header chat tabs')
     await page.getByRole('button', { name: /Active work:/ }).waitFor()
     await page.screenshot({ path: path.join(output, `simple-sidebar-${active === 'local' ? 'local' : 'remote'}.png`) })
+    // Selecting the same project closes global pages even though its URL did not change.
+    await page.evaluate(async () => {
+      history.replaceState({}, '', '/crew/projects/example')
+      const { useAppStore } = await import('/src/stores/useAppStore.ts')
+      useAppStore.getState().setShowSchedulesOverview(true)
+    })
+    const currentGroup = sidebar.getByRole('region', { name: (active === 'local' ? 'Local' : 'Team') + ' projects', exact: true })
+    await currentGroup.getByRole('button', { name: 'Example Crew · Crew', exact: true }).click()
+    assert.equal(await page.evaluate(async () => (await import('/src/stores/useAppStore.ts')).useAppStore.getState().showSchedulesOverview), false)
+
     const remote = sidebar.getByRole('region', { name: 'Sandbox projects', exact: true })
     await remote.getByRole('button', { name: 'Example Crew · Crew', exact: true }).click()
     assert.deepEqual(await page.evaluate(() => window.qaConnections.at(-1)), { id: 'b'.repeat(32), path: '/crew/projects/example' })
@@ -102,4 +112,10 @@ try {
     await page.close()
   }
 
+} catch (error) {
+  for (const [index, page] of (browser?.contexts().flatMap(context => context.pages()) || []).entries()) {
+    await page.screenshot({ path: path.join(output, `failure-${index}.png`) }).catch(() => {})
+    await writeFile(path.join(output, `failure-${index}.html`), await page.content()).catch(() => {})
+  }
+  throw error
 } finally { await browser?.close(); await server.close() }
