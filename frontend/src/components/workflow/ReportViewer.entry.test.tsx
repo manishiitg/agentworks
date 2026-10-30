@@ -14,7 +14,7 @@ vi.mock('./reportWidgets/ReportQuestionFrame', () => ({ ReportQuestionFrame: ({ 
 vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: () => null }))
 vi.mock('../workspace/WorkspacePanelNavigation', () => ({ useWorkspacePanelChatDraft: () => undefined }))
 vi.mock('../../utils/projectAskConversation', () => ({ openProjectAskConversation: mocks.openAsk }))
-vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: any) => select({ activeWorkspaceId: 'local' }) }))
+vi.mock('../../stores/useWorkspaceConnectionStore', async importOriginal => ({ ...await importOriginal<typeof import('../../stores/useWorkspaceConnectionStore')>(), useWorkspaceConnectionStore: (select: any) => select({ activeWorkspaceId: 'local' }) }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select({ user: { id: 'recipient' } }) }))
 vi.mock('../ChatArea', () => ({ default: ({ tabId }: { tabId: string }) => <div data-native-tab={tabId}>Existing project history and replies</div> }))
 import { ReportView } from './ReportViewer'
