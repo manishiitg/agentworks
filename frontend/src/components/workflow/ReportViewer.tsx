@@ -30,6 +30,7 @@ import { loadReportDocumentCatalog, selectReportDocument, useSelectedReportDocum
 import { reportDocumentLabel } from './reportDocumentLabels'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { DashboardLayoutActions } from './DashboardLayoutControls'
+import { ShareDashboardButton } from './ShareDashboardButton'
 
 function debugReportView(event: string, detail?: Record<string, unknown>) {
   if (!import.meta.env.DEV) return
@@ -329,6 +330,8 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
         {!hideToolbar && <WorkspaceViewHeader icon={LayoutDashboard} title={title} actions={<>
           {headerAction}
+          {/* Share is the main action on a page people pass around (PLAT-750): the link and who can open it. */}
+          {report && !dashboardConversation && <ShareDashboardButton workspacePath={workspacePath} documentPath={report.path} />}
           <button type="button" onClick={refresh} aria-label="Refresh dashboard" title="Refresh dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
