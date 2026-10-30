@@ -58,6 +58,25 @@ func goalHasMember(m *WorkflowManifest, user string) bool {
 	return false
 }
 
+// A registry row identifies a tab; its saved transcript supplies its latest
+// activity and first-message title, just as the history screen does (PLAT-871-28).
+func goalTabPresentation(record ProductConversationRecord, identity ProductAgentIdentity, history ChatHistorySession) (name, updatedAt string) {
+	name = firstNonEmptyTrimmed(identity.Name, record.Title, "Builder")
+	if name == "Builder" || name == "Chat" {
+		if history.Title == "Builder" || history.Title == "Chat" {
+			history.Title = ""
+		}
+		name = conversationTitleFrom(&history, name)
+	}
+	updatedAt = record.UpdatedAt
+	stored, _ := time.Parse(time.RFC3339Nano, updatedAt)
+	latest, err := time.Parse(time.RFC3339Nano, history.UpdatedAt)
+	if err == nil && latest.After(stored) {
+		updatedAt = history.UpdatedAt
+	}
+	return name, updatedAt
+}
+
 func (api *StreamingAPI) goalOwnerTabs(ctx context.Context, scope workflowBuilderScope) ([]goalOwnerTab, error) {
 	scope, status := authorizeWorkflowBuilderScope(ctx, scope, true)
 	if status != 0 {
@@ -83,17 +102,18 @@ func (api *StreamingAPI) goalOwnerTabs(ctx context.Context, scope workflowBuilde
 		if err != nil {
 			return nil, err
 		}
+		history := chatHistorySessionsByID(owner, scope.Workspace)
 		for _, record := range records {
 			if record.WorkspacePath != scope.Workspace {
 				continue
 			}
 			identity := identities[record.ConversationKey]
-			name := firstNonEmptyTrimmed(identity.Name, record.Title, "Builder")
+			name, updatedAt := goalTabPresentation(record, identity, history[record.SessionID])
 			out = append(out, goalOwnerTab{ID: record.ConversationKey, Name: name, OwnerID: owner,
 				OwnerName: crewOwnerDisplayName(owner), SessionID: record.SessionID,
 				IsMain:   record.ConversationKey == crewOwnerDefaultChatKey(scope.PresetID, owner),
 				Position: identity.Position, Pinned: !identity.Unpinned,
-				CanWrite: owner == user, Working: api.conversationTurnOccupied(record.SessionID), UpdatedAt: record.UpdatedAt})
+				CanWrite: owner == user, Working: api.conversationTurnOccupied(record.SessionID), UpdatedAt: updatedAt})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -311,11 +331,12 @@ func (api *StreamingAPI) goalOwnerTabSummary(ctx context.Context, scope workflow
 func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Request) {
 	var args struct {
 		workflowBuilderScope
-		Action  string   `json:"action"`
-		ChatID  string   `json:"chat_id"`
-		Name    string   `json:"name"`
-		Pinned  *bool    `json:"pinned"`
-		ChatIDs []string `json:"chat_ids"`
+		Action    string   `json:"action"`
+		ChatID    string   `json:"chat_id"`
+		SessionID string   `json:"session_id"`
+		Name      string   `json:"name"`
+		Pinned    *bool    `json:"pinned"`
+		ChatIDs   []string `json:"chat_ids"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&args); err != nil {
 		externalError(w, 400, "invalid_arguments", "Choose a chat action.")
@@ -381,8 +402,9 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var tab goalOwnerTab
+	id := firstNonEmptyTrimmed(args.ChatID, args.SessionID)
 	for _, t := range tabs {
-		if t.ID == args.ChatID || t.SessionID == args.ChatID {
+		if id != "" && (t.ID == id || t.SessionID == id || t.ID == scope.PresetID+codeChatSideMarker+id || (id == "main" && t.IsMain && t.CanWrite)) {
 			tab = t
 			break
 		}
@@ -481,10 +503,11 @@ func goalOwnerTabSchema(external bool) map[string]interface{} {
 		action = "tab_action"
 	}
 	return map[string]interface{}{"type": "object", "required": []string{action}, "properties": map[string]interface{}{
-		action:     map[string]interface{}{"type": "string", "enum": []any{"list", "open", "read", "rename", "pin", "order", "close"}},
-		"pinned":   map[string]interface{}{"type": "boolean", "description": "Keep this agent on the tab bar (pin)."},
-		"chat_ids": map[string]interface{}{"type": "array", "items": externalString("Your named tab ID."), "description": "Your named tabs in first-to-last order; the main Builder stays first."},
-		"chat_id":  externalString("Tab id or session_id from list."), "name": externalString("Short tab name for open or rename."),
+		action:       map[string]interface{}{"type": "string", "enum": []any{"list", "open", "read", "rename", "pin", "order", "close"}},
+		"pinned":     map[string]interface{}{"type": "boolean", "description": "Keep this agent on the tab bar (pin)."},
+		"chat_ids":   map[string]interface{}{"type": "array", "items": externalString("Your named tab ID."), "description": "Your named tabs in first-to-last order; the main Builder stays first."},
+		"session_id": externalString("Session ID from list, when not using chat_id."),
+		"chat_id":    externalString("Tab ID from list or run_destinations; main selects your main tab."), "name": externalString("Short tab name for open or rename."),
 	}}
 }
 func (api *StreamingAPI) goalTabEvents(ctx context.Context, tab goalOwnerTab, root string) ([]json.RawMessage, string, uint64, error) {

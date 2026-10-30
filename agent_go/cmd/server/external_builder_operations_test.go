@@ -663,7 +663,18 @@ func TestExternalBuilderTabsShareNativeAndWebsiteControl(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &opened); err != nil || opened.Chat.ID == "" {
 		t.Fatal(w.Body.String(), err)
 	}
-	f.call(t, other, "sessions", map[string]any{"action": "read", "chat_id": opened.Chat.ID}, 200)
+	// PLAT-871-28: schedules return the tab suffix; MCP must also accept the
+	// session_id field without bypassing the existing project/owner checks.
+	for _, selector := range []map[string]any{
+		{"chat_id": opened.Chat.ID},
+		{"chat_id": strings.TrimPrefix(opened.Chat.ID, "invoices"+codeChatSideMarker)},
+		{"session_id": opened.Chat.SessionID},
+	} {
+		selector["action"] = "read"
+		f.call(t, other, "sessions", selector, 200)
+	}
+	f.call(t, other, "sessions", map[string]any{"action": "read", "session_id": "another-project-session"}, 404)
+	f.call(t, other, "sessions", map[string]any{"action": "read", "chat_id": "another-project:chat:private"}, 404)
 	f.call(t, other, "sessions", map[string]any{"action": "rename", "chat_id": opened.Chat.ID, "name": "Taken"}, 403)
 	reg := &recordingRegistrar{}
 	if err := f.api.registerGoalOwnerTabTools(reg, "outsider", "Workflow/invoices"); err != nil {

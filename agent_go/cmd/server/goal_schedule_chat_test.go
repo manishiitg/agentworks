@@ -2,8 +2,12 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 )
@@ -13,7 +17,8 @@ import (
 // and another owner's tab is never the schedule owner's to type in.
 func TestGoalMessageScheduleRunsInOwnersTab(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"creator","can_edit":true,"can_create":true},{"id":"bob","username":"bob","role":"creator","can_edit":true,"can_create":true}]}`)
 	workspace := &mockWorkspaceAPI{files: map[string]string{"Workflow/demo/workflow.json": `{"id":"wf","created_by":"alice","access":{"owners":["alice","bob"]}}`}}
 	srv := httptest.NewServer(workspace)
@@ -23,13 +28,48 @@ func TestGoalMessageScheduleRunsInOwnersTab(t *testing.T) {
 	as := func(user string) context.Context {
 		return context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user})
 	}
-	aliceTab, err := storeGoalOwnerTab(as("alice"), scope, "Review", false, "")
+	aliceTab, err := storeGoalOwnerTab(as("alice"), scope, "Builder", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	bobTab, err := storeGoalOwnerTab(as("bob"), scope, "Bob's", false, "")
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The scheduled turn updates its saved transcript, not the registry row.
+	// Lists and schedule choices must show that activity and its first message.
+	updated := time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano)
+	conversationPath := filepath.Join(root, "Workflow/demo/builder/conversation/users/alice/2026-10-30", "session-"+aliceTab.SessionID+"-conversation.json")
+	if err := os.MkdirAll(filepath.Dir(conversationPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"session_id": aliceTab.SessionID, "user_id": "alice", "phase_id": "workflow-builder", "updated_at": updated,
+		"conversation_history": []builderConversationMessage{{Role: "human", Parts: []builderConversationPart{{Text: "Review the scheduled reply"}}}},
+	})
+	if err := os.WriteFile(conversationPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	tabs, err := api.goalOwnerTabs(as("alice"), scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, tab := range tabs {
+		if tab.SessionID == aliceTab.SessionID {
+			found = true
+			if tab.Name != "Review the scheduled reply" || tab.UpdatedAt != updated {
+				t.Fatalf("stale tab metadata: %+v", tab)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("saved tab missing")
+	}
+	chats, err := goalScheduleChats(as("alice"), "alice", "wf", "Workflow/demo")
+	if err != nil || len(chats) != 1 || chats[0].Name != "Review the scheduled reply" {
+		t.Fatalf("schedule destinations differ from tab list: %+v, %v", chats, err)
 	}
 	fire := func(record projectactions.Schedule) string {
 		sched, err := workflowScheduleFromAction(record)

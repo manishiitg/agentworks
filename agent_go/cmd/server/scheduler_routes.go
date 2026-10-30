@@ -243,8 +243,8 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		LatestMissedRunAt:        missed.LatestMissedRunAt,
 		MissedRunReason:          missed.MissedRunReason,
 
-		CreatedAt: manifest.CreatedAt,
-		UpdatedAt: manifest.UpdatedAt,
+		// Timer records do not store creation/update dates. The workflow dates
+		// describe a different object, so leave optional schedule dates absent.
 	}
 }
 
