@@ -114,7 +114,7 @@ func TestPRWatcherLongChecksReviewsAndDeployment(t *testing.T) {
 func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	env, ctx, _ := conditionCodeFixture(t)
+	env, ctx, _ := agentEmailCrewFixture(t)
 	oldURL, oldValue := githubAPIURL, githubTokenValue
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"number":7,"state":"open","head":{"sha":"abc","ref":"feature"}}`)
@@ -128,23 +128,26 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 	}
 	c := env.svc.conditionService()
 	args := map[string]interface{}{"action": "create", "request_id": "pr-watch", "trigger": map[string]interface{}{"name": "Watch PR", "github_pr": map[string]interface{}{"repository": "example/project", "number": 7, "mode": "autofix", "worktree": "code", "login": "forged"}, "target": map[string]interface{}{"kind": "agent", "chat_id": "main", "message": "placeholder"}}}
-	result, err := c.manage(ctx, "owner", "work", "checks", args)
+	result, err := c.manage(ctx, "owner", "work", "mail-checks", args)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := result.(map[string]interface{})["id"].(string)
-	job := mustConditionJob(t, env.svc, ctx, id)
+	job, err := env.svc.Job(ctx, "owner", projectScheduleJobID("work", "mail-checks", id))
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg := job.Schedule.Condition
 	if cfg.GitHubPR.Login != "selected-owner" || cfg.GitHubPR.HeadSHA != "abc" || cfg.Target.ChatID != "main" || cfg.Script != "" || job.Schedule.CronExpression != "* * * * *" {
 		t.Fatalf("wrong binding: %+v", cfg)
 	}
-	if _, err := c.manage(ctx, "other", "work", "checks", args); err == nil {
+	if _, err := c.manage(ctx, "other", "work", "mail-checks", args); err == nil {
 		t.Fatal("another user started owner's PR watcher")
 	}
 	if err := writeGitHubRecord("owner", githubAccountRecord{Login: "different-account"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.manage(ctx, "owner", "work", "checks", map[string]interface{}{"action": "update", "id": id, "expected_revision": result.(map[string]interface{})["revision"], "trigger": map[string]interface{}{"enabled": false}}); err != nil {
+	if _, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "update", "id": id, "expected_revision": result.(map[string]interface{})["revision"], "trigger": map[string]interface{}{"enabled": false}}); err != nil {
 		t.Fatal("disconnected watcher cannot be stopped", err)
 	}
 	if _, err := githubWatcherToken("owner", cfg.GitHubPR); err == nil {
