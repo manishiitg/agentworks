@@ -314,8 +314,9 @@ func (store productConversationRegistryStore) setSideChatOrder(ctx context.Conte
 	return store.writeDocument(ctx, path, document)
 }
 
-// setSideChatPinned saves whether one side tab stays on the strip.
-func (store productConversationRegistryStore) setSideChatPinned(ctx context.Context, userID, profileID, projectID, conversationKey string, pinned bool) error {
+// setSideChatPinned saves whether one side tab stays on the strip. otherOwners is true for a tab another owner of
+// the Crew controls: the caller's pin is kept in the caller's own record and changes only the caller's strip.
+func (store productConversationRegistryStore) setSideChatPinned(ctx context.Context, userID, profileID, projectID, conversationKey string, pinned, otherOwners bool) error {
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
@@ -329,11 +330,11 @@ func (store productConversationRegistryStore) setSideChatPinned(ctx context.Cont
 	}
 	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
 	prefix := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID)) + codeChatSideMarker
-	if _, ok := document.Entries[entryKey]; !ok || !strings.HasPrefix(entryKey, prefix) {
+	if _, ok := document.Entries[entryKey]; (!ok && !otherOwners) || !strings.HasPrefix(entryKey, prefix) {
 		return fmt.Errorf("that tab is not open in this project")
 	}
-	identity := document.Agents[entryKey]
-	if identity.Unpinned == !pinned {
+	identity, saved := document.Agents[entryKey]
+	if saved && identity.Unpinned == !pinned {
 		return nil
 	}
 	identity.Unpinned = !pinned

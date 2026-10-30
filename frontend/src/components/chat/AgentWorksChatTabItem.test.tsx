@@ -234,7 +234,7 @@ it.each([true, false])('keeps full owner identity in tooltips without per-tab ow
   const host = await renderTab(`${owner} · Builder`, undefined, 'work', {
     agentProfileId: 'work', agentProfileTabOwnerID: 'owner-one', agentProfileTabOwnerName: owner, agentProfileTabCanWrite: yours,
   })
-  expect(host.textContent).toContain('Builder')
+  expect(host.textContent).toContain('Main')
   expect(host.textContent).not.toContain(owner)
   expect(host.textContent).not.toContain('You')
   expect(host.querySelector(`[aria-label="Tab owned by ${owner}"]`)).toBeNull()

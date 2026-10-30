@@ -119,7 +119,12 @@ func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r 
 		writeAgentProfileError(w, http.StatusBadRequest, "this product has no tabs to pin")
 		return
 	}
-	if err := defaultProductConversationRegistryStore().setSideChatPinned(r.Context(), userID, slot.profile.ID, projectID, input.ConversationKey, input.Pinned); err != nil {
+	tab, found, err := crewTabForKey(r.Context(), userID, slot.profile.ID, strings.TrimSpace(input.ConversationKey), slot.binding.WorkspacePath)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := defaultProductConversationRegistryStore().setSideChatPinned(r.Context(), userID, slot.profile.ID, projectID, input.ConversationKey, input.Pinned, found && tab.OwnerID != userID); err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -138,6 +143,11 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 	if err != nil {
 		return nil, err
 	}
+	// The caller's own pins for tabs other owners control (setSideChatPinned).
+	mine, err := defaultProductConversationRegistryStore().agentIdentities(r.Context(), userID, slot.profile.ID, projectID)
+	if err != nil {
+		return nil, err
+	}
 	out := []AgentProfileSideChat{}
 	for _, tab := range owned {
 		record := tab.Record
@@ -152,6 +162,9 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(tab.Identity.Name, "Chat "+id)
 		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID}
+		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
+			row.Pinned = !own.Unpinned
+		}
 		if agentID := publicationAgentID(record.ConversationKey); agentID != "" {
 			if p, e := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(userID, slot.binding.WorkspacePath), agentID); e == nil && p != nil {
 				row.AgentID, row.Provider, row.ModelID, row.ConnectionID = p.AgentID, p.Provider, p.ModelID, p.ConnectionID

@@ -1,6 +1,11 @@
-/** Keep the main chat label short; full ownership stays in the tab tooltip. */
+/** Each owner's default chat is saved as "<owner> · Builder"; show it as "Main". Full ownership stays in the tooltip. */
 export function compactOwnerChatName(name: string, owner?: string): string {
-  return owner && name.trim() === owner + ' · Builder' ? 'Builder' : name
+  return owner && name.trim() === owner + ' · Builder' ? 'Main' : name
+}
+
+/** A person's name from their account: "manish.excel2011@gmail.com" gives "manish.excel2011". */
+export function ownerShortName(owner: string): string {
+  return owner.split('@')[0] || owner
 }
 
 /** Two letters that tell another person's tab apart at a glance: "manish.excel2011@gmail.com" gives "ME", and a single name like "Aman" gives "AM". */

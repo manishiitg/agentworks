@@ -10,7 +10,7 @@ import { workSideChatDisplayName } from '../../products/work/workProjectPresenta
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
-import { compactOwnerChatName } from './chatTabName'
+import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
@@ -78,8 +78,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const agentCount = tabs.filter(isAgentTab).length
   const sideChatKey = (tab: ChatTab) => listedFor(tab)?.conversation_key
   const sideChatName = (tab: ChatTab) => workSideChatDisplayName(listedFor(tab)?.name || tab.name)
-  const tabLabel = (tab: ChatTab) => compactOwnerChatName(tab.tabId === canonicalTabId ? 'Builder' : sideChatName(tab), tab.metadata?.agentProfileTabOwnerName)
   const canControl = (tab: ChatTab) => tab.metadata?.agentProfileTabCanWrite !== false
+  // Another person's tab names that person, so two owners' main chats never look alike.
+  const tabLabel = (tab: ChatTab) => {
+    const owner = tab.metadata?.agentProfileTabOwnerName
+    const name = compactOwnerChatName(tab.tabId === canonicalTabId ? 'Main' : sideChatName(tab), owner)
+    return owner && !canControl(tab) ? `${name} · ${ownerShortName(owner)}` : name
+  }
   const sideChatPinned = (tab: ChatTab) => listedFor(tab)?.pinned !== false
   // The strip shows the main chat and the tabs the person pinned, as many as they pin (owner, 2026-10-20); the rest are
   // in the Agents menu. The tab the person is in is always on the strip (in the last place when it is not pinned), so it
@@ -295,6 +300,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
               {tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
+                // Anyone may pin another person's tab on their own strip; renaming and ordering stay with its owner.
+                const pinKey = tab.tabId === canonicalTabId ? undefined : sideChatKey(tab)
                 const label = tabLabel(tab)
                 const position = ownedListed.findIndex(chat => chat.conversation_key === key)
                 return <div
@@ -333,7 +340,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                     <button type="button" aria-label={`Move ${label} later`} disabled={position < 0 || position === ownedListed.length - 1} onClick={() => { const target = ownedListed[position + 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
                   </div> : <>
                   {key && renaming !== tab.tabId && <button type="button" aria-label={`Rename ${label}`} title="Rename" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setRenameDraft(sideChatName(tab)); setRenaming(tab.tabId) }}><Pencil className="h-3.5 w-3.5" /></button>}
-                  {key && <button type="button" aria-pressed={sideChatPinned(tab)} aria-label={sideChatPinned(tab) ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={sideChatPinned(tab) ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring ${sideChatPinned(tab) ? 'text-foreground' : 'text-muted-foreground'}`} onClick={() => { void pinSideChat(key, !sideChatPinned(tab)) }}>{sideChatPinned(tab) ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
+                  {pinKey && <button type="button" aria-pressed={sideChatPinned(tab)} aria-label={sideChatPinned(tab) ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={sideChatPinned(tab) ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring ${sideChatPinned(tab) ? 'text-foreground' : 'text-muted-foreground'}`} onClick={() => { void pinSideChat(pinKey, !sideChatPinned(tab)) }}>{sideChatPinned(tab) ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
                   {tab.tabId !== canonicalTabId && canControl(tab) && (
                     <button
                       type="button"
