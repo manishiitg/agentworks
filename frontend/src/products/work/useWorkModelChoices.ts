@@ -188,7 +188,14 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
       output_cost_per_1m: 0,
     } satisfies ModelMetadata), selectedAllowedModels)
   }, [keyModelChoices, currentGroup?.models, modelCatalog, selectedOption?.provider, selectedAllowedModels])
-  // Another provider's models for the composer's switcher, as allowed on the account the server would pick for it.
+  // The account a switch to another provider names: the person's own, else none (the server's, which the server
+  // picks), else one shared with them, which the server only uses when named.
+  const switchAccountFor = (option: AgentProfileProviderOption) => {
+    const usable = (accounts || []).filter(account => account.provider === option.provider && account.usable !== false)
+    return ownDefaultConnectionId(accounts, option.provider)
+      || (usable.some(account => account.id === `global:${option.provider}`) ? undefined : usable[0]?.id)
+  }
+  // Another provider's models for the composer's switcher, as allowed on the account it would switch to.
   // Cursor and key accounts list their models per account; switching to them starts on their default model.
   const modelsForOption = (option: AgentProfileProviderOption) => {
     if (option.id === selectedOption?.id) return selectableModels
@@ -196,7 +203,7 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
     const group = engineGroups.find(candidate => candidate.option.id === option.id)
     return filterAllowedModels((group?.models || []).map(({ id, label }) => ({
       model_id: id, model_name: label, provider: option.provider || '', context_window: 0, input_cost_per_1m: 0, output_cost_per_1m: 0,
-    } satisfies ModelMetadata)), allowedModelsFor(option.provider, ownDefaultConnectionId(accounts, option.provider)))
+    } satisfies ModelMetadata)), allowedModelsFor(option.provider, switchAccountFor(option)))
   }
   const levelsForModel = (modelId: string, option = selectedOption) => modelReasoningLevels(option,
     modelCatalog.find(model => model.provider === option?.provider && model.model_id === modelId))
@@ -212,6 +219,6 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
 
   return {
     workProviderIds, inUseAccount, keyService, cursorModels, cursorModelsError, cursorSelectionDisabled,
-    defaultForOption, selectedAllowedModels, selectableModels, modelsForOption, levelsForModel, effortForModel, effortForPick,
+    defaultForOption, selectedAllowedModels, selectableModels, modelsForOption, switchAccountFor, levelsForModel, effortForModel, effortForPick,
   }
 }

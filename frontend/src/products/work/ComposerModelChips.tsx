@@ -81,7 +81,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const sources = useWorkModelSources({ profileId, profileVersion: meta?.agentProfileVersion, accountProduct: profileId, workspacePath, enabled })
   const selectedOption = enabled ? sources.options.find(option => option.id === meta?.agentProfileEngine) : undefined
   const connectionId = meta?.agentProfileConnectionID || undefined
-  const { workProviderIds, selectableModels, modelsForOption, cursorModels, cursorSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
+  const { workProviderIds, selectableModels, modelsForOption, switchAccountFor, cursorModels, cursorSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
     selectedOption, selectedConnectionId: connectionId,
     inUseConnectionId: connectionId || ownDefaultConnectionId(sources.accounts, selectedOption?.provider),
     workspacePath, accountProduct: profileId,
@@ -106,8 +106,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     setSaving(true)
     try {
       await agentApi.setAgentProfileChatModel(profileId, projectId, {
-        // Another coding agent runs on the account the server picks for it (the person's own, else the server's).
-        conversation_key: conversationKey, engine: option.id, model_id: modelId, reasoning_effort: reasoningEffort, connection_id: current ? connectionId : undefined,
+        conversation_key: conversationKey, engine: option.id, model_id: modelId, reasoning_effort: reasoningEffort, connection_id: current ? connectionId : switchAccountFor(option),
       })
       await queryClient.invalidateQueries({ queryKey: workChatModelsQueryKey(profileId, projectId) })
     } catch (cause) {
