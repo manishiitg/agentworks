@@ -95,13 +95,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const artifacts = documents.filter(item => item.artifact)
   const dashboards = documents.filter(item => !item.artifact)
   const results = <Group title="Results">
-    {artifacts.map(item => <Row key={item.path} icon={FileText} detail="Artifact" onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }}>{item.title}</Row>)}
+    {artifacts.map(item => <Row key={item.path} icon={FileText} onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }}>{item.title}</Row>)}
     {(snapshot?.results || []).filter(item => byId.has('files') && !artifacts.some(artifact => artifact.path === item.path)).map(item => <Row key={item.path} icon={FileText} hint={item.path} attention={item.status !== 'ready'} detail={item.status === 'missing' ? 'Missing file' : item.status === 'unavailable' ? 'Unavailable' : undefined} onClick={() => {
       if (item.status !== 'ready' || !byId.has('files') || useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
       setPreview({ scope, path: `${workspacePath.replace(/\/+$/, '')}/${item.path}`, title: item.title })
     }}>{item.title}</Row>)}
     {!artifacts.length && !snapshot?.results?.length && <p className="px-1 py-2 text-xs text-muted-foreground">{snapshot ? 'Finished files will appear here.' : 'Loading results…'}</p>}
-    {dashboards.map(item => <Row key={item.path} icon={LayoutDashboard} detail="Dashboard" onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }}>{item.title}</Row>)}
+    {dashboards.map(item => <Row key={item.path} icon={LayoutDashboard} onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }}>{item.title}</Row>)}
   </Group>
   const changes = reviewSessionId && allowed('files') ? <Group title="Changes"><ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={() => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files','review'); onOpen('files') }}/></Group> : null
   return <WorkspaceContextCard>
