@@ -52,7 +52,12 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 	if len(argv) == 0 {
 		return fmt.Errorf("missing command")
 	}
-	if policy.PrivatePTS && os.Getenv(privatePTSChildEnv) != "1" {
+	// Shell wrapping mounts inside the command's own namespaces (with its own /tmp), which the launcher creates by
+	// starting itself again in them, as it does for a private PTY.
+	if policy.ShellWrap != nil {
+		policy.PrivateTmp = true
+	}
+	if (policy.PrivatePTS || policy.ShellWrap != nil) && os.Getenv(privatePTSChildEnv) != "1" {
 		return runPrivatePTSChild(policy, argv)
 	}
 	_ = os.Unsetenv(privatePTSChildEnv)

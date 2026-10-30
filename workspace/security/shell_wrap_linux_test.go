@@ -45,7 +45,7 @@ func TestWrappedShellsCannotReachTheCLIsLogins(t *testing.T) {
 		}
 		cmd := exec.Command(runner, append([]string{"--config", config, "--"}, argv...)...)
 		cmd.Env = append(BuildSafeEnvironment(), "FAKE_LOGIN_TOKEN=LOGIN-ENV-SECRET")
-		cmd.SysProcAttr = privateTmpSysProcAttr()
+		// Started plainly, as a coding CLI launch is: the launcher enters its own namespaces.
 		out, _ := cmd.CombinedOutput()
 		return string(out)
 	}
