@@ -193,8 +193,9 @@ func inSlotStateFolder(dir, slot string) bool {
 // ANTHROPIC_API_KEY) and never writes it out. Codex writes an API key into its home's auth.json, and Cursor and Muse
 // keep file logins, which the CLI's shells could read; they stay on the app account until that changes (PLAT-872-84).
 func slotLoginFromEnv(provider string) bool {
-	if !strings.EqualFold(strings.TrimSpace(provider), "claude-code") {
-		return false
-	}
-	return strings.TrimSpace(os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")) != "" || strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
+	// Off for now: the Claude Agent SDK launch runs its node bridge as the slot, and slotctl's allow-list does not
+	// list node yet ("slotctl: refused: /usr/bin/node is not an allowed program"), so every Claude Crew turn as a
+	// slot failed. Back on once the host allows the bridge.
+	_ = provider
+	return false
 }
