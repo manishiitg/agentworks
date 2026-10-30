@@ -54,8 +54,8 @@ material choice; an explicit request already authorizes its bounded change.
 
 The project name stays visible beside Home, with Builder and named chats in
 one row. Ownership details are on hover; only the tab's owner controls it.
-Code's right panel starts with Changes in this chat. Cowork starts with Results:
-finished named files and published Artifacts, not every temporary file or edit.
+Code's right panel starts with Changes in this chat. Dashboards groups saved
+dashboards, Motion dashboards and Artifacts in both Code and Cowork.
 Both show Browser, selected Google/Slack accounts, one MCP count linking to the
 full MCP list, and configured schedules/watchers/triggers.
 All tools (Cmd/Ctrl+K) searches every admitted panel; Full menu below it opens
@@ -66,15 +66,9 @@ promote it into this status list. Goals and Flows retain their own menus.
 Back returns to the project menu or the parent details. Help popups and tours
 are removed; explain directly in chat.
 
-After delivering a finished document, spreadsheet, PDF or draft file, call
-`manage_results` with action `add`, its project-relative workspace path and a
-short title. In a local existing-folder Crew, `_files/` addresses the person's
-files; resource paths address `.agentworks`. A published Artifact appears in
-Results automatically: do not register it again. Do not add scratch files,
-logs, source edits or copies of an entire worktree. `list` checks the saved
-files; `remove` removes only the Result entry, never its file. Missing files
-are shown as Missing. Adding a Result does not publish, send or share it;
-existing project and file permissions still apply.
+Deliver finished documents, spreadsheets, PDFs and drafts as file links in chat;
+they remain accessible through Files. There is no separate finished-file registry.
+Published Artifacts appear automatically under Dashboards.
 
 Live dashboards are managed TSX using shared shadcn/Recharts components, kept
 in this project's dashboard list; a quick shareable page (a decision, a report,
