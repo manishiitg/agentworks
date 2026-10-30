@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
 const mocks = vi.hoisted(() => ({ download: vi.fn(), target: vi.fn(), open: vi.fn(), user: { id: 'owner', allowed_products: null as string[] | null }, server: 'local', documents: [] as { id: string; path: string; title: string; order: number; artifact?: boolean }[], status: { apps: [], automations: [], results: [], errors: [] } as any }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
-vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: { can_share: true } }) }, workspaceApi: { get: mocks.download } }))
+vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: { can_share: true } }) }, workspaceApi: { get: mocks.download }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: mocks.user }), { getState: () => ({ user: mocks.user }) }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: mocks.server }), { getState: () => ({ activeWorkspaceId: mocks.server }) }) }))
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
@@ -45,6 +45,15 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   const event = vi.fn(); window.addEventListener('open-quick-switcher', event)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="All tools"]')!.click())
   expect(event.mock.calls[0][0].detail.query).toBe('@panels '); window.removeEventListener('open-quick-switcher', event)
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
+  expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
+  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','Access & sharing']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
+  const files = [...host.querySelectorAll('button')].find(node => node.textContent === 'Files')!
+  await act(async () => files.click()); expect(mocks.open).toHaveBeenLastCalledWith('files')
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Back to workspace')!.click())
+  expect(host.querySelector('h2')?.textContent).toBe('Changes')
+  expect(host.textContent).not.toContain('Models')
+  mocks.open.mockClear()
   const app = [...host.querySelectorAll('button')].find(node => node.textContent?.startsWith('MCPs'))!
   mocks.server = 'another-server'; await act(async () => app.click())
   expect(mocks.open).not.toHaveBeenCalled()
@@ -68,7 +77,7 @@ it('leads Cowork with finished Results, keeps artifacts unique and opens the adm
    const file = [...host.querySelectorAll('button')].find(node => node.textContent === 'Spreadsheet')!
    await act(async () => file.click())
    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Download result"]')!.click())
-   expect(mocks.download).toHaveBeenCalledWith('/api/documents/Crew%2Fexample%2Foutputs%2Freport.xlsx', expect.objectContaining({responseType:'blob'}))
+   expect(mocks.download).toHaveBeenCalledWith('/api/documents/Crew%2Fexample%2Foutputs%2Freport.xlsx/raw', expect.objectContaining({responseType:'blob'}))
    expect(click).toHaveBeenCalledOnce()
   } finally { create.mockRestore(); revoke.mockRestore(); click.mockRestore() }
  })

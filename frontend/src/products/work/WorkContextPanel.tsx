@@ -3,6 +3,8 @@ import { ArrowLeft, Cable, CalendarClock, Download, FileText, LayoutDashboard, R
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
+import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
+import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
@@ -12,13 +14,13 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
-import { crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
+import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
 const FilePreview = lazy(() => import('../../components/workflow/reportWidgets/FileWidget').then(module => ({ default: module.FilePreviewByPath })))
 
-export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget: _dashboardChatTarget, reviewSessionId, mode = 'cowork' }: {
+export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId, mode = 'cowork' }: {
   workspacePath: string
   mode?: 'dev' | 'cowork'
   reviewSessionId?: string
@@ -49,6 +51,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
   const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })
+  const [fullMenuScope, setFullMenuScope] = useState<string>()
   const [preview, setPreview] = useState<{ scope: string; path: string; title: string }>()
   const downloadController = useRef<AbortController | null>(null)
   const [download, setDownload] = useState<{ scope: string; busy: boolean; error?: string }>()
@@ -59,6 +62,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     const admitted = crewProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
     if (!admitted.some(candidate => candidate.id === item.id)) return
+    if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
     if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
     if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
@@ -74,7 +78,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     downloadController.current = controller
     setDownload({ scope, busy: true })
     try {
-      const response = await workspaceApi.get<Blob>(`/api/documents/${encodeURIComponent(currentPreview.path)}`, { params: { download: 'true' }, responseType: 'blob', signal: controller.signal })
+      const response = await workspaceApi.get<Blob>(`/api/documents/${encodeURIComponent(currentPreview.path)}/raw`, { responseType: 'blob', signal: controller.signal })
       if (!currentScope() || controller.signal.aborted) return
       const url = URL.createObjectURL(response.data)
       const link = document.createElement('a')
@@ -89,6 +93,24 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {download?.scope === scope && download.error && <p role="alert" className="px-3 py-2 text-xs text-destructive">{download.error}</p>}
     <div className="min-h-0 flex-1"><Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading result…</p>}><FilePreview key={currentPreview.path} path={currentPreview.path} name={currentPreview.title}/></Suspense></div>
   </div>
+  if (fullMenuScope === scope) {
+    const renderItem = (item: CrewMenuItem) => item.id === 'dashboard'
+      ? <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
+      : item.id === 'browser' ? <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)}/>
+      : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.label}</Row>
+    return <WorkspaceContextCard title="Full menu">
+      <button type="button" onClick={() => setFullMenuScope(undefined)} className="inline-flex items-center gap-2 rounded px-1 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-3.5 w-3.5"/>Back to workspace</button>
+      {CREW_MENU_GROUPS.map(group => {
+        const items = inventory.filter(item => item.group === group)
+        if (!items.length) return null
+        const subgroups = [...new Set(items.flatMap(item => item.subgroup ? [item.subgroup] : []))]
+        return <Group key={`${scope}:${group}`} title={group} collapsed defaultOpen={group === 'Build'}>
+          {items.filter(item => !item.subgroup).map(renderItem)}
+          {subgroups.map(subgroup => <div key={subgroup} role="group" aria-label={subgroup} className="space-y-1"><h3 className="px-1 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{subgroup}</h3>{items.filter(item => item.subgroup === subgroup).map(renderItem)}</div>)}
+        </Group>
+      })}
+    </WorkspaceContextCard>
+  }
   const mcps = (snapshot?.apps || []).filter(item => item.destination === 'mcp:connected')
   const mcpAttention = mcps.filter(item => item.attention).length
   const mcpDetail = !snapshot ? 'Loading…' : snapshot.errors.includes('Connections could not be loaded.') ? 'Unavailable' : `${mcps.length}${mcpAttention ? ` · ${mcpAttention} ${mcpAttention === 1 ? 'needs' : 'need'} attention` : ''}`
@@ -104,7 +126,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {dashboards.map(item => <Row key={item.path} icon={LayoutDashboard} onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }}>{item.title}</Row>)}
   </Group>
   const changes = reviewSessionId && allowed('files') ? <Group title="Changes"><ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={() => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files','review'); onOpen('files') }}/></Group> : null
-  return <WorkspaceContextCard>
+  return <WorkspaceContextCard onFullMenu={() => setFullMenuScope(scope)}>
     {mode === 'dev' && changes}
     {(mode === 'cowork' || artifacts.length > 0 || dashboards.length > 0 || Boolean(snapshot?.results?.length)) && results}
     <Group title="Connections">
