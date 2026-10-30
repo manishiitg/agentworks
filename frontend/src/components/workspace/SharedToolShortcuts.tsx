@@ -6,7 +6,6 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
-import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
 import { enabledProductSurfaces, intersectAllowedProductSurfaces, PRODUCT_SURFACE_LABELS } from '../../products/productSurfaceConfig'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
@@ -43,7 +42,6 @@ export function SharedToolShortcuts() {
             <button type="button" aria-label={title} aria-current={selected ? 'page' : undefined} className={itemClass(selected)}
               onClick={() => {
                 if (!intersectAllowedProductSurfaces(enabledProductSurfaces(), useAuthStore.getState().user?.allowed_products).includes(surface)) return
-                useSidebarHistoryStore.setState(state => ({ request: null, generation: state.generation + 1 }))
                 openProductWorkspace(surface)
               }}>
               <span aria-hidden="true" className="flex h-[18px] w-[18px] items-center justify-center"><ProductSurfaceIcon surface={surface} className="h-[18px] w-[18px] shrink-0" /></span>

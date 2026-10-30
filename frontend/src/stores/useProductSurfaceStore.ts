@@ -1,4 +1,3 @@
-import { useSidebarHistoryStore } from './useSidebarHistoryStore'
 import { useWorkspaceReturnStore } from './useWorkspaceReturnStore'
 import { useCommandDialogStore } from './useCommandDialogStore'
 import { create } from 'zustand'
@@ -24,13 +23,12 @@ export const useProductSurfaceStore = create<ProductSurfaceState>()(
       pendingWorkView: null,
       setProductSurface: (productSurface) => {
         if (get().productSurface !== productSurface) {
-          useSidebarHistoryStore.setState(state => ({ generation: state.generation + 1, request: state.request?.surface === productSurface ? state.request : null }))
           useCommandDialogStore.getState().requestProductCreate(null)
           useWorkspaceReturnStore.setState({ restore: null })
         }
         set({ productSurface })
       },
-      setSelectedWorkProjectId: (selectedWorkProjectId) => { if (get().selectedWorkProjectId !== selectedWorkProjectId) useSidebarHistoryStore.setState(state => ({ generation: state.generation + 1, request: state.request?.surface === 'work' && state.request.projectId === selectedWorkProjectId ? state.request : null })); set({ selectedWorkProjectId }) },
+      setSelectedWorkProjectId: (selectedWorkProjectId) => set({ selectedWorkProjectId }),
       setPendingWorkView: (pendingWorkView) => set({ pendingWorkView }),
     }),
     {
