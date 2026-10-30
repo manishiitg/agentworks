@@ -195,3 +195,44 @@ func TestCardActionsFollowViewerAndPullRequest(t *testing.T) {
 		t.Fatalf("fix prompt: %q", got)
 	}
 }
+
+// A chat's "work done" is the commits after the commit the chat first saw;
+// what is not committed is listed separately, and work committed before the
+// chat started never shows (PLAT-746: merged work kept counting as changes).
+func TestChatGitStateSplitsCommitsFromUncommitted(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "app")
+	os.MkdirAll(repo, 0o700)
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "--quiet")
+	os.WriteFile(filepath.Join(repo, "old.txt"), []byte("before the chat\n"), 0o600)
+	git("add", ".")
+	git("commit", "--quiet", "-m", "before the chat")
+	start := git("rev-parse", "HEAD")
+	os.WriteFile(filepath.Join(repo, "fix.txt"), []byte("fix\n"), 0o600)
+	git("add", ".")
+	git("commit", "--quiet", "-m", "Fix in this chat")
+	os.WriteFile(filepath.Join(repo, "draft.txt"), []byte("not yet\n"), 0o600)
+	g := Group{Kind: "repo", Root: "app"}
+	AddChatGitState(context.Background(), root, &g, start, func(string) bool { return true })
+	if !g.CommitsKnown || len(g.Commits) != 1 || g.Commits[0].Subject != "Fix in this chat" || g.Commits[0].Files != 1 {
+		t.Fatalf("commits = %+v known=%v", g.Commits, g.CommitsKnown)
+	}
+	if len(g.Uncommitted) != 1 || g.Uncommitted[0].Path != "app/draft.txt" {
+		t.Fatalf("uncommitted = %+v", g.Uncommitted)
+	}
+	for _, bad := range []string{"", "--output=/tmp/x", "HEAD~1"} {
+		unknown := Group{Kind: "repo", Root: "app"}
+		AddChatGitState(context.Background(), root, &unknown, bad, func(string) bool { return true })
+		if unknown.CommitsKnown || len(unknown.Commits) != 0 {
+			t.Fatalf("start %q must list no commits: %+v", bad, unknown)
+		}
+	}
+}

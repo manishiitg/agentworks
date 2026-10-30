@@ -521,7 +521,7 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 	}
 	comparison.Record.ExecutionID = ""
 	if op == "snapshot_groups" {
-		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow, true)})
+		externalJSON(w, map[string]any{"snapshot_id": id, "groups": replyFileGroups(ctx, roots, prefix, comparison, allow, true, nil)})
 		return
 	}
 	for i := range comparison.Changes {
