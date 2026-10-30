@@ -104,7 +104,7 @@ func TestChatContextUsageKeepsUnknownCapacity(t *testing.T) {
 	status := func(provider string) {
 		api.terminalStore.HandleEvent(session, storeevents.Event{Type: "status_line", SessionID: session, Timestamp: time.Now(), Data: &agentevents.AgentEvent{
 			Type: agentevents.StreamingStatusLine,
-			Data: &agentevents.StreamingStatusLineEvent{Provider: provider, Metadata: map[string]interface{}{
+			Data: &agentevents.StreamingStatusLineEvent{Provider: provider, TmuxSession: "context-status-fixture", Metadata: map[string]interface{}{
 				llmtypes.ContextUsedTokensMetaKey: 700000, llmtypes.ContextWindowTokensMetaKey: 1000000,
 			}},
 		}})
