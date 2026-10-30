@@ -10,10 +10,12 @@ import (
 
 	"github.com/gorilla/mux"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
 // A real signed-in recipient's dashboard cannot adopt the owner's chat or
 // change its recorded owner; reopening resolves the same private recipient chat.
+// A shared Crew needs no saved dashboard to open that conversation.
 func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AUTH_SECRET", "project-chat-ownership-test-secret")
@@ -60,6 +62,11 @@ func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 	_, again := call("other")
 	if again["conversation"].(map[string]any)["session_id"] != readerID {
 		t.Fatal("recipient chat identity changed on reopen")
+	}
+
+	listed, err := dashboardWorkspaceRequest(t.Context(), dashboards.Request{Root: externalCommandCrewRoot, Action: "list", IncludeDraft: true})
+	if err != nil || len(listed.Dashboards) != 0 {
+		t.Fatalf("Ask required or created a dashboard: %+v %v", listed, err)
 	}
 	// A conflicting stored owner is a refusal, never repaired by adoption.
 	f.api.eventStore.SetSessionOwner(readerID, "owner")
