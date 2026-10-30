@@ -39,7 +39,7 @@ it('uses the five category groups, opens Build for a new Crew and preserves ever
   await render(async host => {
     expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
     expect([...host.querySelectorAll('details')].map(node => node.open)).toEqual([true, false, false, false, false])
-    for (const label of ['Dashboards', 'Functions', 'Skills', 'Files', 'Database', 'Plan', 'Schedules', 'Watchers', 'Webhooks', 'Browser', 'Chat history', 'Slack bot', 'Vault', 'Access & sharing', 'Memory', 'Models', 'Instructions & identity', 'Terminal']) {
+    for (const label of ['Dashboards', 'Functions', 'Skills', 'Files', 'Database', 'Plan', 'Schedules', 'Watchers', 'Webhooks', 'Browser', 'Chat history', 'Slack bot', 'MCPs', 'Access & sharing', 'Memory', 'Models', 'Instructions & identity', 'Terminal']) {
       expect([...host.querySelectorAll('button')].filter(node => node.textContent === label), label).toHaveLength(1)
     }
     await act(async () => button(host, 'Webhooks').click())
