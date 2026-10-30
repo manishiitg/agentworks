@@ -46,7 +46,7 @@ export function ProjectBrainLibrary() {
       {entries.map(item => <li key={item.entry_id} className="flex items-center gap-2 px-3 py-2.5"><FileText className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 truncate" title={item.path}>{item.title || item.filename}</span><span className="text-muted-foreground">{item.type}</span>{item.updated_at && <time dateTime={item.updated_at} className="text-muted-foreground">{new Date(item.updated_at).toLocaleDateString()}</time>}</li>)}
     </ul>
     {loading && <p role="status" className="p-3 text-muted-foreground">Loading knowledge…</p>}
-    {!loading && !error && !folders.length && !entries.length && !cursors.folders && !cursors.entries && <p className="p-4 text-muted-foreground">No knowledge in this folder. Ask AI to help add notes, files or skills.</p>}
+    {!loading && !error && !folders.length && !entries.length && !cursors.folders && !cursors.entries && <p className="p-4 text-muted-foreground">No knowledge in this folder. Ask in chat to add notes, files or skills.</p>}
     {(cursors.folders || cursors.entries) && <Button size="sm" variant="ghost" disabled={loading} onClick={() => void more()}>Show more</Button>}
   </section>
 }

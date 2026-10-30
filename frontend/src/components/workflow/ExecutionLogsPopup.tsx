@@ -4,13 +4,11 @@ import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
 import type { RunFolderInfo, StepExecutionLogs } from '../../services/api-types'
 import { agentApi } from '../../services/api'
 import InspectorShell from './InspectorShell'
-import { AskAIButton } from './AskAIButton'
 import { LogsHeader } from './executionLogs/LogsHeader'
 import { StepContent } from './executionLogs/StepContent'
 import { StepList } from './executionLogs/StepList'
 import { useExecutionLogsData } from './executionLogs/useExecutionLogsData'
-import { buildEmptyAskMessage, buildRunAskMessage } from './executionLogs/logsAskAI'
-import { formatLogFileContent, formatRunFolderLabel, getStepDisplayTitle, getStepLatestError, getStepStatus, isWebhookRunFolder, sortStepEntriesByExecution } from './executionLogs/helpers'
+import { formatLogFileContent, getStepStatus, isWebhookRunFolder, sortStepEntriesByExecution } from './executionLogs/helpers'
 
 const headerRowClass = 'flex items-center justify-between gap-3 border-b border-border px-3 py-2'
 
@@ -30,7 +28,6 @@ interface ExecutionLogsPopupProps {
   // stays invisible in the dropdown no matter how many times the panel's own
   // refresh is clicked.
   onRefreshRunFolders?: () => void | Promise<void>
-  headerAction?: React.ReactNode
 }
 
 const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
@@ -43,7 +40,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
   runFolderInfos = [],
   startedAt,
   onRefreshRunFolders,
-  headerAction,
 }) => {
   const {
     runFolderOptions,
@@ -85,15 +81,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
     () => sortedStepEntries.filter(([, stepLogs]) => getStepStatus(stepLogs) === 'failed'),
     [sortedStepEntries],
   )
-  const askMessage = useMemo(() => selectedRunFolder ? buildRunAskMessage({
-    runFolder: selectedRunFolder,
-    folderLabel: formatRunFolderLabel(selectedRunFolder),
-    stepCount: sortedStepEntries.length,
-    failedSteps: failedEntries.map(([stepId, stepLogs]) => ({
-      title: getStepDisplayTitle(stepId, stepLogs),
-      error: getStepLatestError(stepLogs) || undefined,
-    })),
-  }) : buildEmptyAskMessage(), [selectedRunFolder, sortedStepEntries, failedEntries])
   // Open the first failed step once per run folder so the failure is the
   // first thing read. Never steals an explicit user selection, and never
   // re-fires on the 2.5 s silent polls.
@@ -160,7 +147,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
       stepId={stepId}
       stepLogs={stepLogs}
       logs={logs}
-      askContext={{ workspacePath, runFolder: selectedRunFolder }}
       stepSearchQueries={stepSearchQueries}
       setStepSearchQueries={setStepSearchQueries}
       expandedValidations={expandedValidations}
@@ -190,9 +176,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
           loading={loading}
           loadLogs={loadLogs}
           onRefreshRunFolders={onRefreshRunFolders}
-          headerAction={headerAction}
-          askMessage={askMessage}
-          askWorkspacePath={workspacePath}
           showWebhookPayload={webhookRun}
           webhookPayloadOpen={webhookPayloadOpen}
           onToggleWebhookPayload={() => setWebhookPayloadOpen(open => !open)}
@@ -229,9 +212,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
                   ? `Choose from ${runFolderOptions.length} available ${runFolderOptions.length === 1 ? 'run' : 'runs'} above.`
                   : 'No run folders available. Execute an automation to generate logs.'}
               </p>
-              <div className="mt-4">
-                <AskAIButton workspacePath={workspacePath} message={buildEmptyAskMessage()} />
-              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -251,9 +231,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
                       Try selecting a different iteration or group from the dropdown above.
                     </p>
                   )}
-                  <div className="mt-4">
-                    <AskAIButton workspacePath={workspacePath} message={askMessage} />
-                  </div>
                 </div>
               )}
 
@@ -315,7 +292,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
                 expandedSteps={expandedSteps}
                 toggleStep={toggleStep}
                 renderStepContent={renderStepContent}
-                askContext={{ workspacePath, runFolder: selectedRunFolder }}
               />
             </div>
           )}

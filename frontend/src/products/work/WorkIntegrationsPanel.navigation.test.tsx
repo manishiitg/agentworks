@@ -5,7 +5,6 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({ allowed_products: null as string[] | null, target: (_value: string) => {}, ask: vi.fn(), save: vi.fn() }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (s: unknown) => unknown) => selector({ user: { allowed_products: state.allowed_products } }) }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ useWorkspaceViewTarget: (_view: string, apply: (target: string) => void) => { state.target = apply } }))
-vi.mock('../../components/workflow/bots/gmailAskAI', () => ({ getGoogleAppsAskAIMessage: () => 'Google help' }))
 vi.mock('../../components/workflow/WorkspaceViewHeader', () => ({ WorkspaceViewHeader: ({ title, below, tabs, actions }: any) => <header><h2>{title}</h2>{below}{tabs && <div aria-label={tabs.ariaLabel}>{tabs.options.map((tab: any) => <button key={tab.value} onClick={() => tabs.onChange(tab.value)}>{tab.label}</button>)}</div>}{actions}</header> }))
 vi.mock('../../components/workflow/WorkspaceViewActions', () => ({ WorkspaceViewActions: () => null }))
 vi.mock('../../components/integrations/SlackAccountsPanel', () => ({ default: () => <div data-content="slack-account">Existing Slack account permissions</div> }))
@@ -23,8 +22,7 @@ vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMc
 vi.mock('./CrewPublishedAgents', () => ({ CrewPublishedAgents: () => <div data-content="agents">Chats from your computer</div> }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }), useProjectMode: () => 'dev' }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
-vi.mock('../../components/integrations/ProjectIntegrationPanel', () => ({ integrationPanelQuestion:(section:string,label:string)=>`${section}:${label}`, INTEGRATION_LABELS: {github:'GitHub',connected:'MCPs',available:'Available MCPs',secrets:'Secrets',gmail:'Google apps','slack-account':'Slack account',laptop:'Local laptop'}, ProjectIntegrationPanel: ({section}: any) => <section data-content={section} data-integration-section={section}>Native integration</section> }))
-vi.mock('../../components/workflow/AskAIButton',()=>({AskAIButton:({message}:any)=><button data-ask-ai={message}>Ask AI</button>}))
+vi.mock('../../components/integrations/ProjectIntegrationPanel', () => ({ INTEGRATION_LABELS: {github:'GitHub',connected:'MCPs',available:'Available MCPs',secrets:'Secrets',gmail:'Google apps','slack-account':'Slack account',laptop:'Local laptop'}, ProjectIntegrationPanel: ({section}: any) => <section data-content={section} data-integration-section={section}>Native integration</section> }))
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import { CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
 
@@ -76,6 +74,5 @@ it('opens each resource directly without a My Vault destination', async () => {
  for (const target of ['connected','available','secrets','gmail','slack-account','laptop','github']) {
   await act(async () => state.target(target))
   expect(host.querySelector('[data-integration-section]')?.getAttribute('data-integration-section')).toBe(target)
-  expect(host.querySelector('[data-ask-ai]')?.getAttribute('data-ask-ai')).toContain(target+':')
  }
 })

@@ -1,17 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-describe('workflow Ask AI placement', () => {
-  it('keeps Ask AI inside every selected view instead of the global toolbar', () => {
-    const toolbar = readFileSync('src/components/workflow/canvas/WorkflowToolbar.tsx', 'utf8')
-    const host = readFileSync('src/components/workflow/canvas/WorkspaceViewHost.tsx', 'utf8')
-
-    expect(toolbar).not.toContain('<AskAIButton')
-    expect(host).not.toContain('data-ui-view-assistant')
-    expect(host).toContain('headerAction={askAI(')
-    expect(host).toContain('assistantControl={workspacePath ? (')
-  })
-
+describe('workflow workspace placement', () => {
   it('uses the context control for both Goals and Flows while preserving the Run-only Flow dashboard', () => {
     const toolbar = readFileSync('src/components/workflow/canvas/WorkflowToolbar.tsx', 'utf8')
     const layout = readFileSync('src/components/workflow/WorkflowLayout.tsx', 'utf8')

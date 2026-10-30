@@ -23,11 +23,6 @@ vi.mock("../../hooks/useCanWriteWorkflow", () => ({
 vi.mock("../ui/MarkdownRenderer", () => ({
   MarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div>,
 }));
-// The folders header offers Ask AI; stub the button so these tests don't pull
-// the chat/LLM store chain through the services/api mock.
-vi.mock("./AskAIButton", () => ({
-  AskAIButton: ({ label }: { label?: string }) => <button type="button">{label ?? "Ask AI"}</button>,
-}));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -171,7 +166,7 @@ it("reads shared notes through the consumer-scoped API and surfaces failed colle
   expect(host.textContent).toContain("Source permission revoked");
 });
 
-it("offers no manual attach in the folders variant; adding goes through Ask AI", async () => {
+it("offers no manual attach in the folders variant; adding goes through chat", async () => {
   vi.mocked(workflowManifestApi.getKnowledgebaseSources).mockResolvedValue({
     success: true,
     sources: [source],
@@ -285,11 +280,9 @@ it("keeps the connected work view free of manual attach forms", async () => {
   expect(host.querySelector("form")).toBeNull();
   expect(host.textContent).not.toContain("External folders");
   expect(host.textContent).not.toContain("Want to link something else?");
-  expect([...host.querySelectorAll("button")].some(button => button.textContent === "Ask AI to link")).toBe(false);
-  expect(host.querySelector("header")?.textContent).toContain("Ask AI");
 });
 
-it("keeps the header and Ask AI above the source picker without automatic refresh", async () => {
+it("keeps the header and its action above the source picker without automatic refresh", async () => {
   vi.mocked(workflowManifestApi.getKnowledgebaseSources).mockResolvedValue({
     success: true,
     sources: [source],
@@ -301,16 +294,16 @@ it("keeps the header and Ask AI above the source picker without automatic refres
   const host = await mount(
     <KnowledgebaseView
       workspacePath="Workflow/consumer"
-      headerAction={<button type="button" data-testid="ask-ai">Ask AI</button>}
+      headerAction={<button type="button" data-testid="header-action">Page action</button>}
     />,
   );
   const html = host.innerHTML;
   const titleIndex = html.indexOf(">Knowledgebase<");
   const pickerIndex = html.indexOf('aria-label="Knowledge sources"');
-  const askIndex = html.indexOf('data-testid="ask-ai"');
+  const actionIndex = html.indexOf('data-testid="header-action"');
   const refreshIndex = html.indexOf('aria-label="Refresh knowledgebase"');
   expect(titleIndex).toBeGreaterThanOrEqual(0);
   expect(pickerIndex).toBeGreaterThan(titleIndex);
-  expect(askIndex).toBeGreaterThanOrEqual(0);
+  expect(actionIndex).toBeGreaterThanOrEqual(0);
   expect(refreshIndex).toBe(-1);
 });

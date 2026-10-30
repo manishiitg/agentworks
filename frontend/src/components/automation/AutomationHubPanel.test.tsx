@@ -35,31 +35,21 @@ vi.mock('../workflow/WorkflowFunctionsView', () => ({ default: (props: Record<st
 vi.mock('./ConditionTriggersView', () => ({ default: ({ scope }: { scope: { profileId: string; projectId: string } }) => <div data-testid="conditions" data-source={scope.profileId} data-project={scope.projectId}>Watchers</div> }))
 vi.mock('./CrewFunctionsView', () => ({ default: () => <div data-testid="functions">Function content</div> }))
 vi.mock('./TriggerDeliveryHistoryPanel', () => ({ TriggerDeliveryHistoryPanel: () => <div data-testid="delivery-history" /> }))
-const { askAIProps } = vi.hoisted(() => ({ askAIProps: { current: null as null | Record<string, unknown> } }))
-vi.mock('../workflow/AskAIButton', () => ({
-  AskAIButton: (props: Record<string, unknown>) => {
-    askAIProps.current = props
-    return <button type="button" data-testid="ask-ai" data-message={String(props.message)}>Ask AI</button>
-  },
-}))
 
 const { inboxCapability } = vi.hoisted(()=>({inboxCapability:{enabled:true}}))
-vi.mock('../integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled:()=>inboxCapability.enabled, agentInboxAskMessage: 'Configure inbox Watcher', AgentInboxPanel: (props: { workspacePath: string; onAsk?: (message:string) => void }) => <button data-testid="incoming-email" onClick={() => props.onAsk?.('email help')}>{props.workspacePath}</button> }))
+vi.mock('../integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled:()=>inboxCapability.enabled, AgentInboxPanel: (props: { workspacePath: string }) => <div data-testid="incoming-email">{props.workspacePath}</div> }))
 import { AutomationHubPanel } from './AutomationHubPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 // Navigation is supplied by the shared side list. Pin inbox routing rather than the retired tab layout.
-it.each(['work','code'] as const)('opens the shared Inbox for %s and keeps Ask in its product', async profile => {
- const host=document.createElement('div');const root=createRoot(host);const onAsk=vi.fn()
+it.each(['work','code'] as const)('opens the shared Inbox for %s', async profile => {
+ const host=document.createElement('div');const root=createRoot(host)
  inboxCapability.enabled=true
  storeState.workspaceViewTarget={view:'workshop',target:'email',token:1}
  try {
-  await act(async()=>root.render(<AutomationHubPanel entityType="product" workspacePath="Crew/example" productTriggerScope={{profileId:profile,projectId:'example'}} onAskAI={onAsk}/>))
-  const inbox=host.querySelector<HTMLButtonElement>('[data-testid="incoming-email"]')
-  expect(inbox).not.toBeNull()
-  await act(async()=>inbox!.click())
-  expect(onAsk).toHaveBeenCalledWith('email help')
+  await act(async()=>root.render(<AutomationHubPanel entityType="product" workspacePath="Crew/example" productTriggerScope={{profileId:profile,projectId:'example'}}/>))
+  expect(host.querySelector('[data-testid="incoming-email"]')).not.toBeNull()
   expect(host.querySelector('[role="tablist"]')).toBeNull()
  }finally{storeState.workspaceViewTarget=null;await act(async()=>root.unmount())}
 })

@@ -41,16 +41,6 @@ const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'location', label: 'Laptop access' },
 ]
 
-function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<WorkIdentityTab, string> {
-  return {
-    general: hasIdentity
-      ? `Help me with this ${noun} project's name, icon, and purpose. Explain what's set and ask what I want to change.`
-      : `Help me with this ${noun} project's name. Explain what's set and ask what I want to change.`,
-    models: 'Help me choose between the coding agents available for this project. Explain the practical differences before changing anything.',
-    location: 'Explain how this server Crew can also run commands on my connected computer and copy its files into the Crew.',
-  }
-}
-
 // Code has a name only: rename and delete, no identity or purpose.
 /** The mode this project was created in. It cannot change, so it is shown as plain text. */
 function ModeRow({ sessionId }: { sessionId: string }) {
@@ -268,7 +258,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
+export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -285,7 +275,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
   selectedGlobalSecrets: string[]
   projectLLMConfig?: PresetLLMConfig
   enabledPanels?: Set<string>
-  onAsk: (message: string) => Promise<void>
   onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>
   nativeAgentTools?: boolean
   /** Omitted for readers: only the Crew owner can change it. */
@@ -297,7 +286,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
 }) {
   const product = useProjectProduct()
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId || '')
-  const askMessages = identityTabAskAIMessage(product.noun, product.hasIdentity)
   const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
   useEffect(() => {
@@ -317,9 +305,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
         title={modelsOnly ? 'Models' : 'Settings'}
         actions={(
           <WorkspaceViewActions
-            workspacePath={workspacePath}
-            message={askMessages[activeTab]}
-            onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />

@@ -2,10 +2,8 @@ import { Children, Fragment, cloneElement, createElement, isValidElement, type C
 import { createPortal } from 'react-dom'
 import { useWorkspacePanelHeaderSlots } from '../workspace/WorkspacePanelHeaderSlots'
 import { WorkspaceViewTabs, type WorkspaceViewTabOption } from './WorkspaceViewTabs'
-import { panelAskFromNode, type PanelAsk } from './workspacePanelAsk'
 import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
-import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 
 export interface WorkspaceViewHeaderTabs {
   value: string
@@ -31,7 +29,7 @@ type WorkspaceViewHeaderProps = {
   context?: ReactNode
   /** Muted line under the title row. */
   subtitle?: ReactNode
-  /** Right side: page actions. Contextual questions go to the panel header when hosted. */
+  /** Right side: page actions. */
   actions?: ReactNode
   /** Full-width row under the title (stats strip, pills). For tabs use the tabs prop. */
   below?: ReactNode
@@ -40,7 +38,7 @@ type WorkspaceViewHeaderProps = {
   /**
    * Per-tab extra action icons, keyed by tab value. The active tab's extras
    * render left of `actions` (tertiary-left-of-pair rule). To change the base
-   * pair itself per tab (Ask AI message, refresh handler), compute `actions`
+   * pair itself per tab (refresh handler), compute `actions`
    * from the tab instead — see WorkflowCapabilitiesPanel.
    */
   tabActions?: Partial<Record<string, ReactNode>>
@@ -67,7 +65,7 @@ type WorkspaceViewHeaderProps = {
  *   render as-is at the same h-8 footprint
  * - title: text-sm font-semibold in the shared compact heading
  * - subtitle: text-xs text-muted-foreground, rendered here
- * - actions: page operations and contextual chat, with Back only for nested details
+ * - actions: page operations, with Back only for nested details
  */
 /** The panels refresh themselves now (owner, 2026-10-20), so the header's own Refresh icons are dropped. */
 function isPlainRefresh(node: ReactNode): boolean {
@@ -79,18 +77,6 @@ function withoutRefresh(actions: ReactNode): ReactNode {
   if (isPlainRefresh(actions)) return null
   if (isValidElement<{ children?: ReactNode }>(actions) && actions.type === Fragment) return <>{Children.toArray(actions.props.children).filter(child => !isPlainRefresh(child))}</>
   return actions
-}
-
-function headerAsk(actions: ReactNode): PanelAsk | undefined {
-  const direct = panelAskFromNode(actions)
-  if (direct) return direct
-  if (isValidElement<WorkspaceViewActionsProps>(actions) && actions.type === WorkspaceViewActions) return { workspacePath: actions.props.workspacePath, message: actions.props.message, onAsk: actions.props.onAsk }
-  if (isValidElement<{ children?: ReactNode }>(actions)) {
-    for (const child of Children.toArray(actions.props.children)) {
-      const found = headerAsk(child)
-      if (found) return found
-    }
-  }
 }
 
 export function WorkspaceViewHeader({
@@ -108,7 +94,6 @@ export function WorkspaceViewHeader({
   className = '',
   tabActions,
 }: WorkspaceViewHeaderProps) {
-  useWorkspacePanelAssistant(headerAsk(rawActions))
   const actions = withoutRefresh(rawActions)
   const hasSubtitle = typeof subtitle === 'string' ? subtitle.trim().length > 0 : Boolean(subtitle)
   const tabExtra = tabs ? tabActions?.[tabs.value] : undefined

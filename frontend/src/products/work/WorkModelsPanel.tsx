@@ -29,7 +29,6 @@ export function WorkModelsPanel({
   tabId,
   workspacePath,
   projectId: projectIdProp,
-  onAsk,
   projectLLMConfig,
   onRuntimeChange,
   hideHeader,
@@ -40,7 +39,6 @@ export function WorkModelsPanel({
   tabId: string
   workspacePath: string
   projectId?: string
-  onAsk?: (message: string) => void
   projectLLMConfig?: PresetLLMConfig
   onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>
   hideHeader?: boolean
@@ -220,7 +218,7 @@ export function WorkModelsPanel({
   }
 
   // Embedded in the Identity view's Models tab: the shared header owns the
-  // title, tabs, and Ask AI, and the tab owns the scroll.
+  // title and tabs, and the tab owns the scroll.
   const savedProviderUnusable = Boolean(accounts !== null && selectedOption?.provider && !workProviderIds.includes(selectedOption.provider))
   const body = (
     <>
@@ -366,9 +364,6 @@ export function WorkModelsPanel({
         icon={BrainCircuit}
         title="Project agent configuration"
         actions={<WorkspaceViewActions
-          workspacePath={workspacePath}
-          message="Help me choose between the coding agents available for this project. Explain the practical differences before changing anything."
-          onAsk={onAsk}
           onRefresh={refresh}
           refreshing={refreshing}
           refreshLabel="Refresh models"

@@ -13,7 +13,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update project triggers'
 }
 
-export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const { profileId, projectId } = scope
   const [triggers, setTriggers] = useState<ProductAPITrigger[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
@@ -70,10 +70,7 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
       icon={Webhook}
       title="Triggers"
       subtitle="Send one saved message to this project when an external service sends authenticated JSON."
-      actions={<>
-        {headerAction}
-        <WorkspaceViewIconButton label="Refresh project triggers" onClick={() => void refresh()} />
-      </>}
+      actions={<WorkspaceViewIconButton label="Refresh project triggers" onClick={() => void refresh()} />}
     />}
     <div className="space-y-4 p-4">
     <AutomationIntro icon={Webhook} tone="amber" title="Webhooks">

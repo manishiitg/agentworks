@@ -18,7 +18,7 @@ type WorkflowReferenceAccessProps = {
   additionalReferences?: AdditionalReadOnlyReference[]
   additionalLabel?: string
   showAdditionalGroup?: boolean
-  /** Hide the attach dropdowns: the list stays visible with remove, adding goes through Ask AI. */
+  /** Hide the attach dropdowns: the list stays visible with remove, adding goes through chat. */
   hideAdd?: boolean
   /** More groups of attachable projects (a Code project's other Code projects), each with its own heading and picker. */
   extraGroups?: Array<{ label: string; description: string; placeholder: string; references: AdditionalReadOnlyReference[] }>
@@ -104,7 +104,7 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
         </div>
       </div>
       <div className="mt-3 grid gap-3">
-        {hideAdd && !normalizedSelected.length && <p className="text-xs text-muted-foreground">No linked work. Use Ask AI to link a project.</p>}
+        {hideAdd && !normalizedSelected.length && <p className="text-xs text-muted-foreground">No linked work. Ask in chat to link a project.</p>}
         {renderGroup('Workflows', 'Reusable automations you have built.', workflowReferences, availableWorkflows, 'Attach a workflow…')}
         {showAdditionalGroup && renderGroup(additionalLabel, 'Your other Crews.', crewReferences, availableCrew, `Attach ${additionalLabel}…`)}
         {extraGroups.map((group, index) => <div key={group.label}>{renderGroup(group.label, group.description, extraReferences[index], extraReferences[index].filter(reference => !normalizedSelected.includes(reference.path)), group.placeholder, true)}</div>)}

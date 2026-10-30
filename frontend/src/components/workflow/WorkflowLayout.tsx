@@ -161,7 +161,7 @@ import {
 import { isVisibleActivitySession } from '../../utils/activitySessions'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { isWorkspacePaneView } from './workspaceViews'
-import { hasWorkflowContractUpgrade, MANUAL_CONTRACT_UPGRADE_MESSAGE, WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, type WorkflowContractUpgradeChatEvent } from './workflowContractUpgradeEvents'
+import { hasWorkflowContractUpgrade, MANUAL_CONTRACT_UPGRADE_MESSAGE, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT } from './workflowContractUpgradeEvents'
 // Inactive workflow tabs hydrate lazily and fall back to workflow-scoped chat history.
 
 const WORKFLOW_RESTORE_TIMEOUT_MS = 8000
@@ -922,14 +922,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   contractUpgradeWorkspaceRef.current = workspacePath
   const contractUpgradeRequestRef = useRef(0)
   const [contractUpgradeChat, setContractUpgradeChat] = useState<{ workspacePath: string; tabId: string } | null>(null)
-  useEffect(() => {
-    const onChatRequest = (event: Event) => {
-      const detail = (event as WorkflowContractUpgradeChatEvent).detail
-      if (detail?.workspacePath === workspacePath) setContractUpgradeChat(detail)
-    }
-    window.addEventListener(WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, onChatRequest)
-    return () => window.removeEventListener(WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, onChatRequest)
-  }, [workspacePath])
   const contractUpgradeTab = useChatStore(state =>
     contractUpgradeChat?.workspacePath === workspacePath ? state.chatTabs[contractUpgradeChat.tabId] : undefined
   )

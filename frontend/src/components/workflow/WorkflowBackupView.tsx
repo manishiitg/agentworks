@@ -10,7 +10,6 @@ interface WorkflowBackupViewProps {
   // Called whenever backup info is (re)loaded, so the parent can keep an
   // at-a-glance status indicator (e.g. the toolbar dot) in sync.
   onStateLoaded?: (state: string) => void
-  headerAction?: React.ReactNode
 }
 
 const FALLBACK_SUPPORTED_STRATEGIES: WorkflowBackupStrategyInfo[] = [
@@ -67,7 +66,6 @@ export const getBackupSummary = (backupInfo: WorkflowBackupInfoResponse | null, 
 const WorkflowBackupView: React.FC<WorkflowBackupViewProps> = ({
   workspacePath,
   onStateLoaded,
-  headerAction,
 }) => {
   const loadInfo = useCallback(async () => {
     if (!workspacePath) throw new Error('No workflow is selected')
@@ -82,12 +80,8 @@ const WorkflowBackupView: React.FC<WorkflowBackupViewProps> = ({
       subtitle="Remote backups"
       emptyDestinationsText="No backup destinations yet — set one up with /backup in chat."
       destinationsHelp="After every run refreshes a configured backup only when something changed."
-      askContext={{
-        workspacePath,
-        strategyVerb: 'back up this workflow with',
-      }}
       getSummary={getBackupSummary}
-      headerAction={<>{headerAction}<GoalAfterRunToggle workspacePath={workspacePath} option="backup" /></>}
+      headerAction={<GoalAfterRunToggle workspacePath={workspacePath} option="backup" />}
     />
   )
 }

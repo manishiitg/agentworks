@@ -5,14 +5,12 @@ import { playbooksApi } from '../../api/playbooks'
 import type { InstalledPlaybook } from '../../services/api-types'
 import { useCanWriteWorkflow, READ_ONLY_TITLE } from '../../hooks/useCanWriteWorkflow'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { AskAIButton } from '../workflow/AskAIButton'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { agentApi } from '../../services/api'
 import { responseContent } from '../../utils/plannerFiles'
 import { parsePlaybookSetupProgress, type PlaybookSetupProgress } from './playbookSetupProgress'
-import { playbookSetupMessage } from './playbookSetupMessage'
 
 type PlaybooksPanelProps = {
   workspacePath: string | null
@@ -232,7 +230,6 @@ export default function PlaybooksPanel({ workspacePath }: PlaybooksPanelProps) {
               <>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" /> {isCrewProposal ? 'Proposal saved' : 'Workflow guide saved'} v{installedSelection.version} · {installedSelection.status}</span>
-                  <AskAIButton workspacePath={workspacePath} label="Continue setup in Builder" message={playbookSetupMessage(selected, installedSelection.skill_name)} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90" />
                 </div>
                 {updateAvailable && (
                   <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
@@ -309,7 +306,6 @@ export default function PlaybooksPanel({ workspacePath }: PlaybooksPanelProps) {
                                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{playbook.description}</p>
                                 <span className="mt-2 inline-flex rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{playbook.agentSlots?.length ? 'Crew automation proposal' : 'Workflow guide'}</span>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <AskAIButton workspacePath={workspacePath} label="Ask about this playbook" message={`Explain the ${JSON.stringify(playbook.title)} playbook (catalog id ${JSON.stringify(playbook.id)}, v${playbook.version}): what it sets up, what inputs it needs, and whether it fits this workflow. If I confirm I want it, walk me through installing it from its detail view and the setup that follows.`} />
                                   <Button type="button" variant="ghost" size="sm" aria-label={`Open ${playbook.title} details`} onClick={() => setSelected(playbook)}>
                                     Details <ChevronRight className="h-3.5 w-3.5" />
                                   </Button>

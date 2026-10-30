@@ -4,14 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import type { ExecutionLogsResponse } from '../../../services/api-types'
 
-const { askProps } = vi.hoisted(() => ({ askProps: [] as Array<Record<string, unknown>> }))
 vi.mock('../../ui/MarkdownRenderer', () => ({ MarkdownRenderer: () => null, ConversationMarkdownRenderer: () => null }))
-vi.mock('../AskAIButton', () => ({
-  AskAIButton: (props: Record<string, unknown>) => {
-    askProps.push(props)
-    return <button type="button" data-testid="step-ask" data-message={String(props.message)}>Ask AI</button>
-  },
-}))
 
 import { StepList } from './StepList'
 
@@ -34,7 +27,6 @@ const okStep = {
 const logs = { steps: { 'step-1': failedStep, 'step-2': okStep } } as unknown as ExecutionLogsResponse
 
 async function mount(props: Partial<React.ComponentProps<typeof StepList>> = {}) {
-  askProps.length = 0
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   const toggleStep = vi.fn()
@@ -46,7 +38,6 @@ async function mount(props: Partial<React.ComponentProps<typeof StepList>> = {})
       expandedSteps={new Set()}
       toggleStep={toggleStep}
       renderStepContent={() => null}
-      askContext={{ workspacePath: 'Workflow/test', runFolder: 'iteration-1/default' }}
       {...props}
     />,
   ))
@@ -103,20 +94,6 @@ it('filters to failed steps on request', async () => {
   try {
     expect(host.textContent).toContain('Classify intent')
     expect(host.textContent).not.toContain('Draft reply')
-  } finally {
-    await unmount()
-  }
-})
-
-it('asks about each step with status and evidence', async () => {
-  const { host, unmount } = await mount()
-  try {
-    expect(host.querySelectorAll('[data-testid="step-ask"]').length).toBe(2)
-    const failed = askProps.find(props => String(props.message).includes('"Classify intent"'))
-    expect(String(failed?.message)).toContain('failed')
-    expect(String(failed?.message)).toContain('rate limit exceeded')
-    const ok = askProps.find(props => String(props.message).includes('"Draft reply"'))
-    expect(String(ok?.message)).toContain('completed')
   } finally {
     await unmount()
   }

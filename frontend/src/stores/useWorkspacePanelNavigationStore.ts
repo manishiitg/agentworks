@@ -9,15 +9,6 @@ export interface WorkspacePanelBackAction {
   onBack: () => void
 }
 
-export interface WorkspacePanelAssistantAction {
-  owner: symbol
-  scope: string
-  workspacePath: string | null
-  message: string
-  getChatTarget?: () => WorkspacePanelChatTarget | undefined
-  onOpenChat?: () => void
-}
-
 type DraftRequest = Parameters<typeof import('../utils/workspacePaneChat').openWorkspacePaneChatWithDraft>[0]
 type WithoutMessage<T> = T extends unknown ? Omit<T, 'message'> : never
 export type WorkspacePanelChatTarget = WithoutMessage<DraftRequest>
@@ -33,18 +24,11 @@ export function useWorkspacePanelScope(workspacePath: string | null | undefined,
 export const useWorkspacePanelNavigationStore = create<{
   actions: WorkspacePanelBackAction[]
   register: (action: WorkspacePanelBackAction) => () => void
-  assistants: WorkspacePanelAssistantAction[]
-  registerAssistant: (action: WorkspacePanelAssistantAction) => () => void
 }>(set => ({
   actions: [],
   register: action => {
     set(state => ({ actions: [...state.actions.filter(item => item.owner !== action.owner), action] }))
     return () => set(state => ({ actions: state.actions.filter(item => item.owner !== action.owner) }))
-  },
-  assistants: [],
-  registerAssistant: action => {
-    set(state => ({ assistants: [...state.assistants.filter(item => item.owner !== action.owner), action] }))
-    return () => set(state => ({ assistants: state.assistants.filter(item => item.owner !== action.owner) }))
   },
 }))
 

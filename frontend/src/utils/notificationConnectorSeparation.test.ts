@@ -25,8 +25,6 @@ describe('bot and notification settings separation', () => {
     expect(host).toContain('<WorkflowNotificationView')
     expect(notifications).toContain('Notifications on')
     expect(notifications).toContain('Workflow Slack webhook')
-    expect(notifications).toContain('Help me with Gmail notifications')
-    expect(notifications).toContain('label="Change" message="/notify"')
     expect(notifications).not.toContain('My routing')
   })
 })

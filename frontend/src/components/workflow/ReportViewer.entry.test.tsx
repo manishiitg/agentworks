@@ -12,7 +12,7 @@ vi.mock('./reportWidgets/FilePreviewModal', () => ({ FilePreviewModal: () => nul
 vi.mock('./reportWidgets/DashboardQuestionConversation', () => ({ DashboardQuestionConversation: () => null }))
 vi.mock('./reportWidgets/ReportQuestionFrame', () => ({ ReportQuestionFrame: ({ title, documentPath }: any) => <div data-document={documentPath}>{title}</div> }))
 vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: () => null }))
-vi.mock('../workspace/WorkspacePanelNavigation', () => ({ useWorkspacePanelAssistant: () => false, useWorkspacePanelHosted: () => false, useWorkspacePanelChatDraft: () => undefined }))
+vi.mock('../workspace/WorkspacePanelNavigation', () => ({ useWorkspacePanelChatDraft: () => undefined }))
 import { ReportView } from './ReportViewer'
 import { allowedReportPath } from './reportWidgets/reportMarkdown'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

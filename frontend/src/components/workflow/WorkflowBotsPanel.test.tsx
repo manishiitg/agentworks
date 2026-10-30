@@ -24,11 +24,6 @@ vi.mock("./bots/SlackSetup", () => ({
 }));
 vi.mock("../integrations/SlackAccountsPanel", () => ({ default: () => <div data-testid="sending-account">Sending account permissions</div> }));
 
-// The real button pulls the chat stores into the module graph, which trips a
-// circular-import TDZ under SSR transform; the tabs don't depend on it.
-vi.mock("./AskAIButton", () => ({
-  AskAIButton: ({ label }: { label?: string }) => <button type="button">{label ?? "Ask AI"}</button>,
-}));
 
 vi.mock("../../hooks/useCanWriteWorkflow", () => ({
   READ_ONLY_TITLE: "read-only",

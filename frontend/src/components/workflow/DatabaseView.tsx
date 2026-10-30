@@ -2,7 +2,7 @@
 // Report widgets query these tables via SQL, so this gives users a direct way
 // to inspect the data behind the live report without opening the file tree.
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
   FileJson,
@@ -22,7 +22,6 @@ import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
 
 interface DatabaseViewProps {
   workspacePath: string | null
-  headerAction?: ReactNode
   /** Embedded in the Knowledge umbrella: the umbrella owns the header. */
   hideHeader?: boolean
 }
@@ -355,7 +354,7 @@ async function readText(filepath: string): Promise<string | null> {
   }
 }
 
-export default function DatabaseView({ workspacePath, headerAction, hideHeader = false }: DatabaseViewProps) {
+export default function DatabaseView({ workspacePath, hideHeader = false }: DatabaseViewProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [files, setFiles] = useState<PlannerFile[]>([])
@@ -487,10 +486,7 @@ export default function DatabaseView({ workspacePath, headerAction, hideHeader =
               icon={Table2}
               title="Database"
               context={<span className="text-xs text-muted-foreground">db/db.sqlite - tables</span>}
-              actions={<>
-                {headerAction}
-                <WorkspaceViewIconButton label="Refresh database" onClick={load} disabled={loading} spinning={loading} />
-              </>}
+              actions={<WorkspaceViewIconButton label="Refresh database" onClick={load} disabled={loading} spinning={loading} />}
             />
           )}
 

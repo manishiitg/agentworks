@@ -23,9 +23,6 @@ vi.mock("./DatabaseView", () => ({
     <div data-testid="database" data-hide-header={String(Boolean(hideHeader))}>Database content</div>
   ),
 }));
-vi.mock("./AskAIButton", () => ({
-  AskAIButton: ({ message }: { message: string }) => <button type="button" data-testid="ask-ai" data-message={message}>Ask AI</button>,
-}));
 
 import KnowledgeView from "./KnowledgeView";
 
@@ -49,7 +46,7 @@ async function renderView() {
   return container;
 }
 
-it.each(['knowledgebase', 'database'] as const)('opens the targeted %s page with its contextual chat action and no duplicate tabs', async tab => {
+it.each(['knowledgebase', 'database'] as const)('opens the targeted %s page with no duplicate tabs', async tab => {
   storeState.workspaceViewTarget = { view: "knowledge", target: tab, token: 1 };
   const host = await renderView();
   expect(host.querySelector(`[data-testid="${tab}"]`)).not.toBeNull();
@@ -57,6 +54,4 @@ it.each(['knowledgebase', 'database'] as const)('opens the targeted %s page with
   expect(host.querySelector('[role="tablist"]')).toBeNull();
   expect(host.querySelector('[aria-label^="Walkthrough:"]')).toBeNull();
   expect(host.textContent).not.toContain('Learnings');
-  const message = host.querySelector('[data-testid="ask-ai"]')?.getAttribute('data-message');
-  expect(message).toContain(tab === 'database' ? 'Knowledge · Database' : 'Knowledge · Knowledgebase');
 });

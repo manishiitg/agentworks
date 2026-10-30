@@ -21,31 +21,17 @@ describe('Workflow MCP panel layout', () => {
 
 
 
-  it('places Refresh and Ask AI in capability headers without rendering a second workspace title bar', () => {
+  it('places Refresh in capability headers without rendering a second workspace title bar', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
     const host = readFileSync('src/components/workflow/canvas/WorkspaceViewHost.tsx', 'utf8')
 
     expect(panel).toContain('<WorkspaceViewActions')
-    expect(panel).toContain('getIntegrationTabAskAIMessage(activeMcpTab')
-    expect(panel).toContain('getWorkspaceAskAIMessage(section)')
-    expect(panel).toContain("message={getWorkspaceAskAIMessage('browser')}")
-    expect(panel).toContain('refreshLabel="Refresh Browser"')
     expect(host).not.toContain('data-ui-view-assistant')
-    for (const view of ['costs', 'execution-logs', 'schedules', 'pulse', 'backup', 'publish', 'notify']) {
-      expect(host).toContain(`headerAction={askAI('${view}')}`)
-    }
     // Access is the one shared People panel, mounted without a header action.
     expect(host).toContain('<ShareDashboardButton workspacePath={workspacePath} variant="panel" />')
-    // Folders moved under the Identity tabs; it no longer has a host header.
-    expect(host).not.toContain("headerAction={refreshAndAskAI('folders')}")
-    // Knowledge is a self-served umbrella (like capabilities sections): the
-    // host mounts it without header actions; its Ask AI follows the active tab.
+    // Knowledge is a self-served umbrella (like capabilities sections).
     expect(host).toContain("case 'knowledge':")
     expect(host).toContain('<KnowledgeView workspacePath={workspacePath} plan={plan} />')
-    expect(host).toContain("getWorkspaceAskAIMessage('report')")
-    expect(host).toContain("getWorkspaceAskAIMessage('flow')")
-    // The Files view has no Ask AI (it is a plain Explorer).
-    expect(host).not.toContain("getWorkspaceAskAIMessage('files')")
   })
 
   it('embeds workflow skills inside the Integrations section instead of a standalone view', () => {
@@ -104,7 +90,6 @@ describe('Workflow MCP panel layout', () => {
     expect(gmail).toContain('Google accounts added to this item')
     expect(gmail).toContain('Your own Google accounts above work independently of company email defaults')
     expect(gmail).toContain('<GoogleAccountList')
-    expect(gmail).toContain('Ask Builder to set up Gmail')
     expect(gmail).not.toContain('gmailOpen')
     expect(panel).toMatch(/section === 'mcp'[\s\S]*?<WorkflowBotsPanel/)
     expect(panel).toMatch(/section === 'mcp'[\s\S]*?<WorkflowEmailPanel/)

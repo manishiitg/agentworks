@@ -11,7 +11,6 @@ import { knowledgebaseApi } from '../../services/knowledgebaseApi'
 const access = vi.hoisted(() => ({ allowed_products: null as string[] | null }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: { user: typeof access }) => unknown) => selector({ user: access }) }))
 vi.mock('../../services/knowledgebaseApi', () => ({ knowledgebaseApi: { bootstrap: vi.fn(), project: vi.fn() }, knowledgebaseError: () => 'Could not load Brain' }))
-vi.mock('../workflow/AskAIButton', () => ({ AskAIButton: () => null }))
 
 let root: Root
 let host: HTMLDivElement

@@ -7,15 +7,8 @@ import {
 } from 'lucide-react'
 import type { ExecutionLogsResponse, StepExecutionLogs } from '../../../services/api-types'
 import { StepMetricChip } from './LogPrimitives'
-import { AskAIButton } from '../AskAIButton'
-import { buildStepAskMessage } from './logsAskAI'
-import { formatDuration, formatRunFolderLabel, getStepDisplayTitle, getStepIcon, getRecordedStepType, getStepIndentStyle, getStepLatestError, getStepMetrics, getStepModel, getStepNestingClass, getStepNestingLevel, getStepResultPreview, getStepStatus, getStepTypeBadgeStyle, getStepTypeDescription, getStepTypeLabel, hasKnowledgebaseSignal, hasLearningSignal, hasStepMetrics, sortStepEntriesByExecution } from './helpers'
+import { formatDuration, getStepDisplayTitle, getStepIcon, getRecordedStepType, getStepIndentStyle, getStepLatestError, getStepMetrics, getStepModel, getStepNestingClass, getStepNestingLevel, getStepResultPreview, getStepStatus, getStepTypeBadgeStyle, getStepTypeDescription, getStepTypeLabel, hasKnowledgebaseSignal, hasLearningSignal, hasStepMetrics, sortStepEntriesByExecution } from './helpers'
 import { formatTokens } from '../../../utils/formatTokens'
-
-export interface StepAskContext {
-  workspacePath: string | null
-  runFolder: string
-}
 
 export interface StepListProps {
   logs: ExecutionLogsResponse | null
@@ -25,7 +18,6 @@ export interface StepListProps {
   expandedSteps: Set<string>
   toggleStep: (stepId: string) => void
   renderStepContent: (stepId: string, stepLogs: StepExecutionLogs) => React.ReactNode
-  askContext?: StepAskContext
 }
 
 const stepStatusPill = (status: ReturnType<typeof getStepStatus>): { label: string; className: string; pulse: boolean } => {
@@ -41,7 +33,7 @@ const stepStatusPill = (status: ReturnType<typeof getStepStatus>): { label: stri
   }
 }
 
-export function StepList({ logs, focusedStepId, routeFilterKey, showFailedOnly = false, expandedSteps, toggleStep, renderStepContent, askContext }: StepListProps) {
+export function StepList({ logs, focusedStepId, routeFilterKey, showFailedOnly = false, expandedSteps, toggleStep, renderStepContent }: StepListProps) {
   // The sort comparator walks every execution of both steps per comparison;
   // do it once per logs payload, not on every 2.5 s poll re-render.
   const sortedStepEntries = useMemo(
@@ -136,24 +128,6 @@ export function StepList({ logs, focusedStepId, routeFilterKey, showFailedOnly =
                             </span>
                           </div>
                         </button>
-                        {askContext && (
-                          <div className="shrink-0 px-2 py-2.5">
-                            <AskAIButton
-                              workspacePath={askContext.workspacePath}
-                              iconOnly
-                              message={buildStepAskMessage({
-                                runFolder: askContext.runFolder,
-                                folderLabel: formatRunFolderLabel(askContext.runFolder),
-                                stepTitle: displayTitle,
-                                status: stepStatus,
-                                duration: showMetrics && stepMetrics.durationMs > 0 ? formatDuration(stepMetrics.durationMs) : undefined,
-                                tokens: showMetrics && stepMetrics.totalTokens > 0 ? `${formatTokens(stepMetrics.totalTokens)} tokens` : undefined,
-                                preview: resultPreview || undefined,
-                                error: latestError || undefined,
-                              })}
-                            />
-                          </div>
-                        )}
                       </div>
 
                       {isExpanded && (

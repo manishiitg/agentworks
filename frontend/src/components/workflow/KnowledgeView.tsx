@@ -4,9 +4,10 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import type { PlanningResponse } from '../../utils/stepConfigMatching'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewActions } from './WorkspaceViewActions'
-import { getKnowledgeTabAskAIMessage, type KnowledgeTabId } from './workspaceAskAI'
 import KnowledgebaseView from './KnowledgebaseView'
 import DatabaseView from './DatabaseView'
+
+type KnowledgeTabId = 'knowledgebase' | 'database'
 
 const KNOWLEDGE_TABS: Array<{ value: KnowledgeTabId; label: string }> = [
   { value: 'knowledgebase', label: 'Knowledgebase' },
@@ -53,8 +54,6 @@ export default function KnowledgeView({ workspacePath }: KnowledgeViewProps) {
         title="Knowledge"
         actions={(
           <WorkspaceViewActions
-            workspacePath={workspacePath}
-            message={getKnowledgeTabAskAIMessage(tab)}
             onRefresh={() => useWorkflowStore.getState().refreshWorkspaceView(tab)}
             refreshLabel={`Refresh ${tabLabel}`}
           />

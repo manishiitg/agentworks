@@ -1,11 +1,8 @@
-import { cloneElement, isValidElement, type ReactNode } from 'react'
 import { ChromeExtensionConnection, useChromeExtensionConnection } from './ChromeExtensionConnection'
 import { Button } from '../ui/Button'
 import { Monitor, PlugZap, Loader2 } from 'lucide-react'
 import BrowserAutomationSettings, { type BrowserAutomationMode } from '../BrowserAutomationSettings'
 import WorkflowLiveBrowser, { type BrowserEmptyStateActions } from './WorkflowLiveBrowser'
-import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
-import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 
 interface BrowserWorkspacePanelProps {
@@ -22,7 +19,6 @@ interface BrowserWorkspacePanelProps {
   dirty?: boolean
   saving?: boolean
   onSave?: () => void
-  assistantControl?: ReactNode
   scopeNoun?: 'workflow' | 'project'
   profileId?: string
 }
@@ -31,11 +27,8 @@ interface BrowserWorkspacePanelProps {
 export function BrowserWorkspacePanel({
   workspacePath, browserMode, onBrowserModeChange, cdpPort, onCdpPortChange,
   cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false,
-  dirty = false, saving = false, onSave, assistantControl, scopeNoun = 'workflow', profileId,
+  dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId,
 }: BrowserWorkspacePanelProps) {
-  const assistant = isValidElement<WorkspaceViewActionsProps>(assistantControl) && assistantControl.type === WorkspaceViewActions ? assistantControl : undefined
-  useWorkspacePanelAssistant(assistant ? { workspacePath: assistant.props.workspacePath, message: assistant.props.message } : undefined)
-  const headerActions = assistant ? cloneElement(assistant, { hideRefresh: true }) : assistantControl
   const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
   const extensionAvailable = ['work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
   const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !extensionAvailable)
@@ -70,7 +63,7 @@ export function BrowserWorkspacePanel({
 
   return <div className="relative flex h-full min-h-0 flex-1 flex-col">
     {connection.loading ? <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Checking browser connection…</div> : connection.status.selected ? <>
-      <WorkspaceViewHeader icon={Monitor} title="Browser" subtitle={connection.status.browsers?.find(item => item.id === connection.status.browser_id)?.name || 'Saved browser'} actions={headerActions} />
+      <WorkspaceViewHeader icon={Monitor} title="Browser" subtitle={connection.status.browsers?.find(item => item.id === connection.status.browser_id)?.name || 'Saved browser'} />
       {selection}
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <div className="mx-auto my-6 max-w-sm space-y-4 text-center">
@@ -81,6 +74,6 @@ export function BrowserWorkspacePanel({
           {connection.status.connected && !!connection.status.tab_titles?.length && <ul className="space-y-1.5 text-left" aria-label="Project browser tabs">{connection.status.tab_titles.map((title, index) => <li key={index} title={title} className="truncate rounded-md border border-border px-3 py-2 text-xs">{title}</li>)}</ul>}
         </div>
       </div>
-    </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} emptyContent={emptyBrowser} browserSelection={selection} toolbar={headerActions} />}
+    </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} emptyContent={emptyBrowser} browserSelection={selection} />}
   </div>
 }

@@ -106,7 +106,7 @@ export type BrowserEmptyStateActions = {
   canStart: boolean
 }
 
-export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, profileId, emptyContent, browserSelection }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; profileId?: string; browserSelection?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
+export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workflow', minimal = false, profileId, emptyContent, browserSelection }: { workspacePath: string | null; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; profileId?: string; browserSelection?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
   const [sessions, setSessions] = useState<BrowserSession[]>([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [startingBrowser, setStartingBrowser] = useState(false)
@@ -699,7 +699,6 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
             {recordingNote}
             {expandToggle}
             {overflowMenu}
-            {toolbar}
           </>}
       />
       {browserSelection}

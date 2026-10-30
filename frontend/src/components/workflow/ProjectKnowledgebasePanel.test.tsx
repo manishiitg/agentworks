@@ -10,7 +10,6 @@ vi.mock('../../services/knowledgebaseApi', () => ({
   knowledgebaseError: (error: Error) => error.message,
 }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: any) => select({ activeWorkspaceId: 'local' }) }))
-vi.mock('./AskAIButton', () => ({ AskAIButton: ({ label }: { label: string }) => <button>{label}</button> }))
 let root: Root
 let container: HTMLDivElement
 beforeEach(() => {

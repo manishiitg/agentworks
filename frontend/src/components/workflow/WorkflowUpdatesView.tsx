@@ -2,10 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Clock3, Loader2, PackageCheck } from 'lucide-react'
 import { workflowManifestApi } from '../../services/api'
 import type { WorkflowContractUpgradeItem, WorkflowContractUpgradeStatus } from '../../services/api-types'
-import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
-import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
-import { AskAIButton } from './AskAIButton'
-import { hasWorkflowContractUpgrade, MANUAL_CONTRACT_UPGRADE_MESSAGE, WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, type WorkflowContractUpgradeStatusEvent } from './workflowContractUpgradeEvents'
+import { hasWorkflowContractUpgrade, WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, type WorkflowContractUpgradeStatusEvent } from './workflowContractUpgradeEvents'
 
 function formatUpgradeLabel(label: string): string {
   return label
@@ -55,7 +52,6 @@ function UpgradeRow({ item, state }: { item: WorkflowContractUpgradeItem; state:
 }
 
 export default function WorkflowUpdatesView({ workspacePath }: { workspacePath: string | null }) {
-  const canWrite = useCanWriteWorkflow(workspacePath)
   const [status, setStatus] = useState<WorkflowContractUpgradeStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -118,18 +114,6 @@ export default function WorkflowUpdatesView({ workspacePath }: { workspacePath: 
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">Current v{currentVersion} · platform v{platformVersion}</p>
               </div>
-              {canWrite && needsUpdate && <AskAIButton
-                workspacePath={workspacePath}
-                label="Update workflow"
-                message={MANUAL_CONTRACT_UPGRADE_MESSAGE}
-                onAsk={async message => {
-                  if (!workspacePath) return
-                  const result = await sendWorkspacePaneMessageToChat({ workspacePath, message })
-                  window.dispatchEvent(new CustomEvent(WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT, {
-                    detail: { workspacePath, tabId: result.tabId },
-                  }))
-                }}
-              />}
             </section>
 
             <section>

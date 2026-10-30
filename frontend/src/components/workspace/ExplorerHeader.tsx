@@ -5,7 +5,7 @@ import { useWorkspacePanelHeaderSlots } from './WorkspacePanelHeaderSlots'
 /** The EXPLORER title and the folder row that carries the toolbar icons. */
 export function ExplorerHeader({ title, titleAction, toolbar, leading }: {
   title: string
-  /** Right of the EXPLORER title (Ask AI). */
+  /** Right of the EXPLORER title. */
   titleAction?: ReactNode
   toolbar: ReactNode
   /** Left of the folder name (select-all in selection mode). */

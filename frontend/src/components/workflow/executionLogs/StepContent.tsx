@@ -28,11 +28,9 @@ import {
 import type { ExecutionLogsResponse } from '../../../services/api-types'
 import { useProductSurfaceStore } from '../../../stores/useProductSurfaceStore'
 import { ConversationViewer } from '../ConversationViewer'
-import { AskAIButton } from '../AskAIButton'
 import { MarkdownRenderer } from '../../ui/MarkdownRenderer'
 import { StepMetadata, StructuredJsonView, StepMetricChip } from './LogPrimitives'
-import { formatDuration, formatRunFolderLabel, formatStepStartedAt, getExecutionMetrics, getExecutionOrigin, getAgentReflection, getSentAgentMessages, getStepFirstActivityMs, getStepMetrics, hasStepMetrics, type ValidationFeedback } from './helpers'
-import { buildErrorAskMessage } from './logsAskAI'
+import { formatDuration, formatStepStartedAt, getExecutionMetrics, getExecutionOrigin, getAgentReflection, getSentAgentMessages, getStepFirstActivityMs, getStepMetrics, hasStepMetrics, type ValidationFeedback } from './helpers'
 import { formatTokens } from '../../../utils/formatTokens'
 
 export interface StepContentProps {
@@ -52,7 +50,6 @@ export interface StepContentProps {
   fileContents: Record<string, string>
   loadingFiles: Set<string>
   toggleFileExpansion: (path: string) => void
-  askContext?: { workspacePath: string | null; runFolder: string }
 }
 
 interface CrewRunRecord {
@@ -74,11 +71,6 @@ interface CrewRunRecord {
   timeline?: { status?: string; at?: string }[]
 }
 
-const explainButtonClassName = 'inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary'
-
-function ExplainButton({ workspacePath, message, label = 'Explain' }: { workspacePath: string | null; message: string; label?: string }) {
-  return <AskAIButton workspacePath={workspacePath} label={label} message={message} className={explainButtonClassName} />
-}
 
 const crewStatusChip = (status: string): string => {
   switch (status) {
@@ -101,18 +93,14 @@ const crewStatusChip = (status: string): string => {
 // Artifacts section below, so nothing fetches twice.
 function CrewRunSection({
   stepLogs,
-  stepTitle,
   fileContents,
   loadingFiles,
   toggleFileExpansion,
-  askContext,
 }: {
   stepLogs: StepContentProps['stepLogs']
-  stepTitle: string
   fileContents: Record<string, string>
   loadingFiles: Set<string>
   toggleFileExpansion: (path: string) => void
-  askContext?: { workspacePath: string | null; runFolder: string }
 }) {
   const record = ((stepLogs.artifacts || []) as { file_name?: string; file_path: string }[]).find(
     (artifact) => artifact.file_name === 'crew-run.json',
@@ -185,17 +173,6 @@ function CrewRunSection({
           {parsed.error && (
             <div className="flex items-start justify-between gap-2">
               <p className="min-w-0 flex-1 text-xs leading-relaxed text-destructive">{parsed.error}</p>
-              {askContext && (
-                <ExplainButton
-                  workspacePath={askContext.workspacePath}
-                  message={buildErrorAskMessage({
-                    runFolder: askContext.runFolder,
-                    folderLabel: formatRunFolderLabel(askContext.runFolder),
-                    stepTitle,
-                    error: parsed.error,
-                  })}
-                />
-              )}
             </div>
           )}
           {timeline.length > 0 && (
@@ -245,16 +222,8 @@ export function StepContent(props: StepContentProps) {
     fileContents,
     loadingFiles,
     toggleFileExpansion,
-    askContext,
   } = props
       const validations = stepLogs.validations || []
-      const displayTitle = (stepLogs.title && String(stepLogs.title).trim()) ? stepLogs.title : (stepLogs.original_id || stepId)
-      const explainMessage = (error: string) => askContext ? buildErrorAskMessage({
-        runFolder: askContext.runFolder,
-        folderLabel: formatRunFolderLabel(askContext.runFolder),
-        stepTitle: displayTitle,
-        error,
-      }) : ''
       // Detail chips that used to crowd the collapsed step row live here now
       // that the step is open: tier, token splits, first activity, instruction
       // size, and route provenance.
@@ -563,9 +532,6 @@ export function StepContent(props: StepContentProps) {
                                 <>
                                   <div className="mb-1 flex items-center justify-between gap-2">
                                     <div className="font-semibold text-destructive">error:</div>
-                                    {askContext && (
-                                      <ExplainButton workspacePath={askContext.workspacePath} message={explainMessage(exec.content.error)} />
-                                    )}
                                   </div>
                                   <pre className="whitespace-pre-wrap overflow-x-auto text-destructive max-h-[40vh] overflow-y-auto bg-destructive/10 border border-destructive/20 rounded p-2 mb-3">
                                     {exec.content.error}
@@ -648,11 +614,9 @@ export function StepContent(props: StepContentProps) {
           {stepLogs.type === 'crew' && (
             <CrewRunSection
               stepLogs={stepLogs}
-              stepTitle={displayTitle}
               fileContents={fileContents}
               loadingFiles={loadingFiles}
               toggleFileExpansion={toggleFileExpansion}
-              askContext={askContext}
             />
           )}
 
@@ -808,11 +772,6 @@ export function StepContent(props: StepContentProps) {
                       
                       {isValExpanded && val.content && (
                         <div className="p-3 border-t border-border bg-muted/30 text-xs font-mono">
-                          {validationFailed && validationSummary && askContext && (
-                            <div className="mb-3 font-sans">
-                              <ExplainButton workspacePath={askContext.workspacePath} label="Explain this failure" message={explainMessage(validationSummary)} />
-                            </div>
-                          )}
                           {feedback.length > 0 && (
                             <div className="mb-3">
                               <div className="font-semibold text-foreground mb-1">Feedback:</div>
@@ -930,9 +889,6 @@ export function StepContent(props: StepContentProps) {
                     {log.error && (
                         <div className="mt-2 flex items-start justify-between gap-2 text-xs text-destructive bg-destructive/10 p-2 rounded">
                             <span className="min-w-0 flex-1">Error: {log.error}</span>
-                            {askContext && (
-                              <ExplainButton workspacePath={askContext.workspacePath} message={explainMessage(log.error)} />
-                            )}
                         </div>
                     )}
                   </div>

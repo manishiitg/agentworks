@@ -70,7 +70,6 @@ interface ReportViewProps {
   /** Standalone Crew links keep the caller's native chat beside the UI. */
   crewConversationPane?: boolean
   defaultRelayDashboard?: boolean
-  headerAction?: React.ReactNode
   /** Standalone dashboard pages show the dashboard alone, without the app's help, refresh and close buttons. */
   hideToolbar?: boolean
 }
@@ -243,7 +242,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   return { path, html, label: title || 'Dashboard', questions }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, sendChatMessage, headerAction, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, crewConversationPane = false, defaultRelayDashboard = false }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, sendChatMessage, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, crewConversationPane = false, defaultRelayDashboard = false }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -329,7 +328,6 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
     <ReportEmbedProvider value={runtime}>
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
         {!hideToolbar && <WorkspaceViewHeader icon={LayoutDashboard} title={title} actions={<>
-          {headerAction}
           {/* Share is the main action on a page people pass around (PLAT-750): the link and who can open it. */}
           {report && !dashboardConversation && <ShareDashboardButton workspacePath={workspacePath} documentPath={report.path} />}
           <button type="button" onClick={refresh} aria-label="Refresh dashboard" title="Refresh dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">

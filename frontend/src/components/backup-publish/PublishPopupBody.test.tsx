@@ -1,15 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, it, vi } from 'vitest'
-
-const { askMessages } = vi.hoisted(() => ({ askMessages: [] as string[] }))
-vi.mock('../workflow/AskAIButton', () => ({
-  AskAIButton: (props: Record<string, unknown>) => {
-    askMessages.push(String(props.message))
-    return <button type="button" data-testid="ask-ai" data-message={String(props.message)}>{String(props.label ?? 'Ask AI')}</button>
-  },
-}))
+import { expect, it } from 'vitest'
 
 import PublishPopupBody from './PublishPopupBody'
 
@@ -21,7 +13,6 @@ const strategies = [
 ]
 
 async function mount(info: Record<string, unknown>) {
-  askMessages.length = 0
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   await act(async () => root.render(
@@ -33,7 +24,6 @@ async function mount(info: Record<string, unknown>) {
       destinationsHelp="Deploys update automatically."
       defaultTargetLabel="pulse, dashboard"
       getSummary={() => 'Not published yet. Set one up.'}
-      askContext={{ workspacePath: 'Workflow/test', strategyVerb: 'publish this workflow to' }}
     />,
   ))
   return { host, unmount: async () => { await act(async () => root.unmount()); host.remove() } }
@@ -65,17 +55,6 @@ it('keeps hosts behind a collapsed disclosure', async () => {
     expect(summary?.textContent).toContain('Common hosts')
     expect(summary?.querySelector('.rounded-full')?.textContent).toBe('2')
     expect(details?.open).toBe(false)
-  } finally {
-    await unmount()
-  }
-})
-
-it('asks in chat to set up and per host', async () => {
-  const { host, unmount } = await mount({ effective_state: 'published', config: { enabled: true, destinations: [] }, status: {} })
-  try {
-    expect(askMessages).toContain('/share')
-    expect(askMessages).toContain('Help me publish this workflow to Netlify. Explain what I need and walk me through it.')
-    expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(3)
   } finally {
     await unmount()
   }

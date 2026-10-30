@@ -1,5 +1,4 @@
 import { WorkspaceContextButton } from './WorkspaceContextButton'
-import { WorkspacePanelAssistantButton } from './WorkspacePanelNavigation'
 import { useWorkspacePanelHeaderSlots } from './WorkspacePanelHeaderSlots'
 
 /** Page navigation stays inside the panel it controls, above its scroll area. */
@@ -20,7 +19,6 @@ export function WorkspacePanelHeader({ workspacePath, view, title, onBack, conte
     </div>
     <div className="ml-auto flex max-w-full items-center justify-end gap-1 max-md:contents">
       <div ref={slots?.setActions} data-testid="workspace-panel-actions" className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 empty:hidden max-md:order-3 max-md:flex-nowrap [&>div]:flex-wrap max-md:[&>div]:flex-nowrap" />
-      <WorkspacePanelAssistantButton workspacePath={workspacePath} view={view} />
       <WorkspaceContextButton workspacePath={workspacePath} view={view} inContext={view === 'context'} contextAllowed={contextAllowed} onClick={onBack} />
     </div>
   </header>

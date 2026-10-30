@@ -1,6 +1,5 @@
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 import { ArrowDown, Code2, RefreshCw, Settings2, Sparkles } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { RunFolderInfo } from '../../services/api-types'
@@ -69,7 +68,6 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
 }) {
   const [tab, setTab] = useState<'graph' | 'calls' | 'source'>('graph')
   const panelTopic = tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Flow runs' : 'Flow code'
-  useWorkspacePanelAssistant({ workspacePath, message: `Help me with this Flow's ${tab === 'graph' ? 'steps and graph' : tab === 'calls' ? 'runs and results' : 'code'}. Explain the current view in plain words and ask what I want to do before changing anything.` })
   const viewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   useEffect(() => {
     if (viewTarget?.view === 'flow' && (viewTarget.target === 'graph' || viewTarget.target === 'calls' || viewTarget.target === 'source')) setTab(viewTarget.target)

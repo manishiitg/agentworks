@@ -5,12 +5,9 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { TriggerDeliveryHistoryPanel } from './TriggerDeliveryHistoryPanel'
 import type { WorkflowScope } from '../scheduler/scheduleRuns/helpers'
 import { ScheduleStatusPills, type ScheduleStatusSnapshot } from '../scheduler/scheduleRuns/ScheduleStatusPills'
-import { AskAIButton } from '../workflow/AskAIButton'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
-import { getWorkspaceAskAIMessage } from '../workflow/workspaceAskAI'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
-import { WorkspaceViewActions } from '../workflow/WorkspaceViewActions'
-import { AgentInboxPanel, agentInboxAskMessage, useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
+import { AgentInboxPanel, useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
@@ -34,13 +31,7 @@ type AutomationHubPanelProps = {
   canManage?: boolean
   scopeNoun?: 'automation' | 'project'
   initialSection?: AutomationHubSection
-  /**
-   * Per-tab Ask AI messages. Workflow hubs default to the workspace messages;
-   * product (Crew) hubs must pass explicit messages: a workspacePath-routed
-   * message would land in the wrong chat.
-   */
-  askAIMessages?: Partial<Record<AutomationHubSection, string>>
-  /** Ask AI routing override (Crew panes route to the project chat). */
+  /** Chat routing override for section actions (Crew panes route to the project chat). */
   onAskAI?: (message: string) => void | Promise<void>
 }
 
@@ -80,16 +71,6 @@ function rememberSection(key: string, section: AutomationHubSection) {
   }
 }
 
-const WORKFLOW_SECTION_MESSAGES: Record<AutomationHubSection, string> = {
-  schedules: getWorkspaceAskAIMessage('schedules'),
-  triggers: getWorkspaceAskAIMessage('webhooks'),
-  functions: getWorkspaceAskAIMessage('webhooks'),
-  chats: getWorkspaceAskAIMessage('workshop'),
-  bots: getWorkspaceAskAIMessage('workshop'),
-  email: agentInboxAskMessage,
-  conditions: 'Explain the saved watchers, what each checks and which work it starts.',
-}
-
 export function AutomationHubPanel({
   entityType,
   relayMode = false,
@@ -102,12 +83,8 @@ export function AutomationHubPanel({
   canManage,
   scopeNoun = entityType === 'product' ? 'project' : 'automation',
   initialSection = 'schedules',
-  askAIMessages,
   onAskAI,
 }: AutomationHubPanelProps) {
-  // Workflow hubs default every Ask AI message to the workflow Builder chat.
-  // Product (Crew) hubs must pass explicit messages: a workspacePath-routed
-  // message would land in the wrong chat.
   const incomingEnabled = useAgentInboxEnabled()
   const isWorkflow = entityType === 'workflow'
   const [schedulesRefreshToken, setSchedulesRefreshToken] = useState(0)
@@ -155,12 +132,8 @@ export function AutomationHubPanel({
     }
   }, [availableSections, workspaceViewTarget])
 
-  const askEmail = onAskAI ?? ((message: string) => sendWorkspacePaneMessageToChat(productTriggerScope ? { profileId: productTriggerScope.profileId, conversationKey: productTriggerScope.projectId, message } : { message, workspacePath }).then(() => undefined))
-  const askCurrentSection = section === 'email' ? askEmail : onAskAI
-  const askMessage = askAIMessages?.[section] ?? (section === 'email' ? WORKFLOW_SECTION_MESSAGES.email : section === 'conditions' ? WORKFLOW_SECTION_MESSAGES.conditions : isWorkflow ? WORKFLOW_SECTION_MESSAGES[section] : undefined)
-  // Per-tab refresh, computed from the section so the header renders the
-  // standard pair (Ask AI left, refresh right). The bots tab has no
-  // refreshable list, so it keeps Ask AI alone.
+  // Per-tab refresh, computed from the section. The bots tab has no
+  // refreshable list, so it has no header action.
   const refreshAction = section === 'email'
     ? { label: 'Refresh inbox', run: () => setEmailRefreshToken(token => token + 1), spinning: false }
     : section === 'conditions'
@@ -176,13 +149,7 @@ export function AutomationHubPanel({
       : section === 'chats'
         ? { label: 'Refresh chats', run: () => setChatsRefreshToken(token => token + 1), spinning: false }
         : undefined
-  const askAction = askMessage ? <AskAIButton workspacePath={workspacePath} message={askMessage} onAsk={askCurrentSection} iconOnly /> : undefined
-  const refreshButton = refreshAction ? <WorkspaceViewIconButton label={refreshAction.label} onClick={refreshAction.run} spinning={refreshAction.spinning} /> : undefined
-  const headerActions = askMessage && refreshAction ? (
-    <WorkspaceViewActions workspacePath={workspacePath} message={askMessage} onAsk={askCurrentSection} onRefresh={refreshAction.run} refreshLabel={refreshAction.label} refreshing={refreshAction.spinning ?? false} />
-  ) : (askAction || refreshButton) ? (
-    <>{askAction}{refreshButton}</>
-  ) : undefined
+  const headerActions = refreshAction ? <WorkspaceViewIconButton label={refreshAction.label} onClick={refreshAction.run} spinning={refreshAction.spinning} /> : undefined
 
   return (
     <div
@@ -236,7 +203,7 @@ export function AutomationHubPanel({
           refreshToken={triggersRefreshToken}
           onCounts={setTriggersCounts}
         />}
-        {section === 'email' && <div className="h-full overflow-y-auto p-4"><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} onAsk={askEmail} /></div>}
+        {section === 'email' && <div className="h-full overflow-y-auto p-4"><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} /></div>}
         {section === 'conditions' && <ConditionTriggersView scope={productTriggerScope ?? { profileId: relayMode ? 'relays' : 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))} canManage={canManage} />}
         {section === 'triggers' && entityType === 'workflow' && relayMode && <WorkflowFunctionsView
           workspacePath={workspacePath}

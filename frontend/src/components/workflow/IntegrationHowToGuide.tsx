@@ -11,11 +11,11 @@ function questionsFor(topic: Exclude<IntegrationHowToTopic, 'Gmail'>, scopeNoun:
       },
       {
         title: 'How do I connect a new app?',
-        answer: <>Use <b>Search apps</b> and look under <b>Connect a new app</b>. Click <b>Ask AI</b> on the app card, or use the help button above the list, to start setup. New app accounts are shared across AgentWorks, so a platform admin must authorize them on multi-user installations.</>,
+        answer: <>Use <b>Search apps</b> and look under <b>Connect a new app</b>. Then ask in chat to start setup. New app accounts are shared across AgentWorks, so a platform admin must authorize them on multi-user installations.</>,
       },
       {
         title: 'How do I add an app that is missing from the list?',
-        answer: <>Search for its name first. If it is absent, use <b>Ask AI</b> above the list and describe the service you need. The assistant can look for a compatible MCP server and help an admin connect it.</>,
+        answer: <>Search for its name first. If it is absent, describe the service you need in chat. The assistant can look for a compatible MCP server and help an admin connect it.</>,
       },
       {
         title: 'Why can I select an app but not connect a new one?',
@@ -23,7 +23,7 @@ function questionsFor(topic: Exclude<IntegrationHowToTopic, 'Gmail'>, scopeNoun:
       },
       {
         title: 'Why is a selected app not working?',
-        answer: <>Check the status dot beside its name. A connected app may still be unreachable or waiting for tools to load. Click <b>Refresh connected integrations</b>, then use the app card’s <b>Ask AI</b> button to inspect its connection and selected tools.</>,
+        answer: <>Check the status dot beside its name. A connected app may still be unreachable or waiting for tools to load. Click <b>Refresh connected integrations</b>, then ask in chat to inspect its connection and selected tools.</>,
       },
       {
         title: 'How do I stop this work from using an app?',

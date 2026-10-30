@@ -1,6 +1,6 @@
 import GoalOverview from '../GoalOverview'
 import { inspectionKey } from '../../../utils/stepInspection'
-import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../../workspace/WorkspacePanelNavigation'
+import { WorkspacePanelNavigationProvider } from '../../workspace/WorkspacePanelNavigation'
 import { WorkspacePanelHeader } from '../../workspace/WorkspacePanelHeader'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import React, {
@@ -18,8 +18,6 @@ import { ReactFlowProvider } from '@xyflow/react'
 import { useChatStore } from '../../../stores/useChatStore'
 import { WorkflowToolbar } from './WorkflowToolbar'
 import { RelayContextPanel } from '../RelayContextPanel'
-import { AskAIButton } from '../AskAIButton'
-import { getWorkspaceAskAIMessage } from '../workspaceAskAI'
 import { ReportView } from '../ReportViewer'
 import { DashboardCreateDraftButton } from '../DashboardEmptyState'
 import { usePlanData } from '../hooks/usePlanData'
@@ -76,7 +74,6 @@ function ReportBody({ workspacePath, relayMode }: { workspacePath: string | null
         defaultRelayDashboard={relayMode}
         emptyAction={canCreate ? <DashboardCreateDraftButton target={{ workspacePath }} /> : undefined}
         focusTier={reportFocusTier}
-        headerAction={<AskAIButton workspacePath={workspacePath} message={getWorkspaceAskAIMessage('report')} iconOnly />}
       />}
     </div>
   )
@@ -103,10 +100,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
   const closeInspector = useCallback(() => {
     useWorkflowStore.getState().setShowWorkspacePane(false)
   }, [])
-  const askAI = (view: InspectorViewId) => (
-    <AskAIButton workspacePath={workspacePath} message={getWorkspaceAskAIMessage(view)} iconOnly />
-  )
-
   // One explicit branch per inspector view. The `default` is a compile-time
   // exhaustiveness check: a view added to the registry without a branch here
   // is a type error, not a silent fallthrough into some other view.
@@ -120,7 +113,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
             workspacePath={workspacePath}
             runFolders={runFolderNames}
             selectedRunFolder={selectedRunFolder}
-            headerAction={askAI('costs')}
           />
         )
       case 'execution-logs':
@@ -144,7 +136,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
             runFolders={runFolderNames}
             runFolderInfos={workspace.state?.run_folders || []}
             onRefreshRunFolders={refreshWorkspaceState}
-            headerAction={askAI('execution-logs')}
           />
         )
       case 'knowledge':
@@ -155,7 +146,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
             embedded
             workflowScope={{ presetQueryId: presetQueryId || undefined, workspacePath: workspacePath || undefined }}
             onClose={closeInspector}
-            headerAction={askAI('schedules')}
           />
         )
       case 'webhooks':
@@ -163,7 +153,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
           <WorkflowAPITriggersView
             workspacePath={workspacePath}
             onViewRuns={() => useWorkflowStore.getState().openWorkspaceView('schedules')}
-            headerAction={askAI('webhooks')}
           />
         )
       case 'workshop':
@@ -175,11 +164,11 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
       case 'human-actions':
         return <HumanActionsView workspacePath={workspacePath} />
       case 'backup':
-        return <WorkflowBackupView workspacePath={workspacePath} headerAction={askAI('backup')} />
+        return <WorkflowBackupView workspacePath={workspacePath} />
       case 'publish':
-        return <WorkflowPublishView workspacePath={workspacePath} headerAction={askAI('publish')} />
+        return <WorkflowPublishView workspacePath={workspacePath} />
       case 'notify':
-        return <WorkflowNotificationView workspacePath={workspacePath} headerAction={askAI('notify')} />
+        return <WorkflowNotificationView workspacePath={workspacePath} />
       case 'access':
         return workspacePath ? <div className="p-4"><ShareDashboardButton workspacePath={workspacePath} variant="panel" /></div> : null
       case 'identity':
@@ -473,14 +462,6 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
         <WorkflowCanvasInner
           {...props}
           ref={flowRef}
-          assistantControl={workspacePath ? (
-            <AskAIButton
-              workspacePath={workspacePath}
-              message={getWorkspaceAskAIMessage('flow')}
-              iconOnly
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground"
-            />
-          ) : undefined}
         />
       </ReactFlowProvider>
     )
@@ -540,7 +521,6 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
           className={`${gridToolbar ? 'flex-1 col-start-1 row-start-2 md:col-start-2' : 'flex-1'} ${paneClassName} relative flex min-h-0 flex-col ${isInspectorKind && effectiveView !== 'context' ? 'overflow-hidden border-l border-border' : ''}`}
         >
           <WorkspacePanelNavigationProvider workspacePath={workspacePath} view={effectiveView} chatTarget={panelChatTabId ? { tabId: panelChatTabId } : undefined}>
-            {workspacePath && effectiveView !== 'context' && <WorkspacePanelAssistant workspacePath={workspacePath} message={getWorkspaceAskAIMessage(effectiveView)} />}
             {!embeddedPlanOnly && !toolbarOnly && <WorkspacePanelHeader workspacePath={workspacePath} view={effectiveView} title={getWorkspaceView(effectiveView).label} contextAllowed={canWrite} onBack={() => useWorkflowStore.getState().openWorkspaceView('context')} />}
             <div className={`min-h-0 flex-1 ${effectiveView === 'workshop' ? 'flex overflow-hidden' : ''}`}>{body}</div>
           </WorkspacePanelNavigationProvider>

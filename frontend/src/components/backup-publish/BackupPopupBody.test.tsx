@@ -1,15 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, it, vi } from 'vitest'
-
-const { askMessages } = vi.hoisted(() => ({ askMessages: [] as string[] }))
-vi.mock('../workflow/AskAIButton', () => ({
-  AskAIButton: (props: Record<string, unknown>) => {
-    askMessages.push(String(props.message))
-    return <button type="button" data-testid="ask-ai" data-message={String(props.message)}>{String(props.label ?? 'Ask AI')}</button>
-  },
-}))
+import { expect, it } from 'vitest'
 
 import BackupPopupBody from './BackupPopupBody'
 
@@ -21,7 +13,6 @@ const strategies = [
 ]
 
 async function mount(info: Record<string, unknown>, extra: Record<string, unknown> = {}) {
-  askMessages.length = 0
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   await act(async () => root.render(
@@ -32,7 +23,6 @@ async function mount(info: Record<string, unknown>, extra: Record<string, unknow
       emptyDestinationsText="No backup destinations yet."
       destinationsHelp="Status updates automatically."
       getSummary={() => 'No backup yet. Set one up.'}
-      askContext={{ workspacePath: 'Workflow/test', strategyVerb: 'back up this workflow with' }}
       {...extra}
     />,
   ))
@@ -81,19 +71,6 @@ it('renders destinations without kickers or commit hashes', async () => {
     for (const chip of host.querySelectorAll('.rounded.bg-muted')) {
       expect(chip.className).not.toContain('uppercase')
     }
-  } finally {
-    await unmount()
-  }
-})
-
-it('asks in chat to set up and per strategy', async () => {
-  const { host, unmount } = await mount(
-    { effective_state: 'healthy', config: { enabled: true, destinations: [] }, status: {} },
-  )
-  try {
-    expect(askMessages).toContain('/backup')
-    expect(askMessages).toContain('Help me back up this workflow with GitHub / remote Git. Explain what I need and walk me through it.')
-    expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(3)
   } finally {
     await unmount()
   }

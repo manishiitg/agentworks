@@ -15,12 +15,11 @@ type ScheduleRunsHeaderProps = {
   onClose: () => void
   /** Embedded workspace views are closed by their parent layout, not here. */
   showClose?: boolean
-  headerAction?: React.ReactNode
   compact?: boolean
   navigation?: React.ReactNode
 }
 
-export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, onClose, showClose = true, headerAction, compact = false, navigation }) => {
+export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, onClose, showClose = true, compact = false, navigation }) => {
   const {
     panelTitle,
     isLoading,
@@ -69,7 +68,6 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
             {isGloballyPaused ? 'Resume all schedules' : isSchedulerPaused ? `Resume ${pauseProductLabel} schedules` : `Pause ${pauseProductLabel} schedules`}
           </button>
         )}
-        {headerAction}
         <Tooltip>
           <TooltipTrigger asChild>
             <WorkspaceViewIconButton

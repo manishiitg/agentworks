@@ -12,8 +12,6 @@ import { aliasFromPath } from '../../utils/folderAlias'
 import { READ_ONLY_TITLE, useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { FolderGrantList } from '../folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../folders/WorkflowReferenceAccess'
-import { AskAIButton } from './AskAIButton'
-import { getIntegrationTabAskAIMessage } from './workspaceAskAI'
 
 interface WorkflowFolderAccessViewProps {
   workspacePath: string | null
@@ -201,7 +199,6 @@ export default function WorkflowFolderAccessView({ workspacePath, headerAction, 
               actions={<>
                 {!canWriteWorkflow && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">Run</span>}
                 {headerAction}
-                <AskAIButton workspacePath={canWriteWorkflow ? workspacePath : null} message={getIntegrationTabAskAIMessage('folders')} />
               </>}
             />
           )}

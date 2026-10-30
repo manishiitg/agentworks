@@ -33,7 +33,7 @@ interface SkillRowProps {
 
 export default function SkillRow({ skill, onDelete, selected, onToggleSelect, onRequestAdd, readOnly = false, selectionScopeLabel = 'main chat', readable = false, onOpenFile, inclusionLabels = [], platformStatus, onRead, reader = false, defaultDefinitions = [], inventoryOnly = false }: SkillRowProps) {
   const { frontmatter, folder_name, source_url } = skill
-  const actionVerb = selected ? 'Remove' : onRequestAdd ? 'Ask AI to add' : 'Add'
+  const actionVerb = selected ? 'Remove' : onRequestAdd ? 'Ask chat to add' : 'Add'
   const actionLabel = readable ? `${selected ? 'Stop using' : onRequestAdd ? 'Ask chat to use' : 'Use'} ${frontmatter.name} in this ${selectionScopeLabel}` : `${actionVerb} ${frontmatter.name} for this ${selectionScopeLabel}`
 
   return (

@@ -108,7 +108,7 @@ type WorkspacePaneChatRequest = {
 
 /**
  * The single entry point for messages originating in a right-side pane.
- * Dashboard HTML, human decisions, Ask AI, Pulse, and Work-project panes all
+ * Dashboard HTML, human decisions, Pulse, and Work-project panes all
  * resolve their destination here and then use the same durable chat queue.
  */
 export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequest, options?: { activate?: boolean }): Promise<{ tabId: string; targetTab: ChatTab; reused: boolean }> {

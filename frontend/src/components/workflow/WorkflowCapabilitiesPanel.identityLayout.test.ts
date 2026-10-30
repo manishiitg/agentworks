@@ -7,7 +7,6 @@ describe('identity section layout', () => {
 
     expect(panel).toContain("relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general'")
     expect(panel).toMatch(/IDENTITY_TABS[^=]*=[\s\S]*?'general'[\s\S]*?'llm'[\s\S]*?'upgrades'/)
-    expect(panel).toContain('getIdentityTabAskAIMessage(activeIdentityTab)')
     expect(panel).toContain("const RELAY_IDENTITY_TABS = IDENTITY_TABS.filter(option => option.value === 'general' || option.value === 'llm')")
     expect(panel).toContain('builderOnly={relayMode}')
   })

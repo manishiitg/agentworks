@@ -8,11 +8,10 @@ const totals = { totalCost: 245.6234, totalTokens: 1025, totalInputTokens: 1000,
 
 describe('CostsHeader', () => {
   it('keeps only non-growing title/actions in the fixed header', () => {
-    const html = renderToStaticMarkup(<CostsHeader loading={false} loadAllCosts={async () => {}} headerAction={<button data-testid="ask-ai">Ask AI</button>} />)
+    const html = renderToStaticMarkup(<CostsHeader loading={false} loadAllCosts={async () => {}} />)
     expect(html).toContain('shrink-0')
     expect(html).toMatch(/^<div class="min-w-0 shrink-0">/)
     expect(html).not.toContain('Recorded tokens')
-    expect(html).toContain('data-testid="ask-ai"')
   })
 
   it('keeps exact costs and token accounting in closed details below the readable total', () => {

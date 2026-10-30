@@ -9,11 +9,6 @@ vi.mock('../../services/api', () => ({
   getApiBaseUrl: () => '',
   getAuthToken: () => '',
 }))
-vi.mock('./AskAIButton', () => ({
-  AskAIButton: (props: Record<string, unknown>) => (
-    <button type="button" data-testid="ask-ai" data-message={String(props.message)}>{String(props.label ?? 'Ask AI')}</button>
-  ),
-}))
 
 import { agentApi } from '../../services/api'
 import WorkflowBackupView, { getBackupSummary } from './WorkflowBackupView'
@@ -46,8 +41,6 @@ it('shows one short line instead of the backend paragraph', async () => {
     expect(host.textContent).toContain('Healthy')
     expect(host.textContent).toContain('Backed up. Everything is protected.')
     expect(host.textContent).not.toContain(LONG_BACKEND_SUMMARY)
-    const setup = [...host.querySelectorAll('[data-testid="ask-ai"]')].find(node => node.getAttribute('data-message') === '/backup')
-    expect(setup?.textContent).toBe('Set up')
   } finally {
     await act(async () => root.unmount()); host.remove()
   }
