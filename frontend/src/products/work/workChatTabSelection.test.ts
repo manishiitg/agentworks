@@ -13,6 +13,16 @@ function crewTab(tabId: string, projectId: string, inputText = ''): ChatTab {
 }
 
 describe('Work surface chat-tab selection', () => {
+  it('accepts Command or Control arrows without taking selection or OS navigation chords', () => {
+    const key = (key: string, extra: Partial<KeyboardEvent> = {}) => workChatTabShortcut({ altKey: false, ctrlKey: false, metaKey: true, shiftKey: false, code: key, key, ...extra })
+    expect(key('ArrowLeft')).toEqual({ kind: 'adjacent', direction: -1 })
+    expect(key('ArrowRight')).toEqual({ kind: 'adjacent', direction: 1 })
+    expect(key('ArrowRight', { metaKey: false, ctrlKey: true })).toEqual({ kind: 'adjacent', direction: 1 })
+    expect(key('ArrowRight', { shiftKey: true })).toBeNull()
+    expect(key('ArrowLeft', { altKey: true })).toBeNull()
+    expect(key('ArrowLeft', { metaKey: false })).toBeNull()
+  })
+
   it('ignores the chat draft, so typing does not re-render the workspace side', () => {
     const before = { chatTabs: { t1: crewTab('t1', 'p1', 'h') }, activeTabId: 't1' }
     // What a debounced keystroke does: the tab's config (and the map) are new objects.
@@ -27,7 +37,7 @@ describe('Work surface chat-tab selection', () => {
   // active tab when chosen, but never becomes the primary, which keeps
   // Slack, WhatsApp, MCP, schedules and triggers.
   it('keeps a side chat active without making it the primary chat', () => {
-    const side = { ...crewTab('t2', 'p1'), metadata: { agentProfileId: 'code', agentProfileProjectId: 'p1', agentProfileConversationKey: workSideChatKey('p1', 'a1b2c3d4') } } as unknown as ChatTab
+    const side = { ...crewTab('t2', 'p1'), metadata: { agentProfileId: 'work', agentProfileProjectId: 'p1', agentProfileConversationKey: workSideChatKey('p1', 'a1b2c3d4') } } as unknown as ChatTab
     const state = { chatTabs: { t1: crewTab('t1', 'p1'), t2: side }, activeTabId: 't2' }
     expect(selectWorkChatTabIds(state, 'p1')).toEqual({ canonicalTabId: 't1', activeProjectTabId: 't2' })
     expect(isWorkSideChatTab(side, 'p1')).toBe(true)
@@ -38,7 +48,7 @@ describe('Work surface chat-tab selection', () => {
   // Owner, 2026-10-06: Ctrl+K from a Crew to a Code side chat landed on the
   // primary, because preparing the primary activates it.
   it('keeps the side chat the user picked when the primary chat is prepared', () => {
-    const side = { ...crewTab('t2', 'p1'), tabId: 't2', metadata: { agentProfileId: 'code', agentProfileProjectId: 'p1', agentProfileConversationKey: workSideChatKey('p1', 'a1b2c3d4') } } as unknown as ChatTab
+    const side = { ...crewTab('t2', 'p1'), tabId: 't2', metadata: { agentProfileId: 'work', agentProfileProjectId: 'p1', agentProfileConversationKey: workSideChatKey('p1', 'a1b2c3d4') } } as unknown as ChatTab
     const tabs = { t1: crewTab('t1', 'p1'), t2: side, t3: crewTab('t3', 'p2') }
     expect(workTabToKeepActive(tabs, 't2', 'p1', 't1')).toBe('t2')
     expect(workTabToKeepActive(tabs, 't1', 'p1', 't1')).toBeUndefined()

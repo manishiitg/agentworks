@@ -188,11 +188,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not pin this tab.', 'error')
     }
   }
-  // Alt+1..5 / Option+1..5 pick a chat, Alt+Shift+T / Option+Shift+T opens one
+  // Cmd/Ctrl+arrows cycle visible chats outside editors; number keys pick a chat.
+  // Alt+Shift+T / Option+Shift+T opens one
   // (PLAT-571), only while this product is on screen and never for a key
   // the terminal already took (it marks its own Alt keys handled).
   const tabsRef = useRef(tabs)
   tabsRef.current = tabs
+  const visibleTabsRef = useRef(visibleTabs)
+  visibleTabsRef.current = visibleTabs
   useEffect(() => {
     if (!allowSideChats) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -200,6 +203,17 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       if (event.target instanceof Element && event.target.closest('.xterm')) return
       const action = workChatTabShortcut(event)
       if (!action) return
+      if (action.kind === 'adjacent') {
+        // Keep macOS line navigation, word navigation and selection in editors.
+        if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.monaco-editor,.cm-editor')) return
+        const shown = visibleTabsRef.current
+        const active = shown.findIndex(tab => isTabActive ? isTabActive(tab) : tab.tabId === useChatStore.getState().activeTabId)
+        if (shown.length < 2 || active < 0) return
+        event.preventDefault()
+        markFeatureUsed('chat-tab-keys')
+        onSelectTab(shown[(active + action.direction + shown.length) % shown.length].tabId)
+        return
+      }
       event.preventDefault()
       markFeatureUsed(action.kind === 'new' ? 'chat-tab-new' : 'chat-tab-keys')
       if (action.kind === 'new') {
@@ -211,7 +225,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [allowSideChats, surface, onSelectTab])
+  }, [allowSideChats, surface, onSelectTab, isTabActive])
   // With many tabs the strip scrolls sideways (tabs keep their width, "+" stays in view) and the
   // active tab is brought into view when it changes.
   const stripRef = useRef<HTMLDivElement>(null)
