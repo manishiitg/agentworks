@@ -13,12 +13,24 @@ import ModalPortal from '../ui/ModalPortal'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean }
+
+/** Keep the default sidebar short; the complete admitted directory stays one click away. */
+function WorkList({ items }: { items: ReactNode[] }) {
+  const [expanded, setExpanded] = useState(false)
+  return <div className="space-y-1">
+    {(expanded ? items : items.slice(0, 6))}
+    {items.length > 6 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
+      className="mt-2 rounded-md py-2 pl-9 pr-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {expanded ? 'Show less' : 'Show all work'}
+    </button>}
+  </div>
+}
 export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
   if (!hasDesktopConnections()) {
     const name = window.electronAPI || isLocalDeployment() ? 'Local' : 'Server'
     return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       <h2 className="px-2.5 py-2 text-xs font-medium text-muted-foreground">Your work</h2>
-      {projects.map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project} location={name} onOpen={() => openSidebarProject(project.kind, project.id)} />)}
+      <WorkList items={projects.map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project} location={name} onOpen={() => openSidebarProject(project.kind, project.id)} />)} />
       {children}
       {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
     </div>
@@ -117,13 +129,13 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       <LocationFilter label="Work location" value={filter} onChange={setFilter} connections={connections} />
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      {visible.map(project => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
+      <WorkList key={filter} items={visible.map(project => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
         selected={project.connection.id === active && project.selected} location={project.connection.name}
         onOpen={() => {
           visit(historyScope, connectedProjectKey(project.connection.id, project.kind, project.id))
           if (project.connection.id === active) openSidebarProject(project.kind, project.id)
           else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
-        }} />)}
+        }} />)} />
       {(filter === 'all' || filter === active) && children}
       {locations.map(connection => {
         const status = inventory[connection.id]?.status
