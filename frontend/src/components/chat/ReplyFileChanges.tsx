@@ -26,7 +26,7 @@ const onGitHub = (group: FileGroup) => group.kind === 'repo' && !!group.github_r
 const ownName = (path: string, root: string) => root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : shownFilePath(path)
 function prLine(pr: PullRequest) {
   const checks = pr.checks && pr.checks !== 'none' ? ` · checks ${pr.checks}` : ''
-  const review = pr.review === 'approved' ? ' · approved' : pr.review === 'changes_requested' ? ' · changes requested' : pr.state === 'open' ? ' · no review yet' : ''
+  const review = pr.review === 'approved' ? ' · approved' : pr.review === 'changes_requested' ? ' · changes requested' : pr.review === 'commented' ? ' · review comments' : pr.review === 'unavailable' ? ' · review unavailable' : pr.state === 'open' ? ' · no review yet' : ''
   return `PR #${pr.number}${pr.state === 'open' ? '' : ` ${pr.state}`}${checks}${review}`
 }
 
@@ -157,6 +157,15 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       .catch(() => { /* No PR line. */ })
     return () => controller.abort()
   }, [lookUpPullRequests, reference.workspacePath, reference.snapshotId, reference.sessionId, githubRevision])
+  // Reviews and checks often finish after the person opens the card. Refresh
+  // only the displayed card, using the same server-owned lookup and account.
+  useEffect(() => {
+    if (!isOpen || !lookUpPullRequests) return
+    const refresh = () => { if (document.visibilityState !== 'hidden') setGitHubRevision(value => value + 1) }
+    const timer = window.setInterval(refresh, 60_000)
+    window.addEventListener('focus', refresh)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh) }
+  }, [isOpen, lookUpPullRequests])
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []
   const actions = checked?.actions ?? card?.actions ?? summary?.actions ?? []
