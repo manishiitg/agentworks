@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -82,22 +83,24 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		{"alice", http.MethodPut, "/api/wp/api/documents/Chats/Code/projects/test-code/workflow.json", map[string]any{"content": "{}"}, true},
 		{"alice", http.MethodGet, "/api/wp/api/documents/Chats/Code/projects/test-code/product.json", nil, true},
 	} {
-		var body []byte
-		if tc.body != nil {
-			body, _ = json.Marshal(tc.body)
-		}
-		req := httptest.NewRequest(tc.method, tc.url, bytes.NewReader(body))
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: tc.user, Username: tc.user}))
-		status, detail, cleanup := workspaceProxyCrossUserBlock(req, tc.user)
-		if cleanup != nil {
-			cleanup()
-		}
-		if allowed := status == 0; allowed != tc.allowed {
-			t.Errorf("%s %s %s %v: status=%d (%s), want allowed=%v", tc.user, tc.method, tc.url, tc.body, status, detail, tc.allowed)
-		}
+		t.Run(tc.user+"_"+tc.method+"_"+strings.ReplaceAll(tc.url, "/", "_"), func(t *testing.T) {
+			var body []byte
+			if tc.body != nil {
+				body, _ = json.Marshal(tc.body)
+			}
+			req := httptest.NewRequest(tc.method, tc.url, bytes.NewReader(body))
+			if body != nil {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: tc.user, Username: tc.user}))
+			status, detail, cleanup := workspaceProxyCrossUserBlock(req, tc.user)
+			if cleanup != nil {
+				cleanup()
+			}
+			if allowed := status == 0; allowed != tc.allowed {
+				t.Errorf("%s %s %s %v: status=%d (%s), want allowed=%v", tc.user, tc.method, tc.url, tc.body, status, detail, tc.allowed)
+			}
+		})
 	}
 }
 

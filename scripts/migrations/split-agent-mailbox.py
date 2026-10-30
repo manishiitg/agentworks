@@ -50,10 +50,12 @@ def main():
         json.loads(path.with_name('conversations.history.json').read_bytes())
         print(json.dumps({'converted':False, 'reason':'already split'}))
         return
-    history_path = path.with_name('conversations.history.json')
-    if history_path.exists() and json.loads(history_path.read_bytes()):
-        parser.error('Refusing to overwrite existing mailbox history; restore the .before-split backup before converting')
     history = store.pop('conversations')
+    history_path = path.with_name('conversations.history.json')
+    if history_path.exists():
+        existing = json.loads(history_path.read_bytes())
+        if existing and existing != history:
+            parser.error('Refusing to overwrite existing mailbox history; restore the .before-split backup before converting')
     if history is not None and not isinstance(history, list):
         parser.error('Expected the full mailbox conversation list')
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')

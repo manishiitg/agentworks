@@ -14,6 +14,9 @@ with tempfile.TemporaryDirectory() as directory:
                 'shares':[{'id':'share-a'}], 'expired':[{'inbox_id':'old'}]}
     raw = json.dumps(original).encode()
     store.write_bytes(raw)
+    # An interrupted first conversion wrote history but not the marker.
+    # Matching retained history can resume without manual repair.
+    store.with_name('conversations.history.json').write_text(json.dumps(original['conversations']))
     subprocess.run([sys.executable, str(script), str(store)], check=True)
     metadata = json.loads(store.read_bytes())
     assert metadata.pop('mailbox_storage') == 'history-v1'
