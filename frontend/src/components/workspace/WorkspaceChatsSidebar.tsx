@@ -31,12 +31,18 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const globalPageOpen = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
   const providersOpen = useLLMStore(state => state.showLLMModal)
   const allowed = intersectAllowedProductSurfaces(enabledProductSurfaces(), user?.allowed_products)
+  const canListGoals = allowed.includes('agentworks')
   const [directory, setDirectory] = useState<{ scope: string; crews: Crew[]; error: boolean } | null>(null)
   const [refresh, setRefresh] = useState(0)
   useLiveRefetch(() => setRefresh(value => value + 1), {
     kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 30000,
-    enabled: allowed.includes('work'),
+    enabled: allowed.includes('work') || canListGoals,
   })
+  // Navigation owns its Goals list even when the selected page is a Crew.
+  // Loading manifests elsewhere does not populate the derived preset list.
+  useEffect(() => {
+    if (canListGoals) void useGlobalPresetStore.getState().refreshPresets()
+  }, [scope, refresh, canListGoals])
   useEffect(() => {
     let disposed = false
     const identity = captureChatIdentity()

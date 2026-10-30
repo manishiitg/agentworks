@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   user: { id: 'alice', allowed_products: null, allowed_workflow_ids: null } as any,
   tabs: {} as any,
   presets: [] as any[],
+  refreshPresets: vi.fn(async () => {}),
   workspace: 'local',
   openProject: vi.fn(),
   product: 'work',
@@ -47,7 +48,9 @@ vi.mock('../../stores/useChatStore', () => ({
   ),
 }))
 vi.mock('../../stores/useGlobalPresetStore', () => ({
-  useGlobalPresetStore: (select: any) => select({ workflowPresets: mocks.presets, recentPresetOrder: [], activePresetIds: { workflow: null } }),
+  useGlobalPresetStore: Object.assign((select: any) => select({ workflowPresets: mocks.presets, recentPresetOrder: [], activePresetIds: { workflow: null } }), {
+    getState: () => ({ refreshPresets: mocks.refreshPresets }),
+  }),
 }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({
   useWorkspaceConnectionStore: (select: any) => select({ activeWorkspaceId: mocks.workspace }),
@@ -93,6 +96,7 @@ afterEach(() => {
   mocks.navigation.mockResolvedValue({ workspaces: [] })
   mocks.tabs = {}
   mocks.presets = []
+  mocks.refreshPresets.mockReset().mockResolvedValue(undefined)
   mocks.product = 'work'
   mocks.enabled = ['work', 'agentworks']
   mocks.active = []
@@ -165,6 +169,18 @@ it('discards a previous server inventory when the active server changes', async 
     await act(async () => resolveOld({ workspaces: [{ id: 'old', name: 'Previous private Crew', profile_id: 'work' }] }))
     expect(host.textContent).toContain('Current Crew')
     expect(host.textContent).not.toContain('Previous private Crew')
+  })
+})
+
+it('loads Goals when opening directly on a Crew without first visiting the Goals page', async () => {
+  // PLAT-746: the Crew route never mounts AppWorkspace's preset initialization.
+  mocks.workspace = 'connected-server'
+  mocks.navigation.mockResolvedValue({ workspaces: [{ id: 'crew', profile_id: 'work', name: 'Research crew' }] })
+  mocks.refreshPresets.mockImplementation(async () => { mocks.presets = [{ id: 'goal', label: 'Weekly report' }] })
+  await render(async (host, rerender) => {
+    await rerender()
+    expect(host.textContent).toContain('Research crew')
+    expect(host.textContent).toContain('Weekly report')
   })
 })
 

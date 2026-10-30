@@ -20,7 +20,6 @@ export function DesktopConnections({ children }: { children?: ReactNode }) {
 }
 function ConnectedServers({ children }: { children?: ReactNode }) {
   const active = getRawActiveWorkspaceId()
-  const hasActiveNavigation = Boolean(children)
   const [connections, setConnections] = useState<DesktopConnection[]>([local])
   const [inventory, setInventory] = useState<Record<string, DesktopInventory>>({})
   const [adding, setAdding] = useState(false)
@@ -40,16 +39,16 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
       const all = [local, ...data.connections]
       setConnections(all)
       useWorkspaceConnectionStore.getState().setProfiles(all.map(c => ({ id: c.id, name: c.name, type: c.id === 'local' ? 'local' : 'remote', apiBaseUrl: c.id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${c.id}` })))
-      // The active page already loads its own navigation. Fetch only the other
-      // servers here, independently so one unavailable server cannot hold up another.
-      await Promise.allSettled(all.filter(c => c.id !== active || !hasActiveNavigation).map(async c => {
+      // The active inventory also supplies shared projects missing from the
+      // owner's navigation. Keep servers independent if another is unavailable.
+      await Promise.allSettled(all.map(async c => {
         try {
           const result = await desktopRequest<DesktopInventory>(`/${c.id}/inventory`)
           setInventory(current => ({ ...current, [c.id]: result }))
         } catch { setInventory(current => ({ ...current, [c.id]: { projects: [], status: 'unavailable' } })) }
       }))
     } catch (e) { setError((e as Error).message) }
-  }, [active, hasActiveNavigation])
+  }, [])
 
   useEffect(() => {
     void refresh()
