@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
+import { openAppProduct } from '../../utils/appNavigation'
 import { ChevronDown } from 'lucide-react'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { sidebarExpansionKey, useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
@@ -29,4 +31,12 @@ export function SidebarProjectRow({ name, kind, icon, selected, onOpen }: { name
     <EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={<ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4 shrink-0" />} />
     <span className="min-w-0 flex-1 truncate">{name}</span>
   </button>
+}
+
+/** Reopen the workspace even when an overlay kept its project URL unchanged. */
+export function openSidebarProject(kind: 'crew' | 'goal', id: string) {
+  const surface = kind === 'crew' ? 'work' : 'agentworks'
+  window.dispatchEvent(new Event('close-app-sidebar'))
+  openProductWorkspace(surface)
+  openAppProduct({ surface, id })
 }

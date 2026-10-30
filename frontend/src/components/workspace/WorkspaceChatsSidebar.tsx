@@ -10,10 +10,10 @@ import { agentApi } from '../../services/api'
 import { enabledProductSurfaces, intersectAllowedProductSurfaces } from '../../products/productSurfaceConfig'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { followAppLink, openAppProduct } from '../../utils/appNavigation'
+import { followAppLink } from '../../utils/appNavigation'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { DesktopConnections } from './DesktopConnections'
-import { SidebarProjectRow } from './SidebarServerGroup'
+import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { NewProjectMenu } from './NewProjectMenu'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
 
@@ -58,10 +58,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       (!user?.allowed_workflow_ids || user.allowed_workflow_ids.includes(preset.id)))
       .map(preset => ({ id: preset.id, name: preset.label, icon: preset.icon, kind: 'goal' as const })) : []),
   ].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
-  const open = (project: typeof projects[number]) => {
-    window.dispatchEvent(new Event('close-app-sidebar'))
-    openAppProduct({ surface: project.kind === 'crew' ? 'work' : 'agentworks', id: project.id })
-  }
+
   return <aside aria-label="Projects" className="flex min-h-0 w-full shrink-0 flex-col border-r border-border/70 bg-muted/20">
     <div className="flex h-[50px] shrink-0 items-center gap-2 px-3">
       <a href="/home" onClick={followAppLink} aria-label="Home" title="Home" className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><RuntimeBrandLogo variant="sidebar-header" /></a>
@@ -79,7 +76,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         {projects.map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project}
           selected={!globalPageOpen && !providersOpen && window.location.pathname !== '/home' && window.location.pathname !== '/dashboards' &&
             (project.kind === 'crew' ? product === 'work' && crewId === project.id : product === 'agentworks' && goalId === project.id)}
-          onOpen={() => open(project)} />)}
+          onOpen={() => openSidebarProject(project.kind, project.id)} />)}
         {!current && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
         {current?.error && <button type="button" className="px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => setRefresh(value => value + 1)}>Could not load Crews. Try again.</button>}
         {current && !current.error && !projects.length && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews or Goals yet.</p>}

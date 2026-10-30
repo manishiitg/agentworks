@@ -4,10 +4,9 @@ import { MoreHorizontal, Plus } from 'lucide-react'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../../services/desktopConnections'
 import { getLocalApiBaseUrl, getDesktopApiBaseUrl } from '../../services/api'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { openAppProduct } from '../../utils/appNavigation'
 import { isLocalDeployment } from '../../products/productSurfaceConfig'
 import { getRuntimeAppName, runtimeBrandingConfig } from '../../runtime-branding'
-import { SidebarProjectRow, SidebarServerGroup } from './SidebarServerGroup'
+import { SidebarProjectRow, SidebarServerGroup, openSidebarProject } from './SidebarServerGroup'
 
 const local: DesktopConnection = { id: 'local', name: 'Local', server: '' }
 export function DesktopConnections({ children }: { children?: ReactNode }) {
@@ -103,7 +102,7 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
         {items?.projects.filter(project => !current || !children || project.mode === 'run')
           .sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
           .map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} name={project.name} kind={project.kind} onOpen={() => {
-            if (current) { window.dispatchEvent(new Event('close-app-sidebar')); openAppProduct({ surface: project.kind === 'crew' ? 'work' : 'agentworks', id: project.id }) }
+            if (current) openSidebarProject(project.kind, project.id)
             else open(c.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
           }} />)}
         {!items && (!current || !children) && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
