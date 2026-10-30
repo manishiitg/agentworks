@@ -6,11 +6,13 @@ import { normalizeWorkWorkspaceView, WorkChatTabs } from './WorkSurface'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { agentApi } from '../../services/api'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
+import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { routeView } from '../../utils/productRoutes'
 
 vi.mock('../../utils/chatDeliveryTelemetry', async original => ({ ...await original<typeof import('../../utils/chatDeliveryTelemetry')>(), recordTabReorderTelemetry: vi.fn() }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+afterEach(() => useProductNavigationToolbarStore.setState({ sidebarWidth: 0 }))
 // RunsOnPicker loads the provider manifest in an effect. This runner has no working
 // localStorage, so the real store's late write became an unhandled rejection after the
 // test ended. A store with the manifest already loaded starts no request at all.
@@ -74,6 +76,8 @@ describe('Crew native tab dragging', () => {
   })
 
   it('shows exactly the server list in its order, whatever this browser remembered about a tab', async () => {
+    // PLAT-746-230: opening the sidebar must not hide the project's header tabs.
+    useProductNavigationToolbarStore.setState({ sidebarWidth: 260 })
     const make = (id: string, extra: Record<string, unknown> = {}) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: 900, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew:chat:root-main' : `crew:chat:${id}`, ...extra } } as ChatTab)
     useChatStore.setState({ chatTabs: {
       main: make('main'),

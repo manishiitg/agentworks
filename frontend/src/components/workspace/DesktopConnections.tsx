@@ -1,22 +1,28 @@
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, Globe, Laptop, Plus } from 'lucide-react'
+import { MoreHorizontal, Plus } from 'lucide-react'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../../services/desktopConnections'
 import { getLocalApiBaseUrl, getDesktopApiBaseUrl } from '../../services/api'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { openAppProduct } from '../../utils/appNavigation'
+import { isLocalDeployment } from '../../products/productSurfaceConfig'
+import { getRuntimeAppName, runtimeBrandingConfig } from '../../runtime-branding'
+import { SidebarProjectRow, SidebarServerGroup } from './SidebarServerGroup'
 
 const local: DesktopConnection = { id: 'local', name: 'Local', server: '' }
 export function DesktopConnections({ children }: { children?: ReactNode }) {
-  if (!window.electronAPI?.getDesktopConnection) return <>{children}</>
-  if (!window.electronAPI.getDesktopConnection()) return <>{children}<p className="px-3 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to use connected servers.</p></>
+  if (!window.electronAPI?.getDesktopConnection?.()) {
+    const name = window.electronAPI || isLocalDeployment() ? 'Local' : getRuntimeAppName(runtimeBrandingConfig()) || window.location.hostname
+    return <SidebarServerGroup id="local" name={name}>{children}
+      {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
+    </SidebarServerGroup>
+  }
   return <ConnectedServers>{children}</ConnectedServers>
 }
 function ConnectedServers({ children }: { children?: ReactNode }) {
   const active = getRawActiveWorkspaceId()
   const [connections, setConnections] = useState<DesktopConnection[]>([local])
   const [inventory, setInventory] = useState<Record<string, DesktopInventory>>({})
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [adding, setAdding] = useState(false)
   const [server, setServer] = useState('')
   const [pending, setPending] = useState<string | null>(null)
@@ -81,39 +87,32 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
   return <div className="space-y-3" aria-label="Connected servers">
     {connections.map(c => {
       const current = c.id === active, items = inventory[c.id]
-      return <section key={c.id} className="space-y-1">
-        <div className="flex items-center gap-1">
-          <button aria-expanded={!collapsed[c.id]} onClick={() => setCollapsed(old => ({ ...old, [c.id]: !old[c.id] }))} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-medium hover:bg-muted">
-            {collapsed[c.id] ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {c.id === 'local' ? <Laptop className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
-            <span className="truncate">{c.name}</span>
-            {current && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-label="Open here" />}
-          </button>
+      const options = (c.id !== 'local' || !current) && <details className="group relative shrink-0">
+        <summary aria-label={`Options for ${c.name}`} title={`Options for ${c.name}`} className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"><MoreHorizontal className="h-3.5 w-3.5" /></summary>
+        <div className="absolute right-0 top-full z-30 min-w-44 rounded-lg border border-border bg-background p-1 text-xs shadow-lg" onClick={event => { const details = event.currentTarget.closest('details'); if (details) details.open = false }}>
+          {c.user && <p className="max-w-60 truncate px-2 py-1 text-muted-foreground">{c.user.email || c.user.username}</p>}
+          {!current && <button type="button" onClick={() => open(c.id, '/home')} className="block w-full rounded px-2 py-2 text-left hover:bg-muted">Open {c.name}</button>}
+          {c.id !== 'local' && <>
+            <button type="button" onClick={() => { setServer(c.server); setAdding(true) }} className="block w-full rounded px-2 py-2 text-left hover:bg-muted">Reconnect</button>
+            <button type="button" onClick={() => void disconnect(c.id)} className="block w-full rounded px-2 py-2 text-left hover:bg-muted">Disconnect</button>
+          </>}
         </div>
-        {!collapsed[c.id] && <div className="space-y-1">
-          {c.user && <p className="truncate px-3 text-[11px] text-muted-foreground" title={c.server}>{c.user.email || c.user.username}</p>}
-          {current && c.id !== 'local' && <p className="px-3 text-xs text-muted-foreground">Chats run on {c.name}</p>}
-          {current && children}
-          <>
-            {items?.projects.filter(project => !current || !children || project.mode === 'run').map(project => {
-              const path = project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`
-              return <button key={`${project.kind}:${project.id}`} onClick={() => { if (current) openAppProduct({ surface: project.kind === 'crew' ? 'work' : 'agentworks', id: project.id }); else open(c.id, path) }} className="block w-full truncate rounded-lg px-4 py-2 text-left text-[13px] hover:bg-muted" title={project.name}>
-                <span className="mr-2 text-[10px] text-muted-foreground">{project.kind === 'crew' ? 'Crew' : 'Goal'}</span>{project.name}
-              </button>
-            })}
-            {!items && (!current || !children) && <p role="status" className="px-4 py-2 text-xs text-muted-foreground">Loading projects…</p>}
-            {(!current || !children) && items?.status === 'connected' && !items.projects.length && <p className="px-4 py-2 text-xs text-muted-foreground">No accessible Crews or Goals.</p>}
-          </>
-          {items?.status === 'unavailable' && <button onClick={() => void refresh()} className="px-3 text-xs text-muted-foreground underline">Server unavailable · Retry</button>}
-          {c.id !== 'local' && <div className="flex gap-3 px-3 text-xs text-muted-foreground">
-            <button onClick={() => { setServer(c.server); setAdding(true) }}>{items?.status === 'sign_in' ? 'Sign in again' : 'Reconnect'}</button>
-            <button onClick={() => void disconnect(c.id)}>Disconnect</button>
-          </div>}
-          {!current && c.id === 'local' && <button onClick={() => open('local', '/home')} className="px-3 text-xs text-muted-foreground underline">Open Local</button>}
-        </div>}
-      </section>
+      </details>
+      return <SidebarServerGroup key={c.id} id={c.id} name={c.name} actions={options}>
+        {current && children}
+        {items?.projects.filter(project => !current || !children || project.mode === 'run')
+          .sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
+          .map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} name={project.name} kind={project.kind} onOpen={() => {
+            if (current) { window.dispatchEvent(new Event('close-app-sidebar')); openAppProduct({ surface: project.kind === 'crew' ? 'work' : 'agentworks', id: project.id }) }
+            else open(c.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
+          }} />)}
+        {!items && (!current || !children) && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
+        {(!current || !children) && items?.status === 'connected' && !items.projects.length && <p className="px-2.5 py-2 text-xs text-muted-foreground">No accessible Crews or Goals.</p>}
+        {items?.status === 'unavailable' && <button type="button" onClick={() => void refresh()} className="px-2.5 py-2 text-xs text-muted-foreground underline">Server unavailable · Retry</button>}
+        {items?.status === 'sign_in' && <button type="button" onClick={() => { setServer(c.server); setAdding(true) }} className="px-2.5 py-2 text-xs text-muted-foreground underline">Sign in again</button>}
+      </SidebarServerGroup>
     })}
-    <button onClick={() => setAdding(v => !v)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted"><Plus className="h-4 w-4" />Connect server</button>
+    <button onClick={() => setAdding(v => !v)} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><Plus className="h-3.5 w-3.5" />Connect server</button>
     {adding && <form onSubmit={e => { e.preventDefault(); void connect() }} className="space-y-2 rounded-lg border border-border p-3">
       <label className="block text-xs">Server address<input required type="url" value={server} onChange={e => setServer(e.target.value)} placeholder="https://example.com" className="mt-1 w-full rounded border border-border bg-background p-2 text-sm" /></label>
       <button disabled={busy || !!pending} className="rounded bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">{pending ? 'Waiting for browser sign-in…' : busy ? 'Opening…' : 'Sign in with browser'}</button>

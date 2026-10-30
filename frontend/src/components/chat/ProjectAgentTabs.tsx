@@ -4,7 +4,6 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, 
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
-import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
 import { workSideChatDisplayName } from '../../products/work/workProjectPresentation'
@@ -65,9 +64,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
   const phone = useMobileViewport()
-  // The open desktop sidebar already lists these chats, so the bar then shows only the current one (owner, 2026-10-28).
-  // AppSidebar reports 48 for its closed rail and 0 on phones or when it is not mounted.
-  const chatsInSidebar = useProductNavigationToolbarStore(state => state.sidebarWidth > 48)
   const phoneNavigation = useContext(MobileWorkspaceNavigationContext)
   const selectTab = (tabId: string) => { onSelectTab(tabId); phoneNavigation?.onChange('chat') }
   const closeProjectTab = onCloseTab
@@ -238,16 +234,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       />
     </form>
   )
-  if (!phone && chatsInSidebar) return (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
-      <ProjectWorkspaceTitle name={projectName} surface={surface} />
-      {activeTab && <span className="flex min-w-0 items-center gap-2 text-sm text-foreground" data-testid="work-current-chat" title={tabLabel(activeTab)}>
-        <AgentMenuActivity tabId={activeTab.tabId} workspaceActivity={activeTab.tabId === canonicalTabId ? projectActivity : undefined} />
-        <span className="truncate">{tabLabel(activeTab)}</span>
-      </span>}
-      {newTabForm}
-    </div>
-  )
+
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
