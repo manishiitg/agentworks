@@ -40,9 +40,6 @@ func applyShellWrap(wrap *ShellWrap) error {
 	if wrap == nil {
 		return nil
 	}
-	if !filepath.IsAbs(wrap.Wrapper) {
-		return fmt.Errorf("wrap shells: the wrapper path must be absolute")
-	}
 	if err := os.Mkdir(shellWrapDir, 0o755); err != nil {
 		return fmt.Errorf("wrap shells: %w", err)
 	}
@@ -66,7 +63,8 @@ func applyShellWrap(wrap *ShellWrap) error {
 			if err := unix.Mount(resolved, real, "", unix.MS_BIND, ""); err != nil {
 				return fmt.Errorf("wrap shells: keep %s: %w", resolved, err)
 			}
-			if err := unix.Mount(wrap.Wrapper, resolved, "", unix.MS_BIND, ""); err != nil {
+			// The running launcher itself: always present, wherever its file lives (the private /tmp may hide it).
+			if err := unix.Mount("/proc/self/exe", resolved, "", unix.MS_BIND, ""); err != nil {
 				return fmt.Errorf("wrap shells: wrap %s: %w", resolved, err)
 			}
 			realOf[resolved] = real

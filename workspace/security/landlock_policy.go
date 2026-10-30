@@ -45,8 +45,6 @@ type LandlockPolicy struct {
 // removes ScrubEnv from the environment, adds the Inner layer and runs the real shell. The CLI keeps what its own
 // layer grants (its logins); the commands it runs do not.
 type ShellWrap struct {
-	// Wrapper is this launcher's own binary, mounted over each shell.
-	Wrapper string `json:"wrapper"`
 	// Shells are the shell paths to wrap; empty means bash, sh and dash in /usr/bin and /bin.
 	Shells []string `json:"shells,omitempty"`
 	// Inner is the layer each wrapped shell runs under: the CLI's grants without its logins.

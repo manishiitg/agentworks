@@ -26,7 +26,7 @@ func TestWrappedShellsCannotReachTheCLIsLogins(t *testing.T) {
 	run := func(argv ...string) string {
 		t.Helper()
 		policy := LandlockPolicy{ReadPaths: []string{work, logins}, WritePaths: []string{work}, WorkDir: work, PrivateTmp: true,
-			ShellWrap: &ShellWrap{Wrapper: runner, ScrubEnv: []string{"FAKE_LOGIN_TOKEN"},
+			ShellWrap: &ShellWrap{ScrubEnv: []string{"FAKE_LOGIN_TOKEN"},
 				Inner: LandlockPolicy{ReadPaths: []string{work}, WritePaths: []string{work}, WorkDir: work, PrivateTmp: true}}}
 		config := filepath.Join(t.TempDir(), "agentworks-landlock-test.json")
 		raw, _ := json.Marshal(policy)
