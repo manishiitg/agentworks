@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { desktopRequest } from './desktopConnections'
 import { getApiBaseUrl } from './api'
 
-afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); delete window.electronAPI; delete window.__APP_RUNTIME_CONFIG__ })
+// Use browser storage explicitly: current Node exposes an unavailable native localStorage.
+beforeEach(() => {
+  const values = new Map<string, string>()
+  vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) })
+})
+afterEach(() => { vi.unstubAllGlobals(); delete window.electronAPI; delete window.__APP_RUNTIME_CONFIG__ })
 
 // PLAT-746-219: a Vite-origin request was proxied without desktop proof and returned 403.
 it('sends connection management and remote chat requests directly to the desktop backend', async () => {
