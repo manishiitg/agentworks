@@ -188,6 +188,16 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
       output_cost_per_1m: 0,
     } satisfies ModelMetadata), selectedAllowedModels)
   }, [keyModelChoices, currentGroup?.models, modelCatalog, selectedOption?.provider, selectedAllowedModels])
+  // Another provider's models for the composer's switcher, as allowed on the account the server would pick for it.
+  // Cursor and key accounts list their models per account; switching to them starts on their default model.
+  const modelsForOption = (option: AgentProfileProviderOption) => {
+    if (option.id === selectedOption?.id) return selectableModels
+    if (option.provider === 'cursor-cli' || option.provider === 'pi-cli') return []
+    const group = engineGroups.find(candidate => candidate.option.id === option.id)
+    return filterAllowedModels((group?.models || []).map(({ id, label }) => ({
+      model_id: id, model_name: label, provider: option.provider || '', context_window: 0, input_cost_per_1m: 0, output_cost_per_1m: 0,
+    } satisfies ModelMetadata)), allowedModelsFor(option.provider, ownDefaultConnectionId(accounts, option.provider)))
+  }
   const levelsForModel = (modelId: string, option = selectedOption) => modelReasoningLevels(option,
     modelCatalog.find(model => model.provider === option?.provider && model.model_id === modelId))
   const effortForModel = (modelId: string, requested: string | undefined, option = selectedOption) => {
@@ -196,12 +206,12 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
       .find(effort => effort && levels.some(level => level.id === effort))
   }
   // The reasoning level saved with a newly picked model; Antigravity encodes it in the model id.
-  const effortForPick = (modelId: string, requested: string | undefined) => selectedOption?.provider === 'agy-cli'
+  const effortForPick = (modelId: string, requested: string | undefined, option = selectedOption) => option?.provider === 'agy-cli'
     ? modelId.match(/-(low|medium|high)$/)?.[1]
-    : effortForModel(modelId, requested)
+    : effortForModel(modelId, requested, option)
 
   return {
     workProviderIds, inUseAccount, keyService, cursorModels, cursorModelsError, cursorSelectionDisabled,
-    defaultForOption, selectedAllowedModels, selectableModels, levelsForModel, effortForModel, effortForPick,
+    defaultForOption, selectedAllowedModels, selectableModels, modelsForOption, levelsForModel, effortForModel, effortForPick,
   }
 }
