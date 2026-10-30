@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import '../../src/index.css'
+import { TooltipProvider } from '../../src/components/ui/tooltip'
+import { ProductTopBar } from '../../src/components/workspace/ProductTopBar'
+import { WorkspaceTopToolbar } from '../../src/components/workspace/WorkspaceTopToolbar'
+import { WorkspacePanelVisibilityContext } from '../../src/components/workspace/WorkspacePanelToggle'
+import { TopBarEntitySelector } from '../../src/components/topbar/TopBarEntitySelector'
+import { ProjectWorkspaceTitle } from '../../src/components/chat/ProjectWorkspaceTitle'
 import { ProjectAgentTabs } from '../../src/components/chat/ProjectAgentTabs'
 import { useChatStore, type ChatTab } from '../../src/stores/useChatStore'
 import { useProductSurfaceStore } from '../../src/stores/useProductSurfaceStore'
@@ -34,10 +40,21 @@ if (withSidebar) {
   useChatStore.setState({ getActiveSessions: async () => activity, activeSessionsCache: activity })
 }
 function Fixture() {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(true)
+  const [showTitle, setShowTitle] = useState(false)
   const [rows, setRows] = useState(initial)
   const [calls, setCalls] = useState<unknown[]>([])
   const tabs = useChatStore(state => state.chatTabs)
   const record = (action: string, data: unknown) => setCalls(previous => [...previous, { action, data }])
+  // PLAT-746-234: workspace-only view has no chat title to anchor its picker.
+  if (params.has('workspaceOnly')) return <TooltipProvider><div className="h-dvh bg-background text-foreground">
+    <ProductTopBar><TopBarEntitySelector label="Example" placeholder="Choose a project" open={pickerOpen} onToggle={() => setPickerOpen(value => !value)} onClose={() => setPickerOpen(false)}><button>Existing project</button></TopBarEntitySelector></ProductTopBar>
+    <WorkspacePanelVisibilityContext.Provider value={{ open: panelOpen, onToggle: () => setPanelOpen(value => !value) }}>
+      <WorkspaceTopToolbar>{showTitle && <ProjectWorkspaceTitle name="Example" surface={surface} />}</WorkspaceTopToolbar>
+    </WorkspacePanelVisibilityContext.Provider>
+    <button onClick={() => setShowTitle(true)}>Show chat title</button>
+  </div></TooltipProvider>
   return <div className="flex h-dvh bg-background text-foreground">
     {withSidebar && <div className="flex w-[260px] shrink-0"><WorkspaceChatsSidebar /></div>}
     <main className="min-w-0 flex-1 p-3"><header className="flex h-10 w-full overflow-hidden border-b border-border pb-2">
