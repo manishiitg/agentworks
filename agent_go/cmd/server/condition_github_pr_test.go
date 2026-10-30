@@ -123,7 +123,7 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 	githubAPIURL = srv.URL
 	githubTokenValue = func(*githubAccountRecord) string { return "fixture" }
 	defer func() { githubAPIURL = oldURL; githubTokenValue = oldValue }()
-	if err := writeGitHubRecord("owner", githubAccountRecord{Login: "selected-owner", Source: "pat"}); err != nil {
+	if err := writeGitHubRecord("owner", githubAccountRecord{Login: "selected-owner", Source: "pat", SecretName: "fixture-token"}); err != nil {
 		t.Fatal(err)
 	}
 	c := env.svc.conditionService()
@@ -144,7 +144,7 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 	if _, err := c.manage(ctx, "other", "work", "mail-checks", args); err == nil {
 		t.Fatal("another user started owner's PR watcher")
 	}
-	if err := writeGitHubRecord("owner", githubAccountRecord{Login: "different-account"}); err != nil {
+	if err := writeGitHubRecord("owner", githubAccountRecord{Login: "different-account", SecretName: "fixture-token"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "update", "id": id, "expected_revision": result.(map[string]interface{})["revision"], "trigger": map[string]interface{}{"enabled": false}}); err != nil {
