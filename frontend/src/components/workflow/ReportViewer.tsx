@@ -23,6 +23,7 @@ import { isStreamableReportMediaPath } from './reportWidgets/reportMedia'
 import { allowedReportPath, normalizeReportSource, renderReportMarkdown, reportMarkdownBasePath } from './reportWidgets/reportMarkdown'
 import { useReportChat } from './reportWidgets/useReportChat'
 import { DashboardChatDialog } from './reportWidgets/DashboardChatDialog'
+import { ProjectAskPane } from './reportWidgets/ProjectAskPane'
 
 import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
@@ -311,7 +312,8 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
   }, [workspacePath])
 
   const currentCatalog = catalog?.workspacePath === workspacePath ? catalog : null
-  const dashboardTitle = !loading && !error && report ? report.label : 'Dashboard'
+  const emptyChat = crewConversationPane && !loading && !error && !report && !defaultRelayDashboard
+  const dashboardTitle = emptyChat ? 'Chat' : !loading && !error && report ? report.label : 'Dashboard'
   const title = !documentPath && currentCatalog && currentCatalog.documents.length > 1
     ? <select aria-label="Choose dashboard" title={dashboardTitle} value={currentCatalog.activePath} disabled={loading}
         onChange={event => selectReportDocument(workspacePath, event.target.value)}
@@ -321,7 +323,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
     : dashboardTitle
   const previewMode = focusTier || previewPreference
   const shellClass = previewMode === 'mobile' ? 'mx-auto w-full max-w-[480px] p-1.5' : 'w-full max-w-full'
-  const conversationPane = crewConversationPane && report?.questions?.product === 'crew' && report.questions.capability.can_ask
+  const conversationPane = emptyChat || (crewConversationPane && report?.questions?.product === 'crew' && report.questions.capability.can_ask)
   const runtime = useMemo(() => ({ data: dataApi }), [dataApi])
 
   return (
@@ -340,13 +342,14 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
           tabIndex={0}
           aria-label="Dashboard content"
           data-report-viewport
-          className={`min-h-0 flex-1 overscroll-y-contain ${conversationPane ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'} ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-col' : ''}`}
+          className={`min-h-0 flex-1 overscroll-y-contain ${conversationPane ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'} ${!loading && !error && !report && !defaultRelayDashboard && !emptyChat ? 'flex flex-col' : ''}`}
         >
-          <div className={`${conversationPane ? 'flex min-h-0 w-full flex-1 flex-col' : shellClass} ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-1 items-center justify-center' : ''}`}>
+          <div className={`${conversationPane ? 'flex min-h-0 w-full flex-1 flex-col' : shellClass} ${!loading && !error && !report && !defaultRelayDashboard && !emptyChat ? 'flex flex-1 items-center justify-center' : ''}`}>
             {loading && !report && <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard…</div>}
             {error && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Failed to load report: {error}</div>}
             {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Flow dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} renderEmptyState={canCreate => <DashboardEmptyState description={emptyDescription} action={canCreate ? emptyAction : undefined} onRefresh={refresh} />} /></Suspense>}
-            {!loading && !error && !report && !defaultRelayDashboard && (
+            {emptyChat && <ProjectAskPane key={workspacePath} workspacePath={workspacePath} />}
+            {!loading && !error && !report && !defaultRelayDashboard && !emptyChat && (
               <DashboardEmptyState description={emptyDescription} action={emptyAction} onRefresh={refresh} />
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}

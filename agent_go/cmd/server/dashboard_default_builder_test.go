@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -72,7 +71,7 @@ func TestCrewDashboardCreationRequiresShareConfirmation(t *testing.T) {
 	externalTestBody(t, f.call(t, "other", "share", map[string]any{"action": "set", "crew_id": "team", "mode": "everyone", "create_dashboard": true}), 403)
 }
 
-// A private Goal opens with the same standard dashboard as a Crew. Opening it
+// A private Goal keeps its standard dashboard. Opening it
 // never shares the Goal or overwrites a dashboard the Builder already authored.
 func TestGoalBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 	f := newExternalToolsFixture(t)
