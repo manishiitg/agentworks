@@ -35,6 +35,24 @@ type LandlockPolicy struct {
 	// mounts an empty tmpfs over each in its own mount namespace and binds back only the policy paths (read, write,
 	// working folder) that lie inside it. Requires PrivateTmp (the namespaces).
 	PrivateRoots []string `json:"private_roots,omitempty"`
+	// ShellWrap makes every shell the command starts run under one more Landlock layer (PLAT-872-84). Requires
+	// PrivateTmp (the namespaces).
+	ShellWrap *ShellWrap `json:"shell_wrap,omitempty"`
+}
+
+// ShellWrap: inside the command's mount namespace the launcher binds the real shells to a private path and mounts
+// itself over them. A coding CLI that runs /bin/bash or /bin/sh (they ignore $SHELL) then starts the launcher, which
+// removes ScrubEnv from the environment, adds the Inner layer and runs the real shell. The CLI keeps what its own
+// layer grants (its logins); the commands it runs do not.
+type ShellWrap struct {
+	// Wrapper is this launcher's own binary, mounted over each shell.
+	Wrapper string `json:"wrapper"`
+	// Shells are the shell paths to wrap; empty means bash, sh and dash in /usr/bin and /bin.
+	Shells []string `json:"shells,omitempty"`
+	// Inner is the layer each wrapped shell runs under: the CLI's grants without its logins.
+	Inner LandlockPolicy `json:"inner"`
+	// ScrubEnv are environment names removed before the shell runs (the CLI's login tokens).
+	ScrubEnv []string `json:"scrub_env,omitempty"`
 }
 
 // SandboxCapability is safe to expose from the health endpoint. Detail must

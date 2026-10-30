@@ -129,6 +129,9 @@ func enterPrivateTmp(policy LandlockPolicy) error {
 	if err := applyHiddenPaths(policy.HiddenPaths); err != nil {
 		return err
 	}
+	if err := applyShellWrap(policy.ShellWrap); err != nil {
+		return err
+	}
 	// The mount capability is for the steps above only.
 	if err := unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0); err != nil {
 		return fmt.Errorf("clear ambient capabilities: %w", err)
