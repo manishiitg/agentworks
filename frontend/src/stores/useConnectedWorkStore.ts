@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { useSidebarExpansionStore } from './useSidebarExpansionStore'
+import { connectionDisplayName } from '../utils/connectedWorkPresentation'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../services/desktopConnections'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../services/api'
 import type { ActiveSessionInfo, HeaderSummaryResponse } from '../services/api-types'
@@ -37,7 +39,7 @@ export const useConnectedWorkStore = create<{
       try {
         const data = await desktopRequest<{ connections: DesktopConnection[] }>()
         if (!isChatIdentityCurrent(identity)) return
-        const connections = [localConnection, ...data.connections]
+        const connections = [localConnection, ...data.connections.map(connection => ({ ...connection, name: useSidebarExpansionStore.getState().connectionNames[connection.id] || connectionDisplayName(connection) }))]
         const ids = new Set(connections.map(connection => connection.id))
         set(state => ({ connections, loaded: true, error: '',
           inventory: Object.fromEntries(Object.entries(state.inventory).filter(([id]) => ids.has(id))),

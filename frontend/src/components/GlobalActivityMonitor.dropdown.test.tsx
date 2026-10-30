@@ -214,8 +214,10 @@ it('combines identical session IDs across locations and filters without opening 
     const menu = document.querySelector('[role="menu"]')!
     expect(menu.textContent).toContain('Local task')
     expect(menu.textContent).toContain('Remote approval')
-    const select = menu.querySelector<HTMLSelectElement>('select')!
-    await act(async () => { select.value = remote; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    const select = menu.querySelector('[role="combobox"]')!
+    await act(async () => select.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+    const option = [...document.querySelectorAll('[role="option"]')].find(item => item.textContent?.includes('Team'))!
+    await act(async () => option.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(menu.textContent).not.toContain('Local task')
     const item = [...menu.querySelectorAll('button')].find(button => button.textContent?.includes('Remote approval'))!
     await act(async () => item.click())
