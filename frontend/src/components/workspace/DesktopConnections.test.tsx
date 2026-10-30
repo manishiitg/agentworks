@@ -52,3 +52,25 @@ it('a wrapper without the app-owned backend explains how to enable connections i
     window.electronAPI = previous
   }
 })
+
+it('keeps shared projects in the active server beside the owner navigation', async () => {
+  // PLAT-746: the active inventory is not redundant; it also supplies Run projects.
+  const id = 'a'.repeat(32), previous = window.electronAPI
+  window.electronAPI = { getDesktopConnection: () => id, openDesktopConnection: vi.fn() }
+  mocks.request.mockImplementation(async (path = '') => !path
+    ? { connections: [{ id, name: 'Team', server: 'https://example.com' }] }
+    : { status: 'connected', projects: path === `/${id}/inventory` ? [
+      { id: 'owned', name: 'Owned crew', kind: 'crew', mode: 'builder' },
+      { id: 'shared', name: 'Shared crew', kind: 'crew', mode: 'run' },
+    ] : [] })
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<DesktopConnections><span>Owned crew</span><span>Weekly goal</span></DesktopConnections>))
+    const group = host.querySelector('section[aria-label="Team projects"]')!
+    expect(group.textContent).toContain('Shared crew')
+    expect(group.textContent).toContain('Weekly goal')
+    expect(group.textContent?.match(/Owned crew/g)).toHaveLength(1)
+  } finally {
+    await act(async () => root.unmount()); window.electronAPI = previous
+  }
+})
