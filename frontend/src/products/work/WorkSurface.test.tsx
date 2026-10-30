@@ -79,7 +79,7 @@ describe('Crew native tab dragging', () => {
       main: make('main'),
       // Remembered from before the project moved from Code to Crew: still listed by the server, so it shows.
       a: make('a', { agentProfileId: 'code', agentProfileConversationKey: undefined }),
-      // PLAT-746-222: a persisted activity copy must neither show nor steal the server chat binding.
+      // PLAT-746-224: a persisted activity copy must neither show nor steal the server chat binding.
       duplicate: { ...make('duplicate', { isViewOnly: true }), sessionId: 'session-b' },
       b: make('b'), z: make('z'),
       // A tab the server no longer lists is not shown.
@@ -98,7 +98,8 @@ describe('Crew native tab dragging', () => {
       const ids = (selector: string, attribute: string, scope: ParentNode = host) => [...scope.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
       expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule'])
       expect(useChatStore.getState().activeTabId).toBe('b')
-      expect(useChatStore.getState().chatTabs.duplicate.metadata?.agentProfileConversationKey).toBe('crew:chat:duplicate')
+      expect(useChatStore.getState().chatTabs.duplicate).toBeUndefined()
+      expect(Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === 'session-b')?.tabId).toBe('b')
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
       expect(menu.textContent).toBe('')
       expect(menu.getAttribute('aria-label')).toBe('Agents: switch, reorder or close (4)')

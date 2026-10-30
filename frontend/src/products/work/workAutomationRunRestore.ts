@@ -8,6 +8,7 @@ import { activateTab } from '../../utils/activateTab'
 import { recordViewTimingTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { hydrateExecutionConversation } from '../../utils/executionConversationRestore'
+import { retireWorkActivityCopies } from './workTabs'
 import { WORK_PROFILE_ID, WORK_PROFILE_VERSION } from './workData'
 import { loadWorkSessions, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 
@@ -157,6 +158,7 @@ export async function openWorkAutomationRunChat(
         preferChatHistory: true,
       })
     }
+    retireWorkActivityCopies(tabId)
     focus(tabId, 'active_work_existing_chat')
     return
   }
