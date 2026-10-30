@@ -66,7 +66,12 @@ export function sharedAccountProvider(connectionId: string | undefined, fallback
   const id = (connectionId || '').trim()
   if (!id) return fallbackProvider || undefined
   for (const prefix of ['global:', 'server-default:']) {
-    if (id.startsWith(prefix)) return id.slice(prefix.length) || fallbackProvider || undefined
+    if (!id.startsWith(prefix)) continue
+    const provider = id.slice(prefix.length)
+    // A tab keeps the shared account it last used; after a provider switch that id names the old provider,
+    // and the chat now runs on the current provider's shared account.
+    if (fallbackProvider && provider && provider !== fallbackProvider) return fallbackProvider
+    return provider || fallbackProvider || undefined
   }
   return null
 }
