@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Loader2, ServerOff, RefreshCw } from 'lucide-react'
-import { getApiBaseUrl } from '../services/api'
+import { getApiBaseUrl, getAuthToken } from '../services/api'
 import { GATEWAY_LOGIN_HEADER, gatewayLoginTarget, redirectToGatewayLogin } from '../utils/gatewayAuth'
 
 const RETRY_MS = { min: 1000, max: 5000 }
@@ -28,7 +28,12 @@ export default function ServerConnectionStatus({ children }: { children: React.R
         healthUrl,
         runtimeConfig: typeof window !== 'undefined' ? window.__APP_RUNTIME_CONFIG__ : undefined,
       })
-      const res = await fetch(healthUrl, { signal: ac.signal })
+      // Connected-server health goes through the authenticated local proxy.
+      const token = getAuthToken()
+      const res = await fetch(healthUrl, {
+        signal: ac.signal,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
       clearTimeout(t)
       const loginTarget = gatewayLoginTarget(res.status, res.headers.get(GATEWAY_LOGIN_HEADER))
       if (redirectToGatewayLogin(loginTarget)) return 'authentication-required'
