@@ -47,7 +47,7 @@ describe('fresh deep links keep their view', () => {
 })
 
 describe('Crew native tab dragging', () => {
-  it('keeps project identity visible and other-owner tab controls unavailable without owner headings', async () => {
+  it('names another owner tab and leaves only pinning to the caller', async () => {
     const owner = { agentProfileTabOwnerID: 'other', agentProfileTabOwnerName: 'alex.taylor@example.com', agentProfileTabCanWrite: false }
     const make = (id: string, metadata: Record<string, unknown>) => ({ tabId: id, sessionId: 'session-' + id, name: id, createdAt: 1, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileConversationKey: 'crew:chat:' + id, ...metadata } } as ChatTab)
     useChatStore.setState({ activeTabId: 'main', chatTabs: {
@@ -69,7 +69,9 @@ describe('Crew native tab dragging', () => {
       await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
       const menu = document.querySelector('[role="dialog"][aria-label="Agents"]')!
       expect(menu.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
-      expect(menu.querySelector('button[title="Research · alex.taylor@example.com"]')).not.toBeNull()
+      expect(menu.querySelector('button[title="Research · alex.taylor · alex.taylor@example.com"]')).not.toBeNull()
+      // Another owner's tab can be pinned on the caller's own strip.
+      expect(menu.querySelector('[aria-label="Unpin Research · alex.taylor"]')).not.toBeNull()
       expect(menu.querySelector('[aria-label="Rename Research"]')).toBeNull()
       expect(menu.querySelector('[aria-label="Close Review"]')).toBeNull()
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore() }
