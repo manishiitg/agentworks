@@ -30,6 +30,8 @@ What you can make, and the skill to read first:
 - A diagram or chart inside your reply: `chat-visuals`.
 - A Dashboard: a live page of this Crew's data with Ask and function
   buttons, optionally animated (motion): `panel-dashboard`.
+- An Artifact: a finished page that shows or shares one idea (a proposal,
+  comparison or mock-up), never a loose HTML file: `panel-dashboard`.
 - Functions others can call, and publishing: `panel-dashboard`.
 - Schedules, webhooks and Watchers: `panel-automations`.
 - Sharing (Only me, Chosen people, Everyone), accounts and secrets:

@@ -259,6 +259,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		ID            string            `json:"dashboard_id"`
 		Title         string            `json:"title"`
 		Motion        *bool             `json:"motion"`
+		Artifact      *bool             `json:"artifact"`
 		Files         map[string]string `json:"files"`
 		Remove        []string          `json:"remove"`
 		Expected      string            `json:"expected_revision"`
@@ -364,7 +365,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 			args.Revision = parts[1]
 		}
 	}
-	req := dashboards.Request{Root: target.Root, Action: args.Action, ID: args.ID, Title: args.Title, Motion: args.Motion, Files: args.Files, Remove: args.Remove, ExpectedRevision: args.Expected, Revision: args.Revision, DocumentPath: args.Document, IncludeDraft: includeDraft}
+	req := dashboards.Request{Root: target.Root, Action: args.Action, ID: args.ID, Title: args.Title, Motion: args.Motion, Artifact: args.Artifact, Files: args.Files, Remove: args.Remove, ExpectedRevision: args.Expected, Revision: args.Revision, DocumentPath: args.Document, IncludeDraft: includeDraft}
 	if args.Action == "list" && args.PublishedOnly {
 		req.IncludeDraft = false
 	}

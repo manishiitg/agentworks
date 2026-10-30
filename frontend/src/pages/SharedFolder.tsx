@@ -264,9 +264,6 @@ export function SharedFolder({ encodedPath, uid, onBack }: SharedFolderProps) {
                 )}
                 Download
               </button>
-              <span className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 px-2 py-0.5 rounded text-xs font-medium">
-                Read-only
-              </span>
             </div>
           </div>
         </div>

@@ -276,9 +276,6 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
               }} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600">
                 <Download className="w-4 h-4" />Download
               </button>
-              <span className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 px-2 py-0.5 rounded text-xs font-medium">
-                Read-only
-              </span>
             </div>
           </div>
         </div>

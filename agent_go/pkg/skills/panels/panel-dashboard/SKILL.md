@@ -1,10 +1,10 @@
 ---
 name: panel-dashboard
-description: Build and share dashboards, offer functions, answer an incoming
+description: Build and share dashboards and Artifacts, offer functions, answer an incoming
   function call, or configure publishing and backups. Use the current product
   services.
 metadata:
-  version: 2.1.1
+  version: 2.2.0
   panel-tools:
     work:
     - functions
