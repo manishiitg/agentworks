@@ -436,7 +436,7 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 			externalError(w, 400, "main_chat", "Keep your Builder tab on the tab bar.")
 			return
 		}
-		err = defaultProductConversationRegistryStore().setSideChatPinned(r.Context(), tab.OwnerID, goalChatProfile, scope.PresetID, tab.ID, *args.Pinned)
+		err = defaultProductConversationRegistryStore().setSideChatPinned(r.Context(), tab.OwnerID, goalChatProfile, scope.PresetID, tab.ID, *args.Pinned, false)
 	case "rename":
 		name := strings.TrimSpace(args.Name)
 		if name == "" {
