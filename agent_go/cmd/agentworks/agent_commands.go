@@ -1147,26 +1147,10 @@ func restoreAgentBridge(ctx context.Context, o *options, executable string) erro
 			return err
 		}
 	}
-	c := exec.Command(executable, "bridge", "serve")
-	detach(c)
-	if err = c.Start(); err != nil {
-		return err
-	}
-	go func() { _ = c.Wait() }()
 	// The new helper waits for the old one to finish exiting (it holds the single-listener lock until then).
 	wait, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	for {
-		if _, err = agentworksclient.CallLocalBridge(wait, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
-			fmt.Fprintln(o.stderr, "AgentWorks messaging reconnected for existing live sessions.")
-			return nil
-		}
-		select {
-		case <-wait.Done():
-			return errors.New("CLI ready, but delivery did not reconnect; run agentworks attach in your chat")
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
+	return ensureLocalBridgeWithExecutable(wait, root, o, executable)
 }
 
 // A PTY alone is not person approval. Reject model-launched terminals even if

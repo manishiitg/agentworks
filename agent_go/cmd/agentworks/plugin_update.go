@@ -418,7 +418,11 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 			continue
 		}
 		if done {
-			fmt.Fprintf(o.stderr, "Updated the %s plugin. Reload %s to use it.\n", update.Provider, update.Provider)
+			if update.Provider == "codex" {
+				fmt.Fprintln(o.stderr, "Updated the Codex plugin. Quit Codex fully and reopen it to use the updated plugin.")
+			} else {
+				fmt.Fprintf(o.stderr, "Updated the %s plugin. Reload %s to use it.\n", update.Provider, update.Provider)
+			}
 			continue
 		}
 		fmt.Fprintf(o.stderr, "To update the %s plugin, run: %s\n", update.Provider, update.Manual)

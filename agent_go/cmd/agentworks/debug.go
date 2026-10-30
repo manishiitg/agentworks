@@ -297,6 +297,8 @@ func redactDebug(report string) string {
 // debugBridge reports the local messaging helper (AgentBridge): whether it runs, which chats it holds and how each is
 // reached, the plugins found on this computer, and the helper's own log. Names and states only, no message text.
 func debugBridge(ctx context.Context, b *strings.Builder) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 	line := func(format string, args ...any) { fmt.Fprintf(b, format+"\n", args...) }
 	fmt.Fprintf(b, "\n== local messaging helper ==\n")
 	root, err := agentworksclient.DefaultLocalBridgeRoot()
@@ -342,6 +344,7 @@ func debugBridge(ctx context.Context, b *strings.Builder) {
 			line("plugins:   found for %s (hook approval is shown inside each app: Settings > Hooks, or the app's plugin list)", strings.Join(found, ", "))
 		}
 	}
+	debugHelperStartup(b, root)
 	if lines := tailLines(filepath.Join(root, "bridge.log"), 400); len(lines) > 0 {
 		fmt.Fprintf(b, "\n== local messaging helper log (recent, idle waits left out) ==\n")
 		kept := lines[:0]
@@ -356,6 +359,21 @@ func debugBridge(ctx context.Context, b *strings.Builder) {
 		for _, l := range kept {
 			fmt.Fprintln(b, l)
 		}
+	}
+}
+
+func debugHelperStartup(b *strings.Builder, root string) {
+	fmt.Fprintln(b, "\n== helper startup (recent) ==")
+	lines, err := helperStartupLines(filepath.Join(root, "startup.log"), 0, 20)
+	if err != nil {
+		fmt.Fprintln(b, shortStartupDetail("Startup log unavailable: "+err.Error()))
+		return
+	}
+	if len(lines) == 0 {
+		fmt.Fprintln(b, "No startup output recorded.")
+	}
+	for _, line := range lines {
+		fmt.Fprintln(b, redactDebug(line))
 	}
 }
 
