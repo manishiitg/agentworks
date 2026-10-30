@@ -52,7 +52,12 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 	if len(argv) == 0 {
 		return fmt.Errorf("missing command")
 	}
-	if policy.PrivatePTS && os.Getenv(privatePTSChildEnv) != "1" {
+	// Shell wrapping mounts inside the command's own namespaces (with its own /tmp), which the launcher creates by
+	// starting itself again in them, as it does for a private PTY.
+	if policy.ShellWrap != nil {
+		policy.PrivateTmp = true
+	}
+	if (policy.PrivatePTS || policy.ShellWrap != nil) && os.Getenv(privatePTSChildEnv) != "1" {
 		return runPrivatePTSChild(policy, argv)
 	}
 	_ = os.Unsetenv(privatePTSChildEnv)
@@ -70,6 +75,22 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 			return fmt.Errorf("SANDBOX_UNAVAILABLE: %w", err)
 		}
 	}
+	if err := os.Chdir(policy.WorkDir); err != nil {
+		return fmt.Errorf("SANDBOX_UNAVAILABLE: enter working directory: %w", err)
+	}
+	if err := restrictLandlock(policy, abi); err != nil {
+		return err
+	}
+	_ = os.Unsetenv(shellLayerEnv)
+	if err := syscall.Exec(argv[0], argv, ScrubPlatformSecretEnv(os.Environ())); err != nil {
+		return fmt.Errorf("execute sandboxed command: %w", err)
+	}
+	return nil
+}
+
+// restrictLandlock adds the policy's grants (and the system baseline) as one Landlock layer on the calling thread
+// and everything it later execs. The working folder is not changed.
+func restrictLandlock(policy LandlockPolicy, abi int) error {
 	handled := landlockHandledFS(abi)
 	attr := unix.LandlockRulesetAttr{Access_fs: handled}
 	rulesetFD, _, errno := unix.Syscall6(
@@ -124,18 +145,12 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 		}
 	}
 
-	if err := os.Chdir(policy.WorkDir); err != nil {
-		return fmt.Errorf("SANDBOX_UNAVAILABLE: enter working directory: %w", err)
-	}
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return fmt.Errorf("SANDBOX_UNAVAILABLE: set no_new_privs: %w", err)
 	}
 	_, _, errno = unix.Syscall(unix.SYS_LANDLOCK_RESTRICT_SELF, rulesetFD, 0, 0)
 	if errno != 0 {
 		return fmt.Errorf("SANDBOX_UNAVAILABLE: enforce Landlock ruleset: %w", errno)
-	}
-	if err := syscall.Exec(argv[0], argv, ScrubPlatformSecretEnv(os.Environ())); err != nil {
-		return fmt.Errorf("execute sandboxed command: %w", err)
 	}
 	return nil
 }

@@ -10,12 +10,24 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
+	"runtime"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/browserreap"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 )
 
 func main() {
+	// Landlock restricts the calling thread, and the command inherits that thread's domain on exec: keep both on one
+	// OS thread.
+	runtime.LockOSThread()
+	// Started under a shell's name inside a wrapped command (PLAT-872-84): the shell wrapper.
+	if security.WrappedShellInvocation(os.Args[0]) {
+		if err := security.RunWrappedShell(os.Args); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(126)
+		}
+		return
+	}
 	// `landlock-runner reap-browser-helpers`: clean up this account's own leftover agent-browser helpers (orphans and
 	// stale files only). The platform runs it as each slot (PLAT-685); it touches nothing another account owns.
 	if len(os.Args) == 2 && os.Args[1] == security.ReapBrowserHelpersArg {
