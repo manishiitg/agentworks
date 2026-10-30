@@ -105,13 +105,10 @@ type resolvedResumeTargetContextKey struct{}
 
 func resolveProductResumeTarget(userID string, conversation ProductConversationRecord) (*resolvedResumeTarget, bool, error) {
 	workspacePath := normalizeConversationWorkspace(conversation.WorkspacePath)
-	// Local Work history lives below the authenticated user's project root.
-	// Rebuild that canonical owner prefix after normalizing absolute/runtime
-	// variants; the history reader can still fall back to legacy global chats.
-	lookupWorkspacePath := workspacePath
-	if workspacePath != "" {
-		lookupWorkspacePath = workspaceref.PhysicalPath(userID, workspacePath)
-	}
+	// The same folder the turn itself reads the chat's history from: a shared Crew/<id> stays as it is, a Chats/...
+	// path maps into the caller's tree. Prefixing every path with the caller's tree missed every shared Crew, so a
+	// Crew chat that switched coding agent started with no history (PLAT-872-78).
+	lookupWorkspacePath := productConversationRuntimeWorkspace(userID, workspacePath)
 	target, ok, err := readRestoredChatHistoryPersistTargetForSession(userID, conversation.SessionID, lookupWorkspacePath)
 	if err != nil || !ok || target == nil {
 		return nil, false, err
