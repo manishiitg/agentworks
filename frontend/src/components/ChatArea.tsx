@@ -64,6 +64,7 @@ import {
   offeredProfileReasoningEffort,
   resolveOrCreateTab,
   createUserMessageEvent,
+  stageOptimisticUserMessage,
   withoutOptimisticUserMessage,
   validateExecutionGroups,
   isChatCompatiblePhase,
@@ -2890,7 +2891,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         fileContextForPrompt.map((file: { path: string }) => file.path),
       )
       optimisticUserEventID = optimisticUserMessage.id
-      chatStore.addTabEvents(tabSessionId, [optimisticUserMessage])
+      stageOptimisticUserMessage(tabSessionId, optimisticUserMessage)
     }
 
     // Consume only this request's context after acceptance. Failed sends keep
@@ -3312,7 +3313,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             .filter((path: string) => path !== store.getTabConfig(sourceTab.tabId)?.restoredConversationPath),
         )
         captured.optimisticUserEventId = optimistic.id
-        store.addTabEvents(sourceTab.sessionId, [optimistic])
+        stageOptimisticUserMessage(sourceTab.sessionId, optimistic)
         recordChatSubmissionTelemetry('send_staged', sourceTab.sessionId, submissionId, { tabId: sourceTab.tabId })
       }
 

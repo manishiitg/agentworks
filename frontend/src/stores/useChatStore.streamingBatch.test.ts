@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from './useChatStore'
+import { createUserMessageEvent, stageOptimisticUserMessage } from '../utils/chatSubmitHelpers'
 
 describe('streaming pieces are applied once per frame', () => {
   beforeEach(() => {
@@ -41,6 +42,22 @@ describe('streaming pieces are applied once per frame', () => {
     useChatStore.getState().appendStreamingChunk('s1', 3, 'the reply', { isDelta: true })
     vi.advanceTimersByTime(16)
     expect(useChatStore.getState().streamingText.s1).toBe('the reply')
+  })
+
+  it('places existing narration above a message immediately, before the delayed server echo', () => {
+    const chat = useChatStore.getState()
+    chat.setTabEvents('s1', [])
+    chat.appendStreamingChunk('s1', 2, 'already streamed', { isDelta: true })
+    const message = { ...createUserMessageEvent('follow up', undefined, '2026-10-30T03:36:16.136Z', 's1'), id: 'user:submission' }
+    stageOptimisticUserMessage('s1', message)
+    expect(useChatStore.getState().streamingText.s1).toBeUndefined()
+    const firstPaint = chat.getTabEvents('s1')
+    expect(firstPaint.map(event => event.type)).toEqual(['llm_generation_end', 'user_message'])
+    expect(Date.parse(firstPaint[0].timestamp!)).toBeLessThan(Date.parse(message.timestamp!))
+    vi.advanceTimersByTime(1100)
+    // The existing echo-side freeze has nothing left to reposition.
+    expect(chat.freezeStreamingTextBefore('s1', '2026-10-30T03:36:17.242Z')).toBeNull()
+    expect(chat.getTabEvents('s1')).toEqual(firstPaint)
   })
 
   it('uses only the backend widget stream flag, clears it with the reply and never infers it from deltas', () => {
