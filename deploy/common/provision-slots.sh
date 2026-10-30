@@ -129,7 +129,7 @@ while p not in ("/", ""):
 {
   "slot_prefix": "$SLOT_PREFIX",
   "slot_docker": $docker_flag,
-  "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux", "/usr/bin/chmod"],
+  "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux", "/usr/bin/chmod", "/usr/bin/node"],
   "allowed_cwd": ["$DOCS", "$HOME_DIR/slots"],
   "slot_run_root": "$HOME_DIR/slots/run",
   "slot_state_root": "$HOME_DIR/slots/state",
