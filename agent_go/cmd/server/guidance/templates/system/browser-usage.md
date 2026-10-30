@@ -4,6 +4,10 @@ People connect one or more Chrome or Edge browsers once from Account → Browser
 When `agent_browser(command="status")` reports `effective_mode: "extension"`,
 use ordinary `agent_browser` commands without `--cdp`. The connected Chrome
 extension exposes only tabs shared by the current account in this workspace.
+Use managed browser commands for these tasks, including `eval` for page
+scripts and DOM inspection. Do not launch a second Chrome through Puppeteer,
+Playwright or a shell script to probe the same site: it is outside the selected
+connection and can crash on macOS during app registration.
 Reads, snapshots, navigation, tab selection and new tabs stay in the background.
 Clicks and typing need a visible page (Chrome ignores input to a hidden tab), so
 the extension brings their tab to the front of its window, and restores a
