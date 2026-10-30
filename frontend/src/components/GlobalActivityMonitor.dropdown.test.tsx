@@ -22,6 +22,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { useChatStore } from '../stores/useChatStore'
 import { ProductTopBar } from './workspace/ProductTopBar'
+import { useConnectedWorkStore } from '../stores/useConnectedWorkStore'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 
 const now = () => new Date().toISOString()
@@ -195,4 +196,35 @@ describe('global activity monitor dropdown', () => {
       host.remove()
     }
   })
+})
+
+it('combines identical session IDs across locations and filters without opening the wrong server', async () => {
+  const previous = window.electronAPI
+  const remote = 'b'.repeat(32)
+  const open = vi.fn(async () => {})
+  window.electronAPI = { getDesktopConnection: () => 'local', openDesktopConnection: open }
+  const refresh = useConnectedWorkStore.getState().refreshActivity
+  useConnectedWorkStore.setState({ connections: [{ id: 'local', name: 'Local', server: '' }, { id: remote, name: 'Team', server: 'https://example.com' }],
+    activity: { [remote]: { status: 'connected', sessions: [workflowSession({ session_id: 'same', workflow_name: 'Remote approval', needs_user_input: true })] } }, refreshActivity: vi.fn(async () => {}) })
+  getHeaderSummary.mockResolvedValue({ active_sessions: [workflowSession({ session_id: 'same', workflow_name: 'Local task' })] })
+  const { host, root } = renderMonitor()
+  try {
+    await act(async () => root.render(<GlobalActivityMonitor />))
+    click(host.querySelector('button[data-testid="tour-active-work-switcher"]'))
+    const menu = document.querySelector('[role="menu"]')!
+    expect(menu.textContent).toContain('Local task')
+    expect(menu.textContent).toContain('Remote approval')
+    const select = menu.querySelector<HTMLSelectElement>('select')!
+    await act(async () => { select.value = remote; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(menu.textContent).not.toContain('Local task')
+    const item = [...menu.querySelectorAll('button')].find(button => button.textContent?.includes('Remote approval'))!
+    await act(async () => item.click())
+    expect(open).toHaveBeenCalledWith(remote, '/home')
+    expect(JSON.parse(sessionStorage.getItem('agentworks-open-connected-activity')!)).toEqual({ connection: remote, sessionId: 'same' })
+    expect(openGlobalActivitySession).not.toHaveBeenCalled()
+  } finally {
+    await act(async () => root.unmount()); host.remove(); window.electronAPI = previous
+    sessionStorage.removeItem('agentworks-open-connected-activity')
+    useConnectedWorkStore.setState({ refreshActivity: refresh, connections: [], activity: {} })
+  }
 })

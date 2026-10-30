@@ -13,7 +13,6 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 import { followAppLink } from '../../utils/appNavigation'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { DesktopConnections } from './DesktopConnections'
-import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { NewProjectMenu } from './NewProjectMenu'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
 
@@ -77,17 +76,13 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       </button>
       <NewProjectMenu />
     </div>
-    <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <DesktopConnections>
-        {projects.map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project}
-          selected={!globalPageOpen && !providersOpen && window.location.pathname !== '/home' && window.location.pathname !== '/dashboards' &&
-            (project.kind === 'crew' ? product === 'work' && crewId === project.id : product === 'agentworks' && goalId === project.id)}
-          onOpen={() => openSidebarProject(project.kind, project.id)} />)}
-        {!current && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
-        {current?.error && <button type="button" className="px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => setRefresh(value => value + 1)}>Could not load Crews. Try again.</button>}
-        {current && !current.error && !projects.length && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews or Goals yet.</p>}
-      </DesktopConnections>
-    </div>
+    <DesktopConnections projects={projects.map(project => ({ ...project,
+      selected: !globalPageOpen && !providersOpen && window.location.pathname !== '/home' && window.location.pathname !== '/dashboards' &&
+        (project.kind === 'crew' ? product === 'work' && crewId === project.id : product === 'agentworks' && goalId === project.id),
+    }))}>
+      {!current && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
+      {current?.error && <button type="button" className="px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => setRefresh(value => value + 1)}>Could not load Crews. Try again.</button>}
+    </DesktopConnections>
     <SharedToolShortcuts />
     {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
   </aside>

@@ -27,11 +27,15 @@ import { WorkflowIcon } from './workflow/WorkflowIcon'
 import type { CustomPreset } from '../types/preset'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { activityTypeLabels, botPlatformLabel, crewActivityTitle, sessionOriginLabel, titleWithoutOrigin, type ActivityType } from '../utils/globalActivityPresentation'
+import { hasDesktopConnections, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
+import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
+import { openConnectedActivity, restoreConnectedActivity } from '../utils/connectedActivityNavigation'
 import { useLiveRefetch } from '../hooks/useLiveRefetch'
 
-type ActivityMonitorItem =
+type ActivityLocation = { locationId: string; locationName?: string; stale?: boolean }
+type ActivityMonitorItem = ActivityLocation & (
   | { type: 'session'; id: string; session: ActiveSessionInfo }
-  | { type: 'builder-tab'; id: string; tab: ChatTab }
+  | { type: 'builder-tab'; id: string; tab: ChatTab })
 
 function activityType(session: ActiveSessionInfo): ActivityType {
   const triggerLabel = workflowTriggerLabel({ sessionId: session.session_id, triggeredBy: session.triggered_by })
@@ -195,6 +199,22 @@ function workflowPresetForActivity(
 
 const noRepresentedSessions: readonly string[] = []
 export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly string[] }> = ({ representedSessionIds = noRepresentedSessions }) => {
+  const desktop = hasDesktopConnections()
+  const activeLocation = getRawActiveWorkspaceId()
+  const connections = useConnectedWorkStore(state => state.connections)
+  const remoteActivity = useConnectedWorkStore(state => state.activity)
+  const [locationFilter, setLocationFilter] = useState('all')
+  useEffect(() => { if (locationFilter !== 'all' && !connections.some(connection => connection.id === locationFilter)) setLocationFilter('all') }, [connections, locationFilter])
+  const locationName = connections.find(connection => connection.id === activeLocation)?.name || (activeLocation === 'local' ? 'Local' : 'Server')
+  useEffect(() => {
+    if (!desktop) return
+    void restoreConnectedActivity()
+    const refresh = () => { if (!document.hidden) void useConnectedWorkStore.getState().refreshActivity() }
+    refresh()
+    const timer = window.setInterval(refresh, GLOBAL_ACTIVITY_REFRESH_MS)
+    window.addEventListener('focus', refresh)
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh) }
+  }, [desktop, activeLocation])
   const sidebar = useProductNavigationSidebar()
   const panelRef = useRef<HTMLDivElement>(null)
   const [panelPosition, setPanelPosition] = useState<{ left: number; top: number; maxHeight?: number }>({ left: 0, top: 0 })
@@ -224,8 +244,11 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     fallbackMs: GLOBAL_ACTIVITY_REFRESH_MS,
   })
 
+  const currentActivity = desktop ? remoteActivity[activeLocation] : undefined
+  const currentLocationStale = Boolean(currentActivity && currentActivity.status !== 'connected')
+  const currentSessions = currentLocationStale ? currentActivity!.sessions : activeSessionsCache
   const activeSessions = useMemo(() => {
-    return activeSessionsCache.filter(session =>
+    return currentSessions.filter(session =>
       !isInternalChildSession({
         parentSessionId: session.parent_session_id,
         sessionKind: session.session_kind,
@@ -233,7 +256,7 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
       (!isProductProjectSession(session) || isWorkProductSession(session)) &&
       isVisibleActivitySession(session)
     )
-  }, [activeSessionsCache])
+  }, [currentSessions])
 
   // Shared with ModePresetBar's current-workflow selector, so the two agree
   // on which session is "current" — see globalActivityMonitorStatus.ts.
@@ -242,8 +265,8 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     [activeTabId, chatTabs, selectedModeCategory, showWorkflowsOverview, showProviders],
   )
   const visibleSessions = useMemo(
-    () => visibleActivitySessions(activeSessions, currentSessionId, representedSessionIds),
-    [activeSessions, currentSessionId, representedSessionIds],
+    () => desktop ? activeSessions : visibleActivitySessions(activeSessions, currentSessionId, representedSessionIds),
+    [activeSessions, currentSessionId, representedSessionIds, desktop],
   )
 
   const visibleActivityKeys = useMemo(() => {
@@ -259,13 +282,13 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   // exposes the same session/preset/workflow, render the backend-backed item once.
   const fallbackBuilderTabs = useMemo(
     () => Object.values(chatTabs).filter(tab =>
-      tab.tabId !== activeTabId &&
-      (!tab.sessionId || !representedSessionIds.includes(tab.sessionId)) &&
+      (desktop || tab.tabId !== activeTabId) &&
+      (desktop || !tab.sessionId || !representedSessionIds.includes(tab.sessionId)) &&
       (!tab.metadata?.agentProfileId || tab.metadata.agentProfileId === 'work') &&
       isLocalActivityFallbackTab(tab) &&
       !activityKeysForTab(tab).some(key => visibleActivityKeys.has(key))
     ),
-    [chatTabs, activeTabId, visibleActivityKeys, representedSessionIds],
+    [chatTabs, activeTabId, visibleActivityKeys, representedSessionIds, desktop],
   )
 
   const sortedSessions = useMemo(() => {
@@ -283,15 +306,29 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   const activityItems = useMemo<ActivityMonitorItem[]>(() => [
     ...sortedSessions.map(session => ({
       type: 'session' as const,
-      id: `session:${session.session_id}`,
+      id: `${activeLocation}:session:${session.session_id}`,
+      locationId: activeLocation, locationName: desktop ? locationName : undefined, stale: currentLocationStale,
       session,
     })),
     ...fallbackBuilderTabs.map(tab => ({
       type: 'builder-tab' as const,
-      id: `builder-tab:${tab.tabId}`,
+      id: `${activeLocation}:builder-tab:${tab.tabId}`,
+      locationId: activeLocation, locationName: desktop ? locationName : undefined, stale: currentLocationStale,
       tab,
     })),
-  ], [sortedSessions, fallbackBuilderTabs])
+    ...(!desktop ? [] : connections.filter(connection => connection.id !== activeLocation).flatMap(connection =>
+      (remoteActivity[connection.id]?.sessions || []).filter(session =>
+        !isInternalChildSession({ parentSessionId: session.parent_session_id, sessionKind: session.session_kind }) &&
+        (!isProductProjectSession(session) || isWorkProductSession(session)) && isVisibleActivitySession(session))
+        .map(session => ({ type: 'session' as const, id: `${connection.id}:session:${session.session_id}`, session,
+          locationId: connection.id, locationName: connection.name, stale: remoteActivity[connection.id]?.status !== 'connected',
+        })))),
+  ].sort((a, b) => {
+    const rank = (item: ActivityMonitorItem) => item.stale ? 3 : item.type === 'session' && runtimeNeedsUserInput(item.session) ? 0 : 1
+    return rank(a) - rank(b)
+  }), [sortedSessions, fallbackBuilderTabs, desktop, connections, remoteActivity, activeLocation, locationName, currentLocationStale])
+  const filteredActivity = activityItems.filter(item => locationFilter === 'all' || item.locationId === locationFilter)
+  const unavailable = desktop ? connections.filter(connection => remoteActivity[connection.id]?.status && remoteActivity[connection.id].status !== 'connected') : []
 
   const dockRunningActivityCount = useMemo(() => {
     const busySessionIds = new Set<string>()
@@ -309,8 +346,9 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
       localBusyTabCount += 1
     }
 
-    return busySessionIds.size + localBusyTabCount
-  }, [activeSessions, chatTabs])
+    const remoteBusy = activityItems.filter(item => item.locationId !== activeLocation && !item.stale && item.type === 'session' && ['running', 'background', 'needs-input'].includes(statusTone(item.session))).length
+    return (currentLocationStale ? 0 : busySessionIds.size + localBusyTabCount) + remoteBusy
+  }, [activeSessions, chatTabs, activityItems, activeLocation, currentLocationStale])
 
   useEffect(() => {
     const api = (window as Window & { electronAPI?: { setRunningActivity?: (value: { count: number }) => void } }).electronAPI
@@ -365,13 +403,14 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   // Items can disappear (a run finishes) while the panel is open; never show
   // a stale list, and close instead of stranding an empty panel.
   useEffect(() => {
-    if (open && activityItems.length === 0) setOpen(false)
-  }, [open, activityItems.length])
+    if (!desktop && open && activityItems.length === 0 && unavailable.length === 0) setOpen(false)
+  }, [desktop, open, activityItems.length, unavailable.length])
 
   const aggregate = useMemo(() => {
     let needsInput = 0
     let working = 0
     for (const item of activityItems) {
+      if (item.stale) continue
       if (item.type === 'builder-tab') {
         if (item.tab.isStreaming || item.tab.isSyntheticTurn) working += 1
         continue
@@ -427,16 +466,15 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     }
   }, [sidebar, open, activityItems.length])
 
-  if (activityItems.length === 0) {
-    return null
-  }
+  if (activityItems.length === 0 && !desktop) return null
 
   const count = activityItems.length
+  const checkingActivity = desktop && connections.some(connection => !remoteActivity[connection.id])
   // End user only cares about two states: is it working, or is it waiting for me?
-  const buttonLabel = aggregate.needsInput > 0
-    ? `${count} need${count === 1 ? 's' : ''} input`
+  const buttonLabel = count === 0 ? (unavailable.length ? 'Activity unavailable' : checkingActivity ? 'Checking activity…' : 'No active work') : aggregate.needsInput > 0
+    ? `${aggregate.needsInput} need${aggregate.needsInput === 1 ? 's' : ''} input`
     : aggregate.working > 0
-      ? `${count} running`
+      ? `${aggregate.working} running`
       : `${count} active`
   const dotClasses = aggregate.needsInput > 0
     ? 'bg-amber-500 dark:bg-amber-400'
@@ -472,11 +510,14 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
           style={panelPosition}
           className="fixed z-50 flex max-h-[75vh] w-80 max-w-[calc(100vw-5rem)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
         >
-          <div className="px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
-            Active work · {count}
+          <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+            <span>Active work · {count}</span>
+            {desktop && <select aria-label="Activity location" value={locationFilter} onChange={event => setLocationFilter(event.target.value)} className="max-w-[50%] rounded bg-transparent py-1 text-xs font-normal">
+              <option value="all">All</option>{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.name}</option>)}
+            </select>}
           </div>
           <div className="min-h-0 max-h-96 overflow-y-auto pb-1">
-            {activityItems.map(item => {
+            {filteredActivity.map(item => {
               if (item.type === 'builder-tab') {
                 const builderBusy = item.tab.isStreaming || item.tab.isSyntheticTurn
                 const isCrewBuilder = item.tab.metadata?.agentProfileId === 'work'
@@ -494,13 +535,13 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
                     title={builderBusy ? 'Builder is processing — wait before sending a message' : 'Builder is idle — ready for your next message'}
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
                   >
-                    {builderBusy
+                    {item.stale ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : builderBusy
                       ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500 dark:text-blue-400" />
                       : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400" />}
                     {isCrewBuilder
                       ? <EntityIdentityIcon icon={item.tab.metadata?.agentProfileProjectIcon} label={builderTitle} />
                       : <WorkflowIcon icon={builderPreset?.icon} label={builderTitle} />}
-                    <span className="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200">{builderTitle}</span>
+                    <span className="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200">{builderTitle}{item.locationName && <span className="block truncate text-[10px] text-muted-foreground">{item.locationName}</span>}</span>
                     <span className="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                       {timeAgo(item.tab.lastStreamingStartedAt ?? item.tab.lastAccessedAt)}
                     </span>
@@ -509,8 +550,8 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
               }
 
               const session = item.session
-              const tab = Object.values(chatTabs).find(t => t.sessionId === session.session_id)
-              const workflowPreset = isWorkflowSession(session)
+              const tab = item.locationId === activeLocation ? Object.values(chatTabs).find(t => t.sessionId === session.session_id) : undefined
+              const workflowPreset = item.locationId === activeLocation && isWorkflowSession(session)
                 ? workflowPresetForActivity(workflowPresets, session, tab)
                 : undefined
               const fallbackName = workflowPreset?.label || null
@@ -526,11 +567,11 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
                   key={item.id}
                   type="button"
                   role="menuitem"
-                  onClick={() => selectSession(session)}
+                  onClick={() => { if (item.locationId === activeLocation) selectSession(session); else { setOpen(false); void openConnectedActivity(item.locationId, session.session_id) } }}
                   title={`${title} · ${origin} · ${statusLabel}${waitingTitle}`}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
-                  {tone === 'needs-input'
+                  {item.stale ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : tone === 'needs-input'
                     ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500 dark:text-amber-400" />
                     : tone === 'running' || tone === 'background'
                       ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500 dark:text-blue-400 opacity-80" />
@@ -544,20 +585,25 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
                       : null}
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-gray-800 dark:text-gray-200">{title}</span>
-                    <span className="truncate text-[11px] leading-tight text-gray-500 dark:text-gray-400">{origin}</span>
+                    <span className="truncate text-[11px] leading-tight text-gray-500 dark:text-gray-400">{[item.locationName, item.stale ? 'Last known activity' : origin].filter(Boolean).join(' · ')}</span>
                   </span>
                   <ActivityTypeIcon type={type} platform={type === 'Bot' ? botPlatformLabel(session.bot_platform, session.session_id) : undefined} />
                   <span className="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">{timeAgo(session.last_activity)}</span>
                 </button>
               )
             })}
+            {!filteredActivity.length && <p className="px-3 py-4 text-xs text-muted-foreground">{checkingActivity ? 'Loading activity…' : 'No active work in this location.'}</p>}
+            {unavailable.filter(connection => locationFilter === 'all' || connection.id === locationFilter).map(connection => <button key={connection.id} role="menuitem" className="block w-full px-3 py-2 text-left text-xs text-muted-foreground" onClick={() => void useConnectedWorkStore.getState().refreshActivity()}>
+              {connection.name} · {remoteActivity[connection.id].status === 'sign_in' ? 'Sign in again in Connections' : 'Disconnected · Retry'}
+              {remoteActivity[connection.id].updatedAt && <span className="block">Last updated {timeAgo(remoteActivity[connection.id].updatedAt)}</span>}
+            </button>)}
           </div>
           <button
             type="button"
             onClick={showQuickSwitcher}
             className="w-full shrink-0 border-t border-gray-200 px-3 py-2 text-center text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
           >
-            Show all in Ctrl+K
+            {desktop ? `Search ${locationName} in Ctrl+K` : 'Show all in Ctrl+K'}
           </button>
         </div>,
         document.body,

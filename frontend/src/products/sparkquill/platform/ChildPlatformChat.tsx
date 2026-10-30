@@ -89,7 +89,7 @@ function renderProductRow(it: TranscriptInteraction): ReactNode {
   return null
 }
 
-function ChildConversation({ events, isStreaming, isRestoring, streamingText, streamingStatus, hasOlder, loadingOlder, historyError, onLoadOlder, onSubmitQuery }: ChatContentRendererProps) {
+function ChildConversation({ events, isStreaming, isRestoring, streamingText, streamingStatus, hasOlder, loadingOlder, historyError, onRetryHistory, onLoadOlder, onSubmitQuery }: ChatContentRendererProps) {
   useEffect(() => {
     activeSubmit = onSubmitQuery ?? null
     return () => { if (activeSubmit === onSubmitQuery) activeSubmit = null }
@@ -116,7 +116,7 @@ function ChildConversation({ events, isStreaming, isRestoring, streamingText, st
         hasOlder={hasOlder}
         loadingOlder={loadingOlder}
         onLoadOlder={onLoadOlder}
-        onRetry={onLoadOlder}
+        onRetry={onRetryHistory ?? onLoadOlder}
         surfaceClassName="fl-platform-surface"
         assistantLabel="Quill"
         assistantIcon={<img src="/sparkquill-mark.svg" alt="" width={16} height={16} />}
