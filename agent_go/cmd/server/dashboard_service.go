@@ -244,35 +244,36 @@ func dashboardError(w http.ResponseWriter, err error) {
 // The authenticated transport supplies claims; JSON cannot set roles or draft rights.
 func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request) {
 	var args struct {
-		ExportID      string            `json:"export_id"`
-		Submission    string            `json:"submission_id"`
-		Composition   string            `json:"composition_path"`
-		SourceMode    string            `json:"source_mode"`
-		ExportWidth   int               `json:"viewport_width"`
-		ExportHeight  int               `json:"viewport_height"`
-		Duration      float64           `json:"duration_s"`
-		FPS           int               `json:"fps"`
-		Workspace     string            `json:"workspace"`
-		Action        string            `json:"action"`
-		FileName      string            `json:"file_name"`
-		ContentBase64 string            `json:"content_base64"`
-		ID            string            `json:"dashboard_id"`
-		Title         string            `json:"title"`
-		Motion        *bool             `json:"motion"`
-		Artifact      *bool             `json:"artifact"`
-		Files         map[string]string `json:"files"`
-		Remove        []string          `json:"remove"`
-		Expected      string            `json:"expected_revision"`
-		Revision      string            `json:"revision"`
-		Document      string            `json:"document_path"`
-		Theme         string            `json:"theme"`
-		Width         string            `json:"width"`
-		Limit         int               `json:"limit"`
-		Offset        int               `json:"offset"`
-		Mode          string            `json:"mode"`
-		SharedWithMe  bool              `json:"shared_with_me"`
-		PublishedOnly bool              `json:"published_only"`
-		Emails        []string          `json:"emails"`
+		ExportID        string            `json:"export_id"`
+		Submission      string            `json:"submission_id"`
+		Composition     string            `json:"composition_path"`
+		SourceMode      string            `json:"source_mode"`
+		ExportWidth     int               `json:"viewport_width"`
+		ExportHeight    int               `json:"viewport_height"`
+		Duration        float64           `json:"duration_s"`
+		FPS             int               `json:"fps"`
+		Workspace       string            `json:"workspace"`
+		Action          string            `json:"action"`
+		FileName        string            `json:"file_name"`
+		ContentBase64   string            `json:"content_base64"`
+		ID              string            `json:"dashboard_id"`
+		Title           string            `json:"title"`
+		Motion          *bool             `json:"motion"`
+		Artifact        *bool             `json:"artifact"`
+		Files           map[string]string `json:"files"`
+		Remove          []string          `json:"remove"`
+		Expected        string            `json:"expected_revision"`
+		Revision        string            `json:"revision"`
+		Document        string            `json:"document_path"`
+		Theme           string            `json:"theme"`
+		Width           string            `json:"width"`
+		Limit           int               `json:"limit"`
+		Offset          int               `json:"offset"`
+		Mode            string            `json:"mode"`
+		CreateDashboard bool              `json:"create_dashboard"`
+		SharedWithMe    bool              `json:"shared_with_me"`
+		PublishedOnly   bool              `json:"published_only"`
+		Emails          []string          `json:"emails"`
 		crewAgentShareChange
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
@@ -306,12 +307,6 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		dashboardError(w, err)
 		return
 	}
-	if args.Action == "list" && !target.Edit && (target.Kind == "crew") && claims.AccessToken == nil && claims.Scope == "" && claims.Provider != "bot_route" {
-		if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil {
-			dashboardError(w, err)
-			return
-		}
-	}
 	if args.Action == "upload" {
 		api.dashboardUploadBase64(w, r, target.Root, args.FileName, args.ContentBase64)
 		return
@@ -321,7 +316,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if dashboardShareAction(args.Action) {
-		api.handleDashboardShare(w, r, claims, target, args.Action, args.Mode, args.Emails, args.crewAgentShareChange)
+		api.handleDashboardShare(w, r, claims, target, args.Action, args.Mode, args.Emails, args.CreateDashboard, args.crewAgentShareChange)
 		return
 	}
 	if args.Action == "export_static" {
@@ -441,11 +436,11 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "list" {
-		// A new private Crew or Goal needs the same starting dashboard as a shared
-		// one. Only its Builder with existing authoring consent creates it;
+		// Goals retain their starting dashboard. Crew discovery never creates one;
+		// its owner can explicitly create one when sharing.
 		// Run requests, bounded file connections, Local projects and published
 		// laptop source never acquire writes through catalog discovery.
-		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && (target.Kind == "crew" || target.Kind == "workflow") {
+		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && target.Kind == "workflow" {
 			publication, err := readPublishedProject(r.Context(), target.Root)
 			if err != nil {
 				dashboardError(w, err)

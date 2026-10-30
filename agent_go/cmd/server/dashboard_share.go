@@ -55,7 +55,8 @@ type runShareState struct {
 	// Previous is who had access before this change, so the owner or agent sees exactly who was removed.
 	Previous *runShareState `json:"previous,omitempty"`
 	// CanShare tells the screen whether to offer sharing: only the project's owner can.
-	CanShare bool `json:"can_share"`
+	CanShare       bool `json:"can_share"`
+	NeedsDashboard bool `json:"needs_dashboard,omitempty"`
 	// Note says anything the owner should know about what the share did.
 	Note   string            `json:"note,omitempty"`
 	Agents []sharedCrewAgent `json:"agents,omitempty"`
@@ -124,7 +125,7 @@ func (api *StreamingAPI) dashboardShareOwner(ctx context.Context, claims *UserCl
 }
 
 func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget) (runShareState, error) {
-	state := runShareState{Mode: runSharePrivate}
+	state := runShareState{Mode: runSharePrivate, NeedsDashboard: target.Kind == "crew" && !hasPublishedDashboard(ctx, target.Root)}
 	switch target.Kind {
 	case "crew":
 		if crewSharedWithOthers(target.Root) {
@@ -176,7 +177,7 @@ func logDashboardShareRefusal(claims *UserClaims, target dashboardTarget, mode, 
 	log.Printf("[RUN_SHARE] refused user_id=%q kind=%q target=%q root=%q mode=%q stage=%q status=%d cause_status=%d reason=%q", user, target.Kind, target.ID, target.Root, mode, stage, wf.StatusCode(err), wf.StatusCode(cause), cause.Error())
 }
 
-func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string, changes ...crewAgentShareChange) (state runShareState, err error) {
+func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string, createDashboard bool, changes ...crewAgentShareChange) (state runShareState, err error) {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	stage := "mode"
 	var cause error
@@ -201,6 +202,9 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	madeDefault := false
 	stage = "dashboard"
 	if mode != runSharePrivate && !hasPublishedDashboard(ctx, target.Root) {
+		if target.Kind == "crew" && !createDashboard {
+			return runShareState{NeedsDashboard: true}, dashboardFailure(409, "Create a dashboard for this Crew before sharing it. Ask the owner whether to create a standard dashboard, then retry with create_dashboard=true only if they agree.")
+		}
 		if _, generated, defaultErr := api.ensureDefaultDashboard(ctx, claims, target); defaultErr != nil || !hasPublishedDashboard(ctx, target.Root) {
 			cause = defaultErr
 			return runShareState{}, dashboardFailure(409, "this project has no published dashboard and a standard one could not be made; build and publish a dashboard, then share it")
@@ -322,7 +326,7 @@ func unknownSuffix(unknown []string) string {
 	return fmt.Sprintf(" (no account: %s)", strings.Join(unknown, ", "))
 }
 
-func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action, mode string, emails []string, changes ...crewAgentShareChange) {
+func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action, mode string, emails []string, createDashboard bool, changes ...crewAgentShareChange) {
 	var (
 		state runShareState
 		err   error
@@ -333,11 +337,17 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 			externalError(w, 403, "insufficient_scope", "Sharing needs the project's owner and existing authoring consent for this project.")
 			return
 		}
-		state, err = api.applyRunShare(r.Context(), claims, target, mode, emails, changes...)
+		state, err = api.applyRunShare(r.Context(), claims, target, mode, emails, createDashboard, changes...)
 	} else {
 		state, err = api.readRunShare(r.Context(), claims, target)
 	}
 	if err != nil {
+		if state.NeedsDashboard {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "dashboard_required": true})
+			return
+		}
 		if len(state.Unknown) > 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(400)

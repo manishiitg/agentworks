@@ -70,6 +70,11 @@ Deliver finished documents, spreadsheets, PDFs and drafts as file links in chat;
 they remain accessible through Files. There is no separate finished-file registry.
 Published Artifacts appear automatically under Dashboards.
 
+Private Crews do not get an automatic dashboard. When sharing needs one, ask
+whether to create a standard dashboard and set `create_dashboard=true` only
+after the person agrees. Listing dashboards and publishing functions do not
+create one. Existing published dashboards can be shared directly.
+
 Live dashboards are managed TSX using shared shadcn/Recharts components, kept
 in this project's dashboard list; a quick shareable page (a decision, a report,
 a file view) can be HTML. Read `panel-dashboard` before authoring; JSON

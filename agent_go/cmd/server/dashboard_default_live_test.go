@@ -62,7 +62,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 				}
 				return result
 			}
-			op("share", map[string]any{"mode": "everyone"})
+			op("share", map[string]any{"mode": "everyone", "create_dashboard": true})
 			created := op("get", nil)
 			// Seed historical platform output through the same workspace writer
 			// as automatic creation, without the authored-page HTML validator.
