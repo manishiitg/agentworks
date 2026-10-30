@@ -8501,7 +8501,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if len(historyForAgent) > 0 && replayHistoryToAgent {
+		// A coding agent that does not own the context reads the archive even when
+		// nothing is in memory: after a server restart a provider switch found an
+		// empty in-memory history and the new CLI started blind (PLAT-872-31).
+		codingArchiveOnly := len(historyForAgent) == 0 && codingFallbackConversationPath != "" && isCodingAgentProvider(finalProvider, finalModelID)
+		if (len(historyForAgent) > 0 || codingArchiveOnly) && replayHistoryToAgent {
 			historyToReplay := historyForAgent
 			if isCodingAgentProvider(finalProvider, finalModelID) {
 				codingFallbackHistoryBase = len(llmAgent.GetHistory())
