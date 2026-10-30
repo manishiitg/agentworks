@@ -66,7 +66,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
   const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
-    .filter(tab => tab.metadata?.agentProfileWorkspace === workspacePath && tab.metadata?.agentProfileBuilder !== true)
+    .filter(tab => tab.metadata?.agentProfileWorkspace === workspacePath)
     .map(tab => tab.sessionId).filter((id): id is string => Boolean(id))))
   const projectMode = useProjectMode(sessionId)
   const isCowork = projectMode === 'cowork'
