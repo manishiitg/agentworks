@@ -15,34 +15,21 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean }
 
 /** Keep the default sidebar short; the complete admitted directory stays one click away. */
-function WorkList({ items }: { items: ReactNode[] }) {
+function WorkList({ items, recentItems }: { items: ReactNode[]; recentItems: ReactNode[] }) {
   const [expanded, setExpanded] = useState(false)
+  useEffect(() => {
+    if (items.length <= Math.min(recentItems.length, 6)) setExpanded(false)
+  }, [items.length, recentItems.length])
   return <div className="space-y-1">
-    {(expanded ? items : items.slice(0, 6))}
-    {items.length > 6 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
+    {(expanded ? items : recentItems.slice(0, 6))}
+    {items.length > Math.min(recentItems.length, 6) && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
       className="mt-2 rounded-md py-2 pl-9 pr-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {expanded ? 'Show less' : 'Show all work'}
     </button>}
   </div>
 }
-export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
-  if (!hasDesktopConnections()) {
-    const name = window.electronAPI || isLocalDeployment() ? 'Local' : 'Server'
-    return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <h2 className="px-2.5 py-2 text-xs font-medium text-muted-foreground">Your work</h2>
-      <WorkList items={projects.map(project => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project} location={name} onOpen={() => openSidebarProject(project.kind, project.id)} />)} />
-      {children}
-      {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
-    </div>
-  }
-  return <ConnectedServers projects={projects}>{children}</ConnectedServers>
-}
-function ConnectedServers({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
+function useWorkHistory(projects: SidebarProject[]) {
   const active = getRawActiveWorkspaceId()
-  const state = useConnectedWorkStore()
-  const connections = connectedLocations(state)
-  const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
-  const { refresh, error: directoryError } = state
   // Use the local account's navigation history across connection reloads.
   // It stores only selectors; admitted inventory still decides visible rows.
   let owner = ''
@@ -53,6 +40,40 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const selectedProject = projects.find(project => project.selected)
   const selectedKey = selectedProject ? connectedProjectKey(active, selectedProject.kind, selectedProject.id) : ''
   useEffect(() => { if (selectedKey) visit(historyScope, selectedKey) }, [historyScope, selectedKey, visit])
+  return { recent, visit: (key: string) => visit(historyScope, key) }
+}
+export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
+  return hasDesktopConnections() ? <ConnectedServers projects={projects}>{children}</ConnectedServers> : <StandaloneWork projects={projects}>{children}</StandaloneWork>
+}
+function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
+  const { recent, visit } = useWorkHistory(projects)
+  const name = window.electronAPI || isLocalDeployment() ? 'Local' : undefined
+  const orderedProjects = [...projects].sort((a, b) => {
+    const rank = (project: SidebarProject) => {
+      const index = recent?.indexOf(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id)) ?? -1
+      return project.selected && index < 0 ? -1 : index < 0 ? Infinity : index
+    }
+    return rank(a) - rank(b) || a.name.localeCompare(b.name)
+  })
+  const renderProject = (project: SidebarProject) => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project} location={name} onOpen={() => {
+    visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
+    openSidebarProject(project.kind, project.id)
+  }} />
+  return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+    <h2 className="px-2.5 py-2 text-xs font-medium text-muted-foreground">Your work</h2>
+    <WorkList items={orderedProjects.map(renderProject)} recentItems={orderedProjects.filter(project => project.selected || recent?.includes(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))).map(renderProject)} />
+    {children}
+    {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
+  </div>
+}
+
+function ConnectedServers({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
+  const active = getRawActiveWorkspaceId()
+  const state = useConnectedWorkStore()
+  const connections = connectedLocations(state)
+  const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
+  const { refresh, error: directoryError } = state
+  const { recent, visit } = useWorkHistory(projects)
   const [filter, setFilter] = useState('all')
   useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   const [adding, setAdding] = useState(false)
@@ -121,6 +142,15 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
   })
   const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
+  const remoteCount = connections.filter(connection => connection.id !== 'local').length
+  const renderProject = (project: typeof rows[number]) => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
+    selected={project.connection.id === active && project.selected}
+    location={project.connection.id === 'local' ? 'Local' : remoteCount > 1 && filter === 'all' ? project.connection.name : undefined}
+    onOpen={() => {
+      visit(connectedProjectKey(project.connection.id, project.kind, project.id))
+      if (project.connection.id === active) openSidebarProject(project.kind, project.id)
+      else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
+    }} />
   const locations = connections.filter(connection => filter === 'all' || connection.id === filter)
   const connected = connections.filter(connection => connection.id !== 'local' && inventory[connection.id]?.status === 'connected').length
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
@@ -129,13 +159,8 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       <LocationFilter label="Work location" value={filter} onChange={setFilter} connections={connections} />
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <WorkList key={filter} items={visible.map(project => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
-        selected={project.connection.id === active && project.selected} location={project.connection.name}
-        onOpen={() => {
-          visit(historyScope, connectedProjectKey(project.connection.id, project.kind, project.id))
-          if (project.connection.id === active) openSidebarProject(project.kind, project.id)
-          else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
-        }} />)} />
+      <WorkList key={filter} items={visible.map(renderProject)} recentItems={visible.filter(project =>
+        (project.connection.id === active && project.selected) || recent?.includes(connectedProjectKey(project.connection.id, project.kind, project.id))).map(renderProject)} />
       {(filter === 'all' || filter === active) && children}
       {locations.map(connection => {
         const status = inventory[connection.id]?.status

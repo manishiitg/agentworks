@@ -30,6 +30,7 @@ it('identical project IDs open on their owning server while an offline server le
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<DesktopConnections><span>Local draft stays here</span></DesktopConnections>))
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Show all work')?.click())
     expect(host.textContent).toContain('Local draft stays here')
     expect(host.textContent).toContain('First team unavailable')
     const project = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Release crew'))!
@@ -69,6 +70,7 @@ it('keeps shared projects in the active server beside the owner navigation', asy
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<DesktopConnections projects={[{ id: 'owned', name: 'Owned crew', kind: 'crew' }, { id: 'weekly', name: 'Weekly goal', kind: 'goal' }]} />))
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Show all work')?.click())
     const group = host.querySelector('[aria-label="Connected work"]')!
     expect(group.textContent).toContain('Shared crew')
     expect(group.textContent).toContain('Weekly goal')
