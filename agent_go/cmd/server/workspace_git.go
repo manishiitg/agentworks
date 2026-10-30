@@ -379,7 +379,7 @@ func workspaceGitFileFor(xy, p string) workspaceGitFile {
 }
 
 func workspaceGitStatus(ctx context.Context, repoDir string) (workspaceGitRepo, error) {
-	out, err := workspaceGitCommand(ctx, repoDir, "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=normal").Output()
+	out, err := workspaceGitCommand(ctx, repoDir, "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all").Output()
 	if err != nil {
 		return workspaceGitRepo{}, err
 	}
@@ -463,7 +463,12 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	query := r.URL.Query()
 	op := query.Get("op")
 	if op == "" || op == "status" {
-		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": workspaceGitStatusRepos(ctx, realBase)})
+		repos := workspaceGitStatusRepos(ctx, realBase)
+		if ctx.Err() != nil {
+			writeWorkspaceGitJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Could not load changes. Try again."})
+			return
+		}
+		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": repos})
 		return
 	}
 

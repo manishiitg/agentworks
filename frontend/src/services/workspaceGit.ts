@@ -110,6 +110,7 @@ export const workspaceGitApi = {
   },
   async status(workspacePath: string): Promise<GitRepo[]> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'status' } })
+    if (response.data?.git_unavailable) throw new Error('Git is unavailable.')
     return (response.data?.repos as GitRepo[] | undefined) ?? []
   },
   async diff(workspacePath: string, repo: string, file: string): Promise<{ diff: string; truncated: boolean }> {

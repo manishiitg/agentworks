@@ -28,6 +28,23 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('opens current uncommitted files with full names from the compact Changes link', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    const path = 'scripts/run-analysis-with-a-long-filename.ts'
+    vi.mocked(workspaceGitApi.status).mockResolvedValueOnce([{ root: 'app-worktree', branch: 'feature', ahead: 0, behind: 0, files: [{ path, status: 'untracked' }] }])
+    vi.mocked(workspaceGitApi.diff).mockResolvedValue({ diff: '@@ -0,0 +1 @@\n+new file\n', truncated: false })
+    try {
+      await act(async () => root.render(<ChatFileReview initialScope="uncommitted" workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect(host.querySelector('[aria-pressed="true"]')?.textContent).toBe('Uncommitted')
+      const file = [...host.querySelectorAll('button')].find(button => button.textContent?.includes(path))!
+      expect(file).toBeTruthy()
+      expect(file.querySelector('.truncate')).toBeNull()
+      expect(host.querySelector('[aria-label="File versions"]')).not.toBeNull()
+      expect(workspaceGitApi.diff).toHaveBeenCalledWith('Crew/example', 'app-worktree', path)
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('keeps outside-Git review requests scoped and skips unrelated repository discovery', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)

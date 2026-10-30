@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -74,7 +75,10 @@ func gitGet(t *testing.T, user string, query url.Values) (int, map[string]any) {
 }
 
 func TestWorkspaceGitStatusFindsNestedRepoAndChanges(t *testing.T) {
-	gitTestEnv(t)
+	_, repoDir := gitTestEnv(t)
+	// PLAT-746-259: collapsing a new directory hid filenames and counted it as one file.
+	writeFile(t, filepath.Join(repoDir, "scripts", "first.ts"), "first\n")
+	writeFile(t, filepath.Join(repoDir, "scripts", "nested", "second.ts"), "second\n")
 	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
 	if code != http.StatusOK {
 		t.Fatalf("status: %d %v", code, body)
@@ -92,7 +96,7 @@ func TestWorkspaceGitStatusFindsNestedRepoAndChanges(t *testing.T) {
 		file := f.(map[string]any)
 		got[file["path"].(string)] = file["status"].(string)
 	}
-	want := map[string]string{"a.txt": "modified", "new.txt": "added", "loose.txt": "untracked"}
+	want := map[string]string{"a.txt": "modified", "new.txt": "added", "loose.txt": "untracked", "scripts/first.ts": "untracked", "scripts/nested/second.ts": "untracked"}
 	for path, status := range want {
 		if got[path] != status {
 			t.Fatalf("%s = %q, want %q (all: %v)", path, got[path], status, got)
@@ -100,6 +104,32 @@ func TestWorkspaceGitStatusFindsNestedRepoAndChanges(t *testing.T) {
 	}
 	if _, clean := got["keep.txt"]; clean {
 		t.Fatalf("an unchanged file is listed: %v", got)
+	}
+	// A large new folder must retain the existing list cap, not inflate the response.
+	for i := 0; i < workspaceGitMaxFiles; i++ {
+		writeFile(t, filepath.Join(repoDir, "generated", fmt.Sprintf("file-%05d.txt", i)), "new\n")
+	}
+	code, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	if code != http.StatusOK {
+		t.Fatalf("large status: %d %v", code, body)
+	}
+	large := body["repos"].([]any)[0].(map[string]any)
+	if len(large["files"].([]any)) != workspaceGitMaxFiles || large["truncated"] != true {
+		t.Fatalf("large status must be capped and marked partial")
+	}
+	encoded, _ := json.Marshal(body)
+	if len(encoded) > 1<<20 {
+		t.Fatalf("large status response grew beyond one MiB: %d", len(encoded))
+	}
+	// An expired read cannot turn a partial/empty result into a clean-worktree count.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := sharedSecretsRequest(http.MethodGet, "/api/workspace-git?workspace_path="+url.QueryEscape(gitTestProject), "alice", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+	api := &StreamingAPI{}
+	requireWorkflowReadAccessCallerRelative(api.handleWorkspaceGit)(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expired status: %d %s", w.Code, w.Body.String())
 	}
 }
 
