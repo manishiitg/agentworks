@@ -116,8 +116,8 @@ func TestAgentSnapshotConcurrentValidation(t *testing.T) {
 			if r.Header.Get("If-None-Match") == tag {
 				if validations.Add(1) == 1 {
 					close(entered)
+					<-release
 				}
-				<-release
 				w.WriteHeader(http.StatusNotModified)
 				return
 			}
@@ -214,7 +214,9 @@ func TestAgentSnapshotConcurrentValidation(t *testing.T) {
 			t.Fatal("reader did not finish")
 		}
 	}
-	if validations.Load() != 1 {
+	// The mutation validates independently; the 19 snapshot waiters share
+	// the first validation, even after its original caller cancels.
+	if validations.Load() != 2 {
 		t.Fatalf("concurrent validations: %d", validations.Load())
 	}
 }

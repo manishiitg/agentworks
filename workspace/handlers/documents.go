@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -739,7 +738,10 @@ func GetDocument(c *gin.Context) {
 	// Read file. A chat conversation is assembled from its header and history
 	// log; ?tail=N returns only its last N messages (never to be saved back).
 	var content []byte
-	if chatlog.IsConversationPath(filePath) {
+	var mailboxTag string
+	if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
+		content, mailboxTag, err = readAgentSnapshotFile(filePath, info)
+	} else if chatlog.IsConversationPath(filePath) {
 		if tail := c.Query("tail"); tail != "" {
 			n := 0
 			_, _ = fmt.Sscanf(tail, "%d", &n)
@@ -760,10 +762,10 @@ func GetDocument(c *gin.Context) {
 	}
 
 	// Internal messaging snapshots can validate their parsed cache without
-	// re-encoding/downloading the entire store. Hash the bytes actually read:
-	// atomic replacement or same-size/same-mtime edits cannot reuse an old tag.
+	// re-encoding/downloading the entire store. The byte cache validates file
+	// identity and complete OS metadata, including change time, on every read.
 	if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
-		tag := fmt.Sprintf("\"%x\"", sha256.Sum256(content))
+		tag := mailboxTag
 		c.Header("ETag", tag)
 		c.Header("Cache-Control", "private, no-cache")
 		if c.GetHeader("If-None-Match") == tag {

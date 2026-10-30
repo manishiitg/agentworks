@@ -118,15 +118,28 @@ func expiredConversationForCaller(s agentMessageStore, id, userID string, caller
 
 func readAgentMessageStore(ctx context.Context) (agentMessageStore, error) {
 	start := time.Now()
-	var s agentMessageStore
-	raw, exists, err := readFileFromWorkspace(ctx, agentMessagesPath)
+	caller := agentMailboxReadCaller()
+	// Mutation transactions still validate independently of snapshot flights
+	// and decode a private copy. Conditional validation avoids downloading the
+	// same multi-megabyte store for every attachment check or busy worker poll.
+	key := agentSnapshotKey{getWorkspaceAPIURL() + "/api/documents/" + agentMessagesPath, agentMessageVersion.Load()}
+	agentSnapshotCache.Lock()
+	prior := agentSnapshotCache.entry
+	agentSnapshotCache.Unlock()
+	entry, err := fetchAgentMessageSnapshot(ctx, key, prior)
 	ioTime := time.Since(start)
-	defer func() { agentMailboxTiming("read", start, len(raw), ioTime) }()
+	defer func() { agentMailboxTiming("read", start, len(entry.content), ioTime, caller) }()
+	var s agentMessageStore
 	if err != nil {
 		return s, err
 	}
-	if exists {
-		err = json.Unmarshal([]byte(raw), &s)
+	agentSnapshotCache.Lock()
+	if agentMessageVersion.Load() == key.generation {
+		agentSnapshotCache.entry = entry
+	}
+	agentSnapshotCache.Unlock()
+	if entry.valid {
+		err = json.Unmarshal([]byte(entry.content), &s)
 	}
 	return s, err
 }
@@ -147,9 +160,13 @@ func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
 }
 
 // Slow-path metadata only: never message bodies, account names or credentials.
-func agentMailboxTiming(operation string, start time.Time, size int, ioTime time.Duration) {
+func agentMailboxTiming(operation string, start time.Time, size int, ioTime time.Duration, caller ...string) {
 	if elapsed := time.Since(start); elapsed >= 100*time.Millisecond {
-		log.Printf("[AGENT-MAILBOX-TIMING] operation=%s bytes=%d io_ms=%d total_ms=%d", operation, size, ioTime.Milliseconds(), elapsed.Milliseconds())
+		source := "snapshot"
+		if len(caller) > 0 {
+			source = caller[0]
+		}
+		log.Printf("[AGENT-MAILBOX-TIMING] operation=%s bytes=%d io_ms=%d total_ms=%d caller=%s", operation, size, ioTime.Milliseconds(), elapsed.Milliseconds(), source)
 	}
 }
 
