@@ -116,13 +116,16 @@ func TestDesktopConnectionBrowserHandoffAndOneUseVerifier(t *testing.T) {
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { api.handleDesktopConnectExchange(w, r) }))
 			defer remote.Close()
 			w := httptest.NewRecorder()
-			api.handleDesktopConnections(w, desktopTestRequest("POST", "/api/desktop-connections", `{"server":"`+remote.URL+`"}`, "owner"))
+			api.handleDesktopConnections(w, desktopTestRequest("POST", "/api/desktop-connections", `{"server":"`+remote.URL+`/crew/projects/example?view=context#details"}`, "owner"))
 			if w.Code != 200 {
 				t.Fatalf("begin: %d %s", w.Code, w.Body.String())
 			}
 			var start map[string]string
 			_ = json.Unmarshal(w.Body.Bytes(), &start)
 			consent, _ := url.Parse(start["url"])
+			if consent.Path != "/desktop/connect" || consent.Query().Has("view") || consent.Fragment != "" {
+				t.Fatalf("pasted page leaked into sign-in URL: %s", consent)
+			}
 			approved := httptest.NewRecorder()
 			api.handleDesktopConnect(approved, desktopTestRequest("POST", "/api/auth/desktop/connect", `{"challenge":"`+consent.Query().Get("challenge")+`"}`, "remote-user"))
 			var grant DesktopConnectResponse
@@ -158,7 +161,7 @@ func TestDesktopConnectionBrowserHandoffAndOneUseVerifier(t *testing.T) {
 				u, _ := url.Parse(remote.URL)
 				wantName = u.Hostname()
 			}
-			if len(listed.Connections) != 1 || listed.Connections[0].Name != wantName {
+			if len(listed.Connections) != 1 || listed.Connections[0].Name != wantName || listed.Connections[0].Server != remote.URL {
 				t.Fatalf("connection did not derive server name: %+v", listed.Connections)
 			}
 
@@ -273,6 +276,35 @@ func TestDesktopConnectionDevelopmentOrigin(t *testing.T) {
 		response := httptest.NewRecorder()
 		if desktopConnectionGate(response, request) != item.allowed {
 			t.Fatal("development origin/proof boundary failed")
+		}
+	}
+}
+
+// PLAT-746: pasted page URLs connect to the origin; credentials and insecure remote URLs stay refused.
+func TestDesktopServerURLAcceptsBrowserLinks(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{" https://example.com/crew/projects/example?view=context#details ", "https://example.com"},
+		{"https://example.com:8443/path%2Ffile?", "https://example.com:8443"},
+		{"https://example.com/", "https://example.com"},
+		{"http://localhost:18743/crew?view=context", "http://localhost:18743"},
+		{"https://person:password@example.com/crew", ""},
+		{"http://example.com/crew", ""},
+		{"javascript:alert(1)", ""},
+		{"https://:443/crew", ""},
+	} {
+		got, err := desktopServerURL(tc.input)
+		if tc.want == "" {
+			if err == nil {
+				t.Errorf("accepted invalid server %q", tc.input)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("refused browser link %q: %v", tc.input, err)
+			continue
+		}
+		if got.String() != tc.want {
+			t.Errorf("origin = %q, want %q", got.String(), tc.want)
 		}
 	}
 }

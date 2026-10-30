@@ -216,11 +216,12 @@ func (api *StreamingAPI) handleDesktopConnections(w http.ResponseWriter, r *http
 
 func desktopServerURL(value string) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(value), "/"))
-	if err != nil || u == nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" ||
+	if err != nil || u == nil || u.Hostname() == "" || u.User != nil ||
 		(u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"))) {
-		return nil, fmt.Errorf("Use the server's HTTPS address, without a path.")
+		return nil, fmt.Errorf("Paste an HTTPS link from the server you want to connect.")
 	}
-	return u, nil
+	// Browser links may include a project, query or fragment. Connections use only the origin.
+	return &url.URL{Scheme: u.Scheme, Host: u.Host}, nil
 }
 func desktopHTTPClient() *http.Client {
 	return &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}

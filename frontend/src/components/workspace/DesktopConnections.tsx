@@ -125,9 +125,9 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
           <h2 id="connect-server-title" className="text-lg font-semibold">Connect server</h2>
           <button type="button" aria-label="Close connect server" onClick={() => setAdding(false)} className="rounded p-1.5 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
         </div>
-        <p id="connect-server-description" className="mb-5 text-sm text-muted-foreground">Enter the server’s HTTPS address without a page path. You’ll sign in through your browser.</p>
+        <p id="connect-server-description" className="mb-5 text-sm text-muted-foreground">Paste any link from your server’s browser page. We’ll find the server address for you.</p>
         <form onSubmit={e => { e.preventDefault(); void connect() }} className="space-y-4">
-          <label className="block text-sm font-medium">Server address<input autoFocus required type="url" value={server} onChange={e => setServer(e.target.value)} placeholder="https://example.com" disabled={busy || !!pending} className="mt-2 w-full rounded-md border border-border bg-background p-2.5 text-sm disabled:opacity-60" /></label>
+          <label className="block text-sm font-medium">Server address<input autoFocus required type="url" value={server} onChange={e => setServer(e.target.value)} placeholder="Paste a link from your browser" disabled={busy || !!pending} className="mt-2 w-full rounded-md border border-border bg-background p-2.5 text-sm disabled:opacity-60" /></label>
           {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
           {pending && <p role="status" className="text-sm text-muted-foreground">Finish signing in in your browser, then return here.</p>}
           <div className="flex justify-end gap-2">

@@ -28,9 +28,9 @@ it('sends connection management and remote chat requests directly to the desktop
   expect(getApiBaseUrl()).toBe('http://127.0.0.1:51733')
 })
 
-// PLAT-746-236: server address validation returned HTTP 400 but was hidden as a network error.
+// PLAT-746-238: server address validation returned HTTP 400 but was hidden as a network error.
 it.each([
-  [400, "Use the server's HTTPS address, without a path.", "Use the server's HTTPS address, without a path."],
+  [400, "Paste an HTTPS link from the server you want to connect.", "Paste an HTTPS link from the server you want to connect."],
   [403, JSON.stringify({ error: 'Use the app window.' }), 'Use the app window.'],
   [502, '<html>Bad gateway</html>', 'Could not complete this request. Try again.'],
 ])('preserves actionable local connection errors (%s)', async (status, body, message) => {
