@@ -1396,6 +1396,55 @@ func TestUpdatePersistedChatHistoryIndexCarriesTitleAcrossDatedPaths(t *testing.
 	}
 }
 
+// A migration rewrote a chat's older day files, so a 6 Oct transcript had a newer write time than 19 Oct's; the chat
+// then continued from 6 Oct and lost 7-19 Oct. The newest day folder is the chat's transcript; a folder that is not a
+// day keeps the write-time order.
+func TestListWorkflowHistoryPicksNewestDayNotNewestWriteTime(t *testing.T) {
+	cases := []struct {
+		name    string
+		written map[string]time.Time
+		want    string
+	}{
+		{"newest day wins over a newer write", map[string]time.Time{
+			"2026-10-06": time.Date(2026, 10, 20, 17, 44, 46, 0, time.UTC), // touched by the migration
+			"2026-10-19": time.Date(2026, 10, 19, 15, 12, 25, 0, time.UTC),
+		}, "2026-10-19"},
+		{"a non-day folder does not win by its name", map[string]time.Time{
+			"background": time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC),
+			"2026-10-19": time.Date(2026, 10, 19, 15, 12, 25, 0, time.UTC),
+		}, "2026-10-19"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("WORKSPACE_DOCS_PATH", root)
+			workflowPath := "Workflow/demo"
+			conversationRoot := filepath.Join(root, filepath.FromSlash(workflowPath), "builder", "conversation")
+			fileName := "session-resumed-chat-conversation.json"
+			for folder, written := range tc.written {
+				dir := filepath.Join(conversationRoot, folder)
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(dir, fileName)
+				if err := os.WriteFile(path, []byte(`{"session_id":"resumed-chat","conversation_history":[]}`), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chtimes(path, written, written); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sessions, ok := listWorkflowBuilderHistoryFromDisk("default", workflowPath, 10, "chat")
+			if !ok || len(sessions) != 1 {
+				t.Fatalf("list ok=%v sessions=%#v", ok, sessions)
+			}
+			if want := workflowPath + "/builder/conversation/" + tc.want + "/" + fileName; sessions[0].ConversationPath != want {
+				t.Fatalf("conversation path = %q, want %q", sessions[0].ConversationPath, want)
+			}
+		})
+	}
+}
+
 func TestListWorkflowHistoryRepairsMissingTitleFromOlderDatedEntry(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)

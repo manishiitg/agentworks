@@ -1916,6 +1916,20 @@ func workspacePathsMatchForUser(userID, left, right string) bool {
 	return lok && rok && l == r
 }
 
+// newerBuilderConversationFile reports whether a is a newer transcript of the same chat than b. Each day's file is
+// seeded from the chat's newest one, so the later day folder wins and the write time only breaks a tie. By write time
+// alone, a migration that rewrote a chat's older day files made a 6 Oct file outrank 19 Oct's, and the next day's
+// file continued from 6 Oct, dropping everything in between.
+func newerBuilderConversationFile(a string, aModTime time.Time, b string, bModTime time.Time) bool {
+	// Only two day folders compare by day; any other folder (background/...) keeps the write-time order.
+	aDay, aErr := time.Parse("2006-01-02", filepath.Base(filepath.Dir(a)))
+	bDay, bErr := time.Parse("2006-01-02", filepath.Base(filepath.Dir(b)))
+	if aErr == nil && bErr == nil && !aDay.Equal(bDay) {
+		return aDay.After(bDay)
+	}
+	return aModTime.After(bModTime)
+}
+
 // listWorkflowBuilderHistoryFromDisk returns builder chat sessions for a workflow.
 // readBudget caps how many conversation files are actually READ+PARSED (the costly
 // part — preview building): we stat every file (cheap) and dedupe to the latest
@@ -1959,7 +1973,7 @@ func listWorkflowBuilderHistoryFromDisk(userID, workflowPath string, readBudget 
 		}
 		dedupeKey := workflowBuilderHistoryDisplayKey(sessionID, scheduleIDBySessionID)
 		workspaceConversationPath := workflowRelativeConversationPath(workflowPath, workflowDir, convPath)
-		if cur, ok := latest[dedupeKey]; !ok || info.ModTime().After(cur.modTime) {
+		if cur, ok := latest[dedupeKey]; !ok || newerBuilderConversationFile(convPath, info.ModTime(), cur.convPath, cur.modTime) {
 			latest[dedupeKey] = localChatHistoryFile{
 				sessionID:     sessionID,
 				dedupeKey:     dedupeKey,
