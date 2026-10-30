@@ -109,8 +109,10 @@ async function render(check: (host: HTMLDivElement, rerender: () => Promise<void
   const root = createRoot(host)
   try {
     await act(async () => root.render(content()))
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Show all work')?.click())
     await check(host, async () => {
       await act(async () => root.render(content()))
+      await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Show all work')?.click())
     })
   } finally {
     await act(async () => root.unmount())
