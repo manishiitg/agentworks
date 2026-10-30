@@ -8464,6 +8464,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Resuming across providers saved=%s current=%s with required complete conversation archive %s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider)), restoredConversationPathForFallback)
+			} else if restoredConversationPathForFallback != "" && isCodingAgentProvider(finalProvider, finalModelID) && (historyRestoredThisTurn || productDefinitionRefreshed) {
+				// A new native session on the same provider (Muse after a definition change, a changed CLI runtime
+				// folder) gets what a provider switch gets: the recent turns and the conversation archive. The bounded
+				// replayed tail alone lost everything older (PLAT-872-80).
+				chatQuery = prependCodingAgentContinuityNotice(chatQuery, restoredConversationPathForFallback, restoredConversationWorkspace, continuityHistory)
+				replayHistoryToAgent = false
+				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Fresh native session; supplied conversation archive %s", restoredConversationPathForFallback)
 			} else if restoredConversationPathForFallback != "" {
 				// A conversation JSON is UI state. Never attach it as an ad-hoc
 				// prompt file: native resume is preferred, and an unavailable native
@@ -9185,6 +9192,7 @@ func (api *StreamingAPI) captureChatHistoryAgentRuntime(sessionID, provider, mod
 	if admitted, ok := api.agentProfileAdmissions.Load(underlyingAgent); ok {
 		runtime.AgentProfileKey = admitted.(string)
 	}
+	runtime.AgentProfileKeyParts = agentProfileKeyPartsOf(runtime.AgentProfileKey)
 
 	normalizeChatHistoryRuntime(runtime)
 
@@ -10486,10 +10494,10 @@ func (api *StreamingAPI) seedCodingAgentRuntimeFromRestoredConversation(sessionI
 			return false
 		}
 		if !codingProviderReloadsInstructionsOnResume(provider) {
-			log.Printf("[CHAT_HISTORY] Agent profile definition changed for session %s; %s cannot load new instructions into a resumed session, starting a fresh one with the recent dialogue", sessionID, provider)
+			log.Printf("[CHAT_HISTORY] Agent profile definition changed for session %s (changed: %s); %s cannot load new instructions into a resumed session, starting a fresh one with the conversation archive", sessionID, agentProfileKeyPartsChange(runtime.AgentProfileKeyParts, currentProfileKey), provider)
 			return false
 		}
-		log.Printf("[CHAT_HISTORY] Agent profile definition changed for session %s; resuming the same native coding-agent session with the current definition", sessionID)
+		log.Printf("[CHAT_HISTORY] Agent profile definition changed for session %s (changed: %s); resuming the same native coding-agent session with the current definition", sessionID, agentProfileKeyPartsChange(runtime.AgentProfileKeyParts, currentProfileKey))
 	}
 	externalSessionID := strings.TrimSpace(runtime.ExternalSessionID)
 	projectDirID := strings.TrimSpace(runtime.ProjectDirID)
@@ -11194,7 +11202,7 @@ func (api *StreamingAPI) agentProfileAllowsRetainedLiveInput(userID, sessionID, 
 		return false
 	}
 	if strings.TrimSpace(runtime.AgentProfileKey) != currentProfileKey {
-		log.Printf("[CHAT_HISTORY] Retained live input disabled for product session %s: agent profile definition changed", sessionID)
+		log.Printf("[CHAT_HISTORY] Retained live input disabled for product session %s: agent profile definition changed (changed: %s)", sessionID, agentProfileKeyPartsChange(runtime.AgentProfileKeyParts, currentProfileKey))
 		return false
 	}
 	return true
