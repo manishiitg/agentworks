@@ -12,23 +12,23 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
         <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
-        <footer className="shrink-0 space-y-2 border-t border-border pt-3">
+        <footer className="flex shrink-0 items-center gap-3 border-t border-border pt-3">
         <button
           type="button"
           aria-label="All tools"
           onClick={() =>
             window.dispatchEvent(new CustomEvent('open-quick-switcher', { detail: { query: '@panels ' } }))
           }
-          className="flex w-full shrink-0 items-center gap-2.5 px-1 text-xs text-muted-foreground hover:text-foreground"
+          className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Search className="h-3.5 w-3.5" />
-          <span className="flex-1 text-left">All tools</span>
-          <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px]">
+          <Search className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1 whitespace-nowrap text-left">All tools</span>
+          <kbd className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px]">
             {typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl+K'}
           </kbd>
         </button>
-        {onFullMenu && <button type="button" aria-label="Full menu" onClick={onFullMenu} className="flex min-h-8 w-full items-center gap-2.5 rounded px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <List className="h-3.5 w-3.5"/><span className="flex-1 text-left">Full menu</span><ChevronRight className="h-3 w-3"/>
+        {onFullMenu && <button type="button" aria-label="Full menu" onClick={onFullMenu} className="flex min-h-8 shrink-0 items-center gap-1.5 rounded px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <List className="h-3.5 w-3.5 shrink-0"/><span className="whitespace-nowrap text-left">Full menu</span><ChevronRight className="h-3 w-3"/>
         </button>}
         </footer>
       </aside>
