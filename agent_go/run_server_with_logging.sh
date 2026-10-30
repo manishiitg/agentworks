@@ -1193,9 +1193,9 @@ source_exported_env_file() {
     fi
 }
 
-# Source environment variables from an explicit instance file when configured;
-# otherwise preserve the historical repo-local discovery behavior.
-ENV_FILE_PATH=""
+# Resolve the default relative to this script, not the caller's working directory.
+# The repository root may have a different .env from the backend's saved data.
+ENV_FILE_PATH="${SCRIPT_DIR}/.env"
 LOCAL_ENV_CREATED=false
 if [ -n "${AGENTWORKS_ENV_FILE:-}" ]; then
     ENV_FILE_PATH="$AGENTWORKS_ENV_FILE"
@@ -1205,15 +1205,9 @@ if [ -n "${AGENTWORKS_ENV_FILE:-}" ]; then
     else
         echo "🔧 Isolated instance environment will be initialized at: $ENV_FILE_PATH"
     fi
-elif [ -f "../agent_go/.env" ]; then
-    echo "🔧 Loading environment variables from ../agent_go/.env..."
-    ENV_FILE_PATH="../agent_go/.env"
-    source_exported_env_file ../agent_go/.env
-    echo "✅ Environment variables loaded (including Langfuse configuration)"
-elif [ -f ".env" ]; then
-    echo "🔧 Loading environment variables from .env..."
-    ENV_FILE_PATH=".env"
-    source_exported_env_file .env
+elif [ -f "$ENV_FILE_PATH" ]; then
+    echo "🔧 Loading environment variables from $ENV_FILE_PATH..."
+    source_exported_env_file "$ENV_FILE_PATH"
     echo "✅ Environment variables loaded (including Langfuse configuration)"
 else
     echo "ℹ️  First local run: creating a minimal .env with a secure AUTH_SECRET."
