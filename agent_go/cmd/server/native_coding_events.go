@@ -162,6 +162,11 @@ func (o *nativeTerminalObserver) nativeRecordPath() string {
 	switch o.provider {
 	case "claude-code":
 		p, _ := resolveClaudeNativeTranscriptPath(o.workingDir, o.nativeID, home)
+		if p == "" && home != "" {
+			// A launch can write to the OS home even when a private cli-home
+			// exists (laptop SDK chats); the native ID is unique (PLAT-872-77).
+			p, _ = resolveClaudeNativeTranscriptPath(o.workingDir, o.nativeID)
+		}
 		return p
 	case "codex-cli":
 		p, _ := resolveCodexNativeTranscriptPath(o.nativeID, home)
