@@ -20,7 +20,7 @@ it('uses the normal Watcher endpoint with the original chat and allows stopping 
   const root = createRoot(element)
   const button = (text: string) => [...element.querySelectorAll('button')].find(item => item.textContent === text)!
   try {
-    await act(async () => root.render(<PRWatcherControls sessionId="original-chat" group={{ kind: 'repo', root: '', name: 'project', branch: 'feature', github_repo: 'example/project', files: [], total_files: 0, more_count: 0, new_checkout: false, pr: { state: 'open', number: 7 } }} />))
+    await act(async () => root.render(<PRWatcherControls sessionId="original-chat" group={{ root: '', github_repo: 'example/project', pr: { state: 'open', number: 7 } }} />))
     await act(async () => button('Watch PR').click())
     const select = element.querySelector('select')!
     await act(async () => { select.value = 'autofix'; select.dispatchEvent(new Event('change', { bubbles: true })) })

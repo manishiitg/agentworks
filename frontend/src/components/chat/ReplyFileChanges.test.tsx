@@ -206,3 +206,16 @@ describe('reply card groups', () => {
   })
 
 })
+
+it('keeps a visible explanation when saved file changes fail to load', async () => {
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  state.total = 2
+  vi.mocked(api.get).mockRejectedValueOnce(new Error('unavailable'))
+  try {
+    await act(async () => root.render(<ReplyFileChanges reference={{ snapshotId: 'missing', workspacePath: 'Crew/x', sessionId: 'chat-a' }} />))
+    expect(host.textContent).toContain('Saved file changes for this reply could not be loaded.')
+    await act(async () => button(host, 'Review chat changes')!.click())
+    expect(openChatFiles).toHaveBeenLastCalledWith('chat-a')
+  } finally { await act(async () => root.unmount()); host.remove() }
+})

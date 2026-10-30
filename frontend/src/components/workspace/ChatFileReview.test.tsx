@@ -2,13 +2,15 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[] }))
+const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[], pr: false, canReview: true }))
 const replies = [{ snapshot_id: 'first', end_sequence: 2 }, { snapshot_id: 'last', end_sequence: 4 }]
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
+  if (options.params.op === 'chat_status') return { data: { history: { can_review: state.canReview }, groups: state.pr ? [{ kind: 'repo', root: 'app-wt', name: 'app-wt', github_repo: 'example/project', branch: 'feature', pr: { number: 7, state: 'open', url: 'https://github.com/example/project/pull/7' } }] : [] } }
   if (options.params.op === 'snapshots') return { data: { recent_repos: state.recentRepos } }
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
   return { data: { history: { recent_repos: state.recentRepos, replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
 }), post: vi.fn(async () => { state.reviewed = true; return { data: {} } }) }, agentApi: { getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: 'current contents' } })) }, workspaceApi: { get: vi.fn() } }))
+vi.mock('../chat/PRWatcherControls', () => ({ PRWatcherControls: ({ group, sessionId }: { group: { root: string }; sessionId: string }) => <button data-worktree={group.root} data-session={sessionId}>Watch PR</button> }))
 vi.mock('../../services/workspaceGit', () => ({ workspaceGitApi: { status: vi.fn(async () => []), diff: vi.fn(), branches: vi.fn(async () => []), branchCompare: vi.fn(async (_workspace: string, repo: string) => ({ branch: repo === 'app-wt' ? 'feature' : 'main', base: 'main', base_sha: 'abc1234', head_sha: 'def1234', unpushed: 0, files: [] })), branchDiff: vi.fn() } }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { exact: { sessionId: state.sessionId } } }) } }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn(async () => ({})) }))
@@ -26,6 +28,21 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('offers the same PR watch in the file changes panel, only to a person allowed to control the chat', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      state.pr = true; state.canReview = true
+      await act(async () => root.render(<ChatFileReview key="owner" workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      const watch = [...host.querySelectorAll('button')].find(item => item.textContent === 'Watch PR')!
+      expect(watch.dataset).toMatchObject({ worktree: 'app-wt', session: 'chat-a' })
+      expect(host.querySelector('a[href="https://github.com/example/project/pull/7"]')).not.toBeNull()
+      state.canReview = false
+      await act(async () => root.render(<ChatFileReview key="run" workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect([...host.querySelectorAll('button')].some(item => item.textContent === 'Watch PR')).toBe(false)
+    } finally { state.pr = false; state.canReview = true; await act(async () => root.unmount()); host.remove() }
+  })
+
   it('defaults Branch / PR to the server-ranked chat checkout and retains a manual choice', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)

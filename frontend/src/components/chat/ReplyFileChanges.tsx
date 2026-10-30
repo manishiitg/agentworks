@@ -85,6 +85,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const summary = reference.summary
   // Only for a reply saved before summaries were sent with the event, and for the newest reply's "since your last review" line.
   const [result, setResult] = useState<ReviewResult | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const comparison = result?.comparison
   const [revision] = useReviewRevision()
   const phone = useMobileViewport()
@@ -107,9 +108,10 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
     const controller = new AbortController()
     // The card itself renders from the reply event; this only fills the "since your last review" line.
     if (!hasSummary || sinceReview) {
+      setLoadFailed(false)
       void api.get<ReviewResult>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_compare' }, signal: controller.signal })
         .then(response => { if (!controller.signal.aborted) setResult(response.data) })
-        .catch(() => { /* Expired/unavailable history has no change card. */ })
+        .catch(() => { if (!controller.signal.aborted) setLoadFailed(true) })
     }
     return () => controller.abort()
   }, [reference.workspacePath, reference.snapshotId, reference.sessionId, hasSummary, sinceReview, revision])
@@ -182,7 +184,9 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const more = actions.filter(inMore)
   const rowButton = (action: ReplyCardAction) => <IconButton key={action.id} strong={action.id === 'review'} label={action.aria_label || action.label} name={action.label} hint={action.description ?? ''} onClick={() => run(action)}>{actionIcon(action.icon)}</IconButton>
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
-  if (total === 0) return null
+  if (total === 0) return loadFailed ? <section className="my-2 rounded-md border border-border px-2.5 py-2 text-xs text-muted-foreground" aria-label="File changes unavailable">
+    Saved file changes for this reply could not be loaded. <button type="button" className="underline hover:text-foreground" onClick={() => openChatFiles(reference.sessionId)}>Review chat changes</button>
+  </section> : null
   return (
     <section className="my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Files changed during this reply">
       <div className="flex items-center gap-2">

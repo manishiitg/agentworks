@@ -1,3 +1,5 @@
+import { PRWatcherControls } from '../chat/PRWatcherControls'
+import type { ReplyFileGroup } from '../../utils/replyFileChanges'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { FolderOpen, RefreshCw } from 'lucide-react'
 import { workspaceGitApi, type GitRepo } from '../../services/workspaceGit'
@@ -56,13 +58,18 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
   const [revision, refresh] = useReviewRevision()
   const [error, setError] = useState('')
   const [selectedPath, setSelectedPath] = useState('')
+  const [pullRequests, setPullRequests] = useState<ReplyFileGroup[]>([])
+  const [canWatch, setCanWatch] = useState(false)
   const viewers = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const baseline = result?.history.baseline_snapshot_id
   const params = { workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, baseline_snapshot_id: baseline }
   useEffect(() => {
     const controller = new AbortController()
-    setResult(null); setError('')
+    setResult(null); setError(''); setPullRequests([]); setCanWatch(false)
+    void api.get<{ groups?: ReplyFileGroup[]; history?: { can_review?: boolean } }>(endpoint, { params: { workspace_path: workspacePath, session_id: sessionId, op: 'chat_status' }, signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) { setPullRequests((data.groups ?? []).filter(group => group.kind === 'repo' && !!group.pr?.number)); setCanWatch(data.history?.can_review === true) } })
+      .catch(() => { /* The saved comparison loads independently of GitHub status. */ })
     void api.get<Result>(endpoint, { params: { workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, op: 'snapshot_compare' }, signal: controller.signal })
       .then(({ data }) => { if (!controller.signal.aborted) setResult(data) })
       .catch(() => { if (!controller.signal.aborted) setError('Could not load this saved comparison. Refresh and try again.') })
@@ -99,6 +106,13 @@ function SnapshotReview({ workspacePath, sessionId, tabId, onBrowse, bar }: Revi
       <button type="button" aria-label="Browse files" title="Browse files" onClick={onBrowse} className={iconButton}><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
     </>} />
     {bar}
+    {pullRequests.length > 0 && <div className="space-y-2 border-b border-border px-3 py-2 text-xs" aria-label="Pull requests in this chat">
+      {pullRequests.map(group => <div key={group.root} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-muted-foreground">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span>
+        <a href={group.pr?.url} target="_blank" rel="noreferrer" className="underline">PR #{group.pr?.number} · {group.pr?.state}{group.pr?.checks ? ` · checks ${group.pr.checks}` : ''}{group.pr?.review ? ` · ${group.pr.review}` : ''}</a>
+        {canWatch && <PRWatcherControls group={group} sessionId={sessionId} />}
+      </div>)}
+    </div>}
     <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{bar ? 'Every file this chat changed, in and outside Git, from its saved copies.' : "This folder isn't a Git project, so changes come from this chat's saved copies."}</p>
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="max-h-[35%] shrink-0 overflow-auto sm:max-h-56">

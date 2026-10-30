@@ -7,7 +7,7 @@ import type { ReplyFileGroup } from '../../utils/replyFileChanges'
 
 // These are ordinary Watchers. The server selects the account, originating
 // conversation and PR head; the browser only sends the person's choice.
-export function PRWatcherControls({ group, sessionId }: { group: ReplyFileGroup; sessionId: string }) {
+export function PRWatcherControls({ group, sessionId }: { group: Pick<ReplyFileGroup, 'root' | 'github_repo' | 'pr'>; sessionId: string }) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('checks')
   const [reviewBots, setReviewBots] = useState('')
