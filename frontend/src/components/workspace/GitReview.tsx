@@ -19,12 +19,12 @@ const scopeLabel: Record<Scope, string> = { uncommitted: 'Uncommitted', branch: 
  * only shows what it returns. When the Crew folder itself is not a repository,
  * "This chat" (the default) shows the chat's saved-copy changes (renderChat), the
  * same list the reply card counts, including files outside any repository. */
-export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos, onRefresh, onBrowse, renderChat }: {
+export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos, onRefresh, onBrowse, renderChat, initialScope = 'chat' }: {
   workspacePath: string; sessionId: string; tabId: string; repos: GitRepo[]; recentRepos: string[]; onRefresh: () => void; onBrowse: () => void
-  renderChat: (bar: ReactNode) => ReactNode
+  initialScope?: 'chat' | 'uncommitted'; renderChat: (bar: ReactNode) => ReactNode
 }) {
-  // This chat first: the reply card's count is this chat's changes, so the review opens on the same list (owner, 2026-10-29).
-  const [scope, setScope] = useState<Scope>('chat')
+  // Reply cards open saved chat changes; the compact sidebar opens current Git changes.
+  const [scope, setScope] = useState<Scope>(initialScope)
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [base, setBase] = useState('')
   const [branches, setBranches] = useState<string[]>([])
@@ -79,7 +79,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   const uncommittedCount = repos.reduce((sum, item) => sum + item.files.length, 0)
   const note = scope === 'uncommitted'
     ? uncommittedCount === 0 ? 'Nothing to commit: every file matches the latest commit.'
-      : `${repos.length === 1 ? `${repos[0].branch || 'This version'} · ` : ''}${plural(uncommittedCount, 'file')} not committed yet (staged, unstaged and new)`
+      : `${repos.length === 1 ? `${repos[0].branch || 'This version'} · ` : ''}${repos.some(item => item.truncated) ? 'At least ' : ''}${plural(uncommittedCount, 'file')} not committed yet (staged, unstaged and new)`
     : !compare ? '' : compare.note || [
       `${compare.branch || 'This version'} → ${compare.base}`,
       compare.pr ? `PR #${compare.pr.number}` : '',
