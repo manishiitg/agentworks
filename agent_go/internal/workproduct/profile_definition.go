@@ -567,9 +567,6 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIU
 	if err := registry.RegisterToolFactory("work.custom-commands", workCustomCommandsFactory(workspaceAPIURL)); err != nil {
 		return err
 	}
-	if err := registry.RegisterToolFactory("work.results", workResultsFactory(workspaceAPIURL)); err != nil {
-		return err
-	}
 	return registry.RegisterPromptVariables("work", ProjectPromptVariables(workspaceAPIURL, false))
 }
 

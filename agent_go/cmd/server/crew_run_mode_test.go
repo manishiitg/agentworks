@@ -152,7 +152,7 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 		"create_project_trigger", "update_project_trigger", "delete_project_trigger",
 		"update_project_mcp_server_selection", "update_project_global_secret_selection", "update_project_skill_selection",
 		"set_workflow_secret", "delete_workflow_secret",
-		"manage_results", "set_work_identity", "create_crew", "perform_ui_action",
+		"set_work_identity", "create_crew", "perform_ui_action",
 	} {
 		if gate.Admit(denied) {
 			t.Fatalf("reader turn admitted mutating tool %q", denied)
@@ -1068,7 +1068,7 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 		"create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule",
 		"create_project_trigger", "update_project_trigger", "delete_project_trigger",
 		"update_project_mcp_server_selection", "update_project_global_secret_selection", "update_project_skill_selection",
-		"manage_results", "set_work_identity", "create_crew", "perform_ui_action", "get_file_link",
+		"set_work_identity", "create_crew", "perform_ui_action", "get_file_link",
 		"configure_slack_bot", "create_slack_bot_route", "remove_slack_bot_route",
 	} {
 		if _, ok := registrar.tools[denied]; ok {

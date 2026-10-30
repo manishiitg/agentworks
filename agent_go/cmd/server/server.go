@@ -3085,7 +3085,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/brain/secret", api.handleBrainSecretSet).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/secrets", api.handleSecretsImport).Methods("POST")
 	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
-	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/results", api.handleCrewResults).Methods("GET")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/laptop", api.handleCrewLaptopSettings).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/laptop/folders", api.handleLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")

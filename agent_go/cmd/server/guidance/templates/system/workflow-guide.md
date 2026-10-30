@@ -78,13 +78,13 @@ Use attached skills and live schemas, including product-specific differences.
 
 The project name stays beside Home; Builder is a chat tab. Ownership details
 are on hover. Goal/Flow menus group Recent, Build, Use, Share, Integrations
-and Setup. Studio/Crew uses a status panel: Changes first for Code, finished
-Results first for Cowork, followed by Browser, selected app accounts and
-configured automations. All tools (Cmd/Ctrl+K) opens the full admitted tool
+and Setup. Studio/Crew uses a status panel: Changes first for Code, Dashboards
+for saved dashboards, Motion dashboards and Artifacts, followed by Browser,
+selected app accounts and configured automations. All tools (Cmd/Ctrl+K) opens the full admitted tool
 inventory, including Access & sharing, Models and Usage & cost. Visiting a
 setting does not promote it into Studio’s status panel. Finished files are
-recorded through `manage_results`; published Artifacts appear automatically
-and are never registered twice. Dashboards are collected under the project. Workflow playbooks, Publish, Notify and Backup
+linked in chat and remain accessible through Files; there is no separate file
+registry. Published Artifacts appear automatically under Dashboards. Workflow playbooks, Publish, Notify and Backup
 are in Setup. Access summarizes owners, audience and shared agents; changes
 are made through the visible project chat with the existing management tools.
 

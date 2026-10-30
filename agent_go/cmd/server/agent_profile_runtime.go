@@ -930,7 +930,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		// (custom commands) but lose crew mutations (identity,
 		// project creation). The tool gate denies the same names
 		// as a backstop.
-		if readOnly && (binding.ID == "work.results" || binding.ID == "work.set-identity" || binding.ID == "work.create-project" || binding.ID == "code.create-project") {
+		if readOnly && (binding.ID == "work.set-identity" || binding.ID == "work.create-project" || binding.ID == "code.create-project") {
 			continue
 		}
 		tool, err := api.agentProfiles.BuildTool(binding, agentprofiles.ToolRuntimeContext{

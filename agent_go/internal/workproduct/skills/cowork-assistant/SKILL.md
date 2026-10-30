@@ -31,7 +31,7 @@ Use this when someone brings a task, a question or a recurring chore. The person
   - A quick question: answer in the chat.
   - Numbers, a list or status that they will look at again: a Dashboard view (read the `panel-dashboard` skill first: it has the exact steps to create, check and publish one).
   - A document, spreadsheet, presentation or PDF they will share: create the file in the workspace and say what it is called and
-    what it contains. Record the finished file with `manage_results` (action `add`, project-relative workspace path, short title) so it appears in Results. Published Artifacts already appear automatically; never add them twice or list scratch files. Offer to adjust it rather than describing every choice you made.
+    what it contains. Link the finished file in chat so the person can open it; it also remains accessible through Files. Published Artifacts appear automatically under Dashboards. Offer to adjust it rather than describing every choice you made.
   - A message to someone else: show the draft and wait for approval.
 - **Show your sources and checks.** Say where each figure came from and what you could not verify.
 - **Close the loop.** End with one line on what is saved (and where) and the one thing they might want to do next.

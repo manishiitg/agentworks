@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import api from '../../services/api'
 import { loadProjectVault, type ProjectVaultItem } from '../../api/projectVault'
 import { schedulerApi } from '../../api/scheduler'
 import { conditionTriggersApi } from '../../api/conditionTriggers'
@@ -8,8 +7,7 @@ import { slackBotsApi, slackBotName } from '../../components/integrations/Produc
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 
 export type WorkspaceStatusRow = { id: string; label: string; detail: string; destination: string; attention?: boolean }
-export type WorkspaceResult = { path: string; title: string; updated_at: string; status: 'ready' | 'missing' | 'unavailable' }
-type Snapshot = { scope: string; apps?: WorkspaceStatusRow[]; automations?: WorkspaceStatusRow[]; results?: WorkspaceResult[]; errors: string[] }
+type Snapshot = { scope: string; apps?: WorkspaceStatusRow[]; automations?: WorkspaceStatusRow[]; errors: string[] }
 const accountState = (item: ProjectVaultItem) => item.status === 'connected' || item.status === 'online' ? 'Connected' : item.status === 'needs_attention' ? 'Needs attention' : item.status === 'offline' ? 'Offline' : 'Saved'
 export const nextSchedule = (enabled: boolean, next?: string) => !enabled ? 'Paused' : next && Number.isFinite(Date.parse(next)) ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(next)) : 'On'
 
@@ -49,7 +47,6 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
     out.automations = values.flatMap(value => value.status === 'fulfilled' ? value.value : [])
     if (values.some(value => value.status === 'rejected')) out.errors.push('Some automations could not be loaded.')
    }))
-   if (has('files') && projectId) jobs.push(api.get<{ results: WorkspaceResult[] }>(`/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/results`).then(({data}) => { out.results = data.results }).catch(() => { out.errors.push('Results could not be loaded.') }))
    await Promise.allSettled(jobs)
    out.apps = [...new Map(appRows.map(item => [item.id, item])).values()].sort((a, b) => a.label.localeCompare(b.label))
    loading = false
