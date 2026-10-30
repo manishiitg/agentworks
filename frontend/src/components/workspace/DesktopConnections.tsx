@@ -2,7 +2,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, Globe, Laptop, Plus } from 'lucide-react'
 import { desktopRequest, type DesktopConnection, type DesktopInventory } from '../../services/desktopConnections'
-import { getLocalApiBaseUrl } from '../../services/api'
+import { getLocalApiBaseUrl, getDesktopApiBaseUrl } from '../../services/api'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { openAppProduct } from '../../utils/appNavigation'
 
@@ -29,7 +29,7 @@ function ConnectedServers({ children }: { children?: ReactNode }) {
       const data = await desktopRequest<{ connections: DesktopConnection[] }>()
       const all = [local, ...data.connections]
       setConnections(all)
-      useWorkspaceConnectionStore.getState().setProfiles(all.map(c => ({ id: c.id, name: c.name, type: c.id === 'local' ? 'local' : 'remote', apiBaseUrl: c.id === 'local' ? getLocalApiBaseUrl() : `${getLocalApiBaseUrl()}/api/connections/${c.id}` })))
+      useWorkspaceConnectionStore.getState().setProfiles(all.map(c => ({ id: c.id, name: c.name, type: c.id === 'local' ? 'local' : 'remote', apiBaseUrl: c.id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${c.id}` })))
       await Promise.allSettled(all.map(async c => {
         try {
           const result = await desktopRequest<DesktopInventory>(`/${c.id}/inventory`)

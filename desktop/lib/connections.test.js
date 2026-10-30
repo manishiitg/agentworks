@@ -76,15 +76,36 @@ test('desktop bootstrap goes over fd 3 and is absent from process lists and work
 test('development window selects connections on Vite and sends proof only to its backend', async () => {
   const origin = 'http://127.0.0.1:18743', appOrigin = 'http://127.0.0.1:51733';
   const frame = { url: appOrigin + '/crew' }, contents = { id: 4, mainFrame: frame };
-  let beforeHeaders, getConnection, openConnection, loaded;
+  let beforeHeaders, getConnection, getApiOrigin, openConnection, loaded;
   let proof = 'app-proof';
   installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: (_, cb) => { beforeHeaders = cb; } } },
-    ipcMain: { on: (_, cb) => { getConnection = cb; }, handle: (_, cb) => { openConnection = cb; } },
+    ipcMain: { on: (name, cb) => { if (name === 'get-desktop-connection') getConnection = cb; else if (name === 'get-desktop-api-origin') getApiOrigin = cb; }, handle: (_, cb) => { openConnection = cb; } },
     getWindow: () => ({ webContents: contents, loadURL: async url => { loaded = url; } }),
     getOrigin: () => origin, getAppOrigin: () => appOrigin, getSecret: async () => { if (!proof) throw new Error('backend stopped'); return proof; } });
   const event = { sender: contents, senderFrame: frame };
   getConnection(event);
   assert.equal(event.returnValue, 'local');
+  getApiOrigin(event);
+  assert.equal(event.returnValue, origin);
+  const iframe = { sender: contents, senderFrame: { url: frame.url } };
+  getApiOrigin(iframe);
+  assert.equal(iframe.returnValue, null);
+  // Exercise the real preload: its isolated world has no page runtime config.
+  let bridge;
+  require('node:vm').runInNewContext(require('node:fs').readFileSync(require.resolve('../preload'), 'utf8'), {
+    require: () => ({
+      contextBridge: { exposeInMainWorld: (_name, value) => { bridge = value; } },
+      ipcRenderer: { sendSync: name => {
+        if (name === 'get-walkthrough-dismissals') return [];
+        const e = { sender: contents, senderFrame: frame };
+        (name === 'get-desktop-api-origin' ? getApiOrigin : getConnection)(e);
+        return e.returnValue;
+      } },
+    }),
+    window: { location: { origin: appOrigin } },
+  });
+  assert.equal(bridge.getDesktopApiBaseUrl(), origin);
+  assert.equal(bridge.getApiBaseUrl(), appOrigin);
   const request = { webContentsId: 4, frame, resourceType: 'xhr', requestHeaders: {} };
   for (const [url, expected] of [[origin + '/api/desktop-connections', 'app-proof'], [appOrigin + '/api/desktop-connections', undefined], ['http://127.0.0.1:18744/api/desktop-connections', undefined]]) {
     const result = await new Promise(resolve => beforeHeaders({ ...request, url }, resolve));

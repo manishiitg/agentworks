@@ -1,0 +1,24 @@
+// @vitest-environment happy-dom
+import { afterEach, expect, it, vi } from 'vitest'
+import { desktopRequest } from './desktopConnections'
+import { getApiBaseUrl } from './api'
+
+afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); delete window.electronAPI; delete window.__APP_RUNTIME_CONFIG__ })
+
+// PLAT-746-219: a Vite-origin request was proxied without desktop proof and returned 403.
+it('sends connection management and remote chat requests directly to the desktop backend', async () => {
+  const backend = 'http://127.0.0.1:18743'
+  Object.assign(window, { __APP_RUNTIME_CONFIG__: { apiBaseUrl: 'http://127.0.0.1:51733' } })
+  let connection = 'local'
+  window.electronAPI = { getApiBaseUrl: () => 'http://127.0.0.1:51733', getDesktopApiBaseUrl: () => backend, getDesktopConnection: () => connection }
+  localStorage.setItem('auth_token', 'test-token')
+  const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ connections: [] }) })
+  vi.stubGlobal('fetch', fetch)
+  await desktopRequest()
+  expect(fetch.mock.calls[0][0]).toBe(backend + '/api/desktop-connections')
+  expect(getApiBaseUrl()).toBe('http://127.0.0.1:51733')
+  connection = 'a'.repeat(32)
+  expect(getApiBaseUrl()).toBe(backend + '/api/connections/' + connection)
+  delete window.electronAPI
+  expect(getApiBaseUrl()).toBe('http://127.0.0.1:51733')
+})

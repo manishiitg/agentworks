@@ -35,6 +35,9 @@ function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, get
     }
     done({ requestHeaders: headers });
   });
+  ipcMain.on('get-desktop-api-origin', event => {
+    event.returnValue = event.sender === getWindow()?.webContents && isAppFrame(event.senderFrame, event.sender, getAppOrigin()) ? getOrigin() : null;
+  });
   ipcMain.on('get-desktop-connection', event => {
     const origin = getOrigin();
     event.returnValue = origin && event.sender === getWindow()?.webContents && isAppFrame(event.senderFrame, event.sender, getAppOrigin()) ? connection : null;

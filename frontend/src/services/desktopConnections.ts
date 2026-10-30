@@ -1,4 +1,4 @@
-import { getLocalApiBaseUrl, getAuthToken } from './api'
+import { getDesktopApiBaseUrl, getAuthToken } from './api'
 import type { AuthUser } from './api'
 
 export type DesktopConnection = { id: string; name: string; server: string; user?: AuthUser }
@@ -6,7 +6,7 @@ export type DesktopProject = { id: string; name: string; kind: 'crew' | 'goal'; 
 export type DesktopInventory = { status: 'connected' | 'sign_in' | 'unavailable'; projects: DesktopProject[] }
 
 export async function desktopRequest<T>(path = '', method = 'GET', body?: unknown): Promise<T> {
-  const response = await fetch(`${getLocalApiBaseUrl()}/api/desktop-connections${path}`, {
+  const response = await fetch(`${getDesktopApiBaseUrl()}/api/desktop-connections${path}`, {
     method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
