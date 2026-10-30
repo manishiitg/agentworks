@@ -15,14 +15,24 @@ function connectionRequest(details, contents, origin, appOrigin = origin) {
   } catch { return false; }
 }
 
-function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, getAppOrigin = getOrigin, secret }) {
+function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, getAppOrigin = getOrigin, secret, getSecret }) {
   let connection = 'local';
   session.webRequest.onBeforeSendHeaders({ urls: ['http://127.0.0.1/*', 'http://localhost/*'] }, (details, done) => {
     const origin = getOrigin();
     const headers = { ...details.requestHeaders };
     // Never accept a renderer-supplied version, even in a subframe.
     for (const key of Object.keys(headers)) if (key.toLowerCase() === 'x-agentworks-desktop') delete headers[key];
-    if (connectionRequest(details, getWindow()?.webContents, origin, getAppOrigin())) headers['X-AgentWorks-Desktop'] = secret;
+    if (connectionRequest(details, getWindow()?.webContents, origin, getAppOrigin())) {
+      if (getSecret) {
+        getSecret().then(value => {
+          // The window may have navigated while the local socket replied.
+          if (connectionRequest(details, getWindow()?.webContents, getOrigin(), getAppOrigin())) headers['X-AgentWorks-Desktop'] = value;
+          done({ requestHeaders: headers });
+        }).catch(() => done({ cancel: true }));
+        return;
+      }
+      headers['X-AgentWorks-Desktop'] = secret;
+    }
     done({ requestHeaders: headers });
   });
   ipcMain.on('get-desktop-connection', event => {

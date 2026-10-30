@@ -77,18 +77,26 @@ test('development window selects connections on Vite and sends proof only to its
   const origin = 'http://127.0.0.1:18743', appOrigin = 'http://127.0.0.1:51733';
   const frame = { url: appOrigin + '/crew' }, contents = { id: 4, mainFrame: frame };
   let beforeHeaders, getConnection, openConnection, loaded;
+  let proof = 'app-proof';
   installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: (_, cb) => { beforeHeaders = cb; } } },
     ipcMain: { on: (_, cb) => { getConnection = cb; }, handle: (_, cb) => { openConnection = cb; } },
     getWindow: () => ({ webContents: contents, loadURL: async url => { loaded = url; } }),
-    getOrigin: () => origin, getAppOrigin: () => appOrigin, secret: 'app-proof' });
+    getOrigin: () => origin, getAppOrigin: () => appOrigin, getSecret: async () => { if (!proof) throw new Error('backend stopped'); return proof; } });
   const event = { sender: contents, senderFrame: frame };
   getConnection(event);
   assert.equal(event.returnValue, 'local');
   const request = { webContentsId: 4, frame, resourceType: 'xhr', requestHeaders: {} };
   for (const [url, expected] of [[origin + '/api/desktop-connections', 'app-proof'], [appOrigin + '/api/desktop-connections', undefined], ['http://127.0.0.1:18744/api/desktop-connections', undefined]]) {
-    beforeHeaders({ ...request, url }, result => assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], expected));
+    const result = await new Promise(resolve => beforeHeaders({ ...request, url }, resolve));
+    assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], expected);
   }
   beforeHeaders({ ...request, frame: { url: frame.url }, url: origin + '/api/desktop-connections' }, result => assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], undefined));
+  proof = 'restarted-proof';
+  const restarted = await new Promise(resolve => beforeHeaders({ ...request, url: origin + '/api/desktop-connections' }, resolve));
+  assert.equal(restarted.requestHeaders['X-AgentWorks-Desktop'], proof);
+  proof = '';
+  const stopped = await new Promise(resolve => beforeHeaders({ ...request, url: origin + '/api/desktop-connections' }, resolve));
+  assert.equal(stopped.cancel, true);
   await openConnection(event, 'a'.repeat(32), '/crew/projects/example');
   assert.equal(loaded, appOrigin + '/crew/projects/example');
 });

@@ -50,7 +50,8 @@ const workspaceApiToken = crypto.randomBytes(32).toString('hex');
 let desktopConnectionsInstalled = false;
 let desktopAgentReady = false;
 let developmentAuthSecret;
-const currentDesktopOrigin = () => desktopAgentReady && agentProcess && agentProcess.exitCode === null && !agentProcess.killed
+const splitDevelopment = !!(process.env.DEV_URL && process.env.AGENTWORKS_DESKTOP_SOCKET && !process.env.AGENTWORKS_DEV_AGENT_BINARY);
+const currentDesktopOrigin = () => splitDevelopment ? new URL(process.env.MCP_AGENT_SERVER_URL).origin : desktopAgentReady && agentProcess && agentProcess.exitCode === null && !agentProcess.killed
   ? (process.env.AGENTWORKS_DEV_AGENT_BINARY ? new URL(process.env.MCP_AGENT_SERVER_URL).origin : `http://127.0.0.1:${dynamicAgentPort}`) : null;
 const desktopConnectionSecret = crypto.randomBytes(32).toString('hex');
 const currentDesktopAppOrigin = () => process.env.DEV_URL ? new URL(process.env.DEV_URL).origin : currentDesktopOrigin();
@@ -534,6 +535,11 @@ function openSettingsWindow() {
 }
 
 function restartServers() {
+  if (splitDevelopment) {
+    // These processes belong to the person's separate terminals.
+    mainWindow?.reload();
+    return;
+  }
   killChildren();
   // Small delay to ensure ports freed
   setTimeout(() => {
@@ -1668,6 +1674,8 @@ function createWindow(initialUrl) {
   require('./lib/connections').installDesktopConnections({
     session: mainWindow.webContents.session, ipcMain, getWindow: () => mainWindow,
     getOrigin: currentDesktopOrigin, getAppOrigin: currentDesktopAppOrigin, secret: desktopConnectionSecret,
+    getSecret: splitDevelopment ? () => require('./lib/devConnection').readDevelopmentProof(
+      process.env.AGENTWORKS_DESKTOP_SOCKET, currentDesktopOrigin(), currentDesktopAppOrigin()) : undefined,
   });
   }
   mainWindow.loadURL(targetUrl);
