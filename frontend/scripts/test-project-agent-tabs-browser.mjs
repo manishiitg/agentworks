@@ -82,8 +82,10 @@ try {
     await page.addInitScript(active => {
       window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'local', enabledProductSurfaces: ['work', 'agentworks'] }
       window.qaConnections = []
+      window.qaExternal = []
       window.electronAPI = {
         getDesktopConnection: () => active,
+        openExternal: async url => { window.qaExternal.push(url) },
         getApiBaseUrl: () => location.origin,
         getDesktopApiBaseUrl: () => location.origin,
         openDesktopConnection: async (id, path) => { window.qaConnections.push({ id, path }) },
@@ -92,6 +94,11 @@ try {
     await page.route('**/api/**', route => {
       const url = new URL(route.request().url())
       if (!url.pathname.startsWith('/api/')) return route.continue()
+      if (url.pathname === '/api/desktop-connections' && route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        if (body.server.endsWith('/crew')) return route.fulfill({ status: 400, contentType: 'text/plain', body: "Use the server's HTTPS address, without a path." })
+        return route.fulfill({ json: { state: 'fixture-sign-in', url: 'https://example.com/sign-in' } })
+      }
       if (url.pathname === '/api/desktop-connections') return route.fulfill({ json: { connections: [
         { id: 'a'.repeat(32), name: 'Team', server: 'https://team.example.com' },
         { id: 'b'.repeat(32), name: 'Sandbox', server: 'https://sandbox.example.com' },
@@ -133,6 +140,24 @@ try {
     await remote.getByRole('button', { name: 'Sandbox', exact: true }).click()
     assert.equal(await remote.getByRole('button', { name: 'Example Crew · Crew', exact: true }).isVisible(), false)
     assert.equal(await page.getByTestId('work-chat-tab-strip').isVisible(), true)
+    if (active === 'local') {
+      // PLAT-746-236: server validation must stay visible inside the popup.
+      await page.getByRole('button', { name: 'Connect server', exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: 'Connect server', exact: true })
+      await dialog.waitFor()
+      assert.equal(await sidebar.locator('input[type="url"]').count(), 0)
+      await dialog.getByRole('textbox', { name: 'Server address' }).fill('https://example.com/crew')
+      await dialog.getByRole('button', { name: 'Sign in with browser', exact: true }).click()
+      await dialog.getByRole('alert').waitFor()
+      assert.equal(await dialog.getByRole('alert').textContent(), "Use the server's HTTPS address, without a path. (HTTP 400)")
+      await page.screenshot({ path: path.join(output, 'connect-server-validation.png') })
+      await dialog.getByRole('textbox', { name: 'Server address' }).fill('https://example.com')
+      await dialog.getByRole('button', { name: 'Sign in with browser', exact: true }).click()
+      await dialog.getByRole('status').waitFor()
+      assert.deepEqual(await page.evaluate(() => window.qaExternal), ['https://example.com/sign-in'])
+      await page.keyboard.press('Escape')
+      assert.equal(await dialog.isVisible(), false)
+    }
     assert.deepEqual(errors, [])
     console.log(`Simple sidebar (${active}): project-only server groups, header chats, monitor and remote routing passed.`)
     await page.close()

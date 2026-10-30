@@ -9,7 +9,19 @@ export async function desktopRequest<T>(path = '', method = 'GET', body?: unknow
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/desktop-connections${path}`, {
     method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
-  if (!response.ok) throw new Error(response.status === 410 ? 'Sign-in expired. Try again.' : 'Could not reach this connection. Try again.')
+  }).catch(() => { throw new Error('Could not reach the local app. Check that the backend is running, then try again.') })
+  if (!response.ok) {
+    const body = (await response.text()).trim()
+    let message = ''
+    try {
+      const data = JSON.parse(body)
+      if (typeof data.error === 'string') message = data.error
+    } catch {
+      // The local backend also uses plain-text validation errors.
+      if (body && !body.startsWith('<')) message = body
+    }
+    message ||= response.status === 410 ? 'Sign-in expired. Try again.' : 'Could not complete this request. Try again.'
+    throw new Error(`${message} (HTTP ${response.status})`)
+  }
   return response.status === 204 ? undefined as T : response.json()
 }
