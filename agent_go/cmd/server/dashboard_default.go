@@ -16,12 +16,10 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-// Every Crew, workflow and Relay opens on a dashboard (PLAT-750, share =
-// dashboard). When its owner built none, the server writes a default one from
-// what the product already declares: its purpose, its published functions as
-// buttons and the Ask chat. Nothing is executed to build it. It is an ordinary
-// managed dashboard the owner can edit; once edited (the marker below is gone)
-// the server never overwrites it.
+// Goals retain their starting dashboard. Crews get one only when explicitly
+// requested for sharing (PLAT-750). The standard page uses the product purpose,
+// published functions and Ask chat. Nothing is executed to build it. It is an
+// ordinary managed dashboard; the server never overwrites authored changes.
 
 const defaultDashboardID = "overview"
 

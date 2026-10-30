@@ -103,7 +103,7 @@ func TestPublicationRefreshesOnlyGeneratedDashboard(t *testing.T) {
 	}
 	refresh()
 	after := get()
-	if after.Dashboard.Revision == before.Dashboard.Revision || !strings.Contains(after.Snapshot.Files["index.html"], `data-report-action="qa_ping"`) || after.Dashboard.Published == "" {
+	if after.Dashboard.Revision == before.Dashboard.Revision || !strings.Contains(after.Snapshot.Files["index.tsx"], `"name":"qa_ping"`) || !strings.Contains(after.Snapshot.Files["index.tsx"], `<FunctionButton name={action.name}`) || after.Dashboard.Published == "" {
 		t.Fatalf("publication did not refresh its function button: %+v", after)
 	}
 	draft, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: record.Root, Action: "update", ID: defaultDashboardID, ExpectedRevision: after.Dashboard.Revision, IncludeDraft: true, Files: map[string]string{"index.html": "<html><title>Unfinished owner dashboard</title></html>"}})
