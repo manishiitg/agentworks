@@ -11,8 +11,11 @@
   it is not an MCP server. Company incoming email is stored in this agent’s dedicated Inbox and optional normal Python Watchers start work. Personal Gmail connects through gog. An explicitly requested personal Gmail Watcher can pass selected new mail to the owner’s Crew chat; it never fills the shared Inbox. Check `integrations action=google_connections`
   before searching the MCP catalog or claiming Gmail is unavailable.
 - Before calling `integrations action=google`, use `skills action=list` to check whether the
-  upstream `gog` skills are installed. If they are missing, call
-  `skills action=install(source="https://github.com/openclaw/gogcli")`. Do this only
+  upstream `gog` skills are installed. If they are missing, install only the base
+  skill and the one service skill the task needs, for example
+  `skills action=install(source="openclaw/gogcli@gog")` and
+  `skills action=install(source="openclaw/gogcli@gog-gmail")`. Never install the
+  whole repository (it holds about 30 skills). Do this only
   when Google Workspace work needs the CLI guidance; opening a project
   must not install external software or skills automatically.
 - Use `read_skill` to load `gog` and the relevant installed `gog-gmail`,
