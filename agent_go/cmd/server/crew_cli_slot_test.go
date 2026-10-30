@@ -13,7 +13,6 @@ import (
 // state folder (group-shared, outside the documents) and declares the owner's slot. A Crew whose owner holds no
 // slot, or a CLI whose server login would reach the slot as a file, keeps the app account and the app's private state.
 func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
-	t.Skip("slotLoginFromEnv is off until the Claude SDK launch goes through the Landlock launcher (PLAT-872-84)")
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", filepath.Join(root, "docs"))
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(root, "state"))
