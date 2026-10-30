@@ -1,8 +1,6 @@
 import api from './api'
 import { sharedReportLink } from '../utils/sharedLinks'
 import { currentProductRoute } from '../utils/productRoutes'
-import { openAppProduct } from '../utils/appNavigation'
-import { selectReportDocument } from '../components/workflow/reportDocuments'
 
 export type DashboardDirectoryEntry = {
   dashboard_id: string
@@ -64,38 +62,4 @@ export function dashboardWorkspaceLink(href: string): { workspace: string; docum
     const workspace = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(encoded), ch => ch.charCodeAt(0)))
     return { workspace, document: url.searchParams.get('document') || 'db/reports/index.html' }
   } catch { return null }
-}
-
-export async function openDashboardWorkspaceLink(href: string): Promise<boolean> {
-  const target = dashboardWorkspaceLink(href)
-  if (!target) return false
-  try {
-    if ('code' in target) {
-      const { data } = await api.get<{ root: string; document_path: string; product: DashboardDirectoryEntry['product']; project_id: string }>(`/api/dashboards/by-code/${encodeURIComponent(target.code)}`)
-      return openResolvedDashboard(data.root, data.document_path, data.product, data.project_id)
-    }
-    const managed = /^db\/reports\/managed\/([^/]+)\/(?:[a-f0-9]{64}\/)?index\.html$/.exec(target.document)
-    let offset = 0
-    for (;;) {
-      // The server resolves the project and checks today's access, including
-      // shared Run access and owner-only drafts. Never derive a project ID/role from a folder name.
-      const { data } = await api.post<DashboardPage>('/api/dashboards', {
-        action: 'list', workspace: target.workspace, limit: 200, offset,
-      })
-      const row = data.dashboards.find(row => row.project_id && (row.document_path === target.document || managed?.[1] === row.dashboard_id))
-      if (row?.project_id) {
-        return openResolvedDashboard(target.workspace, row.document_path, row.product, row.project_id)
-      }
-      if (!data.has_more || data.next_offset <= offset) return false
-      offset = data.next_offset
-    }
-  } catch { return false }
-}
-
-function openResolvedDashboard(workspace: string, document: string, product: DashboardDirectoryEntry['product'], project: string): boolean {
-  const surface = product === 'crew' ? 'work' : product === 'workflow' ? 'agentworks' : product === 'relay' ? 'relays' : null
-  if (!surface || !workspace || !document || !project) return false
-  selectReportDocument(workspace, document, true)
-  openAppProduct({ surface, id: project, view: surface === 'work' ? 'dashboard' : 'report' })
-  return true
 }
