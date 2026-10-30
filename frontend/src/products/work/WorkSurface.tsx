@@ -477,25 +477,20 @@ function useWorkChatTab(
   useEffect(() => {
     if (!session) return
     // The primary chat and every side chat of the project share its identity,
-    // model, MCPs and skills (PLAT-571).
+    // MCPs and skills (PLAT-571).
     const projectTabs = Object.values(useChatStore.getState().chatTabs).filter(candidate =>
       belongsToWorkProject(candidate, session.id) &&
       candidate.metadata?.agentProfileBuilder !== true &&
       (candidate.metadata?.agentProfileIsMainChat || candidate.metadata?.agentProfileConversationKey === session.id || isWorkSideChatTab(candidate, session.id)))
     for (const tab of projectTabs) {
     if (tab.metadata?.agentProfileConversationKey?.startsWith(`${session.id}:chat:agent-`)) continue
-    const savedRuntime = workLLMSelectionFromConfig(session.llmConfig)
+    // Each chat's model comes from the server's per-chat rows (applyWorkChatModels).
+    // Copying the Crew's model here put a Codex engine under a Claude label (PLAT-872-75).
     const metadata = {
       agentProfileWorkspace: session.workspacePath,
       agentProfileProjectTitle: session.title,
       agentProfileProjectIcon: session.identity?.icon,
       agentProfileIdentityName: session.identity?.name,
-      ...(savedRuntime && !tab.metadata?.agentProfileChatModelOverride ? {
-        agentProfileEngine: savedRuntime.provider,
-        agentProfileConnectionID: savedRuntime.connectionId,
-        agentProfileModelID: savedRuntime.modelId,
-        agentProfileReasoningEffort: savedRuntime.reasoningEffort,
-      } : {}),
     }
     if (Object.entries(metadata).some(([key, value]) => tab.metadata?.[key as keyof typeof tab.metadata] !== value)) {
       useChatStore.getState().setTabMetadata(tab.tabId, metadata)
