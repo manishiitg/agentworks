@@ -1,8 +1,9 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { shallow } from 'zustand/shallow'
 import type { ChatTab } from '../../stores/useChatStore'
 import { selectWorkChatTabIds } from './WorkSurface'
-import { isWorkSideChatTab, workChatTabShortcut, workSideChatKey, workTabToKeepActive } from './workTabs'
+import { chatTabArrowTargetAllowed, isWorkSideChatTab, workChatTabShortcut, workSideChatKey, workTabToKeepActive } from './workTabs'
 
 function crewTab(tabId: string, projectId: string, inputText = ''): ChatTab {
   return {
@@ -13,6 +14,21 @@ function crewTab(tabId: string, projectId: string, inputText = ''): ChatTab {
 }
 
 describe('Work surface chat-tab selection', () => {
+  it('allows tab arrows from a focused chat draft while preserving other editors', () => {
+    const composer = document.createElement('textarea')
+    composer.setAttribute('data-chat-composer', '')
+    composer.value = 'Keep this unfinished draft'
+    expect(chatTabArrowTargetAllowed(composer)).toBe(true)
+    expect(composer.value).toBe('Keep this unfinished draft')
+    expect(chatTabArrowTargetAllowed(document.createElement('textarea'))).toBe(false)
+    const editor = document.createElement('div')
+    editor.setAttribute('contenteditable', 'true')
+    expect(chatTabArrowTargetAllowed(editor)).toBe(false)
+    const terminal = document.createElement('div'); terminal.className = 'xterm'
+    expect(chatTabArrowTargetAllowed(terminal)).toBe(false)
+    expect(chatTabArrowTargetAllowed(document.createElement('button'))).toBe(true)
+  })
+
   it('accepts Command or Control arrows without taking selection or OS navigation chords', () => {
     const key = (key: string, extra: Partial<KeyboardEvent> = {}) => workChatTabShortcut({ altKey: false, ctrlKey: false, metaKey: true, shiftKey: false, code: key, key, ...extra })
     expect(key('ArrowLeft')).toEqual({ kind: 'adjacent', direction: -1 })

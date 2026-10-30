@@ -5,7 +5,7 @@ import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
-import { workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
+import { chatTabArrowTargetAllowed, workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
 import { workSideChatDisplayName } from '../../products/work/workProjectPresentation'
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
@@ -188,7 +188,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not pin this tab.', 'error')
     }
   }
-  // Cmd/Ctrl+arrows cycle visible chats outside editors; number keys pick a chat.
+  // Cmd/Ctrl+arrows cycle visible chats (also from the composer); numbers pick a chat.
   // Alt+Shift+T / Option+Shift+T opens one
   // (PLAT-571), only while this product is on screen and never for a key
   // the terminal already took (it marks its own Alt keys handled).
@@ -204,8 +204,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       const action = workChatTabShortcut(event)
       if (!action) return
       if (action.kind === 'adjacent') {
-        // Keep macOS line navigation, word navigation and selection in editors.
-        if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.monaco-editor,.cm-editor')) return
+        // The owner chose tab switching from the chat input, including drafts.
+        if (!chatTabArrowTargetAllowed(event.target)) return
         const shown = visibleTabsRef.current
         const active = shown.findIndex(tab => isTabActive ? isTabActive(tab) : tab.tabId === useChatStore.getState().activeTabId)
         if (shown.length < 2 || active < 0) return
