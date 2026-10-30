@@ -565,7 +565,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     ...(chatTabs[canonicalTabId] ? [chatTabs[canonicalTabId]] : []),
     ...sideChats,
     // Run and activity views this browser opened are not agents; they stay until closed.
-    ...allTabs.filter(tab => belongsToWorkProject(tab, projectId) && tab.metadata?.isViewOnly === true && tab.sessionId !== canonicalSessionId),
+    ...allTabs.filter(tab => belongsToWorkProject(tab, projectId) && tab.metadata?.isViewOnly === true && tab.sessionId !== canonicalSessionId && !listed?.some(chat => chat.session_id === tab.sessionId)),
   ]
   const applyServerOrder = (listed: AgentProfileSideChat[]) => {
     setListed(listed)
@@ -658,8 +658,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const primary = state.chatTabs[canonicalTabId]
           if (cancelled || openingRef.current || !primary) return
           const tabs = Object.values(state.chatTabs)
-          const existing = tabs.find(tab => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
+          const existing = tabs.find(tab => tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id))
           if (existing) {
+            const active = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
+            if (active?.metadata?.isViewOnly && active.sessionId === chat.session_id) activateTab(existing.tabId)
             if (existing.metadata?.agentProfileTabOwnerID !== chat.tab_owner_id || existing.metadata?.agentProfileTabOwnerName !== chat.tab_owner_name || existing.metadata?.agentProfileTabCanWrite !== chat.can_write) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id, agentProfileTabOwnerName: chat.tab_owner_name, agentProfileTabCanWrite: chat.can_write })
             // A tab this browser kept from before the project's product changed still names the old one, which hides it
             // from this strip; the server's list decides which project and product the chat is in.
@@ -694,7 +696,9 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             selectedServers: primary.config.selectedServers,
             selectedSkills: primary.config.selectedSkills,
           })
-          if (previousActive) activateTab(previousActive)
+          const previous = previousActive ? state.chatTabs[previousActive] : undefined
+          if (previous?.metadata?.isViewOnly && previous.sessionId === chat.session_id) activateTab(tabId)
+          else if (previousActive) activateTab(previousActive)
           await hydrateTabEvents(chat.session_id, {
             workspacePath: primary.metadata?.agentProfileWorkspace,
             fallbackToChatHistory: true,

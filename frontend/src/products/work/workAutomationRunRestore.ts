@@ -5,6 +5,8 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { activateTab } from '../../utils/activateTab'
+import { recordViewTimingTelemetry } from '../../utils/chatDeliveryTelemetry'
+import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { hydrateExecutionConversation } from '../../utils/executionConversationRestore'
 import { WORK_PROFILE_ID, WORK_PROFILE_VERSION } from './workData'
 import { loadWorkSessions, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
@@ -52,20 +54,16 @@ async function resolveRunProject(session: ActiveSessionInfo): Promise<WorkSessio
   return null
 }
 
-/**
- * Open a Crew trigger/schedule run in its own read-only run tab.
- *
- * Product-schedule runs are multi-agent sessions on an isolated conversation
- * (project:trigger:<id>:<run>); they have no workflow preset, so the
- * AgentWorks restore path cannot open them. Mirror the blessed history
- * recipe instead: select the owning project, ensure its canonical Chat tab
- * (the metadata donor), then open the run transcript beside it without ever
- * rebinding the crew's interactive conversation.
- */
+/** Open the server-owned Crew chat, or an activity view for an isolated run. */
 export async function openWorkAutomationRunChat(
   session: ActiveSessionInfo,
   options: { title?: string } = {},
 ): Promise<void> {
+  const started = performance.now()
+  const focus = (tabId: string, source: string) => {
+    activateTab(tabId)
+    recordViewTimingTelemetry('view_switch', session.session_id, tabId, source, performance.now() - started)
+  }
   const project = await resolveRunProject(session)
   if (!project) {
     throw new Error('This Crew project is no longer available.')
@@ -117,6 +115,52 @@ export async function openWorkAutomationRunChat(
     throw new Error('Could not open the Crew chat for this run.')
   }
 
+  // Schedules may run in an ordinary Crew conversation. The server's chat
+  // identity wins over the trigger type; only isolated runs need an activity view.
+  const listed = await agentApi.listAgentProfileSideChats(WORK_PROFILE_ID, project.id)
+  const sideChat = listed.find(chat => chat.session_id === session.session_id)
+  if (conversation.session_id === session.session_id || sideChat) {
+    const existing = Object.values(useChatStore.getState().chatTabs).find(tab =>
+      tab.sessionId === session.session_id && tab.metadata?.agentProfileId === WORK_PROFILE_ID &&
+      tab.metadata?.agentProfileProjectId === project.id && tab.metadata?.isViewOnly !== true,
+    )
+    const tabId = sideChat
+      ? existing?.tabId || await chatStore.createChatTab(sideChat.name, {
+        ...canonical.metadata,
+        agentProfileIsMainChat: false,
+        agentProfileConversationKey: sideChat.conversation_key,
+        agentProfileConversationId: sideChat.conversation_id,
+        agentProfileTabOwnerID: sideChat.tab_owner_id,
+        agentProfileTabOwnerName: sideChat.tab_owner_name,
+        agentProfileTabCanWrite: sideChat.can_write,
+        agentProfileTabPosition: sideChat.position || 0,
+        agentProfileTabPinned: sideChat.pinned !== false,
+        ...(sideChat.agent_id ? {
+          agentProfileEngine: sideChat.provider,
+          agentProfileModelID: sideChat.model_id,
+          agentProfileConnectionID: sideChat.connection_id,
+          agentProfileChatProvider: sideChat.provider,
+          agentProfileChatConnectionID: sideChat.connection_id,
+        } : {}),
+      }, sideChat.session_id)
+      : canonicalTabId
+    if (!existing) {
+      chatStore.setTabConfig(tabId, {
+        selectedServers: canonical.config.selectedServers,
+        selectedSkills: canonical.config.selectedSkills,
+      })
+    }
+    if (chatStore.getTabEvents(session.session_id).length === 0) {
+      await hydrateTabEvents(session.session_id, {
+        workspacePath: project.workspacePath,
+        fallbackToChatHistory: true,
+        preferChatHistory: true,
+      })
+    }
+    focus(tabId, 'active_work_existing_chat')
+    return
+  }
+
   // Full title: the tab strip truncates with CSS and the hover shows it whole.
   const runTitle = (options.title || session.title || session.query || 'Trigger run').trim() || 'Trigger run'
   const existing = Object.values(useChatStore.getState().chatTabs).find(tab =>
@@ -148,5 +192,5 @@ export async function openWorkAutomationRunChat(
     chatStore.setTabCompleted(runTabId, runtime.status !== 'running')
   }
   chatStore.setTabViewMode(runTabId, 'formatted')
-  activateTab(runTabId)
+  focus(runTabId, 'active_work_run')
 }

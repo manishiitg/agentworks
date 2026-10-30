@@ -8,9 +8,14 @@ vi.hoisted(() => {
   if (typeof globalThis.sessionStorage === 'undefined') Object.defineProperty(globalThis, 'sessionStorage', { value: storage, configurable: true })
 })
 
+const listAgentProfileSideChats = vi.hoisted(() => vi.fn())
+const hydrateTabEvents = vi.hoisted(() => vi.fn())
+vi.mock('../../utils/sessionRestore', () => ({ hydrateTabEvents }))
+vi.mock('../../utils/chatDeliveryTelemetry', () => ({ recordViewTimingTelemetry: vi.fn() }))
+
 const resolveAgentProfileConversation = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({
-  agentApi: { resolveAgentProfileConversation },
+  agentApi: { resolveAgentProfileConversation, listAgentProfileSideChats },
   getApiBaseUrl: () => '',
   getAuthToken: () => null,
 }))
@@ -74,6 +79,7 @@ beforeEach(() => {
   vi.stubGlobal('window', { dispatchEvent: vi.fn(), localStorage: storage })
   vi.stubGlobal('CustomEvent', function (this: { type: string }, type: string) { this.type = type })
   loadWorkSessions.mockResolvedValue([project])
+  listAgentProfileSideChats.mockResolvedValue([])
   resolveAgentProfileConversation.mockResolvedValue({
     session_id: 'crew-session',
     conversation_key: 'news-id',
@@ -94,6 +100,37 @@ afterEach(() => {
 })
 
 describe('openWorkAutomationRunChat', () => {
+  // PLAT-746-222: Active work created a history copy of a scheduled side chat.
+  it.each([true, false])('opens the server-listed chat without a history copy (already open: %s)', async alreadyOpen => {
+    const session = runSession()
+    const chat = { conversation_key: 'news-id:chat:replies', session_id: session.session_id, name: 'Replies', can_write: false }
+    listAgentProfileSideChats.mockResolvedValue([chat])
+    const existingId = alreadyOpen ? await useChatStore.getState().createChatTab('Replies', {
+      mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: 'news-id',
+      agentProfileConversationKey: chat.conversation_key, agentProfileTabCanWrite: false,
+    }, session.session_id) : undefined
+
+    await openWorkAutomationRunChat(session)
+    await openWorkAutomationRunChat(session)
+
+    const tabs = Object.values(useChatStore.getState().chatTabs).filter(tab => tab.sessionId === session.session_id)
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0].metadata?.isViewOnly).not.toBe(true)
+    expect(tabs[0].metadata?.agentProfileConversationKey).toBe(chat.conversation_key)
+    expect(tabs[0].metadata?.agentProfileTabCanWrite).toBe(false)
+    expect(useChatStore.getState().activeTabId).toBe(existingId || tabs[0].tabId)
+    expect(hydrateExecutionConversation).not.toHaveBeenCalled()
+  })
+
+  it('focuses the main conversation when its schedule is opened', async () => {
+    await openWorkAutomationRunChat(runSession({ session_id: 'crew-session' }))
+    const tabs = Object.values(useChatStore.getState().chatTabs)
+    expect(tabs).toHaveLength(1)
+    expect(useChatStore.getState().activeTabId).toBe(tabs[0].tabId)
+    expect(tabs[0].metadata?.isViewOnly).not.toBe(true)
+    expect(hydrateExecutionConversation).not.toHaveBeenCalled()
+  })
+
   it('opens the trigger run in its own read-only tab beside the crew chat', async () => {
     await openWorkAutomationRunChat(runSession(), { title: 'News Monitor · news monitor trigger' })
 

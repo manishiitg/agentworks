@@ -79,11 +79,13 @@ describe('Crew native tab dragging', () => {
       main: make('main'),
       // Remembered from before the project moved from Code to Crew: still listed by the server, so it shows.
       a: make('a', { agentProfileId: 'code', agentProfileConversationKey: undefined }),
+      // PLAT-746-222: a persisted activity copy must neither show nor steal the server chat binding.
+      duplicate: { ...make('duplicate', { isViewOnly: true }), sessionId: 'session-b' },
       b: make('b'), z: make('z'),
       // A tab the server no longer lists is not shown.
       gone: make('gone'),
       bot: make('bot', { isViewOnly: true, isBotRun: true }), schedule: make('schedule', { isViewOnly: true, isScheduledRun: true }),
-    }, activeTabId: 'b' })
+    }, activeTabId: 'duplicate' })
     const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([
       { conversation_key: 'crew:chat:b', session_id: 'session-b', name: 'b', position: 1, pinned: true },
       { conversation_key: 'crew:chat:a', session_id: 'session-a', name: 'a', pinned: true },
@@ -95,6 +97,8 @@ describe('Crew native tab dragging', () => {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
       const ids = (selector: string, attribute: string, scope: ParentNode = host) => [...scope.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
       expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule'])
+      expect(useChatStore.getState().activeTabId).toBe('b')
+      expect(useChatStore.getState().chatTabs.duplicate.metadata?.agentProfileConversationKey).toBe('crew:chat:duplicate')
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
       expect(menu.textContent).toBe('')
       expect(menu.getAttribute('aria-label')).toBe('Agents: switch, reorder or close (4)')
