@@ -29,9 +29,10 @@ export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspace
   const [open, setOpen] = useState('')
   const [revision] = useReviewRevision()
   const savedEvents = useChatStore(state => (state.tabEvents[sessionId] ?? []).filter(event => event.type === 'reply_file_changes' || event.type === 'file_reviewed').map(event => event.id).join(','))
+  // A new chat starts empty; a refresh of the same chat keeps the rows on screen until the answer arrives.
+  useEffect(() => { setGroups(null) }, [workspacePath, sessionId])
   useEffect(() => {
     const controller = new AbortController()
-    setGroups(null)
     void api.get<{ groups?: ChatGroup[] }>(reviewEndpoint, { params: { workspace_path: workspacePath, session_id: sessionId, op: 'chat_status' }, signal: controller.signal })
       .then(({ data }) => { if (!controller.signal.aborted) setGroups(data.groups ?? []) }).catch(() => undefined)
     return () => controller.abort()
