@@ -176,7 +176,7 @@ func updateFetch(url string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 }
 
-func runUpdate(o *options, check, force, switchSource bool) error {
+func runUpdate(o *options, check, force, switchSource bool) (resultErr error) {
 	server, err := updateServer(o)
 	if err != nil {
 		return err
@@ -205,6 +205,7 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 		return o.output(map[string]any{"current": current, "latest": release.Version, "update_available": !upToDate})
 	}
 	if upToDate {
+		defer func() { reportUpdateMessaging(o, resultErr) }()
 		updateStep(progress, "AgentWorks is already up to date.")
 		// Restore existing chat connections if needed. Startup discovery belongs
 		// to that helper; a healthy helper must not rescan old desktop history.
@@ -230,6 +231,7 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 	if _, err = installUpdate(base, asset, target, release, false, progress); err != nil {
 		return err
 	}
+	defer func() { reportUpdateMessaging(o, resultErr) }()
 	updateStep(progress, "Reconnecting AgentWorks...")
 	if err = stopAgentBridge(context.Background(), "update"); err != nil {
 		return err

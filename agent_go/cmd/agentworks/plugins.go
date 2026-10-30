@@ -1096,7 +1096,17 @@ func bridgeCommand(o *options) *cobra.Command {
 }
 
 func ensureLocalBridge(ctx context.Context, root string, o *options) error {
+	return ensureLocalBridgeWithExecutable(ctx, root, o, "")
+}
+
+func ensureLocalBridgeWithExecutable(ctx context.Context, root string, o *options, executable string) error {
+	sameExecutable := executable == ""
 	recordFailure := func(cause string) {
+		// An updater may launch another release. Keep the existing metadata
+		// attributed to the calling executable, never guess the child's build.
+		if !sameExecutable {
+			return
+		}
 		if path, err := o.path(); err == nil {
 			agentworksclient.RecordStartupFailure(root, path, cliVersion, cliBuild, cause)
 		}
@@ -1106,9 +1116,12 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 		// explicit update restarts a responsive shared helper.
 		return nil
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
+	var err error
+	if executable == "" {
+		executable, err = os.Executable()
+		if err != nil {
+			return err
+		}
 	}
 	args := []string{"bridge", "serve"}
 	if os.Getenv("AGENTWORKS_BRIDGE_ROOT") != "" {
@@ -1117,7 +1130,7 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 			args = append(args, "--pi-root", configured)
 		}
 	}
-	child := exec.Command(exe, args...)
+	child := exec.Command(executable, args...)
 	detach(child)
 	child.Stdin = nil
 	child.Stdout = nil
@@ -1138,6 +1151,10 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 	if err = agentworksclient.SecurePrivateFile(startup); err != nil {
 		return err
 	}
+	startupOffset, err := startup.Seek(0, io.SeekEnd)
+	if err != nil {
+		return err
+	}
 	child.Stderr = startup
 	if err = child.Start(); err != nil {
 		recordFailure("spawn_failed")
@@ -1155,7 +1172,7 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 				return nil
 			}
 			recordFailure("early_exit")
-			return fmt.Errorf("AgentWorks connection helper exited before it was ready (%v). Startup details: %s", exitErr, startupPath)
+			return fmt.Errorf("AgentWorks connection helper exited before it was ready (%v). Latest startup detail: %s. Startup details: %s", exitErr, helperStartupDetail(startupPath, startupOffset), startupPath)
 		case <-ctx.Done():
 			recordFailure("timeout")
 			return fmt.Errorf("AgentWorks connection helper is not ready yet. Startup details: %s; connection log: %s", startupPath, filepath.Join(root, "bridge.log"))

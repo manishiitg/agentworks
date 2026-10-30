@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,8 +47,19 @@ func TestHookKeepsResponsiveHelperAcrossBuilds(t *testing.T) {
 	if err != nil || out.Version != "retained-build" {
 		t.Fatalf("ordinary hook replaced helper: %+v %v", out, err)
 	}
+	// PLAT-856-415: readiness must come from the actual helper, not an update-success claim.
+	var status bytes.Buffer
+	writeUpdateMessagingStatus(&status, root, nil)
+	if !strings.Contains(status.String(), "messaging: ready (build retained-build)") {
+		t.Fatalf("responsive helper was not reported: %q", status.String())
+	}
 	if err := stopLocalBridgeAt(ctx, root, "stop"); err != nil {
 		t.Fatal(err)
+	}
+	status.Reset()
+	writeUpdateMessagingStatus(&status, root, fmt.Errorf("startup refused: token=fixture-secret-value"))
+	if !strings.Contains(status.String(), "messaging: not ready: startup refused") || strings.Contains(status.String(), "fixture-secret-value") {
+		t.Fatalf("unavailable helper lost its redacted cause: %q", status.String())
 	}
 }
 

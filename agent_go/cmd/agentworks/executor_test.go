@@ -177,6 +177,11 @@ func TestDebugReportRemovesSecrets(t *testing.T) {
 			t.Fatalf("secret %q survived:\n%s", secret, report)
 		}
 	}
+	// PLAT-856-415: redact the complete startup line before its 200-character clipping.
+	line := shortStartupDetail("token=" + strings.Repeat("z", 300) + " " + strings.Repeat("界", 250))
+	if strings.Contains(line, "zzzz") || len([]rune(line)) > 200 || !strings.Contains(line, "[redacted]") {
+		t.Fatalf("startup detail leaked or exceeded its bound: %q", line)
+	}
 	if strings.Contains(report, "3d4f2e03-9f4c") || strings.Contains(report, "019a-7582") || !strings.Contains(report, "01a135d1…") {
 		t.Fatalf("lease and session ids must be shortened:\n%s", report)
 	}
