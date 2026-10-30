@@ -412,6 +412,7 @@ func crewReaderDeniedTools() []string {
 		"set_workflow_secret",
 		"delete_workflow_secret",
 		// Crew identity and UI actions (reads stay).
+		"manage_results",
 		"set_work_identity",
 		"create_crew",
 		"perform_ui_action",

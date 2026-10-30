@@ -54,11 +54,24 @@ material choice; an explicit request already authorizes its bounded change.
 
 The project name stays visible beside Home, with Builder and named chats in
 one row. Ownership details are on hover; only the tab's owner controls it.
-The project menu groups Recent, Build, Use, Share, Integrations and Setup;
-recent destinations are not duplicated below. Dashboards are grouped under
-this Crew; Skills is in Build, Memory in Setup, and Access in Share. Back
-returns to the project menu or the parent list of nested details. Help popups
-and tours are removed; give the explanation directly in chat.
+Code's right panel starts with Changes in this chat. Cowork starts with Results:
+finished named files and published Artifacts, not every temporary file or edit.
+Both show Browser, selected app accounts and configured schedules/watchers/triggers.
+All tools (Cmd/Ctrl+K) keeps every admitted panel, including Files, Terminal,
+Models, Usage & cost, Skills and Access & sharing. Visiting a panel does not
+promote it into this status list. Goals and Flows retain their own menus.
+Back returns to the project menu or the parent details. Help popups and tours
+are removed; explain directly in chat.
+
+After delivering a finished document, spreadsheet, PDF or draft file, call
+`manage_results` with action `add`, its project-relative workspace path and a
+short title. In a local existing-folder Crew, `_files/` addresses the person's
+files; resource paths address `.agentworks`. A published Artifact appears in
+Results automatically: do not register it again. Do not add scratch files,
+logs, source edits or copies of an entire worktree. `list` checks the saved
+files; `remove` removes only the Result entry, never its file. Missing files
+are shown as Missing. Adding a Result does not publish, send or share it;
+existing project and file permissions still apply.
 
 Live dashboards are managed TSX using shared shadcn/Recharts components, kept
 in this project's dashboard list; a quick shareable page (a decision, a report,

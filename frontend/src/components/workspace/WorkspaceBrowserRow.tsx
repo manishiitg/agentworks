@@ -5,5 +5,5 @@ import { WorkspaceContextRow as Row } from './WorkspaceContextCard'
 /** The Browser entry shows the same connection the Browser panel reports. */
 export function WorkspaceBrowserRow({ workspacePath, profileId, onClick }: { workspacePath: string; profileId: string; onClick: () => void }) {
   const status = useBrowserToolbarConnection(workspacePath, profileId)
-  return <Row icon={Monitor} detail={status.label} onClick={onClick}>Browser</Row>
+  return <Row icon={Monitor} hint={status.name} detail={status.name ? `${status.name} · ${status.label}` : status.label} onClick={onClick}>Browser</Row>
 }

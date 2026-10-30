@@ -1,27 +1,26 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { ArrowLeft, Cable, CalendarClock, FileText, LayoutDashboard, RefreshCw } from 'lucide-react'
+import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
-import { useProjectStatus } from '../../components/workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
-import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
-import { useLiveRefetch } from '../../hooks/useLiveRefetch'
-import api, { agentApi } from '../../services/api'
+import api from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { projectMenuHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
+import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
-import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
-import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
+import { crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
-const EMPTY_RECENT: string[] = []
+const FilePreview = lazy(() => import('../../components/workflow/reportWidgets/FileWidget').then(module => ({ default: module.FilePreviewByPath })))
 
-export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
+export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget: _dashboardChatTarget, reviewSessionId, mode = 'cowork' }: {
   workspacePath: string
+  mode?: 'dev' | 'cowork'
   reviewSessionId?: string
   projectId?: string
   profileId?: 'work'
@@ -33,8 +32,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
-  const storedRecent = useProjectMenuHistoryStore(state => state.recent[scope] || EMPTY_RECENT)
-  const storedStartHere = useProjectMenuHistoryStore(state => state.startHere[scope] || EMPTY_RECENT)
   const incomingEmail = useAgentInboxEnabled()
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
   const canReadSharing = allowed('dashboard') && allowed('mcp')
@@ -47,68 +44,50 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false }) })
     return () => controller.abort()
   }, [scope, workspacePath, canReadSharing])
-  const [suggestions, setSuggestions] = useState<{ scope: string; count: number | null } | null>(null)
-  const [tick, setTick] = useState(0)
-  const showSuggestions = allowed('suggestions')
-  useLiveRefetch(() => setTick(value => value + 1), { kinds: ['human_inputs'], workflow: workspacePath, fallbackMs: 30000, enabled: showSuggestions })
-  useEffect(() => {
-    if (!showSuggestions) return
-    let disposed = false
-    void agentApi.listReportHumanInputs(workspacePath, 'pending', 'user_suggestion').then(result => {
-      if (!disposed) setSuggestions({ scope, count: result.success ? (result.inputs || []).filter(item => item.workspace_path === workspacePath && item.status === 'pending').length : null })
-    }).catch(() => { if (!disposed) setSuggestions({ scope, count: null }) })
-    return () => { disposed = true }
-  }, [workspacePath, scope, showSuggestions, tick])
-  const count = suggestions?.scope === scope ? suggestions.count : null
   const { documents } = useReportDocuments(allowed('dashboard') ? workspacePath : '')
-  const status = useProjectStatus({ kind: 'crew', workspacePath, profileId, projectId })
   const menuOptions = { panels, enabledPanels, incomingEmail, projectId, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
-  const items = inventory
-  const byId = new Map(items.map(item => [item.id, item]))
-  const recent = [...new Set(storedRecent)].flatMap(id => byId.get(id) || []).slice(0, 10)
-  const recentIDs = new Set(recent.map(item => item.id))
-  const startHere = [...new Set(storedStartHere)].filter(id => !recentIDs.has(id)).flatMap(id => byId.get(id) || [])
-  const featuredIDs = new Set([...recentIDs, ...startHere.map(item => item.id)])
+  const byId = new Map(inventory.map(item => [item.id, item]))
+  const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })
+  const [preview, setPreview] = useState<{ scope: string; path: string; title: string }>()
   const open = (item: CrewMenuItem) => {
     // Recheck account/product admission if access changed while the menu was open.
     const current = useAuthStore.getState().user
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     const admitted = crewProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
     if (!admitted.some(candidate => candidate.id === item.id)) return
-    useProjectMenuHistoryStore.getState().visit(scope, item.id)
-    if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
     if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
     if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
     onOpen(item.view)
   }
-  const renderItem = (item: CrewMenuItem) => {
-    if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={scope + item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })} />
-    if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)} />
-    const automation = item.id.startsWith('schedules:') ? item.target : undefined
-    const total = item.id === 'memory:skills' ? status.skills : item.id === 'mcp:gmail' ? status.googleApps : item.id === 'mcp:secrets' ? status.secrets : item.id === 'mcp:share-owners' ? status.owners : automation === 'schedules' ? status.schedules : automation === 'conditions' ? status.conditions : automation === 'triggers' ? status.triggers : automation === 'functions' ? status.functions : item.id === 'mcp:connected' ? status.mcps : item.id === 'mcp:agents' ? status.computerChats : undefined
-    const detail = item.id === 'identity:location' ? status.laptop : item.id === 'mcp:share' ? sharing?.scope === scope ? sharing.detail : undefined : item.id === 'suggestions' ? count ? count + ' waiting' : undefined
-      : item.id === 'mcp:slack-account' ? status.slackAccount : item.id === 'mcp:slack-bot' ? status.slackBot
-      : item.id === 'mcp:whatsapp' ? status.whatsapp : item.id === 'schedules:email' ? status.email : total === undefined ? undefined : total ? String(total) : 'None'
-    return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'suggestions' && Boolean(count)} onClick={() => open(item)}>{item.label}</Row>
-  }
+  const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
+  const currentPreview = preview?.scope === scope ? preview : undefined
+  if (currentPreview) return <div className="flex h-full min-h-0 flex-col bg-background">
+    <header className="flex items-center gap-2 border-b border-border p-3"><button type="button" aria-label="Back to workspace" onClick={() => setPreview(undefined)} className="rounded p-1 hover:bg-muted"><ArrowLeft className="h-4 w-4"/></button><h2 className="truncate text-sm font-medium">{currentPreview.title}</h2></header>
+    <div className="min-h-0 flex-1"><Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading result…</p>}><FilePreview key={currentPreview.path} path={currentPreview.path} name={currentPreview.title}/></Suspense></div>
+  </div>
+  const artifacts = documents.filter(item => item.artifact)
+  const dashboards = documents.filter(item => !item.artifact)
+  const results = <Group title="Results">
+    {artifacts.map(item => <Row key={item.path} icon={FileText} detail="Artifact" onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }}>{item.title}</Row>)}
+    {(snapshot?.results || []).filter(item => byId.has('files') && !artifacts.some(artifact => artifact.path === item.path)).map(item => <Row key={item.path} icon={FileText} hint={item.path} attention={item.status !== 'ready'} detail={item.status === 'missing' ? 'Missing file' : item.status === 'unavailable' ? 'Unavailable' : undefined} onClick={() => {
+      if (item.status !== 'ready' || !byId.has('files') || useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
+      setPreview({ scope, path: `${workspacePath.replace(/\/+$/, '')}/${item.path}`, title: item.title })
+    }}>{item.title}</Row>)}
+    {!artifacts.length && !snapshot?.results?.length && <p className="px-1 py-2 text-xs text-muted-foreground">{snapshot ? 'Finished files will appear here.' : 'Loading results…'}</p>}
+    {dashboards.map(item => <Row key={item.path} icon={LayoutDashboard} detail="Dashboard" onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }}>{item.title}</Row>)}
+  </Group>
+  const changes = reviewSessionId && allowed('files') ? <Group title="Changes"><ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={() => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files','review'); onOpen('files') }}/></Group> : null
   return <WorkspaceContextCard>
-    {(recent.length > 0 || (reviewSessionId && allowed('files'))) && <Group title="Recent">{reviewSessionId && allowed('files') && <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={() => { setWorkspaceViewTarget('files','review'); onOpen('files') }} />}{recent.map(renderItem)}</Group>}
-    {startHere.length > 0 && <Group title="Start here">{startHere.map(renderItem)}</Group>}
-    {CREW_MENU_GROUPS.map(group => {
-      const remaining = items.filter(item => item.group === group && !featuredIDs.has(item.id))
-      if (!remaining.length) return null
-      const plain = remaining.filter(item => !item.subgroup)
-      const subgroups = [...new Set(remaining.flatMap(item => item.subgroup ? [item.subgroup] : []))]
-      return <Group key={scope + group} title={group} collapsed defaultOpen={!recent.length && !startHere.length && group === 'Build'}>
-        {group !== 'Use' && plain.map(renderItem)}
-        {subgroups.map(subgroup => <div key={subgroup} role="group" aria-label={subgroup} className="space-y-1">
-          <h3 className="px-1 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{subgroup}</h3>
-          {remaining.filter(item => item.subgroup === subgroup).map(renderItem)}
-        </div>)}
-        {group === 'Use' && plain.map(renderItem)}
-      </Group>
-    })}
+    {mode === 'dev' && changes}
+    {(mode === 'cowork' || artifacts.length > 0 || dashboards.length > 0 || Boolean(snapshot?.results?.length)) && results}
+    <Group title="Connections">
+      {byId.has('browser') && <WorkspaceBrowserRow key={scope} workspacePath={workspacePath} profileId={profileId} onClick={() => openID('browser')}/>}
+      {(snapshot?.apps || []).filter(item => byId.has(item.destination)).map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || Cable} detail={item.detail} attention={item.attention} onClick={() => openID(item.destination)}>{item.label}</Row>)}
+      {byId.has('mcp:connected') && <Row icon={Cable} onClick={() => openID('mcp:connected')}>Manage connections</Row>}
+    </Group>
+    {Boolean(snapshot?.automations?.length) && <Group title="Automations">{snapshot!.automations!.map(item => <Row key={item.id} icon={CalendarClock} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}</Group>}
+    {snapshot?.errors.length ? <div className="space-y-1 px-1 text-xs text-muted-foreground">{snapshot.errors.map(error => <p key={error}>{error}</p>)}<button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
 }
