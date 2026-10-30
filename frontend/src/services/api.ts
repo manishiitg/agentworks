@@ -246,10 +246,15 @@ function logResolvedUrlOnce(key: string, payload: Record<string, unknown>) {
   console.info(`[api-config] ${key}`, payload)
 }
 
+// Saved server credentials are available only through the desktop backend.
+// Ordinary local calls keep their existing development proxy/runtime routing.
+export function getDesktopApiBaseUrl(): string {
+  return window.electronAPI?.getDesktopApiBaseUrl?.() || getLocalApiBaseUrl()
+}
+
 export function getApiBaseUrl(): string {
-  const local = getLocalApiBaseUrl()
   const id = getRawActiveWorkspaceId()
-  return id === 'local' ? local : `${local}/api/connections/${id}`
+  return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${id}`
 }
 
 export function getLocalApiBaseUrl(): string {
@@ -259,12 +264,14 @@ export function getLocalApiBaseUrl(): string {
     return runtime.apiBaseUrl
   }
 
+
   // Use Electron API if available
   if (typeof window !== 'undefined' && (window as AppWindow).electronAPI?.getApiBaseUrl) {
     const resolved = (window as AppWindow).electronAPI!.getApiBaseUrl!()
     logResolvedUrlOnce('apiBaseUrl', { source: 'electron', resolved, runtime })
     return resolved
   }
+
 
   const env = import.meta.env.VITE_API_BASE_URL
   if (env) {

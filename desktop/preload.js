@@ -12,6 +12,7 @@ const desktopConnection = ipcRenderer.sendSync('get-desktop-connection');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getDesktopConnection: () => desktopConnection,
+  getDesktopApiBaseUrl: () => ipcRenderer.sendSync('get-desktop-api-origin'),
   openDesktopConnection: (id, route) => ipcRenderer.invoke('open-desktop-connection', id, route),
   isWalkthroughDismissed: key => walkthroughDismissals.has(key),
   dismissWalkthrough: key => {
