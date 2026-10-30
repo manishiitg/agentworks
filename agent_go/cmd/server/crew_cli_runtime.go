@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 )
 
 // One native-tool policy for ordinary Crew turns and explicit local resume.
@@ -40,6 +43,17 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	stateRoot, err := workflowCLIStateRoot()
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
+	}
+	// A Crew whose owner holds a slot runs its CLI as that slot (PLAT-872-84), from the slot's state folder
+	// (slot_state_root/<slot>: the platform's and that slot's only, outside the documents; tmux already routes a
+	// session started there to the slot's own server). Otherwise the app's private state, as before.
+	// A slot without its state folder on this host keeps the app account.
+	if slot, _ := crewOwnerSlot(folder); slot != "" {
+		if state, stateErr := slots.StateDirFor(slot); stateErr == nil {
+			if info, statErr := os.Stat(state); statErr == nil && info.IsDir() {
+				stateRoot = state
+			}
+		}
 	}
 	// A Crew that moved to the shared root keeps its runtime folder: the digest input stays the path the Crew had when
 	// its chats began (the server's registry records it), so the native CLI sessions of its chats survive the move.
@@ -148,4 +162,27 @@ func applyCrewChatMode(profile *resolvedAgentProfile, req *QueryRequest, readOnl
 		}
 	}
 	return nil
+}
+
+// crewOwnerSlot is the slot the Crew's owner holds (from the server's registry) and that owner; "" when the folder
+// is not a shared Crew, its owner is unknown or holds no slot, or slots are off.
+func crewOwnerSlot(folder string) (slot, owner string) {
+	shared, ok := workspaceref.MustParse(strings.TrimSpace(folder)).SharedProject()
+	if !ok {
+		return "", ""
+	}
+	owner = resolveProjectOwner(context.Background(), workspaceref.SharedProjectPath(shared))
+	if owner == "" {
+		return "", ""
+	}
+	return slotHeldBy(owner), owner
+}
+
+// inSlotStateFolder reports whether dir lies inside the slot's state folder.
+func inSlotStateFolder(dir, slot string) bool {
+	state, err := slots.StateDirFor(slot)
+	if err != nil || state == "" {
+		return false
+	}
+	return strings.HasPrefix(filepath.Clean(dir)+string(filepath.Separator), filepath.Clean(state)+string(filepath.Separator))
 }

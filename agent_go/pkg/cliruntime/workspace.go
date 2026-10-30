@@ -99,6 +99,12 @@ func runtimeDirectory(stateRoot, workspaceRoot, user, workflow, legacyDigestRel,
 	if within(physicalWorkspace, physicalBase) || within(physicalBase, physicalWorkspace) {
 		return "", fmt.Errorf("CLI runtime storage must be separate from workspace documents")
 	}
+	// A runtime inside a slot's state folder (agents:<slot>, setgid, group-shared) is for that slot's CLI (PLAT-872-84):
+	// its folders are the platform's and that slot's only (2770). Anywhere else they are private to the app (0700).
+	perm := os.FileMode(0700)
+	if info, err := os.Stat(stateRoot); err == nil && info.Mode()&os.ModeSetgid != 0 && info.Mode().Perm()&0o070 == 0o070 && info.Mode().Perm()&0o007 == 0 {
+		perm = 0770
+	}
 	digestWorkflow := workflow
 	if legacyDigestRel != "" {
 		digestWorkflow = filepath.Join(workspaceRoot, filepath.FromSlash(legacyDigestRel))
@@ -109,7 +115,13 @@ func runtimeDirectory(stateRoot, workspaceRoot, user, workflow, legacyDigestRel,
 	for _, component := range []string{"", "v1", digest} {
 		dir = filepath.Join(dir, component)
 		if create {
-			if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
+			if err := os.Mkdir(dir, perm); err == nil {
+				if perm != 0700 { // the umask may have taken the group's bits
+					if err := os.Chmod(dir, perm|os.ModeSetgid); err != nil {
+						return "", err
+					}
+				}
+			} else if !os.IsExist(err) {
 				return "", err
 			}
 		}
@@ -120,8 +132,8 @@ func runtimeDirectory(stateRoot, workspaceRoot, user, workflow, legacyDigestRel,
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("CLI runtime path is not a private directory: %s", dir)
 		}
-		if info.Mode().Perm() != 0700 {
-			return "", fmt.Errorf("CLI runtime directory must have mode 0700: %s", dir)
+		if info.Mode().Perm() != perm {
+			return "", fmt.Errorf("CLI runtime directory must have mode %o: %s", perm, dir)
 		}
 	}
 	return dir, nil

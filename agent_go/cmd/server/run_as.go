@@ -106,8 +106,12 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 		return appAccount
 	}
 	// An isolated runtime folder belongs to the app account (app-owned, mode 0700): the CLI starts there, so it
-	// runs there as the app account whatever project it links to.
+	// runs there as the app account whatever project it links to. A Crew's runtime in its owner's slot state folder is
+	// that slot's: every turn in the Crew, the owner's and a Run person's, runs as the owner's slot (PLAT-872-84).
 	if in.CLIWorkingDir != "" && in.CLIWorkingDir != in.SharedWorkingDir {
+		if slot, owner := crewOwnerSlot(in.WorkingFolder); slot != "" && isProjectProfileID(in.ProfileID) && inSlotStateFolder(in.CLIWorkingDir, slot) {
+			return owned(owner)
+		}
 		return appAccount
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
