@@ -21,7 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/filemetadata"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 type FileError struct {
@@ -110,6 +110,10 @@ func (e *Editor) openScope(scope string) (*os.Root, error) {
 }
 
 func OpenEditor(rootDir, stateDir string) (*Editor, error) {
+	return openEditor(context.Background(), rootDir, stateDir)
+}
+
+func openEditor(ctx context.Context, rootDir, stateDir string) (*Editor, error) {
 	rootDir, err := filepath.Abs(rootDir)
 	if err != nil {
 		return nil, err
@@ -215,7 +219,7 @@ func OpenEditor(rootDir, stateDir string) (*Editor, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS file_lock (id INTEGER PRIMARY KEY)`); err != nil {
+	if _, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS file_lock (id INTEGER PRIMARY KEY)`); err != nil {
 		db.Close()
 		root.Close()
 		state.Close()
@@ -699,11 +703,41 @@ func DefaultStateDir(rootDir string) (string, error) {
 	return filepath.Join(filepath.Dir(rootDir), "."+filepath.Base(rootDir)+"-file-edits"), nil
 }
 func LockWorkspace(ctx context.Context, rootDir string) (func(), error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		unlock, err := lockWorkspaceOnce(ctx, rootDir)
+		if err == nil {
+			if err := ctx.Err(); err != nil {
+				unlock()
+				return nil, err
+			}
+			return unlock, nil
+		}
+		var busy *sqlite.Error
+		// Retry acquisition only. The caller has not changed any files yet.
+		if !errors.As(err, &busy) || busy.Code()&0xff != 5 { // SQLITE_BUSY, including extended codes
+			return nil, err
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func lockWorkspaceOnce(ctx context.Context, rootDir string) (func(), error) {
 	state, err := DefaultStateDir(rootDir)
 	if err != nil {
 		return nil, err
 	}
-	editor, err := OpenEditor(rootDir, state)
+	editor, err := openEditor(ctx, rootDir, state)
 	if err != nil {
 		return nil, err
 	}

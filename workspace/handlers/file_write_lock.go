@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -69,13 +70,23 @@ func lockFileMutation(c *gin.Context, paths ...string) (func(), bool) {
 		}
 	}
 	for _, root := range roots {
+		started := time.Now()
 		unlock, err := wf.LockWorkspace(c.Request.Context(), root)
 		if err != nil {
 			release()
+			log.Printf("[FILE_MUTATION] user_id=%s stage=lock root=%q wait_ms=%d error=%q", getUserID(c), root, time.Since(started).Milliseconds(), err.Error())
 			c.JSON(503, gin.H{"error": "file edit serialization unavailable"})
 			return nil, false
 		}
-		releases = append(releases, unlock)
+		acquired := time.Now()
+		wait := acquired.Sub(started)
+		releases = append(releases, func() {
+			unlock()
+			held := time.Since(acquired)
+			if wait >= time.Second || held >= time.Second {
+				log.Printf("[FILE_MUTATION] user_id=%s stage=release root=%q wait_ms=%d held_ms=%d", getUserID(c), root, wait.Milliseconds(), held.Milliseconds())
+			}
+		})
 	}
 	c.Set("managed-file-lock", true)
 	return func() { c.Set("managed-file-lock", false); release() }, true

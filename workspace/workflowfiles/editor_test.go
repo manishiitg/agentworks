@@ -4,11 +4,65 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
+
+// PLAT-746: conversation-registry saves failed when another writer held the
+// workspace lock beyond SQLite's five-second busy timeout.
+func TestWorkspaceLockWaitsPastBusyTimeoutAndHonorsCancellation(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_FILE_STATE_DIR", t.TempDir())
+	unlock, err := LockWorkspace(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if unlock != nil {
+			unlock()
+		}
+	}()
+	done := make(chan error, 1)
+	go func() {
+		release, err := LockWorkspace(t.Context(), root)
+		if err == nil {
+			release()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("waiter finished while the workspace was still locked: %v", err)
+	case <-time.After(6 * time.Second):
+	}
+	unlock()
+	unlock = nil
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(7 * time.Second):
+		t.Fatal("waiter did not acquire the released lock")
+	}
+
+	unlock, err = LockWorkspace(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	if release, err := LockWorkspace(ctx, root); err == nil {
+		release()
+		t.Fatal("cancelled waiter acquired a held lock")
+	} else if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("waiter ignored request cancellation: %v", err)
+	}
+}
 
 func testEditor(t *testing.T) (*Editor, string, string) {
 	t.Helper()
