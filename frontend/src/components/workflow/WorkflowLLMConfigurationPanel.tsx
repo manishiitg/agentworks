@@ -90,6 +90,8 @@ type WorkflowLLMConfigurationPanelProps = {
   configurationSource?: 'agent_profile'
   /** Product the settings belong to (agentworks, work, code) when the path alone does not say. */
   product?: string
+  /** Limits for this exact selected account, supplied by the owning surface. */
+  accountUsage?: ReactNode
 }
 
 const hasOptions = (options?: Record<string, unknown>) => Boolean(options && Object.keys(options).length > 0)
@@ -159,6 +161,7 @@ export default function WorkflowLLMConfigurationPanel({
   readOnlyReason,
   configurationSource,
   product,
+  accountUsage,
 }: WorkflowLLMConfigurationPanelProps) {
   const {
     availableLLMs,
@@ -662,6 +665,7 @@ export default function WorkflowLLMConfigurationPanel({
         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{note}</span>
         {unavailable && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{NO_LONGER_AVAILABLE}</span>}
         {inUse && <span className="text-[10px] font-medium text-primary">In use</span>}
+        {inUse && accountUsage}
         <span className="min-w-0 flex-1" />
         {needsSetup && !inUse
           ? <Button type="button" variant="outline" size="xs" disabled={readOnly} onClick={() => useLLMStore.getState().setShowLLMModal(true)} title={`${account.display_name} is not signed in yet: set it up on the Providers page`} aria-label={`Set up ${row.name} account ${account.display_name}`}>Set up</Button>
@@ -711,6 +715,7 @@ export default function WorkflowLLMConfigurationPanel({
           {selectedPrivateAccount && (
             <span className="text-xs text-muted-foreground">· {selectedPrivateAccount.display_name} (private)</span>
           )}
+          {accountUsage}
           {globalLockApplies && (
             <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground" title={`Every ${scopeNoun} on this deployment uses this provider`}>
               <Lock className="h-3 w-3" /> Set by your administrator

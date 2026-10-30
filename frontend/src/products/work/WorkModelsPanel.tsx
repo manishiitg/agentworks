@@ -250,7 +250,6 @@ export function WorkModelsPanel({
             This {effectiveProfileId === 'knowledgebase' || effectiveProfileId === 'caplayer' ? 'assistant' : 'project'} is set to {selectedOption?.label || selectedOption?.provider}, which is not available to you here. Choose another coding agent below; your next message uses it.
           </p>
         )}
-        <SharedTokenUsageNotice className="mb-3" accountProvider={inUseConnectionId || accounts !== null ? sharedAccountProvider(inUseConnectionId, selectedOption?.provider) : undefined} />
         <WorkflowLLMConfigurationPanel
           workspacePath={workspacePath}
           llmConfig={llmConfig}
@@ -262,6 +261,7 @@ export function WorkModelsPanel({
           showModelsPerRole={false}
           configurationSource="agent_profile"
           product={effectiveAccountProduct}
+          accountUsage={<SharedTokenUsageNotice inline accountProvider={inUseConnectionId || accounts !== null ? sharedAccountProvider(inUseConnectionId, selectedOption?.provider) : undefined} />}
         />
         <section
           className="mt-4 overflow-hidden rounded-xl border border-border bg-card"

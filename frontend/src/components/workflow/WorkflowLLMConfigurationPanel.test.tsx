@@ -330,7 +330,7 @@ describe('workflow account tree', () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host); const persist = vi.fn()
     try {
-      await act(async () => root.render(<WorkflowLLMConfigurationPanel workspacePath="/workflow" llmConfig={{ schema_version: 2, mode: 'provider_profile', provider: 'claude-code', connection_id: 'account-b' }} onChange={vi.fn()} onUseProvider={persist} />))
+      await act(async () => root.render(<WorkflowLLMConfigurationPanel workspacePath="/workflow" llmConfig={{ schema_version: 2, mode: 'provider_profile', provider: 'claude-code', connection_id: 'account-b' }} onChange={vi.fn()} onUseProvider={persist} accountUsage={<span data-testid="selected-account-limits">Your own account · not limited</span>} />))
       await act(async () => Promise.resolve())
       expect(host.textContent).not.toContain('Needs setup')
       expect(host.textContent).toContain('Personal B (private)')
@@ -341,6 +341,8 @@ describe('workflow account tree', () => {
       expect(providerBranch?.textContent).toContain('Personal B')
       const selected = host.querySelector<HTMLButtonElement>('[aria-label="Use Claude Code account Personal B"]')
       expect(selected?.textContent).toBe('Selected'); expect(selected?.disabled).toBe(true)
+      expect(host.querySelectorAll('[data-testid="selected-account-limits"]')).toHaveLength(2)
+      expect(selected?.closest('div')?.querySelector('[data-testid="selected-account-limits"]')).not.toBeNull()
       await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Use Claude Code account Personal A"]')?.click())
       expect(persist).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude-code', connection_id: 'account-a' }))
       expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Add account')).toBe(false)

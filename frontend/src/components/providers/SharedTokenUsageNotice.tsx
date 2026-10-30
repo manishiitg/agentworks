@@ -67,12 +67,12 @@ export function SharedTokenUsageChip({ accountProvider }: { accountProvider?: st
  * Week 70% (resets …)" with only the limits that exist, "no limit" when none. accountProvider is the
  * shared account's provider (null: the person's own account; undefined: not known yet, nothing shown).
  */
-export function SharedTokenUsageNotice({ className = '', accountProvider }: { className?: string; accountProvider?: string | null }) {
+export function SharedTokenUsageNotice({ className = '', accountProvider, inline = false }: { className?: string; accountProvider?: string | null; inline?: boolean }) {
   const usage = useSharedTokenUsage()
   if (accountProvider === undefined) return null
-  const base = 'rounded-lg border px-3 py-2 text-xs'
+  const base = inline ? 'text-xs' : 'rounded-lg border px-3 py-2 text-xs'
   if (accountProvider === null) {
-    return <p data-testid="account-limits" className={`${base} border-border bg-muted/40 text-muted-foreground ${className}`}>Your own account · not limited</p>
+    return <p data-testid="account-limits" className={`${base} ${inline ? '' : 'border-border bg-muted/40'} text-muted-foreground ${className}`}>Your own account · not limited</p>
   }
   const shown = usage ? shownTokenFigures(usage, accountProvider) : null
   const pct = (used: number, limit: number) => `${Math.min(999, Math.round((used / limit) * 100))}%`
@@ -100,9 +100,10 @@ export function SharedTokenUsageNotice({ className = '', accountProvider }: { cl
   if (shown?.daily_cache_read_tokens || shown?.weekly_cache_read_tokens) detail.push(`Raw cache reads: ${formatTokens(shown.daily_cache_read_tokens)} today; ${formatTokens(shown.weekly_cache_read_tokens)} this week`)
   if (shown?.daily_limit) detail.push(`Today: ${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)}`)
   if (shown?.weekly_limit) detail.push(`This week: ${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)}`)
+  const inlineTone = state === 'over' ? 'text-destructive' : state === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
   return (
     <div data-testid="account-limits" role={state === 'ok' ? undefined : 'status'} title={detail.length ? `Tokens on ${shown?.scope}. ${detail.join('. ')}.` : undefined}
-      className={`${base} ${tone} ${className}`}>
+      className={`${base} ${inline ? inlineTone : tone} ${className}`}>
       <p>{text}</p>
       {state === 'over' && <p className="mt-1">New messages on {shown?.scope} are paused. Switch to another account here or ask an admin to raise your limit.</p>}
       {state === 'warning' && <p className="mt-1">You have used over 80% of a limit. Your own accounts are not limited.</p>}

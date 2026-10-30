@@ -12,13 +12,13 @@ const state = vi.hoisted(() => ({
   providerManifestLoaded: true,
   loadProviderManifest: vi.fn(),
   options: [] as AgentProfileProviderOption[],
-  configurationProps: {} as { product?: string; llmConfig?: PresetLLMConfig; onChange: (config: PresetLLMConfig) => void },
+  configurationProps: {} as { product?: string; accountUsage?: React.ReactNode; llmConfig?: PresetLLMConfig; onChange: (config: PresetLLMConfig) => void },
   chatTabs: { project: { metadata: { agentProfileEngine: 'muse-cli', agentProfileReasoningEffort: 'medium', agentProfileConnectionID: undefined as string | undefined } } },
 }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (selector: (value: typeof state) => unknown) => selector(state) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (selector: (value: typeof state) => unknown) => selector(state) }))
 vi.mock('./projectProduct', async original => ({ ...await original<typeof import('./projectProduct')>(), useProjectProduct: () => state.product }))
-vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ default: (props: typeof state.configurationProps) => { state.configurationProps = props; return null } }))
+vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ default: (props: typeof state.configurationProps) => { state.configurationProps = props; return <div data-testid="provider-configuration">{props.accountUsage}</div> } }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../services/llm-config-api', () => ({
   llmConfigService: { getProviderConnections: vi.fn(async () => []), getProviderModels: vi.fn(async () => ({ models: [] })) },
@@ -220,6 +220,7 @@ it('shows the account the chat runs on: recorded, else the own default', async (
   ] as never)
   const own = await render()
   expect(own.host.querySelector('[data-testid="account-limits"]')?.textContent).toBe('Your own account · not limited')
+  expect(own.host.querySelector('[data-testid="account-limits"]')?.closest('[data-testid="provider-configuration"]')).not.toBeNull()
   await act(async () => { root?.unmount() }); document.body.innerHTML = ''
   Object.assign(metadata, { agentProfileChatProvider: 'muse-cli', agentProfileChatConnectionID: 'global:muse-cli' })
   const shared = await render()
