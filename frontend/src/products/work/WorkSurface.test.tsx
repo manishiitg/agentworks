@@ -80,7 +80,7 @@ describe('Crew native tab dragging', () => {
       // Remembered from before the project moved from Code to Crew: still listed by the server, so it shows.
       a: make('a', { agentProfileId: 'code', agentProfileConversationKey: undefined }),
       // PLAT-746-224: a persisted activity copy must neither show nor steal the server chat binding.
-      duplicate: { ...make('duplicate', { isViewOnly: true }), sessionId: 'session-b' },
+      duplicate: { ...make('duplicate', { isViewOnly: true, agentProfileId: 'code' }), sessionId: 'session-b' },
       b: make('b'), z: make('z'),
       // A tab the server no longer lists is not shown.
       gone: make('gone'),

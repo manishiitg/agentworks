@@ -7,11 +7,11 @@ import { isProjectProductId } from './projectProduct'
 export function retireWorkActivityCopies(tabId: string): void {
   useChatStore.setState(state => {
     const target = state.chatTabs[tabId]
-    if (!target?.sessionId || target.metadata?.isViewOnly) return state
+    const projectId = target?.metadata?.agentProfileProjectId
+    if (!target?.sessionId || !projectId || target.metadata?.isViewOnly) return state
     const duplicates = Object.values(state.chatTabs).filter(tab =>
       tab.tabId !== tabId && tab.sessionId === target.sessionId && tab.metadata?.isViewOnly === true &&
-      tab.metadata?.agentProfileId === target.metadata?.agentProfileId &&
-      tab.metadata?.agentProfileProjectId === target.metadata?.agentProfileProjectId,
+      belongsToWorkProject(tab, projectId),
     )
     if (!duplicates.length) return state
     const chatTabs = { ...state.chatTabs }
