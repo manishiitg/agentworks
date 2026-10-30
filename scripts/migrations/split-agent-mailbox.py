@@ -26,17 +26,33 @@ def atomic(path, raw, mode):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('store', type=pathlib.Path)
+    parser.add_argument('--restore-backup', type=pathlib.Path)
     args = parser.parse_args()
     path = args.store
+    if args.restore_backup:
+        backup = args.restore_backup
+        if backup.parent.resolve() != path.parent.resolve() or not backup.name.startswith(path.name + '.before-split-'):
+            parser.error('Expected this mailbox original backup')
+        original = backup.read_bytes()
+        restored = json.loads(original)
+        if 'mailbox_storage' in restored or not isinstance(restored.get('conversations'), (list, type(None))):
+            parser.error('Expected an original unsplit mailbox backup')
+        atomic(path, original, backup.stat().st_mode & 0o777)
+        path.with_name('conversations.history.json').unlink(missing_ok=True)
+        print(json.dumps({'restored':True, 'backup':str(backup)}))
+        return
     if not path.exists():
-        print('No mailbox exists; no conversion needed')
+        print(json.dumps({'converted':False, 'reason':'no mailbox'}))
         return
     original = path.read_bytes()
     store = json.loads(original)
     if store.get('mailbox_storage') == 'history-v1':
         json.loads(path.with_name('conversations.history.json').read_bytes())
-        print('Mailbox already split; no change')
+        print(json.dumps({'converted':False, 'reason':'already split'}))
         return
+    history_path = path.with_name('conversations.history.json')
+    if history_path.exists() and json.loads(history_path.read_bytes()):
+        parser.error('Refusing to overwrite existing mailbox history; restore the .before-split backup before converting')
     history = store.pop('conversations')
     if history is not None and not isinstance(history, list):
         parser.error('Expected the full mailbox conversation list')
@@ -48,7 +64,7 @@ def main():
     atomic(path.with_name('conversations.history.json'), json.dumps(history, separators=(',', ':')).encode(), mode)
     store['mailbox_storage'] = 'history-v1'
     atomic(path, json.dumps(store, separators=(',', ':')).encode(), mode)
-    print(json.dumps({'backup':str(backup), 'conversations':len(history or []), 'history_preserved':True}))
+    print(json.dumps({'converted':True, 'backup':str(backup), 'conversations':len(history or []), 'history_preserved':True}))
 
 
 if __name__ == '__main__':
