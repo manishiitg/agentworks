@@ -36,4 +36,6 @@ python3 "$migration_repo/scripts/migrate_workflow_builder_chats.py" --workspace-
 python3 "$migration_repo/scripts/migrate-project-schedules.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/project-schedules" --single-user --local-user-id "$migration_user"
 python3 "$migration_repo/scripts/migrate-browser-modes.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/browser-modes" --state-root "$migration_state" --deployment-mode local
 python3 "$migration_repo/scripts/repair-workflow-builder-tabs.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/workflow-builder-tabs"
+python3 "$migration_repo/scripts/migrations/split-agent-mailbox.py" "$migration_docs/_system/agent_messages/conversations.json"
+
 echo "Local stopped-app migrations complete. The app has not been restarted."

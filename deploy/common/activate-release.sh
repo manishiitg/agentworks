@@ -223,6 +223,9 @@ except Exception:
   # step fails while the services are stopped, activate_recover (the caller's EXIT trap) restarts them.
   ACTIVATE_STOPPED=1
   systemctl --user stop "$UNIT_PREFIX-agent"
+  # PLAT-856-418: convert once with the sole mailbox writer stopped. The
+  # converter retains a plain original backup and is a no-op after cutover.
+  python3 "$REPO_ROOT/scripts/migrations/split-agent-mailbox.py" "$DOCS_ROOT/_system/agent_messages/conversations.json"
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
