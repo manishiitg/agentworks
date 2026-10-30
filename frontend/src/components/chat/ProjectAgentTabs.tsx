@@ -17,6 +17,7 @@ import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNa
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
+import { useMenuScrollActivity } from '../../hooks/useMenuScrollActivity'
 
 type AgentMenuState = 'waiting' | 'running' | 'failed' | 'done' | null
 const AGENT_STATE_WORD = { waiting: 'Needs you', running: 'Working', failed: 'Stopped with an error', done: 'Finished' } as const
@@ -59,6 +60,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   renderAfterTab?: (tab: ChatTab) => ReactNode; isTabActive?: (tab: ChatTab) => boolean; onMakeInteractive?: (tabId: string) => void
 }) {
   const activeTabId = useChatStore(state => state.activeTabId)
+  const scrollActivity = useMenuScrollActivity()
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [newTabName, setNewTabName] = useState<string | null>(null)
   const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
@@ -305,7 +307,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                 {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}
               </div>
               {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
-              <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
+              <div {...scrollActivity} className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
               {tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 const label = tabLabel(tab)
