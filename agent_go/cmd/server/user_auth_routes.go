@@ -77,6 +77,11 @@ type DesktopConnectResponse struct {
 	ExpiresAt  string `json:"expires_at"`
 }
 
+type DesktopConnectExchangeResponse struct {
+	AuthResponse
+	ServerName string `json:"server_name,omitempty"`
+}
+
 type DesktopConnectExchangeRequest struct {
 	Code     string `json:"code"`
 	Verifier string `json:"verifier"`
@@ -588,14 +593,17 @@ func (api *StreamingAPI) handleDesktopConnectExchange(w http.ResponseWriter, r *
 		return
 	}
 
-	json.NewEncoder(w).Encode(AuthResponse{
-		Token: token,
-		User: userInfoWithWorkflowPermissions(UserInfo{
-			ID:       user.UserID,
-			Username: user.Username,
-			Email:    user.Email,
-			Provider: user.Provider,
-		}),
+	json.NewEncoder(w).Encode(DesktopConnectExchangeResponse{
+		ServerName: strings.TrimSpace(os.Getenv("AGENTWORKS_APP_NAME")),
+		AuthResponse: AuthResponse{
+			Token: token,
+			User: userInfoWithWorkflowPermissions(UserInfo{
+				ID:       user.UserID,
+				Username: user.Username,
+				Email:    user.Email,
+				Provider: user.Provider,
+			}),
+		},
 	})
 }
 

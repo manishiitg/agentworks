@@ -103,54 +103,79 @@ func TestDesktopConnectionProxyOwnerAndCredentialBoundary(t *testing.T) {
 // Exercise the actual code exchange and a real loopback callback. Neither the
 // renderer's list nor the browser's callback receives the remote JWT.
 func TestDesktopConnectionBrowserHandoffAndOneUseVerifier(t *testing.T) {
-	desktopTestEnvironment(t)
-	api := &StreamingAPI{}
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { api.handleDesktopConnectExchange(w, r) }))
-	defer remote.Close()
-	w := httptest.NewRecorder()
-	api.handleDesktopConnections(w, desktopTestRequest("POST", "/api/desktop-connections", `{"name":"Team","server":"`+remote.URL+`"}`, "owner"))
-	if w.Code != 200 {
-		t.Fatalf("begin: %d %s", w.Code, w.Body.String())
-	}
-	var start map[string]string
-	_ = json.Unmarshal(w.Body.Bytes(), &start)
-	consent, _ := url.Parse(start["url"])
-	approved := httptest.NewRecorder()
-	api.handleDesktopConnect(approved, desktopTestRequest("POST", "/api/auth/desktop/connect", `{"challenge":"`+consent.Query().Get("challenge")+`"}`, "remote-user"))
-	var grant DesktopConnectResponse
-	_ = json.Unmarshal(approved.Body.Bytes(), &grant)
-	link, _ := url.Parse(grant.ConnectURL)
-	callback, _ := url.Parse(consent.Query().Get("callback"))
-	query := callback.Query()
-	query.Set("state", start["state"])
-	query.Set("code", link.Query().Get("code"))
-	callback.RawQuery = query.Encode()
-	resp, err := http.Get(callback.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Fatalf("callback: %d %s", resp.StatusCode, raw)
-	}
-	list := httptest.NewRecorder()
-	api.handleDesktopConnections(list, desktopTestRequest("GET", "/api/desktop-connections", "", "owner"))
-	if strings.Contains(list.Body.String(), "token") || !strings.Contains(list.Body.String(), "remote-user") {
-		t.Fatalf("unsafe/missing inventory: %s", list.Body.String())
-	}
-	hash := sha256.Sum256([]byte("verifier"))
-	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
-	storeDesktopConnectCode("proof", &UserClaims{UserID: "remote-user"}, challenge)
-	if _, ok := consumeDesktopConnectCode("proof", "wrong"); ok {
-		t.Fatal("accepted wrong verifier")
-	}
-	if _, ok := consumeDesktopConnectCode("proof", "verifier"); ok {
-		t.Fatal("code reused")
-	}
-	storeDesktopConnectCode("valid", &UserClaims{UserID: "remote-user"}, challenge)
-	if _, ok := consumeDesktopConnectCode("valid", "verifier"); !ok {
-		t.Fatal("valid verifier refused")
+	for _, tc := range []struct{ name, serverName, wantName string }{
+		{"branded", "Example Team", "Example Team"},
+		{"unbranded", "", ""},
+		{"control-only", "\n\t", ""},
+		{"bounded-unicode", "\n" + strings.Repeat("界", 100), strings.Repeat("界", 80)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			desktopTestEnvironment(t)
+			t.Setenv("AGENTWORKS_APP_NAME", tc.serverName)
+			api := &StreamingAPI{}
+			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { api.handleDesktopConnectExchange(w, r) }))
+			defer remote.Close()
+			w := httptest.NewRecorder()
+			api.handleDesktopConnections(w, desktopTestRequest("POST", "/api/desktop-connections", `{"server":"`+remote.URL+`"}`, "owner"))
+			if w.Code != 200 {
+				t.Fatalf("begin: %d %s", w.Code, w.Body.String())
+			}
+			var start map[string]string
+			_ = json.Unmarshal(w.Body.Bytes(), &start)
+			consent, _ := url.Parse(start["url"])
+			approved := httptest.NewRecorder()
+			api.handleDesktopConnect(approved, desktopTestRequest("POST", "/api/auth/desktop/connect", `{"challenge":"`+consent.Query().Get("challenge")+`"}`, "remote-user"))
+			var grant DesktopConnectResponse
+			_ = json.Unmarshal(approved.Body.Bytes(), &grant)
+			link, _ := url.Parse(grant.ConnectURL)
+			callback, _ := url.Parse(consent.Query().Get("callback"))
+			query := callback.Query()
+			query.Set("state", start["state"])
+			query.Set("code", link.Query().Get("code"))
+			callback.RawQuery = query.Encode()
+			resp, err := http.Get(callback.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != 200 {
+				t.Fatalf("callback: %d %s", resp.StatusCode, raw)
+			}
+			list := httptest.NewRecorder()
+			api.handleDesktopConnections(list, desktopTestRequest("GET", "/api/desktop-connections", "", "owner"))
+			if strings.Contains(list.Body.String(), "token") || !strings.Contains(list.Body.String(), "remote-user") {
+				t.Fatalf("unsafe/missing inventory: %s", list.Body.String())
+			}
+			var listed struct {
+				Connections []desktopConnection `json:"connections"`
+			}
+			if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+				t.Fatal(err)
+			}
+			wantName := tc.wantName
+			if wantName == "" {
+				u, _ := url.Parse(remote.URL)
+				wantName = u.Hostname()
+			}
+			if len(listed.Connections) != 1 || listed.Connections[0].Name != wantName {
+				t.Fatalf("connection did not derive server name: %+v", listed.Connections)
+			}
+
+			hash := sha256.Sum256([]byte("verifier"))
+			challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+			storeDesktopConnectCode("proof", &UserClaims{UserID: "remote-user"}, challenge)
+			if _, ok := consumeDesktopConnectCode("proof", "wrong"); ok {
+				t.Fatal("accepted wrong verifier")
+			}
+			if _, ok := consumeDesktopConnectCode("proof", "verifier"); ok {
+				t.Fatal("code reused")
+			}
+			storeDesktopConnectCode("valid", &UserClaims{UserID: "remote-user"}, challenge)
+			if _, ok := consumeDesktopConnectCode("valid", "verifier"); !ok {
+				t.Fatal("valid verifier refused")
+			}
+		})
 	}
 }
 
