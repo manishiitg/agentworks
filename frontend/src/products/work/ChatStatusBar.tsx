@@ -17,7 +17,6 @@ export default function ChatStatusBar({ sessionId, busy }: { sessionId: string; 
 
   useEffect(() => {
     if (!sessionId) { setView(null); return }
-    if (busy) return
     let cancelled = false
     agentApi.getChatContext(sessionId).then(next => { if (!cancelled) setView(next) }).catch(() => { if (!cancelled) setView(null) })
     return () => { cancelled = true }

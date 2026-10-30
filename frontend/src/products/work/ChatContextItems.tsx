@@ -11,21 +11,29 @@ import { ContextMeter } from '../../components/chat/ContextMeter'
 export const menuRowClass = 'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
 export const menuLabelClass = 'px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground'
 
-/** "5h 4% · 7d 85% (resets 11:30 PM)": the reset shown is the fullest window's, with its date when not today. */
-export function chatLimitsText(limits: ChatContextView['limits']): string {
-  if (!limits?.length) return ''
-  const parts = limits.map(limit => `${limit.label} ${Math.round(limit.used_percent)}%`)
-  const fullest = [...limits].sort((a, b) => b.used_percent - a.used_percent)[0]
-  const resets = fullest?.resets_at ? new Date(fullest.resets_at) : null
-  const today = resets && resets.toDateString() === new Date().toDateString()
-  const when = resets && !Number.isNaN(resets.getTime())
-    ? ` (resets ${resets.toLocaleString(undefined, today ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })})` : ''
-  return parts.join(' · ') + when
+function resetDate(iso: string | undefined, compact = false): string {
+  if (!iso) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString(undefined, compact
+    ? { month: 'short', day: 'numeric' }
+    : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-/** "5h 4% · 7d 85%": the plan use without reset times, for the chip in the chat box. */
+/** Each provider window keeps its own server-reported reset time. */
+export function chatLimitsText(limits: ChatContextView['limits']): string {
+  return (limits ?? []).map(limit => {
+    const when = resetDate(limit.resets_at)
+    return `${limit.label} ${Math.round(limit.used_percent)}%${when ? ` (resets ${when})` : ''}`
+  }).join(' · ')
+}
+
+/** Keep the weekly reset date visible beside the 7d plan use. */
 export function chatLimitsShort(limits: ChatContextView['limits']): string {
-  return (limits ?? []).map(limit => `${limit.label} ${Math.round(limit.used_percent)}%`).join(' · ')
+  return (limits ?? []).map(limit => {
+    const when = limit.label === '7d' ? resetDate(limit.resets_at, true) : ''
+    return `${limit.label} ${Math.round(limit.used_percent)}%${when ? ` (resets ${when})` : ''}`
+  }).join(' · ')
 }
 
 /** Sent when the menu changes a chat's context, so the chip in the chat box shows the server's new view. */
