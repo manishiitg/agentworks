@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react'
 import { ChevronRight, Search, type LucideIcon } from 'lucide-react'
-import { useMenuScrollActivity } from '../../hooks/useMenuScrollActivity'
 export function WorkspaceContextCard({ children, title, summary, subtle = false }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean }) {
-  const scrollActivity = useMenuScrollActivity()
   return (
     <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
       <aside
@@ -13,7 +11,7 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false 
           {title && <h2 className="text-sm font-semibold text-foreground">{title}</h2>}
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
-        <div {...scrollActivity} className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
+        <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
         <button
           type="button"
           aria-label="All views"
