@@ -64,6 +64,14 @@ func TestAgentSnapshotValidationAndMutationIsolation(t *testing.T) {
 	if first.Agents[0].Connections[0] != "connection" || first.Agents[0].Attachment.ID != "lease" {
 		t.Fatal("lookup aliases immutable cache")
 	}
+	lookup, err := namedAgentByID(ctx, "owner", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookup.Connections[0], lookup.Attachment.ID = "lookup-edited", "lookup-edited"
+	if first.Agents[0].Connections[0] != "connection" || first.Agents[0].Attachment.ID != "lease" {
+		t.Fatal("independent lookup aliases immutable cache")
+	}
 	mutable, err := readAgentMessageStore(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +100,9 @@ func TestAgentSnapshotValidationAndMutationIsolation(t *testing.T) {
 	denied.Store(true)
 	if _, err = readAgentMessageSnapshot(ctx); err == nil {
 		t.Fatal("failed workspace read reused cached authority")
+	}
+	if _, err = namedAgentByID(ctx, "owner", "agent"); err == nil {
+		t.Fatal("failed independent lookup reused cached authority")
 	}
 }
 

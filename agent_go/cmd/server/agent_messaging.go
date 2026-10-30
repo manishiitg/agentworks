@@ -122,22 +122,13 @@ func readAgentMessageStore(ctx context.Context) (agentMessageStore, error) {
 	// Mutation transactions still validate independently of snapshot flights
 	// and decode a private copy. Conditional validation avoids downloading the
 	// same multi-megabyte store for every attachment check or busy worker poll.
-	key := agentSnapshotKey{getWorkspaceAPIURL() + "/api/documents/" + agentMessagesPath, agentMessageVersion.Load()}
-	agentSnapshotCache.Lock()
-	prior := agentSnapshotCache.entry
-	agentSnapshotCache.Unlock()
-	entry, err := fetchAgentMessageSnapshot(ctx, key, prior)
+	entry, err := readIndependentAgentMessageSnapshot(ctx)
 	ioTime := time.Since(start)
 	defer func() { agentMailboxTiming("read", start, len(entry.content), ioTime, caller) }()
 	var s agentMessageStore
 	if err != nil {
 		return s, err
 	}
-	agentSnapshotCache.Lock()
-	if agentMessageVersion.Load() == key.generation {
-		agentSnapshotCache.entry = entry
-	}
-	agentSnapshotCache.Unlock()
 	if entry.valid {
 		err = json.Unmarshal([]byte(entry.content), &s)
 	}
