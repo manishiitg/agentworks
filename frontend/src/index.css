@@ -1660,21 +1660,22 @@
   background-color: rgba(107, 114, 128, 0.7);
 }
 
-/* Keep menu labels clear of a quiet scrollbar; reveal it more on interaction. */
+/* The menu thumb appears while scrolling, using the scroll edge, or keyboard
+   navigation. Merely resting the pointer over the menu must not leave a line. */
 .workspace-menu-scroll[class*="overflow-y-auto"] {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.18) transparent;
+  scrollbar-color: transparent transparent;
   scrollbar-gutter: stable;
   padding-right: 6px;
 }
 
-.workspace-menu-scroll[class*="overflow-y-auto"]:is(:hover, :focus-within) {
+.workspace-menu-scroll[class*="overflow-y-auto"]:is([data-scrolling="true"], :has(:focus-visible)) {
   scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
 }
 
 @supports selector(::-webkit-scrollbar) {
   .workspace-menu-scroll[class*="overflow-y-auto"],
-  .workspace-menu-scroll[class*="overflow-y-auto"]:is(:hover, :focus-within) {
+  .workspace-menu-scroll[class*="overflow-y-auto"]:is([data-scrolling="true"], :has(:focus-visible)) {
     scrollbar-width: auto;
     scrollbar-color: auto;
   }
@@ -1684,10 +1685,12 @@
   }
 
   .workspace-menu-scroll[class*="overflow-y-auto"]::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted-foreground) / 0.18);
+    background-color: transparent;
   }
 
-  .workspace-menu-scroll[class*="overflow-y-auto"]:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
+  .workspace-menu-scroll[class*="overflow-y-auto"]:is([data-scrolling="true"], :has(:focus-visible))::-webkit-scrollbar-thumb,
+  .workspace-menu-scroll[class*="overflow-y-auto"]::-webkit-scrollbar-thumb:hover,
+  .workspace-menu-scroll[class*="overflow-y-auto"]::-webkit-scrollbar-thumb:active {
     background-color: hsl(var(--muted-foreground) / 0.4);
   }
 }
