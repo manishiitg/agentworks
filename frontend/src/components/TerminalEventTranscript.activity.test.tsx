@@ -210,6 +210,23 @@ describe('activity belongs to the current agent turn', () => {
     expect(answerCount(restored.host)).toBe(3)
   })
 
+  it('does not mark foreground polling done when a provisional follow-up arrives', async () => {
+    const narrative = event('narrative', 'llm_generation_end', { content: 'Waiting for the review', duration: 32_100_000_000 })
+    const tool = event('poll-tool', 'tool_call_start', { tool_call_id: 'poll', tool_name: 'Bash', arguments: '{"command":"check-review"}' })
+    const queued = event('queued', 'user_message', { content: 'One more comment', metadata: { provisional: true, delivery_status: 'queued' } })
+    const phase = event('phase', 'turn_phase', { phase: 'running', since: user.timestamp, turn_started_at: user.timestamp, last_activity_at: user.timestamp })
+    const { host, render } = await mount({ events: [user, narrative, tool, phase, queued], runtimeActivity: running })
+    expect(host.querySelector('[data-testid="terminal-clear-turn-done"]')).toBeNull()
+    await render({ events: [user, narrative, tool, phase, queued], runtimeActivity: { state: 'ready', label: 'idle' } })
+    expect(host.querySelector('[data-testid="terminal-clear-turn-done"]')).toBeNull()
+    const restored = event('restored', 'llm_generation_end', { content: 'Still waiting', restored_intermediate_update: true })
+    await render({ events: [user, restored], runtimeActivity: { state: 'ready', label: 'idle' } })
+    expect(host.textContent).toContain('Still waiting')
+    expect(host.querySelector('[data-testid="terminal-clear-turn-done"]')).toBeNull()
+    await render({ events: [user, completed], runtimeActivity: { state: 'ready', label: 'idle' } })
+    expect(host.querySelector('[data-testid="terminal-clear-turn-done"]')).not.toBeNull()
+  })
+
   it('removes the footer spinner when the turn completes while cache and tab flags remain running', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     const original = useChatStore.getState()

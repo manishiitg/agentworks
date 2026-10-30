@@ -573,6 +573,8 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
       const item = data[j]
       if (item.kind === 'event' && isAgentResponseEvent(item.event)) {
         const payload = transcriptEventPayload(item.event)
+        // Restored narration is progress, even when it uses the reply event shape.
+        if (payload.restored_intermediate_update === true) continue
         const at = item.event.timestamp || (typeof payload.timestamp === 'string' ? payload.timestamp : '')
         if (at && Number.isFinite(Date.parse(at))) {
           slot.done = { key: item.event.id || at, durationNs: typeof payload.duration === 'number' && payload.duration > 0 ? payload.duration : 0, at }
@@ -1436,7 +1438,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
                 <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>
                   {displayedBody}
                 </ChatElementDisclosureContext.Provider>
-                {slot.last && slot.done && !(workingNow && index === turnSlots.length - 1) && <TurnDoneSummary done={slot.done} />}
+                {/* The server's active turn also owns replies before a queued user bubble. */}
+                {slot.last && slot.done && !(turnActivity && Date.parse(slot.done.at) >= turnActivity.turnStartedAt) && !(workingNow && index === turnSlots.length - 1) && <TurnDoneSummary done={slot.done} />}
               </div>
             </div>
           )
