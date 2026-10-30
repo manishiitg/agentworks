@@ -116,6 +116,31 @@ func TestCodingAgentPersistentInteractiveFlags(t *testing.T) {
 	}
 }
 
+// A real SDK chat lost its background PR watcher at the final answer because
+// the SDK contract still disabled persistence after kept sessions were added.
+func TestClaudeSDKChatRetainsBackgroundTasks(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "sdk")
+	contract, ok := llm.GetCodingAgentProviderContract(llm.ProviderClaudeCode, "")
+	if !ok || contract.Transport != llmproviders.CodingAgentTransportSDK || !contract.UsesPersistentSession || contract.SupportsTerminalStream {
+		t.Fatalf("SDK must retain background work without becoming a terminal stream: %+v", contract)
+	}
+	for _, tc := range []struct {
+		name                      string
+		retains, structured, want bool
+	}{
+		{"chat", true, false, true},
+		{"one-shot", false, false, false},
+		{"structured step", true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keep, _, _, _, _, _ := codingAgentPersistentInteractiveFlags(string(llm.ProviderClaudeCode), tc.retains, tc.structured)
+			if keep != tc.want {
+				t.Fatalf("SDK persistence = %t, want %t", keep, tc.want)
+			}
+		})
+	}
+}
+
 func TestCodingAgentPersistentInteractiveFlagsCoverPersistentContracts(t *testing.T) {
 	for _, contract := range llm.CodingAgentProviderContracts() {
 		if !contract.UsesPersistentSession {
