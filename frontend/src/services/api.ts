@@ -740,7 +740,11 @@ export const agentApi = {
       throw new Error('Either sinceIndex (for polling) or limit (for pagination) must be provided')
     }
 
-    const response = await api.get(`/api/sessions/${sessionId}/events`, { params })
+    const response = await api.get(`/api/sessions/${sessionId}/events`, {
+      params,
+      // The visible chat must offer Retry if native-history sync stalls.
+      ...(options?.syncNativeTranscript ? { timeout: RUNTIME_READ_TIMEOUT_MS } : {}),
+    })
     return response.data
   },
 

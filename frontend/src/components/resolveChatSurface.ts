@@ -118,5 +118,5 @@ export function resolveWorkflowChatSurface(
  * screen. A tab without a session id is a brand-new chat (landing at once).
  */
 export function isHistoryPending(input: { sessionId?: string | null; historyLoaded: boolean; hasEvents: boolean; isStreaming: boolean }): boolean {
-  return !!input.sessionId && !input.historyLoaded && !input.hasEvents && !input.isStreaming
+  return !!input.sessionId && !input.historyLoaded && !input.hasEvents
 }

@@ -198,6 +198,9 @@ describe('isHistoryPending (tab must not flash the new-chat landing while histor
     expect(isHistoryPending(tab)).toBe(true)
     expect(resolveChatSurface({ ...base, isRestoring: isHistoryPending(tab) })).toBe('restoring')
   })
+  it('a running chat still waits for its saved messages before showing an empty transcript', () => {
+    expect(isHistoryPending({ ...tab, isStreaming: true })).toBe(true)
+  })
   it('loaded and empty → not pending, landing shows', () => {
     expect(isHistoryPending({ ...tab, historyLoaded: true })).toBe(false)
     expect(resolveChatSurface({ ...base, isRestoring: isHistoryPending({ ...tab, historyLoaded: true }) })).toBe('landing')

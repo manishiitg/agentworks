@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  markTabHistoryLoaded: vi.fn(),
   setTabEvents: vi.fn(),
   setTabLastEventIndex: vi.fn(),
   setTabHasMoreOlderEvents: vi.fn(),
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../stores/useChatStore', () => ({
   useChatStore: { getState: () => ({
+    markTabHistoryLoaded: mocks.markTabHistoryLoaded,
     setTabEvents: mocks.setTabEvents,
     setTabLastEventIndex: mocks.setTabLastEventIndex,
     setTabHasMoreOlderEvents: mocks.setTabHasMoreOlderEvents,
@@ -55,6 +57,25 @@ describe('durable SQLite hydration isolation', () => {
     expect(mocks.setTabEvents).toHaveBeenLastCalledWith('chat', [expect.objectContaining({ id: 'answer' })])
   })
 
+  it('does not mark failed or superseded history as loaded (PLAT-746-249)', async () => {
+    mocks.getRecentChatEvents.mockRejectedValueOnce(new Error('server unavailable'))
+    await expect(hydrateTabEvents('chat')).rejects.toThrow('server unavailable')
+    expect(mocks.markTabHistoryLoaded).not.toHaveBeenCalled()
+    let resolveFirst!: (value: ReturnType<typeof response>) => void
+    let resolveSecond!: (value: ReturnType<typeof response>) => void
+    mocks.getRecentChatEvents
+      .mockImplementationOnce(() => new Promise(done => { resolveFirst = done }))
+      .mockImplementationOnce(() => new Promise(done => { resolveSecond = done }))
+    const first = hydrateTabEvents('chat')
+    const second = hydrateTabEvents('chat')
+    resolveFirst(response([]))
+    await first
+    expect(mocks.markTabHistoryLoaded).not.toHaveBeenCalled()
+    resolveSecond(response([]))
+    await second
+    expect(mocks.markTabHistoryLoaded).toHaveBeenCalledWith('chat')
+  })
+
   it('rejects a response from the previous account before writing state', async () => {
     let resolve!: (value: ReturnType<typeof response>) => void
     mocks.getRecentChatEvents.mockImplementation(() => new Promise(done => { resolve = done }))
@@ -63,5 +84,6 @@ describe('durable SQLite hydration isolation', () => {
     resolve(response([{ id: 'private', type: 'user_message' }]))
     await expect(pending).rejects.toThrow('Chat account changed')
     expect(mocks.setTabEvents).not.toHaveBeenCalled()
+    expect(mocks.markTabHistoryLoaded).not.toHaveBeenCalled()
   })
 })

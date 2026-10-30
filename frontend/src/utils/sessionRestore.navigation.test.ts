@@ -25,7 +25,7 @@ function page(events: PollingEvent[], hasMore = false) {
 }
 beforeEach(() => {
   api.recent.mockReset()
-  useChatStore.setState({ tabEvents: {}, tabHasMoreOlderEvents: {}, tabHistoryPagination: {}, chatTabs: {} })
+  useChatStore.setState({ tabEvents: {}, tabHistoryLoaded: {}, tabHasMoreOlderEvents: {}, tabHistoryPagination: {}, chatTabs: {} })
 })
 
 it('keeps page-refresh messages after returning to a tool-heavy chat with a smaller history window', async () => {

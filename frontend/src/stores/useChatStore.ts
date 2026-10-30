@@ -2372,6 +2372,7 @@ export const useChatStore = create<ChatState>()(
           chatTabs: {},
           activeTabId: null,
           tabEvents: {},
+          tabHistoryLoaded: {},
           tabEventIndices: {},
           tabHasMoreOlderEvents: {},
           tabHistoryPagination: {},
