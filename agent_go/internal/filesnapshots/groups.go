@@ -20,11 +20,12 @@ const GroupFileCap = 50
 // PullRequest is the GitHub state of a group's branch. State is open, merged,
 // closed, connect_github (the Crew owner has no connection) or unavailable.
 type PullRequest struct {
-	Number int    `json:"number,omitempty"`
-	URL    string `json:"url,omitempty"`
-	State  string `json:"state"`
-	Checks string `json:"checks,omitempty"`
-	Review string `json:"review,omitempty"`
+	PendingChecks bool   `json:"-"`
+	Number        int    `json:"number,omitempty"`
+	URL           string `json:"url,omitempty"`
+	State         string `json:"state"`
+	Checks        string `json:"checks,omitempty"`
+	Review        string `json:"review,omitempty"`
 	// FailingChecks names the failing checks (bounded); Conflicts is true when
 	// GitHub says the open PR cannot merge because of conflicts.
 	FailingChecks []string `json:"failing_checks,omitempty"`

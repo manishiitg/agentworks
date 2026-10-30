@@ -269,6 +269,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if err := c.current(ctx, job, cfg); err != nil {
 		return nil, err
 	}
+	if cfg.GitHubPR != nil {
+		return c.runGitHubPR(ctx, job, cfg, state)
+	}
 	root := conditionScriptRoot(job)
 	source, found, err := c.s.readFile(ctx, path.Join(root, cfg.Script))
 	if err != nil || !found {
@@ -382,9 +385,9 @@ func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
 			scheduleLogf("[CONDITION] %s dispatch: %v", job.ID(), err)
 		}
 	}
-	if job.Schedule.Condition.Once {
+	if job.Schedule.Condition.Once || job.Schedule.Condition.GitHubPR != nil {
 		l, err := c.engine.Read(ctx, conditionKey(job))
-		if err == nil && !l.OnceCompletedAt.IsZero() {
+		if err == nil && (!l.OnceCompletedAt.IsZero() || !l.CompletedAt.IsZero()) {
 			if err := c.s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 				disabled := false
 				st.Enabled = &disabled
@@ -409,6 +412,11 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	job := ctx.Value(conditionJobContext{}).(productScheduleJob)
 	if err := c.current(ctx, job, cfg); err != nil {
 		return "", err
+	}
+	if current, err := githubWatchEventCurrent(ctx, job.UserID, cfg, ev); err != nil {
+		return "", err
+	} else if !current {
+		return "superseded PR head; no chat turn started", nil
 	}
 	caller := c.caller(job)
 	if job.WatcherSource != nil && cfg.Target.Kind == "agent" {

@@ -1,3 +1,4 @@
+import { PRWatcherControls } from './PRWatcherControls'
 import { useEffect, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowDownToLine, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
@@ -222,6 +223,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
             {group.kind === 'repo' && group.pr?.state === 'connect_github' && canEdit && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Connect GitHub to see PR status</button>}
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
               <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>
+              {canEdit && <PRWatcherControls group={group} sessionId={reference.sessionId} />}
               {actions.filter(action => action.placement === 'pr_line' && action.group === group.root).map(action => <button key={action.id} type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => run(action)}>{action.label}</button>)}
             </div>}
           </div>

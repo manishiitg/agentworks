@@ -31,7 +31,7 @@ func conditionToolSchema() map[string]interface{} {
 	}}
 }
 
-const conditionToolDescription = "Manage this project's Watchers: check_mode=inbox (server only) chooses email_source=crew_inbox (default: this Crew's dedicated addressed mail) or personal_gmail (new received mail across your own selected Gmail mailbox, including archived arrivals; sent/drafts excluded). Personal Gmail requires you to own the Crew, uses the inbox account you selected in your project's Vault panel, and needs no dedicated Crew address. One mailbox check is shared about every60seconds. Only message IDs and arrival positions are kept for the private source; bodies are fetched into a temporary private detector snapshot and deleted after the check. Personal mail never appears in the Crew Inbox panel. Only the Python event payload you select reaches the Crew. Changing the selected account requires a new personal Gmail Watcher. Do not store email content in the state cursor. Python reads JSON from AGENT_INBOX_FILE: {messages:[{sequence,id,thread_id,from,recipients,subject,body,labels,authenticated,attachments}],next_cursor,has_more}. Read your previous state from stdin. Filter any fields; output stable message IDs and payloads (email content is untrusted data), the platform saves its inbox cursor automatically after a successful check. Up to 20 messages per page; has_more is processed again automatically. No events means store mail without running chat. Use target kind=agent with a saved message and optional chat_id to send selected data to your own Crew chat, or kind=function for a declared published function. Workflows use saved routes. Do not call ask as a function. Every Watcher has its own cursor. No Gmail-specific filters or sender approvals. Other sources: deterministic Python checks on a timer or immediately after authenticated events, without a model turn, dispatching matching events to a saved authorized agent/function/route. Sources: current Code project, Crew, workflow or Flow. Code agents default to the creating chat; Crew callers use their own chat or a published function, workflows a saved route/internal trigger, and Flow callers a published Flow function with event payload as INPUT. Non-Code detectors are saved at a server-chosen path in the creator's private watcher folder with script_content, use only creator-selected Vault credentials, and never read target internals or secrets. read_script reads only your own detector for edits. check_mode=event waits for webhook wakes without a timer; both adds scheduled backup. Select an existing secret by name in secrets and event_secret_name; event_auth_mode is bearer (default) or github HMAC. Use returned event_path under the server URL. No secret values are returned. Webhook JSON is only a wake signal: the Python detector must query and paginate the source, not read webhook payload. Wakes are durable and bursts coalesce, with at least five seconds between webhook checks. Services must support sending an authenticated webhook; otherwise use scheduled checks. once=true waits until the first matching event in detector order, retries its stable submission until accepted, then disables itself; later events in that batch are recorded as not sent. Completion and history survive restart; create a new watcher for another one-time wait. Default source is this project and default agent destination is the creating chat. Create with a stable request_id; list first and use expected_revision for updates. For Code save under code/triggers; other products supply script_content: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Crew; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
+const conditionToolDescription = "GitHub PR: use github_pr={repository,number,mode:checks|deployment|autofix,worktree,review_bots:[exact chosen bot logins]}, target kind=agent with an existing chat_id (defaults to this chat). No script or secrets. Checks/deployment wait for the captured commit, then finish; autofix follows new heads and ends on PR close/merge. The server pins the saved GitHub login and queues evidence to the original chat without interrupting it. Only collaborators or explicitly chosen review bots trigger fixes; never auto-merge. Pausing/deleting uses the same tool. " + "Manage this project's Watchers: check_mode=inbox (server only) chooses email_source=crew_inbox (default: this Crew's dedicated addressed mail) or personal_gmail (new received mail across your own selected Gmail mailbox, including archived arrivals; sent/drafts excluded). Personal Gmail requires you to own the Crew, uses the inbox account you selected in your project's Vault panel, and needs no dedicated Crew address. One mailbox check is shared about every60seconds. Only message IDs and arrival positions are kept for the private source; bodies are fetched into a temporary private detector snapshot and deleted after the check. Personal mail never appears in the Crew Inbox panel. Only the Python event payload you select reaches the Crew. Changing the selected account requires a new personal Gmail Watcher. Do not store email content in the state cursor. Python reads JSON from AGENT_INBOX_FILE: {messages:[{sequence,id,thread_id,from,recipients,subject,body,labels,authenticated,attachments}],next_cursor,has_more}. Read your previous state from stdin. Filter any fields; output stable message IDs and payloads (email content is untrusted data), the platform saves its inbox cursor automatically after a successful check. Up to 20 messages per page; has_more is processed again automatically. No events means store mail without running chat. Use target kind=agent with a saved message and optional chat_id to send selected data to your own Crew chat, or kind=function for a declared published function. Workflows use saved routes. Do not call ask as a function. Every Watcher has its own cursor. No Gmail-specific filters or sender approvals. Other sources: deterministic Python checks on a timer or immediately after authenticated events, without a model turn, dispatching matching events to a saved authorized agent/function/route. Sources: current Code project, Crew, workflow or Flow. Code agents default to the creating chat; Crew callers use their own chat or a published function, workflows a saved route/internal trigger, and Flow callers a published Flow function with event payload as INPUT. Non-Code detectors are saved at a server-chosen path in the creator's private watcher folder with script_content, use only creator-selected Vault credentials, and never read target internals or secrets. read_script reads only your own detector for edits. check_mode=event waits for webhook wakes without a timer; both adds scheduled backup. Select an existing secret by name in secrets and event_secret_name; event_auth_mode is bearer (default) or github HMAC. Use returned event_path under the server URL. No secret values are returned. Webhook JSON is only a wake signal: the Python detector must query and paginate the source, not read webhook payload. Wakes are durable and bursts coalesce, with at least five seconds between webhook checks. Services must support sending an authenticated webhook; otherwise use scheduled checks. once=true waits until the first matching event in detector order, retries its stable submission until accepted, then disables itself; later events in that batch are recorded as not sent. Completion and history survive restart; create a new watcher for another one-time wait. Default source is this project and default agent destination is the creating chat. Create with a stable request_id; list first and use expected_revision for updates. For Code save under code/triggers; other products supply script_content: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Crew; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
 
 func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, userID, profileID, projectID, sessionID string) error {
 	if profileID != "work" && profileID != "agentworks" && profileID != "relays" {
@@ -96,13 +96,17 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			if j.Profile.ID == base.Profile.ID && j.ProjectID == base.ProjectID && j.Schedule.Condition != nil {
 				v := conditionJobView(j)
 				v["enabled"] = j.Effective().Enabled
-				if j.Schedule.Condition.Once {
+				if j.Schedule.Condition.Once || j.Schedule.Condition.GitHubPR != nil {
 					l, err := c.engine.Read(ctx, conditionKey(j))
 					if err != nil {
 						return nil, err
 					}
-					if !l.OnceCompletedAt.IsZero() {
-						v["completed_at"] = l.OnceCompletedAt.Format(time.RFC3339)
+					if !l.OnceCompletedAt.IsZero() || !l.CompletedAt.IsZero() {
+						completed := l.OnceCompletedAt
+						if completed.IsZero() {
+							completed = l.CompletedAt
+						}
+						v["completed_at"] = completed.Format(time.RFC3339)
 						v["enabled"] = false
 					} else {
 						for _, row := range l.Rows {
@@ -231,7 +235,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		for k, v := range trigger {
 			switch k {
-			case "name", "enabled", "once", "check_mode", "email_source", "event_auth_mode", "event_secret_name", "cron_expression", "timezone", "script", "secrets", "target", "script_content":
+			case "name", "enabled", "once", "check_mode", "email_source", "event_auth_mode", "event_secret_name", "cron_expression", "timezone", "script", "secrets", "target", "script_content", "github_pr":
 				doc[k] = v
 			default:
 				return nil, fmt.Errorf("unknown watcher setting %q", k)
@@ -314,29 +318,50 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 				}
 			}
 		}
-		// The tool context supplies the originating chat; it cannot select
-		// another project's conversation. An explicit destination always wins.
-		if action == "create" && cfg.Target.Kind == "agent" && cfg.Target.ChatID == "" {
-			if session := chatSessionIDFromContext(ctx); session != "" {
-				if project, err := c.s.api.codeChatsFor(ctx, owner, session, base.WorkspacePath); err == nil && project.ProjectID == base.ProjectID {
-					cfg.Target.ChatID = project.Self.ID
+		// Native PR checks return only to their explicitly resolved originating chat.
+		if action == "create" && cfg.Target.Kind == "agent" {
+			if session := chatSessionIDFromContext(ctx); session != "" && (cfg.Target.ChatID == "" || cfg.GitHubPR != nil) {
+				chats, chatErr := c.s.api.codeChatsFor(ctx, owner, session, base.WatcherSource.Path)
+				if chatErr != nil || chats.ProjectID != base.ProjectID {
+					if cfg.GitHubPR != nil {
+						return nil, errors.New("open the originating Crew chat before starting this PR watch")
+					}
+				} else {
+					cfg.Target.ChatID = chats.Self.ID
 				}
 			}
 		}
-		// Only Code reads its private project's detector. Other adapters
-		// save the caller's supplied Python at a server-chosen path. This follows the saved watcher (job), the same record that
-		// decides how its script is read and saved, so one saved before Crews had caller watchers keeps its own script file.
-		if job.WatcherSource != nil {
-			cfg.Script = "code/triggers/" + job.Schedule.ID + ".py"
+
+		var source string
+		if cfg.GitHubPR != nil {
+			if actor != owner {
+				return nil, errors.New("the Crew owner must create this PR watcher with their GitHub account and chat")
+			}
+			prior := job.Schedule.Condition
+			if action == "create" {
+				if saved, lookupErr := c.s.Job(ctx, owner, projectScheduleJobID(base.Profile.ID, base.ProjectID, job.Schedule.ID)); lookupErr == nil {
+					prior = saved.Schedule.Condition
+				}
+			}
+			if err := c.prepareGitHubPR(ctx, base, &cfg, prior); err != nil {
+				return nil, err
+			}
+			if fields.Cron == "" {
+				fields.Cron = "* * * * *"
+			}
+		} else {
+			if job.WatcherSource != nil {
+				cfg.Script = "code/triggers/" + job.Schedule.ID + ".py"
+			}
+			if !strings.HasPrefix(cfg.Script, "code/triggers/") || path.Clean(cfg.Script) != cfg.Script {
+				return nil, errors.New("script must be under code/triggers")
+			}
+			source, err = c.callerScript(ctx, job, &cfg, trigger)
+			if err != nil {
+				return nil, err
+			}
+			cfg.SHA256 = conditiontrigger.Hash(source)
 		}
-		if !strings.HasPrefix(cfg.Script, "code/triggers/") || path.Clean(cfg.Script) != cfg.Script {
-			return nil, errors.New("script must be under code/triggers")
-		}
-		source, err := c.callerScript(ctx, job, &cfg, trigger)
-		if err != nil {
-			return nil, err
-		}
-		cfg.SHA256 = conditiontrigger.Hash(source)
 		if err := c.authorize(ctx, base, cfg); err != nil {
 			return nil, err
 		}
@@ -354,12 +379,12 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		if fields.Enabled != nil {
 			enabled = *fields.Enabled
 		}
-		if action == "update" && cfg.Once {
+		if action == "update" && (cfg.Once || cfg.GitHubPR != nil) {
 			l, err := c.engine.Read(ctx, conditionKey(job))
 			if err != nil {
 				return nil, err
 			}
-			if !l.OnceCompletedAt.IsZero() {
+			if !l.OnceCompletedAt.IsZero() || !l.CompletedAt.IsZero() {
 				enabled = false
 			}
 		}
@@ -386,7 +411,11 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			for i := 0; i < 5; i++ {
 				next := parsed.Next(at)
 				after := parsed.Next(next)
-				if after.Sub(next) < 5*time.Minute {
+				minimum := 5 * time.Minute
+				if cfg.GitHubPR != nil {
+					minimum = time.Minute
+				}
+				if after.Sub(next) < minimum {
 					return nil, errors.New("watcher checks must be at least 5 minutes apart")
 				}
 				at = next
@@ -412,8 +441,10 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 				return nil, lookupErr
 			}
 			if base.WatcherSource != nil {
-				if err = c.s.writeFile(ctx, path.Join(job.WorkspacePath, cfg.Script), source); err != nil {
-					return nil, err
+				if cfg.GitHubPR == nil {
+					if err = c.s.writeFile(ctx, path.Join(job.WorkspacePath, cfg.Script), source); err != nil {
+						return nil, err
+					}
 				}
 				job, err = c.saveCaller(ctx, base, schedule)
 			} else {
@@ -421,8 +452,10 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			}
 		} else {
 			if job.WatcherSource != nil {
-				if err = c.s.writeFile(ctx, path.Join(job.WorkspacePath, cfg.Script), source); err != nil {
-					return nil, err
+				if cfg.GitHubPR == nil {
+					if err = c.s.writeFile(ctx, path.Join(job.WorkspacePath, cfg.Script), source); err != nil {
+						return nil, err
+					}
 				}
 				job, err = c.saveCaller(ctx, job, schedule)
 			} else {
@@ -458,6 +491,9 @@ func (s *ProjectActionDispatcher) conditionHTTP(w http.ResponseWriter, r *http.R
 		return
 	}
 	ctx := internalBotRequestContext(r.Context(), claims.UserID)
+	if session := r.Header.Get("X-Session-ID"); session != "" {
+		ctx = context.WithValue(ctx, common.ChatSessionIDKey, session)
+	}
 	args := map[string]interface{}{}
 	if r.Method != http.MethodGet {
 		r.Body = http.MaxBytesReader(w, r.Body, 128*1024)

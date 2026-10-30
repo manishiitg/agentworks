@@ -183,15 +183,7 @@ func githubGET(ctx context.Context, token, path string, out any) bool {
 // and state "unavailable" when GitHub could not answer.
 func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *filesnapshots.PullRequest {
 	owner := strings.SplitN(repo, "/", 2)[0]
-	var prs []struct {
-		Number   int     `json:"number"`
-		URL      string  `json:"html_url"`
-		State    string  `json:"state"`
-		MergedAt *string `json:"merged_at"`
-		Head     struct {
-			SHA string `json:"sha"`
-		} `json:"head"`
-	}
+	var prs []githubPRHead
 	q := url.Values{"head": {owner + ":" + branch}, "state": {"all"}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {"1"}}
 	if !githubGET(ctx, token, "/repos/"+repo+"/pulls?"+q.Encode(), &prs) {
 		return &filesnapshots.PullRequest{State: "unavailable"}
@@ -199,13 +191,28 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 	if len(prs) == 0 {
 		return nil
 	}
-	p := prs[0]
+	return githubPullRequestHeadStatus(ctx, token, repo, prs[0])
+}
+
+type githubPRHead struct {
+	Number   int     `json:"number"`
+	URL      string  `json:"html_url"`
+	State    string  `json:"state"`
+	MergedAt *string `json:"merged_at"`
+	Head     struct {
+		SHA string `json:"sha"`
+		Ref string `json:"ref"`
+	} `json:"head"`
+}
+
+func githubPullRequestHeadStatus(ctx context.Context, token, repo string, p githubPRHead) *filesnapshots.PullRequest {
 	pr := &filesnapshots.PullRequest{Number: p.Number, URL: p.URL, State: p.State, Checks: "none", Review: "none"}
 	if p.MergedAt != nil {
 		pr.State = "merged"
 	}
 	var runs struct {
-		CheckRuns []struct {
+		TotalCount int `json:"total_count"`
+		CheckRuns  []struct {
 			Name       string `json:"name"`
 			Status     string `json:"status"`
 			Conclusion string `json:"conclusion"`
@@ -225,7 +232,11 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 		}
 	}
 	failing, pending, seen := false, false, false
+	complete := true
 	if githubGET(ctx, token, "/repos/"+repo+"/commits/"+p.Head.SHA+"/check-runs?per_page=100", &runs) {
+		if runs.TotalCount > len(runs.CheckRuns) {
+			complete = false
+		}
 		for _, run := range runs.CheckRuns {
 			seen = true
 			switch {
@@ -236,8 +247,12 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 				failed(run.Name)
 			}
 		}
+	} else {
+		complete = false
 	}
-	if githubGET(ctx, token, "/repos/"+repo+"/commits/"+p.Head.SHA+"/status", &combined) && combined.TotalCount > 0 {
+	if !githubGET(ctx, token, "/repos/"+repo+"/commits/"+p.Head.SHA+"/status", &combined) {
+		complete = false
+	} else if combined.TotalCount > 0 {
 		seen = true
 		switch combined.State {
 		case "failure", "error":
@@ -251,7 +266,10 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 			}
 		}
 	}
+	pr.PendingChecks = pending
 	switch {
+	case !complete:
+		pr.Checks = "unavailable"
 	case failing:
 		pr.Checks = "failing"
 	case pending:

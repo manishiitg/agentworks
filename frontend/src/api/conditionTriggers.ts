@@ -2,6 +2,7 @@ import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 
 export interface ConditionTrigger {
+  github_pr?: { repository: string; number: number; mode: 'checks' | 'deployment' | 'autofix'; worktree?: string; branch?: string; login?: string }
   id: string
   name: string
   enabled: boolean
