@@ -72,6 +72,9 @@ type ChatHistoryAgentRuntime struct {
 	ChatPolicyRoleOrigin    string `json:"chat_policy_role_origin,omitempty"`
 	ChatPolicyRoleAuthority string `json:"chat_policy_role_authority,omitempty"`
 	AgentProfileKey         string `json:"agent_profile_key,omitempty"`
+	// AgentProfileKeyParts is a short hash per part of AgentProfileKey, so a changed definition can be logged by what
+	// changed even after a restart (PLAT-872-80).
+	AgentProfileKeyParts map[string]string `json:"agent_profile_key_parts,omitempty"`
 	// AgentToolsMode is the profile's agent_tools mode ("full", or "mcp_only";
 	// older sessions may say "hybrid", read as full) the native session was
 	// started with.

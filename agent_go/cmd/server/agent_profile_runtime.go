@@ -149,6 +149,14 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 			partSum := sha256.Sum256(raw)
 			parts[name] = hex.EncodeToString(partSum[:6])
 		}
+		// The definition is most of the key (prompt, tools, skills, ...); name its own fields too.
+		var definition map[string]json.RawMessage
+		if json.Unmarshal(fields["definition"], &definition) == nil {
+			for name, raw := range definition {
+				partSum := sha256.Sum256(raw)
+				parts["definition."+name] = hex.EncodeToString(partSum[:6])
+			}
+		}
 		agentProfileKeyParts.Store(key, parts)
 	}
 	return key
@@ -159,11 +167,27 @@ var agentProfileKeyParts sync.Map // profile key -> part name -> short hash
 // agentProfileKeyChange names the parts that differ between two profile keys ("unknown" when one was not seen).
 func agentProfileKeyChange(launched, current string) string {
 	a, okA := agentProfileKeyParts.Load(launched)
-	b, okB := agentProfileKeyParts.Load(current)
-	if !okA || !okB {
+	if !okA {
 		return "unknown"
 	}
-	before, after := a.(map[string]string), b.(map[string]string)
+	return agentProfileKeyPartsChange(a.(map[string]string), current)
+}
+
+// agentProfileKeyPartsOf is the per-part hashes of a key computed by this process (nil when unknown).
+func agentProfileKeyPartsOf(key string) map[string]string {
+	if parts, ok := agentProfileKeyParts.Load(key); ok {
+		return parts.(map[string]string)
+	}
+	return nil
+}
+
+// agentProfileKeyPartsChange names the parts of current that differ from saved per-part hashes ("unknown" when either
+// side is missing, e.g. a runtime saved before the parts were recorded).
+func agentProfileKeyPartsChange(before map[string]string, current string) string {
+	after := agentProfileKeyPartsOf(current)
+	if len(before) == 0 || after == nil {
+		return "unknown"
+	}
 	changed := []string{}
 	for name, value := range after {
 		if before[name] != value {
