@@ -108,9 +108,10 @@ let workspaceProcess;
   const socketPath = path.join(scratch, 'private-desktop', 'backend.sock');
   let previousProof;
   for (let attempt = 0; attempt < 2; attempt++) {
+    const connectionOrigin = attempt ? `http://localhost:${port}` : apiOrigin;
     const separate = spawn(binary, ['server', '--host', '127.0.0.1', '--port', String(port), '--mcp-config', path.join(scratch, 'mcp.json')], {
       cwd: scratch, env: { PATH: process.env.PATH, HOME: scratch, TMPDIR: scratch,
-        AUTH_SECRET: bootstrap.auth_secret, AGENTWORKS_DESKTOP_SOCKET: socketPath,
+        AUTH_SECRET: bootstrap.auth_secret, AGENTWORKS_DESKTOP_SOCKET: socketPath, MCP_AGENT_SERVER_URL: connectionOrigin,
         MCP_ENV_LOADED: '1', CLI_UPDATE_ENABLED: 'false', CLI_UPDATE_DRY_RUN: 'true',
         AGENTWORKS_STATE_ROOT: path.join(scratch, 'state'), WORKSPACE_DOCS_PATH: docs,
         WORKSPACE_API_URL: workspaceURL, WORKSPACE_API_TOKEN: workspaceToken, AGENTWORKS_LOCAL_VAULT: '0' },
@@ -124,34 +125,34 @@ let workspaceProcess;
         isAlive: () => separate.exitCode !== null || separate.signalCode !== null ? 'Separate backend stopped.' : null });
       assert.equal(fs.statSync(path.dirname(socketPath)).mode & 0o777, 0o700);
       assert.equal(fs.statSync(socketPath).mode & 0o777, 0o600);
-      const proof = await readDevelopmentProof(socketPath, apiOrigin, appOrigin);
-      const { token } = await (await fetch(apiOrigin + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+      const proof = await readDevelopmentProof(socketPath, connectionOrigin, appOrigin);
+      const { token } = await (await fetch(connectionOrigin + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
       assert.ok(token);
       const headers = { Authorization: `Bearer ${token}`, Origin: appOrigin, 'Sec-Fetch-Site': 'same-site', 'X-AgentWorks-Desktop': proof };
-      const response = await fetch(apiOrigin + '/api/desktop-connections', { headers });
+      const response = await fetch(connectionOrigin + '/api/desktop-connections', { headers });
       assert.equal(response.status, 200, 'separately started frontend cannot list connections');
       assert.deepEqual((await response.json()).connections, []);
       for (const overrides of [{ 'X-AgentWorks-Desktop': '' }, { 'X-AgentWorks-Desktop': 'wrong' }, { Origin: 'http://127.0.0.1:51734' }, { Origin: 'https://example.com' }]) {
-        assert.equal((await fetch(apiOrigin + '/api/desktop-connections', { headers: { ...headers, ...overrides } })).status, 403);
+        assert.equal((await fetch(connectionOrigin + '/api/desktop-connections', { headers: { ...headers, ...overrides } })).status, 403);
       }
       for (const invalid of ['https://example.com', 'http://127.0.0.1', 'http://127.0.0.1:51733/path', 'http://user@localhost:51733']) {
-        await assert.rejects(readDevelopmentProof(socketPath, apiOrigin, invalid));
+        await assert.rejects(readDevelopmentProof(socketPath, connectionOrigin, invalid));
       }
       await assert.rejects(readDevelopmentProof(socketPath, 'http://127.0.0.1:1', appOrigin));
       const otherOrigin = 'http://localhost:51734';
-      const otherProof = await readDevelopmentProof(socketPath, apiOrigin, otherOrigin);
-      assert.equal((await fetch(apiOrigin + '/api/desktop-connections', { headers: { ...headers, Origin: otherOrigin, 'X-AgentWorks-Desktop': otherProof } })).status, 200);
+      const otherProof = await readDevelopmentProof(socketPath, connectionOrigin, otherOrigin);
+      assert.equal((await fetch(connectionOrigin + '/api/desktop-connections', { headers: { ...headers, Origin: otherOrigin, 'X-AgentWorks-Desktop': otherProof } })).status, 200);
       // A second frontend origin never invalidates the first one's proof.
-      assert.equal((await fetch(apiOrigin + '/api/desktop-connections', { headers })).status, 200);
+      assert.equal((await fetch(connectionOrigin + '/api/desktop-connections', { headers })).status, 200);
       if (previousProof) {
         assert.notEqual(proof, previousProof);
-        assert.equal((await fetch(apiOrigin + '/api/desktop-connections', { headers: { ...headers, 'X-AgentWorks-Desktop': previousProof } })).status, 403);
+        assert.equal((await fetch(connectionOrigin + '/api/desktop-connections', { headers: { ...headers, 'X-AgentWorks-Desktop': previousProof } })).status, 403);
       }
       const listing = spawnSync('ps', ['eww', '-p', String(separate.pid)], { encoding: 'utf8' });
       assert.equal(listing.status, 0);
       assert.equal(listing.stdout.includes(proof) || separateOutput.includes(proof), false, 'split proof leaked through ps or logs');
       previousProof = proof;
-      console.log(attempt ? 'Separate backend restart: fresh proof accepted, retired proof refused.' : 'Separate backend/frontend: connections HTTP 200; missing, wrong and cross-origin proof HTTP 403.');
+      console.log(attempt ? 'Separate backend restart with localhost API: fresh proof accepted, retired proof refused.' : 'Separate backend/frontend: connections HTTP 200; missing, wrong and cross-origin proof HTTP 403.');
     } finally {
       if (separate.exitCode === null && separate.signalCode === null) { const closed = once(separate, 'exit'); separate.kill('SIGKILL'); await closed; }
     }

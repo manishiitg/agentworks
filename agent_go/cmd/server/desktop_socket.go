@@ -50,6 +50,15 @@ func startDesktopSocket(address *net.TCPAddr) (net.Listener, error) {
 	if !address.IP.IsLoopback() || !filepath.IsAbs(path) {
 		return nil, fmt.Errorf("desktop socket requires a loopback backend and an absolute socket path")
 	}
+	apiOrigin := "http://" + address.String()
+	if configured := os.Getenv("MCP_AGENT_SERVER_URL"); configured != "" {
+		parsed, err := url.Parse(configured)
+		if err != nil || !desktopLoopbackOrigin(configured) || parsed.Port() != strconv.Itoa(address.Port) {
+			return nil, fmt.Errorf("desktop API origin must name this loopback backend port")
+		}
+		apiOrigin = configured
+	}
+	apiURL, _ := url.Parse(apiOrigin)
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
@@ -90,7 +99,7 @@ func startDesktopSocket(address *net.TCPAddr) (net.Listener, error) {
 		return nil, err
 	}
 	desktopSocketKey = key
-	desktopBootstrapHost = address.String()
+	desktopBootstrapHost = apiURL.Host
 	go func() {
 		for {
 			conn, err := listener.Accept()
@@ -108,7 +117,7 @@ func startDesktopSocket(address *net.TCPAddr) (net.Listener, error) {
 				}
 				proof := desktopSocketProof(request.AppOrigin)
 				if proof != "" {
-					json.NewEncoder(conn).Encode(map[string]string{"secret": proof, "api_origin": "http://" + address.String(), "app_origin": request.AppOrigin})
+					json.NewEncoder(conn).Encode(map[string]string{"secret": proof, "api_origin": apiOrigin, "app_origin": request.AppOrigin})
 				}
 			}()
 		}
