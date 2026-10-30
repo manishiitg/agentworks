@@ -247,15 +247,15 @@ except Exception:
     pid="$(systemctl --user show "$unit" -p MainPID --value)"
     [[ "$pid" -gt 0 ]] || { echo "$unit has no running process" >&2; return 1; }
     if [[ -n "$runtime_path" ]]; then
-      tr '\0' '\n' < "/proc/$pid/environ" | grep -Fqx "PATH=$runtime_path" || { echo "$unit did not receive the managed PATH" >&2; return 1; }
+      tr '\0' '\n' < "/proc/$pid/environ" | grep -Fx "PATH=$runtime_path" >/dev/null || { echo "$unit did not receive the managed PATH" >&2; return 1; }
     fi
     for entry in "${EXTRA_ENV[@]:-}"; do
-      [[ -n "$entry" ]] && { tr '\0' '\n' < "/proc/$pid/environ" | grep -Fqx "$entry" || { echo "$unit did not receive $entry" >&2; return 1; }; }
+      [[ -n "$entry" ]] && { tr '\0' '\n' < "/proc/$pid/environ" | grep -Fx "$entry" >/dev/null || { echo "$unit did not receive $entry" >&2; return 1; }; }
     done
   done
   pid="$(systemctl --user show "$UNIT_PREFIX-agent" -p MainPID --value)"
   for entry in "${AGENT_EXTRA_ENV[@]:-}"; do
-    [[ -n "$entry" ]] && { tr '\0' '\n' < "/proc/$pid/environ" | grep -Fqx "$entry" || { echo "$UNIT_PREFIX-agent did not receive $entry" >&2; return 1; }; }
+    [[ -n "$entry" ]] && { tr '\0' '\n' < "/proc/$pid/environ" | grep -Fx "$entry" >/dev/null || { echo "$UNIT_PREFIX-agent did not receive $entry" >&2; return 1; }; }
   done
   if [[ -n "${PLAYBOOK_SMOKE_PATH:-}" ]]; then
     test -f "/proc/$pid/cwd/playbooks/$PLAYBOOK_SMOKE_PATH"
@@ -334,7 +334,7 @@ except Exception:
   if [[ "${PLATFORM_DOCKER_CHECK:-false}" == true ]]; then
     local bad=0
     pid="$(systemctl --user show -p MainPID --value "$UNIT_PREFIX-workspace")"
-    if [[ -n "$pid" && "$pid" != 0 ]] && tr '\0' '\n' < "/proc/$pid/environ" | grep -q '^DOCKER_HOST='; then
+    if [[ -n "$pid" && "$pid" != 0 ]] && tr '\0' '\n' < "/proc/$pid/environ" | grep '^DOCKER_HOST=' >/dev/null; then
       echo 'FAIL platform-no-docker: the workspace process has DOCKER_HOST set'; bad=1
     fi
     if [[ -S "/run/user/$(id -u)/docker.sock" ]]; then
