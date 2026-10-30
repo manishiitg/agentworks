@@ -102,6 +102,60 @@ let workspaceProcess;
     assert.equal(listing.stdout.includes(bootstrap.secret) || listing.stdout.includes(bootstrap.auth_secret), false, 'development bootstrap leaked through ps');
     console.log('Development backend sign-in, connection gate, CORS and ps checks passed.');
   } finally { const exit = once(managed.child, 'exit'); managed.child.kill('SIGKILL'); await exit; }
+  // PLAT-746-219: backend is a separate process; the same frontend-side helper
+  // reconnects after a crash, including recovery of the stale socket file.
+  const { readDevelopmentProof } = require('../../desktop/lib/devConnection');
+  const socketPath = path.join(scratch, 'private-desktop', 'backend.sock');
+  let previousProof;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const separate = spawn(binary, ['server', '--host', '127.0.0.1', '--port', String(port), '--mcp-config', path.join(scratch, 'mcp.json')], {
+      cwd: scratch, env: { PATH: process.env.PATH, HOME: scratch, TMPDIR: scratch,
+        AUTH_SECRET: bootstrap.auth_secret, AGENTWORKS_DESKTOP_SOCKET: socketPath,
+        MCP_ENV_LOADED: '1', CLI_UPDATE_ENABLED: 'false', CLI_UPDATE_DRY_RUN: 'true',
+        AGENTWORKS_STATE_ROOT: path.join(scratch, 'state'), WORKSPACE_DOCS_PATH: docs,
+        WORKSPACE_API_URL: workspaceURL, WORKSPACE_API_TOKEN: workspaceToken, AGENTWORKS_LOCAL_VAULT: '0' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let separateOutput = '';
+    separate.stdout.on('data', value => { separateOutput = (separateOutput + value).slice(-12000); });
+    separate.stderr.on('data', value => { separateOutput = (separateOutput + value).slice(-12000); });
+    try {
+      await require('../../desktop/lib/health').waitForHealth({ checks: [{ name: 'separate backend', url: apiOrigin + '/api/health' }],
+        isAlive: () => separate.exitCode !== null || separate.signalCode !== null ? 'Separate backend stopped.' : null });
+      assert.equal(fs.statSync(path.dirname(socketPath)).mode & 0o777, 0o700);
+      assert.equal(fs.statSync(socketPath).mode & 0o777, 0o600);
+      const proof = await readDevelopmentProof(socketPath, apiOrigin, appOrigin);
+      const { token } = await (await fetch(apiOrigin + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+      assert.ok(token);
+      const headers = { Authorization: `Bearer ${token}`, Origin: appOrigin, 'Sec-Fetch-Site': 'same-site', 'X-AgentWorks-Desktop': proof };
+      const response = await fetch(apiOrigin + '/api/desktop-connections', { headers });
+      assert.equal(response.status, 200, 'separately started frontend cannot list connections');
+      assert.deepEqual((await response.json()).connections, []);
+      for (const overrides of [{ 'X-AgentWorks-Desktop': '' }, { 'X-AgentWorks-Desktop': 'wrong' }, { Origin: 'http://127.0.0.1:51734' }, { Origin: 'https://example.com' }]) {
+        assert.equal((await fetch(apiOrigin + '/api/desktop-connections', { headers: { ...headers, ...overrides } })).status, 403);
+      }
+      for (const invalid of ['https://example.com', 'http://127.0.0.1', 'http://127.0.0.1:51733/path', 'http://user@localhost:51733']) {
+        await assert.rejects(readDevelopmentProof(socketPath, apiOrigin, invalid));
+      }
+      await assert.rejects(readDevelopmentProof(socketPath, 'http://127.0.0.1:1', appOrigin));
+      const otherOrigin = 'http://localhost:51734';
+      const otherProof = await readDevelopmentProof(socketPath, apiOrigin, otherOrigin);
+      assert.equal((await fetch(apiOrigin + '/api/desktop-connections', { headers: { ...headers, Origin: otherOrigin, 'X-AgentWorks-Desktop': otherProof } })).status, 200);
+      // A second frontend origin never invalidates the first one's proof.
+      assert.equal((await fetch(apiOrigin + '/api/desktop-connections', { headers })).status, 200);
+      if (previousProof) {
+        assert.notEqual(proof, previousProof);
+        assert.equal((await fetch(apiOrigin + '/api/desktop-connections', { headers: { ...headers, 'X-AgentWorks-Desktop': previousProof } })).status, 403);
+      }
+      const listing = spawnSync('ps', ['eww', '-p', String(separate.pid)], { encoding: 'utf8' });
+      assert.equal(listing.status, 0);
+      assert.equal(listing.stdout.includes(proof) || separateOutput.includes(proof), false, 'split proof leaked through ps or logs');
+      previousProof = proof;
+      console.log(attempt ? 'Separate backend restart: fresh proof accepted, retired proof refused.' : 'Separate backend/frontend: connections HTTP 200; missing, wrong and cross-origin proof HTTP 403.');
+    } finally {
+      if (separate.exitCode === null && separate.signalCode === null) { const closed = once(separate, 'exit'); separate.kill('SIGKILL'); await closed; }
+    }
+  }
 })().catch(error => { console.error(error.message); process.exitCode = 1; }).finally(async () => {
   if (workspaceProcess && workspaceProcess.exitCode === null && workspaceProcess.signalCode === null) {
     const closed = once(workspaceProcess, 'exit'); workspaceProcess.kill('SIGKILL'); await closed;

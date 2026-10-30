@@ -3157,6 +3157,14 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to listen on %s:%d: %v", config.Host, config.Port, err)
 	}
 	actualPort := listener.Addr().(*net.TCPAddr).Port
+	desktopSocket, err := startDesktopSocket(listener.Addr().(*net.TCPAddr))
+	if err != nil {
+		log.Fatalf("Failed to start local desktop connection socket: %v", err)
+	}
+	if desktopSocket != nil {
+		defer desktopSocket.Close()
+		log.Printf("[DESKTOP] Separate-launch connection socket ready")
+	}
 	SetShareTunnelServerPort(actualPort)
 
 	// Dynamically serve runtime-config.js so the frontend learns the real ports.

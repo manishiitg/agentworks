@@ -10,6 +10,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # server products are not optional). Local authentication is unchanged.
 LOCAL_SERVER_PRODUCTS=true
 
+# This path is discovery metadata, never a credential. The backend creates the
+# private socket; Electron can reconnect without owning the backend process.
+configure_desktop_socket() {
+    AGENTWORKS_DESKTOP_SOCKET="$(node -e 'const p = require(process.argv[1]); console.log(p.developmentSocketPath(process.argv[2], process.argv[3]))' \
+        "${SCRIPT_DIR}/../desktop/lib/devConnection.js" "${SCRIPT_DIR}/.." "$MCP_AGENT_SERVER_URL")" || return 1
+    export AGENTWORKS_DESKTOP_SOCKET
+}
+
 # Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
 # (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
 # of origin/main; agents work in their own worktrees and push to main. A clean checkout on main
@@ -705,6 +713,7 @@ if [ "$ONLY_FRONTEND" = true ]; then
 
     export MCP_AGENT_SERVER_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
     export WORKSPACE_API_URL="${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}"
+    configure_desktop_socket || exit 1
 
     # Sanity-check the backend is actually reachable on that port.
     if ! curl -fsS "${MCP_AGENT_SERVER_URL}/api/health" >/dev/null 2>&1; then
@@ -2519,6 +2528,12 @@ fi
 
 # Run the server with all the enhanced configuration
 echo "🚀 Starting local backend..."
+
+if [ "$WITH_FRONTEND" != true ] || [ "$WITHOUT_ELECTRON" = true ]; then
+    configure_desktop_socket || exit 1
+else
+    unset AGENTWORKS_DESKTOP_SOCKET
+fi
 
 if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
     # go run does not preserve fd 3 for its compiled child. Build once, then let

@@ -45,7 +45,7 @@ If you are already running the frontend and workspace services via Docker Compos
     DEV_URL=http://localhost:5173 npm start
     ```
 
-In this wrapper-only mode, Electron does not own the backend, so connected servers are unavailable. The sidebar explains this.
+An arbitrary `DEV_URL` wrapper does not enable connected servers. Use the local launcher below so the backend and Electron discover the same private local socket.
 
 For connected-server testing with Vite, run the full local launcher yourself from a terminal. It compiles the backend locally:
 
@@ -54,7 +54,19 @@ cd agent_go
 ./run_server_with_logging.sh
 ```
 
-The launcher builds the backend once and starts Vite and the workspace service. Electron starts the backend through the same private credential pipe as the packaged app. The left sidebar then shows **Local** and **Connect server**. Stop the previous backend and frontend first; `--only-frontend` cannot attach this capability to a separately started backend. No Mac package is required.
+The launcher builds the backend once and starts Vite and the workspace service. Electron starts the backend through the same private credential pipe as the packaged app. The left sidebar then shows **Local** and **Connect server**. No Mac package is required.
+
+You can also keep backend and frontend in separate terminals. Run these yourself from `agent_go` (the backend launcher compiles locally):
+
+```bash
+# Terminal 1: backend and workspace
+./run_server_with_logging.sh --with-workspace
+
+# Terminal 2: Vite and Electron
+./run_server_with_logging.sh --only-frontend
+```
+
+Connections work in both layouts. The split backend creates a private Unix socket for Electron, scoped to the checkout and backend port. Only Electron's main process receives connection proof; nothing is stored in browser storage or a credential file. Restart the backend independently on the same port and Electron gets fresh proof for its next connection request. The full launcher and packaged app continue using fd 3. Restart both launchers once after updating to enable the socket; future backend restarts can be independent.
 
 ## Build & Package (Distribution)
 

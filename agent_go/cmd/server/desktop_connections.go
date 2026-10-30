@@ -5,8 +5,8 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -84,15 +84,19 @@ type desktopSignIn struct {
 
 func desktopConnectionGate(w http.ResponseWriter, r *http.Request) bool {
 	secret, host := desktopBootstrapSecret, desktopBootstrapHost
+	appOrigin := desktopStartup.AppOrigin
+	if len(desktopSocketKey) != 0 {
+		appOrigin = r.Header.Get("Origin")
+		secret = desktopSocketProof(appOrigin)
+	}
 	u := GetUserFromContext(r.Context())
 	// Single-user JWTs alone aren't a desktop proof: localhost login issues them
 	// without a password. Never admit PAT/MCP callers to these saved web sessions.
 	if secret == "" || host == "" || r.Host != host || u == nil || u.AccessToken != nil || r.Header.Get("Authorization") == "" ||
-		subtle.ConstantTimeCompare([]byte(secret), []byte(r.Header.Get("X-AgentWorks-Desktop"))) != 1 {
+		!hmac.Equal([]byte(secret), []byte(r.Header.Get("X-AgentWorks-Desktop"))) {
 		http.Error(w, `{"error":"Open this connection in the Mac app."}`, http.StatusForbidden)
 		return false
 	}
-	appOrigin := desktopStartup.AppOrigin
 	if appOrigin == "" {
 		appOrigin = "http://" + host
 	}
