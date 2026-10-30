@@ -52,4 +52,23 @@ func TestAgentSnapshotTagDetectsSameSizeAndTimestampEdit(t *testing.T) {
 	if edited.Code != 200 || edited.Header().Get("ETag") == tag {
 		t.Fatal("external edit reused stale tag")
 	}
+	// PLAT-856-418: in-place edits also invalidate the byte cache, even when
+	// an external writer restores the timestamp and preserves the file size.
+	tag = edited.Header().Get("ETag")
+	if err := os.WriteFile(path, []byte(`{"agents":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	inPlace := get(tag)
+	if inPlace.Code != 200 || inPlace.Header().Get("ETag") == tag {
+		t.Fatal("in-place edit reused stale cache")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if missing := get(inPlace.Header().Get("ETag")); missing.Code == 304 {
+		t.Fatal("deleted mailbox reused cached authority")
+	}
 }

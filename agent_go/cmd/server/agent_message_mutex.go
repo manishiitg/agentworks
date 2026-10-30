@@ -49,3 +49,42 @@ func (m *agentMessageMutex) Unlock() {
 		log.Printf("[AGENT-MESSAGE-LOCK] hold caller=%s duration=%s", caller, hold.Round(time.Millisecond))
 	}
 }
+
+// Count read callers even when warm-cache operations are below the slow-log
+// threshold. Only source function names and counts are recorded.
+var agentMailboxReaders struct {
+	sync.Mutex
+	counts map[string]struct {
+		since time.Time
+		calls int
+	}
+}
+
+func agentMailboxReadCaller() string {
+	caller := "unknown"
+	if pc, _, _, ok := runtime.Caller(2); ok {
+		if f := runtime.FuncForPC(pc); f != nil {
+			caller = f.Name()
+		}
+	}
+	now := time.Now()
+	agentMailboxReaders.Lock()
+	if agentMailboxReaders.counts == nil {
+		agentMailboxReaders.counts = make(map[string]struct {
+			since time.Time
+			calls int
+		})
+	}
+	count := agentMailboxReaders.counts[caller]
+	if count.since.IsZero() {
+		count.since = now
+	}
+	count.calls++
+	if elapsed := now.Sub(count.since); elapsed >= time.Minute {
+		log.Printf("[AGENT-MAILBOX-READS] caller=%s calls=%d window_ms=%d", caller, count.calls, elapsed.Milliseconds())
+		count.since, count.calls = now, 0
+	}
+	agentMailboxReaders.counts[caller] = count
+	agentMailboxReaders.Unlock()
+	return caller
+}

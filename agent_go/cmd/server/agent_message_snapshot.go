@@ -20,11 +20,12 @@ type agentSnapshotKey struct {
 }
 
 type agentSnapshotEntry struct {
-	key    agentSnapshotKey
-	etag   string
-	digest [32]byte
-	valid  bool
-	store  agentMessageStore
+	key     agentSnapshotKey
+	etag    string
+	digest  [32]byte
+	valid   bool
+	store   agentMessageStore
+	content string
 }
 
 type agentSnapshotFlight struct {
@@ -46,6 +47,7 @@ var agentSnapshotCache struct {
 // Concurrent readers share one validation per endpoint/generation; sequential
 // reads still validate, with no TTL or stale-on-error authority fallback.
 func readAgentMessageSnapshot(ctx context.Context) (agentMessageStore, error) {
+	agentMailboxReadCaller()
 	for {
 		key := agentSnapshotKey{getWorkspaceAPIURL() + "/api/documents/" + agentMessagesPath, agentMessageVersion.Load()}
 		agentSnapshotCache.Lock()
@@ -156,7 +158,7 @@ func fetchAgentMessageSnapshot(ctx context.Context, key agentSnapshotKey, prior 
 	if err = json.Unmarshal([]byte(content), &store); err != nil {
 		return agentSnapshotEntry{}, err
 	}
-	return agentSnapshotEntry{key: key, etag: res.Header.Get("ETag"), digest: digest, valid: true, store: store}, nil
+	return agentSnapshotEntry{key: key, etag: res.Header.Get("ETag"), digest: digest, valid: true, store: store, content: content}, nil
 }
 
 func cloneNamedAgent(a namedMessageAgent) namedMessageAgent {
