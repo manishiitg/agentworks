@@ -86,6 +86,18 @@ func TestWorkResultsRecordAndConfinement(t *testing.T) {
 	if _, err := stranger.Execute(context.Background(), map[string]interface{}{"action": "list"}); err == nil {
 		t.Fatal("another person read results")
 	}
+	linkTarget := filepath.Join(project, "link-target.md")
+	_ = os.WriteFile(linkTarget, []byte("finished"), 0600)
+	if err := os.Symlink(linkTarget, filepath.Join(project, "linked.md")); err != nil {
+		t.Fatal(err)
+	}
+	call(map[string]interface{}{"action": "add", "path": "_files/linked.md", "title": "Linked report"})
+	_ = os.Remove(linkTarget)
+	got, err = ReadResults("Crew/example")
+	if err != nil || len(got.Results) != 2 || got.Results[0].Status != "unavailable" || got.Results[1].Status != "ready" {
+		t.Fatalf("dangling link hid results: %+v err=%v", got, err)
+	}
+	call(map[string]interface{}{"action": "remove", "path": "_files/linked.md"})
 	_ = os.Remove(file)
 	got, err = ReadResults("Crew/example")
 	if err != nil || got.Results[0].Status != "missing" {

@@ -56,7 +56,8 @@ The project name stays visible beside Home, with Builder and named chats in
 one row. Ownership details are on hover; only the tab's owner controls it.
 Code's right panel starts with Changes in this chat. Cowork starts with Results:
 finished named files and published Artifacts, not every temporary file or edit.
-Both show Browser, selected app accounts and configured schedules/watchers/triggers.
+Both show Browser, selected Google/Slack accounts, one MCP count linking to the
+full MCP list, and configured schedules/watchers/triggers.
 All tools (Cmd/Ctrl+K) keeps every admitted panel, including Files, Terminal,
 Models, Usage & cost, Skills and Access & sharing. Visiting a panel does not
 promote it into this status list. Goals and Flows retain their own menus.

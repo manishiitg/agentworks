@@ -34,14 +34,21 @@ type Results struct {
 
 // Result paths use the same virtual project paths as workspace file tools.
 // In a local-folder Crew, _files/ points into the user's existing folder.
-func resultFile(root crewroot.Roots, rel string) (string, error) {
+func validateResultPath(rel string) error {
 	if len(rel) == 0 || len(rel) > 1024 || strings.ContainsAny(rel, "\\\x00\r\n") || strings.Contains(rel, ":") || strings.HasPrefix(rel, "/") || path.Clean(rel) != rel || rel == "." {
-		return "", fmt.Errorf("use a file path relative to this project")
+		return fmt.Errorf("use a file path relative to this project")
 	}
 	for _, part := range strings.Split(rel, "/") {
 		if part == ".." {
-			return "", fmt.Errorf("path leaves this project")
+			return fmt.Errorf("path leaves this project")
 		}
+	}
+	return nil
+}
+
+func resultFile(root crewroot.Roots, rel string) (string, error) {
+	if err := validateResultPath(rel); err != nil {
+		return "", err
 	}
 	file, bound, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), root.Virtual+"/"+rel)
 	if err != nil {
@@ -85,9 +92,15 @@ func readResults(root crewroot.Roots) (Results, error) {
 		if len(row.Title) > 200 || len(row.UpdatedAt) > 64 {
 			return out, fmt.Errorf("invalid Result")
 		}
+		if err := validateResultPath(row.Path); err != nil {
+			return out, err
+		}
 		file, err := resultFile(root, row.Path)
 		if err != nil {
-			return out, err
+			// A registered link can become dangling or point outside the project.
+			// Keep its entry removable without opening it or hiding other results.
+			row.Status = "unavailable"
+			continue
 		}
 		info, err := os.Stat(file)
 		row.Status = "ready"
@@ -145,14 +158,17 @@ func workResultsFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 					return "", err
 				}
 				if action != "list" {
-					file, err := resultFile(root, rel)
-					if err != nil {
+					if err := validateResultPath(rel); err != nil {
 						return "", err
 					}
 					if err := client.ValidatePathWithContext(ctx, root.Virtual+"/"+rel, false); err != nil {
 						return "", err
 					}
 					if action == "add" {
+						file, err := resultFile(root, rel)
+						if err != nil {
+							return "", err
+						}
 						if strings.TrimSpace(title) == "" || len(title) > 200 {
 							return "", fmt.Errorf("give the result a short title")
 						}
