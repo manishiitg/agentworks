@@ -5982,6 +5982,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			CLIWorkingDir:    chatWorkingDir,
 			SharedWorkingDir: sharedChatWorkingDir,
 			CallerID:         currentUserID,
+			ConnectionID:     req.ConnectionID,
 		})
 		if runAsErr != nil {
 			sendError(runAsErr.Error(), true)

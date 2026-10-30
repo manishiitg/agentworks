@@ -395,6 +395,16 @@ github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030041145-ee091026483a
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030041145-ee091026483a/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030090118-3f07c028b3d9 h1:Ga+yg2VTEdSyoYr7SvcnysooexFVvxkgqslq3q3NuPM=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030090118-3f07c028b3d9/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030105328-04018d9bee05 h1:XQXBW6csmuhzh3UovEOQQyWq/B1UL8hWNBYtrdKCUyg=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030105328-04018d9bee05/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030114445-293b6d9c99dc h1:Wr/f3QaAc7390nU94qUcwqrtNfiH3xKnd5qnICP2dRI=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030114445-293b6d9c99dc/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030115109-d535478004c3 h1:TUhIUCr2m8HWV4w8Hrvp9H5owCETupqenLz62Zz+R7s=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030115109-d535478004c3/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030115148-cf18c72a1ba9 h1:NOFnjTsnlaaBk/7WrX+Tw0bCRhIvMMEDzRBG08waFOo=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030115148-cf18c72a1ba9/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030115949-4732a0c3659d h1:8QXDOtl3gQShslStd3cz1wy2UU/imAb9jzNVWHU/6gs=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261030115949-4732a0c3659d/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
 github.com/mark3labs/mcp-go v1.0.0 h1:CZqCzXwUiTOstkIdW1MyOZGuM+LaKMEJSu+ZYluN4DU=
 github.com/mark3labs/mcp-go v1.0.0/go.mod h1:r2fW4o3wsoJ7IMsx1Wuq5xeP8PRGXPDfNveoGAYbb/s=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=
