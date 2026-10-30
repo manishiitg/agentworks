@@ -7,6 +7,8 @@ import { useChatStore } from '../../stores/useChatStore'
 import { workChatModelsQueryKey } from './useWorkChatModels'
 import type { AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
 import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
+import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsageNotice'
+import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ChatContextItems, { menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
@@ -168,6 +170,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     </Menu.Sub>}
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
     {sessionId && <ChatContextItems sessionId={sessionId} modelLabel={label} />}
+    <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
+      || (meta?.agentProfileChatProvider === selectedOption.provider ? meta?.agentProfileChatConnectionID : undefined), selectedOption.provider)} />
     {separator}
     <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
   </Chip>
