@@ -39,6 +39,11 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		{"root", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "."}, true},
 		{"bob", http.MethodGet, "/api/wp/api/documents/config/users.json", nil, false},
 		{"bob", http.MethodGet, "/api/wp/api/documents/_system/costs.jsonl", nil, false},
+		// PLAT-856-418: split mailbox history remains under the same system fence.
+		{"bob", http.MethodGet, "/api/wp/api/documents/_system/agent_messages/conversations.history.json", nil, false},
+		{"bob", http.MethodPut, "/api/wp/api/documents/_system/agent_messages/conversations.history.json", map[string]any{"content": "[]"}, false},
+		{"root", http.MethodGet, "/api/wp/api/documents/_system/agent_messages/conversations.history.json", nil, true},
+		{"root", http.MethodPut, "/api/wp/api/documents/_system/agent_messages/conversations.history.json", map[string]any{"content": "[]"}, true},
 		{"bob", http.MethodGet, "/api/wp/api/search?query=x", nil, false},
 		// Reads of a workflow follow its access record.
 		{"bob", http.MethodGet, "/api/wp/api/documents/Workflow/private/notes.md", nil, false},
