@@ -45,8 +45,8 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
     if (target === 'share') { setShareSection(true); return }
     const next = target === 'slack-bot' ? 'slack' : target
     if (next === 'agentbridge' && !integrationProductAvailable('bullpen', allowedProducts)) return
-    if (!isWorkIntegrationTabEnabled(next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts) || next === 'agents' && !canEdit) return
-    if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'laptop'].includes(next)) { setShareSection(false); setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
+    if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts) || next === 'agents' && !canEdit) return
+    if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'laptop', 'github'].includes(next)) { setShareSection(false); setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
     if (['apps', 'brain', 'folders', 'slack', 'whatsapp', 'cli', 'agents', 'agentbridge'].includes(next)) {
       setShareSection(false); setTab(next as WorkIntegrationTab)
     }

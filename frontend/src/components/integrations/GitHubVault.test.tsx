@@ -42,7 +42,8 @@ it('imports the chosen local gh account only after Use account is clicked', asyn
   api.post.mockResolvedValue({data:{connected:true,login:'second-user',source:'gh'}})
   const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
   clean=()=>{act(()=>root.unmount());host.remove()}
-  await act(async()=>root.render(<GitHubVaultCard/>))
+  await act(async()=>root.render(<GitHubVaultCard changeConnectionOpen/>))
+  expect(host.querySelector<HTMLDetailsElement>('details')!.open).toBe(true)
   const picker=host.querySelector<HTMLSelectElement>('select')!
   expect(picker.value).toBe('first-user')
   expect(api.post).not.toHaveBeenCalled()

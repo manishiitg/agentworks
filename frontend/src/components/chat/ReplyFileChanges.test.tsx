@@ -41,6 +41,8 @@ vi.mock('../workspace/chatFileReviewData', () => ({ markFilesReviewed: vi.fn(), 
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { openChatFiles } from '../workspace/chatFileNavigation'
 import api from '../../services/api'
+import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { ReplyFileChanges } from './ReplyFileChanges'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 HTMLElement.prototype.scrollIntoView ??= () => {}
@@ -170,4 +172,23 @@ describe('reply card groups', () => {
     expect(button(await render(false), 'Fix failing checks')).toBeUndefined()
     state.pr = {}
   })
+  it('offers account recovery and retries failed PR status after an explicit connection change', async () => {
+    state.pr = { state: 'unavailable', number: undefined, url: undefined }
+    try {
+      const host = await render(true)
+      await act(async () => button(host, 'Change GitHub account')!.click())
+      expect(openProjectIntegrations).toHaveBeenCalledWith('github', 'chat-a')
+      const lookups = () => snapshotOps().filter(op => op === 'reply_card+pr').length
+      const before = lookups()
+      await act(async () => button(host, 'Try again')!.click())
+      expect(lookups()).toBeGreaterThan(before)
+      const retried = lookups()
+      await act(async () => window.dispatchEvent(new Event(githubConnectionChanged)))
+      expect(lookups()).toBeGreaterThan(retried)
+      const shared = await render(false)
+      expect(button(shared, 'Change GitHub account')).toBeUndefined()
+      expect(shared.textContent).toContain('Ask the owner')
+    } finally { state.pr = {} }
+  })
+
 })

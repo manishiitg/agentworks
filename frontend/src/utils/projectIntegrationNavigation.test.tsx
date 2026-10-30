@@ -65,3 +65,12 @@ it('the reply GitHub link reaches Secrets through the real Crew navigation liste
     expect(mocks.activate).toHaveBeenCalledWith('active')
   } finally { stop() }
 })
+
+it('opens GitHub setup for the card’s exact owned chat instead of another active project', async () => {
+  mocks.state.chatTabs = { active: {...crew('active'),sessionId:'other-chat'}, own: {...crew('own'),sessionId:'card-chat'} }
+  expect(await openLastProjectIntegrationChat('github','card-chat')).toBe('own')
+  expect(mocks.activate).toHaveBeenCalledWith('own')
+  expect(mocks.target).toHaveBeenCalledWith('mcp','github')
+  mocks.state.chatTabs.own= {...crew('own',false),sessionId:'card-chat'}
+  await expect(openLastProjectIntegrationChat('github','card-chat')).rejects.toThrow('Open a Crew')
+})

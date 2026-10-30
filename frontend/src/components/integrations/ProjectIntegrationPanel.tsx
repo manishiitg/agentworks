@@ -14,9 +14,9 @@ import type { ProjectVaultInventory } from '../../api/projectVault'
 import type { VaultItemKind } from '../../api/projectVault'
 import { ProjectVaultPanel } from './ProjectVaultPanel'
 
-export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop'
+export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop' | 'github'
 export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
-  connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'Slack', laptop: 'Local laptop',
+  github: 'GitHub', connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'Slack', laptop: 'Local laptop',
 }
 export function integrationPanelQuestion(section: string, label: string): string {
  if(section==='slack'||section==='slack-account') return buildAskAIMessage({view:label,summary:section==='slack'?'Help me connect or manage the Slack bot for this project.':'Help me with my Slack account for this project.',instructions:"Read the Slack account and Slack bot panel skills. Inspect saved accounts, the selected bot, its verified Slack identity, sign-in setup and channel settings before advising. My Slack account sends as the person; the bot lets people talk to this project in Slack. Help manage the requested part through existing native tools and current owner, account and administrator checks. Never repeat token or secret values."})
@@ -44,7 +44,8 @@ export function ProjectIntegrationPanel(props: Props) {
 function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section = 'connected', canEdit, onAsk, laptop, onAppsSaved, github = false, ...secrets }: Props) {
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
   useEffect(() => { if (section === 'connected' || section === 'available') setApps(section) }, [section])
-  const kinds: Record<IntegrationSection, VaultItemKind[]> = {connected:['mcp'],available:['mcp'],secrets:['project_secret','shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
+  const kinds: Record<IntegrationSection, VaultItemKind[]> = {github:[],connected:['mcp'],available:['mcp'],secrets:['project_secret','shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
+  if (section === 'github' && (!canEdit || !github)) return <p className="text-sm text-muted-foreground">Open your own Code project to manage your GitHub connection.</p>
   if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled title={INTEGRATION_LABELS[section]} itemKinds={kinds[section]} />
   return <div className="space-y-5" aria-label={INTEGRATION_LABELS[section]}>
     {(section === 'connected' || section === 'available') && <>
@@ -52,6 +53,7 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
       <ProjectMcpPanel view={apps} workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} canEdit={canEdit} onAsk={onAsk} onSelectionSaved={onAppsSaved} />
 
     </>}
+    {section === 'github' && github && <GitHubVaultCard changeConnectionOpen />}
     {section === 'secrets' && github && <GitHubVaultCard />}
     {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} selectedSecrets={secrets.selectedSecrets} onSecretChange={secrets.onSelectedSecretsChange} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
     {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} scopeNoun={placeNoun === 'Flow' ? 'relay' : 'project'} onAsk={onAsk} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}

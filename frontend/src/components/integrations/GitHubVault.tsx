@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import api from '../../services/api'
 import { Button } from '../ui/Button'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { CompanySignInSetup } from './CompanySignInSetup'
 
 interface GitHubStatus { app_ready: boolean; connected: boolean; gh_available: boolean; gh_accounts?: string[]; gh_accounts_note?: string; source?: string; login?: string; summary?: string; approval_page?: string }
@@ -12,7 +13,7 @@ const errorText = (cause: unknown, fallback: string) => {
 const sourceName = (source?: string) => source === 'gh' ? 'GitHub CLI' : source === 'pat' ? 'Personal access token' : 'Browser sign-in'
 
 /** Every method saves the same owner-scoped GITHUB_TOKEN used by Git work and PR status. */
-export function GitHubVaultCard() {
+export function GitHubVaultCard({ changeConnectionOpen = false }: { changeConnectionOpen?: boolean }) {
   const [status, setStatus] = useState<GitHubStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [token, setToken] = useState('')
@@ -35,6 +36,7 @@ export function GitHubVaultCard() {
       if (result.auth_url) { window.location.assign(result.auth_url); return }
       setMessage(`Connected as ${result.login}.`)
       await load()
+      window.dispatchEvent(new Event(githubConnectionChanged))
     } catch (cause) { setMessage(errorText(cause, 'Could not connect GitHub.')) } finally { setToken(''); setBusy(false) }
   }
   const disconnect = async () => {
@@ -43,6 +45,7 @@ export function GitHubVaultCard() {
       const result = (await api.delete<{ message: string }>('/api/vault/github')).data
       setMessage(result.message)
       await load()
+      window.dispatchEvent(new Event(githubConnectionChanged))
     } catch (cause) { setMessage(errorText(cause, 'Could not disconnect GitHub.')) } finally { setBusy(false) }
   }
   if (!status) return message ? <p role="alert" className="text-xs text-destructive">{message}</p> : null
@@ -91,7 +94,7 @@ export function GitHubVaultCard() {
       </div>
       {status.connected && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>}
     </div>
-    {status.connected ? <details><summary className="cursor-pointer text-xs text-muted-foreground">Change connection</summary>{methods}</details> : methods}
+    {status.connected ? <details open={changeConnectionOpen || undefined}><summary className="cursor-pointer text-xs text-muted-foreground">Change connection</summary>{methods}</details> : methods}
     {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}
   </section>
 }
@@ -107,7 +110,7 @@ export function GitHubConnectCompletion() {
     const rest = params.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
     api.post<{ login: string; summary?: string }>('/api/vault/github/complete', { state })
-      .then(result => setNote(`${result.data.summary || `GitHub connected as ${result.data.login}`}. Your Crews can now use it for Git work.`))
+      .then(result => { setNote(`${result.data.summary || `GitHub connected as ${result.data.login}`}. Your Crews can now use it for Git work.`); window.dispatchEvent(new Event(githubConnectionChanged)) })
       .catch(cause => setNote(errorText(cause, "GitHub could not be connected. Start again from the project's Secrets panel or ask in chat.")))
   }, [])
   if (!note) return null

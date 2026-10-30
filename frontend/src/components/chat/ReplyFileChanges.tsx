@@ -15,6 +15,7 @@ import { assertChatIdentityCurrent, captureChatIdentity } from '../../utils/chat
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
 import { FileDiffIcon, GitCommitIcon, GitPullRequestIcon } from '../icons/octicons'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 
 type PullRequest = ReplyPullRequest
@@ -89,6 +90,12 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   const [reviewError, setReviewError] = useState('')
   const [card, setCard] = useState<ReplyCard | null>(null)
   const [checked, setChecked] = useState<ReplyCard | null>(null)
+  const [githubRevision, setGitHubRevision] = useState(0)
+  useEffect(() => {
+    const refresh = () => { setChecked(null); setGitHubRevision(value => value + 1) }
+    window.addEventListener(githubConnectionChanged, refresh)
+    return () => window.removeEventListener(githubConnectionChanged, refresh)
+  }, [])
   const [open, setOpen] = useState<boolean | null>(null)
   const [undo, setUndo] = useState<{ plan?: UndoPlan; busy?: boolean; done?: string; error?: string } | null>(null)
   const latest = !reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId
@@ -149,7 +156,7 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       .then(response => { if (!controller.signal.aborted) setChecked(response.data) })
       .catch(() => { /* No PR line. */ })
     return () => controller.abort()
-  }, [lookUpPullRequests, reference.workspacePath, reference.snapshotId, reference.sessionId])
+  }, [lookUpPullRequests, reference.workspacePath, reference.snapshotId, reference.sessionId, githubRevision])
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []
   const actions = checked?.actions ?? card?.actions ?? summary?.actions ?? []
@@ -202,8 +209,8 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
               ))}
               {group.more_count > 0 && <li className="text-xs text-muted-foreground">+ {group.more_count} more</li>}
             </ul>
-            {group.kind === 'repo' && group.pr?.state === 'unavailable' && <p className="mt-1 text-xs text-muted-foreground">GitHub did not answer for {group.github_repo || group.name} with your GitHub sign-in, so PR status is not shown.</p>}
-            {group.kind === 'repo' && group.pr?.state === 'connect_github' && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('secrets')}>Connect GitHub to see PR status</button>}
+            {group.kind === 'repo' && group.pr?.state === 'unavailable' && <p className="mt-1 text-xs text-muted-foreground">Could not check PR status for {group.github_repo || group.name}. {canEdit ? <><button type="button" className="underline hover:text-foreground" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Change GitHub account</button><span aria-hidden> · </span><button type="button" className="underline hover:text-foreground" onClick={() => setGitHubRevision(value => value + 1)}>Try again</button></> : <>Ask the owner to check their GitHub connection.</>}</p>}
+            {group.kind === 'repo' && group.pr?.state === 'connect_github' && canEdit && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Connect GitHub to see PR status</button>}
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
               <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>
               {actions.filter(action => action.placement === 'pr_line' && action.group === group.root).map(action => <button key={action.id} type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => run(action)}>{action.label}</button>)}
