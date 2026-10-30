@@ -14,7 +14,9 @@ import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { openAppPage } from '../../utils/appNavigation'
 
-const WorkspaceChatsSidebar = lazy(() => import('./WorkspaceChatsSidebar'))
+// Warm navigation code alongside the shell; mounting still follows authentication.
+const sidebarModule = import('./WorkspaceChatsSidebar')
+const WorkspaceChatsSidebar = lazy(() => sidebarModule)
 const DEFAULT_SIDEBAR_WIDTH = 260
 const clampWidth = (width: number) => Math.max(220, Math.min(360, width))
 function readWidth(key: string) {

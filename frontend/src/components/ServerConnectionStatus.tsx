@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Loader2, ServerOff, RefreshCw } from 'lucide-react'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 import { GATEWAY_LOGIN_HEADER, gatewayLoginTarget, redirectToGatewayLogin } from '../utils/gatewayAuth'
+import { WorkspaceLoading } from './workspace/WorkspaceLoading'
 
 const RETRY_MS = { min: 1000, max: 5000 }
 const TIMEOUT_MS = 5000
@@ -94,6 +95,9 @@ export default function ServerConnectionStatus({ children }: { children: React.R
   // 2. Keyboard navigation/tab focus on hidden elements
   // 3. Race conditions from rendering children then hiding them
   if (state === 'connected') return <>{children}</>
+  // Keep the page geometry visible through the initial health/auth checks.
+  // Failed retries retain their actionable error screen.
+  if (state === 'connecting' && retryCount === 0) return <WorkspaceLoading />
 
   const overlay = (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-gray-900/95 backdrop-blur-sm" role="dialog" aria-modal>

@@ -450,7 +450,8 @@ function useWorkChatTab(
 
         retireWorkActivityCopies(canonicalTabId)
 
-        if ((useChatStore.getState().tabEvents[conversation.session_id]?.length ?? 0) === 0) {
+        if (useChatStore.getState().activeTabId === canonicalTabId &&
+          (useChatStore.getState().tabEvents[conversation.session_id]?.length ?? 0) === 0) {
           await hydrateTabEvents(conversation.session_id, {
             workspacePath: target.workspacePath,
             fallbackToChatHistory: true,
@@ -632,7 +633,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       try {
         const listed = await agentApi.listAgentProfileSideChats(profileId, projectId)
         if (cancelled) return
-        setListed(listed)
         for (const chat of listed) {
           const state = useChatStore.getState()
           const primary = state.chatTabs[canonicalTabId]
@@ -669,7 +669,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             agentProfileTabPinned: chat.pinned !== false,
             ...(chat.agent_id ? { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id } : {}),
             agentProfileMCPSelectionInitialized: true,
-          }, chat.session_id)
+          }, chat.session_id, { activate: false })
           useChatStore.getState().renameTab(tabId, chat.name)
           useChatStore.getState().setTabConfig(tabId, {
             selectedServers: primary.config.selectedServers,
@@ -677,14 +677,12 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           })
           const previous = previousActive ? state.chatTabs[previousActive] : undefined
           if (previous?.metadata?.isViewOnly && previous.sessionId === chat.session_id) activateTab(tabId)
-          else if (previousActive) activateTab(previousActive)
           retireWorkActivityCopies(tabId)
-          await hydrateTabEvents(chat.session_id, {
-            workspacePath: primary.metadata?.agentProfileWorkspace,
-            fallbackToChatHistory: true,
-            preferChatHistory: true,
-          })
         }
+        // Publish the complete strip without waiting for each conversation's
+        // transcript. ChatArea loads history only when that tab is selected.
+        if (cancelled) return
+        setListed(listed)
         if (pendingNativeKey) {
           const target = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileConversationKey === pendingNativeKey)
           if (target) { activateTab(target.tabId); pendingNativeKey = undefined }

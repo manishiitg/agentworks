@@ -8,6 +8,7 @@ import { agentApi } from '../../services/api'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { routeView } from '../../utils/productRoutes'
+import * as sessionRestore from '../../utils/sessionRestore'
 
 vi.mock('../../utils/chatDeliveryTelemetry', async original => ({ ...await original<typeof import('../../utils/chatDeliveryTelemetry')>(), recordTabReorderTelemetry: vi.fn() }))
 
@@ -47,6 +48,32 @@ describe('fresh deep links keep their view', () => {
 })
 
 describe('Crew native tab dragging', () => {
+  it('restores all tab names without loading background histories or changing selection', async () => {
+    // PLAT-746-245: a slow history for the first side chat must not hide later tabs.
+    const main = { tabId: 'main', sessionId: 'session-main', name: 'Main', config: {}, metadata: {
+      mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: 'crew',
+      agentProfileIsMainChat: true, agentProfileConversationKey: 'crew',
+    } } as ChatTab
+    useChatStore.setState({ chatTabs: { main }, activeTabId: 'main' })
+    const history = vi.spyOn(sessionRestore, 'hydrateTabEvents').mockImplementation(() => new Promise(() => {}))
+    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([
+      { conversation_key: 'crew:chat:research', session_id: 'session-research', name: 'Research' },
+      { conversation_key: 'crew:chat:review', session_id: 'session-review', name: 'Review' },
+    ])
+    const host = document.createElement('div'), root = createRoot(host)
+    const selections: Array<string | null> = []
+    const unsubscribe = useChatStore.subscribe(state => selections.push(state.activeTabId))
+    try {
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
+      expect(host.textContent).toContain('Research')
+      expect(host.textContent).toContain('Review')
+      expect(history).not.toHaveBeenCalled()
+      expect(selections.every(id => id === 'main')).toBe(true)
+    } finally {
+      await act(async () => root.unmount())
+      unsubscribe(); history.mockRestore(); list.mockRestore()
+    }
+  })
   it('names another owner tab and leaves only pinning to the caller', async () => {
     const owner = { agentProfileTabOwnerID: 'other', agentProfileTabOwnerName: 'alex.taylor@example.com', agentProfileTabCanWrite: false }
     const make = (id: string, metadata: Record<string, unknown>) => ({ tabId: id, sessionId: 'session-' + id, name: id, createdAt: 1, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileConversationKey: 'crew:chat:' + id, ...metadata } } as ChatTab)
