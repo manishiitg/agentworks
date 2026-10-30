@@ -13,70 +13,63 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-// The website and MCP catalog use the real workspace HTTP store. A fresh
-// private Crew used to have no starting dashboard until it was shared.
-func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
-	for _, origin := range []string{"work"} {
-		t.Run(origin, func(t *testing.T) {
-			f, _ := newExternalCrewCommandFixture(t)
-			withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work","code"]},{"id":"other","role":"editor","products":["work","code"]}]}`)
-			root := externalCommandCrewRoot
-			list := func(claims *UserClaims) map[string]any {
-				t.Helper()
-				body, _ := json.Marshal(map[string]string{"workspace": root, "action": "list"})
-				w := httptest.NewRecorder()
-				f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", string(body), claims, nil))
-				return externalTestBody(t, w, http.StatusOK)
-			}
-			if origin == "work" {
-				// External connections cannot create defaults through discovery.
-				for _, claims := range []*UserClaims{
-					{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "crews:read"}, AllCrews: true}},
-					{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "crews:read", "crews:write"}, AllCrews: true, FileGuard: &wf.FolderGuard{ReadPaths: []string{"db/reports"}}}},
-				} {
-					list(claims)
-					stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "list", IncludeDraft: true})
-					if err != nil || len(stored.Dashboards) != 0 {
-						t.Fatalf("read request wrote a default: %+v %v", stored, err)
-					}
-				}
-				// The app provisions its default on the server for a shared Run
-				// person, without giving that person dashboard authoring access.
-				got := list(&UserClaims{UserID: "other", Username: "other"})
-				raw, _ := json.Marshal(got)
-				if !strings.Contains(string(raw), "db/reports/managed/overview/index.html") {
-					t.Fatalf("shared app has no server-provided default: %v", got)
-				}
-			}
-			owner := &UserClaims{UserID: "owner", Username: "owner"}
-			got := list(owner)
-			raw, _ := json.Marshal(got)
-			if !strings.Contains(string(raw), "db/reports/managed/overview/index.html") {
-				t.Fatalf("new Crew has no default dashboard: %v", got)
-			}
-			stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
-			if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || len(stored.Snapshot.Files) == 0 {
-				t.Fatalf("default is not usable: %+v %v", stored, err)
-			}
-			revision := stored.Dashboard.Revision
-			list(owner)
-			again, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
-			if err != nil || again.Dashboard.Revision != revision {
-				t.Fatalf("catalog rewrote an existing dashboard: %+v %v", again, err)
-			}
-			// A later unfinished owner edit remains a draft, with no generated
-			// replacement or publication caused by opening the catalog.
-			draft, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "update", ID: defaultDashboardID, ExpectedRevision: revision, Files: map[string]string{"index.html": "<html><title>Unfinished owner dashboard</title></html>"}, IncludeDraft: true})
-			if err != nil {
-				t.Fatal(err)
-			}
-			list(owner)
-			again, err = dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
-			if err != nil || again.Dashboard.Revision != draft.Dashboard.Revision || again.Dashboard.Published != revision {
-				t.Fatalf("catalog changed the owner's draft: %+v %v", again, err)
-			}
-		})
+// Drive app discovery and MCP sharing through the real workspace HTTP/disk store.
+// Merely listing a Crew must not write; only explicit dashboard consent may do so.
+func TestCrewDashboardCreationRequiresShareConfirmation(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	root := externalCommandCrewRoot
+	ctx := context.Background()
+	empty := func() {
+		t.Helper()
+		stored, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "list", IncludeDraft: true})
+		if err != nil || len(stored.Dashboards) != 0 {
+			t.Fatalf("unexpected dashboard mutation: %+v %v", stored, err)
+		}
 	}
+	for _, claims := range []*UserClaims{
+		{UserID: "owner", Username: "owner"}, {UserID: "other", Username: "other"},
+		{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "crews:read"}, AllCrews: true}},
+		{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "crews:read", "crews:write"}, AllCrews: true, FileGuard: &wf.FolderGuard{ReadPaths: []string{"db/reports"}}}},
+	} {
+		w := httptest.NewRecorder()
+		f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", `{"workspace":"`+root+`","action":"list"}`, claims, nil))
+		externalTestBody(t, w, http.StatusOK)
+		empty()
+	}
+	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
+		t.Fatal(err)
+	}
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	w := httptest.NewRecorder()
+	f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", `{"workspace":"`+root+`","action":"share_status"}`, owner, nil))
+	if state := externalTestBody(t, w, 200); state["needs_dashboard"] != true {
+		t.Fatalf("missing creation choice: %+v", state)
+	}
+	w = httptest.NewRecorder()
+	f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", `{"workspace":"`+root+`","action":"share","mode":"everyone"}`, owner, nil))
+	if state := externalTestBody(t, w, 409); state["dashboard_required"] != true {
+		t.Fatalf("missing creation refusal: %+v", state)
+	}
+	empty()
+	if crewSharedWithOthers(root) {
+		t.Fatal("sharing changed before consent")
+	}
+	w = f.call(t, "owner", "share", map[string]any{"action": "set", "crew_id": "team", "mode": "everyone", "create_dashboard": true})
+	if state := externalTestBody(t, w, 200); state["mode"] != "everyone" {
+		t.Fatalf("share not saved: %+v", state)
+	}
+	stored, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
+	if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" {
+		t.Fatalf("confirmed dashboard not published: %+v %v", stored, err)
+	}
+	revision := stored.Dashboard.Revision
+	// A later ordinary share reuses the existing dashboard.
+	externalTestBody(t, f.call(t, "owner", "share", map[string]any{"action": "set", "crew_id": "team", "mode": "everyone"}), 200)
+	again, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
+	if err != nil || again.Dashboard.Revision != revision {
+		t.Fatalf("share rewrote dashboard: %+v %v", again, err)
+	}
+	externalTestBody(t, f.call(t, "other", "share", map[string]any{"action": "set", "crew_id": "team", "mode": "everyone", "create_dashboard": true}), 403)
 }
 
 // A private Goal opens with the same standard dashboard as a Crew. Opening it

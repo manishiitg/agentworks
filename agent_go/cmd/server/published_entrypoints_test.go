@@ -86,6 +86,14 @@ func TestPublicationRefreshesOnlyGeneratedDashboard(t *testing.T) {
 		return result
 	}
 	refresh()
+	listedBefore, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: record.Root, Action: "list", IncludeDraft: true})
+	if err != nil || len(listedBefore.Dashboards) != 0 {
+		t.Fatalf("function publication created a missing dashboard: %+v %v", listedBefore, err)
+	}
+	// Seed an explicitly requested default; subsequent publication may refresh it.
+	if _, _, err := f.api.ensureDefaultDashboard(ctx, claims, target); err != nil {
+		t.Fatal(err)
+	}
 	before := get()
 	record.Revision = "second-publication"
 	f.write(t, record.sourceRoot()+"/functions.json", `{"functions":[{"id":"qa-ping","name":"qa_ping","enabled":true,"description":"Run the action","action":{"type":"message"},"input":{"messages":["Return the result."]}}]}`)

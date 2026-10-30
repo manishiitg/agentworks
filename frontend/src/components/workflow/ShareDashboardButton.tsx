@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bot, Link2, MessageSquare, Share as ShareIcon, Users, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import api from '../../services/api'
+import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -10,7 +11,7 @@ import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 
 type Person = { id: string; email?: string; username?: string }
 type ShareState = {
-  mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean
+  mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean; needs_dashboard?: boolean
   accounts?: { kind: string; name: string; use: string }[]
   agents?: { chat_id: string; name: string; purpose: string; selected: boolean }[]
 }
@@ -46,6 +47,8 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [email, setEmail] = useState('')
+  const [pendingShare, setPendingShare] = useState<{ scope: string; mode: ShareState['mode']; emails?: string[] }>()
+  const confirmation = pendingShare?.scope === scope ? pendingShare : undefined
   const trigger = useRef<HTMLButtonElement>(null)
   const isPanel = variant === 'panel'
   const expanded = isPanel || open
@@ -91,10 +94,22 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const selected = (state.agents || []).filter(agent => agent.selected)
   const emails = (state.people || []).map(person => person.email).filter((value): value is string => !!value)
   /** The server decides: it takes the mode and the full list of people and answers with the saved state. */
-  const putShare = async (next: ShareState['mode'], list?: string[]) => {
-    const { data } = await api.post<ShareState & { unknown_emails?: string[] }>('/api/dashboards', { workspace: workspacePath, action: 'share', mode: next, ...(list ? { emails: list } : {}) })
-    setSnapshot({ scope, state: data }); setEmail('')
-    if (data.unknown_emails?.length) setNotice(`No account for ${data.unknown_emails.join(', ')}.`)
+  const putShare = async (next: ShareState['mode'], list?: string[], createDashboard = false) => {
+    if (useAuthStore.getState().user?.id !== user || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
+    const identity = captureChatIdentity()
+    try {
+      const { data } = await api.post<ShareState & { unknown_emails?: string[] }>('/api/dashboards', { workspace: workspacePath, action: 'share', mode: next, ...(list ? { emails: list } : {}), ...(createDashboard ? { create_dashboard: true } : {}) })
+      if (!isChatIdentityCurrent(identity)) return
+      setSnapshot({ scope, state: data }); setEmail(''); setPendingShare(undefined)
+      if (createDashboard) window.dispatchEvent(new CustomEvent(WORKFLOW_REPORT_REFRESH_EVENT, { detail: { workspacePath } }))
+      if (data.unknown_emails?.length) setNotice(`No account for ${data.unknown_emails.join(', ')}.`)
+    } catch (cause) {
+      if (!isChatIdentityCurrent(identity)) return
+      if ((cause as { response?: { data?: { dashboard_required?: boolean } } })?.response?.data?.dashboard_required === true) {
+        setPendingShare({ scope, mode: next, emails: list }); return
+      }
+      throw cause
+    }
   }
   const run = async (work: () => Promise<void>, fallback = 'Could not change access.') => {
     setBusy(true); setError(''); setNotice('')
@@ -169,6 +184,15 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       </form>
       <p className="text-xs text-muted-foreground">Owner: builds and changes it. Can chat & run: chats with it, presses its buttons and sees its dashboard.</p>
     </section>
+    {confirmation && <section role="region" aria-label="Create a dashboard to share" className="space-y-3 rounded-lg border border-border p-3">
+      <h3 className="font-semibold">Create a dashboard for this Crew?</h3>
+      <p className="text-xs text-muted-foreground">People will open it to chat with this Crew and use its published functions.</p>
+      <p className="text-xs">Share with: {confirmation.mode === 'everyone' ? 'Everyone at the company' : confirmation.emails?.join(', ')}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={busy} onClick={() => void run(() => putShare(confirmation.mode, confirmation.emails, true))} className="rounded-md bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">Create dashboard and share</button>
+        <button type="button" disabled={busy} onClick={() => setPendingShare(undefined)} className="rounded-md border border-border px-3 py-2 text-xs hover:bg-muted">Cancel</button>
+      </div>
+    </section>}
     <section aria-label="Who can open it" className="space-y-2 border-t border-border pt-4">
       <label htmlFor="company-access" className="font-semibold">Who can open it</label>
       <div className="flex flex-wrap items-center gap-2">

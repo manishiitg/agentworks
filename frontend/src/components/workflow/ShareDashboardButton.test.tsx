@@ -75,3 +75,38 @@ it('keeps the server sharing admission and provides a retry for failed reads', a
     expect(onAsk).not.toHaveBeenCalled()
   } finally { await act(async () => root.unmount()) }
 })
+
+
+it('asks before creating a missing Crew dashboard and keeps cancelling free of writes', async () => {
+  post.mockReset()
+  post.mockImplementation(async (_url, body) => {
+    if (body.action === 'owners') return { data: { co_owners: [], can_manage: true } }
+    if (body.action === 'share') {
+      if (!body.create_dashboard) throw { response: { data: { dashboard_required: true } } }
+      return { data: { mode: body.mode, can_share: true } }
+    }
+    return { data: { mode: 'private', can_share: true, needs_dashboard: true } }
+  })
+  const host = document.createElement('div'), root = createRoot(host)
+  const chooseEveryone = async () => act(async () => {
+    const select=host.querySelector<HTMLSelectElement>('#company-access')!
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value')!.set!.call(select,'use')
+    select.dispatchEvent(new Event('change',{bubbles:true}))
+  })
+  const button = (text:string) => [...host.querySelectorAll('button')].find(item=>item.textContent===text)!
+  try {
+    await act(async()=>root.render(<ShareDashboardButton workspacePath="Crew/example" variant="panel"/>))
+    await chooseEveryone()
+    expect(host.textContent).toContain('Create a dashboard for this Crew?')
+    expect(host.querySelector<HTMLSelectElement>('#company-access')?.value).toBe('none')
+    const calls=post.mock.calls.length
+    await act(async()=>button('Cancel').click())
+    expect(post.mock.calls).toHaveLength(calls)
+    expect(host.textContent).not.toContain('Create a dashboard for this Crew?')
+    await chooseEveryone()
+    await act(async()=>button('Create dashboard and share').click())
+    expect(post).toHaveBeenLastCalledWith('/api/dashboards',{workspace:'Crew/example',action:'share',mode:'everyone',create_dashboard:true})
+    expect(host.querySelector<HTMLSelectElement>('#company-access')?.value).toBe('use')
+    expect(host.textContent).not.toContain('Create a dashboard for this Crew?')
+  } finally {await act(async()=>root.unmount())}
+})

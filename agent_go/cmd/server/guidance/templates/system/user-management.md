@@ -12,7 +12,7 @@ directory; admins see account metadata. People without ownership or administrato
 existing members unless the user requested removal; retain at least one owner.
 Owners can manage their workflow; admins can manage other accessible workflows.
 
-Sharing a Crew, Goal or Flow includes its dashboard, Ask, published functions and MCP reads of its files, skills, memory, knowledge, instructions, runs and logs. Secret values and private logs remain excluded; changing setup remains with the owner and existing workflow editors. Share offers Only me / Chosen people / Everyone. Sharing creates a standard dashboard when none is published.
+Sharing a Crew, Goal or Flow includes its dashboard, Ask, published functions and MCP reads of its files, skills, memory, knowledge, instructions, runs and logs. Secret values and private logs remain excluded; changing setup remains with the owner and existing workflow editors. Share offers Only me / Chosen people / Everyone. Private Crews do not get an automatic dashboard. If sharing a Crew returns needs_dashboard or dashboard_required, ask whether to create a standard dashboard; retry sharing with create_dashboard=true only after the person agrees. Existing published dashboards need no creation step.
 
 Only admins can `update_user`. Accounts are not created here: DevOps adds people on the server
 (`provision-slots.sh adduser`), which also gives each one a slot. Use `user_id` for updates; omitted

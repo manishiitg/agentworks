@@ -259,7 +259,7 @@ func (api *StreamingAPI) setProjectAccessLists(ctx context.Context, claims *User
 		}
 	}
 	if setPeople {
-		if _, err := api.applyRunShare(ctx, claims, dashboardTarget{Kind: projectAccessKind(manifest), ID: manifest.ID, Root: root}, runSharePeople, peopleEmails); err != nil {
+		if _, err := api.applyRunShare(ctx, claims, dashboardTarget{Kind: projectAccessKind(manifest), ID: manifest.ID, Root: root}, runSharePeople, peopleEmails, false); err != nil {
 			return nil, err
 		}
 	}
