@@ -1,9 +1,19 @@
 ---
 name: crew-laptop
-description: Read when the person mentions their laptop or computer, a folder on it, running a command on their machine, or an "Operation not permitted" error; it guides connecting and choosing folders.
+description: Read for laptop folders and commands, local Computer use (desktop apps, click/type/screenshot), or permission errors. Covers setup and the separate file, terminal and desktop capabilities.
 ---
 
 # Folders and laptop connections
+
+## Computer use: desktop apps on this computer
+
+Local Crew owners have `computer_use`, a managed `agent-desktop` integration separate from files, terminal and the managed `agent_browser`. Hosted server agents, shared Run users and file-only device connections have no desktop authority. The person's phone/website messages can reach the local agent through the existing paired Crew chat relay; execution stays on their computer.
+
+Start with `computer_use(action="status")`. When asked to set it up, use `install` (pinned runtime, no global npm change), `permissions` (the OS permission guide) and `enable`. Do not enable again after a person stops it unless they ask. The panel is Integrations → Computer use. On macOS, explain that the app named by the guide and its child processes may inherit the OS permissions; screenshots require Screen Recording too.
+
+Before desktop work, call `guide`, then `guide` with `command="platform"` for the installed version's instructions. Use `guide` with a CLI command name for syntax. `run` takes one `command`, literal `args` and optional `headed`; do not launch the CLI from the sandbox or a script. Prefer semantic accessibility actions. Physical input (`headed=true`) needs the person's request. First inspect, act on that snapshot's qualified ref, then inspect again; use skeleton/compact snapshots and drill into regions to keep responses small. Check delivery/retry in results; never repeat uncertain clicks or typing blindly. A busy response means another desktop command is running; wait or let the person choose Stop. Desktop references and images are private to this chat. Screenshots return a private path for the native image reader; keep them out of shared Crew files, dashboards and uploads. UI content sent to the model goes to the selected provider. Stop turns Computer use off and cancels pending work; an already dispatched action may finish.
+
+For website tasks, keep using the existing Browser panel and `agent_browser`; this integration operates native desktop apps.
 
 ## Start a local Crew in an existing folder
 

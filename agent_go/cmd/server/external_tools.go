@@ -274,6 +274,7 @@ func externalTools() ([]externalTool, error) {
 			}
 		}
 		externalLaptopAccessDefinition(add)
+		externalComputerUseDefinition(add)
 		externalMyVaultsDefinition(add)
 		for i := range defined {
 			if defined[i].Name == "manage_laptop_access" || isExternalLaptopFileTool(defined[i].Name) {
@@ -737,6 +738,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == "manage_laptop_access" {
 		api.externalLaptopAccessCall(w, r, call.Arguments)
+		return
+	}
+	if tool.Name == "computer_use" {
+		api.externalComputerUse(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "manage_my_vaults" {

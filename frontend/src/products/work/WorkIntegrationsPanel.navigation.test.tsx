@@ -19,6 +19,7 @@ vi.mock('./WorkIdentityPanel', () => ({ WorkFoldersSection: () => <div data-cont
 vi.mock('../../components/workflow/WorkflowBotsPanel', () => ({ default: ({ fixedChannel, channelOnly, ownBotOnly }: any) => <div data-content={fixedChannel} data-channel-only={String(channelOnly)} data-own-bot-only={String(ownBotOnly)}>Existing {fixedChannel}</div> }))
 vi.mock('../../components/workflow/WorkflowEmailPanel', () => ({ default: () => <div data-content="gmail">Existing Google apps</div> }))
 vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
+vi.mock('./ComputerUsePanel', () => ({ ComputerUsePanel: () => <div data-content="computer-use">Local computer</div> }))
 vi.mock('./CrewPublishedAgents', () => ({ CrewPublishedAgents: () => <div data-content="agents">Chats from your computer</div> }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }), useProjectMode: () => 'dev' }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
@@ -75,4 +76,18 @@ it('opens each resource directly without a My Vault destination', async () => {
   await act(async () => state.target(target))
   expect(host.querySelector('[data-integration-section]')?.getAttribute('data-integration-section')).toBe(target)
  }
+})
+
+// PLAT-856: remote/shared project navigation cannot advertise desktop control.
+it('offers Computer use only in a local Builder workspace', async () => {
+ const remote = await mount()
+ await act(async () => state.target('computer-use'))
+ expect(remote.querySelector('[data-content="computer-use"]')).toBeNull()
+ vi.stubEnv('VITE_DEPLOYMENT_MODE', 'local')
+ const local = await mount()
+ await act(async () => state.target('computer-use'))
+ expect(local.querySelector('[data-content="computer-use"]')).not.toBeNull()
+ const shared = await mount(CREW_PRODUCT, undefined, false)
+ await act(async () => state.target('computer-use'))
+ expect(shared.querySelector('[data-content="computer-use"]')).toBeNull()
 })

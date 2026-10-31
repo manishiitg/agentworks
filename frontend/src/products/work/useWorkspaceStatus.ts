@@ -7,6 +7,7 @@ import { productWebhooksApi } from '../../api/productWebhooks'
 import { slackBotsApi, slackBotName } from '../../components/integrations/ProductSlackPanel'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
+import { computerUseURL, type ComputerUseStatus } from './ComputerUsePanel'
 
 export type WorkspaceStatusRow = { id: string; label: string; detail: string; destination: string; attention?: boolean; connected?: boolean; nextRunAt?: string }
 type Snapshot = { scope: string; apps?: WorkspaceStatusRow[]; automations?: WorkspaceStatusRow[]; errors: string[] }
@@ -44,6 +45,9 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
    if (has('mcp:github')) jobs.push(api.get<{ connected: boolean; login?: string }>('/api/vault/github').then(({ data }) => {
     appRows.push({ id: 'github', label: 'GitHub', detail: data.connected ? `${data.login ? `${data.login} · ` : ''}Connected` : 'Not connected', connected: data.connected === true, destination: 'mcp:github' })
    }).catch(() => { out.errors.push('GitHub status could not be checked.') }))
+   if (has('mcp:computer-use') && projectId) jobs.push(api.get<ComputerUseStatus>(computerUseURL(projectId)).then(({ data }) => {
+    if (data.enabled) appRows.push({ id:'computer-use', label:'Computer use', detail:data.active ? 'Working' : data.installed ? 'On' : 'Needs setup', connected:data.installed && (data.platform !== 'darwin' || data.permissions?.data?.accessibility?.state === 'granted'), destination:'mcp:computer-use' })
+   }).catch(() => { out.errors.push('Computer use could not be checked.') }))
    if (has('mcp:whatsapp')) jobs.push(agentApi.getWhatsAppStatus().then(status => {
     appRows.push({ id: 'whatsapp', label: 'WhatsApp', detail: status.connected ? 'Connected' : status.paired ? 'Not connected' : 'Not set up', connected: status.connected === true, attention: status.paired && !status.connected, destination: 'mcp:whatsapp' })
    }).catch(() => { out.errors.push('WhatsApp status could not be checked.') }))
@@ -65,7 +69,8 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
   window.addEventListener('focus', focus)
   const githubChanged = () => { void load() }
   if (has('mcp:github')) window.addEventListener(githubConnectionChanged, githubChanged)
-  return () => { alive = false; window.removeEventListener('focus', focus); window.removeEventListener(githubConnectionChanged, githubChanged) }
+  if (has('mcp:computer-use')) window.addEventListener('computer-use-changed', githubChanged)
+  return () => { alive = false; window.removeEventListener('focus', focus); window.removeEventListener(githubConnectionChanged, githubChanged); window.removeEventListener('computer-use-changed', githubChanged) }
  }, [scope, workspacePath, projectId, admission, requestScope, revision])
  return { snapshot: snapshot?.scope === requestScope ? snapshot : undefined, refresh: () => setRevision(value => value + 1) }
 }
