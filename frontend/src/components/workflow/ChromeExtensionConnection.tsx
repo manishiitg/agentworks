@@ -61,7 +61,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
       setStatus(data)
       return true
     } catch {
-      if (generation.current === turn) setError('Could not change this project’s browser. Your previous choice is still selected.')
+      if (generation.current === turn) setError('Could not confirm the browser change. Check the connection and try again.')
       return false
     } finally { if (generation.current === turn) setBusy(false) }
   }
@@ -75,7 +75,7 @@ export function ChromeExtensionConnection({ connection, workspaceBrowser, onConn
   const current = status.selected ? status.browsers?.find(browser => browser.id === status.browser_id)?.name || 'Browser' : workspaceBrowser?.selected ? workspaceBrowser.label.split(' · ')[0] : ''
   return <div className="space-y-2">
     <div className="flex items-center justify-between gap-2">
-      <span className="min-w-0 truncate text-xs font-medium">{current || 'No browser selected'}</span>
+      <span className="min-w-0 truncate text-xs font-medium" title={status.selected ? `Uses your ${current}. Your sign-ins are available to this Crew.` : undefined}>{current || 'No browser selected'}</span>
       <Button size="sm" variant="ghost" aria-expanded={changing} disabled={busy} onClick={() => setChanging(!changing)}>{busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <>Change<ChevronDown className="h-3 w-3" /></>}</Button>
     </div>
     {changing && <div className="space-y-1 rounded-md border border-border p-1" aria-label="Choose browser">
