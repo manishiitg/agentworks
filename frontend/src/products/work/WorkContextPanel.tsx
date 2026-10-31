@@ -47,7 +47,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     return () => controller.abort()
   }, [scope, workspacePath, canReadSharing])
   const { documents } = useReportDocuments(allowed('dashboard') ? workspacePath : '')
-  const menuOptions = { panels, enabledPanels, incomingEmail, projectId, canShare: sharing?.scope === scope && sharing.allowed }
+  const menuOptions = { mode, panels, enabledPanels, incomingEmail, projectId, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
   const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })

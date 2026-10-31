@@ -1,9 +1,9 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
 import { visibleProductSurfaceIDs } from '../productSurfaceConfig'
-import { isWorkIdentityTabEnabled } from './workViewGating'
+import { isWorkIdentityTabEnabled, isWorkIntegrationTabEnabled } from './workViewGating'
 import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
 
 export const CREW_MENU_GROUPS = PROJECT_MENU_GROUPS
@@ -14,9 +14,9 @@ export type CrewMenuItem = {
 }
 
 /** One inventory for the Crew menu and panel search. All old feature gates apply. */
-export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, canShare = true, projectId = '' }: {
+export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, canShare = true, projectId = '', mode = 'cowork' }: {
   panels: ProductPanel<WorkWorkspaceView>[]; allowedProducts?: string[] | null; enabledPanels?: Set<string>
-  incomingEmail?: boolean; canShare?: boolean; projectId?: string
+  incomingEmail?: boolean; canShare?: boolean; projectId?: string; mode?: 'dev' | 'cowork'
 }): CrewMenuItem[] {
   const has = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
   const bots = !enabledPanels || enabledPanels.has('bots')
@@ -41,6 +41,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
+    if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
     add('mcp', 'Integrations', 'Local laptop', Laptop, 'laptop')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
     if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
@@ -55,7 +56,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
   add('costs', 'Setup', 'Costs & usage', DollarSign)
   add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')
-  const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:gmail', 'mcp:slack-account', 'mcp:laptop', 'mcp:brain', 'mcp:folders', 'mcp:agents', 'mcp:agentbridge']
+  const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:github', 'mcp:gmail', 'mcp:slack-account', 'mcp:laptop', 'mcp:brain', 'mcp:folders', 'mcp:agents', 'mcp:agentbridge']
   return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
 }
 

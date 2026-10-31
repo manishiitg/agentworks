@@ -2,8 +2,8 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ vault: vi.fn(), bots: vi.fn(), schedules: vi.fn(), whatsapp: vi.fn() }))
-vi.mock('../../services/api', () => ({ agentApi: { getWhatsAppStatus: mocks.whatsapp } }))
+const mocks = vi.hoisted(() => ({ vault: vi.fn(), bots: vi.fn(), schedules: vi.fn(), whatsapp: vi.fn(), github: vi.fn() }))
+vi.mock('../../services/api', () => ({ default: { get: mocks.github }, agentApi: { getWhatsAppStatus: mocks.whatsapp } }))
 vi.mock('../../api/projectVault', () => ({ loadProjectVault: mocks.vault }))
 vi.mock('../../api/scheduler', () => ({ schedulerApi: { listJobs: mocks.schedules } }))
 vi.mock('../../api/conditionTriggers', () => ({ conditionTriggersApi: {} }))
@@ -11,9 +11,10 @@ vi.mock('../../api/productWebhooks', () => ({ productWebhooksApi: {} }))
 vi.mock('../../components/integrations/ProductSlackPanel', () => ({ slackBotsApi: { list: mocks.bots }, slackBotName: (bot: any) => bot.identity?.name || bot.name }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 import { useWorkspaceStatus } from './useWorkspaceStatus'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 it('combines selected accounts and the real bot regardless of response order, and drops a late response from another scope', async () => {
- const admitted = ['files','mcp:connected','mcp:gmail','mcp:slack-account','mcp:slack-bot','mcp:whatsapp','schedules:schedules']
+ const admitted = ['files','mcp:connected','mcp:gmail','mcp:slack-account','mcp:slack-bot','mcp:whatsapp','mcp:github','schedules:schedules']
  let finishOld!: (value: any) => void
  mocks.vault.mockImplementation((path: string) => path === 'Crew/old' ? new Promise(resolve => { finishOld = resolve }) : Promise.resolve({ vaults:[{items:[
   {id:'chosen',name:'Chosen notes',kind:'mcp',selected:true,status:'connected'},
@@ -21,30 +22,40 @@ it('combines selected accounts and the real bot regardless of response order, an
   {id:'slack',name:'Personal Slack',app:'slack',kind:'mcp',selected:true,status:'connected'},
   {id:'unused',name:'Unused notes',kind:'mcp',selected:false,status:'connected'},
  ]}] }))
+ mocks.github.mockResolvedValue({data:{connected:true,login:'chosen-account'}}).mockResolvedValueOnce({data:{connected:true,login:'old-account'}})
  mocks.whatsapp.mockResolvedValue({enabled:true,paired:true,connected:true})
  mocks.bots.mockResolvedValue({ selected_id:'bot', bots:[{id:'bot',name:'Saved alias',identity:{name:'Actual bot',verified:true},configured:true,enabled:true}] })
  mocks.schedules.mockResolvedValue({jobs:[{id:'paused',name:'Paused job',enabled:false,workspace_path:'Crew/current',next_run_at:'2030-01-01'}, {id:'other',name:'Other project job',enabled:true,workspace_path:'Crew/other'}]})
  let value: ReturnType<typeof useWorkspaceStatus> | undefined
- function Harness({scope, whatsapp = true}: {scope:string;whatsapp?:boolean}) { value = useWorkspaceStatus({scope,workspacePath:`Crew/${scope}`,projectId:scope,admitted:whatsapp ? admitted : admitted.filter(id=>id!=='mcp:whatsapp')}); return <pre>{JSON.stringify(value.snapshot)}</pre> }
+ function Harness({scope, whatsapp = true, github = true}: {scope:string;whatsapp?:boolean;github?:boolean}) { value = useWorkspaceStatus({scope,workspacePath:`Crew/${scope}`,projectId:scope,admitted:admitted.filter(id=>(whatsapp || id!=='mcp:whatsapp') && (github || id!=='mcp:github'))}); return <pre>{JSON.stringify(value.snapshot)}</pre> }
  const host=document.createElement('div'); const root=createRoot(host)
  try {
   await act(async()=>root.render(<Harness scope="old"/>))
   await act(async()=>root.render(<Harness scope="current"/>))
   await act(async()=>finishOld({vaults:[{items:[{id:'old',name:'Old account',kind:'mcp',selected:true,status:'connected'}]}]}))
-  expect(value?.snapshot?.apps?.map(item=>item.label)).toEqual(['Actual bot','Chosen notes','Google','My Slack account','WhatsApp'])
+  expect(value?.snapshot?.apps?.map(item=>item.label)).toEqual(['Actual bot','Chosen notes','GitHub','Google','My Slack account','WhatsApp'])
   expect(value?.snapshot?.apps?.find(item=>item.id==='mcp:slack')?.destination).toBe('mcp:slack-account')
   expect(value?.snapshot?.apps?.find(item=>item.id==='google:google')?.detail).toContain('person@example.com')
   expect(value?.snapshot?.apps?.find(item=>item.id==='google:google')?.connected).toBe(true)
   expect(host.textContent).not.toContain('Unused notes'); expect(host.textContent).not.toContain('Old account')
   expect(value?.snapshot?.automations?.map(item=>item.detail)).toEqual(['Paused'])
   expect(host.textContent).not.toContain('Other project job')
+  expect(host.textContent).not.toContain('old-account')
+  expect(value?.snapshot?.apps?.find(item=>item.id==='github')).toMatchObject({connected:true,detail:'chosen-account · Connected'})
+  expect(mocks.github).toHaveBeenCalledWith('/api/vault/github')
+  mocks.github.mockResolvedValue({data:{connected:false}})
+  await act(async()=>window.dispatchEvent(new Event(githubConnectionChanged)))
+  expect(value?.snapshot?.apps?.find(item=>item.id==='github')).toMatchObject({connected:false,detail:'Not connected'})
   expect(value?.snapshot?.apps?.find(item=>item.id==='whatsapp')?.connected).toBe(true)
   mocks.whatsapp.mockResolvedValue({enabled:true,paired:true,connected:false})
   await act(async()=>value?.refresh())
   expect(value?.snapshot?.apps?.find(item=>item.id==='whatsapp')).toMatchObject({connected:false,detail:'Not connected'})
   const reads = mocks.whatsapp.mock.calls.length
-  await act(async()=>root.render(<Harness scope="current" whatsapp={false}/>))
+  const githubReads = mocks.github.mock.calls.length
+  await act(async()=>root.render(<Harness scope="current" whatsapp={false} github={false}/>))
   expect(mocks.whatsapp.mock.calls).toHaveLength(reads)
+  expect(mocks.github.mock.calls).toHaveLength(githubReads)
+  expect(value?.snapshot?.apps?.some(item=>item.id==='github')).toBe(false)
   expect(value?.snapshot?.apps?.some(item=>item.id==='whatsapp')).toBe(false)
  } finally { await act(async()=>root.unmount()) }
 })
