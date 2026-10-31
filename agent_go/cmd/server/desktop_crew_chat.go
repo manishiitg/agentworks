@@ -158,7 +158,7 @@ func (api *StreamingAPI) pollDesktopCrewChat(ctx context.Context, project string
 				} else {
 					response.Body.Close()
 				}
-				if response.StatusCode == 200 || response.StatusCode == 204 {
+				if response.StatusCode == 204 || response.StatusCode == 200 && e == nil {
 					state = "connected"
 				}
 			}
