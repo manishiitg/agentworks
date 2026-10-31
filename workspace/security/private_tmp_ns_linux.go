@@ -126,7 +126,7 @@ func enterPrivateTmp(policy LandlockPolicy) error {
 	if err := applyReadOnlyOverlays(policy.ReadOnlyOverlays); err != nil {
 		return err
 	}
-	if err := applyHiddenPaths(policy.HiddenPaths); err != nil {
+	if err := applyHiddenPaths(append(append([]string(nil), policy.HiddenPaths...), userManagerSockets()...)); err != nil {
 		return err
 	}
 	if err := applyShellWrap(policy.ShellWrap); err != nil {
@@ -249,6 +249,15 @@ func applyReadOnlyOverlays(paths []string) error {
 		}
 	}
 	return nil
+}
+
+// userManagerSockets are the account's own service manager's sockets. That manager runs outside Landlock: through it a
+// confined command could start an unconfined one as the same account (systemd-run --user) and read what Landlock
+// withholds, such as a running CLI's environment (PLAT-872-89). They are hidden from every confined command; the
+// account's Docker socket beside them stays.
+func userManagerSockets() []string {
+	runtime := fmt.Sprintf("/run/user/%d", os.Getuid())
+	return []string{filepath.Join(runtime, "bus"), filepath.Join(runtime, "systemd")}
 }
 
 // applyHiddenPaths mounts an empty placeholder (mode 000, read-only) over each blocked path, so the command can neither
