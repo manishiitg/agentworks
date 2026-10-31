@@ -325,6 +325,15 @@ func (s Store) saveReview(ctx context.Context, r *Record, repos map[string]strin
 			log.Printf("[FILE_SNAPSHOT] phase=git_review snapshot=%s checkout=%s state=incomplete", r.ID, end.ID)
 			continue
 		}
+		for i := range spans {
+			kept := spans[i].Skipped[:0]
+			for _, name := range spans[i].Skipped {
+				if owner, ok := savedRoot(name, review.Roots); ok && owner == p {
+					kept = append(kept, name)
+				}
+			}
+			spans[i].Skipped = kept
+		}
 		review.Spans = append(review.Spans, spans...)
 		for _, span := range spans {
 			if len(span.Skipped) > 0 {
@@ -391,7 +400,11 @@ func (s Store) transitionSpans(ctx context.Context, r *Record, dir string, start
 				if err != nil {
 					return nil, err
 				}
-				spans = append(spans, reviewSpan{Checkout: label, Before: b, After: a})
+				uncertain, err := s.uncertainDirtyBeforeSwitch(ctx, before, oldHead, latest, after, p)
+				if err != nil {
+					return nil, err
+				}
+				spans = append(spans, reviewSpan{Checkout: label, Before: b, After: a, Skipped: uncertain})
 			}
 			label.Branch = checkoutBranch(f[2], label.Branch)
 			base, latest, committed = tree, tree, false
@@ -430,6 +443,35 @@ func (s Store) transitionSpans(ctx context.Context, r *Record, dir string, start
 	}
 	spans = append(spans, reviewSpan{Checkout: label, Before: base, After: after, Skipped: skipped})
 	return spans, nil
+}
+
+// A commit omits unstaged files. If an initially dirty file is clean in that
+// commit and different at the final capture, the reflog cannot establish
+// whether it was restored before the switch or discarded by the switch.
+func (s Store) uncertainDirtyBeforeSwitch(ctx context.Context, before, oldHead, committed, after, root string) ([]string, error) {
+	args := []string{"--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", oldHead, before, "--"}
+	if root != "" {
+		args = append(args, root)
+	}
+	raw, err := s.command(ctx, args...).Output()
+	if err != nil {
+		return nil, err
+	}
+	var skipped []string
+	for _, name := range bytes.Split(raw, []byte{0}) {
+		p := string(name)
+		if p == "" {
+			continue
+		}
+		old, oldOK := s.entry(ctx, oldHead, p)
+		saved, savedOK := s.entry(ctx, committed, p)
+		initial, initialOK := s.entry(ctx, before, p)
+		final, finalOK := s.entry(ctx, after, p)
+		if old == saved && oldOK == savedOK && (initial != final || initialOK != finalOK) {
+			skipped = append(skipped, p)
+		}
+	}
+	return skipped, nil
 }
 
 func inCheckout(file, root string) bool { return root == "" || strings.HasPrefix(file, root+"/") }

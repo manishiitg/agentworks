@@ -68,6 +68,15 @@ func TestGitReviewKeepsBranchWorkAcrossSwitchesAndMultipleRepositories(t *testin
 	if len(seen) != 3 || !seen["services/api:main"] || !seen["services/api:incoming"] || !seen["tools/api:main"] {
 		t.Fatalf("checkout contexts: %v", seen)
 	}
+	for _, group := range GroupChanges(ctx, f.s.Root, c.Changes, c.NewRepos, all) {
+		AddChatGitState(ctx, f.s.Root, &group, r.BeforeHeads[group.Root], all)
+		if group.Root == "services/api" && group.Branch == "main" && (len(group.Uncommitted) != 0 || len(group.Commits) != 0 || group.CommitsKnown) {
+			t.Fatalf("historical branch inherited current Git state: %+v", group)
+		}
+		if group.Root == "services/api" && group.Branch == "incoming" && len(group.Uncommitted) == 0 {
+			t.Fatal("current branch lost its real Git state")
+		}
+	}
 	// Creating a new branch carries the existing dirty files without edits.
 	if _, err := f.s.Begin(ctx, "branch-only"); err != nil {
 		t.Fatal(err)
@@ -119,6 +128,35 @@ func TestGitReviewKeepsBranchWorkAcrossSwitchesAndMultipleRepositories(t *testin
 		if _, err := f.s.CompareSaved(ctx, []string{r.ID, next.ID, later.ID}, change.Path, change.Key, all); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// PR459: an initial dirty file restored before committing another file could
+// be silently put back into the saved after-tree while crossing a checkout.
+func TestGitReviewRestoredDirtyFileIsIncompleteAcrossSwitch(t *testing.T) {
+	f := newCrew(t)
+	ctx := t.Context()
+	f.repo("app", map[string]string{"dirty.txt": "original\n", "work.txt": "original\n"})
+	f.git("app", "branch", "other")
+	f.put("app/dirty.txt", "already dirty\n")
+	if _, err := f.s.Begin(ctx, "restore-and-switch"); err != nil {
+		t.Fatal(err)
+	}
+	f.put("app/dirty.txt", "original\n")
+	f.put("app/work.txt", "real work\n")
+	f.git("app", "commit", "-qm", "work", "--", "work.txt")
+	f.git("app", "checkout", "-q", "other")
+	r, err := f.s.Finish(ctx, "restore-and-switch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.Compare(ctx, r.ID, "", func(string) bool { return true })
+	if err != nil || !strings.Contains(c.Note, "Incomplete") || len(c.Changes) != 1 || c.Changes[0].Path != "app/work.txt" {
+		t.Fatalf("restoration was silently treated as complete: %v %+v", err, c)
+	}
+	denied, err := f.s.Compare(ctx, r.ID, "", func(string) bool { return false })
+	if err != nil || denied.Note != "" || len(denied.Changes) != 0 {
+		t.Fatalf("incomplete metadata bypassed current grants: %v %+v", err, denied)
 	}
 }
 

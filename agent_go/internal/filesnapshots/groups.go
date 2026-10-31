@@ -353,7 +353,7 @@ var commitID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 // commit the chat first saw) is known and still an ancestor of HEAD, the
 // commits made since. Read-only.
 func AddChatGitState(ctx context.Context, root string, g *Group, start string, allow func(string) bool) {
-	if g.Kind != "repo" {
+	if g.Kind != "repo" || g.historical {
 		return
 	}
 	abs := filepath.Join(root, filepath.FromSlash(g.Root))
