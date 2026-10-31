@@ -230,3 +230,34 @@ it('omits chats already in desktop tabs but keeps the same ID on another locatio
     useConnectedWorkStore.setState({ refreshActivity: refresh, connections: [], activity: {} })
   }
 })
+
+// PLAT-746-251: connecting a server must not create an idle monitor button.
+it('hides across idle locations, shows remote work and closes when the last run finishes', async () => {
+  const previous = window.electronAPI
+  const saved = useConnectedWorkStore.getState()
+  window.electronAPI = { getDesktopConnection: () => 'local' }
+  useConnectedWorkStore.setState({ connections: [{ id: 'local', name: 'Local', server: '' }, { id: 'remote', name: 'Team', server: 'https://example.com' }],
+    activity: { local: { status: 'connected', sessions: [] }, remote: { status: 'connected', sessions: [] } }, refreshActivity: vi.fn(async () => {}) })
+  const { host, root } = renderMonitor()
+  const remote = async (sessions: ActiveSessionInfo[], status: 'connected' | 'unavailable' = 'connected') => {
+    await act(async () => useConnectedWorkStore.setState(state => ({ activity: { ...state.activity, remote: { status, sessions } } })))
+  }
+  try {
+    await act(async () => root.render(<GlobalActivityMonitor />))
+    expect(host.querySelector('button')).toBeNull()
+    await remote([workflowSession()])
+    click(host.querySelector('button[data-testid="tour-active-work-switcher"]'))
+    expect(document.querySelector('[role="menu"]')).not.toBeNull()
+    await remote([])
+    expect(host.querySelector('button')).toBeNull()
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+    await remote([workflowSession({ needs_user_input: true })])
+    expect(host.querySelector('button')).not.toBeNull()
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+    await remote([workflowSession()], 'unavailable')
+    expect(host.querySelector('button')).toBeNull()
+  } finally {
+    await act(async () => root.unmount()); host.remove(); window.electronAPI = previous
+    useConnectedWorkStore.setState(saved)
+  }
+})

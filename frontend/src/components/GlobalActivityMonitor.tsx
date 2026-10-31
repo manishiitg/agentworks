@@ -402,12 +402,6 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     }
   }, [open ])
 
-  // Items can disappear (a run finishes) while the panel is open; never show
-  // a stale list, and close instead of stranding an empty panel.
-  useEffect(() => {
-    if (!desktop && open && activityItems.length === 0 && unavailable.length === 0) setOpen(false)
-  }, [desktop, open, activityItems.length, unavailable.length])
-
   const aggregate = useMemo(() => {
     let needsInput = 0
     let working = 0
@@ -423,6 +417,10 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     }
     return { needsInput, working }
   }, [activityItems])
+
+  const hasActiveWork = aggregate.working > 0 || aggregate.needsInput > 0
+  // A completed run closes its panel so the next run starts with a closed monitor.
+  useEffect(() => { if (!hasActiveWork) setOpen(false) }, [hasActiveWork])
 
   const selectSession = useCallback((session: ActiveSessionInfo) => {
     setOpen(false)
@@ -468,16 +466,14 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     }
   }, [sidebar, open, activityItems.length])
 
-  if (activityItems.length === 0 && !desktop) return null
+  if (!hasActiveWork) return null
 
   const count = activityItems.length
   const checkingActivity = desktop && connections.some(connection => !remoteActivity[connection.id])
   // End user only cares about two states: is it working, or is it waiting for me?
-  const buttonLabel = count === 0 ? (unavailable.length ? 'Activity unavailable' : checkingActivity ? 'Checking activity…' : 'No active work') : aggregate.needsInput > 0
+  const buttonLabel = aggregate.needsInput > 0
     ? `${aggregate.needsInput} need${aggregate.needsInput === 1 ? 's' : ''} input`
-    : aggregate.working > 0
-      ? `${aggregate.working} running`
-      : `${count} active`
+    : `${aggregate.working} running`
   const dotClasses = aggregate.needsInput > 0
     ? 'bg-amber-500 dark:bg-amber-400'
     : aggregate.working > 0
