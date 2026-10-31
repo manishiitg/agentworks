@@ -11,6 +11,7 @@ vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedS
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
 vi.mock('./useWorkspaceStatus', () => ({ useWorkspaceStatus: () => ({ snapshot: mocks.status, refresh: vi.fn() }) }))
 vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: (reference?: { workspacePath: string; sessionId: string; snapshotId: string }) => void }) => <><button onClick={() => onOpen({ workspacePath: 'Crew/example', sessionId: 'chat', snapshotId: 'latest' })}>Latest reply</button><button onClick={() => onOpen()}>All chat changes</button></> }))
+vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => ({ connected: true, label: 'Connected', name: 'Chrome' }) }))
 vi.mock('../../components/workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser · Connected</button> }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: mocks.documents }), selectReportDocument: vi.fn() }))
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
@@ -32,18 +33,30 @@ async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => P
  finally { await act(async () => root.unmount()); host.remove() }
 }
 it('shows actual workspace status without promoting occasional tools, and keeps All tools searchable', async () => {
- mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'My Google', detail:'Google · Connected', destination:'mcp:gmail' }]
- mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }]
+ mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'Google', detail:'person@example.com · Connected', destination:'mcp:gmail' }, { id:'slack:s', label:'My Slack account', detail:'Personal Slack · Connected', connected:true, destination:'mcp:slack-account' }, { id:'bot:b', label:'Project helper', detail:'Project helper · Identity verified', connected:true, destination:'mcp:slack-bot' }]
+ mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }, { id:'schedule:next',label:'Next summary',detail:'Jan 1, 8:00 AM',nextRunAt:'2099-01-01T08:00:00Z',destination:'schedules:schedules' }]
  await render('dev', async host => {
   expect(host.querySelector('h2')?.textContent).toBe('Changes')
   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Latest reply')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('files', expect.stringContaining('reply:'))
   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'All chat changes')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('files', 'review-all-chat')
-  expect(host.textContent).toContain('MCPs2 · 1 needs attention')
+  expect(host.textContent).not.toContain('person@example.com')
+  expect(host.textContent).not.toContain('Morning summary')
+  expect(host.querySelector('[aria-label="Automations"]')?.textContent).toContain('2 · Jan 1, 8:00 AM')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Slack bot · Project helper · Identity verified"]')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'slack-bot')
+  expect(host.querySelector('[aria-label="Google · person@example.com · Connected"]')).not.toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Google · person@example.com · Connected"]')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'gmail')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Automations"]')!.click())
+  expect(host.textContent).toContain('MCPs2 · 1 need attention')
   expect(host.textContent).not.toContain('Notes account'); expect(host.textContent).not.toContain('Other account')
-  expect(host.textContent).toContain('My GoogleGoogle · Connected')
+  expect(host.textContent).toContain('Googleperson@example.com · Connected')
   expect(host.textContent).toContain('Morning summaryPaused')
+  expect(host.textContent).toContain('Slack botProject helper · Identity verified')
+  expect(host.textContent).toContain('My Slack accountPersonal Slack · Connected')
   for (const label of ['Recent', 'Costs & usage', 'Models', 'Chat history']) expect(host.textContent).not.toContain(label)
   const event = vi.fn(); window.addEventListener('open-quick-switcher', event)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="All tools"]')!.click())
@@ -57,7 +70,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(host.querySelector('h2')?.textContent).toBe('Changes')
   expect(host.textContent).not.toContain('Models')
   mocks.open.mockClear()
-  const app = [...host.querySelectorAll('button')].find(node => node.textContent?.startsWith('MCPs'))!
+  const app = host.querySelector<HTMLButtonElement>('[aria-label="MCPs · 2 · 1 need attention"]')!
   mocks.server = 'another-server'; await act(async () => app.click())
   expect(mocks.open).not.toHaveBeenCalled()
  })
@@ -71,7 +84,10 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
  await render('cowork', async host => {
   expect(host.textContent).not.toContain('Results')
   expect(host.textContent).not.toContain('Finished files')
-  expect([...host.querySelectorAll('summary')].map(node=>node.textContent)).toEqual(['Dashboards1','Motion dashboards1','Artifacts1'])
+  expect(host.querySelector('[aria-label="Dashboards"]')?.textContent).toBe('Dashboards3')
+  expect(host.textContent).not.toContain('Overview')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Dashboards"]')!.click())
+  expect(host.querySelector('[aria-label="Artifacts"]')?.textContent).toContain('Project brief')
   for (const [title,path] of [['Overview','overview.html'],['Spending history','history.html'],['Project brief','brief.html']]) {
    const row=[...host.querySelectorAll('button')].find(node=>node.textContent===title)!
    await act(async()=>row.click())

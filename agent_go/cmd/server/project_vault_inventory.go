@@ -17,11 +17,13 @@ import (
 // The panel and chat read the same names-only snapshot. Selection still uses
 // the existing settings, personal-account and laptop operations.
 type projectVaultItem struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Kind     string `json:"kind"`
-	Provider string `json:"provider,omitempty"`
-	Owner    string `json:"owner,omitempty"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Kind         string `json:"kind"`
+	Provider     string `json:"provider,omitempty"`
+	AccountEmail string `json:"account_email,omitempty"`
+	App          string `json:"app,omitempty"`
+	Owner        string `json:"owner,omitempty"`
 	// Source says whose it is, in plain words: "you", a Company group's name, "this project" or "the project's owner".
 	Source    string `json:"source,omitempty"`
 	Status    string `json:"status"`
@@ -337,7 +339,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 			if account.Enabled && account.Status == services.GmailConnectionConnected {
 				status = "connected"
 			}
-			company.Items = append(company.Items, projectVaultItem{ID: account.ID, Name: account.DisplayName, Provider: "Google", Kind: "google", Status: status, Selected: account.ID == current.ID})
+			company.Items = append(company.Items, projectVaultItem{ID: account.ID, Name: account.DisplayName, AccountEmail: account.Email, Provider: "Google", Kind: "google", Status: status, Selected: account.ID == current.ID})
 		}
 		groups[company.ID] = company
 	}
@@ -353,7 +355,11 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				if a.Connected {
 					status = "connected"
 				}
-				personal.Items = append(personal.Items, projectVaultItem{ID: a.ID, Name: a.Label, Provider: "Google", Owner: a.Owner, Kind: "google", Status: status, Selected: a.Selected, CanSelect: a.CanAdd || a.CanDetach})
+				email := ""
+				if a.Mine {
+					email = a.Google.Email
+				}
+				personal.Items = append(personal.Items, projectVaultItem{ID: a.ID, Name: a.Label, AccountEmail: email, Provider: "Google", Owner: a.Owner, Kind: "google", Status: status, Selected: a.Selected, CanSelect: a.CanAdd || a.CanDetach})
 			}
 		}
 	} else {
@@ -366,7 +372,13 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 			for _, a := range result.Accounts {
 				seen := false
 				for _, group := range groups {
-					seen = seen || slices.ContainsFunc(group.Items, func(i projectVaultItem) bool { return i.ID == a.ID && i.Kind == "mcp" })
+					for i := range group.Items {
+						if group.Items[i].ID == a.ID && group.Items[i].Kind == "mcp" {
+							// Keep the canonical MCP selection; identify the already-authorized personal Slack app.
+							group.Items[i].App = "slack"
+							seen = true
+						}
+					}
 				}
 				if seen {
 					continue

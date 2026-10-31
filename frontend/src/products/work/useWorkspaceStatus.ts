@@ -6,7 +6,7 @@ import { productWebhooksApi } from '../../api/productWebhooks'
 import { slackBotsApi, slackBotName } from '../../components/integrations/ProductSlackPanel'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 
-export type WorkspaceStatusRow = { id: string; label: string; detail: string; destination: string; attention?: boolean }
+export type WorkspaceStatusRow = { id: string; label: string; detail: string; destination: string; attention?: boolean; connected?: boolean; nextRunAt?: string }
 type Snapshot = { scope: string; apps?: WorkspaceStatusRow[]; automations?: WorkspaceStatusRow[]; errors: string[] }
 const accountState = (item: ProjectVaultItem) => item.status === 'connected' || item.status === 'online' ? 'Connected' : item.status === 'needs_attention' ? 'Needs attention' : item.status === 'offline' ? 'Offline' : 'Saved'
 export const nextSchedule = (enabled: boolean, next?: string) => !enabled ? 'Paused' : next && Number.isFinite(Date.parse(next)) ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(next)) : 'On'
@@ -30,17 +30,17 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
    const jobs: Promise<void>[] = []
    if (has('mcp:connected') || has('mcp:gmail') || has('mcp:slack-account')) jobs.push(loadProjectVault(workspacePath).then(inventory => {
     const selected = inventory.vaults.flatMap(vault => vault.items).filter(item => item.selected && ['mcp','google','slack'].includes(item.kind)).flatMap(item => {
-     const destination = item.kind === 'mcp' ? 'mcp:connected' : item.kind === 'google' ? 'mcp:gmail' : 'mcp:slack-account'
-     return has(destination) ? [{ id: `${item.kind}:${item.id}`, label: item.name, detail: `${item.kind === 'mcp' ? 'MCP' : item.kind === 'google' ? 'Google' : 'Slack account'} · ${accountState(item)}`, destination, attention: item.status === 'needs_attention' || item.status === 'offline' }] : []
+     const destination = item.kind === 'slack' || (item.app === 'slack' && has('mcp:slack-account')) ? 'mcp:slack-account' : item.kind === 'google' ? 'mcp:gmail' : 'mcp:connected'
+     return has(destination) ? [{ id: `${item.kind}:${item.id}`, label: item.kind === 'google' ? 'Google' : destination === 'mcp:slack-account' ? 'My Slack account' : item.name, detail: `${item.account_email || item.name} · ${accountState(item)}`, destination, connected: item.status === 'connected' || item.status === 'online', attention: item.status === 'needs_attention' || item.status === 'offline' }] : []
     })
     appRows.push(...selected)
    }).catch(() => { out.errors.push('Connections could not be loaded.') }))
    if (has('mcp:slack-bot')) jobs.push(slackBotsApi.list(workspacePath).then(data => {
     const bot = data.allow_bots !== false && data.bots.find(item => item.id === data.selected_id)
-    if (bot) appRows.push({ id: `bot:${bot.id}`, label: slackBotName(bot), detail: `Slack bot · ${!bot.configured ? 'Needs setup' : !bot.enabled ? 'Paused' : bot.identity?.verified ? 'Identity verified' : 'Saved'}`, destination: 'mcp:slack-bot', attention: !bot.configured })
+    if (bot) appRows.push({ id: `bot:${bot.id}`, label: slackBotName(bot), detail: `${slackBotName(bot)} · ${!bot.configured ? 'Needs setup' : !bot.enabled ? 'Paused' : bot.identity?.verified ? 'Identity verified' : 'Saved'}`, destination: 'mcp:slack-bot', connected: bot.configured && bot.enabled && bot.identity?.verified === true, attention: !bot.configured })
    }).catch(() => { out.errors.push('Slack bot could not be loaded.') }))
    const automationJobs: Promise<WorkspaceStatusRow[]>[] = []
-   if (has('schedules:schedules')) automationJobs.push(schedulerApi.listJobs({ entity_type: 'product', limit: 1000 }).then(data => (data.jobs || []).filter(job => job.workspace_path?.replace(/\/+$/, '') === workspacePath.replace(/\/+$/, '')).map(job => ({ id: `schedule:${job.id}`, label: job.name, detail: nextSchedule(job.enabled, job.next_run_at), destination: 'schedules:schedules' }))))
+   if (has('schedules:schedules')) automationJobs.push(schedulerApi.listJobs({ entity_type: 'product', limit: 1000 }).then(data => (data.jobs || []).filter(job => job.workspace_path?.replace(/\/+$/, '') === workspacePath.replace(/\/+$/, '')).map(job => ({ id: `schedule:${job.id}`, label: job.name, detail: nextSchedule(job.enabled, job.next_run_at), nextRunAt: job.enabled ? job.next_run_at : undefined, destination: 'schedules:schedules' }))))
    if (has('schedules:conditions')) automationJobs.push(conditionTriggersApi.list(projectId, 'work').then(data => (data.triggers || []).map(item => ({ id: `watcher:${item.id}`, label: item.name, detail: item.completed_at ? 'Completed' : item.enabled ? 'On' : 'Paused', destination: 'schedules:conditions' }))))
    if (has('schedules:triggers')) automationJobs.push(productWebhooksApi.list({ profileId: 'work', projectId }).then(data => (data.triggers || []).map(item => ({ id: `trigger:${item.id}`, label: item.name, detail: item.enabled ? 'On' : 'Paused', destination: 'schedules:triggers' }))))
    if (automationJobs.length) jobs.push(Promise.allSettled(automationJobs).then(values => {

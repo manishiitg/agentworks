@@ -35,8 +35,8 @@ const scope = (relay = false, project = 'example') => projectMenuHistoryScope(st
 
 it.each([false, true])('uses Crew category order and keeps every product destination (%s)', async relay => {
   await render(relay)
-  expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Motion dashboards0', 'Use', 'Share', 'Integrations', 'Setup'])
-  expect([...host.querySelectorAll<HTMLDetailsElement>('details')].map(node => node.open)).toEqual([true, false, false, false, false, false])
+  expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
+  expect([...host.querySelectorAll<HTMLDetailsElement>('details')].map(node => node.open)).toEqual([true, false, false, false, false])
   for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'Access & sharing', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   if (relay) {
     for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
@@ -104,12 +104,15 @@ it.each([false, true])('groups named dashboards once and preserves selection in 
     { id: 'budget', path: 'db/reports/budget.html', title: 'Budget', order: 1 },
   ]
   await render(relay)
+  await act(async () => button('Dashboards').click())
   expect([...host.querySelector('[aria-label="Project dashboards"]')!.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Overview', 'Budget'])
   await act(async () => button('Budget').click())
   expect(selectReportDocument).toHaveBeenLastCalledWith('Workflow/example', 'db/reports/budget.html')
   expect(state.open).toHaveBeenLastCalledWith('report', undefined)
   expect(useProjectMenuHistoryStore.getState().recent[scope(relay)]).toEqual(['report'])
+  await act(async () => button('Dashboards').click())
   expect(host.querySelectorAll('[aria-label="Project dashboards"]')).toHaveLength(1)
-  expect(host.querySelector('[aria-label="Project dashboards"]')?.closest('section')?.querySelector('h2')?.textContent).toBe('Recent')
+  const recent = [...host.querySelectorAll('section')].find(section => section.querySelector('h2')?.textContent === 'Recent')!
+  expect(recent.contains(host.querySelector('[aria-label="Project dashboards"]'))).toBe(true)
 })
 

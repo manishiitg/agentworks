@@ -15,14 +15,16 @@ it('groups by the saved label and opens a motion draft in the selected own chat'
    { id:'overview', title:'Motion budget', path:'db/reports/a.html', order:0 },
    { id:'playback', title:'Spending history', path:'db/reports/b.html', order:1, motion:true },
   ]} createTarget={{ tabId:'own-tab' }} onSelect={open} />))
+  expect(host.querySelector('[aria-label="Motion dashboards"]')).toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Dashboards"]')!.click())
   const motion = host.querySelector('[aria-label="Motion dashboards"]')!
   expect(motion.textContent).toContain('Spending history')
   expect(motion.textContent).not.toContain('Motion budget')
   expect(host.querySelector('[aria-label="Project dashboards"]')?.textContent).toContain('Motion budget')
-  expect(motion.textContent).toContain('changes over time')
+  expect(host.querySelector('[aria-label="Artifacts"]')).toBeNull()
   await act(async () => [...motion.querySelectorAll('button')].find(b=>b.textContent==='Spending history')!.click())
   expect(open).toHaveBeenCalledWith('db/reports/b.html')
-  await act(async () => [...motion.querySelectorAll('button')].find(b=>b.textContent==='Create motion dashboard')!.click())
+  await act(async () => [...host.querySelectorAll('button')].find(b=>b.textContent==='Create motion dashboard')!.click())
   expect(draft).toHaveBeenCalledWith(expect.objectContaining({ tabId:'own-tab', message:expect.stringContaining('motion dashboard') }))
  } finally { await act(async () => root.unmount()); host.remove() }
 })
