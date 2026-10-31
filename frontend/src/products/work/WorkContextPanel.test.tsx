@@ -64,9 +64,11 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
   for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','Access & sharing']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
+  expect(host.querySelector('[aria-label="Back to workspace"]')?.textContent).toBe('Full menu')
+  expect(host.textContent).not.toContain('Back to workspace')
   const files = [...host.querySelectorAll('button')].find(node => node.textContent === 'Files')!
   await act(async () => files.click()); expect(mocks.open).toHaveBeenLastCalledWith('files')
-  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Back to workspace')!.click())
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to workspace"]')!.click())
   expect(host.querySelector('h2')?.textContent).toBe('Changes')
   expect(host.textContent).not.toContain('Models')
   mocks.open.mockClear()
