@@ -430,6 +430,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "manage_my_vaults" {
 		return personalLaptopSettingsClaims(c) && personVaultActive(c.UserID)
 	}
+	if tool.Name == "computer_use" {
+		return computerUseAllowed(c) && externalWorkspaceAllowed(c) && (c.AccessToken == nil || c.AccessToken.Allows("crews:write"))
+	}
 	if tool.Name == "manage_laptop_access" || isExternalLaptopFileTool(tool.Name) {
 		return personalLaptopSettingsClaims(c) && (externalWorkspaceAllowed(c) || externalFileAuthoringAllowed(c, nil))
 	}

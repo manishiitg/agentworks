@@ -3091,6 +3091,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/secrets", api.handleSecretsImport).Methods("POST")
 	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/laptop", api.handleCrewLaptopSettings).Methods("GET", "PUT")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/computer-use", api.handleCrewComputerUse).Methods("GET", "POST")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/laptop/folders", api.handleLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
@@ -6647,6 +6648,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 
+					// Private desktop captures belong to this interactive owner chat, never the project.
+					if !crewReadOnlyTurn && computerUseAllowed(GetUserFromContext(r.Context())) && websiteDeviceClaims(GetUserFromContext(r.Context())) && laptopBuilderTurn(req, resolvedProfile) && crewProjectOwnedByCaller(currentUserID, profileBindingRoot) {
+						if captures, err := computerUseChatDirectory(req.SelectedFolder, sessionID); err == nil {
+							if err := os.MkdirAll(captures, 0700); err == nil {
+								guardRead = append(guardRead, captures)
+							}
+						}
+					}
 					if brainGrant != "" {
 						guardRead = append(guardRead, brainGrant)
 					}
@@ -7109,6 +7118,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := api.registerCrewSyncChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
 					sendError(fmt.Sprintf("Failed to register project sync tool: %v", err), true)
+					return
+				}
+				if err := api.registerComputerUseTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
+					sendError("Failed to register Computer use", true)
 					return
 				}
 				// Suggestions and decisions waiting on the owner, as in the Suggestions panel.
