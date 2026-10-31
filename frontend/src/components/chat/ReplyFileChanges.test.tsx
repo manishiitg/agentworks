@@ -37,10 +37,10 @@ vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn(async () => ({})), openWorkspacePaneChatWithDraft: vi.fn(async () => ({ tabId: 'tab1' })) }))
 vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: () => 0, assertChatIdentityCurrent: () => undefined }))
 vi.mock('../../utils/projectIntegrationNavigation', () => ({ openProjectIntegrations: vi.fn() }))
-vi.mock('../workspace/chatFileNavigation', () => ({ openChatFiles: vi.fn() }))
+vi.mock('../workspace/chatFileNavigation', () => ({ openChatFiles: vi.fn(), openReplyChanges: vi.fn() }))
 vi.mock('../workspace/chatFileReviewData', () => ({ markFilesReviewed: vi.fn(), useReviewRevision: () => [0] }))
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
-import { openChatFiles } from '../workspace/chatFileNavigation'
+import { openChatFiles, openReplyChanges } from '../workspace/chatFileNavigation'
 import api from '../../services/api'
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
@@ -49,14 +49,12 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 HTMLElement.prototype.scrollIntoView ??= () => {}
 
 // The reply event carries the summary the server computed at capture time, with the actions every viewer gets.
-// Cards start closed; most cases open the card first, as a person would.
+// Chat shows a compact toolbar; the right panel retains the detailed actions and file list.
 async function render(canBuild: boolean, total = 2, latestSnapshotId?: string, withSummary = true, opened = true) {
   state.canBuild = canBuild; state.total = total
   const summary = withSummary ? { files: total, added: 6, removed: 1, groups: total ? [crewFiles, group] : [], actions: [review] } : undefined
   const host = document.createElement('div'); document.body.append(host)
-  await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId, summary }} />))
-  const title = button(host, 'Files changed during this reply')
-  if (opened && title) await act(async () => title.click())
+  await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId, summary }} panel={opened} />))
   return host
 }
 const openMore = async (host: HTMLElement) => act(async () => { const trigger = button(host, 'More actions')!; trigger.focus(); trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
@@ -109,37 +107,36 @@ describe('reply card groups', () => {
     expect(button(host, 'More actions')).toBeUndefined()
     expect(button(host, 'Undo this reply')).toBeUndefined()
   })
-  it('draws the row in the server\'s order; every card starts closed, even the latest', async () => {
+  it('keeps the detailed server actions in the panel and the chat toolbar compact', async () => {
     const closed = await render(true, 2, undefined, true, false)
-    expect(closed.querySelector('[aria-expanded="false"]')).not.toBeNull()
+    expect(closed.querySelector('[aria-label="Reply changes"]')).not.toBeNull()
     expect(button(closed, 'Undo this reply')).toBeUndefined()
     const latest = await render(true)
-    expect(latest.textContent).toContain('Files changed during this reply · 2 files')
+    expect(latest.textContent).toContain('2 files')
     expect(latest.textContent).toContain('+4')
     expect(rowLabels(latest)).toEqual(['Review changes', 'Commit on the current branch', 'Push to a branch and open a PR', 'Check this change', 'Add button'])
     expect(latest.querySelector('section > div:first-child [aria-hidden].w-px')).not.toBeNull()
     expect(button(latest, 'Undo this reply')).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
     const older = await render(true, 2, 'newer', true, false)
-    expect(older.textContent).not.toContain('PR #305')
-    expect(button(older, 'Check this change')).toBeDefined()
+    expect(older.querySelector('a[aria-label*="PR #305"]')).not.toBeNull()
+    expect(button(older, 'Check this change')).toBeUndefined()
     // Undo lives only inside the opened card, under the file list.
     expect(button(older, 'Undo this reply')).toBeUndefined()
   })
-  it('renders from the reply event without the comparison; PR status loads only for an open card', async () => {
+  it('opens the exact saved reply from the compact icon and keeps PR shortcuts visible without an inline file list', async () => {
     vi.mocked(api.get).mockClear()
-    const older = await render(true, 2, 'newer', true, false)
-    expect(older.textContent).toContain('Files changed during this reply · 2 files')
-    expect(older.textContent).toContain('+6')
-    expect(snapshotOps()).toEqual(['reply_card'])
-    await act(async () => button(older, 'Files changed during this reply')!.click())
-    expect(older.textContent).toContain('tts.py')
+    const compact = await render(true, 2, 'newer', true, false)
+    expect(compact.textContent).toContain('fix-tts')
+    expect(compact.textContent).not.toContain('tts.py')
+    expect(compact.querySelector('a[title="Review comments"]')).not.toBeNull()
     expect(snapshotOps()).toEqual(['reply_card', 'reply_card+pr'])
-    // A reply saved before summaries were sent still loads its card.
-    vi.mocked(api.get).mockClear()
-    const saved = await render(true, 2, undefined, false, false)
-    expect(saved.textContent).toContain('Files changed during this reply · 2 files')
-    expect(snapshotOps()).toEqual(['snapshot_compare', 'reply_card+pr'])
+    await act(async () => button(compact, 'Open 2 files changed in this reply')!.click())
+    expect(openReplyChanges).toHaveBeenLastCalledWith(expect.objectContaining({ snapshotId: 's', sessionId: 'chat-a', workspacePath: 'Crew/x' }))
+    expect(compact.textContent).not.toContain('tts.py')
+    const panel = await render(true)
+    expect(panel.textContent).toContain('tts.py')
+    expect(button(panel, 'Undo this reply')).toBeDefined()
   })
   it('keeps the server\'s row buttons in the row and the rest, with the next Git step first, under More', async () => {
     state.extraCommands = ['second', 'third', 'fourth']; state.nextStep = 'update_pr'

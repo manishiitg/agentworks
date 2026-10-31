@@ -84,7 +84,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const mcps = (snapshot?.apps || []).filter(item => item.destination === 'mcp:connected')
   const mcpAttention = mcps.filter(item => item.attention).length
   const mcpDetail = !snapshot ? 'Loading…' : snapshot.errors.includes('Connections could not be loaded.') ? 'Unavailable' : `${mcps.length}${mcpAttention ? ` · ${mcpAttention} ${mcpAttention === 1 ? 'needs' : 'need'} attention` : ''}`
-  const changes = reviewSessionId && allowed('files') ? <Group title="Changes"><ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reviewScope => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reviewScope === 'outside-git' ? 'review-outside-git' : 'review-uncommitted'); onOpen('files') }}/></Group> : null
+  const changes = reviewSessionId && allowed('files') ? <Group title="Changes"><ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reply => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reply ? `reply:${JSON.stringify(reply)}` : 'review-all-chat'); onOpen('files') }}/></Group> : null
   return <WorkspaceContextCard onFullMenu={() => setFullMenuScope(scope)}>
     {mode === 'dev' && changes}
     {byId.has('dashboard') && <WorkspaceDashboardMenu documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}

@@ -10,7 +10,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selec
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: mocks.server }), { getState: () => ({ activeWorkspaceId: mocks.server }) }) }))
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
 vi.mock('./useWorkspaceStatus', () => ({ useWorkspaceStatus: () => ({ snapshot: mocks.status, refresh: vi.fn() }) }))
-vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: (scope: 'uncommitted') => void }) => <button onClick={() => onOpen('uncommitted')}>Changes</button> }))
+vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: (reference?: { workspacePath: string; sessionId: string; snapshotId: string }) => void }) => <><button onClick={() => onOpen({ workspacePath: 'Crew/example', sessionId: 'chat', snapshotId: 'latest' })}>Latest reply</button><button onClick={() => onOpen()}>All chat changes</button></> }))
 vi.mock('../../components/workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser · Connected</button> }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: mocks.documents }), selectReportDocument: vi.fn() }))
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
@@ -36,8 +36,10 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
  mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }]
  await render('dev', async host => {
   expect(host.querySelector('h2')?.textContent).toBe('Changes')
-  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
-  expect(mocks.target).toHaveBeenLastCalledWith('files', 'review-uncommitted')
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Latest reply')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('files', expect.stringContaining('reply:'))
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'All chat changes')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('files', 'review-all-chat')
   expect(host.textContent).toContain('MCPs2 · 1 needs attention')
   expect(host.textContent).not.toContain('Notes account'); expect(host.textContent).not.toContain('Other account')
   expect(host.textContent).toContain('My GoogleGoogle · Connected')
