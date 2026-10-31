@@ -86,9 +86,14 @@ case "$slots_mode" in
       rc=1
     else
       # The programs the agent service starts as a slot, found on its own PATH (PLAT-872-88): Claude and node (its SDK
-      # bridge). Codex and Cursor still run as the app account; add them when they move into slots (PLAT-872-86).
-      agent_path="$(tr '\0' '\n' < "/proc/$(main_pid "$PRODUCT-agent")/environ" 2>/dev/null | sed -n 's/^PATH=//p')"
-      programs="$(PATH="${agent_path:-/usr/bin:/bin}" bash -c 'for p in claude node; do command -v "$p"; done' | paste -sd, -)"
+      # bridge), only on a server whose Claude login is a server setting, which is when Claude runs as the slot (names
+      # only are read here). Codex and Cursor still run as the app account; add them when they move into slots.
+      agent_environ="/proc/$(main_pid "$PRODUCT-agent")/environ"
+      agent_path="$(tr '\0' '\n' < "$agent_environ" 2>/dev/null | sed -n 's/^PATH=//p')"
+      programs=""
+      if tr '\0' '\n' < "$agent_environ" 2>/dev/null | grep -qE '^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)=.'; then
+        programs="$(PATH="${agent_path:-/usr/bin:/bin}" bash -c 'for p in claude node; do command -v "$p"; done' | paste -sd, -)"
+      fi
       env -i PATH=/usr/bin:/bin HOME="${HOME:-/}" ${ENV_LINES[@]+"${ENV_LINES[@]}"} "$RELEASE/bin/slotcheck" --docs "$DOCS" --app "$APP" --level "$LEVEL" --programs "$programs" || rc=$?
     fi
     ;;
