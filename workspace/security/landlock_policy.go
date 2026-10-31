@@ -1,5 +1,7 @@
 package security
 
+import "strings"
+
 const landlockRunnerName = "video-studio-landlock-runner"
 
 // LandlockPolicy is serialized by the workspace service and consumed by the
@@ -38,6 +40,10 @@ type LandlockPolicy struct {
 	// ShellWrap makes every shell the command starts run under one more Landlock layer (PLAT-872-84). Requires
 	// PrivateTmp (the namespaces).
 	ShellWrap *ShellWrap `json:"shell_wrap,omitempty"`
+	// OwnLoginEnv, when set, is the only login variables the program keeps: the launcher removes every other login-like
+	// variable (names ending _API_KEY, _AUTH_TOKEN or _OAUTH_TOKEN; SECRET_ names are a Crew's own) before it starts.
+	// One CLI never holds another provider's company login (PLAT-872-91). An empty list keeps none.
+	OwnLoginEnv *[]string `json:"own_login_env,omitempty"`
 }
 
 // ShellWrap: inside the command's mount namespace the launcher binds the real shells to a private path and mounts
@@ -59,4 +65,35 @@ type SandboxCapability struct {
 	Available bool   `json:"available"`
 	Backend   string `json:"backend,omitempty"`
 	Detail    string `json:"detail,omitempty"`
+}
+
+// KeepOwnLoginEnv removes from env every login-like variable not in own (nil own: env unchanged).
+func KeepOwnLoginEnv(env []string, own *[]string) []string {
+	if own == nil {
+		return env
+	}
+	keep := map[string]bool{}
+	for _, name := range *own {
+		keep[name] = true
+	}
+	out := env[:0:0]
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		if keep[name] || !isLoginEnvName(name) {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func isLoginEnvName(name string) bool {
+	if strings.HasPrefix(name, "SECRET_") {
+		return false
+	}
+	for _, suffix := range []string{"_API_KEY", "_AUTH_TOKEN", "_OAUTH_TOKEN"} {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
 }

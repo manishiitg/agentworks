@@ -82,7 +82,7 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 		return err
 	}
 	_ = os.Unsetenv(shellLayerEnv)
-	if err := syscall.Exec(argv[0], argv, ScrubPlatformSecretEnv(os.Environ())); err != nil {
+	if err := syscall.Exec(argv[0], argv, KeepOwnLoginEnv(ScrubPlatformSecretEnv(os.Environ()), policy.OwnLoginEnv)); err != nil {
 		return fmt.Errorf("execute sandboxed command: %w", err)
 	}
 	return nil
