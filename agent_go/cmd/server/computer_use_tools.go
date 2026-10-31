@@ -50,9 +50,8 @@ func (api *StreamingAPI) registerComputerUseTool(registrar definitionToolRegistr
 }
 
 func externalComputerUseDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	if !localProductInstallation() || !IsLocalMode() || IsMultiUserMode() {
-		return
-	}
+	// Catalog parity is deployment-independent; listing and execution use
+	// computerUseAllowed so hosted and non-owner clients never receive it.
 	props := computerUseProperties()
 	props["crew_id"] = externalString("Your local Crew ID from workspace action=list")
 	props["action"] = map[string]any{"type": "string", "enum": []string{"status", "install", "permissions", "enable", "disable", "stop", "guide"}}
