@@ -79,7 +79,7 @@ type Options struct {
 	TraversalRoot string
 	// TestSlot overrides the dedicated test slot (default: the highest-numbered unassigned slot account).
 	TestSlot string
-	// Programs are the coding CLIs and node the agent service starts as slots, as its PATH finds them.
+	// Programs are the programs the agent service starts as a slot (Claude and node), as its PATH finds them.
 	Programs []string
 	Run      func(context.Context, Probe) (stdout, stderr string, err error)
 	// RunCommand runs one shell command for a probe the way Run does. When nil the confinement (deny) checks are skipped.
@@ -456,7 +456,8 @@ func programReachable(root, program, slot string, account Account) Row {
 	}
 	if blocked, kind := firstBlocked(root, resolved, account); blocked != "" {
 		if kind == "dir" {
-			return Row{Fail, "cli-reachable", slot, blocked + " is not traversable for " + slot + " (" + name + ")", "chmod -R o+rX " + blocked}
+			// Only ever the one folder, and only passage: a home or state folder on the way may hold logins.
+			return Row{Fail, "cli-reachable", slot, blocked + " is not traversable for " + slot + " (" + name + ")", "chmod o+x " + blocked + ", or install " + name + " outside private folders"}
 		}
 		return Row{Fail, "cli-reachable", slot, resolved + " is not executable for " + slot, "chmod o+rx " + resolved}
 	}
