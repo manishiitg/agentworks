@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { agentApi } from '../../services/api'
 import { loadProjectVault, type ProjectVaultItem } from '../../api/projectVault'
 import { schedulerApi } from '../../api/scheduler'
 import { conditionTriggersApi } from '../../api/conditionTriggers'
@@ -39,6 +40,9 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
     const bot = data.allow_bots !== false && data.bots.find(item => item.id === data.selected_id)
     if (bot) appRows.push({ id: `bot:${bot.id}`, label: slackBotName(bot), detail: `${slackBotName(bot)} · ${!bot.configured ? 'Needs setup' : !bot.enabled ? 'Paused' : bot.identity?.verified ? 'Identity verified' : 'Saved'}`, destination: 'mcp:slack-bot', connected: bot.configured && bot.enabled && bot.identity?.verified === true, attention: !bot.configured })
    }).catch(() => { out.errors.push('Slack bot could not be loaded.') }))
+   if (has('mcp:whatsapp')) jobs.push(agentApi.getWhatsAppStatus().then(status => {
+    appRows.push({ id: 'whatsapp', label: 'WhatsApp', detail: status.connected ? 'Connected' : status.paired ? 'Not connected' : 'Not set up', connected: status.connected === true, attention: status.paired && !status.connected, destination: 'mcp:whatsapp' })
+   }).catch(() => { out.errors.push('WhatsApp status could not be checked.') }))
    const automationJobs: Promise<WorkspaceStatusRow[]>[] = []
    if (has('schedules:schedules')) automationJobs.push(schedulerApi.listJobs({ entity_type: 'product', limit: 1000 }).then(data => (data.jobs || []).filter(job => job.workspace_path?.replace(/\/+$/, '') === workspacePath.replace(/\/+$/, '')).map(job => ({ id: `schedule:${job.id}`, label: job.name, detail: nextSchedule(job.enabled, job.next_run_at), nextRunAt: job.enabled ? job.next_run_at : undefined, destination: 'schedules:schedules' }))))
    if (has('schedules:conditions')) automationJobs.push(conditionTriggersApi.list(projectId, 'work').then(data => (data.triggers || []).map(item => ({ id: `watcher:${item.id}`, label: item.name, detail: item.completed_at ? 'Completed' : item.enabled ? 'On' : 'Paused', destination: 'schedules:conditions' }))))
