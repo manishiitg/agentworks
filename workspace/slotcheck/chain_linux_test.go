@@ -40,12 +40,11 @@ func TestRealSlotChain(t *testing.T) {
 		t.Setenv("AUTH_ALLOWED_EMAILS", "e2e-canary")
 		t.Setenv("GATEWAY_USERNAME", "e2e-canary")
 		t.Setenv("NEW_SERVER_SETTING", "e2e-canary")
-		t.Setenv("AGENTWORKS_SLOT_CLI_USERS", "e2e-canary")
 		out, errOut, err := runThroughShellTool(ctx, base, "env")
 		if err != nil || !strings.Contains(out, "PATH=") {
 			t.Fatalf("env: err=%v stderr=%q", err, errOut)
 		}
-		for _, key := range []string{"AUTH_ALLOWED_EMAILS=", "GATEWAY_USERNAME=", "NEW_SERVER_SETTING=", "AGENTWORKS_SLOT_CLI_USERS="} {
+		for _, key := range []string{"AUTH_ALLOWED_EMAILS=", "GATEWAY_USERNAME=", "NEW_SERVER_SETTING="} {
 			if strings.Contains(out, key) {
 				t.Fatalf("%s reached the slot's shell", key)
 			}

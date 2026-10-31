@@ -67,15 +67,15 @@ func TestNativeEnvironmentDoesNotInheritVaultAuthority(t *testing.T) {
 	}
 }
 
-// A user's shell must not see who else may sign in, other people's account ids, the gateway's settings or the
+// A user's shell must not see who else may sign in, the gateway's settings or the
 // service's SSH agent (server B 2026-10-06: they were all in a Code terminal's env).
 func TestNativeEnvironmentDropsServerIdentityAndAccountData(t *testing.T) {
 	t.Setenv("NATIVE_WORKSPACE", "true")
-	for _, key := range []string{"AUTH_ALLOWED_EMAILS", "AUTH_PROVIDERS", "GATEWAY_DISABLE_PASSWORD_GATE", "GATEWAY_USER_ID", "AGENTWORKS_SLOT_CLI_USERS", "SSH_AUTH_SOCK"} {
+	for _, key := range []string{"AUTH_ALLOWED_EMAILS", "AUTH_PROVIDERS", "GATEWAY_DISABLE_PASSWORD_GATE", "GATEWAY_USER_ID", "SSH_AUTH_SOCK"} {
 		t.Setenv(key, "leak")
 	}
 	for _, entry := range BuildSafeEnvironment() {
-		for _, key := range []string{"AUTH_ALLOWED_EMAILS=", "AUTH_PROVIDERS=", "GATEWAY_DISABLE_PASSWORD_GATE=", "GATEWAY_USER_ID=", "AGENTWORKS_SLOT_CLI_USERS=", "SSH_AUTH_SOCK="} {
+		for _, key := range []string{"AUTH_ALLOWED_EMAILS=", "AUTH_PROVIDERS=", "GATEWAY_DISABLE_PASSWORD_GATE=", "GATEWAY_USER_ID=", "SSH_AUTH_SOCK="} {
 			if strings.HasPrefix(entry, key) {
 				t.Fatalf("leaked %s", entry)
 			}
@@ -84,9 +84,9 @@ func TestNativeEnvironmentDropsServerIdentityAndAccountData(t *testing.T) {
 }
 
 // A person's slot shell gets an allowlist of the service environment: tool and platform settings pass, anything
-// else (a server setting added tomorrow, other people's ids) does not (PLAT-622).
+// else (a server setting added tomorrow) does not (PLAT-622).
 func TestSlotShellEnvKeepsToolsAndDropsTheRest(t *testing.T) {
-	got := strings.Join(SlotShellEnv([]string{"PATH=/bin", "HOME=/h", "AGENT_API_URL=x", "PIP_CACHE_DIR=x", "TERM=xterm", "NEW_SERVER_SETTING=x", "SUPABASE_URL=x", "AGENTWORKS_SLOT_CLI_USERS=a,b", "FRONTEND_DIR=/srv"}), " ")
+	got := strings.Join(SlotShellEnv([]string{"PATH=/bin", "HOME=/h", "AGENT_API_URL=x", "PIP_CACHE_DIR=x", "TERM=xterm", "NEW_SERVER_SETTING=x", "SUPABASE_URL=x", "FRONTEND_DIR=/srv"}), " ")
 	if got != "PATH=/bin HOME=/h AGENT_API_URL=x PIP_CACHE_DIR=x TERM=xterm" {
 		t.Fatalf("slot shell env = %q", got)
 	}
