@@ -12,10 +12,12 @@ vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 it('combines selected accounts and the real bot regardless of response order, and drops a late response from another scope', async () => {
- const admitted = ['files','mcp:connected','mcp:gmail','mcp:slack-bot','schedules:schedules']
+ const admitted = ['files','mcp:connected','mcp:gmail','mcp:slack-account','mcp:slack-bot','schedules:schedules']
  let finishOld!: (value: any) => void
  mocks.vault.mockImplementation((path: string) => path === 'Crew/old' ? new Promise(resolve => { finishOld = resolve }) : Promise.resolve({ vaults:[{items:[
   {id:'chosen',name:'Chosen notes',kind:'mcp',selected:true,status:'connected'},
+  {id:'google',name:'Default',account_email:'person@example.com',kind:'google',selected:true,status:'connected'},
+  {id:'slack',name:'Personal Slack',app:'slack',kind:'mcp',selected:true,status:'connected'},
   {id:'unused',name:'Unused notes',kind:'mcp',selected:false,status:'connected'},
  ]}] }))
  mocks.bots.mockResolvedValue({ selected_id:'bot', bots:[{id:'bot',name:'Saved alias',identity:{name:'Actual bot',verified:true},configured:true,enabled:true}] })
@@ -27,7 +29,10 @@ it('combines selected accounts and the real bot regardless of response order, an
   await act(async()=>root.render(<Harness scope="old"/>))
   await act(async()=>root.render(<Harness scope="current"/>))
   await act(async()=>finishOld({vaults:[{items:[{id:'old',name:'Old account',kind:'mcp',selected:true,status:'connected'}]}]}))
-  expect(value?.snapshot?.apps?.map(item=>item.label)).toEqual(['Actual bot','Chosen notes'])
+  expect(value?.snapshot?.apps?.map(item=>item.label)).toEqual(['Actual bot','Chosen notes','Google','My Slack account'])
+  expect(value?.snapshot?.apps?.find(item=>item.id==='mcp:slack')?.destination).toBe('mcp:slack-account')
+  expect(value?.snapshot?.apps?.find(item=>item.id==='google:google')?.detail).toContain('person@example.com')
+  expect(value?.snapshot?.apps?.find(item=>item.id==='google:google')?.connected).toBe(true)
   expect(host.textContent).not.toContain('Unused notes'); expect(host.textContent).not.toContain('Old account')
   expect(value?.snapshot?.automations?.map(item=>item.detail)).toEqual(['Paused'])
   expect(host.textContent).not.toContain('Other project job')

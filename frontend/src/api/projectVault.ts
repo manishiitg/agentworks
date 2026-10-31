@@ -5,6 +5,8 @@ export interface ProjectVaultItem {
   id: string; name: string; kind: VaultItemKind; provider?: string; owner?: string
   /** Whose it is, in plain words: "you", a Company group's name, "this project" or "the project's owner". */
   source?: string
+  account_email?: string
+  app?: string
   status: 'connected' | 'needs_attention' | 'stored' | 'online' | 'offline'
   selected: boolean; can_select: boolean
   /** Names of the person's own projects that use this item (Yours only). */

@@ -21,9 +21,9 @@ func TestProjectVaultShowsCompanyGoogleWithoutPrivateAccounts(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	f, _ := newExternalCrewCommandFixture(t)
 	config := services.GmailConfig{DefaultConnectionID: "company", Connections: []services.GmailConnection{
-		{ID: "company", DisplayName: "Company Google", Enabled: true, Status: services.GmailConnectionConnected},
+		{ID: "company", DisplayName: "Company Google", Email: "team@example.com", Enabled: true, Status: services.GmailConnectionConnected},
 		{ID: "disabled", DisplayName: "Disabled company account", Status: services.GmailConnectionConnected},
-		{ID: "personal", DisplayName: "Another person's Google", Personal: true, OwnerID: "other", Enabled: true},
+		{ID: "personal", DisplayName: "Another person's Google", Email: "private@example.com", Personal: true, OwnerID: "other", Enabled: true},
 		{ID: "private", DisplayName: "Private project Google", ScopeWorkspace: "Crew/other-project", OwnerID: "other", Enabled: true},
 	}}
 	raw, _ := json.Marshal(config)
@@ -52,10 +52,10 @@ func TestProjectVaultShowsCompanyGoogleWithoutPrivateAccounts(t *testing.T) {
 			}
 		}
 	}
-	if len(accounts) != 2 || accounts[0].ID != "company" || accounts[0].Status != "connected" || !accounts[0].Selected || accounts[0].CanSelect || accounts[1].Status != "needs_attention" {
+	if len(accounts) != 2 || accounts[0].ID != "company" || accounts[0].Status != "connected" || accounts[0].AccountEmail != "team@example.com" || !accounts[0].Selected || accounts[0].CanSelect || accounts[1].Status != "needs_attention" {
 		t.Fatalf("company accounts omitted or changed authority: %+v", accounts)
 	}
-	if strings.Contains(response.Result, "Another person's Google") || strings.Contains(response.Result, "Private project Google") {
+	if strings.Contains(response.Result, "Another person's Google") || strings.Contains(response.Result, "Private project Google") || strings.Contains(response.Result, "private@example.com") {
 		t.Fatal("Vault leaked a private Google account")
 	}
 	if _, err := f.api.selectProjectVaultItem(ctx, "owner", externalCommandCrewRoot, "google", "company", false); err == nil {
@@ -107,6 +107,20 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 	inventory, err := f.api.projectVaultInventory(ctx, "other", externalCommandCrewRoot)
 	if err != nil {
 		t.Fatal(err)
+	}
+	lenderFound := false
+	for _, group := range inventory.Vaults {
+		for _, item := range group.Items {
+			if item.Source == "the project's owner" {
+				lenderFound = true
+				if item.AccountEmail != "" {
+					t.Fatal("project owner's personal account email added to lender inventory")
+				}
+			}
+		}
+	}
+	if !lenderFound {
+		t.Fatal("test did not exercise the project owner's app inventory")
 	}
 	raw, _ := json.Marshal(inventory)
 	if !strings.Contains(string(raw), "Project app") || strings.Contains(string(raw), "Private account") || strings.Contains(string(raw), "device_owner_id") {

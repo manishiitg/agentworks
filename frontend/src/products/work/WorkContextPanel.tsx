@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Cable, CalendarClock, RefreshCw } from 'lucide-react'
+import { ArrowLeft, CalendarClock, RefreshCw } from 'lucide-react'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
+import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
+import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
@@ -81,19 +83,16 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       })}
     </WorkspaceContextCard>
   }
-  const mcps = (snapshot?.apps || []).filter(item => item.destination === 'mcp:connected')
-  const mcpAttention = mcps.filter(item => item.attention).length
-  const mcpDetail = !snapshot ? 'Loading…' : snapshot.errors.includes('Connections could not be loaded.') ? 'Unavailable' : `${mcps.length}${mcpAttention ? ` · ${mcpAttention} ${mcpAttention === 1 ? 'needs' : 'need'} attention` : ''}`
+  const automations = snapshot?.automations || []
+  const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
   const changes = reviewSessionId && allowed('files') ? <Group title="Changes"><ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reply => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reply ? `reply:${JSON.stringify(reply)}` : 'review-all-chat'); onOpen('files') }}/></Group> : null
   return <WorkspaceContextCard onFullMenu={() => setFullMenuScope(scope)}>
     {mode === 'dev' && changes}
-    {byId.has('dashboard') && <WorkspaceDashboardMenu documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
-    <Group title="Connections">
-      {byId.has('browser') && <WorkspaceBrowserRow key={scope} workspacePath={workspacePath} profileId={profileId} onClick={() => openID('browser')}/>}
-      {(snapshot?.apps || []).filter(item => item.destination !== 'mcp:connected' && byId.has(item.destination)).map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || Cable} detail={item.detail} attention={item.attention} onClick={() => openID(item.destination)}>{item.label}</Row>)}
-      {byId.has('mcp:connected') && <Row icon={Cable} detail={mcpDetail} attention={mcpAttention > 0} onClick={() => openID('mcp:connected')}>MCPs</Row>}
-    </Group>
-    {Boolean(snapshot?.automations?.length) && <Group title="Automations">{snapshot!.automations!.map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || CalendarClock} hint={byId.get(item.destination)?.label} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}</Group>}
+    {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
+    <WorkspaceConnectionsMenu key={scope} workspacePath={workspacePath} profileId={profileId} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={(snapshot?.apps || []).filter(item => byId.has(item.destination))} loading={!snapshot} unavailable={snapshot?.errors.includes('Connections could not be loaded.') === true} onOpen={openID}/>
+    {automations.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={`${automations.length}${nextAutomation ? ` · ${nextAutomation.detail}` : ''}`}>
+      {automations.map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || CalendarClock} hint={byId.get(item.destination)?.label} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}
+    </WorkspaceCompactGroup>}
     {snapshot?.errors.length ? <div className="space-y-1 px-1 text-xs text-muted-foreground">{snapshot.errors.map(error => <p key={error}>{error}</p>)}<button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
 }
