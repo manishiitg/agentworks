@@ -63,11 +63,12 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   const event = vi.fn(); window.addEventListener('open-quick-switcher', event)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="All tools"]')!.click())
   expect(event.mock.calls[0][0].detail.query).toBe('@panels '); window.removeEventListener('open-quick-switcher', event)
-  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!.click())
-  expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Integrations')?.open).toBe(true)
-  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'GitHub')!.click())
-  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'github')
-  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to workspace"]')!.click())
+  const connections = host.querySelector('[aria-label="Connections"]')!.closest('section')!
+  const manage = [...connections.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!
+  await act(async () => manage.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'connected')
+  expect(mocks.open).toHaveBeenLastCalledWith('mcp')
+  expect(host.querySelector('[aria-label="Back to workspace"]')).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
   expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Build')?.open).toBe(true)
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
@@ -79,8 +80,9 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to workspace"]')!.click())
   expect(host.textContent).not.toContain('Models')
   mocks.open.mockClear()
-  const app = host.querySelector<HTMLButtonElement>('[aria-label="MCPs · 1 connected · 1 need attention"]')!
-  mocks.server = 'another-server'; await act(async () => app.click())
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
+  const staleManage = [...host.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!
+  mocks.server = 'another-server'; await act(async () => staleManage.click())
   expect(mocks.open).not.toHaveBeenCalled()
  })
 })
