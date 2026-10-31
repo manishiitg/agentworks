@@ -47,7 +47,7 @@ describe('Studio review comments', () => {
       expect(workspaceGitApi.status).not.toHaveBeenCalled()
       await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'All chat changes')!.click())
       expect(openChatFiles).toHaveBeenLastCalledWith('chat-a')
-    } finally { state.fileCount = 2; state.reviewed = false; await act(async () => root.unmount()); host.remove() }
+    } finally { state.fileCount = 2; state.reviewed = false; await act(async () => root.unmount()); host.remove(); vi.mocked(openChatFiles).mockClear() }
   })
 
   it('All chat changes includes earlier work even after a review point', async () => {
