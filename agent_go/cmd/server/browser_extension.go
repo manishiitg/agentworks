@@ -71,6 +71,8 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 		var req struct {
 			Action    string `json:"action"`
 			BrowserID string `json:"browser_id"`
+			Mode      string `json:"mode"`
+			Port      int    `json:"port"`
 		}
 		if json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&req) != nil {
 			http.Error(w, "Invalid browser request", 400)
@@ -103,6 +105,36 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 				return
 			}
 			browserrelay.Default.RequestProjectConnection(user, scope)
+		case "workspace":
+			if req.Mode != "cdp" && req.Mode != "headless" && req.Mode != "none" {
+				http.Error(w, "Choose an available browser", 400)
+				return
+			}
+			if err := browser.ValidateMode(req.Mode); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			settings, err := readWorkspaceBrowserSettings(r.Context(), physical)
+			if err != nil {
+				http.Error(w, "Cannot load project browser settings", 502)
+				return
+			}
+			settings.Mode = req.Mode
+			if req.Port != 0 {
+				if req.Port < 1 || req.Port > 65535 {
+					http.Error(w, "Invalid Chrome port", 400)
+					return
+				}
+				settings.Port = req.Port
+			}
+			if err := saveWorkspaceBrowserSettings(r.Context(), physical, settings); err != nil {
+				http.Error(w, "Cannot save project browser choice", 502)
+				return
+			}
+			if err := browserrelay.Default.Disconnect(user, scope); err != nil {
+				http.Error(w, "Cannot release the previous browser", 503)
+				return
+			}
 		case "disconnect":
 			if err := browserrelay.Default.Disconnect(user, scope); err != nil {
 				http.Error(w, "Cannot save browser selection", 503)
@@ -189,4 +221,39 @@ func (api *StreamingAPI) handleBrowserExtensionDownload(w http.ResponseWriter, r
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="AgentWorks-Chrome-Bridge.zip"`)
 	w.Write(browserrelay.ExtensionZip)
+}
+
+// Only creation calls this: visiting a panel never replaces an existing choice.
+// Reusing a personal account browser grants only this new Crew's own tabs.
+func selectSoleNewCrewBrowser(ctx context.Context, user, workspace, profile string) error {
+	var id string
+	for _, connection := range browserrelay.Default.Browsers(user) {
+		if !connection.Enabled || !connection.Connected {
+			continue
+		}
+		if id != "" {
+			return nil
+		}
+		id = connection.ID
+	}
+	if id == "" {
+		return nil
+	}
+	scope := browserSessionForWorkspace(user, workspace)
+	if _, err := browserrelay.Default.PairForProfile(user, scope, workspace, profile); err != nil {
+		return err
+	}
+	if err := browserrelay.Default.SelectBrowser(user, scope, id); err != nil {
+		return err
+	}
+	settings, err := readWorkspaceBrowserSettings(ctx, workspace)
+	if err != nil {
+		return err
+	}
+	settings.Mode = "extension"
+	if err := saveWorkspaceBrowserSettings(ctx, workspace, settings); err != nil {
+		return err
+	}
+	browserrelay.Default.RequestProjectConnection(user, scope)
+	return nil
 }

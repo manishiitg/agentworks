@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Loader2 } from 'lucide-react'
+import { Download, Loader2, Check, ChevronDown } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../ui/Button'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
@@ -52,11 +52,11 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
   }, [workspacePath, profileId, readOnly])
   useLiveRefetch(() => refreshRef.current(), { kinds: ['browser'], fallbackMs: 2500, safetyMs: 20_000, minIntervalMs: 500, enabled: !!workspacePath && !readOnly })
 
-  const select = async (action: 'connect' | 'disconnect', browserId?: string) => {
+  const select = async (action: 'connect' | 'disconnect' | 'workspace', browserId?: string, mode?: string, port?: number) => {
     const turn = generation.current
     revision.current += 1; setBusy(true); setError('')
     try {
-      const { data } = await api.post<ChromeExtensionStatus>('/api/browser/extension', { action, ...(browserId ? { browser_id: browserId } : {}) }, { params: { workspace_path: workspacePath, profile_id: profileId }, skipSessionContext: true })
+      const { data } = await api.post<ChromeExtensionStatus>('/api/browser/extension', { action, ...(browserId ? { browser_id: browserId } : {}), ...(mode ? { mode, port } : {}) }, { params: { workspace_path: workspacePath, profile_id: profileId }, skipSessionContext: true })
       if (generation.current !== turn) return false
       setStatus(data)
       return true
@@ -65,37 +65,36 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
       return false
     } finally { if (generation.current === turn) setBusy(false) }
   }
-  return { status, loading, busy, error: error || checkingError, connect: (browserId?: string) => select('connect', browserId), disconnect: () => select('disconnect'), download }
+  return { status, loading, busy, error: error || checkingError, connect: (browserId?: string) => select('connect', browserId), disconnect: () => select('disconnect'), selectWorkspace: (mode: string, port?: number) => select('workspace', undefined, mode, port), download }
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
-export function ChromeExtensionConnection({ connection, workspaceBrowser }: { connection: ChromeExtensionController; workspaceBrowser?: { label: string; selected: boolean; onSelect: () => void | Promise<void> } }) {
+export function ChromeExtensionConnection({ connection, workspaceBrowser, onConnectBrowser = openBrowserConnections }: { onConnectBrowser?: () => void; connection: ChromeExtensionController; workspaceBrowser?: { label: string; selected: boolean; onSelect: () => boolean | void | Promise<boolean | void> } }) {
   const { status, busy, error, connect, download } = connection
-  const [chosenBrowser, setChosenBrowser] = useState('')
-  const choice = chosenBrowser || (workspaceBrowser?.selected ? 'workspace-browser' : status.browser_id || '')
+  const [changing, setChanging] = useState(false)
+  const current = status.selected ? status.browsers?.find(browser => browser.id === status.browser_id)?.name || 'Browser' : workspaceBrowser?.selected ? workspaceBrowser.label.split(' · ')[0] : ''
   return <div className="space-y-2">
-    <div className="flex flex-wrap items-center gap-2">
-      <label className="text-xs text-muted-foreground" htmlFor="project-saved-browser">Browser</label>
-      <select id="project-saved-browser" value={choice} disabled={busy} onChange={e => setChosenBrowser(e.target.value)} className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs">
-        {workspaceBrowser && <option value="workspace-browser">{workspaceBrowser.label}</option>}
-        {!status.browser_id && !workspaceBrowser?.selected && <option value="" disabled>Choose a browser</option>}
-        {status.browsers?.filter(b => b.enabled).map(b => <option key={b.id} value={b.id}>{b.name} · {b.connected ? 'Connected' : 'Offline'}</option>)}
-      </select>
-      {choice !== (workspaceBrowser?.selected ? 'workspace-browser' : status.browser_id || '') && <Button size="sm" disabled={busy || !choice} onClick={() => { if (choice === 'workspace-browser' && workspaceBrowser) { void Promise.resolve(workspaceBrowser.onSelect()).then(() => setChosenBrowser('')) } else { void connect(choice).then(saved => { if (saved) setChosenBrowser('') }) } }}>{busy && <Loader2 />}Use browser</Button>}
-      <Button size="sm" variant="ghost" onClick={openBrowserConnections}>Connections</Button>
+    <div className="flex items-center justify-between gap-2">
+      <span className="min-w-0 truncate text-xs font-medium">{current || 'No browser selected'}</span>
+      <Button size="sm" variant="ghost" aria-expanded={changing} disabled={busy} onClick={() => setChanging(!changing)}>{busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <>Change<ChevronDown className="h-3 w-3" /></>}</Button>
     </div>
-    {!status.selected && !!status.browsers?.some(b => b.connected) && <p className="text-xs text-muted-foreground">Chrome or Edge is connected to your account. Choose a saved browser above to use it here.</p>}
-    {(status.update_needed || (status.selected && status.connected)) && <ExtensionVersionLine status={status} download={download} />}
+    {changing && <div className="space-y-1 rounded-md border border-border p-1" aria-label="Choose browser">
+      {status.browsers?.filter(browser => browser.enabled).map(browser => <button key={browser.id} type="button" disabled={busy} className="flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => { void connect(browser.id).then(saved => { if (saved) setChanging(false) }) }}>
+        <span>{browser.name}<span className="ml-2 text-muted-foreground">{browser.connected ? 'Connected' : 'Offline'} · Extension</span></span>{status.selected && status.browser_id === browser.id && <Check className="h-3 w-3" aria-label="Selected" />}
+      </button>)}
+      {workspaceBrowser && <button type="button" disabled={busy} className="flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => { void Promise.resolve(workspaceBrowser.onSelect()).then(saved => { if (saved !== false) setChanging(false) }) }}>{workspaceBrowser.label}{workspaceBrowser.selected && <Check className="h-3 w-3" aria-label="Selected" />}</button>}
+      <Button size="sm" variant="ghost" className="w-full justify-start" onClick={onConnectBrowser}>Connect another browser</Button>
+    </div>}
+    {status.update_needed && <ExtensionVersionLine status={status} download={download} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }
 
 function ExtensionVersionLine({ status, download }: { status: ChromeExtensionStatus; download: string }) {
-  const installed = status.extension_version, latest = status.latest_extension_version
+  const installed = status.extension_version
   const outdated = status.update_needed === true
   const updateURL = status.update_url ? new URL(status.update_url, download).href : download
-  if (!installed && !outdated) return <p className="mt-1 text-xs text-muted-foreground">Browser Bridge version unknown{latest ? ` · latest is ${latest}` : ''}</p>
-  if (!outdated) return <p className="mt-1 text-xs text-muted-foreground">Browser Bridge {installed} · up to date</p>
+  if (!outdated) return null
   return <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
     <p className="font-medium text-amber-700 dark:text-amber-300">Browser Bridge{installed ? ` ${installed}` : ''} · update available</p>
     <p className="mt-1 leading-relaxed text-muted-foreground">Download it, unzip it over your Browser Bridge folder, then press Reload on Browser Bridge in your browser’s Extensions page.</p>

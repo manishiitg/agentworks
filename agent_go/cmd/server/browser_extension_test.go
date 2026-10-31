@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 )
 
@@ -74,6 +75,57 @@ func TestChromeExtensionProjectSelectsSavedAccountBrowser(t *testing.T) {
 	}
 	if !strings.Contains(after.Message, "Connecting it to this project") {
 		t.Fatal("selected online browser was shown as offline")
+	}
+	// PLAT-746-268: direct choices save in the same request. A GET never
+	// changes an existing choice even when just one account browser is online.
+	directMode := ""
+	for _, mode := range browser.VisibleModes() {
+		if mode != "extension" {
+			directMode = mode
+			break
+		}
+	}
+	directBody, _ := json.Marshal(map[string]any{"action": "workspace", "mode": directMode, "port": 9222})
+	if denied := call(fixtureUserB, http.MethodPost, projectURL, string(directBody)); denied.Code != 403 {
+		t.Fatal("Run user changed the project browser")
+	}
+	for _, method := range []string{http.MethodPost, http.MethodGet} {
+		response := call(fixtureUserA, method, projectURL, string(directBody))
+		var result struct {
+			browserrelay.Status
+			Mode string `json:"mode"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Selected || result.Mode != directMode {
+			t.Fatalf("direct selection not persisted: %d %s", response.Code, response.Body.String())
+		}
+	}
+	// Creation alone defaults to the owner's sole connected browser.
+	if err := selectSoleNewCrewBrowser(f.Ctx(fixtureUserA), fixtureUserA, workspace, "work"); err != nil {
+		t.Fatal(err)
+	}
+	if got := browserrelay.Default.Status(fixtureUserA, browserSessionForWorkspace(fixtureUserA, workspace)); got.BrowserID != browserID {
+		t.Fatal("new Crew did not reuse sole browser")
+	}
+	// A second connected browser makes the default ambiguous; retain direct mode.
+	second, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http", "ws", 1), http.Header{"Origin": []string{"chrome-extension://example"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	second.SetReadDeadline(time.Now().Add(3 * time.Second))
+	second.WriteJSON(map[string]string{"type": "pair", "token": pair.Token, "browser_id": "22222222-2222-4222-8222-222222222222", "browser": "Edge", "version": "0.5.0"})
+	if err := second.ReadJSON(&reply); err != nil || reply["type"] != "account-paired" {
+		t.Fatal("second account connection", err)
+	}
+	if response := call(fixtureUserA, http.MethodPost, projectURL, string(directBody)); response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	if err := selectSoleNewCrewBrowser(f.Ctx(fixtureUserA), fixtureUserA, workspace, "work"); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := readWorkspaceBrowserSettings(f.Ctx(fixtureUserA), workspace)
+	if err != nil || settings.Mode != directMode {
+		t.Fatal("ambiguous account browsers changed the default")
 	}
 	if !shouldSkipAuth(browserExtensionConnectPath) || shouldSkipAuth("/api/browser/extension") || shouldSkipAuth(browserExtensionConnectPath+"/other") {
 		t.Fatal("extension auth exemption is not exact")
