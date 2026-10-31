@@ -10,7 +10,7 @@ function ConnectionIcon({ icon: Icon, hint, count, onClick }: {
   icon: LucideIcon; hint: string; count?: number; onClick: () => void
 }) {
   return <Tooltip><TooltipTrigger asChild>
-    <button type="button" aria-label={hint} onClick={onClick} className="flex h-8 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md px-1 text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <button type="button" aria-label={hint} onClick={onClick} className="relative flex h-8 min-w-8 shrink-0 items-center justify-center gap-1 rounded-full border border-border/60 bg-muted px-2 text-muted-foreground hover:z-10 hover:bg-accent hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-zinc-800 dark:hover:bg-zinc-700">
       <Icon aria-hidden="true" className="h-3.5 w-3.5"/>
       {count !== undefined && <span className="text-[10px]">{count}</span>}
     </button>
@@ -32,11 +32,11 @@ export function WorkspaceConnectionsMenu({ workspacePath, profileId, browserAllo
   const labelFor = (item: WorkspaceStatusRow) => item.destination === 'mcp:slack-bot' ? 'Slack bot' : item.label
   const iconFor = (item: WorkspaceStatusRow) => item.destination === 'mcp:github' ? Github : item.destination === 'mcp:gmail' ? Grid2X2 : item.destination === 'mcp:slack-bot' ? Bot : item.destination === 'mcp:whatsapp' ? MessageCircle : Slack
   if (!browserAllowed && !mcpAllowed && !accounts.length) return null
-  return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} preview={<>
+  return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} preview={<div className="isolate flex -space-x-2">
     {browserAllowed && browser.connected && <ConnectionIcon icon={browserIcon} hint={browserHint} onClick={() => onOpen('browser')}/>}
     {accounts.filter(item => item.connected).map(item => <ConnectionIcon key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} onClick={() => onOpen(item.destination)}/>)}
     {mcpAllowed && !loading && !unavailable && connectedMcps.length > 0 && <ConnectionIcon icon={Cable} hint={mcpHint} count={connectedMcps.length} onClick={() => onOpen('mcp:connected')}/>}
-  </>}>
+  </div>}>
     {browserAllowed && <WorkspaceContextRow icon={browserIcon} hint={browserHint} detail={browser.name || browser.label} attention={!browser.connected && browser.label !== 'Checking…'} onClick={() => onOpen('browser')}>Browser</WorkspaceContextRow>}
     {accounts.map(item => <WorkspaceContextRow key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} detail={item.detail} attention={item.attention} onClick={() => onOpen(item.destination)}>{labelFor(item)}</WorkspaceContextRow>)}
     {mcpAllowed && <WorkspaceContextRow icon={Cable} hint={mcpHint} detail={mcpDetail} attention={attention > 0 || unavailable} onClick={() => onOpen('mcp:connected')}>MCPs</WorkspaceContextRow>}
