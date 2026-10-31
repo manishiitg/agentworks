@@ -92,6 +92,7 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
   const [reviewError, setReviewError] = useState('')
   const [card, setCard] = useState<ReplyCard | null>(null)
   const [checked, setChecked] = useState<ReplyCard | null>(null)
+  const [sharedOpen, setSharedOpen] = useState(false)
   const [githubRevision, setGitHubRevision] = useState(0)
   useEffect(() => {
     const refresh = () => { setChecked(null); setGitHubRevision(value => value + 1) }
@@ -172,6 +173,7 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
   const groups = checked?.groups ?? summary?.groups ?? []
   const actions = checked?.actions ?? card?.actions ?? summary?.actions ?? []
   const canEdit = (checked ?? card)?.can_edit === true
+  const sharedViewer = (checked ?? card)?.can_edit === false
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
@@ -187,7 +189,7 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
     Saved file changes for this reply could not be loaded. <button type="button" className="underline hover:text-foreground" onClick={() => openChatFiles(reference.sessionId)}>Review chat changes</button>
   </section> : null
   if (!panel) return <TooltipProvider delayDuration={150}><div className="my-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs" aria-label="Reply changes">
-    <button type="button" aria-label={`Open ${plural(total)} changed in this reply`} title={`${plural(total)} in this reply · +${added} −${removed}`} className="inline-flex h-7 shrink-0 items-center gap-1 rounded px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" onClick={() => openReplyChanges(reference)}><FileDiffIcon /><span>{total}</span></button>
+    <button type="button" aria-label={`Open ${plural(total)} changed in this reply`} title={`${plural(total)} in this reply · +${added} −${removed}`} className="inline-flex h-7 shrink-0 items-center gap-1 rounded px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}><FileDiffIcon /><span>{total}</span></button>
     {groups.filter(group => group.kind === 'repo').map(group => <div key={group.root} className="flex min-w-0 items-center gap-1">
       <span className="inline-flex max-w-64 min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
       {group.pr?.state === 'connect_github' && canEdit && <IconButton label="Connect GitHub" hint="Use your saved account to see PR status." onClick={() => openProjectIntegrations('github', reference.sessionId)}><Github /></IconButton>}
@@ -198,6 +200,13 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
         {canEdit && <PRWatcherControls compact group={group} sessionId={reference.sessionId} />}
       </>}
     </div>)}
+    {sharedViewer && sharedOpen && <div className="basis-full rounded border border-border p-2" aria-label="Reply file names">
+      {groups.map(group => <div key={`${group.kind}:${group.root}`} className="space-y-1">
+        <p className="text-muted-foreground">{group.name}</p>
+        <ul>{group.files.map(file => <li key={file.path} className="break-all font-mono">{shownFilePath(file.path)}</li>)}</ul>
+        {group.more_count > 0 && <p className="text-muted-foreground">+ {group.more_count} more</p>}
+      </div>)}
+    </div>}
   </div></TooltipProvider>
   return (
     <section className="p-3 text-xs" aria-label="Files changed during this reply">
