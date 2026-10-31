@@ -8,26 +8,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Plus, Server, X } from 'lucide-react'
 import { desktopRequest } from '../../services/desktopConnections'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
-import { isLocalDeployment } from '../../products/productSurfaceConfig'
 import ModalPortal from '../ui/ModalPortal'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean }
 
-/** Keep the default sidebar short; the complete admitted directory stays one click away. */
-function WorkList({ items, recentItems }: { items: ReactNode[]; recentItems: ReactNode[] }) {
-  const [expanded, setExpanded] = useState(false)
-  useEffect(() => {
-    if (items.length <= Math.min(recentItems.length, 6)) setExpanded(false)
-  }, [items.length, recentItems.length])
-  return <div className="space-y-1">
-    {(expanded ? items : recentItems.slice(0, 6))}
-    {items.length > Math.min(recentItems.length, 6) && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
-      className="mt-2 rounded-md py-2 pl-9 pr-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      {expanded ? 'Show less' : 'Show all work'}
-    </button>}
-  </div>
-}
 function useWorkHistory(projects: SidebarProject[]) {
   const active = getRawActiveWorkspaceId()
   // Use the local account's navigation history across connection reloads.
@@ -47,7 +32,7 @@ export function DesktopConnections({ children, projects = [] }: { children?: Rea
 }
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
   const { recent, visit } = useWorkHistory(projects)
-  const name = window.electronAPI || isLocalDeployment() ? 'Local' : undefined
+  const [filter, setFilter] = useState('all')
   const orderedProjects = [...projects].sort((a, b) => {
     const rank = (project: SidebarProject) => {
       const index = recent?.indexOf(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id)) ?? -1
@@ -55,13 +40,13 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     }
     return rank(a) - rank(b) || a.name.localeCompare(b.name)
   })
-  const renderProject = (project: SidebarProject) => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project} location={name} onOpen={() => {
+  const renderProject = (project: SidebarProject) => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project} onOpen={() => {
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
   }} />
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-    <h2 className="px-2.5 py-2 text-xs font-medium text-muted-foreground">Your work</h2>
-    <WorkList items={orderedProjects.map(renderProject)} recentItems={orderedProjects.filter(project => project.selected || recent?.includes(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))).map(renderProject)} />
+    <div className="py-2"><LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={[]} workTypes /></div>
+    <div className="space-y-1">{orderedProjects.filter(project => filter === 'all' || project.kind === filter).map(renderProject)}</div>
     {children}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
   </div>
@@ -75,7 +60,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const { refresh, error: directoryError } = state
   const { recent, visit } = useWorkHistory(projects)
   const [filter, setFilter] = useState('all')
-  useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
+  useEffect(() => { if (!['all', 'crew', 'goal'].includes(filter) && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   const [adding, setAdding] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [connectionName, setConnectionName] = useState('')
@@ -141,26 +126,23 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     const rank = (row: typeof a) => { const index = recent?.indexOf(connectedProjectKey(row.connection.id, row.kind, row.id)) ?? -1; return index < 0 ? Infinity : index }
     return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
   })
-  const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
-  const remoteCount = connections.filter(connection => connection.id !== 'local').length
+  const visible = rows.filter(row => filter === 'crew' || filter === 'goal' ? row.kind === filter : filter === 'all' || row.connection.id === filter)
   const renderProject = (project: typeof rows[number]) => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
     selected={project.connection.id === active && project.selected}
-    location={project.connection.id === 'local' ? 'Local' : remoteCount > 1 && filter === 'all' ? project.connection.name : undefined}
+    remote={project.connection.id !== 'local'} location={project.connection.id !== 'local' ? project.connection.name : undefined}
     onOpen={() => {
       visit(connectedProjectKey(project.connection.id, project.kind, project.id))
       if (project.connection.id === active) openSidebarProject(project.kind, project.id)
       else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
     }} />
-  const locations = connections.filter(connection => filter === 'all' || connection.id === filter)
+  const locations = connections.filter(connection => ['all', 'crew', 'goal'].includes(filter) || connection.id === filter)
   const connected = connections.filter(connection => connection.id !== 'local' && inventory[connection.id]?.status === 'connected').length
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
-      <h2 className="text-xs font-medium text-muted-foreground">Your work</h2>
-      <LocationFilter label="Work location" value={filter} onChange={setFilter} connections={connections} />
+      <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} workTypes />
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <WorkList key={filter} items={visible.map(renderProject)} recentItems={visible.filter(project =>
-        (project.connection.id === active && project.selected) || recent?.includes(connectedProjectKey(project.connection.id, project.kind, project.id))).map(renderProject)} />
+      <div className="space-y-1">{visible.map(renderProject)}</div>
       {(filter === 'all' || filter === active) && children}
       {locations.map(connection => {
         const status = inventory[connection.id]?.status

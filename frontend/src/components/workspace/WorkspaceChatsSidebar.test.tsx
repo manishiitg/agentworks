@@ -109,10 +109,8 @@ async function render(check: (host: HTMLDivElement, rerender: () => Promise<void
   const root = createRoot(host)
   try {
     await act(async () => root.render(content()))
-    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Show all work')?.click())
     await check(host, async () => {
       await act(async () => root.render(content()))
-      await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Show all work')?.click())
     })
   } finally {
     await act(async () => root.unmount())
@@ -135,9 +133,9 @@ it('lists admitted Crews and Goals before a chat exists, without projecting chat
     expect(group.textContent).not.toContain('Dispatch flow')
     expect(mocks.history).not.toHaveBeenCalled()
     expect(mocks.activeSessions).not.toHaveBeenCalled()
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accounting · Crew · Local"]')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accounting · Crew"]')!.click())
     expect(mocks.openProject).toHaveBeenLastCalledWith({ surface: 'work', id: 'shared' })
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Sales · Goal · Local"]')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Sales · Goal"]')!.click())
     expect(mocks.openProject).toHaveBeenLastCalledWith({ surface: 'agentworks', id: 'goal' })
     expect(host.querySelector('[aria-label="Search all chats (Ctrl+K or Command+K)"]')).not.toBeNull()
   })
