@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"log"
 	"maps"
 	"net"
@@ -7132,6 +7133,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			// Local folder grants belong to the owner's interactive website turn;
 			// scheduled, connector and unattended/background adapters need separate consent.
+			if req.AgentProfileID == "work" && laptopBuilderTurn(req, resolvedProfile) {
+				if roots, found, err := crewStorageRoots(req.SelectedFolder); err == nil && found {
+					if binding, err := crewroot.ReadSync(roots.ID); err == nil && binding != nil {
+						location := "the server"
+						if IsLocalMode() {
+							location = "this Mac"
+						}
+						_ = llmAgent.AddInstructions(fmt.Sprintf("Paired Crew: this turn runs on %s; its default shell and file tools use %q. Project editing is on %s. For explicitly requested work on the connected Mac from the server, use the Local laptop tools; they do not change the editing location or sync files automatically.", location, roots.Files, binding.Editing))
+					}
+				}
+			}
 			if laptopConnectionTurn(req, resolvedProfile) {
 				if err := api.registerLaptopTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, req.LaptopConnection); err != nil {
 					sendError(fmt.Sprintf("Failed to register local file tools: %v", err), true)

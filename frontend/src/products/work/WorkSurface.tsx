@@ -589,6 +589,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       const chatStore = useChatStore.getState()
       const tabId = await chatStore.createChatTab(name, {
         ...primary.metadata,
+        agentProfileChatLocation: undefined,
         agentProfileIsMainChat: false,
         agentProfileBuilder: false,
         agentProfileChatModelOverride: false,
