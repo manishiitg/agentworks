@@ -13,7 +13,7 @@ function ConnectionIcon({ icon: Icon, hint, connected, attention, count, onClick
     <button type="button" aria-label={hint} onClick={onClick} className="relative flex h-8 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md px-1 text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Icon aria-hidden="true" className="h-3.5 w-3.5"/>
       {count !== undefined && <span className="text-[10px]">{count}</span>}
-      <span aria-hidden="true" className={`absolute right-0.5 top-1 h-1.5 w-1.5 rounded-full ${attention ? 'bg-amber-500' : connected ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`}/>
+      <span aria-hidden="true" className={`absolute right-0.5 top-1 h-1 w-1 rounded-full ${attention ? 'bg-muted-foreground/50' : connected ? 'bg-muted-foreground/30' : 'bg-muted-foreground/20'}`}/>
     </button>
   </TooltipTrigger><TooltipPortal><TooltipContent className="max-w-72 break-words">{hint}</TooltipContent></TooltipPortal></Tooltip>
 }
