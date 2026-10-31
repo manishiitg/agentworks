@@ -58,6 +58,11 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 		if err != nil || !bound || got != want {
 			t.Fatalf("%s: %q bound=%v err=%v", virtual, got, bound, err)
 		}
+		// PLAT-856-422: listings reverse physical paths before resolving them again.
+		reversed, _, found, reverseErr := Reverse(docs, want)
+		if reverseErr != nil || !found || reversed != virtual {
+			t.Fatalf("reverse %s: %q %v", want, reversed, reverseErr)
+		}
 	}
 	outside := filepath.Join(base, "outside")
 	if err := os.Mkdir(outside, 0700); err != nil {

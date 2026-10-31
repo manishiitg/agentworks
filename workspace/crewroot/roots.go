@@ -379,7 +379,7 @@ func (q *Resolver) Reverse(physical string) (string, Roots, bool, error) {
 		if Within(r.Private, physical) {
 			root, prefix = r.Private, r.Virtual
 		}
-		if Within(r.Resources, physical) && !(r.SeparateFiles() && Within(r.Files, physical)) {
+		if Within(r.Resources, physical) && !(r.SeparateFiles() && Within(r.Resources, r.Files) && Within(r.Files, physical)) {
 			root, prefix = r.Resources, r.Virtual
 		}
 		rel, _ := filepath.Rel(root, physical)
