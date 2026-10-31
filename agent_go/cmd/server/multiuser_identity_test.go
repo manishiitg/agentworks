@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -91,37 +90,30 @@ func TestRunAsRegressionTable(t *testing.T) {
 	}
 }
 
-// The owner of a project comes from the server's registry, then from the path, and NEVER from the manifest
-// (PLAT-449): a Code stored in B's tree whose manifest claims A is B's, and a project registered to A stays A's
-// wherever a copy of it sits.
-func TestRunAsOwnerComesFromTheRegistryThenThePathNeverTheManifest(t *testing.T) {
-	f := newMultiUserFixture(t, legacyIdentityLayout())
-	odd := workspaceCodeRootForTest(fixtureUserB, "moved-c0de0002")
-	f.put(odd+"/product.json", `{"schema_version":1,"product":"code","id":"c0de0002-0000","owner_id":"`+fixtureUserA+`"}`)
-	in := turnRunAsInput{ProfileID: "code", WorkingFolder: odd, CallerID: fixtureUserB, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
-	// Unregistered: the path owner (B), whatever the manifest claims.
-	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.User != fixtureUserB || got.Slot != fixtureSlotB {
-		t.Fatalf("the manifest's claim decided the owner: %+v", got)
-	}
-	// Registered to A (the server created it for A): A, and B's launch is refused before it starts.
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "code", Folder: "moved-c0de0002", OwnerID: fixtureUserA}); err != nil {
+// The owner of a project comes from the server's registry and NEVER from the manifest (PLAT-449): a Crew registered
+// to A whose product.json claims B stays A's, and B's launch in it is refused while it is not shared.
+func TestRunAsOwnerComesFromTheRegistryNeverTheManifest(t *testing.T) {
+	f := newMultiUserFixture(t, sharedIdentityLayout())
+	f.WithSharing(false)
+	const folder = "moved-c1a2b3c5"
+	root := "Crew/" + folder
+	f.put(root+"/product.json", `{"schema_version":1,"product":"work","id":"c1a2b3c5-0000","owner_id":"`+fixtureUserB+`"}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: fixtureUserA, ProjectID: "c1a2b3c5-0000", Shared: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.User != fixtureUserA || got.Slot != fixtureSlotA {
-		t.Fatalf("registered owner ignored: %+v", got)
+	if got := resolveProjectOwner(f.Ctx(fixtureUserB), root); got != fixtureUserA {
+		t.Fatalf("owner = %q: the manifest's claim decided it", got)
 	}
-	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); !errors.Is(err, errProjectOwnerMismatch) {
-		t.Fatalf("B's launch in a project registered to A was not refused: %v", err)
+	in := turnRunAsInput{ProfileID: "work", WorkingFolder: root, CallerID: fixtureUserB, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
+		t.Fatal("B launched in A's unshared Crew because its manifest names B")
 	}
 }
 
-func workspaceCodeRootForTest(owner, folder string) string {
-	return legacyIdentityLayout().CodePhysical(owner, folder)
-}
-
-// TestMultiUserAccess runs the privacy assertions against the fixture's layout.
+// TestMultiUserAccess runs the privacy assertions with the Crew at Crew/<folder> (PLAT-872-85: the per-user Crew and
+// Code layouts are retired).
 func TestMultiUserAccess(t *testing.T) {
-	runMultiUserAccessAssertions(t, legacyIdentityLayout())
+	runMultiUserAccessAssertions(t, sharedIdentityLayout())
 }
 
 // runMultiUserAccessAssertions is the reusable half of the fixture: the Crew move runs it with its own layout.
@@ -131,46 +123,8 @@ func runMultiUserAccessAssertions(t *testing.T, layout identityLayout) {
 
 // assertMultiUserAccess runs the access assertions on a fixture whose Crew is where layout says it is.
 func assertMultiUserAccess(t *testing.T, f *multiUserFixture, layout identityLayout) {
-	codePhysical := layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
-	codeShort := layout.CodeShort(fixtureCodeFolder)
 	crewPhysical := layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
 	crewShort := layout.CrewShort(fixtureCrewFolder)
-
-	t.Run("B cannot reach A's Code by either spelling", func(t *testing.T) {
-		for _, hint := range []string{"", codePhysical, codeShort} {
-			if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Code, fixtureCodeID, hint); err == nil {
-				t.Fatalf("B resolved A's Code (hint %q): %+v", hint, got)
-			}
-		}
-		for _, folder := range []string{codePhysical, codeShort} {
-			req := QueryRequest{AgentProfileID: "code", AgentProfileConversationKey: fixtureCodeID, SelectedFolder: folder}
-			if level, err := f.API.conversationTargetAccess(f.Ctx(fixtureUserB), req); err == nil || level != WorkflowAccessNone {
-				t.Fatalf("B reached A's Code with folder %q: %v err=%v", folder, level, err)
-			}
-			// Naming only the folder is no way around it.
-			req.AgentProfileID = ""
-			if level, err := f.API.conversationTargetAccess(f.Ctx(fixtureUserB), req); err == nil || level != WorkflowAccessNone {
-				t.Fatalf("B reached A's Code by folder alone %q: %v err=%v", folder, level, err)
-			}
-		}
-		// The raw proxy: B's physical spelling is refused; the short spelling is B's OWN tree, so it passes the gate
-		// but is not A's folder (nothing of A's lives there).
-		if status := f.Proxy(fixtureUserB, http.MethodGet, codePhysical+"/code/main.go"); status != http.StatusForbidden {
-			t.Fatalf("proxy let B read A's Code file: %d", status)
-		}
-		if status := f.Proxy(fixtureUserB, http.MethodPut, codePhysical+"/code/main.go"); status != http.StatusForbidden {
-			t.Fatalf("proxy let B write A's Code file: %d", status)
-		}
-	})
-
-	t.Run("A reaches A's Code by both spellings", func(t *testing.T) {
-		for _, folder := range []string{codePhysical, codeShort} {
-			req := QueryRequest{AgentProfileID: "code", AgentProfileConversationKey: fixtureCodeID, SelectedFolder: folder}
-			if level, err := f.API.conversationTargetAccess(f.Ctx(fixtureUserA), req); err != nil || level != WorkflowAccessOwner {
-				t.Fatalf("A with folder %q: %v err=%v", folder, level, err)
-			}
-		}
-	})
 
 	t.Run("B in Run mode reads A's Crew by the physical spelling and cannot write it", func(t *testing.T) {
 		ref, ok := resolveCrewPath(f.Ctx(fixtureUserB), fixtureUserB, crewPhysical+"/code/notes.md")
@@ -342,15 +296,14 @@ func assertMultiUserAccess(t *testing.T, f *multiUserFixture, layout identityLay
 			want               int // 0 allowed, else the refusing status
 		}
 		for _, p := range []pair{
-			{fixtureUserA, http.MethodGet, codePhysical + "/code/main.go", 0},
-			{fixtureUserA, http.MethodPut, codePhysical + "/code/main.go", 0},
-			{fixtureUserB, http.MethodGet, codePhysical + "/code/main.go", http.StatusForbidden},
-			{fixtureUserB, http.MethodPut, codePhysical + "/code/main.go", http.StatusForbidden},
+			// A's private chats stay A's: B can neither read nor write them raw.
+			{fixtureUserA, http.MethodGet, perUserChatsFolderFor(fixtureUserA) + "/notes.md", 0},
+			{fixtureUserB, http.MethodGet, perUserChatsFolderFor(fixtureUserA) + "/notes.md", http.StatusForbidden},
+			{fixtureUserB, http.MethodPut, perUserChatsFolderFor(fixtureUserA) + "/notes.md", http.StatusForbidden},
 			{fixtureUserA, http.MethodGet, crewPhysical + "/code/notes.md", 0},
 			{fixtureUserA, http.MethodPut, crewPhysical + "/code/notes.md", 0},
 			{fixtureUserB, http.MethodPut, crewPhysical + "/code/notes.md", http.StatusForbidden},
 			{fixtureUserA, http.MethodGet, crewShort + "/code/notes.md", 0},
-			{fixtureUserA, http.MethodGet, codeShort + "/code/main.go", 0},
 		} {
 			if got := f.Proxy(p.user, p.method, p.path); got != p.want {
 				t.Errorf("%s %s as %s: proxy decision %d, want %d", p.method, p.path, p.user, got, p.want)
@@ -382,63 +335,7 @@ func TestEditedManifestOwnerNeverChangesOwnershipOrLaunchIdentity(t *testing.T) 
 	forged := func(product, id string) string {
 		return `{"schema_version":1,"product":"` + product + `","id":"` + id + `","title":"x","session_id":"` + product + `:project:` + id + `","owner_id":"` + fixtureUserB + `"}`
 	}
-	t.Run("Code: A edits owner_id to B", func(t *testing.T) {
-		f := newMultiUserFixture(t, legacyIdentityLayout())
-		codeA := f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
-		// The browser path: A's write passes the proxy (it is A's own file), B's is refused.
-		if got := f.Proxy(fixtureUserA, http.MethodPut, codeA+"/product.json"); got != 0 {
-			t.Fatalf("the proxy refused A's own manifest write: %d", got)
-		}
-		if got := f.Proxy(fixtureUserB, http.MethodPut, codeA+"/product.json"); got != http.StatusForbidden {
-			t.Fatalf("the proxy let B write A's manifest: %d", got)
-		}
-		// The native path: an edit in the folder itself (what a CLI turn or a shell does).
-		f.put(codeA+"/product.json", forged("code", fixtureCodeID))
-
-		profile := f.Code
-		project, err := resolveCrewProjectBinding(f.Ctx(fixtureUserA), fixtureUserA, profile, fixtureCodeID, "")
-		if err != nil || !project.OwnedByCaller || project.OwnerID != fixtureUserA {
-			t.Fatalf("A no longer opens their Code: %+v err=%v", project, err)
-		}
-		if got := resolveProjectOwner(f.Ctx(fixtureUserA), codeA); got != fixtureUserA {
-			t.Fatalf("resolved owner = %q after the edit", got)
-		}
-		in := turnRunAsInput{ProfileID: "code", WorkingFolder: codeA, CallerID: fixtureUserA, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
-		runAs, err := declareTurnRunAs(f.Ctx(fixtureUserA), in)
-		if err != nil || runAs.User != fixtureUserA || runAs.Slot != fixtureSlotA {
-			t.Fatalf("launch identity after the edit: %+v err=%v", runAs, err)
-		}
-		if runAs.Slot == fixtureSlotB || runAs.User == fixtureUserB {
-			t.Fatal("B's slot was selected")
-		}
-		// B cannot open it either, whatever the manifest says.
-		if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, profile, fixtureCodeID, ""); err == nil {
-			t.Fatalf("B opened A's Code: %+v", got)
-		}
-	})
-
-	t.Run("Code: B plants a copy of A's Code in B's own tree", func(t *testing.T) {
-		f := newMultiUserFixture(t, legacyIdentityLayout())
-		copyRoot := f.Layout.CodePhysical(fixtureUserB, fixtureCodeFolder) // same folder name, B's tree
-		f.put(copyRoot+"/product.json", forged("code", fixtureCodeID))
-		f.put(copyRoot+"/workflow.json", `{"schema_version":1,"id":"`+fixtureCodeID+`","label":"App","capabilities":{}}`)
-		// The folder is registered to A: B's copy is not B's project.
-		if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Code, fixtureCodeID, ""); err == nil {
-			t.Fatalf("B opened a copy of A's registered Code: %+v", got)
-		}
-		// And no CLI starts for it: an explicit refusal before the launch, not a fallback.
-		in := turnRunAsInput{ProfileID: "code", WorkingFolder: f.Layout.CodeShort(fixtureCodeFolder), CallerID: fixtureUserB, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
-		if runAs, err := declareTurnRunAs(f.Ctx(fixtureUserB), in); err == nil || !errors.Is(err, errProjectOwnerMismatch) {
-			t.Fatalf("B's launch on a copy of A's Code was not refused: %+v err=%v", runAs, err)
-		}
-		// A's own launch is unaffected.
-		inA := turnRunAsInput{ProfileID: "code", WorkingFolder: f.Layout.CodeShort(fixtureCodeFolder), CallerID: fixtureUserA, CLIWorkingDir: "/x/cli", SharedWorkingDir: "/x/cli"}
-		if runAs, err := declareTurnRunAs(f.Ctx(fixtureUserA), inA); err != nil || runAs.Slot != fixtureSlotA {
-			t.Fatalf("A's launch: %+v err=%v", runAs, err)
-		}
-	})
-
-	for name, layout := range map[string]identityLayout{"legacy per-user folder": legacyIdentityLayout(), "Crew/<id>": sharedIdentityLayout()} {
+	for name, layout := range map[string]identityLayout{"Crew/<id>": sharedIdentityLayout()} {
 		layout := layout
 		t.Run("Crew ("+name+"): the owner edits owner_id to B", func(t *testing.T) {
 			f := newMultiUserFixture(t, layout)
@@ -481,45 +378,41 @@ func TestEditedManifestOwnerNeverChangesOwnershipOrLaunchIdentity(t *testing.T) 
 	}
 }
 
-// The same privacy assertions against a Crew that lives at Crew/<id> (PLAT-442 step 4).
-func TestMultiUserAccessSharedCrewRoot(t *testing.T) {
-	runMultiUserAccessAssertions(t, sharedIdentityLayout())
-}
-
-func TestWorkspaceCodeLaunchUsesCurrentShareWithoutChangingOwner(t *testing.T) {
-	f := newMultiUserFixture(t, legacyIdentityLayout())
-	root := f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
-	in := turnRunAsInput{ProfileID: "code", WorkingFolder: root, CallerID: fixtureUserB}
-	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
-		t.Fatal("private Code admitted another person")
+// Launching in someone else's Crew follows its current sharing and never changes whose slot it runs as: "Only me"
+// keeps B out, "Chosen people: B" lets B in, back to "Only me" shuts B out again, and a co-owner keeps access only while
+// listed. (SetAudience's flag is private: true with no people is "Only me".)
+func TestCrewLaunchUsesCurrentShareWithoutChangingOwner(t *testing.T) {
+	f := newMultiUserFixture(t, sharedIdentityLayout())
+	root := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
+	in := turnRunAsInput{ProfileID: "work", WorkingFolder: root, CallerID: fixtureUserB}
+	if err := defaultProjectOwners().SetAudience("work", fixtureCrewFolder, true, nil); err != nil {
+		t.Fatal(err)
 	}
-	if err := defaultProjectOwners().SetAudience("code", fixtureCodeFolder, true, []string{fixtureUserB}); err != nil {
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
+		t.Fatal("a private Crew admitted another person")
+	}
+	if err := defaultProjectOwners().SetAudience("work", fixtureCrewFolder, true, []string{fixtureUserB}); err != nil {
 		t.Fatal(err)
 	}
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err != nil {
-		t.Fatalf("shared Code refused: %v", err)
+		t.Fatalf("shared Crew refused: %v", err)
 	}
-	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.User != fixtureUserA {
-		t.Fatalf("sharing changed launch owner: %+v", got)
+	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.Slot == fixtureSlotB || got.User == fixtureUserB {
+		t.Fatalf("sharing made B's turn run as B: %+v", got)
 	}
-	copy := in
-	copy.WorkingFolder = f.Layout.CodePhysical(fixtureUserB, fixtureCodeFolder)
-	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), copy, defaultRunAsDeps()); err == nil {
-		t.Fatal("sharing admitted a copied root in another person's tree")
-	}
-	if err := defaultProjectOwners().SetAudience("code", fixtureCodeFolder, true, nil); err != nil {
+	if err := defaultProjectOwners().SetAudience("work", fixtureCrewFolder, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
 		t.Fatal("unshare did not revoke launch")
 	}
-	if _, err := defaultProjectOwners().AddCoOwner("code", fixtureCodeFolder, fixtureUserB); err != nil {
+	if _, err := defaultProjectOwners().AddCoOwner("work", fixtureCrewFolder, fixtureUserB); err != nil {
 		t.Fatal(err)
 	}
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err != nil {
 		t.Fatalf("co-owner launch refused: %v", err)
 	}
-	if _, err := defaultProjectOwners().RemoveCoOwner("code", fixtureCodeFolder, fixtureUserB); err != nil {
+	if _, err := defaultProjectOwners().RemoveCoOwner("work", fixtureCrewFolder, fixtureUserB); err != nil {
 		t.Fatal(err)
 	}
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
