@@ -199,7 +199,7 @@ post_deploy_smoke() {
     # shellcheck disable=SC1090
     source "$config"
     [[ -n "${SMOKE_LOGIN:-}" && -n "${SMOKE_WORKSPACE:-}" ]] || { echo "==> [$product] smoke.env needs SMOKE_LOGIN and SMOKE_WORKSPACE" >&2; exit 0; }
-    echo "==> [$product] Smoke check: one tool call per provider in $SMOKE_WORKSPACE"
+    echo "==> [$product] Smoke check: per provider, a tool call and then a shell turn in the same chat, in $SMOKE_WORKSPACE"
     python3 -I "$REPO_ROOT/scripts/post-deploy-smoke.py" --login "$SMOKE_LOGIN" --workspace-id "$SMOKE_WORKSPACE" ${SMOKE_PROVIDERS:+--providers "$SMOKE_PROVIDERS"} \
       || echo "==> [$product] Smoke check could not run (the deploy itself succeeded)."
   )

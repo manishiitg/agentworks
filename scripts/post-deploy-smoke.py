@@ -3,8 +3,10 @@
 
 For every company provider account the server has configured, open a side chat in a dedicated smoke Crew, choose
 that provider for the chat only (models action=set scope=tab), and ask for one AgentWorks tool call: the Crew's
-owners list. A provider passes when the turn was accepted once and answered once with the owner count the server
-itself reports, within the time limit. The side chat is closed afterwards; the Crew's own model is never changed.
+owners list. Then, in the same chat (the CLI's next launch, as a person's next message), a native shell command that
+reports the account it runs as and writes, reads and removes a file in the Crew (PLAT-872-90: a CLI that worked once
+failed on its next launch, and one turn per provider never saw it). A provider passes when each turn was accepted
+once and answered once with the expected reply, within the time limit. The side chat is closed afterwards; the Crew's own model is never changed.
 
 It reports and never gates a deploy: the exit code is 0 unless the check itself could not run.
 
@@ -23,6 +25,12 @@ import uuid
 
 PROMPT = ("Post-deploy smoke check. Call workspace action=owners once for this Crew to list its owners, "
           "then reply with exactly OWNERS=<number of owners, counting the main owner and co-owners> and nothing else.")
+
+
+# The second turn: the CLI's own shell, in the Crew's folder, as whatever account the platform launched it as.
+SHELL_PROMPT = ("Post-deploy smoke check, part 2. Use your shell tool to run exactly this one command in the Crew folder: "
+                "f=.smoke-$$; echo ok > $f && cat $f && rm $f; id -un\n"
+                "Then reply with exactly RUNAS=<the account name it printed> FILE=<ok if it printed ok, else fail> and nothing else.")
 
 
 def login_path(name):
@@ -69,6 +77,40 @@ def configured_providers(chats):
     return out
 
 
+def turn(config, workspace, chat_id, prompt, started, limit, accept, expected):
+    """Send prompt in the chat and follow that one turn. Returns (problems, answer): no problems when it was accepted
+    once and answered once with a reply accept() takes."""
+    asked = call(config, "workspace", {"action": "ask", "workspace_id": workspace, "chat_id": chat_id, "submission_id": str(uuid.uuid4()),
+                                       "message": prompt})
+    query = asked.get("query_id", "")
+    after, messages = 0, []
+    while time.monotonic() - started < limit:
+        page = call(config, "workspace", {"action": "read_chat", "workspace_id": workspace, "chat_id": chat_id, "query_id": query,
+                                          "after": after, "wait_seconds": 25})
+        messages += page.get("messages") or []
+        after = page.get("next_after", after)
+        if not page.get("working") and any(m.get("role") == "assistant" for m in messages):
+            break
+    # Chat messages carry the chat's own turn id: follow the turn of the message this check sent.
+    sent = [m for m in messages if m.get("role") == "you" and m.get("text") == prompt]
+    turns = {m.get("turn") for m in sent}
+    this = [m for m in messages if m.get("turn") in turns]
+    answers = [m.get("text", "").strip() for m in this if m.get("role") == "assistant" and m.get("text", "").strip()]
+    problems = []
+    if len(sent) != 1:
+        problems.append(f"accepted {len(sent)} times")
+    if not answers:
+        problems.append(f"no answer within {limit}s")
+    elif len(answers) > 1:
+        problems.append(f"{len(answers)} answers")
+    elif not accept(answers[0]):
+        problems.append(f"answer {answers[0][:80]!r} lacks {expected}")
+    if problems:
+        tools = [m.get("text", "") for m in this if m.get("role") == "tool"]
+        problems.append("tools: " + (", ".join(tools[:6]) or "none"))
+    return problems, answers[0] if len(answers) == 1 else ""
+
+
 def smoke(config, workspace, target, owners, limit):
     started = time.monotonic()
     chat_id = None
@@ -80,34 +122,13 @@ def smoke(config, workspace, target, owners, limit):
         if target["model_id"]:
             choice["model_id"] = target["model_id"]
         call(config, "models", choice)
-        asked = call(config, "workspace", {"action": "ask", "workspace_id": workspace, "chat_id": chat_id, "submission_id": str(uuid.uuid4()),
-                                           "message": PROMPT})
-        query = asked.get("query_id", "")
-        after, messages = 0, []
-        while time.monotonic() - started < limit:
-            page = call(config, "workspace", {"action": "read_chat", "workspace_id": workspace, "chat_id": chat_id, "query_id": query,
-                                              "after": after, "wait_seconds": 25})
-            messages += page.get("messages") or []
-            after = page.get("next_after", after)
-            if not page.get("working") and any(m.get("role") == "assistant" for m in messages):
-                break
-        # Chat messages carry the chat's own turn id: follow the turn of the message this check sent.
-        sent = [m for m in messages if m.get("role") == "you" and m.get("text") == PROMPT]
-        turns = {m.get("turn") for m in sent}
-        turn = [m for m in messages if m.get("turn") in turns]
-        answers = [m.get("text", "").strip() for m in turn if m.get("role") == "assistant" and m.get("text", "").strip()]
-        problems = []
-        if len(sent) != 1:
-            problems.append(f"accepted {len(sent)} times")
-        if not answers:
-            problems.append(f"no answer within {limit}s")
-        elif len(answers) > 1:
-            problems.append(f"{len(answers)} answers")
-        elif f"OWNERS={owners}" not in answers[0].replace(" ", ""):
-            problems.append(f"answer {answers[0][:80]!r} lacks OWNERS={owners}")
-        if problems:
-            tools = [m.get("text", "") for m in turn if m.get("role") == "tool"]
-            problems.append("tools: " + (", ".join(tools[:6]) or "none"))
+        problems, _ = turn(config, workspace, chat_id, PROMPT, started, limit,
+                           lambda answer: f"OWNERS={owners}" in answer.replace(" ", ""), f"OWNERS={owners}")
+        if not problems:
+            problems, answer = turn(config, workspace, chat_id, SHELL_PROMPT, started, limit,
+                                    lambda answer: "FILE=ok" in answer.replace(" ", ""), "FILE=ok")
+            problems = [f"turn 2: {p}" for p in problems]
+            target["runas"] = next((w[len("RUNAS="):] for w in answer.replace("RUNAS=", " RUNAS=").split() if w.startswith("RUNAS=")), "")
         return problems, time.monotonic() - started
     except Exception as error:  # a failed call is a failed smoke result, not a crashed check
         return [f"error: {first_line(str(error))}"], time.monotonic() - started
@@ -129,7 +150,7 @@ def main():
     parser.add_argument("--login", required=True, help="saved login name (agentworks login --name NAME) of the smoke connection")
     parser.add_argument("--workspace-id", required=True, help="the smoke Crew, work:<crew id>")
     parser.add_argument("--providers", default="", help="comma-separated subset; default: every configured company account")
-    parser.add_argument("--timeout", type=int, default=240, help="seconds per provider")
+    parser.add_argument("--timeout", type=int, default=420, help="seconds per provider (both turns)")
     args = parser.parse_args()
 
     config = login_path(args.login)
@@ -155,7 +176,8 @@ def main():
         problems, elapsed = smoke(config, args.workspace_id, target, owners, args.timeout)
         failed += bool(problems)
         verdict = "PASS" if not problems else "FAIL"
-        print(f"SMOKE {verdict} {target['provider']} ({target['model_id'] or 'default'}) {elapsed:.0f}s" + (": " + "; ".join(problems) if problems else ""), flush=True)
+        runas = f" runs as {target['runas']}" if target.get("runas") else ""
+        print(f"SMOKE {verdict} {target['provider']} ({target['model_id'] or 'default'}){runas} {elapsed:.0f}s" + (": " + "; ".join(problems) if problems else ""), flush=True)
     print(f"SMOKE: {len(targets) - failed}/{len(targets)} providers passed")
     return 0
 
