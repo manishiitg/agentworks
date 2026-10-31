@@ -6650,7 +6650,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 					// Private desktop captures belong to this interactive owner chat, never the project.
 					if !crewReadOnlyTurn && computerUseAllowed(GetUserFromContext(r.Context())) && websiteDeviceClaims(GetUserFromContext(r.Context())) && laptopBuilderTurn(req, resolvedProfile) && crewProjectOwnedByCaller(currentUserID, profileBindingRoot) {
-						if captures, err := computerUseChatDirectory(req.SelectedFolder, sessionID); err == nil {
+						if captures, err := computerUseChatDirectory(chatWorkingFolder, sessionID); err == nil {
 							if err := os.MkdirAll(captures, 0700); err == nil {
 								guardRead = append(guardRead, captures)
 								cliSecurityPolicy = computerUseCaptureReadPolicy(cliSecurityPolicy, captures)
