@@ -1,4 +1,4 @@
-import { Server } from 'lucide-react'
+import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { serverIconColors } from '../../utils/connectedWorkPresentation'
 import type { DesktopConnection } from '../../services/desktopConnections'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from '../ui/select'
@@ -17,9 +17,10 @@ export function LocationFilter({ label, value, onChange, connections, workTypes 
       {workTypes && <>
         <SelectItem value="crew" className="text-xs">Crews</SelectItem>
         <SelectItem value="goal" className="text-xs">Goals</SelectItem>
+        <SelectItem value="dashboard" className="text-xs">Shared dashboards</SelectItem>
         {connections.length > 1 && <SelectSeparator />}
       </>}
-      {(workTypes && connections.length < 2 ? [] : connections).map(connection => <SelectItem key={connection.id} value={connection.id} className="text-xs"><span className="flex max-w-28 items-center gap-1.5" title={connection.server || connection.name}>{connection.id !== 'local' && <Server aria-hidden="true" className={`h-3 w-3 shrink-0 ${serverColors[connection.server]}`} />}<span className="truncate">{connection.name}</span></span></SelectItem>)}
+      {(workTypes && connections.length < 2 ? [] : connections).map(connection => <SelectItem key={connection.id} value={connection.id} className="text-xs"><span className="flex max-w-28 items-center gap-1.5" title={connection.server || connection.name}>{connection.id !== 'local' && <ServerIdentityIcon connectionId={connection.id} hidden className={`h-3 w-3 shrink-0 ${serverColors[connection.server]}`} />}<span className="truncate">{connection.name}</span></span></SelectItem>)}
     </SelectContent>
   </Select>
 }

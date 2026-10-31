@@ -276,11 +276,10 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				continue
 			}
 			seen[key] = true
-			item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
+			item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "icon": doc.Identity.Icon, "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
 			if navigation {
 				root := binding.Binding.WorkspacePath
 				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
-				item["icon"] = doc.Identity.Icon
 			}
 			items = append(items, item)
 		}

@@ -1,3 +1,4 @@
+import { ServerIdentityIcon, serverIconOptions } from './ServerIdentityIcon'
 import { useEffect, useRef, useState } from 'react'
 import { Plus, Server, X } from 'lucide-react'
 import { serverIconColors } from '../../utils/connectedWorkPresentation'
@@ -8,8 +9,8 @@ import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from
 import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 import ModalPortal from '../ui/ModalPortal'
 
-export function openConnectedServers(server = '') {
-  window.dispatchEvent(new CustomEvent('open-connected-servers', { detail: { server } }))
+export function openConnectedServers(server = '', connectionId?: string) {
+  window.dispatchEvent(new CustomEvent('open-connected-servers', { detail: { server, connectionId } }))
 }
 
 export function ConnectedServersMenuItem() {
@@ -24,8 +25,9 @@ function ConnectedServersControl() {
   const serverColors = serverIconColors(connections)
   const refresh = state.refresh
   const [adding, setAdding] = useState(false)
-  const [renaming, setRenaming] = useState<string | null>(null)
-  const [connectionName, setConnectionName] = useState('')
+  const [selectedConnection, setSelectedConnection] = useState<string | null>(null)
+  const [editingIcon, setEditingIcon] = useState<string | null>(null)
+  const iconPreferences = useSidebarExpansionStore(state => state.connectionIcons)
   const [showConnectForm, setShowConnectForm] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -68,13 +70,14 @@ function ConnectedServersControl() {
     finally { setBusy(false) }
   }
   const disconnect = async (id: string) => {
-    try { await desktopRequest(`/${id}`, 'DELETE'); if (active === id) open('local', '/home'); else void refresh() }
+    try { await desktopRequest(`/${id}`, 'DELETE'); if (selectedConnection) setAdding(false); if (active === id) open('local', '/home'); else void refresh() }
     catch (e) { setError((e as Error).message) }
   }
 
   useEffect(() => {
     const show = (event: Event) => {
-      const address = (event as CustomEvent<{ server?: string }>).detail?.server || ''
+      const address = (event as CustomEvent<{ server?: string; connectionId?: string }>).detail?.server || ''
+      setSelectedConnection((event as CustomEvent<{ connectionId?: string }>).detail?.connectionId || null); setEditingIcon(null)
       setError(''); setServer(address); setShowConnectForm(Boolean(address)); setAdding(true)
     }
     window.addEventListener('open-connected-servers', show)
@@ -83,7 +86,7 @@ function ConnectedServersControl() {
   useEffect(() => { if (adding) void refresh() }, [adding, refresh])
   return <>
     <button type="button" role="menuitem" data-product-navigation-action aria-label="Connected servers"
-      onClick={() => { setError(''); setShowConnectForm(false); setAdding(true) }}>
+      onClick={() => { setSelectedConnection(null); setEditingIcon(null); setError(''); setShowConnectForm(false); setAdding(true) }}>
       <Server className="h-4 w-4" /><span>Connected servers</span>
     </button>
     <ModalPortal><dialog ref={dialog} aria-labelledby="connect-server-title" aria-describedby="connect-server-description"
@@ -96,26 +99,21 @@ function ConnectedServersControl() {
         </div>
         {!showConnectForm ? <div className="space-y-3">
           <p id="connect-server-description" className="text-sm text-muted-foreground">Your work stays on the computer or server where it runs.</p>
-          {connections.map(connection => <div key={connection.id} className="rounded-lg border border-border p-3">
-            {renaming === connection.id ? <form className="mb-2 flex items-center gap-2" onSubmit={event => {
-              event.preventDefault()
-              const name = connectionName.trim()
-              if (!name) return
-              useSidebarExpansionStore.getState().renameConnection(connection.id, name)
-              useConnectedWorkStore.setState(state => ({ connections: state.connections.map(item => item.id === connection.id ? { ...item, name } : item) }))
-              setRenaming(null)
-            }}>
-              <input aria-label="Connection name" autoFocus maxLength={24} required value={connectionName} onChange={event => setConnectionName(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-sm" />
-              <button className="text-xs text-primary">Save</button>
-              <button type="button" onClick={() => setRenaming(null)} className="text-xs text-muted-foreground">Cancel</button>
-            </form> : null}
-            <div className="flex items-center justify-between gap-2"><span className="flex min-w-0 items-center gap-2 font-medium">{connection.id !== 'local' && <Server aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${serverColors[connection.server]}`} />}<span className="truncate">{connection.name}</span></span><span className="text-xs text-muted-foreground">{inventory[connection.id]?.status === 'connected' ? 'Connected' : inventory[connection.id]?.status === 'sign_in' ? 'Sign in again' : 'Unavailable'}</span></div>
+          {connections.filter(connection => connection.id !== 'local' && (!selectedConnection || connection.id === selectedConnection)).map(connection => <div key={connection.id} className="rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between gap-2"><span className="flex min-w-0 items-center gap-2 font-medium">{connection.id !== 'local' && <button type="button" aria-label={`Change icon for ${connection.name}`} title="Change server icon" aria-expanded={editingIcon === connection.id}
+              onClick={() => setEditingIcon(editingIcon === connection.id ? null : connection.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <ServerIdentityIcon connectionId={connection.id} hidden className={`h-4 w-4 ${serverColors[connection.server]}`} />
+            </button>}<span className="truncate">{connection.name}</span></span><span className="text-xs text-muted-foreground">{inventory[connection.id]?.status === 'connected' ? 'Connected' : inventory[connection.id]?.status === 'sign_in' ? 'Sign in again' : 'Unavailable'}</span></div>
             {connection.server && <p className="mt-1 truncate text-xs text-muted-foreground" title={connection.server}>{connection.server}</p>}
             {connection.user && <p className="truncate text-xs text-muted-foreground">{connection.user.email || connection.user.username}</p>}
-            <div className="mt-2 flex gap-4 text-xs">
-              <button className="text-primary" onClick={() => open(connection.id, '/home')}>Open</button>
-              {connection.id !== 'local' && <><button className="text-muted-foreground" onClick={() => { setRenaming(connection.id); setConnectionName(connection.name) }}>Rename</button><button className="text-primary" onClick={() => beginConnect(connection.server)}>Reconnect</button><button className="text-muted-foreground" onClick={() => void disconnect(connection.id)}>Disconnect</button></>}
-            </div>
+            {editingIcon === connection.id && <div role="group" aria-label="Choose server icon" className="mt-3 grid grid-cols-4 gap-1 sm:grid-cols-8 rounded-lg border border-border p-2">
+              {serverIconOptions.map(({ id, label, Icon }) => <button key={id} type="button" aria-label={`${label} icon`} title={label} aria-pressed={(iconPreferences[connection.id] || 'server') === id}
+                onClick={() => { useSidebarExpansionStore.getState().setConnectionIcon(connection.id, id); setEditingIcon(null) }}
+                className={`flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${serverColors[connection.server]} ${(iconPreferences[connection.id] || 'server') === id ? 'bg-muted ring-1 ring-ring' : ''}`}>
+                <Icon className="h-4 w-4" />
+              </button>)}
+            </div>}
+            {connection.id !== 'local' && <button type="button" className="mt-2 text-xs text-muted-foreground hover:text-destructive" onClick={() => void disconnect(connection.id)}>Disconnect</button>}
           </div>)}
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <button className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground" onClick={() => beginConnect()}><Plus className="h-4 w-4" />Connect server</button>
