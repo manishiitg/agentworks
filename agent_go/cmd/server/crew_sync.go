@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -18,12 +20,14 @@ import (
 )
 
 type crewSyncRequest struct {
-	Action   string             `json:"action"`
-	PairID   string             `json:"pair_id,omitempty"`
-	SourceID string             `json:"source_id,omitempty"`
-	Name     string             `json:"name,omitempty"`
-	Editing  string             `json:"editing,omitempty"`
-	Snapshot *crewsync.Snapshot `json:"snapshot,omitempty"`
+	SplitFiles bool               `json:"split_files,omitempty"`
+	TransferID string             `json:"transfer_id,omitempty"`
+	Action     string             `json:"action"`
+	PairID     string             `json:"pair_id,omitempty"`
+	SourceID   string             `json:"source_id,omitempty"`
+	Name       string             `json:"name,omitempty"`
+	Editing    string             `json:"editing,omitempty"`
+	Snapshot   *crewsync.Snapshot `json:"snapshot,omitempty"`
 }
 type crewSyncReply struct {
 	ProjectID string                `json:"project_id"`
@@ -66,11 +70,20 @@ func saveCrewSyncManifest(id string, files crewsync.Manifest) error {
 }
 
 func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, id string) (crewroot.Roots, error) {
+	if !personalLaptopSettingsClaims(claims) {
+		return crewroot.Roots{}, fmt.Errorf("use your own interactive Crew chat or personal Builder connection to sync")
+	}
 	if code, message := externalCrewAuthorGate(claims); code != 0 {
 		return crewroot.Roots{}, fmt.Errorf("%s", message)
 	}
 	if claims.AccessToken != nil && (!claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(id))) {
 		return crewroot.Roots{}, fmt.Errorf("this connection cannot sync this Crew")
+	}
+	if token := claims.AccessToken; token != nil && token.FileGuard != nil {
+		guard := token.FileGuard
+		if !guard.Allows(".", false) || !guard.Allows(".", true) || len(guard.BlockedPaths)+len(guard.BlockedWritePaths)+len(guard.ReadOnlyPaths) > 0 {
+			return crewroot.Roots{}, fmt.Errorf("sync needs access to the whole project; use the Mac app or a full-project Builder connection")
+		}
 	}
 	binding, _, ok := api.resolveExternalWorkspace(ctx, claims, id)
 	if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
@@ -92,7 +105,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	var input crewSyncRequest
 	if r.Method == http.MethodGet {
 		input.Action = "status"
-	} else if json.NewDecoder(io.LimitReader(r.Body, 360<<20)).Decode(&input) != nil {
+	} else if json.NewDecoder(io.LimitReader(r.Body, 800<<20)).Decode(&input) != nil {
 		externalError(w, 400, "invalid_request", "Send a valid sync request.")
 		return
 	}
@@ -109,7 +122,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if input.PairID == "" || input.SourceID == "" || input.Name == "" {
 			return crewSyncReply{}, fmt.Errorf("choose a local Crew to sync")
 		}
-		if !workspaceCreateTokenAllowed(claims) {
+		if !personalLaptopSettingsClaims(claims) || !workspaceCreateTokenAllowed(claims) {
 			return crewSyncReply{}, fmt.Errorf("this connection cannot create a Crew")
 		}
 		created, err := api.createWorkspaceFromSpec(ctx, claims, crewProfileID, crewSpec{Name: input.Name}, false)
@@ -120,10 +133,12 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if err != nil {
 			return crewSyncReply{}, err
 		}
-		if err = os.MkdirAll(filepath.Join(roots.Files, crewroot.FilesSegment), 0770); err != nil {
-			return crewSyncReply{}, err
+		if input.SplitFiles {
+			if err = os.MkdirAll(filepath.Join(roots.Files, crewroot.FilesSegment), 0770); err != nil {
+				return crewSyncReply{}, err
+			}
 		}
-		binding := crewroot.SyncBinding{PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID}
+		binding := crewroot.SyncBinding{SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID}
 		if err = crewroot.WriteSync(created, binding); err != nil {
 			return crewSyncReply{}, err
 		}
@@ -155,6 +170,15 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	}
 	switch input.Action {
 	case "push":
+		if input.TransferID == "" {
+			return out, fmt.Errorf("a sync transfer identity is required")
+		}
+		if input.TransferID == binding.LastTransfer {
+			return out, nil
+		}
+		if err := api.crewSyncIdle(roots); err != nil {
+			return out, err
+		}
 		if binding.Editing != "local" || input.Snapshot == nil {
 			return out, fmt.Errorf("editing is on the server; bring its changes back before updating it")
 		}
@@ -164,11 +188,16 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if err = crewsync.Apply(ctx, roots, *input.Snapshot); err != nil {
 			return out, err
 		}
+		ensureSharedCrewFolderAccess(strings.TrimPrefix(roots.Virtual, "Crew/"), roots.Owner)
 		if err = saveCrewSyncSnapshot(roots.ID, *input.Snapshot); err != nil {
 			return out, err
 		}
 		binding.Editing = input.Editing
+		binding.LastTransfer = input.TransferID
 	case "pull":
+		if err := api.crewSyncIdle(roots); err != nil {
+			return out, err
+		}
 		// Freeze authored writes before capturing the return copy. Retrying a
 		// failed return keeps the same side selected; it never discards files.
 		binding.Editing = "local"
@@ -196,6 +225,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 		return out, err
 	}
+	log.Printf("[CREW_SYNC] project=%s action=%s editing=%s transfer=%s", roots.ID, input.Action, binding.Editing, input.TransferID)
 	return out, nil
 }
 
@@ -241,4 +271,31 @@ func saveCrewSyncSnapshot(id string, snapshot crewsync.Snapshot) error {
 	state := *snapshot.Git
 	state.Bundle = nil
 	return fsutil.WriteJSONAtomic(p+".git", state, 0600)
+}
+
+// Editing handoff is between turns. Existing native processes retain the
+// permissions they started with, so a running/retained terminal must finish.
+func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
+	api.activeSessionsMux.RLock()
+	defer api.activeSessionsMux.RUnlock()
+	for _, session := range api.activeSessions {
+		if session == nil {
+			continue
+		}
+		at := canonicalCrewWorkspaceRoot(session.WorkspacePath)
+		if at != roots.Virtual && !strings.HasPrefix(at, roots.Virtual+"/") {
+			continue
+		}
+		if session.Status == "running" || session.Status == "paused" || session.HasRunningBackgroundAgents || session.HasRetainedTmuxSession {
+			return fmt.Errorf("finish or stop this Crew's running chat and terminal before moving editing; after this reply, use Project sync")
+		}
+	}
+	codeShells.Lock()
+	defer codeShells.Unlock()
+	for _, shell := range codeShells.byID {
+		if shell.projectID == roots.ID && shell.ownerID == roots.Owner {
+			return fmt.Errorf("stop this Crew's open terminal, then retry Project sync")
+		}
+	}
+	return nil
 }

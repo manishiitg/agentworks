@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -215,7 +216,11 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		writeWorkspaceGitJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "workspace is not available"})
 		return
 	}
-	base := filepath.Join(root, filepath.FromSlash(canonical))
+	base, resolved := workspaceGitPhysicalPath(r, canonical)
+	if !resolved {
+		writeWorkspaceGitJSON(w, 404, map[string]string{"error": "workspace not found"})
+		return
+	}
 	realBase, ok := workspaceGitConfined(base, base)
 	if !ok {
 		writeWorkspaceGitJSON(w, http.StatusNotFound, map[string]string{"error": "workspace not found"})
@@ -236,6 +241,10 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 
 // Shared action implementation; callers must authorize and select the repository.
 func serveWorkspaceGitAction(w http.ResponseWriter, r *http.Request, repoDir string, req workspaceGitActionRequest, claims *UserClaims) {
+	if err := crewroot.CheckSyncWrite(workspaceGitDocsRoot(), repoDir); err != nil {
+		writeWorkspaceGitJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
 	unlock := workspaceGitLock(repoDir)
 	defer unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), workspaceGitWriteTimeout)

@@ -39,34 +39,7 @@ type Snapshot struct {
 
 // Both send and receive use this policy. Project ignore rules are additionally
 // evaluated at the source. Runtime outputs are not authored source.
-func Allowed(key string, directory bool) bool {
-	area, rel, ok := strings.Cut(key, "/")
-	if !ok || (area != "files" && area != "resources") {
-		return false
-	}
-	if _, err := publication.CleanPath(rel); err != nil {
-		return false
-	}
-	if area == "resources" {
-		first := strings.SplitN(rel, "/", 2)[0]
-		switch first {
-		case "_files", "outputs", "runs", "planning", "knowledgebase", "conversation", "costs", "human_inputs", "triggers",
-			"product.json", "workflow.json", "functions.json", "schedules.json", "webhooks.json", "product-schedules.json", "schedule-runs.json":
-			return false
-		}
-		if rel == "db/db.sqlite" || strings.HasPrefix(rel, "db/db.sqlite-") {
-			return false
-		}
-	}
-	// Git's ignore/attribute files are ordinary project content, never .git state.
-	if path.Base(rel) == ".gitignore" || path.Base(rel) == ".gitattributes" {
-		return true
-	}
-	if directory {
-		return !publication.ExcludedDirectory(rel)
-	}
-	return !publication.Excluded(rel)
-}
+func Allowed(key string, directory bool) bool { return crewroot.SyncContentAllowed(key, directory) }
 
 func rootFor(roots crewroot.Roots, key string) (string, string, error) {
 	if !Allowed(key, false) {
@@ -114,10 +87,11 @@ func readFile(root, rel string) ([]byte, File, error) {
 func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snapshot, error) {
 	out := Snapshot{Files: Manifest{}, Changes: []Change{}}
 	var total int64
-	for _, area := range []struct{ name, root string }{{"files", roots.Files}, {"resources", roots.Resources}} {
-		if area.name == "resources" && roots.Files == roots.Resources {
-			continue
-		}
+	areas := []struct{ name, root string }{{"files", roots.Files}, {"resources", roots.Resources}}
+	if !roots.SeparateFiles() {
+		areas = areas[1:]
+	}
+	for _, area := range areas {
 		ignored, err := publication.GitIgnored(ctx, area.root)
 		if err != nil {
 			return out, err
@@ -261,16 +235,27 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 				err = nil
 			}
 		} else {
-			err = dir.MkdirAll(path.Dir(rel), 0755)
+			err = dir.MkdirAll(path.Dir(rel), 0770)
 			if err == nil {
-				mode := os.FileMode(0644)
+				mode := os.FileMode(0660)
 				if change.After.Executable {
-					mode = 0755
+					mode = 0770
 				}
 				var f *os.File
 				f, err = dir.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 				if err == nil {
-					_, err = f.Write(change.Data)
+					info, statErr := f.Stat()
+					err = statErr
+					if err == nil && (info.Mode()&0111 != 0) != change.After.Executable {
+						targetMode := info.Mode().Perm() &^ 0111
+						if change.After.Executable {
+							targetMode |= 0110
+						}
+						err = f.Chmod(targetMode)
+					}
+					if err == nil {
+						_, err = f.Write(change.Data)
+					}
 					closeErr := f.Close()
 					if err == nil {
 						err = closeErr

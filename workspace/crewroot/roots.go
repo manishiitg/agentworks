@@ -122,7 +122,7 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 	if err != nil {
 		return Roots{}, err
 	}
-	if sync != nil && sync.Side == "server" {
+	if sync != nil && sync.Side == "server" && sync.SplitFiles {
 		files = filepath.Join(files, FilesSegment)
 	}
 	for _, dir := range []string{files, resources, private} {

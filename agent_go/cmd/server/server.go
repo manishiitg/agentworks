@@ -7102,6 +7102,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register laptop setup tool: %v", err), true)
 					return
 				}
+				if err := api.registerCrewSyncChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
+					sendError(fmt.Sprintf("Failed to register project sync tool: %v", err), true)
+					return
+				}
 				// Suggestions and decisions waiting on the owner, as in the Suggestions panel.
 				if err := api.registerCrewNeedsYouChatTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, chatWorkingFolder); err != nil {
 					sendError(fmt.Sprintf("Failed to register Needs you tools: %v", err), true)
