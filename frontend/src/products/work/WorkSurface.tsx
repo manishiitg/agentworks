@@ -426,7 +426,14 @@ function useWorkChatTab(
           agentProfileChatLocation: conversation.chat_location,
           agentProfileChatProvider: conversation.provider,
           agentProfileChatConnectionID: conversation.connection_id,
-          ...(savedRuntime ? {
+          ...(conversation.chat_location === 'mac' ? {
+            agentProfileEngine: conversation.provider,
+            agentProfileModelID: conversation.model_id,
+            agentProfileReasoningEffort: conversation.reasoning_effort,
+            agentProfileConnectionID: undefined,
+            agentProfileChatModelLabel: conversation.model_id || 'On your Mac',
+            agentProfileCanOpenModels: false,
+          } : savedRuntime ? {
             agentProfileEngine: savedRuntime.provider,
             agentProfileConnectionID: savedRuntime.connectionId,
             agentProfileModelID: savedRuntime.modelId,
@@ -651,6 +658,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const previousActive = state.activeTabId
           const tabId = await state.createChatTab(chat.name, {
             ...primary.metadata,
+            agentProfileChatLocation: undefined,
             agentProfileIsMainChat: false,
             agentProfileBuilder: false,
             agentProfileTabOwnerID: chat.tab_owner_id,

@@ -5,6 +5,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,12 +26,14 @@ const pairedMacSessionPrefix = "paired-mac-"
 const crewChatMaxReply = 8 << 20
 
 type crewChatCall struct {
-	ID           string          `json:"id"`
-	Operation    string          `json:"operation"`
-	Message      string          `json:"message,omitempty"`
-	DeliveryMode string          `json:"delivery_mode,omitempty"`
-	Query        url.Values      `json:"query,omitempty"`
-	Answer       json.RawMessage `json:"answer,omitempty"`
+	SubmissionID   string          `json:"submission_id,omitempty"`
+	ConversationID string          `json:"conversation_id,omitempty"`
+	ID             string          `json:"id"`
+	Operation      string          `json:"operation"`
+	Message        string          `json:"message,omitempty"`
+	DeliveryMode   string          `json:"delivery_mode,omitempty"`
+	Query          url.Values      `json:"query,omitempty"`
+	Answer         json.RawMessage `json:"answer,omitempty"`
 }
 type crewChatResult struct {
 	ID     string          `json:"id"`
@@ -181,7 +184,7 @@ func (api *StreamingAPI) callCrewMac(r *http.Request, project string, call crewC
 		var envelope map[string]json.RawMessage
 		if json.Unmarshal(result.Body, &envelope) == nil && envelope != nil {
 			if _, ok := envelope["session_id"]; ok {
-				envelope["session_id"], _ = json.Marshal(pairedMacSessionPrefix + project)
+				envelope["session_id"], _ = json.Marshal(crewChatSessionID(project, call.ConversationID))
 				result.Body, _ = json.Marshal(envelope)
 			}
 		}
@@ -227,11 +230,20 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		externalError(w, 409, "mac_main_chat", "Start a new main chat from your Mac, then reopen this Crew here.")
 		return true
 	}
+	if call.Operation == "send" {
+		selectedProject, generation := crewChatSessionParts(r.Header.Get("X-Session-ID"))
+		if selectedProject != project || generation == "" {
+			externalError(w, 409, "reopen_mac_chat", "Reopen this Crew to continue its current Mac conversation.")
+			return true
+		}
+		call.ConversationID = generation
+		call.SubmissionID = r.Header.Get("Idempotency-Key")
+	}
 	result := api.callCrewMac(r, project, call)
 	if call.Operation == "resolve" && result.Status == 200 {
 		var out map[string]any
 		if json.Unmarshal(result.Body, &out) == nil {
-			out["session_id"] = pairedMacSessionPrefix + project
+			out["session_id"] = crewChatSessionID(project, fmt.Sprint(out["conversation_id"]))
 			out["conversation_key"] = project
 			out["tab_owner_id"] = GetUserIDFromContext(r.Context())
 			out["tab_owner_name"] = GetUserFromContext(r.Context()).Username
@@ -242,7 +254,7 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	} else if call.Operation == "send" && result.Status < 300 {
 		var out map[string]any
 		if json.Unmarshal(result.Body, &out) == nil {
-			out["session_id"] = pairedMacSessionPrefix + project
+			out["session_id"] = crewChatSessionID(project, call.ConversationID)
 			result.Body, _ = json.Marshal(out)
 		}
 	}
@@ -272,12 +284,16 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			next.ServeHTTP(w, r)
 			return
 		}
-		project := strings.TrimPrefix(session, pairedMacSessionPrefix)
+		project, generation := crewChatSessionParts(session)
+		if project == "" || generation == "" {
+			externalError(w, 409, "reopen_mac_chat", "Reopen this Crew to continue its current Mac conversation.")
+			return
+		}
 		operation := ""
 		suffix := strings.TrimPrefix(r.URL.Path, "/api/sessions/"+session+"/")
 		switch {
 		case r.Method == "GET" && suffix == "events/stream":
-			api.serveCrewMacEvents(w, r, project)
+			api.serveCrewMacEvents(w, r, project, generation)
 			return
 		case r.Method == "GET" && suffix == "events":
 			operation = "events"
@@ -295,7 +311,7 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			externalError(w, 409, "mac_chat_action", "Use your Mac for this action. Messages, replies and Stop are available here.")
 			return
 		}
-		call := crewChatCall{Operation: operation, Query: crewChatEventQuery(r.URL.Query())}
+		call := crewChatCall{Operation: operation, ConversationID: generation, Query: crewChatEventQuery(r.URL.Query())}
 		if operation == "answer" {
 			call.Answer, _ = io.ReadAll(http.MaxBytesReader(w, r.Body, 128<<10))
 			if !json.Valid(call.Answer) {
@@ -319,10 +335,10 @@ func crewChatEventQuery(in url.Values) url.Values {
 
 // The browser keeps its existing SSE renderer. Only the Mac transport polls;
 // no new frontend queue, transcript store or streaming protocol is introduced.
-func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Request, project string) {
+func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Request, project, generation string) {
 	q := crewChatEventQuery(r.URL.Query())
 	q.Set("limit", "200")
-	result := api.callCrewMac(r, project, crewChatCall{Operation: "events", Query: q})
+	result := api.callCrewMac(r, project, crewChatCall{Operation: "events", ConversationID: generation, Query: q})
 	if result.Status != 200 {
 		writeCrewChatResult(w, result)
 		return
@@ -353,9 +369,29 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 			return
 		case <-time.After(time.Second):
 		}
-		result = api.callCrewMac(r, project, crewChatCall{Operation: "events", Query: q})
+		result = api.callCrewMac(r, project, crewChatCall{Operation: "events", ConversationID: generation, Query: q})
 		if result.Status != 200 {
 			return
 		}
 	}
+}
+
+// The route includes the canonical conversation generation. A Mac New chat
+// must never reuse another transcript's browser cache or durable event cursor.
+func crewChatSessionID(project, conversation string) string {
+	return pairedMacSessionPrefix + base64.RawURLEncoding.EncodeToString([]byte(project)) + "." + conversation
+}
+func crewChatSessionParts(session string) (string, string) {
+	if !strings.HasPrefix(session, pairedMacSessionPrefix) {
+		return "", ""
+	}
+	project, conversation, ok := strings.Cut(strings.TrimPrefix(session, pairedMacSessionPrefix), ".")
+	if !ok {
+		return "", ""
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(project)
+	if err != nil {
+		return "", ""
+	}
+	return string(decoded), conversation
 }

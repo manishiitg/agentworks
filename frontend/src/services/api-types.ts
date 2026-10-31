@@ -303,6 +303,8 @@ export interface AgentProfileSideChat {
 
 export interface AgentProfileConversationResponse {
   chat_location?: 'mac'
+  model_id?: string
+  reasoning_effort?: string
   tab_owner_id?: string
   tab_owner_name?: string
   can_write?: boolean
