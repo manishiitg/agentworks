@@ -151,9 +151,15 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 	}
 	for key, before := range previous {
 		if _, exists := out.Files[key]; !exists {
+			// Keep the last reconciled version while excluded. If this file is
+			// included again, its unchanged destination is still a valid base.
+			if ignoredFiles[key] {
+				out.Files[key] = before
+				continue
+			}
 			// If exclusions changed, leave the old copy alone rather than sending
 			// a mutation for a path the current policy no longer admits.
-			if Allowed(key, false) && !ignoredFiles[key] {
+			if Allowed(key, false) {
 				out.Changes = append(out.Changes, Change{Path: key, Before: &before})
 			}
 		}

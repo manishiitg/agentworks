@@ -89,6 +89,19 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	if raw, err := os.ReadFile(filepath.Join(server.Files, "src/main.txt")); err != nil || string(raw) != "server changed" {
 		t.Fatalf("ignored destination copy changed: %q %v", raw, err)
 	}
+	// PLAT-856-424: ignoring and later re-including work retains its sync base.
+	write(local.Files, "src/main.txt", "edited while excluded")
+	write(local.Files, ".gitignore", "")
+	included, err := Capture(t.Context(), local, excluded.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(t.Context(), server, included); err != nil {
+		t.Fatalf("re-included file lost its baseline: %v", err)
+	}
+	if raw, err := os.ReadFile(filepath.Join(server.Files, "src/main.txt")); err != nil || string(raw) != "edited while excluded" {
+		t.Fatalf("re-included file: %q %v", raw, err)
+	}
 	for _, bad := range []string{"files/../outside", "files/.env", "resources/product.json", "resources/_files/escape"} {
 		data := []byte("x")
 		file := fingerprint(data, false)
