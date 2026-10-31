@@ -3843,6 +3843,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         </div>
       </div>
 
+      {activeTab?.metadata?.agentProfileChatLocation === 'mac' && <p className="px-4 py-2 text-xs text-muted-foreground" role="status">Connected to your Mac · Same agent and conversation. Keep AgentWorks open on your Mac.</p>}
       {/* Input Area - completely isolated from event updates. AgentWorks keeps
           this composer on its one persistent Chat; Workshop history is rendered
           outside ChatArea and therefore never exposes a composer. */}
@@ -3866,7 +3867,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           showProductSteerAction={showProductSteerAction}
           showProductTerminalControl={showProductTerminalControl}
           slashCommands={slashCommands}
-          showNewChatAction={showNewChatAction}
+          showNewChatAction={showNewChatAction && activeTab?.metadata?.agentProfileChatLocation !== 'mac'}
           placeholderOverride={composerPlaceholder}
           pendingNativeChoice={pendingCodingAgentChoice}
         />

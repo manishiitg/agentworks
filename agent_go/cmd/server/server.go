@@ -2380,6 +2380,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(api.apiRequestLogMiddleware)
 	apiRouter.Use(agentBridgeAPIMiddleware)
+	apiRouter.Use(api.crewChatRelayMiddleware)
 	apiRouter.HandleFunc(strings.TrimPrefix(dashboardAppFramePath, "/api"), api.dashboardAppFrame).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents", api.handleBullpenAgents).Methods("GET")
 	apiRouter.HandleFunc("/agent-directory", api.handleAgentDirectory).Methods("GET")
@@ -2439,6 +2440,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Multi-provider OAuth routes
 	apiRouter.HandleFunc("/auth/start", api.handleAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/callback", api.handleAuthCallback).Methods("GET")
+	apiRouter.HandleFunc("/crew-chat/{project}/poll", api.handleCrewChatPoll).Methods("GET", "POST")
 	apiRouter.HandleFunc("/crew-sync/{project}", api.handleCrewSync).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/crew-sync/{project}", api.handleDesktopCrewSync).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections", api.handleDesktopConnections).Methods("GET", "POST")
@@ -3167,6 +3169,8 @@ func runServer(cmd *cobra.Command, args []string) {
 		defer desktopSocket.Close()
 		log.Printf("[DESKTOP] Separate-launch connection socket ready")
 	}
+	stopDesktopCrewChats := api.startDesktopCrewChats()
+	defer stopDesktopCrewChats()
 	SetShareTunnelServerPort(actualPort)
 
 	// Dynamically serve runtime-config.js so the frontend learns the real ports.

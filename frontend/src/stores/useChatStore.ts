@@ -504,6 +504,7 @@ export interface ChatTab {
     agentProfileConnectionID?: string
     // The provider and account the server recorded for this chat when it was opened: what the chat runs on
     // when the project names no account (Models shows it).
+    agentProfileChatLocation?: 'mac'
     agentProfileChatProvider?: string
     agentProfileChatConnectionID?: string
     // True only for an explicit caller-owned chat-model registry choice.
