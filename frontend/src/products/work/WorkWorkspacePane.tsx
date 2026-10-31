@@ -14,6 +14,7 @@ import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHead
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
+import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
 import type { SavedFileSelection } from '../../components/workspace/chatFileNavigation'
 import { setWorkspaceViewTarget, useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
@@ -43,6 +44,7 @@ import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
 
+const ReplyChangesPanel = lazy(() => import('../../components/workspace/ReplyChangesPanel').then(module => ({ default: module.ReplyChangesPanel })))
 const ReplyFileViewer = lazy(() => import('../../components/workspace/ReplyFileViewer').then(module => ({ default: module.ReplyFileViewer })))
 const ChatFileReview = lazy(() => import('../../components/workspace/ChatFileReview.tsx').then(module => ({ default: module.ChatFileReview })))
 const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
@@ -228,10 +230,21 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewOutsideGit, setReviewOutsideGit] = useState(false)
   const [reviewUncommitted, setReviewUncommitted] = useState(false)
+  const [reviewAllChat, setReviewAllChat] = useState(false)
+  const [replyReference, setReplyReference] = useState<ReplyFileChangesRef | null>(null)
   const [savedFile, setSavedFile] = useState<SavedFileSelection | null>(null)
-  useEffect(() => { setReviewOpen(false); setSavedFile(null) }, [tabId, contextMode, accessKey])
+  useEffect(() => { setReviewOpen(false); setSavedFile(null); setReplyReference(null) }, [tabId, activeSessionId, contextMode, accessKey])
   useWorkspaceViewTarget('files', target => {
-    setSavedFile(null); setReviewOpen(target === 'review' || target === 'review-outside-git' || target === 'review-uncommitted'); setReviewOutsideGit(target === 'review-outside-git'); setReviewUncommitted(target === 'review-uncommitted')
+    setSavedFile(null); setReviewOpen(target === 'review' || target === 'review-all-chat' || target === 'review-outside-git' || target === 'review-uncommitted'); setReviewOutsideGit(target === 'review-outside-git'); setReviewUncommitted(target === 'review-uncommitted'); setReviewAllChat(target === 'review-all-chat')
+    if (target.startsWith('reply:')) {
+      setReplyReference(null)
+      try {
+        const reference = JSON.parse(target.slice(6)) as ReplyFileChangesRef
+        if (reference.sessionId === activeSessionId && reference.workspacePath === workspacePath && reference.snapshotId) setReplyReference(reference)
+      } catch { /* A stale or malformed target cannot select another chat. */ }
+      return
+    }
+    if (!target.startsWith('saved:')) setReplyReference(null)
     if (target.startsWith('saved:')) {
       try {
         const selection = JSON.parse(target.slice(6)) as SavedFileSelection
@@ -316,7 +329,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{savedFile && contextMode === 'dev' ? <ReplyFileViewer key={JSON.stringify(savedFile)} selection={savedFile} tabId={tabId} onBack={() => { setSavedFile(null); setReviewOpen(true) }} /> : reviewOpen && contextMode === 'dev' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${reviewOutsideGit}:${reviewUncommitted}`} outsideGit={reviewOutsideGit} initialScope={reviewUncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => setReviewOpen(false)} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{savedFile && contextMode === 'dev' ? <ReplyFileViewer key={JSON.stringify(savedFile)} selection={savedFile} tabId={tabId} onBack={() => { setSavedFile(null); setReviewOpen(true) }} /> : replyReference && replyReference.sessionId === activeSessionId && contextMode === 'dev' ? <ReplyChangesPanel key={`${accessKey}:${replyReference.snapshotId}`} reference={replyReference} /> : reviewOpen && contextMode === 'dev' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${reviewOutsideGit}:${reviewUncommitted}:${reviewAllChat}`} allChat={reviewAllChat} outsideGit={reviewOutsideGit} initialScope={reviewUncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => setReviewOpen(false)} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
 

@@ -1,3 +1,4 @@
+import { Eye } from 'lucide-react'
 import { useState } from 'react'
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../../services/api'
@@ -7,7 +8,7 @@ import type { ReplyFileGroup } from '../../utils/replyFileChanges'
 
 // These are ordinary Watchers. The server selects the account, originating
 // conversation and PR head; the browser only sends the person's choice.
-export function PRWatcherControls({ group, sessionId }: { group: Pick<ReplyFileGroup, 'root' | 'github_repo' | 'pr'>; sessionId: string }) {
+export function PRWatcherControls({ group, sessionId, compact = false }: { compact?: boolean; group: Pick<ReplyFileGroup, 'root' | 'github_repo' | 'pr'>; sessionId: string }) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('checks')
   const [reviewBots, setReviewBots] = useState('')
@@ -48,8 +49,8 @@ export function PRWatcherControls({ group, sessionId }: { group: Pick<ReplyFileG
     catch (e) { showError(e) } finally { setBusy(false) }
   }
   return <span className="relative">
-    <button type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => void toggle()} aria-expanded={open}>Watch PR</button>
-    {open && <div className="mt-2 flex max-w-md flex-col gap-2 rounded-md border border-border bg-background p-3 text-xs" role="group" aria-label="Watch pull request">
+    <button type="button" title="Watch PR" aria-label="Watch PR" className={compact ? 'inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground' : 'text-muted-foreground underline hover:text-foreground'} onClick={() => void toggle()} aria-expanded={open}>{compact ? <Eye className="h-3.5 w-3.5" /> : 'Watch PR'}</button>
+    {open && <div className={`${compact ? 'absolute right-0 z-50 w-72 shadow-lg' : ''} mt-2 flex max-w-md flex-col gap-2 rounded-md border border-border bg-background p-3 text-xs`} role="group" aria-label="Watch pull request">
       {watchers.map(item => <div key={item.id} className="flex flex-wrap items-center gap-2">
         <span>{item.github_pr?.mode === 'autofix' ? 'Auto-fix' : item.github_pr?.mode === 'deployment' ? 'Deployment' : 'Checks'} · {item.completed_at ? 'Done' : item.enabled ? 'Watching' : 'Paused'} · {item.github_pr?.login}</span>
         {item.enabled && !item.completed_at && <button type="button" disabled={busy} className="underline" onClick={() => void stop(item)}>Stop</button>}

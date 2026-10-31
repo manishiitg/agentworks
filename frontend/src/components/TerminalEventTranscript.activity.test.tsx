@@ -6,7 +6,7 @@ import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { CleanConversationSurface } from './CleanConversationSurface'
 import api from '../services/api'
-import { openChatFiles } from './workspace/chatFileNavigation'
+import { openReplyChanges } from './workspace/chatFileNavigation'
 import { setProjectMode } from '../products/work/codeLocalFiles'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
@@ -17,7 +17,7 @@ vi.mock('react-virtuoso', () => ({
     <div>{data.map((item, index) => <div key={computeItemKey(firstItemIndex + index, item)}>{itemContent(firstItemIndex + index, item)}</div>)}{components?.Footer && <components.Footer context={context} />}</div>
   ),
 }))
-vi.mock('./workspace/chatFileNavigation', () => ({ openChatFiles: vi.fn() }))
+vi.mock('./workspace/chatFileNavigation', () => ({ openChatFiles: vi.fn(), openReplyChanges: vi.fn() }))
 vi.mock('./FileContentViewer', () => ({ FileContentViewerBody: ({ source }: { source: { fileContent: string } }) => <pre data-testid="saved-preview">{source.fileContent}</pre> }))
 vi.mock('./events/EventDispatcher', () => ({ EventDispatcher: () => null }))
 vi.mock('./ui/MarkdownRenderer', () => ({ ConversationMarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div> }))
@@ -402,19 +402,16 @@ it('keeps a late file comparison on its original reply in both transcript views 
         : <TerminalEventTranscript terminal={null} events={events} />))
       try {
         await render(history)
-        expect(host.querySelector('[aria-label="Files changed during this reply"]')).toBeNull()
+        expect(host.querySelector('[aria-label="Reply changes"]')).toBeNull()
         await render([...history, late])
-        const card = host.querySelector('[aria-label="Files changed during this reply"]')!
+        const card = host.querySelector('[aria-label="Reply changes"]')!
         expect(card).not.toBeNull()
         const reply = clean ? card.closest('article') : card.closest('[data-testid="terminal-clear-event-first-reply"]')
         expect(reply?.textContent).toContain('First report is ready.')
         expect(reply?.textContent).not.toContain('Second report is ready.')
-        await act(async () => card.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
-        const binary = [...card.querySelectorAll('li')].find(row => row.textContent?.includes('image.png'))!
-        expect(binary.querySelector('[aria-label*="lines added"]')).toBeNull()
-        await act(async () => [...card.querySelectorAll('button')].find(button => button.textContent === 'report.md')!.click())
+        await act(async () => card.querySelector<HTMLButtonElement>('button')!.click())
         expect(host.querySelector('dialog')).toBeNull()
-        expect(openChatFiles).toHaveBeenCalledWith('files-session', expect.objectContaining({ reference: expect.objectContaining({ snapshotId: 'saved-first' }), change: expect.objectContaining({ path: 'report.md' }) }))
+        expect(openReplyChanges).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: 'saved-first', sessionId: 'files-session' }))
         // PLAT-746-158: a saved card disappears when the project is Cowork,
         // including after reopening old history; it does not fetch comparisons.
         const priorTabs = useChatStore.getState().chatTabs
@@ -425,10 +422,10 @@ it('keeps a late file comparison on its original reply in both transcript views 
           })
           const requests = get.mock.calls.length
           await render([...history, late])
-          expect(host.querySelector('[aria-label="Files changed during this reply"]')).toBeNull()
+          expect(host.querySelector('[aria-label="Reply changes"]')).toBeNull()
           expect(get.mock.calls.length).toBe(requests)
           await act(async () => setProjectMode('snapshot-project', 'dev'))
-          expect(host.querySelector('[aria-label="Files changed during this reply"]')).not.toBeNull()
+          expect(host.querySelector('[aria-label="Reply changes"]')).not.toBeNull()
         } finally { await act(async () => useChatStore.setState({ chatTabs: priorTabs })) }
 
       } finally { await act(async () => root.unmount()); host.remove() }
@@ -459,7 +456,7 @@ it('keeps omission notices out of the reply card in both views', async () => {
             ? <CleanConversationSurface events={events} isStreaming={false} isRestoring={false} streamingText="" />
             : <TerminalEventTranscript terminal={null} events={events} />))
           expect(host.textContent?.includes('may have changed but could not be compared')).toBe(false)
-          expect(host.querySelector('[aria-label="Files changed during this reply"]')).toBeNull()
+          expect(host.querySelector('[aria-label="Reply changes"]')).toBeNull()
         }
       } finally { await act(async () => root.unmount()); host.remove() }
     }

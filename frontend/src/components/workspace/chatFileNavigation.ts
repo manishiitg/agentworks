@@ -9,11 +9,19 @@ export const chatFilesNavigationEvent = 'agentworks:open-chat-files'
 // Navigation only. Saved bytes and line anchors still pass the server's chat
 // and file grants. Never apply a click from an old chat to the current chat.
 export function openChatFiles(sessionId: string, selection?: SavedFileSelection) {
+  openFilesTarget(sessionId, selection ? `saved:${JSON.stringify(selection)}` : 'review-all-chat')
+}
+
+export function openReplyChanges(reference: ReplyFileChangesRef) {
+  openFilesTarget(reference.sessionId, `reply:${JSON.stringify(reference)}`)
+}
+
+function openFilesTarget(sessionId: string, target: string) {
   const state = useChatStore.getState()
   if (state.chatTabs[state.activeTabId || '']?.sessionId !== sessionId) {
     state.addToast('Open the original chat to view these changes.', 'error')
     return
   }
-  setWorkspaceViewTarget('files', selection ? `saved:${JSON.stringify(selection)}` : 'review')
+  setWorkspaceViewTarget('files', target)
   window.dispatchEvent(new CustomEvent(chatFilesNavigationEvent, { detail: { sessionId } }))
 }

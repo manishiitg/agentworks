@@ -28,6 +28,18 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('All chat changes includes earlier work even after a review point', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    state.reviewed = true; vi.mocked(api.get).mockClear()
+    try {
+      await act(async () => root.render(<ChatFileReview allChat workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect(host.textContent).toContain('All chat changes')
+      expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ session_id: 'chat-a', op: 'snapshot_compare', baseline_snapshot_id: 'start' }) }))
+      expect(host.querySelector('[aria-label="Review history"]')).toBeNull()
+    } finally { state.reviewed = false; await act(async () => root.unmount()); host.remove() }
+  })
+
   it('opens current uncommitted files with full names from the compact Changes link', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)

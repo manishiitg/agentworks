@@ -1,14 +1,14 @@
 import { PRWatcherControls } from './PRWatcherControls'
 import { useEffect, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { ArrowDownToLine, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
+import { ArrowDownToLine, GitBranch, Github, MessageSquare, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
 import api from '../../services/api'
 import { useReviewRevision, type ReviewResult } from '../workspace/chatFileReviewData'
 import { shownFilePath, type ReplyCardAction, type ReplyFileChangesRef, type ReplyFileGroup, type ReplyPullRequest } from '../../utils/replyFileChanges'
 import { useProjectMode } from '../../products/work/codeLocalFiles'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { openChatFiles } from '../workspace/chatFileNavigation'
+import { openChatFiles, openReplyChanges } from '../workspace/chatFileNavigation'
 import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { CommandIcon } from '../../commands/CommandIcon'
@@ -71,17 +71,17 @@ const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: referen
 // The server decides the card for this viewer: its groups (PR status once looked up) and actions.
 type ReplyCard = { groups: FileGroup[]; actions: ReplyCardAction[]; can_edit: boolean }
 
-export function ReplyFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
+export function ReplyFileChanges({ reference, panel = false }: { reference: ReplyFileChangesRef; panel?: boolean }) {
   const mode = useProjectMode(reference.sessionId)
   const account = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = JSON.stringify([account, server, reference.workspacePath, reference.snapshotId])
   if (mode !== 'dev') return null
   if (reference.unavailable) return <p className="my-2 text-xs text-muted-foreground">{reference.unavailable}</p>
-  return <ScopedFileChanges key={scope} reference={reference} />
+  return <ScopedFileChanges key={`${scope}:${panel}`} reference={reference} panel={panel} />
 }
 
-function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
+function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRef; panel: boolean }) {
   const summary = reference.summary
   // Only for a reply saved before summaries were sent with the event, and for the newest reply's "since your last review" line.
   const [result, setResult] = useState<ReviewResult | null>(null)
@@ -98,7 +98,6 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
     window.addEventListener(githubConnectionChanged, refresh)
     return () => window.removeEventListener(githubConnectionChanged, refresh)
   }, [])
-  const [open, setOpen] = useState<boolean | null>(null)
   const [undo, setUndo] = useState<{ plan?: UndoPlan; busy?: boolean; done?: string; error?: string } | null>(null)
   const latest = !reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId
   const reviewed = reference.reviewedSnapshotId === reference.snapshotId
@@ -147,11 +146,11 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
       await sendWorkspacePaneMessageToChat({ tabId, message })
     } catch (cause) { setReviewError(cause instanceof Error ? cause.message : 'Could not send this to the chat. Try again.') }
   }
-  // PR status is a GitHub call: it loads once the card is open and never holds the header or file list.
+  // PR shortcuts load independently and never hold the compact toolbar or file list.
   // A reply saved without a summary loads its groups this way at once.
-  // Every card starts closed; the person opens the one they want.
-  const isOpen = open ?? false
-  const lookUpPullRequests = !hasSummary || (isOpen && !!summary?.groups.some(onGitHub))
+  // PR shortcuts are visible on the compact toolbar; details live in the Files panel.
+  const isOpen = panel
+  const lookUpPullRequests = !hasSummary || !!summary?.groups.some(onGitHub)
   useEffect(() => {
     if (!lookUpPullRequests) return
     const controller = new AbortController()
@@ -161,14 +160,14 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
     return () => controller.abort()
   }, [lookUpPullRequests, reference.workspacePath, reference.snapshotId, reference.sessionId, githubRevision])
   // Reviews and checks often finish after the person opens the card. Refresh
-  // only the displayed card, using the same server-owned lookup and account.
+  // the latest toolbar and the open panel, using the same server-owned lookup and account.
   useEffect(() => {
-    if (!isOpen || !lookUpPullRequests) return
+    if ((!panel && !latest) || !lookUpPullRequests) return
     const refresh = () => { if (document.visibilityState !== 'hidden') setGitHubRevision(value => value + 1) }
     const timer = window.setInterval(refresh, 60_000)
     window.addEventListener('focus', refresh)
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh) }
-  }, [isOpen, lookUpPullRequests])
+  }, [panel, latest, lookUpPullRequests])
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []
   const actions = checked?.actions ?? card?.actions ?? summary?.actions ?? []
@@ -187,14 +186,27 @@ function ScopedFileChanges({ reference }: { reference: ReplyFileChangesRef }) {
   if (total === 0) return loadFailed ? <section className="my-2 rounded-md border border-border px-2.5 py-2 text-xs text-muted-foreground" aria-label="File changes unavailable">
     Saved file changes for this reply could not be loaded. <button type="button" className="underline hover:text-foreground" onClick={() => openChatFiles(reference.sessionId)}>Review chat changes</button>
   </section> : null
+  if (!panel) return <TooltipProvider delayDuration={150}><div className="my-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs" aria-label="Reply changes">
+    <button type="button" aria-label={`Open ${plural(total)} changed in this reply`} title={`${plural(total)} in this reply · +${added} −${removed}`} className="inline-flex h-7 shrink-0 items-center gap-1 rounded px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" onClick={() => openReplyChanges(reference)}><FileDiffIcon /><span>{total}</span></button>
+    {groups.filter(group => group.kind === 'repo').map(group => <div key={group.root} className="flex min-w-0 items-center gap-1">
+      <span className="inline-flex max-w-64 min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
+      {group.pr?.state === 'connect_github' && canEdit && <IconButton label="Connect GitHub" hint="Use your saved account to see PR status." onClick={() => openProjectIntegrations('github', reference.sessionId)}><Github /></IconButton>}
+      {group.pr?.state === 'unavailable' && <IconButton label="Retry PR status" hint="GitHub status could not be checked." onClick={() => setGitHubRevision(value => value + 1)}><Github /></IconButton>}
+      {!!group.pr?.number && group.pr.url && <>
+        <a className={iconButton} aria-label={prLine(group.pr)} title={prLine(group.pr)} href={group.pr.url} target="_blank" rel="noreferrer"><GitPullRequestIcon /></a>
+        <a className={iconButton} aria-label={`Review comments on PR #${group.pr.number}`} title="Review comments" href={`${group.pr.url}#discussion_bucket`} target="_blank" rel="noreferrer"><MessageSquare /></a>
+        {canEdit && <PRWatcherControls compact group={group} sessionId={reference.sessionId} />}
+      </>}
+    </div>)}
+  </div></TooltipProvider>
   return (
-    <section className="my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Files changed during this reply">
+    <section className="p-3 text-xs" aria-label="Files changed during this reply">
       <div className="flex items-center gap-2">
-        <button type="button" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 text-left font-medium text-muted-foreground hover:text-foreground" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>
-          <span aria-hidden>{isOpen ? '▾' : '▸'}</span>Files changed during this reply · {plural(total)}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 font-medium text-muted-foreground">
+          {plural(total)}
           <span className="font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
           {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
-        </button>
+        </div>
         <TooltipProvider delayDuration={150}><div className="flex shrink-0 items-center gap-0.5">
           {row.filter(action => !ownButton(action)).map(rowButton)}
           {row.some(ownButton) && <Divider />}
