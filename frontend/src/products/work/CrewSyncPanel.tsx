@@ -47,13 +47,13 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
   }
   const binding = status?.binding
   return <section aria-label="Project sync" className="max-w-xl space-y-4 text-sm">
-    <p>Keep a server copy of this project so its agent can work while your Mac is off. Choose one place to edit the project files.</p>
+    <p>Use this Crew from the website or your phone. While editing on your Mac, its main chat continues the same local agent and conversation. Keep AgentWorks open on your Mac.</p>
     {error && <div><p role="alert" className="text-destructive">{error}</p>{!status && <Button variant="link" onClick={() => setReload(value => value + 1)}>Try again</Button>}</div>}
     {!status && !error && <p role="status">Loading project sync…</p>}
     {binding && <div className="space-y-1 rounded-lg border border-border p-3">
       <p className="font-medium">Editing on {binding.editing === 'local' ? 'your Mac' : 'the server'}</p>
       {binding.updated_at && <p className="text-muted-foreground">Last synced {new Date(binding.updated_at).toLocaleString()}</p>}
-      <p className="text-muted-foreground">Server conversations and results stay available. Project files use the last synced version.</p>
+      <p className="text-muted-foreground">Your main chat follows the editing location. Files on the server show the last sync; Update server sends your latest local files. Switching to the server uses its separate conversation and agent.</p>
     </div>}
     {local ? <>
       {!binding && <label className="block space-y-2"><span>Server</span><select aria-label="Sync server" value={connection} onChange={event => setConnection(event.target.value)} className="w-full rounded-md border border-border bg-background p-2">

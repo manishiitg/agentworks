@@ -139,6 +139,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if serverRoots.SeparateFiles() != split {
 				t.Fatal("root shape changed")
 			}
+			checkCrewChatRelayOwnerBoundary(t, api, serverRoots.ID, out.Binding.PairID)
 			for _, item := range []struct{ root, name, want string }{{serverRoots.Files, "note.txt", "local work"}, {serverRoots.Resources, "skills/example/SKILL.md", "Useful skill"}} {
 				raw, err := os.ReadFile(filepath.Join(item.root, item.name))
 				if err != nil || string(raw) != item.want {

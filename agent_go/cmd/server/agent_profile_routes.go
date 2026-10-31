@@ -449,6 +449,9 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// due schedule back. Scheduled runs enter through Run, never here, so a
 	// check-in's own turns are not mistaken for family activity.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
+	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
+		return
+	}
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, "")
 	if err != nil {
 		log.Printf("[PRODUCT_CONVERSATION] stage=query-resolve profile=%s key=%q caller=%q cause=%v", profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context()), err)
@@ -549,6 +552,9 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 	// Opening the product's conversation is what the app does on launch: the
 	// family is here, so a due check-in waits for a quiet moment.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
+	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "resolve"}) {
+		return
+	}
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, input.Name)
 	if err != nil {
 		log.Printf("[PRODUCT_CONVERSATION] resolve refused profile=%s key=%q: %v", profile.ID, input.ConversationKey, err)
@@ -599,6 +605,9 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 	}
 	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) || !canUseCapLayerProfile(r.Context(), profile.ID) {
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
+		return
+	}
+	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "rotate"}) {
 		return
 	}
 	binding, _, err := resolveConversationBindingForUser(r.Context(), userID, profile, input.ConversationKey)

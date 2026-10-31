@@ -423,6 +423,7 @@ function useWorkChatTab(
           agentProfileTabCanWrite: conversation.can_write,
           agentProfileConversationKey: conversation.conversation_key,
           agentProfileConversationId: conversation.conversation_id,
+          agentProfileChatLocation: conversation.chat_location,
           agentProfileChatProvider: conversation.provider,
           agentProfileChatConnectionID: conversation.connection_id,
           ...(savedRuntime ? {
