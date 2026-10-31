@@ -53,6 +53,12 @@ func (e *Editor) Lifecycle(ctx context.Context, r LifecycleRequest) error {
 		return err
 	}
 	defer scoped.Close()
+
+	release, err := LockWorkspace(ctx, scoped.Name())
+	if err != nil {
+		return err
+	}
+	defer release()
 	if docs := os.Getenv("WORKSPACE_DOCS_PATH"); docs != "" {
 		for _, rel := range []string{p, destination} {
 			if rel != "" {
@@ -62,11 +68,6 @@ func (e *Editor) Lifecycle(ctx context.Context, r LifecycleRequest) error {
 			}
 		}
 	}
-	release, err := LockWorkspace(ctx, scoped.Name())
-	if err != nil {
-		return err
-	}
-	defer release()
 	parent, err := OpenDirectory(scoped, path.Dir(p), false)
 	if err != nil {
 		return err

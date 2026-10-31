@@ -17,6 +17,7 @@ import (
 type GitSnapshot struct {
 	Head            string `json:"head"`
 	Before          string `json:"before,omitempty"`
+	BeforeBranch    string `json:"before_branch,omitempty"`
 	BeforeIndexHash string `json:"before_index_hash,omitempty"`
 	Branch          string `json:"branch,omitempty"`
 	Bundle          []byte `json:"bundle,omitempty"`
@@ -59,11 +60,13 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 	}
 	before := ""
 	beforeIndex := ""
+	beforeBranch := ""
 	if previous != nil {
 		before = previous.Head
 		beforeIndex = gitPatchHash(previous.IndexPatch)
+		beforeBranch = previous.Branch
 	}
-	out := &GitSnapshot{BeforeIndexHash: beforeIndex, Head: strings.TrimSpace(string(head)), Before: before, Branch: strings.TrimSpace(string(branch)), IndexPatch: patch}
+	out := &GitSnapshot{BeforeBranch: beforeBranch, BeforeIndexHash: beforeIndex, Head: strings.TrimSpace(string(head)), Before: before, Branch: strings.TrimSpace(string(branch)), IndexPatch: patch}
 	if len(patch) > 64<<20 {
 		return nil, fmt.Errorf("staged Git changes exceed 64 MiB")
 	}
@@ -124,7 +127,29 @@ func CheckGit(ctx context.Context, root string, snapshot *GitSnapshot) error {
 	if err == nil && current != snapshot.Before && current != snapshot.Head {
 		return fmt.Errorf("Git changed here; resolve the branch changes before syncing")
 	}
+	currentBranch, _ := gitCommand(ctx, root, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
+	branch := strings.TrimSpace(string(currentBranch))
+	if snapshot.Before != "" && branch != snapshot.BeforeBranch && branch != snapshot.Branch {
+		return fmt.Errorf("Git branch changed here; resolve it before syncing")
+	}
 	if snapshot.Branch != "" {
+		worktrees, e := gitCommand(ctx, root, "worktree", "list", "--porcelain").Output()
+		if e != nil {
+			return fmt.Errorf("cannot inspect this repository's worktrees")
+		}
+		at := ""
+		actual, _ := filepath.EvalSymlinks(root)
+		for _, line := range strings.Split(string(worktrees), "\n") {
+			if strings.HasPrefix(line, "worktree ") {
+				at = strings.TrimPrefix(line, "worktree ")
+			}
+			if line == "branch refs/heads/"+snapshot.Branch {
+				resolved, _ := filepath.EvalSymlinks(at)
+				if resolved != actual {
+					return fmt.Errorf("the incoming branch is checked out in another worktree; choose a different branch before syncing")
+				}
+			}
+		}
 		ref, e := gitCommand(ctx, root, "rev-parse", "--verify", "refs/heads/"+snapshot.Branch).Output()
 		value := strings.TrimSpace(string(ref))
 		if e == nil && value != snapshot.Before && value != snapshot.Head {
@@ -134,7 +159,10 @@ func CheckGit(ctx context.Context, root string, snapshot *GitSnapshot) error {
 	// Preserve independently staged changes, including changes with identical
 	// working-tree bytes. The transfer never silently resets an outside index.
 	patch, err := gitCommand(ctx, root, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv").Output()
-	if err == nil && len(patch) > 0 && gitPatchHash(patch) != snapshot.BeforeIndexHash && string(patch) != string(snapshot.IndexPatch) {
+	if err != nil {
+		return fmt.Errorf("cannot inspect staged changes before syncing")
+	}
+	if !(snapshot.BeforeIndexHash == "" && len(patch) == 0) && gitPatchHash(patch) != snapshot.BeforeIndexHash && string(patch) != string(snapshot.IndexPatch) {
 		return fmt.Errorf("staged changes exist here; keep or resolve them before syncing")
 	}
 	return nil
