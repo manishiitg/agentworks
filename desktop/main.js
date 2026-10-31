@@ -88,6 +88,12 @@ nativeTheme.themeSource = 'dark';
 // login shell once at startup and use it for all spawned children. Shared with the
 // other desktop shells in ./lib (see lib/index.js).
 importLoginShellEnv();
+// Release helpers precede the host PATH; source development keeps its existing
+// tools and lifecycle. Provider logins remain owned by their installed CLIs.
+if (app.isPackaged) {
+  process.env.PATH = path.join(process.resourcesPath, 'bin') + path.delimiter + process.env.PATH;
+  process.env.MCP_BRIDGE_BINARY = path.join(process.resourcesPath, 'bin', 'mcpbridge');
+}
 
 const MANAGED_LOG_MAX_BYTES = parsePositiveIntegerEnv('RUNLOOP_MAX_LOG_BYTES', DEFAULT_MANAGED_LOG_MAX_BYTES);
 const AGENT_PROMPT_LOG_MAX_SESSIONS = parseNonNegativeIntegerEnv(
@@ -1534,12 +1540,13 @@ function installDownloadedUpdate() {
     dialog.showErrorBox('Update error', 'The downloaded update was not found. Please check for updates again.');
     return;
   }
-  const innerCmd = `export RUNLOOP_VERSION='v${updateState.version}'; export RUNLOOP_DMG_PATH='${updateState.dmgPath}'; curl -fsSL https://raw.githubusercontent.com/manishiitg/coding-agent-loop/main/install.sh | bash > /tmp/runloop-update.log 2>&1`;
-  const wrapped = `nohup bash -c ${JSON.stringify(innerCmd)} >/dev/null 2>&1 &`;
-
   console.log('[update] spawning detached installer for v' + updateState.version + ' (pre-downloaded)');
   try {
-    const child = spawn('/bin/bash', ['-lc', wrapped], { detached: true, stdio: 'ignore' });
+    const { prepareDesktopUpdate } = require('./lib/updateInstaller');
+    const install = prepareDesktopUpdate(process.resourcesPath, process.execPath, updateState.version, updateState.dmgPath);
+    const log = fs.openSync(path.join(app.getPath('userData'), 'update-install.log'), 'a', 0o600);
+    const child = spawn(install.command, install.args, { detached: true, stdio: ['ignore', log, log] });
+    fs.closeSync(log);
     child.unref();
   } catch (err) {
     dialog.showErrorBox('Update failed to start', String(err?.message || err));

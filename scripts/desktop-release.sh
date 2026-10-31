@@ -317,6 +317,7 @@ expected_assets=(
   "AgentWorks-$version-arm64-mac.zip"
   "AgentWorks-$version-arm64-mac.zip.blockmap"
   "AgentWorks-$version-arm64.dmg"
+  "AgentWorks-$version-arm64.dmg.sha256"
   "AgentWorks-$version-arm64.dmg.blockmap"
   "Runloop-$version-arm64.dmg"
 )
