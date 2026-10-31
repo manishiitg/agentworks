@@ -53,7 +53,7 @@ export function BrowserWorkspacePanel({
   </div> : null
   const hasSavedBrowser = connection.status.browsers?.some(browser => browser.enabled)
   const emptyBrowser = !readOnly && workspacePath ? ({ startBrowser, startingBrowser, canStart }: BrowserEmptyStateActions) => <div className="space-y-4 text-center" aria-label="Open a browser">
-    <p className="text-sm text-muted-foreground">Ask your agent to open a website.</p>
+    <p className="text-sm text-muted-foreground">{displayMode === 'headless' || displayMode === 'cdp' ? 'Ask your agent to open a website.' : hasSavedBrowser ? 'Choose a browser with Change.' : 'Connect a browser to start.'}</p>
     {canStart && (displayMode === 'headless' || displayMode === 'cdp') && <Button type="button" disabled={startingBrowser || connection.busy} onClick={() => { void startBrowser() }} className="gap-2">
       {startingBrowser ? <Loader2 className="h-4 w-4 animate-spin" /> : <Monitor className="h-4 w-4" />}
       {startingBrowser ? 'Opening browser…' : 'Open browser'}
