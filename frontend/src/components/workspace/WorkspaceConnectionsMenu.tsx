@@ -10,8 +10,8 @@ function ConnectionIcon({ icon: Icon, hint, count, onClick }: {
   icon: LucideIcon; hint: string; count?: number; onClick: () => void
 }) {
   return <Tooltip><TooltipTrigger asChild>
-    <button type="button" aria-label={hint} onClick={onClick} className="relative flex h-8 min-w-8 shrink-0 items-center justify-center gap-1 rounded-full border border-border/60 bg-muted px-2 text-muted-foreground hover:z-10 hover:bg-accent hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-zinc-800 dark:hover:bg-zinc-700">
-      <Icon aria-hidden="true" className="h-3.5 w-3.5"/>
+    <button type="button" aria-label={hint} onClick={onClick} className="relative flex h-6 min-w-6 shrink-0 items-center justify-center gap-0.5 rounded-full border border-border/60 bg-muted px-1.5 text-muted-foreground hover:z-10 hover:bg-accent hover:text-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-zinc-800 dark:hover:bg-zinc-700">
+      <Icon aria-hidden="true" className="h-3 w-3"/>
       {count !== undefined && <span className="text-[10px]">{count}</span>}
     </button>
   </TooltipTrigger><TooltipPortal><TooltipContent className="max-w-72 break-words">{hint}</TooltipContent></TooltipPortal></Tooltip>
@@ -32,7 +32,7 @@ export function WorkspaceConnectionsMenu({ workspacePath, profileId, browserAllo
   const labelFor = (item: WorkspaceStatusRow) => item.destination === 'mcp:slack-bot' ? 'Slack bot' : item.label
   const iconFor = (item: WorkspaceStatusRow) => item.destination === 'mcp:github' ? Github : item.destination === 'mcp:gmail' ? Grid2X2 : item.destination === 'mcp:slack-bot' ? Bot : item.destination === 'mcp:whatsapp' ? MessageCircle : Slack
   if (!browserAllowed && !mcpAllowed && !accounts.length) return null
-  return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} preview={<div className="isolate flex -space-x-2">
+  return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} preview={<div className="isolate flex -space-x-1.5">
     {browserAllowed && browser.connected && <ConnectionIcon icon={browserIcon} hint={browserHint} onClick={() => onOpen('browser')}/>}
     {accounts.filter(item => item.connected).map(item => <ConnectionIcon key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} onClick={() => onOpen(item.destination)}/>)}
     {mcpAllowed && !loading && !unavailable && connectedMcps.length > 0 && <ConnectionIcon icon={Cable} hint={mcpHint} count={connectedMcps.length} onClick={() => onOpen('mcp:connected')}/>}
