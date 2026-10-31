@@ -55,7 +55,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
   const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })
-  const [fullMenuScope, setFullMenuScope] = useState<string>()
+  const integrations = inventory.filter(item => item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
+  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' }>()
+  const showMenu = (view: 'full' | 'integrations') => {
+    if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
+    setMenu({ scope, view })
+  }
   const open = (item: CrewMenuItem) => {
     // Recheck account/product admission if access changed while the menu was open.
     const current = useAuthStore.getState().user
@@ -69,13 +74,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     onOpen(item.view)
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
-  if (fullMenuScope === scope) {
+  if (menu?.scope === scope) {
     const renderItem = (item: CrewMenuItem) => item.id === 'dashboard'
       ? <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
       : item.id === 'browser' ? <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)}/>
       : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.label}</Row>
-    return <WorkspaceContextCard title="Full menu" onBack={() => setFullMenuScope(undefined)}>
-      {CREW_MENU_GROUPS.map(group => {
+    return <WorkspaceContextCard title={menu.view === 'integrations' ? 'Integrations' : 'Full menu'} onBack={() => setMenu(undefined)}>
+      {menu.view === 'integrations' ? <div className="space-y-0.5">{integrations.map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
         const items = inventory.filter(item => item.group === group)
         if (!items.length) return null
         const subgroups = [...new Set(items.flatMap(item => item.subgroup ? [item.subgroup] : []))]
@@ -90,11 +95,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
   const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reply => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reply ? `reply:${JSON.stringify(reply)}` : 'review-all-chat'); onOpen('files') }}/> : null
   const share = byId.get('mcp:share')
-  const integrations = byId.get('mcp:connected') ?? inventory.find(item => item.group === 'Integrations' && item.view === 'mcp')
-  return <WorkspaceContextCard onFullMenu={() => setFullMenuScope(scope)} footerContent={share && <Row icon={share.icon} detail={sharing?.scope === scope ? sharing.detail : undefined} onClick={() => open(share)}>{share.label}</Row>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={share && <Row icon={share.icon} detail={sharing?.scope === scope ? sharing.detail : undefined} onClick={() => open(share)}>{share.label}</Row>}>
     {mode === 'dev' && changes}
     {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
-    <WorkspaceConnectionsMenu key={scope} workspacePath={workspacePath} profileId={profileId} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={(snapshot?.apps || []).filter(item => byId.has(item.destination))} loading={!snapshot} unavailable={snapshot?.errors.includes('Connections could not be loaded.') === true} onOpen={openID} onManage={integrations ? () => open(integrations) : undefined}/>
+    <WorkspaceConnectionsMenu key={scope} workspacePath={workspacePath} profileId={profileId} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={(snapshot?.apps || []).filter(item => byId.has(item.destination))} loading={!snapshot} unavailable={snapshot?.errors.includes('Connections could not be loaded.') === true} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
     {automations.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={`${automations.length}${nextAutomation ? ` · ${nextAutomation.detail}` : ''}`}>
       {automations.map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || CalendarClock} hint={byId.get(item.destination)?.label} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}
     </WorkspaceCompactGroup>}

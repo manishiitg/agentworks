@@ -65,10 +65,15 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(event.mock.calls[0][0].detail.query).toBe('@panels '); window.removeEventListener('open-quick-switcher', event)
   const connections = host.querySelector('[aria-label="Connections"]')!.closest('section')!
   const manage = [...connections.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!
+  mocks.open.mockClear(); mocks.target.mockClear()
   await act(async () => manage.click())
-  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'connected')
-  expect(mocks.open).toHaveBeenLastCalledWith('mcp')
-  expect(host.querySelector('[aria-label="Back to workspace"]')).toBeNull()
+  expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.target).not.toHaveBeenCalled()
+  for (const [label, target] of [['Google apps','gmail'],['My Slack account','slack-account'],['GitHub','github'],['MCPs','connected'],['WhatsApp','whatsapp']]) {
+   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === label)!.click())
+   expect(mocks.target).toHaveBeenLastCalledWith('mcp', target)
+   expect(mocks.open).toHaveBeenLastCalledWith('mcp')
+  }
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to workspace"]')!.click())
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
   expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Build')?.open).toBe(true)
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
@@ -84,6 +89,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   const staleManage = [...host.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!
   mocks.server = 'another-server'; await act(async () => staleManage.click())
   expect(mocks.open).not.toHaveBeenCalled()
+  expect(host.querySelector('[aria-label="Back to workspace"]')).toBeNull()
  })
 })
 it('groups dashboards, motion and Artifacts without a finished-file registry, preserving admission and account guards', async () => {
