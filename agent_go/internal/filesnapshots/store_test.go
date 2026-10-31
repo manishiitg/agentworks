@@ -1110,6 +1110,71 @@ func TestRefreshedStatPersistsForUnchangedContent(t *testing.T) {
 	}
 }
 
+func TestFailedAfterCaptureRetainsCheckoutBaselineAcrossRetention(t *testing.T) {
+	// PLAT-746-258: a worktree created during a failed after-capture made
+	// thousands of copied files appear as additions in All chat changes.
+	f := newCrew(t)
+	ctx := t.Context()
+	f.repo("main", map[string]string{"a.txt": "original\n", "b.txt": "copied\n"})
+	first, err := f.s.Begin(ctx, "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.Finish(ctx, "start"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.Begin(ctx, "birth"); err != nil {
+		t.Fatal(err)
+	}
+	f.git("main", "worktree", "add", "--quiet", "-b", "feature", "../wt")
+	f.put("wt/a.txt", "edited\n")
+	// A directory survives stale-lock-file cleanup and makes Git's after
+	// ref update fail. The independent baseline ref remains writable.
+	lock := filepath.Join(f.s.gitDir(), "refs", "turns", ID("birth"), "after.lock")
+	if err := os.MkdirAll(lock, 0700); err != nil {
+		t.Fatal(err)
+	}
+	birth, finishErr := f.s.Finish(ctx, "birth")
+	if err := os.Remove(lock); err != nil {
+		t.Fatal(err)
+	}
+	if finishErr == nil || birth.Status != "unavailable" || birth.NewRepos["wt"] == "" {
+		t.Fatalf("failed capture lost checkout baseline: %v %+v", finishErr, birth)
+	}
+	if _, err := f.s.Begin(ctx, "next"); err != nil {
+		t.Fatal(err)
+	}
+	f.put("wt/new.txt", "new\n")
+	last, err := f.s.Finish(ctx, "next")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An old start boundary can stay reviewed after the creation reply ages
+	// out. Its checkout baseline must outlive ordinary reply retention too.
+	first, _ = f.s.read(first.ID)
+	first.StartedAt = time.Now().Add(-16 * 24 * time.Hour)
+	first.Reviewed = true
+	birth.StartedAt = time.Now().Add(-15 * 24 * time.Hour)
+	for _, r := range []Record{first, birth} {
+		if err := f.s.save(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.s.prune(ctx)
+	chat, err := f.s.CompareBoundaries(ctx, first.ID, last.ID, "before", "", func(string) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, c := range chat.Changes {
+		got[c.Path] = c.Status
+	}
+	want := map[string]string{"wt/a.txt": "M", "wt/new.txt": "A"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("chat changes = %v, want %v", got, want)
+	}
+}
+
 // PLAT-746-165: a linked worktree the agent added during a reply showed every
 // checked-out file as added (3,081 files). Its baseline is the commit it was
 // added at: only the reply's own edits show, including one it committed, the

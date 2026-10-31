@@ -416,7 +416,7 @@ func (s Store) windowRepos(from, to time.Time) (Record, error) {
 	gone := map[string]bool{}
 	for i := len(records) - 1; i >= 0; i-- { // oldest first
 		r := records[i]
-		if r.StartedAt.Before(from) || r.StartedAt.After(to) || (r.Status != "complete" && r.Status != "partial") {
+		if r.StartedAt.Before(from) || r.StartedAt.After(to) {
 			continue
 		}
 		for p, tree := range r.NewRepos {
@@ -424,13 +424,18 @@ func (s Store) windowRepos(from, to time.Time) (Record, error) {
 				out.NewRepos[p] = tree
 			}
 		}
+		out.BaselineSkipped = append(out.BaselineSkipped, r.BaselineSkipped...)
+		// Creation baselines are independent of capture success. A failed
+		// capture cannot establish that an old checkout was removed, however.
+		if r.Status != "complete" && r.Status != "partial" {
+			continue
+		}
 		for _, p := range r.GoneRepos {
 			if !gone[p] {
 				gone[p] = true
 				out.GoneRepos = append(out.GoneRepos, p)
 			}
 		}
-		out.BaselineSkipped = append(out.BaselineSkipped, r.BaselineSkipped...)
 	}
 	return out, nil
 }

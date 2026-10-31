@@ -599,8 +599,17 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	r.After, skipped, omitted, err = s.captureRepos(ctx, "refs/turns/"+r.ID+"/after", r.Before, &r.AfterCapture, r.AfterSkippedState, maxImportBytes, repos)
 	r.Skipped = append(r.Skipped, skipped...)
 	r.Omitted = append(r.Omitted, omitted...)
-	if err == nil && r.Before != "" {
-		s.repoBaselines(ctx, &r, repos)
+	if r.Before != "" {
+		// PLAT-746-258: checkout creation is still known when the after
+		// capture fails. Later chat comparisons need its creation baseline,
+		// even though this reply itself has no usable after-state.
+		baselineCtx := ctx
+		cancel := func() {}
+		if ctx.Err() != nil {
+			baselineCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		}
+		s.repoBaselines(baselineCtx, &r, repos)
+		cancel()
 	}
 	now := time.Now().UTC()
 	r.CompletedAt = &now
@@ -664,7 +673,9 @@ func (s Store) prune(ctx context.Context) {
 	}
 	removed := false
 	for i, r := range records {
-		if r.Reviewed || (i < keepTurns && time.Since(r.StartedAt) < 14*24*time.Hour) {
+		// Checkout baselines describe workspace history, independently of
+		// reply retention. Older saved chat boundaries still need them.
+		if r.Reviewed || len(r.NewRepos) > 0 || len(r.GoneRepos) > 0 || (i < keepTurns && time.Since(r.StartedAt) < 14*24*time.Hour) {
 			continue
 		}
 		for _, phase := range []string{"before", "after", "baseline"} {
