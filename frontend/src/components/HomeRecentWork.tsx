@@ -14,8 +14,14 @@ import { productRoutePath } from '../utils/productRoutes'
 import { followAppLink } from '../utils/appNavigation'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { ProductSurfaceIcon } from './ProductSurfaceIcon'
+import { hasDesktopConnections } from '../stores/useConnectedWorkStore'
+import { ConnectedHomeRecentWork } from './ConnectedHomeRecentWork'
 
 export function HomeRecentWork() {
+  return hasDesktopConnections() ? <ConnectedHomeRecentWork /> : <CurrentHomeRecentWork />
+}
+
+function CurrentHomeRecentWork() {
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${server}:${user?.id || ''}`
