@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { agentApi } from '../../services/api'
+import api, { agentApi } from '../../services/api'
 import { loadProjectVault, type ProjectVaultItem } from '../../api/projectVault'
 import { schedulerApi } from '../../api/scheduler'
 import { conditionTriggersApi } from '../../api/conditionTriggers'
 import { productWebhooksApi } from '../../api/productWebhooks'
 import { slackBotsApi, slackBotName } from '../../components/integrations/ProductSlackPanel'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 
 export type WorkspaceStatusRow = { id: string; label: string; detail: string; destination: string; attention?: boolean; connected?: boolean; nextRunAt?: string }
 type Snapshot = { scope: string; apps?: WorkspaceStatusRow[]; automations?: WorkspaceStatusRow[]; errors: string[] }
@@ -40,6 +41,9 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
     const bot = data.allow_bots !== false && data.bots.find(item => item.id === data.selected_id)
     if (bot) appRows.push({ id: `bot:${bot.id}`, label: slackBotName(bot), detail: `${slackBotName(bot)} · ${!bot.configured ? 'Needs setup' : !bot.enabled ? 'Paused' : bot.identity?.verified ? 'Identity verified' : 'Saved'}`, destination: 'mcp:slack-bot', connected: bot.configured && bot.enabled && bot.identity?.verified === true, attention: !bot.configured })
    }).catch(() => { out.errors.push('Slack bot could not be loaded.') }))
+   if (has('mcp:github')) jobs.push(api.get<{ connected: boolean; login?: string }>('/api/vault/github').then(({ data }) => {
+    appRows.push({ id: 'github', label: 'GitHub', detail: data.connected ? `${data.login ? `${data.login} · ` : ''}Connected` : 'Not connected', connected: data.connected === true, destination: 'mcp:github' })
+   }).catch(() => { out.errors.push('GitHub status could not be checked.') }))
    if (has('mcp:whatsapp')) jobs.push(agentApi.getWhatsAppStatus().then(status => {
     appRows.push({ id: 'whatsapp', label: 'WhatsApp', detail: status.connected ? 'Connected' : status.paired ? 'Not connected' : 'Not set up', connected: status.connected === true, attention: status.paired && !status.connected, destination: 'mcp:whatsapp' })
    }).catch(() => { out.errors.push('WhatsApp status could not be checked.') }))
@@ -59,7 +63,9 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
   void load()
   const focus = () => { if (!document.hidden) void load() }
   window.addEventListener('focus', focus)
-  return () => { alive = false; window.removeEventListener('focus', focus) }
+  const githubChanged = () => { void load() }
+  if (has('mcp:github')) window.addEventListener(githubConnectionChanged, githubChanged)
+  return () => { alive = false; window.removeEventListener('focus', focus); window.removeEventListener(githubConnectionChanged, githubChanged) }
  }, [scope, workspacePath, projectId, admission, requestScope, revision])
  return { snapshot: snapshot?.scope === requestScope ? snapshot : undefined, refresh: () => setRevision(value => value + 1) }
 }

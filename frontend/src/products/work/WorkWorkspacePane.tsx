@@ -77,7 +77,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const inventory = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, readOnly: Boolean(readOnly), showShell, enabledPanels })
   const admitted = [...inventory.views, ...inventory.ops, ...inventory.setup]
-  const menuItems = crewProjectMenuItems({ panels: admitted, allowedProducts: user?.allowed_products, enabledPanels, incomingEmail, projectId })
+  const menuItems = crewProjectMenuItems({ mode: projectMode, panels: admitted, allowedProducts: user?.allowed_products, enabledPanels, incomingEmail, projectId })
   useRegisterPanelSwitcher('work', [
     ...(!readOnly ? [{ id: 'context', label: 'Project menu' }] : []),
     ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group })),
@@ -85,7 +85,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     if (key === 'context') { onViewChange('context'); return }
     const legacy = key === 'mcp:slack' ? 'mcp:slack-bot' : section ? key + ':' + section : key
     const current = useAuthStore.getState().user
-    const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === legacy)
+    const item = crewProjectMenuItems({ mode: projectMode, panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === legacy)
     if (!item || current?.id !== user?.id) return
     useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, projectId || workspacePath), item.id)
     if (item.external) { openProductWorkspace(item.external); return }

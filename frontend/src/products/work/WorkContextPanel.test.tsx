@@ -33,7 +33,7 @@ async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => P
  finally { await act(async () => root.unmount()); host.remove() }
 }
 it('shows actual workspace status without promoting occasional tools, and keeps All tools searchable', async () => {
- mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', connected:true, destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'Google', detail:'person@example.com · Connected', connected:true, destination:'mcp:gmail' }, { id:'slack:s', label:'My Slack account', detail:'Personal Slack · Connected', connected:true, destination:'mcp:slack-account' }, { id:'bot:b', label:'Project helper', detail:'Project helper · Identity verified', connected:true, destination:'mcp:slack-bot' }, { id:'whatsapp', label:'WhatsApp',detail:'Connected',connected:true,destination:'mcp:whatsapp' }]
+ mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', connected:true, destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'Google', detail:'person@example.com · Connected', connected:true, destination:'mcp:gmail' }, { id:'slack:s', label:'My Slack account', detail:'Personal Slack · Connected', connected:true, destination:'mcp:slack-account' }, { id:'bot:b', label:'Project helper', detail:'Project helper · Identity verified', connected:true, destination:'mcp:slack-bot' }, { id:'whatsapp', label:'WhatsApp',detail:'Connected',connected:true,destination:'mcp:whatsapp' }, {id:'github',label:'GitHub',detail:'chosen-account · Connected',connected:true,destination:'mcp:github'}]
  mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }, { id:'schedule:next',label:'Next summary',detail:'Jan 1, 8:00 AM',nextRunAt:'2099-01-01T08:00:00Z',destination:'schedules:schedules' }]
  await render('dev', async host => {
   expect(host.querySelector('h2')?.textContent).toBe('Changes')
@@ -48,6 +48,8 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'slack-bot')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="WhatsApp · Connected"]')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'whatsapp')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="GitHub · chosen-account · Connected"]')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'github')
   expect(host.querySelector('[aria-label="Google · person@example.com · Connected"]')).not.toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Google · person@example.com · Connected"]')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'gmail')
@@ -65,7 +67,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(event.mock.calls[0][0].detail.query).toBe('@panels '); window.removeEventListener('open-quick-switcher', event)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
-  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','Access & sharing']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
+  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','GitHub','Access & sharing']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
   expect(host.querySelector('[aria-label="Back to workspace"]')?.textContent).toBe('Full menu')
   expect(host.textContent).not.toContain('Back to workspace')
   const files = [...host.querySelectorAll('button')].find(node => node.textContent === 'Files')!
@@ -114,6 +116,10 @@ it('keeps every starter destination in the admitted All tools inventory and Run 
  for (const starter of CREW_STARTER_TYPES) for (const shortcut of crewStarterShortcuts(starter.id)) expect(ids).toContain(shortcut)
  expect(workWorkspacePanels({ readOnly:true }).views.map(item => item.id)).toEqual(['dashboard'])
  expect(inventory(new Set(['skills'])).map(item => item.id)).not.toContain('files')
+ const menu = (mode:'dev'|'cowork', features?:Set<string>) => crewProjectMenuItems({ panels:inventory(features), enabledPanels:features, mode }).map(item=>item.id)
+ expect(menu('dev',new Set(['secrets']))).toContain('mcp:github')
+ expect(menu('cowork',new Set(['secrets']))).not.toContain('mcp:github')
+ expect(menu('dev',new Set(['bots']))).not.toContain('mcp:github')
 })
 
 it('keeps offline connections out of the icon strip but reachable through expansion', async () => {
@@ -121,12 +127,16 @@ it('keeps offline connections out of the icon strip but reachable through expans
  mocks.status.apps = [
   { id:'google:offline',label:'Google',detail:'person@example.com · Needs attention',connected:false,attention:true,destination:'mcp:gmail' },
   { id:'whatsapp',label:'WhatsApp',detail:'Not connected',connected:false,attention:true,destination:'mcp:whatsapp' },
+  { id:'github',label:'GitHub',detail:'Not connected',connected:false,destination:'mcp:github' },
   { id:'mcp:offline',label:'Notes',detail:'Needs attention',connected:false,attention:true,destination:'mcp:connected' },
  ]
- await render('cowork', async host => {
-  for (const prefix of ['Browser ·','Google ·','WhatsApp ·','MCPs ·']) expect(host.querySelector(`[aria-label^="${prefix}"]`)).toBeNull()
+ await render('dev', async host => {
+  for (const prefix of ['Browser ·','Google ·','WhatsApp ·','GitHub ·','MCPs ·']) expect(host.querySelector(`[aria-label^="${prefix}"]`)).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
   expect(host.textContent).toContain('person@example.com · Needs attention')
+  const github = [...host.querySelectorAll('button')].find(node => node.textContent === 'GitHubNot connected')!
+  await act(async () => github.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'github')
   const whatsapp = [...host.querySelectorAll('button')].find(node => node.textContent === 'WhatsAppNot connected')!
   await act(async () => whatsapp.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'whatsapp')
