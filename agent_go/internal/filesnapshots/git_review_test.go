@@ -160,6 +160,41 @@ func TestGitReviewRestoredDirtyFileIsIncompleteAcrossSwitch(t *testing.T) {
 	}
 }
 
+// PR460: returning a later branch's file to the initial branch's HEAD is a
+// proved commit relative to that later branch, not an unstaged carried file.
+func TestGitReviewKeepsCommittedWorkOnLaterSegments(t *testing.T) {
+	for _, switchAway := range []bool{false, true} {
+		t.Run(fmt.Sprint(switchAway), func(t *testing.T) {
+			f := newCrew(t)
+			ctx := t.Context()
+			f.repo("app", map[string]string{"f.txt": "main original\n"})
+			f.git("app", "checkout", "-qb", "other")
+			f.put("app/f.txt", "other original\n")
+			f.git("app", "commit", "-qam", "other base")
+			f.git("app", "checkout", "-q", "main")
+			f.put("app/f.txt", "already dirty\n")
+			if _, err := f.s.Begin(ctx, "later-segment"); err != nil {
+				t.Fatal(err)
+			}
+			f.put("app/f.txt", "main original\n")
+			f.git("app", "checkout", "-q", "other")
+			f.put("app/f.txt", "main original\n")
+			f.git("app", "commit", "-qam", "proved work")
+			if switchAway {
+				f.git("app", "checkout", "-q", "main")
+			}
+			r, err := f.s.Finish(ctx, "later-segment")
+			if err != nil {
+				t.Fatal(err)
+			}
+			c, err := f.s.Compare(ctx, r.ID, "app/f.txt", func(string) bool { return true })
+			if err != nil || len(c.Changes) != 1 || c.Changes[0].Checkout.Branch != "other" || !strings.Contains(c.Diff, "-other original") || !strings.Contains(c.Diff, "+main original") || strings.Contains(c.Diff, "already dirty") || c.Note != "" {
+				t.Fatalf("known later commit was suppressed or rewritten: %v %+v", err, c)
+			}
+		})
+	}
+}
+
 func TestGitReviewIncomingResetAndMissingReflogDoNotInventChanges(t *testing.T) {
 	f := newCrew(t)
 	ctx := t.Context()

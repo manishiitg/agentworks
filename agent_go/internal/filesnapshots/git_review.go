@@ -392,15 +392,15 @@ func (s Store) transitionSpans(ctx context.Context, r *Record, dir string, start
 			latest, committed = tree, true
 		} else {
 			if committed {
-				b, err := s.carryDirty(ctx, base, before, oldHead, segmentHead, p, "", nil)
+				b, err := s.carryDirty(ctx, base, before, oldHead, segmentHead, segmentHead, p, "", nil)
 				if err != nil {
 					return nil, err
 				}
-				a, err := s.carryDirty(ctx, latest, before, oldHead, latest, p, "", nil)
+				a, err := s.carryDirty(ctx, latest, before, oldHead, segmentHead, latest, p, "", nil)
 				if err != nil {
 					return nil, err
 				}
-				uncertain, err := s.uncertainDirtyBeforeSwitch(ctx, before, oldHead, latest, after, p)
+				uncertain, err := s.uncertainDirtyBeforeSwitch(ctx, before, oldHead, segmentHead, latest, after, p)
 				if err != nil {
 					return nil, err
 				}
@@ -437,9 +437,20 @@ func (s Store) transitionSpans(ctx context.Context, r *Record, dir string, start
 			}
 		}
 	}
-	base, err = s.carryDirty(ctx, base, before, oldHead, segmentHead, p, after, &skipped)
+	base, err = s.carryDirty(ctx, base, before, oldHead, segmentHead, segmentHead, p, after, &skipped)
 	if err != nil {
 		return nil, err
+	}
+	if committed {
+		kept := skipped[:0]
+		for _, name := range skipped {
+			saved, savedOK := s.entry(ctx, latest, name)
+			actual, actualOK := s.entry(ctx, after, name)
+			if saved != actual || savedOK != actualOK {
+				kept = append(kept, name)
+			}
+		}
+		skipped = kept // a known committed blob is not an uncertain carried file
 	}
 	spans = append(spans, reviewSpan{Checkout: label, Before: base, After: after, Skipped: skipped})
 	return spans, nil
@@ -448,7 +459,7 @@ func (s Store) transitionSpans(ctx context.Context, r *Record, dir string, start
 // A commit omits unstaged files. If an initially dirty file is clean in that
 // commit and different at the final capture, the reflog cannot establish
 // whether it was restored before the switch or discarded by the switch.
-func (s Store) uncertainDirtyBeforeSwitch(ctx context.Context, before, oldHead, committed, after, root string) ([]string, error) {
+func (s Store) uncertainDirtyBeforeSwitch(ctx context.Context, before, oldHead, segmentHead, committed, after, root string) ([]string, error) {
 	args := []string{"--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", oldHead, before, "--"}
 	if root != "" {
 		args = append(args, root)
@@ -464,10 +475,11 @@ func (s Store) uncertainDirtyBeforeSwitch(ctx context.Context, before, oldHead, 
 			continue
 		}
 		old, oldOK := s.entry(ctx, oldHead, p)
+		segment, segmentOK := s.entry(ctx, segmentHead, p)
 		saved, savedOK := s.entry(ctx, committed, p)
 		initial, initialOK := s.entry(ctx, before, p)
 		final, finalOK := s.entry(ctx, after, p)
-		if old == saved && oldOK == savedOK && (initial != final || initialOK != finalOK) {
+		if old == segment && oldOK == segmentOK && segment == saved && segmentOK == savedOK && (initial != final || initialOK != finalOK) {
 			skipped = append(skipped, p)
 		}
 	}
@@ -487,7 +499,7 @@ func savedRoot(file string, roots []string) (string, bool) {
 	return root, found
 }
 
-func (s Store) carryDirty(ctx context.Context, base, before, oldHead, newHead, root, observedAfter string, uncertain *[]string) (string, error) {
+func (s Store) carryDirty(ctx context.Context, base, before, oldHead, segmentHead, newHead, root, observedAfter string, uncertain *[]string) (string, error) {
 	raw, err := s.command(ctx, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", oldHead, before).Output()
 	if err != nil {
 		return "", err
@@ -499,8 +511,9 @@ func (s Store) carryDirty(ctx context.Context, base, before, oldHead, newHead, r
 			continue
 		}
 		old, oldOK := s.entry(ctx, oldHead, p)
+		segment, segmentOK := s.entry(ctx, segmentHead, p)
 		now, nowOK := s.entry(ctx, newHead, p)
-		if old != now || oldOK != nowOK {
+		if old != segment || oldOK != segmentOK || old != now || oldOK != nowOK {
 			if observedAfter != "" && uncertain != nil {
 				actual, actualOK := s.entry(ctx, observedAfter, p)
 				if actual != now || actualOK != nowOK {
