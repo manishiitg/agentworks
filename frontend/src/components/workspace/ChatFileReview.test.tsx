@@ -247,7 +247,7 @@ describe('Studio review comments', () => {
       vi.mocked(workspaceGitApi.diff).mockResolvedValueOnce({ diff: '@@ -1 +1 @@\n-old git\n+new git\n', truncated: false })
       await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
       // This chat opens first, matching the reply card's count; Git scopes stay one click away.
-      expect(host.textContent).toContain('Every file this chat changed')
+      expect(button('This chat').getAttribute('aria-pressed')).toBe('true')
       await act(async () => button('Uncommitted').click())
       expect(host.textContent).toContain('Branch / PR')
       expect(host.textContent).toContain('feature · 1 file not committed yet')

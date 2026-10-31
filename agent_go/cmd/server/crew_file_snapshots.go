@@ -505,18 +505,18 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), crewSnapshotTimeout)
 	defer cancel()
+	comparison, err := store.CompareSaved(ctx, []string{id}, file, r.URL.Query().Get("change_key"), allow)
+	if err != nil {
+		externalError(w, 404, "snapshot_unavailable", "This file comparison is not available. List snapshots and choose a completed turn.")
+		return
+	}
 	if op == "snapshot_file" {
-		content, err := store.ReadFile(ctx, id, file, r.URL.Query().Get("side"), allow)
+		content, err := store.ReadComparedFile(ctx, comparison, file, r.URL.Query().Get("side"))
 		if err != nil {
 			externalError(w, 404, "snapshot_unavailable", "This saved file is unavailable or you cannot read it.")
 			return
 		}
 		writeSavedSnapshotFile(w, r, prefix+file, content)
-		return
-	}
-	comparison, err := store.Compare(ctx, id, file, allow)
-	if err != nil {
-		externalError(w, 404, "snapshot_unavailable", "This file comparison is not available. List snapshots and choose a completed turn.")
 		return
 	}
 	comparison.Record.ExecutionID = ""
@@ -525,7 +525,7 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		return
 	}
 	for i := range comparison.Changes {
-		comparison.Changes[i].Path = prefix + comparison.Changes[i].Path
+		comparison.Changes[i] = comparison.Changes[i].WithPrefix(prefix)
 	}
 	for i := range comparison.Record.Skipped {
 		comparison.Record.Skipped[i] = prefix + comparison.Record.Skipped[i]
