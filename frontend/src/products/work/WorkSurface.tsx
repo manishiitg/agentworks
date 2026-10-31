@@ -403,6 +403,7 @@ function useWorkChatTab(
         })
         if (cancelled) return
 
+        const previousActiveWasMain = Boolean(chatStore.activeTabId && chatStore.chatTabs[chatStore.activeTabId]?.metadata?.agentProfileIsMainChat && belongsToWorkProject(chatStore.chatTabs[chatStore.activeTabId], target.id))
         for (const tab of Object.values(chatStore.chatTabs)) {
           if (belongsToWorkProject(tab, target.id) && tab.sessionId !== conversation.session_id && tab.metadata?.agentProfileIsMainChat) chatStore.setTabMetadata(tab.tabId, { agentProfileIsMainChat: false })
         }
@@ -450,7 +451,7 @@ function useWorkChatTab(
         const canonicalTabId = await chatStore.createChatTab('Chat', projectMetadata, conversation.session_id)
         if (cancelled) return
         // createChatTab activates the primary; keep a side chat the user picked (PLAT-571).
-        const keepActive = workTabToKeepActive(useChatStore.getState().chatTabs, previousActiveTabId, target.id, canonicalTabId)
+        const keepActive = !previousActiveWasMain && workTabToKeepActive(useChatStore.getState().chatTabs, previousActiveTabId, target.id, canonicalTabId)
         if (keepActive) activateTab(keepActive)
         chatStore.setTabMetadata(canonicalTabId, { ...projectMetadata, agentProfileMCPSelectionInitialized: true })
         chatStore.setTabConfig(canonicalTabId, { selectedServers: savedServers, selectedSkills: savedSkills })
