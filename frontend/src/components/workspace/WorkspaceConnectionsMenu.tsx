@@ -1,5 +1,5 @@
 import { Portal as TooltipPortal } from '@radix-ui/react-tooltip'
-import { Bot, Cable, Chrome, Github, Grid2X2, MessageCircle, Monitor, MonitorCog, Slack, type LucideIcon } from 'lucide-react'
+import { Bot, Cable, ChevronRight, Chrome, Github, Grid2X2, MessageCircle, Monitor, MonitorCog, Settings2, Slack, type LucideIcon } from 'lucide-react'
 import { useBrowserToolbarConnection } from '../../hooks/useBrowserToolbarConnection'
 import type { WorkspaceStatusRow } from '../../products/work/useWorkspaceStatus'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
@@ -16,9 +16,9 @@ function ConnectionIcon({ icon: Icon, hint, count, onClick }: {
     </button>
   </TooltipTrigger><TooltipPortal><TooltipContent className="max-w-72 break-words">{hint}</TooltipContent></TooltipPortal></Tooltip>
 }
-export function WorkspaceConnectionsMenu({ workspacePath, profileId, browserAllowed, mcpAllowed, apps, loading, unavailable, onOpen }: {
+export function WorkspaceConnectionsMenu({ workspacePath, profileId, browserAllowed, mcpAllowed, apps, loading, unavailable, onOpen, onManage }: {
   workspacePath: string; profileId: string; browserAllowed: boolean; mcpAllowed: boolean
-  apps: WorkspaceStatusRow[]; loading: boolean; unavailable: boolean; onOpen: (destination: string) => void
+  apps: WorkspaceStatusRow[]; loading: boolean; unavailable: boolean; onOpen: (destination: string) => void; onManage?: () => void
 }) {
   const browser = useBrowserToolbarConnection(workspacePath, profileId, browserAllowed)
   const mcps = apps.filter(item => item.destination === 'mcp:connected')
@@ -31,7 +31,7 @@ export function WorkspaceConnectionsMenu({ workspacePath, profileId, browserAllo
   const browserIcon = browser.name?.toLowerCase().includes('chrome') ? Chrome : Monitor
   const labelFor = (item: WorkspaceStatusRow) => item.destination === 'mcp:slack-bot' ? 'Slack bot' : item.label
   const iconFor = (item: WorkspaceStatusRow) => item.destination === 'mcp:computer-use' ? MonitorCog : item.destination === 'mcp:github' ? Github : item.destination === 'mcp:gmail' ? Grid2X2 : item.destination === 'mcp:slack-bot' ? Bot : item.destination === 'mcp:whatsapp' ? MessageCircle : Slack
-  if (!browserAllowed && !mcpAllowed && !accounts.length) return null
+  if (!browserAllowed && !mcpAllowed && !accounts.length && !onManage) return null
   return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} preview={<div className="isolate flex -space-x-1.5">
     {browserAllowed && browser.connected && <ConnectionIcon icon={browserIcon} hint={browserHint} onClick={() => onOpen('browser')}/>}
     {accounts.filter(item => item.connected).map(item => <ConnectionIcon key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} onClick={() => onOpen(item.destination)}/>)}
@@ -40,5 +40,6 @@ export function WorkspaceConnectionsMenu({ workspacePath, profileId, browserAllo
     {browserAllowed && <WorkspaceContextRow icon={browserIcon} hint={browserHint} detail={browser.name || browser.label} attention={!browser.connected && browser.label !== 'Checking…'} onClick={() => onOpen('browser')}>Browser</WorkspaceContextRow>}
     {accounts.map(item => <WorkspaceContextRow key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} detail={item.detail} attention={item.attention} onClick={() => onOpen(item.destination)}>{labelFor(item)}</WorkspaceContextRow>)}
     {mcpAllowed && <WorkspaceContextRow icon={Cable} hint={mcpHint} detail={mcpDetail} attention={attention > 0 || unavailable} onClick={() => onOpen('mcp:connected')}>MCPs</WorkspaceContextRow>}
+    {onManage && <WorkspaceContextRow icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={onManage}>Manage integrations</WorkspaceContextRow>}
   </WorkspaceCompactGroup></TooltipProvider>
 }
