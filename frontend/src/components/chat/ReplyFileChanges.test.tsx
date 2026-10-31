@@ -2,10 +2,11 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ canBuild: true, total: 2, undoError: '', phone: false, extraCommands: [] as string[], pr: {} as Record<string, unknown>, nextStep: 'none' }))
+const state = vi.hoisted(() => ({ canBuild: true, total: 2, undoError: '', phone: false, extraCommands: [] as string[], pr: {} as Record<string, unknown>, nextStep: 'none', extraRepo: false }))
 const pr = { number: 305, url: 'https://github.com/o/r/pull/305', state: 'open', checks: 'passing', review: 'none' }
 const group = { kind: 'repo' as const, root: 'app', name: 'app', branch: 'fix-tts', github_repo: 'o/r', new_checkout: true, total_files: 696, more_count: 3, files: [{ path: 'app/tts.py', status: 'M', added: 4, removed: 1 }] }
 const crewFiles = { kind: 'crew_files' as const, root: '', name: 'Crew', new_checkout: false, total_files: 1, more_count: 0, files: [{ path: 'notes.md', status: 'A', added: 2, removed: 0 }] }
+const fixtureRepos = () => state.extraRepo ? [group, { ...group, root: 'second', name: 'second', branch: 'feature-two' }] : [group]
 const review = { id: 'review', kind: 'builtin', label: 'Review changes', description: 'See every file this reply changed, line by line.', icon: 'octicon:file-diff', placement: 'row' } as const
 // The list the server decides (filesnapshots.CardActions); the card only draws it.
 function replyCard(lookedUp: boolean) {
@@ -21,7 +22,7 @@ function replyCard(lookedUp: boolean) {
     actions.push({ id: 'add_button', kind: 'builtin', label: 'Add button', description: 'Save a reusable button on this Crew\'s file-change toolbar.', icon: 'plus', placement: 'row', prompt: 'Add an AgentWorks reply-card button using crew-builder and manage_custom_commands with show_on_card=true.' })
     if (lookedUp && status.checks === 'failing') actions.push({ id: 'fix-checks:app:link', kind: 'fix', label: 'Fix failing checks', icon: 'wrench', placement: 'pr_line', prompt: 'fix prompt', group: 'app' })
   }
-  return { groups: [crewFiles, lookedUp ? { ...group, pr: status } : group], actions, can_edit: state.canBuild }
+  return { groups: [crewFiles, ...fixtureRepos().map(repo => lookedUp ? { ...repo, pr: status } : repo)], actions, can_edit: state.canBuild }
 }
 vi.mock('./PRWatcherControls', () => ({ PRWatcherControls: () => null }))
 vi.mock('../../services/api', () => ({ default: { post: vi.fn(async () => { if (state.undoError) throw { response: { data: { error: { message: state.undoError } } } }; return { data: { undo: { restore: [{ path: 'app/tts.py' }], skipped: [] } } } }), get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
@@ -52,7 +53,7 @@ HTMLElement.prototype.scrollIntoView ??= () => {}
 // Chat shows a compact toolbar; the right panel retains the detailed actions and file list.
 async function render(canBuild: boolean, total = 2, latestSnapshotId?: string, withSummary = true, opened = true) {
   state.canBuild = canBuild; state.total = total
-  const summary = withSummary ? { files: total, added: 6, removed: 1, groups: total ? [crewFiles, group] : [], actions: [review] } : undefined
+  const summary = withSummary ? { files: total, added: 6, removed: 1, groups: total ? [crewFiles, ...fixtureRepos()] : [], actions: [review] } : undefined
   const host = document.createElement('div'); document.body.append(host)
   await act(async () => createRoot(host).render(<ReplyFileChanges reference={{ snapshotId: 's', workspacePath: 'Crew/x', sessionId: 'chat-a', latestSnapshotId, summary }} panel={opened} />))
   return host
@@ -149,6 +150,15 @@ describe('reply card groups', () => {
     const panel = await render(true)
     expect(panel.textContent).toContain('tts.py')
     expect(button(panel, 'Undo this reply')).toBeDefined()
+  })
+  it('keeps multiple PR checkouts behind one reply-panel button instead of overlapping toolbar controls', async () => {
+    state.extraRepo = true
+    try {
+      const host = await render(true, 3, undefined, true, false)
+      expect(host.querySelector('a[title="Review comments"]')).toBeNull()
+      await act(async () => button(host, '2 worktrees')!.click())
+      expect(openReplyChanges).toHaveBeenLastCalledWith(expect.objectContaining({ snapshotId: 's', summary: expect.objectContaining({ groups: expect.arrayContaining([expect.objectContaining({ root: 'second' })]) }) }))
+    } finally { state.extraRepo = false }
   })
   it('keeps the server\'s row buttons in the row and the rest, with the next Git step first, under More', async () => {
     state.extraCommands = ['second', 'third', 'fourth']; state.nextStep = 'update_pr'
