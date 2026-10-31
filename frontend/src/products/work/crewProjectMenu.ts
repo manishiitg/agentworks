@@ -43,6 +43,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     }
     if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
     add('mcp', 'Integrations', 'Local laptop', Laptop, 'laptop')
+    if (canShare) add('mcp', 'Integrations', 'Project sync', Laptop, 'sync')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
     if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
     if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
@@ -56,7 +57,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
   add('costs', 'Setup', 'Costs & usage', DollarSign)
   add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')
-  const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:github', 'mcp:gmail', 'mcp:slack-account', 'mcp:laptop', 'mcp:brain', 'mcp:folders', 'mcp:agents', 'mcp:agentbridge']
+  const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:github', 'mcp:gmail', 'mcp:slack-account', 'mcp:laptop', 'mcp:sync', 'mcp:brain', 'mcp:folders', 'mcp:agents', 'mcp:agentbridge']
   return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
 }
 

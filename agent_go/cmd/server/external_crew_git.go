@@ -44,7 +44,7 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	prefix := ""
-	if roots.Local {
+	if roots.SeparateFiles() {
 		prefix = crewroot.FilesSegment + "/"
 	}
 	// readable is the Crew file-read rule for a path relative to the files root;

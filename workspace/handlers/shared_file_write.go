@@ -38,6 +38,10 @@ func SharedFileWrite(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	if physical, found, err := crewroot.Resolve(docs, req.Root+"/"+req.Path); err != nil || found && crewroot.CheckSyncWrite(docs, physical) != nil {
+		c.JSON(409, gin.H{"error": "Project editing is on the other computer. Move editing here before changing files."})
+		return
+	}
 	state, err := wf.DefaultStateDir(docs)
 	if err != nil {
 		c.AbortWithStatus(503)

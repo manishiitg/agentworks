@@ -11,6 +11,7 @@ import (
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -222,6 +223,7 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 			}
 		}
 	}
+	policy.WorkspaceWritePaths = crewroot.SyncWriteGrants(fsutil.WorkspaceDocsRoot(), policy.WorkspaceWritePaths)
 	return policy
 }
 

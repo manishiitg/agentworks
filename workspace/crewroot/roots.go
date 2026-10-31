@@ -118,6 +118,13 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 		files = filepath.Clean(r.LocalRoot)
 		resources = filepath.Join(files, ".agentworks")
 	}
+	sync, err := ReadSync(r.ID)
+	if err != nil {
+		return Roots{}, err
+	}
+	if sync != nil && sync.Side == "server" {
+		files = filepath.Join(files, FilesSegment)
+	}
 	for _, dir := range []string{files, resources, private} {
 		if err := unchangedDirectory(dir, allowMissing); err != nil {
 			return Roots{}, err
@@ -200,7 +207,7 @@ func (q *Resolver) Lookup(virtual string) (Roots, bool, error) {
 }
 
 func (r Roots) FilesPath() string {
-	if !r.Local {
+	if !r.SeparateFiles() {
 		return r.Virtual
 	}
 	return r.Virtual + "/" + FilesSegment
@@ -301,10 +308,10 @@ func (q *Resolver) Resolve(virtual string) (string, bool, error) {
 	}
 	rel := strings.TrimPrefix(strings.TrimPrefix(filepath.ToSlash(virtual), r.Virtual), "/")
 	root := r.Resources
-	if first := strings.SplitN(rel, "/", 2)[0]; r.Local && strings.EqualFold(first, FilesSegment) && first != FilesSegment {
+	if first := strings.SplitN(rel, "/", 2)[0]; r.SeparateFiles() && strings.EqualFold(first, FilesSegment) && first != FilesSegment {
 		return "", true, fmt.Errorf("use the issued _files path")
 	}
-	if r.Local && (rel == FilesSegment || strings.HasPrefix(rel, FilesSegment+"/")) {
+	if r.SeparateFiles() && (rel == FilesSegment || strings.HasPrefix(rel, FilesSegment+"/")) {
 		root = r.Files
 		rel = strings.TrimPrefix(strings.TrimPrefix(rel, FilesSegment), "/")
 		if first := strings.SplitN(strings.ToLower(rel), "/", 2)[0]; first == ".agentworks" {
@@ -372,7 +379,7 @@ func (q *Resolver) Reverse(physical string) (string, Roots, bool, error) {
 		if Within(r.Private, physical) {
 			root, prefix = r.Private, r.Virtual
 		}
-		if Within(r.Resources, physical) {
+		if Within(r.Resources, physical) && !(r.SeparateFiles() && Within(r.Files, physical)) {
 			root, prefix = r.Resources, r.Virtual
 		}
 		rel, _ := filepath.Rel(root, physical)
@@ -438,7 +445,7 @@ func ScopeRoot(docs, virtual, rel string) (string, bool, error) {
 	if err != nil || !bound {
 		return "", bound, err
 	}
-	if r.Local && virtual == r.FilesPath() {
+	if r.SeparateFiles() && virtual == r.FilesPath() {
 		return r.Files, true, nil
 	}
 	if virtual != r.Virtual {
@@ -500,5 +507,5 @@ func NativeGrants(docs string, read, write []string) ([]string, []string, []stri
 	}
 	sort.Strings(cachePaths)
 	writes = append(writes, cachePaths...)
-	return reads, writes, blocked
+	return reads, SyncWriteGrants(docs, writes), blocked
 }

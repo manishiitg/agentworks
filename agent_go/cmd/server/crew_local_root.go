@@ -54,12 +54,12 @@ func crewStorageRoots(folder string) (crewroot.Roots, bool, error) {
 
 func localCrewRoots(folder string) (crewroot.Roots, bool, error) {
 	r, found, err := crewroot.Lookup(fsutil.WorkspaceDocsRoot(), folder)
-	return r, found && r.Local, err
+	return r, found && r.SeparateFiles(), err
 }
 
 func localCrewRemovalRoots(folder string) (crewroot.Roots, bool, error) {
 	r, found, err := crewroot.LookupForRemoval(fsutil.WorkspaceDocsRoot(), folder)
-	return r, found && r.Local, err
+	return r, found && r.SeparateFiles(), err
 }
 
 func crewFilesPath(folder string) string {

@@ -40,6 +40,10 @@ func lockFileMutation(c *gin.Context, paths ...string) (func(), bool) {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return nil, false
 		}
+		if err := crewroot.CheckSyncWrite(viper.GetString("docs-dir"), file); !wholeCrew && err != nil {
+			c.JSON(409, gin.H{"error": err.Error()})
+			return nil, false
+		}
 		root, err := wf.MutationRoot(viper.GetString("docs-dir"), file)
 		if wholeCrew {
 			root, err = value.(crewroot.Roots).Files, nil

@@ -481,6 +481,11 @@ func (e *Editor) WriteWithPatch(ctx context.Context, r WriteRequest, patch func(
 		return WriteReceipt{}, err
 	}
 	defer scoped.Close()
+	if docs := os.Getenv("WORKSPACE_DOCS_PATH"); docs != "" {
+		if err := crewroot.CheckSyncWrite(docs, filepath.Join(scoped.Name(), p)); err != nil {
+			return WriteReceipt{}, fileError(409, err.Error())
+		}
+	}
 	if held, _ := ctx.Value(editorBatchKey{}).(*Editor); held != e {
 		if scope != "." {
 			release, err := LockWorkspace(ctx, scoped.Name())
