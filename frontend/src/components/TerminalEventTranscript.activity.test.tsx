@@ -409,9 +409,14 @@ it('keeps a late file comparison on its original reply in both transcript views 
         const reply = clean ? card.closest('article') : card.closest('[data-testid="terminal-clear-event-first-reply"]')
         expect(reply?.textContent).toContain('First report is ready.')
         expect(reply?.textContent).not.toContain('Second report is ready.')
+        vi.mocked(openReplyChanges).mockClear()
         await act(async () => card.querySelector<HTMLButtonElement>('button')!.click())
         expect(host.querySelector('dialog')).toBeNull()
-        expect(openReplyChanges).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: 'saved-first', sessionId: 'files-session' }))
+        // This fixture is a shared Run viewer: filenames stay readable inline,
+        // and the request remains bound to the first reply's saved snapshot.
+        expect(card.querySelector('[aria-label="Reply file names"]')?.textContent).toContain('report.md')
+        expect(openReplyChanges).not.toHaveBeenCalled()
+        expect(get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ snapshot_id: 'saved-first', session_id: 'files-session' }) }))
         // PLAT-746-158: a saved card disappears when the project is Cowork,
         // including after reopening old history; it does not fetch comparisons.
         const priorTabs = useChatStore.getState().chatTabs
