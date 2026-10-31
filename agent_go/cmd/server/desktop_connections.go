@@ -445,6 +445,7 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 }
 
 type desktopProject struct {
+	Icon string `json:"icon,omitempty"`
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Kind string `json:"kind"`
@@ -500,12 +501,14 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 				Workspaces []struct {
 					ID   string `json:"id"`
 					Name string `json:"name"`
+					Icon string `json:"icon"`
 					Mode string `json:"mode"`
 				} `json:"workspaces"`
 				Workflows []struct {
 					Manifest struct {
 						ID    string `json:"id"`
 						Label string `json:"label"`
+						Icon  string `json:"icon"`
 						Kind  string `json:"kind"`
 					} `json:"manifest"`
 				} `json:"workflows"`
@@ -516,11 +519,11 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			}
 			projects := []desktopProject{}
 			for _, p := range inventory.Workspaces {
-				projects = append(projects, desktopProject{p.ID, p.Name, "crew", p.Mode})
+				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, Icon: p.Icon})
 			}
 			for _, p := range inventory.Workflows {
 				if p.Manifest.Kind != "relay" {
-					projects = append(projects, desktopProject{p.Manifest.ID, p.Manifest.Label, "goal", ""})
+					projects = append(projects, desktopProject{ID: p.Manifest.ID, Name: p.Manifest.Label, Kind: "goal", Icon: p.Manifest.Icon})
 				}
 			}
 			results <- result{projects: projects, status: 200}
