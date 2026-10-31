@@ -30,6 +30,7 @@ interface BrowserAutomationSettingsProps {
   cdpChecking: boolean
   onCheckCdpConnection: (port: number) => void
   readOnly?: boolean
+  inline?: boolean
   scopeNoun?: 'workflow' | 'project'
 }
 
@@ -82,6 +83,7 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
   cdpChecking,
   onCheckCdpConnection,
   readOnly = false,
+  inline = false,
 }) => {
   const platform = typeof navigator !== 'undefined' ? navigator.platform : undefined
   const isMac = platform?.includes('Mac')
@@ -107,8 +109,8 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
     <section className="space-y-3" aria-labelledby="browser-automation-heading">
 
       {usesCdp && (
-        <details className="overflow-hidden rounded-lg border border-border">
-          <summary className="cursor-pointer px-3 py-2 text-sm">Advanced connection settings</summary>
+        <details open={inline || undefined} className="overflow-hidden rounded-lg border border-border">
+          <summary className={inline ? 'hidden' : 'cursor-pointer px-3 py-2 text-sm'}>Connection details</summary>
           <div className="space-y-3 p-3 sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>

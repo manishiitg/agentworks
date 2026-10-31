@@ -23,26 +23,22 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
   mocks.post.mockResolvedValue({ data: { selected: true, connected: true, account_connected: true, browser_id: 'chrome-one', tabs: 0, browsers, workspace: 'Crew/example-crew-one' } })
   try {
     await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Crew/example-crew-one" profileId="work" scopeNoun="project" browserMode="headless" onBrowserModeChange={vi.fn()} cdpPort={9222} onCdpPortChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
-    expect(host.textContent).toContain('connected to your account')
+    expect(host.textContent).not.toContain('Save browser choice')
     expect(host.querySelector('[role="dialog"]')).toBeNull()
-    expect(host.querySelectorAll('select')).toHaveLength(1)
     expect(mocks.post).not.toHaveBeenCalled()
-    const picker = host.querySelector('#project-saved-browser') as HTMLSelectElement
-    expect([...picker.options].map(option => option.value)).toEqual(['workspace-browser', 'chrome-one', 'edge-two'])
-    await act(async () => { picker.value = 'chrome-one'; picker.dispatchEvent(new Event('change', { bubbles: true })) })
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Use browser')!.click() })
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Change')!.click() })
+    const chrome = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('My Chrome'))!
+    await act(async () => chrome.click())
     expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'connect', browser_id: 'chrome-one' }, expect.objectContaining({ params: { workspace_path: 'Crew/example-crew-one', profile_id: 'work' } }))
     expect(clipboard).not.toHaveBeenCalled()
-    expect(host.textContent).toContain('Connected · 0 project tabs')
-    expect(host.querySelector('option[value="chrome-one"]')?.textContent).toContain('Connected')
+    expect(host.textContent).toContain('Ask your agent to open a website.')
+    expect(host.textContent).toContain('My Chrome')
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Change')!.click() })
     expect(host.textContent).not.toContain('Install the extension')
-    const manage = [...host.querySelectorAll('button')].find(button => button.textContent === 'Connections')!
+    const manage = [...host.querySelectorAll('button')].find(button => button.textContent === 'Connect another browser')!
     expect(manage).toBeTruthy()
-    const opened = vi.fn()
-    window.addEventListener('open-browser-connections', opened)
     await act(async () => manage.click())
-    expect(opened).toHaveBeenCalledOnce()
-    window.removeEventListener('open-browser-connections', opened)
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy()
     expect(clipboard).not.toHaveBeenCalled()
   } finally {
     await act(async () => root.unmount())
@@ -64,5 +60,27 @@ it('shows the backend update step before a browser can connect', async () => {
     const download = host.querySelector('a[download]') as HTMLAnchorElement
     expect(download?.href).toBe('https://example.com/api/downloads/chrome-extension.zip')
     expect(mocks.post).not.toHaveBeenCalled()
+  } finally { await act(async () => root.unmount()) }
+})
+
+// PLAT-746-268: a failed save must leave the old browser selected and permit retry.
+it('applies direct browser selection immediately and retains the saved browser on failure', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  mocks.post.mockReset()
+  const status = { mode: 'extension', selected: true, connected: true, browser_id: 'chrome', tabs: 0, allowed_modes: ['extension', 'cdp'], browsers: [{ id: 'chrome', name: 'Chrome', connected: true, enabled: true }] }
+  mocks.get.mockResolvedValue({ data: status })
+  mocks.post.mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValueOnce({ data: { ...status, mode: 'cdp', selected: false, connected: false } })
+  const host = document.createElement('div'), root = createRoot(host), changed = vi.fn()
+  try {
+    await act(async () => root.render(<BrowserWorkspacePanel workspacePath="Crew/example" profileId="work" browserMode="extension" onBrowserModeChange={changed} cdpPort={9222} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} />))
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Change')!.click() })
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('direct connection'))!.click() })
+    expect(changed).not.toHaveBeenCalled()
+    expect(host.querySelector('[aria-label="Choose browser"]')).toBeTruthy()
+    expect(host.querySelector('[role="alert"]')).toBeTruthy()
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('direct connection'))!.click() })
+    expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'workspace', mode: 'cdp', port: 9222 }, expect.anything())
+    expect(changed).toHaveBeenCalledWith('cdp')
+    expect(host.querySelector('[aria-label="Choose browser"]')).toBeNull()
   } finally { await act(async () => root.unmount()) }
 })

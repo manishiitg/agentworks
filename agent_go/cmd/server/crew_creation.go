@@ -590,6 +590,9 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	if settings.LocalRoot != "" {
 		_ = os.Remove(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath)))
 	}
+	if err := selectSoleNewCrewBrowser(ctx, userID, workspacePath, profileID); err != nil {
+		log.Printf("[PROJECT_CREATE] default browser selection unavailable for %s", crewID)
+	}
 	return CreatedCrew{CrewID: crewID, Title: title, WorkspacePath: workspacePath, ManifestPath: manifestPath, SessionID: sessionID}, nil
 }
 

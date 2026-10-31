@@ -43,12 +43,34 @@ it('keeps saved-browser controls and labels old versus unknown extension version
     await act(async () => root.render(<BrowserConnectionsDialog open onClose={vi.fn()} />))
     const dialog = document.querySelector('[role="dialog"]')!
     const rows = dialog.querySelectorAll('li')
-    expect(rows[0].textContent).toContain('Offline · Extension 0.4.9')
+    expect(rows[0].textContent).toContain('Offline')
     expect(rows[0].textContent).toContain('Update available: 0.5.0')
     expect(rows[0].querySelector('button')?.textContent).toBe('Disconnect')
-    expect(rows[1].textContent).toContain('Connected · Extension version unknown')
+    expect(rows[1].textContent).toContain('Connected')
     expect(rows[1].textContent).not.toContain('Update available')
     expect(rows[1].querySelector('button')).toBeNull()
     expect(dialog.querySelector('[role="alert"]')).toBeNull()
   } finally { await act(async () => root.unmount()) }
+})
+
+// PLAT-746-268: opening setup must never mint/copy a credential; only the connect step does.
+it('keeps connection codes inside the explicit connect step', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  mocks.get.mockResolvedValue({ data: { browsers: [] } })
+  mocks.post.mockResolvedValue({ data: { token: 'test-connection-code' } })
+  const host = document.createElement('div'), root = createRoot(host)
+  const clipboard = vi.fn().mockResolvedValue(undefined)
+  vi.stubGlobal('navigator', { clipboard: { writeText: clipboard } })
+  try {
+    await act(async () => root.render(<BrowserConnectionsDialog open onClose={vi.fn()} />))
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(mocks.post).not.toHaveBeenCalled()
+    expect(dialog.querySelector('textarea')).toBeNull()
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('Next'))!.click() })
+    expect(mocks.post).not.toHaveBeenCalled()
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
+    expect(clipboard).toHaveBeenCalledOnce()
+    expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
+    expect(dialog.querySelector('textarea')?.closest('details')?.open).toBe(false)
+  } finally { await act(async () => root.unmount()); vi.unstubAllGlobals() }
 })
