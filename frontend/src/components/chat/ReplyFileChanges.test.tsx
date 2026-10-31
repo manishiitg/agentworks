@@ -106,6 +106,14 @@ describe('reply card groups', () => {
     expect(rowLabels(host)).toEqual(['Review changes'])
     expect(button(host, 'More actions')).toBeUndefined()
     expect(button(host, 'Undo this reply')).toBeUndefined()
+    // PLAT-746-261: shared Run users cannot open the workspace Files panel.
+    // Preserve their existing filename inspection without opening that panel.
+    const shared = await render(false, 2, undefined, true, false)
+    vi.mocked(openReplyChanges).mockClear()
+    await act(async () => button(shared, 'Open 2 files changed in this reply')!.click())
+    expect(shared.querySelector('[aria-label="Reply file names"]')?.textContent).toContain('app/tts.py')
+    expect(openReplyChanges).not.toHaveBeenCalled()
+    expect(button(shared, 'Undo this reply')).toBeUndefined()
   })
   it('keeps the detailed server actions in the panel and the chat toolbar compact', async () => {
     const closed = await render(true, 2, undefined, true, false)
