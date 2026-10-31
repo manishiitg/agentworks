@@ -4,9 +4,9 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import BrowserConnectionsDialog from './BrowserConnectionsDialog'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), refetch: () => {} }))
 vi.mock('../services/api', () => ({ default: { defaults: {}, get: mocks.get, post: mocks.post } }))
-vi.mock('../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
+vi.mock('../hooks/useLiveRefetch', () => ({ useLiveRefetch: (refetch: () => void) => { mocks.refetch = refetch } }))
 afterEach(() => vi.clearAllMocks())
 
 it('shows the account pairing failure and installed/download versions without exposing the code', async () => {
@@ -72,5 +72,30 @@ it('keeps connection codes inside the explicit connect step', async () => {
     expect(clipboard).toHaveBeenCalledOnce()
     expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
     expect(dialog.querySelector('textarea')?.closest('details')?.open).toBe(false)
+  } finally { await act(async () => root.unmount()); vi.unstubAllGlobals() }
+})
+
+// PLAT-746-269 / PR477: saved offline browsers resume without an explicit pairing attempt.
+it('requires a named browser confirmation when an old browser reconnects during setup', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  const oldBrowser = { id: 'old', name: 'Old Chrome', connected: false, enabled: true }
+  mocks.get.mockResolvedValue({ data: { browsers: [oldBrowser] } })
+  mocks.post.mockResolvedValue({ data: { token: 'test-connection-code' } })
+  vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+  const host = document.createElement('div'), root = createRoot(host), selected = vi.fn().mockResolvedValue(true), closed = vi.fn()
+  try {
+    await act(async () => root.render(<BrowserConnectionsDialog open onClose={closed} onConnected={selected} />))
+    const dialog = document.querySelector('[role="dialog"]')!
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('Next'))!.click() })
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
+    mocks.get.mockResolvedValue({ data: { browsers: [{ ...oldBrowser, connected: true }, { id: 'new', name: 'New Edge', connected: true, enabled: true }] } })
+    await act(async () => { mocks.refetch() })
+    expect(selected).not.toHaveBeenCalled()
+    expect(closed).not.toHaveBeenCalled()
+    expect(dialog.querySelector('[aria-label="Account browser connection code"]')).toBeTruthy()
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Use New Edge')!.click() })
+    expect(selected).toHaveBeenCalledOnce()
+    expect(selected).toHaveBeenCalledWith('new')
+    expect(closed).toHaveBeenCalledOnce()
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals() }
 })

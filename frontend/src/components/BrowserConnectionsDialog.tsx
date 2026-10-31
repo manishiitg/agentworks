@@ -17,7 +17,6 @@ export default function BrowserConnectionsDialog({ open, onClose, onConnected }:
   const [browsers, setBrowsers] = useState<SavedBrowserConnection[]>([])
   const [code, setCode] = useState('')
   const [step, setStep] = useState<'install' | 'connect'>('install')
-  const [connectedAtStart, setConnectedAtStart] = useState<string[]>([])
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -42,7 +41,6 @@ export default function BrowserConnectionsDialog({ open, onClose, onConnected }:
   if (!open) return null
   const connect = async () => {
     setBusy(true); setError(''); setCopied(false)
-    setConnectedAtStart(browsers.filter(browser => browser.connected).map(browser => browser.id))
     try {
       const { data } = await api.post('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
       setPairingFailure(null)
@@ -59,20 +57,19 @@ export default function BrowserConnectionsDialog({ open, onClose, onConnected }:
     catch { setError('Could not disconnect this browser. Try again.') }
     finally { setBusy(false) }
   }
-  const connectedBrowser = code ? browsers.find(browser => browser.connected && !connectedAtStart.includes(browser.id)) : undefined
-  const done = !!connectedBrowser
-  const finish = async () => {
-    if (!connectedBrowser || !onConnected) { onClose(); return }
+  const availableBrowsers = code ? browsers.filter(browser => browser.connected && browser.enabled) : []
+  const finish = async (browserId: string) => {
+    if (!onConnected) { onClose(); return }
     setBusy(true)
-    try { if (await onConnected(connectedBrowser.id)) onClose(); else setError('Could not select this browser. Try Done again.') }
-    catch { setError('Could not select this browser. Try Done again.') }
+    try { if (await onConnected(browserId)) onClose(); else setError('Could not select this browser. Try again.') }
+    catch { setError('Could not select this browser. Try again.') }
     finally { setBusy(false) }
   }
+
   return <ModalPortal><div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
     <section role="dialog" aria-modal="true" aria-labelledby="browser-connections-title" className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-border bg-background shadow-xl" onClick={e => e.stopPropagation()}>
       <header className="flex items-center justify-between border-b border-border p-4"><h2 id="browser-connections-title" className="text-lg font-semibold">Connect browser</h2><button onClick={onClose} aria-label="Close browser connections"><X className="h-4 w-4" /></button></header>
       <div className="space-y-4 p-4">
-        {done ? <div className="space-y-3 text-center"><Check className="mx-auto h-6 w-6" /><p className="font-medium">Browser connected</p><Button disabled={busy} onClick={() => { void finish() }}>Done</Button></div> : <>
           <p className="text-xs text-muted-foreground">{step === 'install' ? '1. Install extension' : '2. Connect'}</p>
           {step === 'install' ? <div className="space-y-3">
             <p className="text-sm">Add Browser Bridge to Chrome or Edge.</p>
@@ -83,9 +80,9 @@ export default function BrowserConnectionsDialog({ open, onClose, onConnected }:
             <p className="text-sm">Copy the code, open Browser Bridge in your browser, and paste it there.</p>
             <Button size="sm" disabled={busy} onClick={() => { void connect() }}><Copy />{copied ? 'Code copied' : 'Copy connection code'}</Button>
             {code && <><p role="status" className="text-xs text-muted-foreground">Choose Connect browser in the extension. Waiting for connection…</p><details open={!copied || undefined}><summary className="cursor-pointer text-xs text-muted-foreground">Copy manually</summary><textarea aria-label="Account browser connection code" readOnly value={code} onFocus={e => e.currentTarget.select()} className="mt-2 w-full rounded-md border border-border bg-muted/30 p-2 text-xs" rows={3} /></details></>}
+            {!!availableBrowsers.length && <div className="space-y-2"><p className="text-xs text-muted-foreground">Choose a browser to finish.</p>{availableBrowsers.map(browser => <Button key={browser.id} size="sm" disabled={busy} onClick={() => { void finish(browser.id) }}><Check />{onConnected ? `Use ${browser.name}` : `Done · ${browser.name}`}</Button>)}</div>}
             <Button size="sm" variant="ghost" onClick={() => setStep('install')}>Back</Button>
           </div>}
-        </>}
         {!!browsers.length && <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer text-xs text-muted-foreground">Saved browsers</summary>
           <ul className="mt-2 space-y-2">{browsers.map(browser => <li key={browser.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3"><div><p className="text-sm font-medium">{browser.name}</p><p className="text-xs text-muted-foreground">{browser.connected ? 'Connected' : 'Offline'}</p>{extensionVersionOlder(browser.version, latestVersion) && <p className="text-xs text-amber-700 dark:text-amber-300">Update available: {latestVersion}</p>}<details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Connection details</summary>{browser.version ? `Extension ${browser.version}` : 'Extension version unknown'}</details></div>{browser.enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => { void disconnect(browser.id) }}>Disconnect</Button>}</li>)}</ul>
         </details>}
