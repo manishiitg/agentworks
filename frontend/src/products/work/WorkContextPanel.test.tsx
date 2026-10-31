@@ -3,9 +3,9 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
-const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), user: { id: 'owner', allowed_products: null as string[] | null }, server: 'local', browser: { connected:true, label:'Connected', name:'Chrome' }, documents: [] as { id: string; path: string; title: string; order: number; artifact?: boolean; motion?: boolean }[], status: { apps: [], automations: [], errors: [] } as any }))
+const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), user: { id: 'owner', allowed_products: null as string[] | null }, server: 'local', share: { can_share:true, mode:'private', people:[] as { id:string }[], unknown_emails:[] as string[] }, browser: { connected:true, label:'Connected', name:'Chrome' }, documents: [] as { id: string; path: string; title: string; order: number; artifact?: boolean; motion?: boolean }[], status: { apps: [], automations: [], errors: [] } as any }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
-vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: { can_share: true } }) }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
+vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: mocks.share }) }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: mocks.user }), { getState: () => ({ user: mocks.user }) }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: mocks.server }), { getState: () => ({ activeWorkspaceId: mocks.server }) }) }))
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
@@ -22,6 +22,7 @@ import { crewProjectMenuItems } from './crewProjectMenu'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 beforeEach(() => {
  mocks.user = { id: 'owner', allowed_products: null }; mocks.server = 'local'; mocks.documents = []
+ mocks.share = { can_share:true, mode:'private', people:[], unknown_emails:[] }
  mocks.status = { apps: [], automations: [], errors: [] }; mocks.browser = { connected:true, label:'Connected', name:'Chrome' }
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
@@ -140,5 +141,31 @@ it('keeps offline connections out of the icon strip but reachable through expans
   const whatsapp = [...host.querySelectorAll('button')].find(node => node.textContent === 'WhatsAppNot connected')!
   await act(async () => whatsapp.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'whatsapp')
+ })
+})
+
+
+it('keeps footer sharing server-admitted and scoped to the current account', async () => {
+ for (const [mode, detail] of [['private','Private'], ['everyone','Everyone'], ['people','2 people']]) {
+  mocks.share = { can_share:true, mode, people:[{id:'a'},{id:'b'},{id:'a'}], unknown_emails:['missing@example.test'] }
+  await render('cowork', async host => {
+   const footer = host.querySelector('footer')!
+   const share = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('Access & sharing'))!
+   expect(share.textContent).toBe(`Access & sharing${detail}`)
+   expect(footer.querySelector('button')).toBe(share)
+   await act(async () => share.click())
+   expect(mocks.target).toHaveBeenLastCalledWith('mcp','share')
+   expect(mocks.open).toHaveBeenLastCalledWith('mcp')
+   mocks.open.mockClear()
+   const owner = mocks.user
+   mocks.user = { ...owner, id:'another-user' }
+   await act(async () => share.click())
+   expect(mocks.open).not.toHaveBeenCalled()
+   mocks.user = owner
+  })
+ }
+ mocks.share = { can_share:false, mode:'private', people:[], unknown_emails:[] }
+ await render('cowork', async host => {
+  expect(host.querySelector('footer')?.textContent).not.toContain('Access & sharing')
  })
 })
