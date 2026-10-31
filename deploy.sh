@@ -498,7 +498,7 @@ fi
 # ./deploy.sh smoke <server>: the post-deploy smoke check alone (PLAT-424); reports, changes only its own side chats.
 if [[ "$SERVER" == smoke ]]; then
   [[ $# -eq 1 ]] || { echo "Usage: ./deploy.sh smoke <server>" >&2; exit 2; }
-  product="$1"; [[ "$product" == excellence ]] && product=agents
+  product="$1"; [[ "$product" == excellence ]] && product=agents; [[ "$product" == rts ]] && product=video-studio
   post_deploy_smoke "$product"
   exit 0
 fi
@@ -517,7 +517,7 @@ if [[ "$SERVER" == slotcheck ]]; then
         "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio --level $check_level"
       ;;
     excellence|confida|sparkquill|dominion)
-      product="$1"; [[ "$product" == excellence ]] && product=agents
+      product="$1"; [[ "$product" == excellence ]] && product=agents; [[ "$product" == rts ]] && product=video-studio
       (
         # shellcheck disable=SC1090
         source "$(product_config_dir "$product")/product.env"
@@ -551,7 +551,7 @@ case "$SERVER" in
     deploy_rts
     report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
     prune_builds_remote
-    post_deploy_smoke "$SERVER"
+    post_deploy_smoke video-studio  # this deployment's private settings folder is products/video-studio
     ;;
   confida|sparkquill|dominion|citymall)
     # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
