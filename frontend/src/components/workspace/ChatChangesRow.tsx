@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileDiff, History } from 'lucide-react'
+import { FileDiff } from 'lucide-react'
 import api from '../../services/api'
 import type { ReplyFileChangesRef, ReplyFileGroup } from '../../utils/replyFileChanges'
 import { useChatStore } from '../../stores/useChatStore'
@@ -32,7 +32,6 @@ export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspace
   }, [workspacePath, sessionId, revision, savedEvents, retry])
   return <div className="space-y-0.5">
     <WorkspaceContextRow icon={FileDiff} hint={note || "Files changed in this chat’s latest saved reply."} onClick={() => onOpen(latest ?? undefined)} detail={error ? 'Unavailable' : count === null ? 'Loading…' : note ? 'Incomplete' : `${count} file${count === 1 ? '' : 's'}`}>Latest reply</WorkspaceContextRow>
-    <WorkspaceContextRow icon={History} hint="All earlier changes in this conversation, including files outside Git." onClick={() => onOpen()}>All chat changes</WorkspaceContextRow>
     {error && <p role="alert" className="px-1 text-xs text-muted-foreground">{error} <button type="button" className="underline hover:text-foreground" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
   </div>
 }

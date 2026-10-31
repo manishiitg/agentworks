@@ -31,16 +31,3 @@ it('shows failed status with retry and scopes the next chat to its own latest re
     expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 'chat-b', snapshotId: 'latest-chat-b' }))
   } finally { await act(async () => root.unmount()); host.remove() }
 })
-
-it('keeps latest-reply totals separate from all earlier chat changes, including outside Git', async () => {
-  const host = document.createElement('div'); document.body.append(host)
-  const root = createRoot(host); const onOpen = vi.fn()
-  try {
-    get.mockImplementation(savedReply)
-    await act(async () => root.render(<ChatChangesRow workspacePath="Crew/example" sessionId="chat-a" onOpen={onOpen} />))
-    expect(host.textContent).toContain('Latest reply3 files')
-    expect(host.textContent).not.toContain('Other files')
-    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'All chat changes')!.click())
-    expect(onOpen).toHaveBeenLastCalledWith()
-  } finally { await act(async () => root.unmount()); host.remove() }
-})
