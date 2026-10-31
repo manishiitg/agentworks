@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 const computerUseVersion = "1.0.2"
@@ -58,6 +59,17 @@ func computerUseKey(value string) string {
 func computerUseChatDirectory(root, session string) (string, error) {
 	base, err := computerUseRoot()
 	return filepath.Join(base, "chats", computerUseKey(agentProfileRuntimeWorkspace(GetDefaultUserID(), root)+":"+session)), err
+}
+
+// The final CLI confinement policy needs this exact private directory even on
+// Linux, where ordinary absolute folder-guard paths intentionally remain closed.
+func computerUseCaptureReadPolicy(base *llmtypes.CLISecurityPolicy, directory string) *llmtypes.CLISecurityPolicy {
+	policy := llmtypes.CLISecurityPolicy{}
+	if base != nil {
+		policy = base.Clone()
+	}
+	policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, directory)
+	return &policy
 }
 func computerUseSettingsFile(root string) (string, error) {
 	base, err := computerUseRoot()

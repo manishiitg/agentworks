@@ -14,6 +14,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 // PLAT-856: a local desktop grant never follows a shared Crew or device/agent token.
@@ -170,5 +171,36 @@ func TestComputerUseEnvironmentExcludesCredentials(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(env, "\n"), "LANG=en_US.UTF-8") || !strings.Contains(strings.Join(env, "\n"), "AGENT_DESKTOP_HOME=/private/desktop-chat") {
 		t.Fatal("missing desktop OS/session context")
+	}
+}
+
+// PR472: Linux drops absolute folder-guard grants; the exact private capture
+// directory must survive in the final native image reader's confinement policy.
+func TestComputerUsePrivateCaptureGrantOnLocalLinux(t *testing.T) {
+	tokenTestSetup(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("LOCAL_MODE", "true")
+	original := cliHostOS
+	cliHostOS = "linux"
+	t.Cleanup(func() { cliHostOS = original })
+	capture, _ := computerUseChatDirectory("Crew/example", "one")
+	other, _ := computerUseChatDirectory("Crew/example", "two")
+	session := "computer-use-linux"
+	common.SetSessionFolderGuard(session, []string{capture}, nil)
+	policy := cliLandlockPolicyForSession(session, "claude-code", t.TempDir(), computerUseCaptureReadPolicy(nil, capture))
+	found := false
+	for _, path := range policy.WorkspaceReadPaths {
+		if path == capture {
+			found = true
+		}
+		if path == other || path == filepath.Dir(capture) {
+			t.Fatal("capture grant widened to other chats")
+		}
+	}
+	if !found {
+		t.Fatal("private screenshot unavailable to confined native image reader")
+	}
+	if cliPolicyPath(other) != "" {
+		t.Fatal("ordinary absolute host paths were opened")
 	}
 }

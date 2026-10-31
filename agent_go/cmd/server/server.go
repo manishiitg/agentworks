@@ -6653,6 +6653,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						if captures, err := computerUseChatDirectory(req.SelectedFolder, sessionID); err == nil {
 							if err := os.MkdirAll(captures, 0700); err == nil {
 								guardRead = append(guardRead, captures)
+								cliSecurityPolicy = computerUseCaptureReadPolicy(cliSecurityPolicy, captures)
 							}
 						}
 					}
