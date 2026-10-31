@@ -2,9 +2,11 @@ package workflowfiles
 
 import (
 	"context"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -12,8 +14,10 @@ import (
 // moves never overwrite. Whole-tree checks forbid relocating protected files
 // or bypassing child exclusions in a connection's guard.
 type LifecycleRequest struct {
-	Root             string       `json:"root"`
-	Path             string       `json:"path"`
+	Root string `json:"root"`
+	Path string `json:"path"
+"path/filepath"
+"github.com/manishiitg/coding-agent-loop/workspace/crewroot"`
 	Destination      string       `json:"destination,omitempty"`
 	Action           string       `json:"action"`
 	ExpectedRevision string       `json:"expected_revision,omitempty"`
@@ -50,6 +54,15 @@ func (e *Editor) Lifecycle(ctx context.Context, r LifecycleRequest) error {
 		return err
 	}
 	defer scoped.Close()
+	if docs := os.Getenv("WORKSPACE_DOCS_PATH"); docs != "" {
+		for _, rel := range []string{p, destination} {
+			if rel != "" {
+				if err := crewroot.CheckSyncWrite(docs, filepath.Join(scoped.Name(), rel)); err != nil {
+					return fileError(409, err.Error())
+				}
+			}
+		}
+	}
 	release, err := LockWorkspace(ctx, scoped.Name())
 	if err != nil {
 		return err

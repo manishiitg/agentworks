@@ -19,8 +19,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // A Crew workspace's plain shell (docs/design/code_product.md, "Terminal").
@@ -114,6 +116,11 @@ func (api *StreamingAPI) codeShellFolderGuard(ctx context.Context, userID, root 
 	grantRead, grantWrite, _, _ := workFolderGuardInputs(ctx)
 	reads = appendUniqueStrings(reads, grantRead...)
 	writes = appendUniqueStrings(writes, grantWrite...)
+	if roots, found, err := localCrewRoots(root); found && err == nil {
+		reads = append(reads, roots.FilesPath())
+		writes = append(writes, roots.FilesPath())
+	}
+	writes = crewroot.SyncWriteGrants(fsutil.WorkspaceDocsRoot(), writes)
 	return &workspace.FolderGuardConfig{
 		Enabled:         true,
 		ReadPaths:       reads,

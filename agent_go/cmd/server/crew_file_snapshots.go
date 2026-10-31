@@ -263,7 +263,7 @@ func (api *StreamingAPI) bindCrewSnapshotCompletion(executionID string, sequence
 // paths are never listed); the PR lookup stays a lazy request.
 func replyFileSummary(ctx context.Context, store filesnapshots.Store, roots crewroot.Roots, id string) (map[string]any, bool) {
 	prefix := ""
-	if roots.Local {
+	if roots.SeparateFiles() {
 		prefix = crewroot.FilesSegment + "/"
 	}
 	allow := func(path string) bool {
@@ -449,7 +449,7 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		return
 	}
 	prefix := ""
-	if roots.Local {
+	if roots.SeparateFiles() {
 		prefix = crewroot.FilesSegment + "/"
 	}
 	allow := func(path string) bool {

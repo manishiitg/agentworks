@@ -1,3 +1,4 @@
+import { CrewSyncPanel } from './CrewSyncPanel'
 import { useProjectMode } from './codeLocalFiles'
 import { useState } from 'react'
 import { Cable, Server, Users } from 'lucide-react'
@@ -20,7 +21,7 @@ import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { integrationProductAvailable } from '../../components/integrations/integrationSections'
 
-export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'slack' | 'whatsapp' | 'cli' | 'agents' | 'agentbridge'
+export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'slack' | 'whatsapp' | 'cli' | 'agents' | 'agentbridge' | 'sync'
 
 export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
   accessLoading?: boolean
@@ -46,16 +47,17 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
     if (next === 'agentbridge' && !integrationProductAvailable('bullpen', allowedProducts)) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts) || next === 'agents' && !canEdit) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'laptop', 'github'].includes(next)) { setShareSection(false); setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
-    if (['apps', 'brain', 'folders', 'slack', 'whatsapp', 'cli', 'agents', 'agentbridge'].includes(next)) {
+    if (['apps', 'brain', 'folders', 'slack', 'whatsapp', 'cli', 'agents', 'agentbridge', 'sync'].includes(next)) {
       setShareSection(false); setTab(next as WorkIntegrationTab)
     }
   })
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', agents: 'Chats from your computer', agentbridge: 'AgentBridge' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', agents: 'Chats from your computer', agentbridge: 'AgentBridge', sync: 'Project sync' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <WorkspaceViewHeader icon={shareSection ? Users : tab === 'agentbridge' ? Cable : Server} title={shareSection ? 'Access' : labels[tab]} />
     <div data-ui-view-section={shareSection ? 'share' : tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={draft} /> : <>
+        {tab === 'sync' && canEdit && <CrewSyncPanel projectId={projectId} />}
         {tab === 'agentbridge' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} />}
         {tab === 'apps' && <ProjectIntegrationPanel github={projectMode === 'dev'} workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}

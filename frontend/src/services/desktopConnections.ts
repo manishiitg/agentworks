@@ -16,6 +16,7 @@ export async function desktopRequest<T>(path = '', method = 'GET', body?: unknow
     try {
       const data = JSON.parse(body)
       if (typeof data.error === 'string') message = data.error
+      else if (typeof data.error?.message === 'string') message = data.error.message
     } catch {
       // The local backend also uses plain-text validation errors.
       if (body && !body.startsWith('<')) message = body
