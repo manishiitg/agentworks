@@ -146,6 +146,21 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if _, err := api.crewSync(t.Context(), crewWriter("other"), serverRoots.ID, crewSyncRequest{Action: "status"}); err == nil {
 				t.Fatal("other owner accessed sync")
 			}
+			for _, kind := range []string{"bound-agent", "product"} {
+				claims := crewWriter("owner")
+				if kind == "bound-agent" {
+					claims.AccessToken.BoundAgentID = "native-agent"
+				} else {
+					claims.AccessToken.ProjectKind = "crew"
+					claims.AccessToken.ProjectIdentity = "local-id"
+				}
+				request := httptest.NewRequest("POST", "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, claims))
+				response := httptest.NewRecorder()
+				api.pairedCrewSyncAction(response, request, "local-id", "server")
+				if response.Code != 403 {
+					t.Fatalf("%s token received saved-login authority: %d %s", kind, response.Code, response.Body.String())
+				}
+			}
 			checkWrite := func(path string, want int) {
 				t.Helper()
 				data, _ := json.Marshal(map[string]string{"content": "changed"})

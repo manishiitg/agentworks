@@ -64,6 +64,16 @@ func TestGitHandoffPreservesHistoryAndStagedWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Unstaging while away is an external edit too, even though the patch is empty.
+	run(local, "reset", "--mixed", "HEAD")
+	if err = Apply(t.Context(), left, back); err == nil {
+		t.Fatal("overwrote independently cleared staging")
+	}
+	restore := gitCommand(t.Context(), local, "apply", "--cached", "--binary", "-")
+	restore.Stdin = strings.NewReader(string(first.Git.IndexPatch))
+	if err := restore.Run(); err != nil {
+		t.Fatal(err)
+	}
 	if err = Apply(t.Context(), left, back); err != nil {
 		t.Fatal(err)
 	}

@@ -92,6 +92,20 @@ func lockFileMutation(c *gin.Context, paths ...string) (func(), bool) {
 			}
 		})
 	}
+	// The editing location can change while acquisition waits for a transfer.
+	if _, wholeCrew := c.Get("managed-crew-removal"); !wholeCrew {
+		for _, input := range paths {
+			physical, err := resolveUserPath(c, strings.TrimPrefix(input, "/"))
+			if err == nil {
+				err = crewroot.CheckSyncWrite(viper.GetString("docs-dir"), physical)
+			}
+			if err != nil {
+				release()
+				c.JSON(409, gin.H{"error": err.Error()})
+				return nil, false
+			}
+		}
+	}
 	c.Set("managed-file-lock", true)
 	return func() { c.Set("managed-file-lock", false); release() }, true
 }
