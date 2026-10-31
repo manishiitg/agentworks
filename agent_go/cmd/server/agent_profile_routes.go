@@ -88,6 +88,8 @@ func agentProfileResumeConversationKey(profileID string, input AgentProfileConve
 }
 
 type AgentProfileConversationResponse struct {
+	ModelID         string `json:"model_id,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	TabOwnerID      string `json:"tab_owner_id,omitempty"`
 	TabOwnerName    string `json:"tab_owner_name,omitempty"`
 	CanWrite        bool   `json:"can_write"`

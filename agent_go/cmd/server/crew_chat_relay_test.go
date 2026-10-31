@@ -57,7 +57,7 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 	w := httptest.NewRecorder()
 	api.handleCrewChatPoll(w, request(owner, pair, reply))
 	got := <-result
-	if got.Status != 200 || !bytes.Contains(got.Body, []byte("local-conversation")) || !bytes.Contains(got.Body, []byte(pairedMacSessionPrefix+project)) {
+	if got.Status != 200 || !bytes.Contains(got.Body, []byte("local-conversation")) || !bytes.Contains(got.Body, []byte(crewChatSessionID(project, ""))) {
 		t.Fatalf("owner response lost local conversation: %+v", got)
 	}
 	crewChatRelays.Lock()
@@ -66,5 +66,56 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 	crewChatRelays.Unlock()
 	if got := api.callCrewMac(r, project, crewChatCall{Operation: "send", Message: "hello"}); got.Status != 503 {
 		t.Fatalf("offline must refuse, never execute on server: %d", got.Status)
+	}
+	t.Run("local canonical conversation rejects a stale website generation", func(t *testing.T) {
+		t.Setenv("DEFAULT_USER_ID", "owner")
+		resolved := api.runDesktopCrewChat(t.Context(), "local-id", pair, crewChatCall{ID: "resolve", Operation: "resolve"})
+		var current AgentProfileConversationResponse
+		if resolved.Status != 200 || json.Unmarshal(resolved.Body, &current) != nil || current.ConversationID == "" {
+			t.Fatalf("resolve local: %d %s", resolved.Status, resolved.Body)
+		}
+		stale := api.runDesktopCrewChat(t.Context(), "local-id", pair, crewChatCall{ID: "stale", Operation: "cancel", ConversationID: "old-conversation"})
+		if stale.Status != 409 {
+			t.Fatalf("stale website must not cancel the new local conversation: %d", stale.Status)
+		}
+		if crewChatSessionID(project, current.ConversationID) == crewChatSessionID(project, "old-conversation") {
+			t.Fatal("new chat reused old history cursor address")
+		}
+	})
+	t.Run("main website chat routes locally but other callers do not", func(t *testing.T) {
+		t.Setenv("LOCAL_MODE", "false")
+		for _, tc := range []struct {
+			name, profile, key string
+			claims             *UserClaims
+			want               bool
+		}{
+			{"main owner", "work", project, owner, true},
+			{"side chat", "work", project + ":chat:another", owner, false},
+			{"other user", "work", project, &UserClaims{UserID: "other", Username: "other"}, false},
+			{"personal token", "work", project, crewWriter("owner"), false},
+			{"Goal", "goal", project, owner, false},
+			{"Relay", "relay", project, owner, false},
+		} {
+			w := httptest.NewRecorder()
+			if got := api.routeCrewMainChat(w, request(tc.claims, pair, nil), tc.profile, tc.key, crewChatCall{Operation: "resolve"}); got != tc.want {
+				t.Fatalf("%s: routed=%v want=%v: %s", tc.name, got, tc.want, w.Body.String())
+			}
+			if tc.want && w.Code != 503 {
+				t.Fatalf("main owner should see Mac offline, not a server chat: %d", w.Code)
+			}
+		}
+	})
+}
+
+// Imported project IDs need not be UUIDs. The route separator must not split
+// a project or conversation containing a dot (PLAT-856-428).
+func TestCrewChatVirtualSessionKeepsDottedIDsAndConversationGeneration(t *testing.T) {
+	route := crewChatSessionID("custom.project", "conversation.with.dot")
+	project, conversation := crewChatSessionParts(route)
+	if project != "custom.project" || conversation != "conversation.with.dot" {
+		t.Fatalf("route lost identity: %q %q", project, conversation)
+	}
+	if route == crewChatSessionID(project, "next-conversation") {
+		t.Fatal("new conversation reused old event cursor address")
 	}
 }

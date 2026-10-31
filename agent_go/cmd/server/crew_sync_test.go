@@ -104,7 +104,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				_, _ = w.Write(response.Body.Bytes())
 			}))
 			defer remote.Close()
-			if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: remote.URL, Token: "saved-login"}}); err != nil {
+			if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: remote.URL, Token: "saved-login", User: UserInfo{ID: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 			call := func(action, who string, proof bool) *httptest.ResponseRecorder {

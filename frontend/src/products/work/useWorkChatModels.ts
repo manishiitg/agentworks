@@ -16,7 +16,7 @@ export function applyWorkChatModels(profileId: string, projectId: string, models
   const store = useChatStore.getState()
   for (const tab of Object.values(store.chatTabs)) {
     const key = tab.metadata?.agentProfileConversationKey
-    if (!belongsToWorkProject(tab, projectId) || tab.metadata?.agentProfileId !== profileId || !key || key.startsWith(`${projectId}:chat:agent-`) || tab.metadata?.isViewOnly) continue
+    if (!belongsToWorkProject(tab, projectId) || tab.metadata?.agentProfileId !== profileId || !key || key.startsWith(`${projectId}:chat:agent-`) || tab.metadata?.isViewOnly || tab.metadata?.agentProfileChatLocation === 'mac') continue
     const model = models.find(item => item.conversation_key === key)
     if (!model) continue
     if (model.error) {

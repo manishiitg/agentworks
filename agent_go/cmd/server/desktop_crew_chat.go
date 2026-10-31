@@ -144,6 +144,9 @@ func (api *StreamingAPI) pollDesktopCrewChat(ctx context.Context, project string
 					var call crewChatCall
 					e = json.NewDecoder(io.LimitReader(response.Body, maxAgentProfileRequestBytes)).Decode(&call)
 					response.Body.Close()
+					if e == nil && call.ID == "" {
+						e = fmt.Errorf("server returned no chat request")
+					}
 					if e == nil && call.ID != "" {
 						result := api.runDesktopCrewChat(ctx, project, b.PairID, call)
 						// Refresh the saved login after a possible poll renewal.
@@ -197,6 +200,9 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if err != nil {
 		return fail(409, err.Error())
 	}
+	if call.Operation != "resolve" && call.ConversationID != conversation.ConversationID {
+		return fail(409, "The main chat changed on your Mac. Reopen this Crew to continue it.")
+	}
 	// Neither a session, a workspace path, nor a provider/account choice is
 	// accepted from the remote request. All come from this local main chat.
 	query := crewChatEventQuery(call.Query)
@@ -206,7 +212,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	method, path := http.MethodGet, "/api/sessions/"+conversation.SessionID
 	switch call.Operation {
 	case "resolve":
-		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsMainChat: true, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider})
+		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsMainChat: true, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider, ModelID: conversation.ModelID, ReasoningEffort: conversation.ReasoningEffort})
 		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=resolve session=%s conversation=%s request=%s", project, conversation.SessionID, conversation.ConversationID, call.ID)
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	case "send":
@@ -234,6 +240,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	r, _ = http.NewRequestWithContext(ctx, method, "http://localhost"+path+"?"+query.Encode(), bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-Session-ID", conversation.SessionID)
+	r.Header.Set("Idempotency-Key", call.SubmissionID)
 	r = mux.SetURLVars(r, map[string]string{"id": "work", "session_id": conversation.SessionID})
 	capture := &internalResponseCapture{}
 	handler(capture, r)
