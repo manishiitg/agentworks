@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
-const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), user: { id: 'owner', allowed_products: null as string[] | null }, server: 'local', documents: [] as { id: string; path: string; title: string; order: number; artifact?: boolean; motion?: boolean }[], status: { apps: [], automations: [], errors: [] } as any }))
+const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), user: { id: 'owner', allowed_products: null as string[] | null }, server: 'local', browser: { connected:true, label:'Connected', name:'Chrome' }, documents: [] as { id: string; path: string; title: string; order: number; artifact?: boolean; motion?: boolean }[], status: { apps: [], automations: [], errors: [] } as any }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
 vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: { can_share: true } }) }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: mocks.user }), { getState: () => ({ user: mocks.user }) }) }))
@@ -11,7 +11,7 @@ vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedS
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
 vi.mock('./useWorkspaceStatus', () => ({ useWorkspaceStatus: () => ({ snapshot: mocks.status, refresh: vi.fn() }) }))
 vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: (reference?: { workspacePath: string; sessionId: string; snapshotId: string }) => void }) => <><button onClick={() => onOpen({ workspacePath: 'Crew/example', sessionId: 'chat', snapshotId: 'latest' })}>Latest reply</button><button onClick={() => onOpen()}>All chat changes</button></> }))
-vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => ({ connected: true, label: 'Connected', name: 'Chrome' }) }))
+vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => mocks.browser }))
 vi.mock('../../components/workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser · Connected</button> }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: mocks.documents }), selectReportDocument: vi.fn() }))
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
@@ -22,7 +22,7 @@ import { crewProjectMenuItems } from './crewProjectMenu'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 beforeEach(() => {
  mocks.user = { id: 'owner', allowed_products: null }; mocks.server = 'local'; mocks.documents = []
- mocks.status = { apps: [], automations: [], errors: [] }
+ mocks.status = { apps: [], automations: [], errors: [] }; mocks.browser = { connected:true, label:'Connected', name:'Chrome' }
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
@@ -33,7 +33,7 @@ async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => P
  finally { await act(async () => root.unmount()); host.remove() }
 }
 it('shows actual workspace status without promoting occasional tools, and keeps All tools searchable', async () => {
- mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'Google', detail:'person@example.com · Connected', destination:'mcp:gmail' }, { id:'slack:s', label:'My Slack account', detail:'Personal Slack · Connected', connected:true, destination:'mcp:slack-account' }, { id:'bot:b', label:'Project helper', detail:'Project helper · Identity verified', connected:true, destination:'mcp:slack-bot' }]
+ mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', connected:true, destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'Google', detail:'person@example.com · Connected', connected:true, destination:'mcp:gmail' }, { id:'slack:s', label:'My Slack account', detail:'Personal Slack · Connected', connected:true, destination:'mcp:slack-account' }, { id:'bot:b', label:'Project helper', detail:'Project helper · Identity verified', connected:true, destination:'mcp:slack-bot' }, { id:'whatsapp', label:'WhatsApp',detail:'Connected',connected:true,destination:'mcp:whatsapp' }]
  mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }, { id:'schedule:next',label:'Next summary',detail:'Jan 1, 8:00 AM',nextRunAt:'2099-01-01T08:00:00Z',destination:'schedules:schedules' }]
  await render('dev', async host => {
   expect(host.querySelector('h2')?.textContent).toBe('Changes')
@@ -46,12 +46,14 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(host.querySelector('[aria-label="Automations"]')?.textContent).toContain('2 · Jan 1, 8:00 AM')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Slack bot · Project helper · Identity verified"]')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'slack-bot')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="WhatsApp · Connected"]')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'whatsapp')
   expect(host.querySelector('[aria-label="Google · person@example.com · Connected"]')).not.toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Google · person@example.com · Connected"]')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'gmail')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Automations"]')!.click())
-  expect(host.textContent).toContain('MCPs2 · 1 need attention')
+  expect(host.textContent).toContain('MCPs1 connected · 1 need attention')
   expect(host.textContent).not.toContain('Notes account'); expect(host.textContent).not.toContain('Other account')
   expect(host.textContent).toContain('Googleperson@example.com · Connected')
   expect(host.textContent).toContain('Morning summaryPaused')
@@ -72,7 +74,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(host.querySelector('h2')?.textContent).toBe('Changes')
   expect(host.textContent).not.toContain('Models')
   mocks.open.mockClear()
-  const app = host.querySelector<HTMLButtonElement>('[aria-label="MCPs · 2 · 1 need attention"]')!
+  const app = host.querySelector<HTMLButtonElement>('[aria-label="MCPs · 1 connected · 1 need attention"]')!
   mocks.server = 'another-server'; await act(async () => app.click())
   expect(mocks.open).not.toHaveBeenCalled()
  })
@@ -112,4 +114,21 @@ it('keeps every starter destination in the admitted All tools inventory and Run 
  for (const starter of CREW_STARTER_TYPES) for (const shortcut of crewStarterShortcuts(starter.id)) expect(ids).toContain(shortcut)
  expect(workWorkspacePanels({ readOnly:true }).views.map(item => item.id)).toEqual(['dashboard'])
  expect(inventory(new Set(['skills'])).map(item => item.id)).not.toContain('files')
+})
+
+it('keeps offline connections out of the icon strip but reachable through expansion', async () => {
+ mocks.browser = { connected:false, label:'Browser offline', name:'Chrome' }
+ mocks.status.apps = [
+  { id:'google:offline',label:'Google',detail:'person@example.com · Needs attention',connected:false,attention:true,destination:'mcp:gmail' },
+  { id:'whatsapp',label:'WhatsApp',detail:'Not connected',connected:false,attention:true,destination:'mcp:whatsapp' },
+  { id:'mcp:offline',label:'Notes',detail:'Needs attention',connected:false,attention:true,destination:'mcp:connected' },
+ ]
+ await render('cowork', async host => {
+  for (const prefix of ['Browser ·','Google ·','WhatsApp ·','MCPs ·']) expect(host.querySelector(`[aria-label^="${prefix}"]`)).toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
+  expect(host.textContent).toContain('person@example.com · Needs attention')
+  const whatsapp = [...host.querySelectorAll('button')].find(node => node.textContent === 'WhatsAppNot connected')!
+  await act(async () => whatsapp.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'whatsapp')
+ })
 })
