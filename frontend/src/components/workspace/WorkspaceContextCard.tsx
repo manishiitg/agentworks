@@ -58,7 +58,7 @@ export function WorkspaceContextSection({
 /** Secondary destinations remain reachable without crowding everyday work. */
 export function WorkspaceContextGroup({ title, collapsed = false, defaultOpen = false, children }: { title: string; collapsed?: boolean; defaultOpen?: boolean; children: ReactNode }) {
   if (!collapsed) return <WorkspaceContextSection title={title}>{children}</WorkspaceContextSection>
-  return <details open={defaultOpen || undefined} className="group/ops border-t border-border pt-2">
+  return <details open={defaultOpen || undefined} className="group/ops border-t border-border pt-2 first:border-t-0 first:pt-0">
     <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-[11px] font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
       <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/ops:rotate-90" />{title}
     </summary>
