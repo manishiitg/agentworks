@@ -42,7 +42,7 @@ const cardIcons: Record<string, ReactNode> = { 'octicon:file-diff': <FileDiffIco
 const actionIcon = (icon?: string) => (icon && cardIcons[icon]) || <CommandIcon name={icon} fallback={Zap} />
 // The person's own buttons and Add button sit after a divider; phones keep them under More.
 const ownButton = (action: ReplyCardAction) => action.kind === 'command' || action.id === 'add_button'
-const iconButton = 'inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 [&_svg]:h-3.5 [&_svg]:w-3.5'
+const iconButton = 'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 [&_svg]:h-3.5 [&_svg]:w-3.5'
 const Divider = () => <span className="mx-1 h-3.5 w-px bg-border" aria-hidden />
 // Hover or keyboard focus shows the name and one plain line; touch taps go straight to the button.
 function IconButton({ label, name = label, hint, onClick, disabled, strong, children }: { label: string; name?: string; hint: string; onClick: () => void; disabled?: boolean; strong?: boolean; children: ReactNode }) {
@@ -189,11 +189,23 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
     Saved file changes for this reply could not be loaded. <button type="button" className="underline hover:text-foreground" onClick={() => openChatFiles(reference.sessionId)}>Review chat changes</button>
   </section> : null
   if (!panel) return <TooltipProvider delayDuration={150}><section className="my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Reply changes">
-    <div className="flex items-center gap-2">
-      <button type="button" aria-label={`Open ${plural(total)} changed in this reply`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
-        <FileDiffIcon /><span>Files changed during this reply · {plural(total)}</span>
-        <span className="font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
+    <div className="flex min-w-0 items-center gap-2">
+      <button type="button" aria-label={`Open ${plural(total)} changed in this reply`} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
+        <FileDiffIcon /><span>{plural(total)}</span>
+        <span className="hidden font-normal sm:inline"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
       </button>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+      {groups.filter(group => group.kind === 'repo').map(group => <div key={group.root} className="flex min-w-0 flex-1 items-center gap-1">
+        <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
+        {group.pr?.state === 'connect_github' && canEdit && <IconButton label="Connect GitHub" hint="Use your saved account to see PR status." onClick={() => openProjectIntegrations('github', reference.sessionId)}><Github /></IconButton>}
+        {group.pr?.state === 'unavailable' && <IconButton label="Retry PR status" hint="GitHub status could not be checked." onClick={() => setGitHubRevision(value => value + 1)}><Github /></IconButton>}
+        {!!group.pr?.number && group.pr.url && <>
+          <a className={iconButton} aria-label={prLine(group.pr)} title={prLine(group.pr)} href={group.pr.url} target="_blank" rel="noreferrer"><GitPullRequestIcon /></a>
+          <a className={iconButton} aria-label={`Review comments on PR #${group.pr.number}`} title="Review comments" href={`${group.pr.url}#discussion_bucket`} target="_blank" rel="noreferrer"><MessageSquare /></a>
+          {canEdit && <PRWatcherControls compact group={group} sessionId={reference.sessionId} />}
+        </>}
+      </div>)}
+      </div>
       <div className="flex shrink-0 items-center gap-0.5">
         {row.filter(action => !ownButton(action)).map(rowButton)}
         {row.some(ownButton) && <Divider />}
@@ -202,18 +214,6 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
       </div>
     </div>
     {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
-    {groups.some(group => group.kind === 'repo') && <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-    {groups.filter(group => group.kind === 'repo').map(group => <div key={group.root} className="flex min-w-0 items-center gap-1">
-      <span className="inline-flex max-w-64 min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
-      {group.pr?.state === 'connect_github' && canEdit && <IconButton label="Connect GitHub" hint="Use your saved account to see PR status." onClick={() => openProjectIntegrations('github', reference.sessionId)}><Github /></IconButton>}
-      {group.pr?.state === 'unavailable' && <IconButton label="Retry PR status" hint="GitHub status could not be checked." onClick={() => setGitHubRevision(value => value + 1)}><Github /></IconButton>}
-      {!!group.pr?.number && group.pr.url && <>
-        <a className={iconButton} aria-label={prLine(group.pr)} title={prLine(group.pr)} href={group.pr.url} target="_blank" rel="noreferrer"><GitPullRequestIcon /></a>
-        <a className={iconButton} aria-label={`Review comments on PR #${group.pr.number}`} title="Review comments" href={`${group.pr.url}#discussion_bucket`} target="_blank" rel="noreferrer"><MessageSquare /></a>
-        {canEdit && <PRWatcherControls compact group={group} sessionId={reference.sessionId} />}
-      </>}
-    </div>)}
-    </div>}
     {sharedViewer && sharedOpen && <div className="mt-2 rounded border border-border p-2" aria-label="Reply file names">
       {groups.map(group => <div key={`${group.kind}:${group.root}`} className="space-y-1">
         <p className="text-muted-foreground">{group.name}</p>
