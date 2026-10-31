@@ -85,7 +85,10 @@ case "$slots_mode" in
       echo "FAIL slotcheck-binary: $RELEASE/bin/slotcheck is missing -- fix: deploy a release built with deploy/common/slots.sh slots_build"
       rc=1
     else
-      env -i PATH=/usr/bin:/bin HOME="${HOME:-/}" ${ENV_LINES[@]+"${ENV_LINES[@]}"} "$RELEASE/bin/slotcheck" --docs "$DOCS" --app "$APP" --level "$LEVEL" || rc=$?
+      # The coding CLIs and node the agent service starts as slots, found on its own PATH (PLAT-872-88).
+      agent_path="$(tr '\0' '\n' < "/proc/$(main_pid "$PRODUCT-agent")/environ" 2>/dev/null | sed -n 's/^PATH=//p')"
+      programs="$(PATH="${agent_path:-/usr/bin:/bin}" bash -c 'for p in claude codex cursor-agent node; do command -v "$p"; done' | paste -sd, -)"
+      env -i PATH=/usr/bin:/bin HOME="${HOME:-/}" ${ENV_LINES[@]+"${ENV_LINES[@]}"} "$RELEASE/bin/slotcheck" --docs "$DOCS" --app "$APP" --level "$LEVEL" --programs "$programs" || rc=$?
     fi
     ;;
   *)
