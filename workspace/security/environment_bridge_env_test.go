@@ -91,3 +91,20 @@ func TestSlotShellEnvKeepsToolsAndDropsTheRest(t *testing.T) {
 		t.Fatalf("slot shell env = %q", got)
 	}
 }
+
+// PLAT-872-91: a Muse launch carried the company Claude and Codex logins, and its shells read them. A CLI keeps only its
+// own provider's login variables; a Crew's SECRET_ values and ordinary settings stay.
+func TestKeepOwnLoginEnvDropsOtherProvidersLogins(t *testing.T) {
+	env := []string{"PATH=/bin", "CLAUDE_CODE_OAUTH_TOKEN=c", "CODEX_API_KEY=x", "NEW_VENDOR_API_KEY=n", "SECRET_STRIPE_API_KEY=s"}
+	codex := []string{"CODEX_API_KEY"}
+	if got := strings.Join(KeepOwnLoginEnv(env, &codex), " "); got != "PATH=/bin CODEX_API_KEY=x SECRET_STRIPE_API_KEY=s" {
+		t.Fatalf("codex env = %q", got)
+	}
+	none := []string{}
+	if got := strings.Join(KeepOwnLoginEnv(env, &none), " "); got != "PATH=/bin SECRET_STRIPE_API_KEY=s" {
+		t.Fatalf("muse env = %q", got)
+	}
+	if got := KeepOwnLoginEnv(env, nil); len(got) != len(env) {
+		t.Fatalf("no allow-list sent must leave the environment unchanged: %q", got)
+	}
+}
