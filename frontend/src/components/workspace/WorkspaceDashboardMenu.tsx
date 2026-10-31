@@ -18,7 +18,7 @@ export function WorkspaceDashboardMenu({ documents, onSelect, createTarget }: {
   ]
   return <WorkspaceCompactGroup title="Dashboards" icon={LayoutDashboard} detail={documents.length}>
     {groups.filter(group => group.rows.length).map(group => <div key={group.label} role="group" aria-label={group.label} className="space-y-0.5">
-      <h3 className="px-1 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{group.title}</h3>
+      {group.title !== 'Dashboards' && <h3 className="px-1 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{group.title}</h3>}
       {group.rows.map(document => <WorkspaceContextRow key={document.path} icon={group.icon} hint={document.title} onClick={() => onSelect(document.path)}>{reportDocumentLabel(document, documents)}</WorkspaceContextRow>)}
     </div>)}
     {!documents.length && <WorkspaceContextRow icon={LayoutDashboard} onClick={() => onSelect()}>Open dashboards</WorkspaceContextRow>}
