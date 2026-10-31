@@ -125,7 +125,27 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	}
 	// The card renders from the event: the summary (counts, files, group) is
 	// computed once at capture, under the same path rules as the compare op.
-	if !strings.Contains(string(payload), `"added":2,"files":2,"groups":[{"kind":"crew_files"`) || !strings.Contains(string(payload), `{"path":"visible/main.txt","status":"M","added":1,"removed":1}`) {
+	var event struct {
+		Data struct {
+			Data struct {
+				Summary struct {
+					Files, Added int
+					Groups       []filesnapshots.Group
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal(payload, &event); err != nil {
+		t.Fatal(err)
+	}
+	card := event.Data.Data.Summary
+	visible := false
+	for _, group := range card.Groups {
+		for _, file := range group.Files {
+			visible = visible || (file.Path == "visible/main.txt" && file.Status == "M" && file.Added != nil && *file.Added == 1)
+		}
+	}
+	if card.Files != 2 || card.Added != 2 || !visible {
 		t.Fatalf("reply event has no file summary: %s", payload)
 	}
 	if got := api.trackedWorkflowExecutions["turn"].Metadata["file_snapshot_id"]; got != filesnapshots.ID("turn") {
@@ -139,6 +159,19 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	if code != 200 || !strings.Contains(string(encoded), "+after") || strings.Contains(string(encoded), "private after") || strings.Contains(string(encoded), "later turn") || strings.Contains(string(encoded), "denied/") {
 		t.Fatalf("historical file access: %d %s", code, encoded)
 	}
+	changes, ok := out["changes"].([]any)
+	if !ok || len(changes) != 1 {
+		t.Fatalf("MCP did not return an exact file version: %+v", out)
+	}
+	key, ok := changes[0].(map[string]any)["key"].(string)
+	if !ok || key == "" {
+		t.Fatal("MCP saved file has no version key")
+	}
+	args["change_key"] = "not-a-returned-key"
+	if code, _ := externalCrewRequest(t, env, bounded, "compare_crew_snapshot", args); code != 404 {
+		t.Fatalf("MCP ignored an invalid saved version key: %d", code)
+	}
+	args["change_key"] = key
 	args["side"] = "after"
 	code, out = externalCrewRequest(t, env, bounded, "compare_crew_snapshot", args)
 	if code != 200 || out["content"] != "after\n" {
