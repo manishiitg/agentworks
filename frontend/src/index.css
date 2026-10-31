@@ -1882,3 +1882,12 @@
   [data-tour="chat-input-area"] { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
   [data-app-main] table { max-width: 100%; }
 }
+
+/* PLAT-746-261: keep PR controls out of a toolbar narrower than their minimum width. */
+.reply-file-toolbar { container-type: inline-size; }
+.reply-toolbar-checkout-summary { display: none; }
+@container (max-width: 40rem) {
+  .reply-toolbar-checkout-inline, .reply-toolbar-line-counts { display: none; }
+  .reply-file-toolbar > div:first-child { gap: 0.25rem; }
+  .reply-toolbar-checkout-summary { display: inline-flex; }
+}

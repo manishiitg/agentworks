@@ -184,18 +184,25 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
   const row = actions.filter(action => action.placement === 'row' && !inMore(action))
   const more = actions.filter(inMore)
   const rowButton = (action: ReplyCardAction) => <IconButton key={action.id} strong={action.id === 'review'} label={action.aria_label || action.label} name={action.label} hint={action.description ?? ''} onClick={() => run(action)}>{actionIcon(action.icon)}</IconButton>
+  const repoGroups = groups.filter(group => group.kind === 'repo')
+  const checkoutSummary = (responsive = false) => <button type="button" aria-label={`${repoGroups.length} worktrees`} title={repoGroups.map(group => `${group.name} · ${group.branch || ''}`).join('\n')}
+    className={`${responsive ? 'reply-toolbar-checkout-summary ' : ''}inline-flex min-w-0 items-center gap-1 rounded px-1 text-muted-foreground hover:bg-muted hover:text-foreground`}
+    onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}><GitBranch className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{repoGroups.length} worktree{repoGroups.length === 1 ? '' : 's'}</span></button>
+
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
   if (total === 0) return loadFailed ? <section className="my-2 rounded-md border border-border px-2.5 py-2 text-xs text-muted-foreground" aria-label="File changes unavailable">
     Saved file changes for this reply could not be loaded. <button type="button" className="underline hover:text-foreground" onClick={() => openChatFiles(reference.sessionId)}>Review chat changes</button>
   </section> : null
-  if (!panel) return <TooltipProvider delayDuration={150}><section className="my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Reply changes">
+  if (!panel) return <TooltipProvider delayDuration={150}><section className="reply-file-toolbar my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Reply changes">
     <div className="flex min-w-0 items-center gap-2">
       <button type="button" aria-label={`Open ${plural(total)} changed in this reply`} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
         <FileDiffIcon /><span>{plural(total)}</span>
-        <span className="hidden font-normal sm:inline"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
+        <span className="reply-toolbar-line-counts font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
       </button>
       <div className="flex min-w-0 flex-1 items-center gap-2">
-      {groups.filter(group => group.kind === 'repo').map(group => <div key={group.root} className="flex min-w-0 flex-1 items-center gap-1">
+      {repoGroups.length > 1 ? checkoutSummary() : <>
+      <div className="reply-toolbar-checkout-inline flex min-w-0 flex-1 items-center gap-2">
+      {repoGroups.map(group => <div key={group.root} className="flex min-w-0 flex-1 items-center gap-1">
         <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
         {group.pr?.state === 'connect_github' && canEdit && <IconButton label="Connect GitHub" hint="Use your saved account to see PR status." onClick={() => openProjectIntegrations('github', reference.sessionId)}><Github /></IconButton>}
         {group.pr?.state === 'unavailable' && <IconButton label="Retry PR status" hint="GitHub status could not be checked." onClick={() => setGitHubRevision(value => value + 1)}><Github /></IconButton>}
@@ -205,6 +212,9 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
           {canEdit && <PRWatcherControls compact group={group} sessionId={reference.sessionId} />}
         </>}
       </div>)}
+      </div>
+      {repoGroups.length > 0 && checkoutSummary(true)}
+      </>}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
         {row.filter(action => !ownButton(action)).map(rowButton)}
@@ -217,6 +227,7 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
     {sharedViewer && sharedOpen && <div className="mt-2 rounded border border-border p-2" aria-label="Reply file names">
       {groups.map(group => <div key={`${group.kind}:${group.root}`} className="space-y-1">
         <p className="text-muted-foreground">{group.name}</p>
+        {!!group.pr?.number && group.pr.url && <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>}
         <ul>{group.files.map(file => <li key={file.path} className="break-all font-mono">{shownFilePath(file.path)}</li>)}</ul>
         {group.more_count > 0 && <p className="text-muted-foreground">+ {group.more_count} more</p>}
       </div>)}
