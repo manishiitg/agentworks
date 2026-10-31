@@ -63,7 +63,13 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   const event = vi.fn(); window.addEventListener('open-quick-switcher', event)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="All tools"]')!.click())
   expect(event.mock.calls[0][0].detail.query).toBe('@panels '); window.removeEventListener('open-quick-switcher', event)
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!.click())
+  expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Integrations')?.open).toBe(true)
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'GitHub')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'github')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to workspace"]')!.click())
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
+  expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Build')?.open).toBe(true)
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
   for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','GitHub','Access & sharing']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
   expect(host.querySelector('[aria-label="Back to workspace"]')?.textContent).toBe('Full menu')
@@ -106,6 +112,7 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
  try {
   await act(async()=>root.render(<WorkContextPanel workspacePath="Crew/example" panels={[]} onOpen={mocks.open}/>))
   expect(host.textContent).not.toContain('Overview'); expect(host.textContent).not.toContain('Project brief')
+  expect(host.textContent).not.toContain('Manage integrations')
  } finally { await act(async()=>root.unmount()) }
 })
 it('keeps every starter destination in the admitted All tools inventory and Run mode limited to dashboard', () => {

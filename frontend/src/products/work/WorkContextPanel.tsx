@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, RefreshCw } from 'lucide-react'
+import { CalendarClock, ChevronRight, RefreshCw, Settings2 } from 'lucide-react'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -16,7 +16,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
-import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
+import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuGroup, type CrewMenuItem } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
@@ -55,7 +55,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
   const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })
-  const [fullMenuScope, setFullMenuScope] = useState<string>()
+  const [fullMenu, setFullMenu] = useState<{ scope: string; group: CrewMenuGroup }>()
+  const openFullMenu = (group: CrewMenuGroup = 'Build') => setFullMenu({ scope, group })
   const open = (item: CrewMenuItem) => {
     // Recheck account/product admission if access changed while the menu was open.
     const current = useAuthStore.getState().user
@@ -69,17 +70,17 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     onOpen(item.view)
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
-  if (fullMenuScope === scope) {
+  if (fullMenu?.scope === scope) {
     const renderItem = (item: CrewMenuItem) => item.id === 'dashboard'
       ? <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
       : item.id === 'browser' ? <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)}/>
       : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.label}</Row>
-    return <WorkspaceContextCard title="Full menu" onBack={() => setFullMenuScope(undefined)}>
+    return <WorkspaceContextCard title="Full menu" onBack={() => setFullMenu(undefined)}>
       {CREW_MENU_GROUPS.map(group => {
         const items = inventory.filter(item => item.group === group)
         if (!items.length) return null
         const subgroups = [...new Set(items.flatMap(item => item.subgroup ? [item.subgroup] : []))]
-        return <Group key={`${scope}:${group}`} title={group} collapsed defaultOpen={group === 'Build'}>
+        return <Group key={`${scope}:${group}`} title={group} collapsed defaultOpen={group === fullMenu.group}>
           {items.filter(item => !item.subgroup).map(renderItem)}
           {subgroups.map(subgroup => <div key={subgroup} role="group" aria-label={subgroup} className="space-y-1"><h3 className="px-1 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{subgroup}</h3>{items.filter(item => item.subgroup === subgroup).map(renderItem)}</div>)}
         </Group>
@@ -90,10 +91,11 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
   const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reply => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reply ? `reply:${JSON.stringify(reply)}` : 'review-all-chat'); onOpen('files') }}/> : null
   const share = byId.get('mcp:share')
-  return <WorkspaceContextCard onFullMenu={() => setFullMenuScope(scope)} footerContent={share && <Row icon={share.icon} detail={sharing?.scope === scope ? sharing.detail : undefined} onClick={() => open(share)}>{share.label}</Row>}>
+  return <WorkspaceContextCard onFullMenu={() => openFullMenu()} footerContent={share && <Row icon={share.icon} detail={sharing?.scope === scope ? sharing.detail : undefined} onClick={() => open(share)}>{share.label}</Row>}>
     {mode === 'dev' && changes}
     {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} workspacePath={workspacePath} profileId={profileId} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={(snapshot?.apps || []).filter(item => byId.has(item.destination))} loading={!snapshot} unavailable={snapshot?.errors.includes('Connections could not be loaded.') === true} onOpen={openID}/>
+    {inventory.some(item => item.group === 'Integrations') && <Row icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={() => openFullMenu('Integrations')}>Manage integrations</Row>}
     {automations.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={`${automations.length}${nextAutomation ? ` · ${nextAutomation.detail}` : ''}`}>
       {automations.map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || CalendarClock} hint={byId.get(item.destination)?.label} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}
     </WorkspaceCompactGroup>}
