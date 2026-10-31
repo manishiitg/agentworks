@@ -115,7 +115,7 @@ describe('reply card groups', () => {
     expect(openReplyChanges).not.toHaveBeenCalled()
     expect(button(shared, 'Undo this reply')).toBeUndefined()
   })
-  it('keeps the detailed server actions in the panel and the chat toolbar compact', async () => {
+  it('retains the original action toolbar while file details open in the panel', async () => {
     const closed = await render(true, 2, undefined, true, false)
     expect(closed.querySelector('[aria-label="Reply changes"]')).not.toBeNull()
     expect(button(closed, 'Undo this reply')).toBeUndefined()
@@ -128,7 +128,7 @@ describe('reply card groups', () => {
     expect(latest.textContent).toContain('PR #305')
     const older = await render(true, 2, 'newer', true, false)
     expect(older.querySelector('a[aria-label*="PR #305"]')).not.toBeNull()
-    expect(button(older, 'Check this change')).toBeUndefined()
+    expect(button(older, 'Check this change')).toBeDefined()
     // Undo lives only inside the opened card, under the file list.
     expect(button(older, 'Undo this reply')).toBeUndefined()
   })
@@ -142,6 +142,10 @@ describe('reply card groups', () => {
     await act(async () => button(compact, 'Open 2 files changed in this reply')!.click())
     expect(openReplyChanges).toHaveBeenLastCalledWith(expect.objectContaining({ snapshotId: 's', sessionId: 'chat-a', workspacePath: 'Crew/x' }))
     expect(compact.textContent).not.toContain('tts.py')
+    expect(button(compact, 'Commit on the current branch')).toBeDefined()
+    expect(button(compact, 'Check this change')).toBeDefined()
+    await act(async () => button(compact, 'Review changes')!.click())
+    expect(openReplyChanges).toHaveBeenLastCalledWith(expect.objectContaining({ snapshotId: 's', sessionId: 'chat-a' }))
     const panel = await render(true)
     expect(panel.textContent).toContain('tts.py')
     expect(button(panel, 'Undo this reply')).toBeDefined()
