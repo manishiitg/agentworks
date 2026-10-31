@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 
-type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean }
+type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run' }
 
 function useWorkHistory(projects: SidebarProject[]) {
   const active = getRawActiveWorkspaceId()
@@ -43,7 +43,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   }} />
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
     <div className="py-2"><LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={[]} workTypes /></div>
-    <div className="space-y-1">{orderedProjects.filter(project => filter === 'all' || project.kind === filter).map(renderProject)}</div>
+    <div className="space-y-1">{orderedProjects.filter(project => filter === 'all' || (filter === 'dashboard' ? project.kind === 'crew' && project.mode === 'run' : project.kind === filter && (project.kind !== 'crew' || project.mode !== 'run'))).map(renderProject)}</div>
     {children}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
   </div>
@@ -57,7 +57,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const { refresh, error: directoryError } = state
   const { recent, visit } = useWorkHistory(projects)
   const [filter, setFilter] = useState('all')
-  useEffect(() => { if (!['all', 'crew', 'goal'].includes(filter) && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
+  useEffect(() => { if (!['all', 'crew', 'goal', 'dashboard'].includes(filter) && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   useEffect(() => {
     void refresh()
     const onFocus = () => void refresh()
@@ -77,17 +77,17 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     const rank = (row: typeof a) => { const index = recent?.indexOf(connectedProjectKey(row.connection.id, row.kind, row.id)) ?? -1; return index < 0 ? Infinity : index }
     return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
   })
-  const visible = rows.filter(row => filter === 'crew' || filter === 'goal' ? row.kind === filter : filter === 'all' || row.connection.id === filter)
+  const visible = rows.filter(row => filter === 'dashboard' ? row.kind === 'crew' && row.mode === 'run' : filter === 'crew' ? row.kind === 'crew' && row.mode !== 'run' : filter === 'goal' ? row.kind === 'goal' : filter === 'all' || row.connection.id === filter)
   const serverColors = serverIconColors(connections)
   const renderProject = (project: typeof rows[number]) => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
     selected={project.connection.id === active && project.selected}
-    remote={project.connection.id !== 'local'} serverColor={serverColors[project.connection.server]} location={project.connection.id !== 'local' ? project.connection.name : undefined}
+    serverId={project.connection.id} remote={project.connection.id !== 'local'} serverColor={serverColors[project.connection.server]} location={project.connection.id !== 'local' ? project.connection.name : undefined}
     onOpen={() => {
       visit(connectedProjectKey(project.connection.id, project.kind, project.id))
       if (project.connection.id === active) openSidebarProject(project.kind, project.id)
       else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
     }} />
-  const locations = connections.filter(connection => ['all', 'crew', 'goal'].includes(filter) || connection.id === filter)
+  const locations = connections.filter(connection => ['all', 'crew', 'goal', 'dashboard'].includes(filter) || connection.id === filter)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
       <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} workTypes />
