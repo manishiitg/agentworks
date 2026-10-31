@@ -171,15 +171,14 @@ func buildNativeEnvironment() []string {
 		// passwords): a shell holding either could sign in as anyone.
 		"ACCESS_PASSWORD": true,
 		"AUTH_USERS":      true,
-		// Other people's account ids, the service's SSH agent and systemd bookkeeping.
-		"AGENTWORKS_SLOT_CLI_USERS": true,
-		"SSH_AUTH_SOCK":             true,
-		"MEMORY_PRESSURE_WRITE":     true,
-		"MEMORY_PRESSURE_WATCH":     true,
-		"NOTIFY_SOCKET":             true,
-		"INVOCATION_ID":             true,
-		"JOURNAL_STREAM":            true,
-		"SYSTEMD_EXEC_PID":          true,
+		// The service's SSH agent and systemd bookkeeping.
+		"SSH_AUTH_SOCK":         true,
+		"MEMORY_PRESSURE_WRITE": true,
+		"MEMORY_PRESSURE_WATCH": true,
+		"NOTIFY_SOCKET":         true,
+		"INVOCATION_ID":         true,
+		"JOURNAL_STREAM":        true,
+		"SYSTEMD_EXEC_PID":      true,
 	}
 
 	var env []string

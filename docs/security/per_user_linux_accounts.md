@@ -60,9 +60,8 @@ session being pasted into.
 - Freeing a slot releases the table entry; clear the slot's runtime files
   before someone else reuses it.
 
-Switches: `AGENTWORKS_SLOTS=on` (shell commands),
-`AGENTWORKS_SLOT_CLI=on` (coding assistants, optionally limited to listed
-people while rolling out). Hosts without slots behave exactly as before.
+Switch: `AGENTWORKS_SLOTS=on`. Which coding assistants run as the slot follows
+the platform's rules, not a setting. Hosts without slots behave exactly as before.
 
 Related: [Provider credentials](provider_credentials.md),
 [Security overview](README.md).

@@ -35,9 +35,6 @@ var slotShellEnvPrefixes = []string{
 }
 
 func slotShellEnvAllowed(key string) bool {
-	if key == "AGENTWORKS_SLOT_CLI_USERS" {
-		return false // other people's account ids
-	}
 	if slotShellEnvExact[key] {
 		return true
 	}
