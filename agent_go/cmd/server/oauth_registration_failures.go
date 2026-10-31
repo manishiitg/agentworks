@@ -2,13 +2,13 @@ package server
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/mcpagent/oauth"
 )
 
 // Providers that rejected this server's dynamic client registration (PLAT-708). Vercel only accepts known clients'
@@ -33,25 +33,18 @@ func registrationFailureKey(endpoint, redirectURI string) string {
 
 func readRegistrationFailuresLocked() map[string]registrationFailure {
 	failures := map[string]registrationFailure{}
-	if data, err := os.ReadFile(registrationFailuresPath()); err == nil {
+	if data, err := oauth.ReadTokenFile(registrationFailuresPath()); err == nil {
 		_ = json.Unmarshal(data, &failures)
 	}
 	return failures
 }
 
 func writeRegistrationFailuresLocked(failures map[string]registrationFailure) {
-	path := registrationFailuresPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return
-	}
 	data, err := json.Marshal(failures)
 	if err != nil {
 		return
 	}
-	tmp := path + ".tmp"
-	if os.WriteFile(tmp, data, 0o600) == nil {
-		_ = os.Rename(tmp, path)
-	}
+	_ = oauth.WriteTokenFile(registrationFailuresPath(), data)
 }
 
 // setRegistrationFailure records (reason != "") or clears (reason == "") a provider's rejection of this callback.

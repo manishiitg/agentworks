@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/mcpagent/oauth"
 )
 
 // A person's own GitHub account through the deployment's GitHub OAuth App (PLAT-746-158 B8; the decisions log, 2026-10-28).
@@ -225,7 +227,7 @@ func githubRecordPath(person string) string {
 }
 
 func readGitHubRecord(person string) *githubAccountRecord {
-	data, err := os.ReadFile(githubRecordPath(person))
+	data, err := oauth.ReadTokenFile(githubRecordPath(person))
 	if err != nil {
 		return nil
 	}
@@ -237,12 +239,11 @@ func readGitHubRecord(person string) *githubAccountRecord {
 }
 
 func writeGitHubRecord(person string, rec githubAccountRecord) error {
-	path := githubRecordPath(person)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	data, err := json.Marshal(rec)
+	if err != nil {
 		return err
 	}
-	data, _ := json.Marshal(rec)
-	return os.WriteFile(path, data, 0o600)
+	return oauth.WriteTokenFile(githubRecordPath(person), data)
 }
 
 func githubApp() (clientID, clientSecret string, ok bool) {
