@@ -288,12 +288,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	// The card's file list comes from the reply event; without a GitHub
 	// lookup its actions need no comparison.
-	summaryGroups, hasSummary := history.summaryGroups(id)
 	lookUpPullRequests := r.URL.Query().Get("pull_requests") == "true"
-	if op == "reply_card" && hasSummary && !lookUpPullRequests {
-		externalJSON(w, api.replyCard(r, root, summaryGroups))
-		return
-	}
 	if bound := r.URL.Query().Get("through_snapshot_id"); bound != "" {
 		if _, found := refs[bound]; !found || (id != "" && bound != id) {
 			externalError(w, 404, "not_found", "This saved comparison is unavailable.")
@@ -313,8 +308,18 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		}
 		file = strings.TrimPrefix(file, prefix)
 	}
-	comparison, err := store.CompareBoundaries(ctx, first, last, side, file, compareAllow)
+	compare := func(first, last, side, file, key string) (filesnapshots.Comparison, error) {
+		ids := []string{}
+		for _, ref := range history.Replies {
+			if ref.End >= refs[first].End && ref.End <= refs[last].End && !(side == "after" && ref.ID == first) {
+				ids = append(ids, ref.ID)
+			}
+		}
+		return store.CompareSaved(ctx, ids, file, key, compareAllow)
+	}
+	comparison, err := compare(first, last, side, file, r.URL.Query().Get("change_key"))
 	if err != nil {
+		log.Printf("[FILE_REVIEW] phase=compare session=%s first=%s last=%s error=%v", sessionID, first, last, err)
 		if file != "" {
 			externalError(w, 404, "snapshot_unavailable", "This saved file comparison is unavailable or you cannot read it.")
 			return
@@ -326,6 +331,13 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	comparison.Record.ExecutionID = ""
 	if outsideGit {
+		kept := comparison.Changes[:0]
+		for _, change := range comparison.Changes {
+			if change.Checkout == nil {
+				kept = append(kept, change)
+			}
+		}
+		comparison.Changes = kept
 		if file != "" && len(comparison.Changes) == 0 {
 			externalError(w, 404, "not_found", "Choose a file outside Git from this comparison.")
 			return
@@ -375,19 +387,9 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	if op == "reply_card" {
 		groups := replyFileGroups(ctx, roots, prefix, comparison, allow, lookUpPullRequests, nil)
-		if hasSummary {
-			// The file list stays as captured; the lookup adds only PR status and next step.
-			for i := range summaryGroups {
-				summaryGroups[i].PR, summaryGroups[i].NextStep = nil, ""
-				for _, found := range groups {
-					if found.Kind == summaryGroups[i].Kind && found.Root == summaryGroups[i].Root {
-						summaryGroups[i].PR, summaryGroups[i].NextStep = found.PR, found.NextStep
-					}
-				}
-			}
-			groups = summaryGroups
-		}
-		externalJSON(w, api.replyCard(r, root, groups))
+		card := api.replyCard(r, root, groups)
+		card["note"] = comparison.Note
+		externalJSON(w, card)
 		return
 	}
 	summary := reviewSummary(comparison)
@@ -398,7 +400,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 			start, startSide = history.Reviews[len(history.Reviews)-1].ID, "after"
 		}
 		if history.Available || startSide == "after" {
-			if net, err := store.CompareBoundaries(ctx, start, last, startSide, "", compareAllow); err == nil {
+			if net, err := compare(start, last, startSide, "", ""); err == nil {
 				value := reviewSummary(net)
 				sinceReview = &value
 			}
@@ -429,6 +431,14 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	for i := range comparison.Changes {
 		comparison.Changes[i].Path = prefix + comparison.Changes[i].Path
+		if label := comparison.Changes[i].Checkout; label != nil && prefix != "" {
+			copy := *label
+			copy.Root = strings.TrimSuffix(prefix, "/")
+			if label.Root != "" {
+				copy.Root += "/" + label.Root
+			}
+			comparison.Changes[i].Checkout = &copy
+		}
 	}
 	for i := range comparison.Record.Skipped {
 		comparison.Record.Skipped[i] = prefix + comparison.Record.Skipped[i]

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import api from '../../services/api'
+import type { ReplyFileChange } from '../../utils/replyFileChanges'
 
-export type FileChange = { path: string; status: string; added?: number; removed?: number; binary?: boolean }
+export type FileChange = ReplyFileChange
 export type ReviewSummary = { files: number; added: number; removed: number }
 export type ReviewHistory = {
   recent_repos?: string[]

@@ -61,9 +61,10 @@ type Group struct {
 	Commits      []Commit `json:"commits,omitempty"`
 	CommitsKnown bool     `json:"commits_known,omitempty"`
 
-	dirty    bool // files differ from HEAD now
-	unpushed int  // commits on HEAD that are on no remote branch
-	behind   int  // commits on the upstream branch not in HEAD (as of the last fetch)
+	dirty      bool // files differ from HEAD now
+	unpushed   int  // commits on HEAD that are on no remote branch
+	behind     int  // commits on the upstream branch not in HEAD (as of the last fetch)
+	historical bool // the saved checkout/branch is not the current working context
 }
 
 // NextStep decides the single next Git step for a repo group: first get the
@@ -148,14 +149,24 @@ func OutsideGitPaths(root string, allow func(string) bool) func(string) bool {
 func GroupChanges(ctx context.Context, root string, changes []Change, newRepos []string, allow func(string) bool) []Group {
 	cache := map[string]string{}
 	byRepo := map[string][]Change{}
+	labels := map[string]*CheckoutLabel{}
+	roots := map[string]string{}
 	var plain []Change
 	for _, c := range changes {
+		if c.Checkout != nil {
+			label := c.Checkout
+			key := "saved:" + label.ID + ":" + label.Branch
+			labels[key], roots[key] = label, label.Root
+			byRepo[key] = append(byRepo[key], c)
+			continue
+		}
 		if key := checkoutRoot(root, c.Path, cache); key != "" {
 			dir := strings.TrimPrefix(key, "repo:")
 			if dir == "." {
 				dir = ""
 			}
 			byRepo[dir] = append(byRepo[dir], c)
+			roots[dir] = dir
 		} else {
 			plain = append(plain, c)
 		}
@@ -167,9 +178,19 @@ func GroupChanges(ctx context.Context, root string, changes []Change, newRepos [
 	sort.Strings(dirs)
 	out := []Group{}
 	for _, d := range dirs {
-		g := repoGroup(ctx, root, d, byRepo[d], allow)
+		dir := roots[d]
+		g := repoGroup(ctx, root, dir, byRepo[d], allow)
+		if label := labels[d]; label != nil {
+			g.historical = historicalBranch(g, label)
+			gitdir, err := gitIn(ctx, root, filepath.Join(root, filepath.FromSlash(dir)), "rev-parse", "--absolute-git-dir").Output()
+			g.historical = g.historical || err != nil || digest(strings.TrimSpace(string(gitdir))) != label.ID
+			g.Name, g.Branch, g.GitHubRepo = label.Name, label.Branch, label.GitHubRepo
+			if g.historical {
+				g.dirty, g.unpushed, g.behind = false, 0, 0
+			}
+		}
 		for _, p := range newRepos {
-			g.NewCheckout = g.NewCheckout || p == d
+			g.NewCheckout = g.NewCheckout || p == dir
 		}
 		out = append(out, g)
 	}

@@ -137,7 +137,7 @@ func (s Store) repoBaselines(ctx context.Context, r *Record, after map[string]st
 		return
 	}
 	r.NewRepos = newRepos
-	if err := s.importBaselines(ctx, r, entries); err != nil {
+	if err := s.importBaselines(ctx, r, entries, baselineRef(r.ID)); err != nil {
 		log.Printf("[FILE_SNAPSHOT] phase=new_repo snapshot=%s baseline=failed error=%v", r.ID, err)
 		for p := range newRepos {
 			newRepos[p] = ""
@@ -187,7 +187,7 @@ func startCommit(ctx context.Context, root, dir string, started time.Time, until
 // after-capture just read the same bytes) are referenced; the rest are copied
 // from the checkout's own objects within maxImportBytes. A file left out is
 // hidden on both sides (BaselineSkipped) rather than shown as added.
-func (s Store) importBaselines(ctx context.Context, r *Record, entries []baselineEntry) error {
+func (s Store) importBaselines(ctx context.Context, r *Record, entries []baselineEntry, ref string) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -239,7 +239,7 @@ func (s Store) importBaselines(ctx context.Context, r *Record, entries []baselin
 		}
 	}
 	if err == nil {
-		fmt.Fprintf(w, "commit %s\ncommitter AgentWorks <snapshot@example.com> %d +0000\ndata 8\nbaseline\ndeleteall\n", baselineRef(r.ID), time.Now().Unix())
+		fmt.Fprintf(w, "commit %s\ncommitter AgentWorks <snapshot@example.com> %d +0000\ndata 8\nbaseline\ndeleteall\n", ref, time.Now().Unix())
 		for _, e := range entries {
 			ref := e.oid
 			if !have[e.oid] {

@@ -49,7 +49,7 @@ func CardActions(groups []Group, canEdit bool, cardCommands []commands.Command) 
 	}
 	var repos []Group
 	for _, g := range groups {
-		if g.Kind == "repo" && g.Branch != "" {
+		if g.Kind == "repo" && g.Branch != "" && !g.historical {
 			repos = append(repos, g)
 		}
 	}
