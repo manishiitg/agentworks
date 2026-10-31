@@ -9,7 +9,8 @@ import { ChatChangesRow } from './ChatChangesRow'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const savedReply = async (_path: string, options: { params: Record<string, unknown> }) => ({ data: options.params.op === 'snapshots'
   ? { latest_snapshot_id: `latest-${options.params.session_id}` }
-  : { groups: [{ kind: 'repo', total_files: 2 }, { kind: 'crew_files', total_files: 1 }] } })
+  // Full authorized totals come from the server even when the file list is paged.
+  : { summary: { files: 3, added: 48, removed: 12 }, comparison: { changes: [{ path: 'first.ts', added: 1, removed: 0 }] } } })
 
 it('shows failed status with retry and scopes the next chat to its own latest reply', async () => {
   const host = document.createElement('div'); document.body.append(host)
@@ -22,6 +23,8 @@ it('shows failed status with retry and scopes the next chat to its own latest re
     get.mockImplementation(savedReply)
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Retry')!.click())
     expect(host.textContent).toContain('3 files')
+    expect(host.textContent).toContain('+48')
+    expect(host.textContent).toContain('−12')
     expect(host.querySelector('[role="alert"]')).toBeNull()
     expect(host.querySelector('[class*="amber"]')).toBeNull()
     await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
