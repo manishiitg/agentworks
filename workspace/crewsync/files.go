@@ -87,6 +87,7 @@ func readFile(root, rel string) ([]byte, File, error) {
 func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snapshot, error) {
 	out := Snapshot{Files: Manifest{}, Changes: []Change{}}
 	var total int64
+	ignoredFiles := map[string]bool{}
 	areas := []struct{ name, root string }{{"files", roots.Files}, {"resources", roots.Resources}}
 	if !roots.SeparateFiles() {
 		areas = areas[1:]
@@ -95,6 +96,9 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 		ignored, err := publication.GitIgnored(ctx, area.root)
 		if err != nil {
 			return out, err
+		}
+		for rel := range ignored {
+			ignoredFiles[area.name+"/"+rel] = true
 		}
 		err = filepath.WalkDir(area.root, func(p string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
@@ -149,7 +153,7 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 		if _, exists := out.Files[key]; !exists {
 			// If exclusions changed, leave the old copy alone rather than sending
 			// a mutation for a path the current policy no longer admits.
-			if Allowed(key, false) {
+			if Allowed(key, false) && !ignoredFiles[key] {
 				out.Changes = append(out.Changes, Change{Path: key, Before: &before})
 			}
 		}

@@ -79,6 +79,11 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			write(local.Files, "note.txt", "local work")
 			write(local.Resources, "skills/example/SKILL.md", "Useful skill")
 			write(local.Files, ".env", "keep private")
+			listing := httptest.NewRecorder()
+			files.ServeHTTP(listing, httptest.NewRequest("GET", "/api/documents?folder="+local.Virtual+"&max_depth=5", nil))
+			if listing.Code != 200 || !strings.Contains(listing.Body.String(), local.Virtual+"/skills/example/SKILL.md") {
+				t.Fatalf("local resource listing: %d %s", listing.Code, listing.Body.String())
+			}
 			loseResponse := false
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("Authorization") != "Bearer saved-login" || r.Header.Get("X-AgentWorks-Desktop") != "" {
