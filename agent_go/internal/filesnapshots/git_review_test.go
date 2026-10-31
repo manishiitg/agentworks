@@ -98,8 +98,16 @@ func TestGitReviewKeepsBranchWorkAcrossSwitchesAndMultipleRepositories(t *testin
 	if err := f.s.save(first); err != nil {
 		t.Fatal(err)
 	}
+	next, _ = f.s.read(next.ID)
+	next.StartedAt = time.Now().Add(-15 * 24 * time.Hour)
+	if err := f.s.save(next); err != nil {
+		t.Fatal(err)
+	}
 	f.s.dropViews(ctx)
 	f.s.prune(ctx)
+	if _, err := f.s.read(next.ID); err != nil {
+		t.Fatal("retention removed the zero-diff branch-switch baseline", err)
+	}
 	if err := f.s.command(ctx, "gc", "--prune=now", "--quiet").Run(); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +133,7 @@ func TestGitReviewIncomingResetAndMissingReflogDoNotInventChanges(t *testing.T) 
 	f.git("app", "add", "-A")
 	f.git("app", "commit", "-qm", "incoming")
 	f.git("app", "checkout", "-q", "main")
-	for _, operation := range []string{"merge", "reset", "clean-reset", "missing-log"} {
+	for _, operation := range []string{"merge", "reset", "clean-reset", "soft-reset", "missing-log"} {
 		if operation == "clean-reset" {
 			f.put("app/a.txt", "already dirty\n")
 		}
@@ -139,6 +147,8 @@ func TestGitReviewIncomingResetAndMissingReflogDoNotInventChanges(t *testing.T) 
 			f.git("app", "reset", "--hard", "HEAD~1")
 		case "clean-reset":
 			f.git("app", "reset", "--hard", "HEAD")
+		case "soft-reset":
+			f.git("app", "reset", "--soft", "upstream")
 		case "missing-log":
 			f.git("app", "reflog", "expire", "--expire=now", "--all")
 			f.git("app", "checkout", "-q", "upstream")
@@ -148,7 +158,7 @@ func TestGitReviewIncomingResetAndMissingReflogDoNotInventChanges(t *testing.T) 
 			t.Fatal(err)
 		}
 		c, err := f.s.Compare(ctx, r.ID, "", all)
-		if err != nil || len(c.Changes) != 0 || (operation == "missing-log") != strings.Contains(c.Note, "Incomplete") {
+		if err != nil || len(c.Changes) != 0 || (operation == "missing-log" || operation == "soft-reset") != strings.Contains(c.Note, "Incomplete") {
 			t.Fatalf("%s invented work: %v %+v", operation, err, c)
 		}
 	}

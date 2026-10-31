@@ -334,11 +334,15 @@ func GitHubRepo(remote string) string {
 	}
 	r = strings.TrimSuffix(strings.Trim(strings.TrimPrefix(r, "github.com"), "/:"), ".git")
 	parts := strings.Split(r, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	if len(parts) != 2 || !gitHubRepoName.MatchString(r) || parts[1] == "." || parts[1] == ".." {
 		return ""
 	}
 	return parts[0] + "/" + parts[1]
 }
+
+// Only a repository name reaches captured labels; query/fragment credentials
+// and other URL syntax must never be persisted as an owner/repo value.
+var gitHubRepoName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$`)
 
 // chatCommitCap bounds the commits a chat summary lists per checkout.
 const chatCommitCap = 30

@@ -286,8 +286,8 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		externalJSON(w, map[string]any{"history": history, "changes": []any{}})
 		return
 	}
-	// The card's file list comes from the reply event; without a GitHub
-	// lookup its actions need no comparison.
+	// Saved spans decide files and context; current grants still apply even
+	// when this request does not need a GitHub lookup.
 	lookUpPullRequests := r.URL.Query().Get("pull_requests") == "true"
 	if bound := r.URL.Query().Get("through_snapshot_id"); bound != "" {
 		if _, found := refs[bound]; !found || (id != "" && bound != id) {
@@ -430,15 +430,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	for i := range comparison.Changes {
-		comparison.Changes[i].Path = prefix + comparison.Changes[i].Path
-		if label := comparison.Changes[i].Checkout; label != nil && prefix != "" {
-			copy := *label
-			copy.Root = strings.TrimSuffix(prefix, "/")
-			if label.Root != "" {
-				copy.Root += "/" + label.Root
-			}
-			comparison.Changes[i].Checkout = &copy
-		}
+		comparison.Changes[i] = comparison.Changes[i].WithPrefix(prefix)
 	}
 	for i := range comparison.Record.Skipped {
 		comparison.Record.Skipped[i] = prefix + comparison.Record.Skipped[i]

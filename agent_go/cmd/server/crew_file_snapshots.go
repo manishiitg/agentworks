@@ -281,7 +281,7 @@ func replyFileSummary(ctx context.Context, store filesnapshots.Store, roots crew
 			groups[i].Root = prefix + groups[i].Root
 		}
 		for j := range groups[i].Files {
-			groups[i].Files[j].Path = prefix + groups[i].Files[j].Path
+			groups[i].Files[j] = groups[i].Files[j].WithPrefix(prefix)
 		}
 	}
 	// The actions every viewer gets (Review changes), so the card draws them

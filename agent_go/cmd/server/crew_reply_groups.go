@@ -49,7 +49,7 @@ func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, c
 			groups[i].Root = prefix + groups[i].Root
 		}
 		for j := range groups[i].Files {
-			groups[i].Files[j].Path = prefix + groups[i].Files[j].Path
+			groups[i].Files[j] = groups[i].Files[j].WithPrefix(prefix)
 		}
 	}
 	return groups

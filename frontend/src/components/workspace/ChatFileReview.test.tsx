@@ -9,7 +9,10 @@ vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: strin
   if (options.params.op === 'snapshots') return { data: { recent_repos: state.recentRepos } }
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
   if (state.gitVersions) return { data: { history: { replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: 'start', can_review: true }, comparison: { changes: [
-    { path: 'app/same.ts', key: 'feature-copy', status: 'M', checkout: { id: 'app', root: 'app', name: 'app', branch: 'feature' } },
+    { path: 'app/same.ts', key: 'feature-old', status: 'M', checkout: { id: 'app', root: 'app', name: 'app', branch: 'feature' }, edits: [
+      { path: 'app/same.ts', key: 'feature-old', status: 'M', checkout: { id: 'app', root: 'app', name: 'app', branch: 'feature' } },
+      { path: 'app/same.ts', key: 'feature-copy', status: 'M', checkout: { id: 'app', root: 'app', name: 'app', branch: 'feature' } },
+    ] },
     { path: 'app/same.ts', key: 'main-copy', status: 'M', checkout: { id: 'app', root: 'app', name: 'app', branch: 'main' } },
     { path: 'tools/same.ts', key: 'tools-copy', status: 'M', checkout: { id: 'tools', root: 'tools', name: 'tools', branch: 'main' } },
   ], snapshot: { status: 'complete' }, diff: `@@ -1 +1 @@\n-old\n+${options.params.change_key || 'list'}\n`, note: '', skipped_count: 0 } } }
@@ -42,8 +45,9 @@ describe('Studio review comments', () => {
     state.gitVersions = true; vi.mocked(api.get).mockClear()
     try {
       await act(async () => root.render(<ChatFileReview allChat workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
-      expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(3)
-      for (const key of ['feature-copy', 'main-copy', 'tools-copy']) {
+      expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(4)
+      expect(host.querySelectorAll('button[title^="app/same.ts"]')).toHaveLength(2) // one row per branch, not per reply
+      for (const key of ['feature-old', 'feature-copy', 'main-copy', 'tools-copy']) {
         expect(host.textContent).toContain(key)
         expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ change_key: key, session_id: 'chat-a', baseline_snapshot_id: 'start', through_snapshot_id: 'last' }) }))
       }

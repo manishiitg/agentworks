@@ -36,6 +36,7 @@ type reviewSpan struct {
 	Checkout CheckoutLabel `json:"checkout"`
 	Before   string        `json:"before"`
 	After    string        `json:"after"`
+	Skipped  []string      `json:"skipped,omitempty"`
 }
 
 type savedReview struct {
@@ -67,12 +68,19 @@ func reflogDelta(before gitCheckpoint, lines []string) ([]string, bool) {
 	if before.CursorCount == 0 {
 		return nil, false
 	}
+	match := -1
 	for i := 0; i+before.CursorCount <= len(lines); i++ {
 		if digest(strings.Join(lines[i:i+before.CursorCount], "\n")) == before.Cursor {
-			return lines[:i], true
+			if match >= 0 {
+				return nil, false // repeated entries cannot establish the boundary
+			}
+			match = i
 		}
 	}
-	return nil, false
+	if match < 0 {
+		return nil, false
+	}
+	return lines[:match], true
 }
 
 func (s Store) gitCheckpoints(ctx context.Context, repos map[string]string, limit int) (map[string]gitCheckpoint, map[string][]string) {
@@ -198,6 +206,16 @@ func birthCheckpoint(r Record, end gitCheckpoint, lines []string) (gitCheckpoint
 	start := end
 	start.Head = base
 	delta := lines[:len(lines)-1]
+	// worktree add writes an initial no-op reset after creating its HEAD.
+	// Its creation baseline already accounts for that setup; it is not a
+	// switch away from work done in the new checkout.
+	for len(delta) > 0 {
+		f := strings.SplitN(delta[len(delta)-1], "\x1f", 3)
+		if len(f) != 3 || f[0] != base || f[2] != "reset: moving to HEAD" {
+			break
+		}
+		delta = delta[:len(delta)-1]
+	}
 	for i := len(delta) - 1; i >= 0; i-- {
 		f := strings.SplitN(delta[i], "\x1f", 3)
 		if len(f) == 3 && strings.HasPrefix(f[2], "checkout: moving from ") {
@@ -271,13 +289,13 @@ func (s Store) saveReview(ctx context.Context, r *Record, repos map[string]strin
 		if !had {
 			// The existing new-checkout baseline includes real commits made
 			// during the turn; git-init repositories remain genuine additions.
-			review.Spans = append(review.Spans, reviewSpan{end.CheckoutLabel, b, a})
+			review.Spans = append(review.Spans, reviewSpan{Checkout: end.CheckoutLabel, Before: b, After: a})
 			continue
 		}
 		if !known {
 			delta, known = reflogDelta(start, logs[p])
 		}
-		if start.ID != end.ID || (!known && (start.Head != end.Head || start.Branch != end.Branch)) {
+		if start.ID != end.ID || (!known && (start.CursorCount > 0 || start.Head != end.Head || start.Branch != end.Branch)) {
 			review.IncompleteRoots = append(review.IncompleteRoots, p)
 			continue
 		}
@@ -297,7 +315,7 @@ func (s Store) saveReview(ctx context.Context, r *Record, repos map[string]strin
 			continue
 		}
 		if !foreign {
-			review.Spans = append(review.Spans, reviewSpan{end.CheckoutLabel, b, a})
+			review.Spans = append(review.Spans, reviewSpan{Checkout: end.CheckoutLabel, Before: b, After: a})
 			continue
 		}
 		review.ForeignRoots = append(review.ForeignRoots, p)
@@ -308,11 +326,29 @@ func (s Store) saveReview(ctx context.Context, r *Record, repos map[string]strin
 			continue
 		}
 		review.Spans = append(review.Spans, spans...)
+		for _, span := range spans {
+			if len(span.Skipped) > 0 {
+				review.IncompleteRoots = append(review.IncompleteRoots, p)
+				break
+			}
+		}
 	}
 	// Pin derived views under the reply, independent of disposable view
 	// caches and the live checkout's reflog retention.
 	kept := review.Spans[:0]
 	for i, span := range review.Spans {
+		start, had := r.BeforeGit[span.Checkout.Root]
+		end, present := after[span.Checkout.Root]
+		delta, known := reflogDelta(start, logs[span.Checkout.Root])
+		_, newCopy := r.NewRepos[span.Checkout.Root]
+		unchanged := had && present && known && len(delta) == 0 && start.ID == end.ID && start.Head == end.Head && start.Branch == end.Branch && !newCopy
+		args := []string{"--literal-pathspecs", "diff", "--quiet", "--no-ext-diff", "--no-textconv", span.Before, span.After, "--"}
+		if span.Checkout.Root != "" {
+			args = append(args, span.Checkout.Root)
+		}
+		if unchanged && s.command(ctx, args...).Run() == nil {
+			continue // retain zero-diff checkout/HEAD moves and new-copy baselines
+		}
 		ref := "refs/turns/" + r.ID + "/review/" + strconv.Itoa(i)
 		if s.command(ctx, "update-ref", ref+"/before", span.Before).Run() != nil || s.command(ctx, "update-ref", ref+"/after", span.After).Run() != nil {
 			review.IncompleteRoots = append(review.IncompleteRoots, span.Checkout.Root)
@@ -332,6 +368,7 @@ func (s Store) transitionSpans(ctx context.Context, r *Record, dir string, start
 	}
 	segmentHead := oldHead
 	label, base, latest, head, committed := start.CheckoutLabel, before, before, start.Head, false
+	reset := false
 	var spans []reviewSpan
 	for i := len(delta) - 1; i >= 0; i-- {
 		f := strings.SplitN(delta[i], "\x1f", 3)
@@ -346,19 +383,20 @@ func (s Store) transitionSpans(ctx context.Context, r *Record, dir string, start
 			latest, committed = tree, true
 		} else {
 			if committed {
-				b, err := s.carryDirty(ctx, base, before, oldHead, segmentHead, p, "")
+				b, err := s.carryDirty(ctx, base, before, oldHead, segmentHead, p, "", nil)
 				if err != nil {
 					return nil, err
 				}
-				a, err := s.carryDirty(ctx, latest, before, oldHead, latest, p, "")
+				a, err := s.carryDirty(ctx, latest, before, oldHead, latest, p, "", nil)
 				if err != nil {
 					return nil, err
 				}
-				spans = append(spans, reviewSpan{label, b, a})
+				spans = append(spans, reviewSpan{Checkout: label, Before: b, After: a})
 			}
 			label.Branch = checkoutBranch(f[2], label.Branch)
 			base, latest, committed = tree, tree, false
 			segmentHead = tree
+			reset = strings.HasPrefix(f[2], "reset:")
 		}
 		head = f[0]
 	}
@@ -367,11 +405,30 @@ func (s Store) transitionSpans(ctx context.Context, r *Record, dir string, start
 	}
 	// Carrying an existing dirty file to another branch is not a new edit.
 	// Git permits the simple carry when both branches have the same base blob.
-	base, err = s.carryDirty(ctx, base, before, oldHead, segmentHead, p, after)
+	var skipped []string
+	if reset && !committed {
+		// A reset reflog does not record --soft/--mixed/--hard. Dirty
+		// destination files could be carried old contents or new edits;
+		// without a later commit, do not invent their starting state.
+		args := []string{"--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", segmentHead, after, "--"}
+		if p != "" {
+			args = append(args, p)
+		}
+		raw, err := s.command(ctx, args...).Output()
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range bytes.Split(raw, []byte{0}) {
+			if len(name) > 0 {
+				skipped = append(skipped, string(name))
+			}
+		}
+	}
+	base, err = s.carryDirty(ctx, base, before, oldHead, segmentHead, p, after, &skipped)
 	if err != nil {
 		return nil, err
 	}
-	spans = append(spans, reviewSpan{label, base, after})
+	spans = append(spans, reviewSpan{Checkout: label, Before: base, After: after, Skipped: skipped})
 	return spans, nil
 }
 
@@ -388,7 +445,7 @@ func savedRoot(file string, roots []string) (string, bool) {
 	return root, found
 }
 
-func (s Store) carryDirty(ctx context.Context, base, before, oldHead, newHead, root, observedAfter string) (string, error) {
+func (s Store) carryDirty(ctx context.Context, base, before, oldHead, newHead, root, observedAfter string, uncertain *[]string) (string, error) {
 	raw, err := s.command(ctx, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", oldHead, before).Output()
 	if err != nil {
 		return "", err
@@ -402,6 +459,12 @@ func (s Store) carryDirty(ctx context.Context, base, before, oldHead, newHead, r
 		old, oldOK := s.entry(ctx, oldHead, p)
 		now, nowOK := s.entry(ctx, newHead, p)
 		if old != now || oldOK != nowOK {
+			if observedAfter != "" && uncertain != nil {
+				actual, actualOK := s.entry(ctx, observedAfter, p)
+				if actual != now || actualOK != nowOK {
+					*uncertain = append(*uncertain, p)
+				}
+			}
 			continue
 		}
 		if observedAfter != "" {

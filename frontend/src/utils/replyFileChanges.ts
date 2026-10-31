@@ -1,7 +1,7 @@
 import type { PollingEvent } from '../services/api-types'
 import { normalizeTranscriptChunkEvents } from './transcriptChunkUpdates'
 
-export type ReplyFileChange = { path: string; key?: string; at?: string; checkout?: { id: string; root: string; name: string; branch?: string }; status: string; added?: number; removed?: number; binary?: boolean }
+export type ReplyFileChange = { path: string; key?: string; at?: string; edits?: ReplyFileChange[]; checkout?: { id: string; root: string; name: string; branch?: string }; status: string; added?: number; removed?: number; binary?: boolean }
 export type ReplyPullRequest = { number?: number; url?: string; state: string; checks?: string; review?: string; failing_checks?: string[]; conflicts?: boolean }
 export type ReplyFileGroup = { kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; new_checkout: boolean; files: ReplyFileChange[]; total_files: number; more_count: number; pr?: ReplyPullRequest }
 // One card action, decided by the server for the viewer. icon is "octicon:<id>" or a Lucide name;
