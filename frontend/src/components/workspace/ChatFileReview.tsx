@@ -93,7 +93,8 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   }
   const changes: Change[] = result?.comparison?.changes ?? []
   const selected = changes.find(change => (change.key || change.path) === selectedKey) ?? changes[0]
-  const inline = changes.length > 0 && (result?.total_changes ?? changes.length) <= INLINE_REVIEW_FILE_LIMIT && !result?.next_offset
+  const inline = changes.length > 0 && changes.reduce((sum, change) => sum + (change.edits?.length || 1), 0) <= INLINE_REVIEW_FILE_LIMIT && !result?.next_offset
+  const diffs = (inline ? changes : selected ? [selected] : []).flatMap(change => change.edits?.length ? change.edits : [change])
   const selectFile = (change: Change) => {
     const key = change.key || change.path
     setSelectedKey(key)
@@ -126,7 +127,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
       {result && !result.comparison && <p className="p-3 text-sm">{result.history.note}</p>}
       <div className="grid gap-1 border-b border-border p-2">
-        {!reply && result?.comparison && <p className="p-2 text-xs text-muted-foreground" title="Saved changes observed during this chat’s replies. Other chats using the same files may contribute.">{result.total_changes ?? changes.length} file changes{!reviewId && !result.history.reviews?.length && !result.history.available ? startedFrom(result.history.start_message) : ''}</p>}
+        {!reply && result?.comparison && <p className="p-2 text-xs text-muted-foreground" title="Saved changes observed during this chat’s replies. Other chats using the same files may contribute.">{result.total_changes ?? changes.length} changed files{!reviewId && !result.history.reviews?.length && !result.history.available ? startedFrom(result.history.start_message) : ''}</p>}
         {changes.map((change, index) => {
           const key = change.key || change.path
           const active = (selected?.key || selected?.path) === key
@@ -152,8 +153,8 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
       {(result?.comparison?.uncaptured_changes ?? 0) > 0 && <p role="status" className="p-3 text-xs text-muted-foreground">{result?.comparison?.uncaptured_changes} files could not be compared.</p>}
       {result?.comparison?.note && <p className="px-3 py-2 text-xs text-muted-foreground">{result.comparison.note}</p>}
     </div>
-    {selected && through && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${inline ? 'overflow-y-auto' : ''}`}>
-      {(inline ? changes : [selected]).map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.key || change.path}`} embedded flow={inline}
+    {selected && through && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${(inline || diffs.length > 1) ? 'overflow-y-auto' : ''}`}>
+      {diffs.map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.key || change.path}`} embedded flow={inline || diffs.length > 1}
         selection={{ reference: { workspacePath, sessionId, snapshotId: reply?.snapshotId || '' }, change, query: { ...groupParams, session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start', ...(change.key ? { change_key: change.key } : {}) } }}
         tabId={tabId} onBack={onBrowse} />)}
     </div>}

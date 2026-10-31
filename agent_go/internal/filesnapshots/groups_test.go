@@ -84,10 +84,12 @@ func TestExistingCheckoutListsOnlyThisReplysFiles(t *testing.T) {
 
 func TestGitHubRepoDropsCredentialsAndOtherHosts(t *testing.T) {
 	for remote, want := range map[string]string{
-		"git@github.com:acme/app.git":             "acme/app",
-		"https://tok@github.com/acme/app":         "acme/app",
-		"ssh://git@github.com/acme/app.git":       "acme/app",
-		"https://gitlab.example.com/acme/app.git": "",
+		"git@github.com:acme/app.git":               "acme/app",
+		"https://tok@github.com/acme/app":           "acme/app",
+		"ssh://git@github.com/acme/app.git":         "acme/app",
+		"https://gitlab.example.com/acme/app.git":   "",
+		"https://github.com/acme/app?token=example": "",
+		"https://github.com/acme/app#example":       "",
 	} {
 		if got := GitHubRepo(remote); got != want {
 			t.Errorf("GitHubRepo(%q) = %q, want %q", remote, got, want)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // CompareSaved accepts only the reply IDs the server resolved from one
@@ -44,9 +45,13 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 				newRepos[p] = true
 			}
 		}
-		add := func(before, after string, label *CheckoutLabel, ordinal int, filter func(string) bool) error {
+		add := func(before, after string, label *CheckoutLabel, ordinal int, skipped []string, filter func(string) bool) error {
 			part := r
 			part.Before, part.After, part.NewRepos, part.GoneRepos = before, after, nil, nil
+			part.Omitted = append(append([]string{}, r.Omitted...), skipped...)
+			if label != nil && label.Root != "" {
+				part.diffPaths = []string{label.Root}
+			}
 			comparison, err := s.compareRaw(ctx, part, "", filter)
 			if err != nil {
 				return err
@@ -70,7 +75,7 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 		if r.Review == nil {
 			// These are the actual older saved copies; missing historical
 			// branch metadata is never filled in using today's working tree.
-			if err := add(b, a, nil, -1, allow); err != nil {
+			if err := add(b, a, nil, -1, nil, allow); err != nil {
 				return out, err
 			}
 		} else {
@@ -81,12 +86,12 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 					seenIncomplete[root] = true
 				}
 			}
-			if err := add(b, a, nil, -1, func(p string) bool { _, repo := savedRoot(p, r.Review.Roots); return !repo && allow(p) }); err != nil {
+			if err := add(b, a, nil, -1, nil, func(p string) bool { _, repo := savedRoot(p, r.Review.Roots); return !repo && allow(p) }); err != nil {
 				return out, err
 			}
 			for i, span := range r.Review.Spans {
 				label := span.Checkout
-				if err := add(span.Before, span.After, &label, i, func(p string) bool {
+				if err := add(span.Before, span.After, &label, i, span.Skipped, func(p string) bool {
 					root, repo := savedRoot(p, r.Review.Roots)
 					return repo && root == label.Root && allow(p)
 				}); err != nil {
@@ -143,14 +148,81 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 		v := out.versions[chosen.Key]
 		part := out.Record
 		part.Before, part.After, part.NewRepos, part.GoneRepos = v.before, v.after, nil, nil
+		part.Skipped, part.Omitted, part.BaselineSkipped = nil, nil, nil
+		part.diffPaths = []string{file}
 		c, err := s.compareRaw(ctx, part, file, func(p string) bool { return p == file && allow(p) })
 		if err != nil {
 			return out, err
 		}
 		out.Diff, out.Truncated = c.Diff, c.Truncated
 		out.Changes = []Change{*chosen}
+	} else {
+		out.Changes = groupSavedFiles(out.Changes)
 	}
 	return out, nil
+}
+
+// A file has one compact row/count per checkout and branch. Its saved diffs
+// remain separate children, including across pulls; no bytes are joined.
+func groupSavedFiles(changes []Change) []Change {
+	out := []Change{}
+	index := map[string]int{}
+	for _, c := range changes {
+		key := c.Path
+		if c.Checkout != nil {
+			key = c.Checkout.ID + ":" + c.Checkout.Branch + ":" + c.Path
+		}
+		if i, ok := index[key]; ok {
+			g := &out[i]
+			if len(g.Edits) == 0 {
+				g.Edits = []Change{*g}
+			}
+			g.Edits = append(g.Edits, c)
+			if g.Status != c.Status {
+				g.Status = "M"
+			}
+			if c.Added != nil {
+				n := *c.Added
+				if g.Added != nil {
+					n += *g.Added
+				}
+				g.Added = &n
+			}
+			if c.Removed != nil {
+				n := *c.Removed
+				if g.Removed != nil {
+					n += *g.Removed
+				}
+				g.Removed = &n
+			}
+			g.Binary = g.Binary || c.Binary
+		} else {
+			index[key] = len(out)
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// WithPrefix formats local Crew paths once for lists, child diffs and groups.
+func (c Change) WithPrefix(prefix string) Change {
+	c.Path = prefix + c.Path
+	if c.Checkout != nil && prefix != "" {
+		label := *c.Checkout
+		label.Root = strings.TrimSuffix(prefix, "/")
+		if c.Checkout.Root != "" {
+			label.Root += "/" + c.Checkout.Root
+		}
+		c.Checkout = &label
+	}
+	if c.Edits != nil {
+		edits := make([]Change, len(c.Edits))
+		for i, edit := range c.Edits {
+			edits[i] = edit.WithPrefix(prefix)
+		}
+		c.Edits = edits
+	}
+	return c
 }
 
 func (s Store) reviewVersion(comparison Comparison, file, side string) (string, error) {

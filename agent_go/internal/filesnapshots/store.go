@@ -74,6 +74,7 @@ type Record struct {
 	BeforeHeads map[string]string        `json:"-"`
 	BeforeGit   map[string]gitCheckpoint `json:"-"`
 	Review      *savedReview             `json:"-"`
+	diffPaths   []string
 }
 
 // CaptureStats explains partial captures without exposing file names or contents.
@@ -132,6 +133,7 @@ type Change struct {
 	Key      string         `json:"key,omitempty"`
 	Checkout *CheckoutLabel `json:"checkout,omitempty"`
 	At       string         `json:"at,omitempty"`
+	Edits    []Change       `json:"edits,omitempty"`
 }
 type Comparison struct {
 	UncapturedChanges int      `json:"uncaptured_changes"`
@@ -784,7 +786,8 @@ func (s Store) compareRaw(ctx context.Context, r Record, file string, allow func
 	for _, p := range r.BaselineSkipped {
 		skipped[p] = true
 	}
-	raw, err := s.command(ctx, "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-status", "-z", r.Before, r.After, "--").Output()
+	paths := append([]string{"--"}, r.diffPaths...)
+	raw, err := s.command(ctx, append([]string{"--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-status", "-z", r.Before, r.After}, paths...)...).Output()
 	if err != nil {
 		return out, err
 	}
@@ -795,7 +798,7 @@ func (s Store) compareRaw(ctx context.Context, r Record, file string, allow func
 			out.Changes = append(out.Changes, Change{Path: p, Status: string(parts[i])})
 		}
 	}
-	stats, err := s.command(ctx, "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--numstat", "-z", r.Before, r.After, "--").Output()
+	stats, err := s.command(ctx, append([]string{"--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--numstat", "-z", r.Before, r.After}, paths...)...).Output()
 	if err != nil {
 		return out, err
 	}

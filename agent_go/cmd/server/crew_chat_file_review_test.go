@@ -72,7 +72,7 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 		Total      int                      `json:"total_changes"`
 		Comparison filesnapshots.Comparison `json:"comparison"`
 	}
-	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 100 || len(page.Comparison.Changes) != 100 || page.Total != 107 {
+	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 100 || len(page.Comparison.Changes) != 100 || page.Total != 106 {
 		t.Fatalf("bounded file page: %v %s", err, body)
 	}
 	if strings.Join(page.History.RecentRepos, ",") != "last,first" {
@@ -84,8 +84,31 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 	pageParams.Set("offset", "100")
 	pageParams.Set("through_snapshot_id", filesnapshots.ID("last"))
 	_, body = call("alice", pageParams, true)
-	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 0 || len(page.Comparison.Changes) != 7 {
+	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 0 || len(page.Comparison.Changes) != 6 {
 		t.Fatalf("remaining files: %v %s", err, body)
+	}
+	var versions []filesnapshots.Change
+	for _, change := range page.Comparison.Changes {
+		if change.Path == "main.txt" {
+			versions = change.Edits
+		}
+	}
+	if len(versions) != 2 {
+		t.Fatalf("one file row must retain both exact saved diffs: %+v", versions)
+	}
+	keyParams := url.Values{"session_id": {"chat-a"}, "baseline_snapshot_id": {"start"}, "file": {"main.txt"}, "change_key": {versions[0].Key}}
+	if code, body := call("alice", keyParams, true); code != 200 || !strings.Contains(body, "+first") || !strings.Contains(body, "-zero") || strings.Contains(body, "+last") {
+		t.Fatalf("saved key opened another reply's diff: %d %s", code, body)
+	}
+	if code, _ := call("bob", keyParams, true); code != 404 {
+		t.Fatalf("saved key bypassed private chat access: %d", code)
+	}
+	if code, _ := call("alice", keyParams, false); code != 404 {
+		t.Fatalf("saved key bypassed revoked path access: %d", code)
+	}
+	keyParams.Set("file", "file-100.txt")
+	if code, _ := call("alice", keyParams, true); code != 404 {
+		t.Fatalf("saved key read a different path: %d", code)
 	}
 	params := url.Values{"session_id": {"chat-a"}, "file": {"main.txt"}}
 	if code, body := call("alice", params, true); code != 200 || !strings.Contains(body, "+last") || !strings.Contains(body, "-first") {
