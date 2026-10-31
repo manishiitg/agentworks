@@ -10,6 +10,7 @@ vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: strin
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
   return { data: { history: { recent_repos: state.recentRepos, replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
 }), post: vi.fn(async () => { state.reviewed = true; return { data: {} } }) }, agentApi: { getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: 'current contents' } })) }, workspaceApi: { get: vi.fn() } }))
+vi.mock('../chat/ReplyFileChanges', () => ({ ReplyFileChanges: () => null }))
 vi.mock('../chat/PRWatcherControls', () => ({ PRWatcherControls: ({ group, sessionId }: { group: { root: string }; sessionId: string }) => <button data-worktree={group.root} data-session={sessionId}>Watch PR</button> }))
 vi.mock('../../services/workspaceGit', () => ({ workspaceGitApi: { status: vi.fn(async () => []), diff: vi.fn(), branches: vi.fn(async () => []), branchCompare: vi.fn(async (_workspace: string, repo: string) => ({ branch: repo === 'app-wt' ? 'feature' : 'main', base: 'main', base_sha: 'abc1234', head_sha: 'def1234', unpushed: 0, files: [] })), branchDiff: vi.fn() } }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { exact: { sessionId: state.sessionId } } }) } }))
@@ -24,10 +25,31 @@ import { openChatFiles } from './chatFileNavigation'
 import { ReplyFileViewer } from './ReplyFileViewer'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { ChatFileReview } from './ChatFileReview'
+import { ReplyChangesPanel } from './ReplyChangesPanel'
 import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('opens every saved diff for this reply immediately, even when the chat has newer replies and a review point', async () => {
+    // PLAT-746-261: This reply used to stop at a filename list instead of showing its changes.
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    state.fileCount = 3; state.reviewed = true
+    vi.mocked(api.get).mockClear(); vi.mocked(workspaceGitApi.status).mockClear()
+    try {
+      await act(async () => root.render(<ReplyChangesPanel reference={{ workspacePath: 'Crew/example', sessionId: 'chat-a', snapshotId: 'saved-reply', latestSnapshotId: 'newer-reply' }} tabId="exact" onBrowse={() => undefined} />))
+      expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(3)
+      expect(host.textContent).toContain('old second')
+      expect(host.textContent).toContain('new second')
+      expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ op: 'snapshot_compare', file: 'file-2.ts', session_id: 'chat-a', snapshot_id: 'saved-reply', through_snapshot_id: 'saved-reply', baseline_snapshot_id: 'start' }) }))
+      const comparisons = vi.mocked(api.get).mock.calls.filter(([, options]) => options?.params?.op === 'snapshot_compare')
+      expect(comparisons.every(([, options]) => options?.params?.snapshot_id === 'saved-reply')).toBe(true)
+      expect(workspaceGitApi.status).not.toHaveBeenCalled()
+      await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'All chat changes')!.click())
+      expect(openChatFiles).toHaveBeenLastCalledWith('chat-a')
+    } finally { state.fileCount = 2; state.reviewed = false; await act(async () => root.unmount()); host.remove() }
+  })
+
   it('All chat changes includes earlier work even after a review point', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)

@@ -71,17 +71,17 @@ const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: referen
 // The server decides the card for this viewer: its groups (PR status once looked up) and actions.
 type ReplyCard = { groups: FileGroup[]; actions: ReplyCardAction[]; can_edit: boolean }
 
-export function ReplyFileChanges({ reference, panel = false }: { reference: ReplyFileChangesRef; panel?: boolean }) {
+export function ReplyFileChanges({ reference, panel = false, showFiles = true }: { reference: ReplyFileChangesRef; panel?: boolean; showFiles?: boolean }) {
   const mode = useProjectMode(reference.sessionId)
   const account = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = JSON.stringify([account, server, reference.workspacePath, reference.snapshotId])
   if (mode !== 'dev') return null
   if (reference.unavailable) return <p className="my-2 text-xs text-muted-foreground">{reference.unavailable}</p>
-  return <ScopedFileChanges key={`${scope}:${panel}`} reference={reference} panel={panel} />
+  return <ScopedFileChanges key={`${scope}:${panel}`} reference={reference} panel={panel} showFiles={showFiles} />
 }
 
-function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRef; panel: boolean }) {
+function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFileChangesRef; panel: boolean; showFiles: boolean }) {
   const summary = reference.summary
   // Only for a reply saved before summaries were sent with the event, and for the newest reply's "since your last review" line.
   const [result, setResult] = useState<ReviewResult | null>(null)
@@ -258,7 +258,7 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
               {group.new_checkout && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">new copy · {group.total_files} files</span>}
               {group.kind === 'repo' && group.branch && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">branch {group.branch}</span>}
             </div>
-            <ul className="mt-1 space-y-1">
+            {showFiles && <ul className="mt-1 space-y-1">
               {group.files.map(change => (
                 <li key={change.path} className="flex flex-wrap items-center gap-2">
                   <button type="button" className="min-w-0 break-all text-left font-mono text-xs" onClick={() => openChatFiles(reference.sessionId, { reference, change })}>{ownName(change.path, group.root)}</button>
@@ -268,7 +268,7 @@ function ScopedFileChanges({ reference, panel }: { reference: ReplyFileChangesRe
                 </li>
               ))}
               {group.more_count > 0 && <li className="text-xs text-muted-foreground">+ {group.more_count} more</li>}
-            </ul>
+            </ul>}
             {group.kind === 'repo' && group.pr?.state === 'unavailable' && <p className="mt-1 text-xs text-muted-foreground">Could not check PR status for {group.github_repo || group.name}. {canEdit ? <><button type="button" className="underline hover:text-foreground" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Change GitHub account</button><span aria-hidden> · </span><button type="button" className="underline hover:text-foreground" onClick={() => setGitHubRevision(value => value + 1)}>Try again</button></> : <>Ask the owner to check their GitHub connection.</>}</p>}
             {group.kind === 'repo' && group.pr?.state === 'connect_github' && canEdit && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Connect GitHub to see PR status</button>}
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
