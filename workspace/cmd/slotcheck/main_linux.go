@@ -4,7 +4,7 @@
 // service account, at the end of every deploy of a slot-enabled server and on its own (`./deploy.sh slotcheck
 // <server>`), and exits 1 when any check fails. See workspace/slotcheck.
 //
-//	slotcheck --docs <docs root> --app <product folder> [--runner <launcher>] [--test-slot slotNN] [--level basic|full]
+//	slotcheck --docs <docs root> --app <product folder> [--runner <launcher>] [--test-slot slotNN] [--level basic|full] [--programs a,b]
 //
 // The slotctl allow-list, launcher and slot table are the ones the service uses: AGENTWORKS_SLOTCTL_CONFIG,
 // AGENTWORKS_SLOTCTL and AGENTWORKS_SLOTS_FILE (defaults as in the slots package).
@@ -28,6 +28,7 @@ func main() {
 	runner := flag.String("runner", "", "the Landlock launcher (default: video-studio-landlock-runner beside this program)")
 	level := flag.String("level", slotcheck.LevelBasic, "basic (every deploy) or full (adds the live tmux, helper and workflow-chat checks)")
 	testSlot := flag.String("test-slot", "", "the dedicated test slot (default: the highest-numbered unassigned slot)")
+	programs := flag.String("programs", "", "comma-separated paths of the coding CLIs and node the agent service starts as slots")
 	flag.Parse()
 	if *docs == "" {
 		fmt.Fprintln(os.Stderr, "usage: slotcheck --docs <docs root> --app <product folder> [--runner <launcher>] [--test-slot slotNN] [--level basic|full]")
@@ -65,6 +66,7 @@ func main() {
 		TableOwnerUID:  0,
 		ServiceGIDs:    gids,
 		TestSlot:       *testSlot,
+		Programs:       splitList(*programs),
 		Run:            slotcheck.RunThroughShellTool,
 		RunCommand:     slotcheck.RunCommandThroughShellTool,
 		RunLauncherEnv: slotcheck.RunLauncherEnvProbe,
@@ -76,4 +78,14 @@ func main() {
 	if slotcheck.Failed(rows) {
 		os.Exit(1)
 	}
+}
+
+func splitList(value string) []string {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }

@@ -79,6 +79,8 @@ type Options struct {
 	TraversalRoot string
 	// TestSlot overrides the dedicated test slot (default: the highest-numbered unassigned slot account).
 	TestSlot string
+	// Programs are the coding CLIs and node the agent service starts as slots, as its PATH finds them.
+	Programs []string
 	Run      func(context.Context, Probe) (stdout, stderr string, err error)
 	// RunCommand runs one shell command for a probe the way Run does. When nil the confinement (deny) checks are skipped.
 	RunCommand func(context.Context, Probe, string) (stdout, stderr string, err error)
@@ -130,6 +132,18 @@ func Check(ctx context.Context, opts Options) []Row {
 		add(Row{Fail, "slotctl-allowed-exec", "-", "allowed_exec does not list the Landlock launcher " + runner, "re-run provision-slots.sh init (allowed_exec: " + filepath.Join(opts.AppDir, "releases", "*", "bin", filepath.Base(runner)) + ")"})
 	} else {
 		add(Row{Pass, "slotctl-allowed-exec", "-", "allowed_exec lists " + runner, ""})
+	}
+	// The Claude Agent SDK starts its node bridge as the slot, outside the launcher (PLAT-872-88).
+	for _, program := range opts.Programs {
+		if filepath.Base(program) != "node" {
+			continue
+		}
+		resolved, _ := filepath.EvalSymlinks(program)
+		if !cfg.AllowsProgram(program) && (resolved == "" || !cfg.AllowsProgram(resolved)) {
+			add(Row{Fail, "slotctl-allowed-node", "-", "allowed_exec does not list " + program + " (Claude as a slot fails: \"is not an allowed program\")", "re-run provision-slots.sh init, or add " + program + " to allowed_exec in " + opts.SlotctlConfig + " as root"})
+		} else {
+			add(Row{Pass, "slotctl-allowed-node", "-", "allowed_exec lists " + program, ""})
+		}
 	}
 
 	table, tableRows := checkTable(opts)
@@ -184,6 +198,9 @@ func Check(ctx context.Context, opts Options) []Row {
 			add(Row{Fail, "runner-reachable", slot, blocked + " is not " + map[string]string{"dir": "traversable", "file": "executable"}[kind] + " for " + slot, fix})
 		} else {
 			add(Row{Pass, "runner-reachable", slot, "every folder down to the launcher is traversable", ""})
+		}
+		for _, program := range opts.Programs {
+			rows = append(rows, programReachable(opts.TraversalRoot, program, slot, account))
 		}
 		user := table.Slots[slot]
 		probes := probesFor(cfg, docs, workflow, slot, user, account, projectRoots)
@@ -428,21 +445,45 @@ func firstBlocked(root, runner string, account Account) (string, string) {
 	return "", ""
 }
 
+// programReachable: a coding CLI or node must start as the slot: every folder down to it traversable and the
+// program readable and executable (PLAT-872-88: a Claude update left its package folders 0770 and every Claude turn
+// as a slot failed with "Claude Agent SDK failed").
+func programReachable(root, program, slot string, account Account) Row {
+	name := filepath.Base(program)
+	resolved, err := filepath.EvalSymlinks(program)
+	if err != nil {
+		return Row{Fail, "cli-reachable", slot, name + ": " + shortErr(err), "reinstall " + name}
+	}
+	if blocked, kind := firstBlocked(root, resolved, account); blocked != "" {
+		if kind == "dir" {
+			return Row{Fail, "cli-reachable", slot, blocked + " is not traversable for " + slot + " (" + name + ")", "chmod -R o+rX " + blocked}
+		}
+		return Row{Fail, "cli-reachable", slot, resolved + " is not executable for " + slot, "chmod o+rx " + resolved}
+	}
+	if info, err := os.Stat(resolved); err == nil && !permits(info, account, 0o4) {
+		return Row{Fail, "cli-reachable", slot, resolved + " is not readable for " + slot, "chmod o+rx " + resolved}
+	}
+	return Row{Pass, "cli-reachable", slot, name + " can start (" + resolved + ")", ""}
+}
+
 // allowed: the execute/search bit that applies to this account (owner, else group, else other). ACLs are not
 // used on the slot hosts (provision-slots.sh sets plain modes and groups).
-func allowed(info fs.FileInfo, account Account) bool {
+func allowed(info fs.FileInfo, account Account) bool { return permits(info, account, 0o1) }
+
+// permits: the given bit (4 read, 1 execute) in the class that applies to this account.
+func permits(info fs.FileInfo, account Account, bit fs.FileMode) bool {
 	mode := info.Mode().Perm()
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return mode&0o001 != 0
+		return mode&bit != 0
 	}
 	switch {
 	case int(st.Uid) == account.UID:
-		return mode&0o100 != 0
+		return mode&(bit<<6) != 0
 	case containsInt(account.GIDs, int(st.Gid)):
-		return mode&0o010 != 0
+		return mode&(bit<<3) != 0
 	default:
-		return mode&0o001 != 0
+		return mode&bit != 0
 	}
 }
 

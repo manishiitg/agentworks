@@ -13,9 +13,9 @@ import (
 // layout is a fake slot host: an app folder with a release and its launcher, a docs tree with a workflow and one
 // user's Crew and Code project, the slotctl allow-list, the slot table and a 0700 app-owned browser profile tree.
 type layout struct {
-	root, app, docs, runner, config, table, profiles, state string
-	opts                                                    Options
-	runs                                                    []Probe
+	root, app, docs, runner, config, table, profiles, state, claude, node string
+	opts                                                                  Options
+	runs                                                                  []Probe
 }
 
 const stranger = 424242 // a uid/gid nobody in the test tree has: "other" bits decide, as for a slot account
@@ -51,12 +51,21 @@ func newLayout(t *testing.T) *layout {
 	if err := os.WriteFile(l.runner, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The coding CLI and node the agent starts as slots, installed as the deploy leaves them.
+	l.claude = filepath.Join(l.app, "tools", "lib", "claude-code", "bin", "claude.exe")
+	l.node = filepath.Join(root, "usr", "bin", "node")
+	for _, program := range []string{l.claude, l.node} {
+		mustMkdir(t, filepath.Dir(program))
+		if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	l.writeConfig(t, []string{l.docs, filepath.Join(l.app, "slots")})
 	l.writeTable(t, map[string]string{"slot01": "u1"})
 	t.Setenv("AGENTWORKS_SLOT_PREFIX", "slot")
 	l.opts = Options{
 		DocsRoot: l.docs, AppDir: l.app, Runner: l.runner, SlotctlConfig: l.config, SlotTable: l.table,
-		TableOwnerUID: os.Getuid(), ServiceGIDs: []int{os.Getgid()}, TraversalRoot: root,
+		TableOwnerUID: os.Getuid(), ServiceGIDs: []int{os.Getgid()}, TraversalRoot: root, Programs: []string{l.claude, l.node},
 		Lookup: func(name string) (Account, bool) {
 			switch name {
 			case "slot01", "slot02", "slot50":
@@ -73,7 +82,7 @@ func (l *layout) writeConfig(t *testing.T, allowedCwd []string) {
 	t.Helper()
 	cfg := map[string]any{
 		"slot_prefix":     "slot",
-		"allowed_exec":    []string{filepath.Join(l.app, "releases", "*", "bin", "video-studio-landlock-runner"), "/usr/bin/tmux", "/usr/bin/chmod"},
+		"allowed_exec":    []string{filepath.Join(l.app, "releases", "*", "bin", "video-studio-landlock-runner"), "/usr/bin/tmux", "/usr/bin/chmod", l.node},
 		"allowed_cwd":     allowedCwd,
 		"slot_run_root":   filepath.Join(l.app, "slots", "run"),
 		"slot_state_root": l.state,
@@ -292,6 +301,13 @@ func TestEachKnownFailureIsDetected(t *testing.T) {
 			mustMkdir(t, filepath.Dir(l.opts.Runner))
 			_ = os.WriteFile(l.opts.Runner, []byte("x"), 0o755)
 		}, []string{"slotctl-allowed-exec/-"}},
+		{"Claude package folder 0770 after an update (PLAT-872-88)", func(t *testing.T, l *layout) {
+			mustChmod(t, filepath.Join(l.app, "tools", "lib", "claude-code"), 0o770)
+		}, []string{"cli-reachable/slot01", "cli-reachable/slot50"}},
+		{"allowed_exec does not list node (PLAT-872-88)", func(t *testing.T, l *layout) {
+			l.node = filepath.Join(l.root, "nowhere")
+			l.writeConfig(t, []string{l.docs, filepath.Join(l.app, "slots")})
+		}, []string{"slotctl-allowed-node/-"}},
 		{"slot table unreadable", func(t *testing.T, l *layout) {
 			_ = os.WriteFile(l.table, []byte("{not json"), 0o640)
 		}, []string{"slot-table-read/-"}},
