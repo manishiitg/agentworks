@@ -122,6 +122,7 @@ func newCommand(o *options) *cobra.Command {
 	root.SetIn(o.stdin)
 	root.SetOut(o.stdout)
 	root.SetErr(o.stderr)
+	root.AddCommand(openDesktopCommand())
 	root.PersistentFlags().StringVar(&o.serverURL, "server", "", "Hosted AgentWorks HTTPS URL (or AGENTWORKS_SERVER)")
 	root.PersistentFlags().StringVar(&o.configPath, "config", "", "Private connection config path")
 	root.PersistentFlags().StringVar(&o.guidanceSessionID, "guidance-session", "", "Guidance receipt for this conversation (omit for explicit fresh preparation)")

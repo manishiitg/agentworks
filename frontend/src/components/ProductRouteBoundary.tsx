@@ -54,7 +54,9 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     }
     const homeRequested = window.location.pathname === '/home'
     // Resolve the permitted workspace normally, while Home remains the page.
-    let requested = homeRequested ? '/' : window.location.pathname + window.location.search
+    // Root query parameters (desktop cache version, connection callbacks) do
+    // not select a product. Keep them in the URL for App, but resolve the root.
+    let requested = homeRequested || window.location.pathname === '/' ? '/' : window.location.pathname + window.location.search
     // This library has no selected product or new product grant. Its ordinary
     // authenticated API decides which publications the person can discover.
     if (window.location.pathname === '/dashboards') {

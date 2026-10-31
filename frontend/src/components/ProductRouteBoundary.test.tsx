@@ -107,6 +107,8 @@ describe('server workspace return', () => {
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
     vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 0, last: null, recent: [], destination: existing ? { surface: 'work', id: 'existing', workspace_path: 'Code/existing' } : { surface: 'work' }, first_visit: !existing })
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
+    // PLAT-856-434: the packaged app adds this query on every initial launch.
+    window.history.replaceState({}, '', '/?runloop_version=1.2.3')
     mocks.resolve.mockResolvedValue(vi.fn())
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {

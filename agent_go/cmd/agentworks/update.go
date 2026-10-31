@@ -177,6 +177,9 @@ func updateFetch(url string) ([]byte, error) {
 }
 
 func runUpdate(o *options, check, force, switchSource bool) (resultErr error) {
+	if bundledDesktop() != "" && !check {
+		return fmt.Errorf("this CLI is bundled with AgentWorks; open the app and choose Check for Updates to update both together")
+	}
 	server, err := updateServer(o)
 	if err != nil {
 		return err

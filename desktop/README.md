@@ -2,6 +2,18 @@
 
 Electron shell for the standalone Mac app. It bundles the `agent-server` and `workspace-server` binaries, managing their lifecycle automatically.
 
+The combined installer also installs the bundled `agentworks` CLI. Release
+packages include `mcpbridge`, `tmux` and its native libraries; end users do not
+need Go or Homebrew to install AgentWorks. Provider CLIs and their sign-ins are
+configured separately in the app. Source development still uses
+`../run_agentworks` and Vite hot reload. The optional npm launcher delegates its
+`dev` command to that same script. See [local installer testing](../packages/app/README.md).
+
+Before packaging a release, run `bash scripts/build-desktop-helpers.sh` from
+the repository root on the target Mac architecture. CI does this before
+electron-builder. Publish each DMG with its `.sha256` file. An existing app is
+only replaced with `--update`; `agentworks open` opens the app without updating.
+
 The local app offers workflows (Goals) and Crew. Code, Relays, Brain, and Vault are server products and are excluded from local installations. The
 DMG neither includes nor starts a Vault sidecar. Project MCPs and secrets remain
 available within workflows and Crew. Existing workspace and Vault data are

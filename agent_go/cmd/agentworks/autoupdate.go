@@ -238,6 +238,11 @@ func shortHost(server string) string {
 // runAutoUpdate is one check: the default login's server may install; any other server the person is attached to only
 // produces a notice, and never a downgrade.
 func runAutoUpdate(o *options) error {
+	// The app owns its bundled CLI version, even if an old standalone CLI had
+	// opted into automatic updates. Never mutate a signed application bundle.
+	if bundledDesktop() != "" {
+		return nil
+	}
 	root, err := agentworksclient.DefaultLocalBridgeRoot()
 	if err != nil {
 		return err

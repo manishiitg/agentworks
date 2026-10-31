@@ -2,7 +2,7 @@
   "name": "runloop-desktop",
   "version": "1.25.135",
   "description": "Standalone Mac app for AgentWorks",
-  "repository": "github:manishiitg/coding-agent-loop",
+  "repository": "github:manishiitg/agentworks",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -50,6 +50,22 @@
       {
         "from": "../agent_go/static",
         "to": "static"
+      },
+      {
+        "from": "resources/bin",
+        "to": "bin"
+      },
+      {
+        "from": "resources/install.sh",
+        "to": "install.sh"
+      },
+      {
+        "from": "resources/tmux-build.json",
+        "to": "tmux-build.json"
+      },
+      {
+        "from": "resources/licenses",
+        "to": "licenses"
       }
     ],
     "files": [

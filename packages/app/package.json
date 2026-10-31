@@ -1,0 +1,12 @@
+{
+  "name": "@agentworks/app",
+  "version": "0.1.0",
+  "description": "Install and open the AgentWorks Mac app and CLI",
+  "type": "module",
+  "bin": { "agentworks-app": "bin/app.mjs" },
+  "files": ["bin", "install.sh", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "scripts": { "prepack": "node prepare.mjs", "test": "node --test test/*.test.mjs" },
+  "repository": { "type": "git", "url": "https://github.com/manishiitg/agentworks.git", "directory": "packages/app" },
+  "license": "SEE LICENSE IN LICENSE"
+}
