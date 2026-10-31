@@ -11,7 +11,7 @@ const computerUseDescription = "Use apps on the owner's local computer from this
 
 func computerUseProperties() map[string]any {
 	return map[string]any{
-		"action":  map[string]any{"type": "string", "enum": []string{"status", "install", "permissions", "enable", "disable", "stop", "guide", "run"}},
+		"action":  map[string]any{"type": "string", "enum": []any{"status", "install", "permissions", "enable", "disable", "stop", "guide", "run"}},
 		"command": map[string]any{"type": "string", "description": "agent-desktop subcommand; for guide use platform or a command name"},
 		"args":    map[string]any{"type": "array", "maxItems": 64, "items": map[string]any{"type": "string"}, "description": "Literal CLI arguments; AgentWorks manages the session and screenshot destinations"},
 		"headed":  map[string]any{"type": "boolean", "description": "Allow physical input only when the person asks for it"},
@@ -54,7 +54,7 @@ func externalComputerUseDefinition(add func(string, string, bool, bool, map[stri
 	// computerUseAllowed so hosted and non-owner clients never receive it.
 	props := computerUseProperties()
 	props["crew_id"] = externalString("Your local Crew ID from workspace action=list")
-	props["action"] = map[string]any{"type": "string", "enum": []string{"status", "install", "permissions", "enable", "disable", "stop", "guide"}}
+	props["action"] = map[string]any{"type": "string", "enum": []any{"status", "install", "permissions", "enable", "disable", "stop", "guide"}}
 	add("computer_use", "Manage Computer use for your own local Crew: status, install, permissions, enable, disable, stop or guide. Same setup and Stop as the Computer use panel. Desktop actions run only in your interactive Crew chat (including your phone/website relay), not through a saved personal MCP token. Enabling gives full control of this computer, including Terminal and clipboard. Hosted servers and shared users have no desktop access.", true, false, props, "crew_id", "action")
 }
 func (api *StreamingAPI) externalComputerUse(w http.ResponseWriter, r *http.Request, args map[string]any) {
