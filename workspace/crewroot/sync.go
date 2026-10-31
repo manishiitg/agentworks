@@ -3,7 +3,9 @@ package crewroot
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -11,6 +13,7 @@ import (
 // SyncBinding is platform state, never a file supplied by the working tree.
 // IDs on different servers are deliberately not treated as interchangeable.
 type SyncBinding struct {
+	SplitFiles    bool   `json:"split_files,omitempty"`
 	PairID        string `json:"pair_id"`
 	Side          string `json:"side"`
 	Editing       string `json:"editing"`
@@ -18,6 +21,8 @@ type SyncBinding struct {
 	PeerProjectID string `json:"peer_project_id"`
 	PeerServer    string `json:"peer_server,omitempty"`
 	UpdatedAt     string `json:"updated_at,omitempty"`
+	PendingAction string `json:"pending_action,omitempty"`
+	LastTransfer  string `json:"last_transfer,omitempty"`
 }
 
 func syncPath(id string) (string, error) {
@@ -93,7 +98,7 @@ func CheckSyncWrite(docs, physical string) error {
 	if err != nil || !locked {
 		return err
 	}
-	if Within(roots.Private, physical) || Within(filepath.Join(roots.Resources, "outputs"), physical) {
+	if Within(roots.Private, physical) || roots.syncRuntimePath(physical) {
 		return nil
 	}
 	return fmt.Errorf("project files are being edited on the other computer; use Work on this Mac or Work on server to bring editing here")
@@ -124,12 +129,14 @@ func SyncWriteGrants(docs string, writes []string) []string {
 			if e != nil {
 				continue
 			}
-			if locked && !Within(roots.Private, physical) && !Within(filepath.Join(roots.Resources, "outputs"), physical) {
+			if locked && !Within(roots.Private, physical) && !roots.syncRuntimePath(physical) {
 				if physical == roots.Resources {
-					if filepath.IsAbs(grant) {
-						out = append(out, filepath.Join(roots.Resources, "outputs"))
-					} else {
-						out = append(out, roots.Virtual+"/outputs/")
+					for _, runtime := range SyncRuntimeDirectories {
+						if filepath.IsAbs(grant) {
+							out = append(out, filepath.Join(roots.Resources, runtime))
+						} else {
+							out = append(out, roots.Virtual+"/"+runtime+"/")
+						}
 					}
 				}
 				continue
@@ -138,4 +145,44 @@ func SyncWriteGrants(docs string, writes []string) []string {
 		out = append(out, grant)
 	}
 	return out
+}
+
+func SyncContentAllowed(key string, directory bool) bool {
+	area, rel, ok := strings.Cut(key, "/")
+	if !ok || (area != "files" && area != "resources") {
+		return false
+	}
+	if _, err := publication.CleanPath(rel); err != nil {
+		return false
+	}
+	if area == "resources" {
+		first := strings.SplitN(rel, "/", 2)[0]
+		switch first {
+		case "_files", "outputs", "db", "assets", "reports", "tool_output_folder", ".calls", "shared", "runs", "planning", "knowledgebase", "conversation", "costs", "human_inputs", "triggers",
+			"product.json", "workflow.json", "functions.json", "schedules.json", "webhooks.json", "product-schedules.json", "schedule-runs.json":
+			return false
+		}
+		if rel == "db/db.sqlite" || strings.HasPrefix(rel, "db/db.sqlite-") {
+			return false
+		}
+	}
+	// Git's ignore/attribute files are ordinary project content, never .git state.
+	if path.Base(rel) == ".gitignore" || path.Base(rel) == ".gitattributes" {
+		return true
+	}
+	if directory {
+		return !publication.ExcludedDirectory(rel)
+	}
+	return !publication.Excluded(rel)
+}
+
+var SyncRuntimeDirectories = []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"}
+
+func (r Roots) syncRuntimePath(physical string) bool {
+	for _, name := range SyncRuntimeDirectories {
+		if Within(filepath.Join(r.Resources, name), physical) {
+			return true
+		}
+	}
+	return false
 }

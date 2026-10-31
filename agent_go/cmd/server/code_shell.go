@@ -116,7 +116,7 @@ func (api *StreamingAPI) codeShellFolderGuard(ctx context.Context, userID, root 
 	grantRead, grantWrite, _, _ := workFolderGuardInputs(ctx)
 	reads = appendUniqueStrings(reads, grantRead...)
 	writes = appendUniqueStrings(writes, grantWrite...)
-	if roots, found, err := localCrewRoots(root); found && err == nil {
+	if roots, found, err := crewStorageRoots(root); found && err == nil {
 		reads = append(reads, roots.FilesPath())
 		writes = append(writes, roots.FilesPath())
 	}

@@ -2,22 +2,21 @@ package workflowfiles
 
 import (
 	"context"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // LifecycleRequest is a trusted service request. Folder deletion is empty-only;
 // moves never overwrite. Whole-tree checks forbid relocating protected files
 // or bypassing child exclusions in a connection's guard.
 type LifecycleRequest struct {
-	Root string `json:"root"`
-	Path string `json:"path"
-"path/filepath"
-"github.com/manishiitg/coding-agent-loop/workspace/crewroot"`
+	Root             string       `json:"root"`
+	Path             string       `json:"path"`
 	Destination      string       `json:"destination,omitempty"`
 	Action           string       `json:"action"`
 	ExpectedRevision string       `json:"expected_revision,omitempty"`

@@ -22,27 +22,7 @@ func (api *StreamingAPI) registerLaptopAccessChatTool(registrar definitionToolRe
 		return nil
 	}
 	check := func(ctx context.Context) (*UserClaims, error) {
-		caller := GetUserFromContext(ctx)
-		if caller == nil {
-			caller = claims
-		}
-		if !websiteDeviceClaims(caller) || caller.UserID != claims.UserID {
-			return nil, errors.New("Laptop settings belong to your project's Builder chat")
-		}
-		current, err := accessTokenClaims(accesstokens.Token{UserID: caller.UserID, Username: caller.Username, Email: caller.Email, Provider: caller.Provider})
-		if err != nil || !userAccessForClaims(current).CanEdit {
-			return nil, errors.New("Your account no longer has edit access")
-		}
-		api.lastQueryMu.RLock()
-		req := api.lastQueryRequests[sessionID]
-		api.lastQueryMu.RUnlock()
-		if req.userID != caller.UserID || api.isSyntheticTurn(sessionID) || !laptopBuilderTurn(req, laptopProfileForRequest(req)) {
-			return nil, errors.New("Laptop settings need your own interactive chat turn")
-		}
-		if !laptopProjectAllowed(ctx, caller, req.SelectedFolder) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
-			return nil, errors.New("Only a project Builder can change its laptop settings")
-		}
-		return caller, nil
+		return api.interactiveLaptopOwner(ctx, claims, sessionID, root)
 	}
 	gate.Declare("manage_laptop_access")
 	return registrar.RegisterCustomToolWithTimeout("manage_laptop_access",
@@ -120,4 +100,29 @@ func listIntArg(args map[string]interface{}, key string) int {
 		}
 	}
 	return 0
+}
+
+// Shared by laptop tools and explicit paired-project sync; no sender or schedule inherits it.
+func (api *StreamingAPI) interactiveLaptopOwner(ctx context.Context, claims *UserClaims, sessionID, root string) (*UserClaims, error) {
+	caller := GetUserFromContext(ctx)
+	if caller == nil {
+		caller = claims
+	}
+	if !websiteDeviceClaims(caller) || caller.UserID != claims.UserID {
+		return nil, errors.New("Laptop settings belong to your project's Builder chat")
+	}
+	current, err := accessTokenClaims(accesstokens.Token{UserID: caller.UserID, Username: caller.Username, Email: caller.Email, Provider: caller.Provider})
+	if err != nil || !userAccessForClaims(current).CanEdit {
+		return nil, errors.New("Your account no longer has edit access")
+	}
+	api.lastQueryMu.RLock()
+	req := api.lastQueryRequests[sessionID]
+	api.lastQueryMu.RUnlock()
+	if req.userID != caller.UserID || api.isSyntheticTurn(sessionID) || !laptopBuilderTurn(req, laptopProfileForRequest(req)) {
+		return nil, errors.New("Laptop settings need your own interactive chat turn")
+	}
+	if !laptopProjectAllowed(ctx, caller, req.SelectedFolder) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
+		return nil, errors.New("Only a project Builder can change its laptop settings")
+	}
+	return caller, nil
 }

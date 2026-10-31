@@ -111,7 +111,7 @@ func codingAgentClaudeCodeChatTransport(provider string) string {
 
 func codingAgentWorkspaceWorkingDir(workspaceRelativeFolder string) string {
 	rel := strings.TrimSpace(workspaceRelativeFolder)
-	if roots, bound, err := localCrewRoots(rel); bound && err == nil {
+	if roots, bound, err := crewStorageRoots(rel); bound && err == nil {
 		if rel == roots.Virtual {
 			return roots.Files
 		}

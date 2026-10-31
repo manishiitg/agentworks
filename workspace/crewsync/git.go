@@ -24,7 +24,7 @@ type GitSnapshot struct {
 }
 
 func gitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
-	base := []string{"-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "protocol.file.allow=always", "-C", root}
+	base := []string{"-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "protocol.file.allow=always", "-C", root}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	for _, item := range os.Environ() {
 		if !strings.HasPrefix(item, "GIT_") {
@@ -79,7 +79,7 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 	args := []string{"bundle", "create", archive, "HEAD"}
 	// One current branch is transferred. Other local branches/remotes remain
 	// local, preserving the user's existing repository rather than mirroring it.
-	if before != "" && gitCommand(ctx, root, "cat-file", "-e", before+"^{commit}").Run() == nil {
+	if before != "" && gitCommand(ctx, root, "merge-base", "--is-ancestor", before, out.Head).Run() == nil {
 		args = append(args, "^"+before)
 	}
 	if err = gitCommand(ctx, root, args...).Run(); err != nil {

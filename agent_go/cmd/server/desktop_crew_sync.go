@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +22,10 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 	if !desktopConnectionGate(w, r) {
 		return
 	}
+	api.runDesktopCrewSync(w, r, true)
+}
+
+func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Request, allowPair bool) {
 	claims := GetUserFromContext(r.Context())
 	roots, err := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
 	if err != nil {
@@ -74,6 +80,27 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 			return crewSyncReply{}, fmt.Errorf("cannot reach the server; your local files are unchanged")
 		}
 		defer response.Body.Close()
+		if token := response.Header.Get("X-Renewed-Token"); token != "" {
+			desktopConnectionsMu.Lock()
+			records, renewErr := readDesktopConnections(claims.UserID)
+			if renewErr == nil {
+				for i := range records {
+					if records[i].ID == connection.ID && records[i].Token == connection.Token {
+						records[i].Token = token
+					}
+				}
+				renewErr = writeDesktopConnections(claims.UserID, records)
+			}
+			desktopConnectionsMu.Unlock()
+			if renewErr != nil {
+				return crewSyncReply{}, renewErr
+			}
+			connection.Token = token
+		}
+		if response.StatusCode == http.StatusUnauthorized {
+			return crewSyncReply{}, fmt.Errorf("reconnect this server from Connected servers, then retry Project sync")
+		}
+
 		if response.StatusCode != 200 {
 			var failure struct {
 				Error struct {
@@ -84,7 +111,7 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 			return crewSyncReply{}, fmt.Errorf("server sync failed: %s", firstNonEmptyTrimmed(failure.Error.Message, http.StatusText(response.StatusCode)))
 		}
 		var out crewSyncReply
-		e = json.NewDecoder(io.LimitReader(response.Body, 360<<20)).Decode(&out)
+		e = json.NewDecoder(io.LimitReader(response.Body, 800<<20)).Decode(&out)
 		return out, e
 	}
 	fail := func(err error) { externalError(w, 409, "sync_unavailable", err.Error()) }
@@ -105,6 +132,10 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if binding == nil {
+		if !allowPair {
+			fail(fmt.Errorf("open this Crew in the Mac app and choose a server in Project sync first"))
+			return
+		}
 		if input.Action != "update" && input.Action != "server" {
 			fail(fmt.Errorf("update the server before transferring work"))
 			return
@@ -115,7 +146,7 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 			return
 		}
 		pair := uuid.NewString()
-		remote, e := call("new", crewSyncRequest{Action: "create", PairID: pair, SourceID: roots.ID, Name: manifest.displayTitle()})
+		remote, e := call("new", crewSyncRequest{Action: "create", SplitFiles: roots.SeparateFiles(), PairID: pair, SourceID: roots.ID, Name: manifest.displayTitle()})
 		if e != nil {
 			fail(e)
 			return
@@ -124,7 +155,7 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 			fail(fmt.Errorf("server did not return the new Crew"))
 			return
 		}
-		binding = &crewroot.SyncBinding{PairID: pair, Side: "local", Editing: "local", ConnectionID: connection.ID, PeerProjectID: remote.ProjectID, PeerServer: connection.Server}
+		binding = &crewroot.SyncBinding{SplitFiles: roots.SeparateFiles(), PairID: pair, Side: "local", Editing: "local", ConnectionID: connection.ID, PeerProjectID: remote.ProjectID, PeerServer: connection.Server}
 		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 			fail(err)
 			return
@@ -137,44 +168,89 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 	}
 	switch input.Action {
 	case "update", "server":
-		remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "status"})
+		pendingPath, e := crewSyncManifestPath(roots.ID)
 		if e != nil {
 			fail(e)
 			return
 		}
-		if remote.Binding == nil || remote.Binding.PairID != binding.PairID || remote.Binding.Editing != "local" {
-			fail(fmt.Errorf("editing is on the server; choose Work on this Mac to bring its changes back"))
-			return
-		}
-		snapshot, e := captureCrewSyncSnapshot(r.Context(), roots, previous)
-		if e != nil {
-			fail(e)
-			return
-		}
-		next := "local"
-		if input.Action == "server" {
-			next = "server"
-		}
-		// Relinquish local editing before granting server editing. A failed
-		// transfer is retryable without making both copies writable.
-		if next == "server" {
-			binding.Editing = "server"
-			if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
-				fail(err)
+		pendingPath += ".pending"
+		var transfer crewSyncRequest
+		if binding.PendingAction != "" {
+			if input.Action != binding.PendingAction {
+				fail(fmt.Errorf("finish the interrupted %s transfer first", binding.PendingAction))
+				return
+			}
+			data, e := os.ReadFile(pendingPath)
+			if e != nil || json.Unmarshal(data, &transfer) != nil {
+				fail(fmt.Errorf("the pending transfer is unavailable; restore its private sync record before continuing"))
+				return
+			}
+		} else {
+			remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "status"})
+			if e != nil {
+				fail(e)
+				return
+			}
+			if remote.Binding == nil || remote.Binding.PairID != binding.PairID || remote.Binding.Editing != "local" {
+				fail(fmt.Errorf("editing is on the server; choose Work on this Mac to bring its changes back"))
+				return
+			}
+			if input.Action == "server" {
+				if e := api.crewSyncIdle(roots); e != nil {
+					fail(e)
+					return
+				}
+			}
+			snapshot, e := captureCrewSyncSnapshot(r.Context(), roots, previous)
+			if e != nil {
+				fail(e)
+				return
+			}
+			next := "local"
+			if input.Action == "server" {
+				next = "server"
+			}
+			transfer = crewSyncRequest{Action: "push", PairID: binding.PairID, Editing: next, Snapshot: &snapshot, TransferID: uuid.NewString()}
+			if e = fsutil.WriteJSONAtomic(pendingPath, transfer, 0600); e != nil {
+				fail(e)
+				return
+			}
+			binding.PendingAction = input.Action
+			binding.Editing = next
+			if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
+				fail(e)
 				return
 			}
 		}
-		remote, e = call(binding.PeerProjectID, crewSyncRequest{Action: "push", PairID: binding.PairID, Editing: next, Snapshot: &snapshot})
+		remote, e := call(binding.PeerProjectID, transfer)
 		if e != nil {
 			fail(e)
 			return
 		}
-		if err = saveCrewSyncSnapshot(roots.ID, snapshot); err != nil {
-			fail(err)
+		if remote.Binding == nil || remote.Binding.PairID != binding.PairID || remote.Binding.LastTransfer != transfer.TransferID {
+			fail(fmt.Errorf("server did not confirm this transfer; retry it"))
+			return
+		}
+		if e = saveCrewSyncSnapshot(roots.ID, *transfer.Snapshot); e != nil {
+			fail(e)
 			return
 		}
 		binding.Editing = remote.Binding.Editing
+		binding.PendingAction = ""
 	case "local":
+		if binding.PendingAction != "" && binding.PendingAction != "local" {
+			fail(fmt.Errorf("finish the interrupted transfer first"))
+			return
+		}
+		if err := api.crewSyncIdle(roots); err != nil {
+			fail(err)
+			return
+		}
+		binding.PendingAction = "local"
+		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
+			fail(err)
+			return
+		}
 		remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "pull", PairID: binding.PairID})
 		if e != nil {
 			fail(e)
@@ -197,6 +273,7 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 			return
 		}
 		binding.Editing = "local"
+		binding.PendingAction = ""
 	default:
 		fail(fmt.Errorf("choose Update server, Work on server, or Work on this Mac"))
 		return
@@ -205,6 +282,9 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 		fail(err)
 		return
+	}
+	if p, e := crewSyncManifestPath(roots.ID); e == nil {
+		_ = os.Remove(p + ".pending")
 	}
 	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
 }
