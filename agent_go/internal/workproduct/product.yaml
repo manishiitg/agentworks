@@ -13,7 +13,7 @@ prompt:
 # Run replaces that bundle, while keeping the person's selected domain skills.
 chat:
   builder:
-    external_tools: [copy_project_files, get_file_link, manage_crew_commands, crew_files, crew_skills, crew_mcp, crew_folders, crew_references, crew_diagnostics, crew_execution, crew_integrations, crew_owners]
+    external_tools: [copy_project_files, get_file_link, computer_use, manage_crew_commands, crew_files, crew_skills, crew_mcp, crew_folders, crew_references, crew_diagnostics, crew_execution, crew_integrations, crew_owners]
     prompt: {file: prompts/system-prompt.md}
     skills: [chat-visuals, finance-work, customer-work, growth-work, sales-work, team-work, software-work, store-work, crew-builder, crew-agents, crew-laptop, panel-dashboard, panel-data, panel-plan, panel-settings, panel-runs, panel-automations, panel-channels, panel-access]
   run:
