@@ -59,7 +59,7 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
   const accessibility = status?.permissions?.data?.accessibility?.state
   const ready = accessibility === 'granted' || status?.platform !== 'darwin' && status?.installed
   return <section aria-label="Computer use" className="max-w-xl space-y-4 text-sm">
-    <p className="text-muted-foreground">Let this Crew see and use apps on your computer.</p>
+    <p className="text-muted-foreground">Give this Crew control of this computer, including apps, Terminal and clipboard.</p>
     {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
     {!status && !error && <p role="status">Checking Computer use…</p>}
     {status && <div className="space-y-4 rounded-lg border border-border p-4">

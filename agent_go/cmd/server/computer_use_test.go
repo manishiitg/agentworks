@@ -78,6 +78,13 @@ func TestComputerUseLocalOwnerAndPrivateCaptures(t *testing.T) {
 	if response.Code < 400 {
 		t.Fatal("setup endpoint dispatched an app action")
 	}
+	// A personal MCP config loaded by an unattended CLI cannot become desktop authority.
+	request = adminRequest(http.MethodPost, "/", "", owner, nil)
+	response = httptest.NewRecorder()
+	f.api.externalComputerUse(response, request, map[string]any{"crew_id": "dashboard-team", "action": "run", "command": "snapshot"})
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "interactive_chat_required") {
+		t.Fatalf("personal MCP desktop run: status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 // PLAT-856: two chats share one physical desktop; Stop disables access and cancels its current command.
@@ -146,5 +153,22 @@ func TestComputerUseRejectsSessionAndScreenshotPathOverrides(t *testing.T) {
 	args, err := computerUseArguments(computerUseInput{Command: "type", Args: []string{"@snapshot:e1", "literal $(text); value"}})
 	if err != nil || args[len(args)-1] != "literal $(text); value" {
 		t.Fatalf("literal arguments changed: %v, %v", args, err)
+	}
+}
+
+// Desktop helpers need OS/display context, never platform secrets or AI credentials.
+func TestComputerUseEnvironmentExcludesCredentials(t *testing.T) {
+	for _, key := range []string{"SECRET_EXAMPLE", "ANTHROPIC_API_KEY", "AGENTWORKS_SERVER_TOKEN", "AGENT_DESKTOP_SESSION"} {
+		t.Setenv(key, "must-not-pass")
+	}
+	t.Setenv("LANG", "en_US.UTF-8")
+	env := computerUseEnvironment("/private/desktop-chat", "/runtime/bin/agent-desktop")
+	for _, entry := range env {
+		if strings.Contains(entry, "must-not-pass") {
+			t.Fatalf("forwarded private environment key %s", strings.SplitN(entry, "=", 2)[0])
+		}
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "LANG=en_US.UTF-8") || !strings.Contains(strings.Join(env, "\n"), "AGENT_DESKTOP_HOME=/private/desktop-chat") {
+		t.Fatal("missing desktop OS/session context")
 	}
 }

@@ -138,10 +138,17 @@ func computerUseEnvironment(home, binary string) []string {
 	env := []string{}
 	for _, v := range os.Environ() {
 		key, _, _ := strings.Cut(v, "=")
-		if strings.HasPrefix(key, "AGENT_DESKTOP_") || key == "RUST_LOG" {
-			continue
+		// Native desktop IPC/display context only; never AI, platform or secret env.
+		allowed := strings.HasPrefix(key, "LC_")
+		switch key {
+		case "PATH", "HOME", "USER", "LOGNAME", "LANG", "TMPDIR", "TMP", "TEMP",
+			"SystemRoot", "WINDIR", "USERPROFILE", "LOCALAPPDATA", "APPDATA",
+			"DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY":
+			allowed = true
 		}
-		env = append(env, v)
+		if allowed {
+			env = append(env, v)
+		}
 	}
 	env = append(env, "AGENT_DESKTOP_HOME="+home)
 	if runtime.GOOS == "darwin" {
