@@ -17,7 +17,7 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
     </button>
     {remote && serverId && <button type="button" aria-label={`Server: ${location || 'Connected server'}`} title={location || 'Connected server'}
       onClick={() => openConnectedServers('', serverId)} className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <ServerIdentityIcon connectionId={serverId} hidden className={`h-3 w-3 ${serverColor || 'text-sky-600 dark:text-sky-400'}`} />
+      <ServerIdentityIcon connectionId={serverId} hidden className={`h-3 w-3 ${serverColor || 'text-slate-500/75 dark:text-slate-400/75'}`} />
     </button>}
   </div>
 }

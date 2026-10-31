@@ -18,27 +18,18 @@ export function connectionDisplayName(connection: DesktopConnection): string {
 export const connectedProjectKey = (connection: string, kind: string, id: string) => JSON.stringify([connection, kind, id])
 
 const serverIconPalette = [
-  'text-sky-600 dark:text-sky-400',
-  'text-violet-600 dark:text-violet-400',
-  'text-emerald-600 dark:text-emerald-400',
-  'text-amber-600 dark:text-amber-400',
-  'text-rose-600 dark:text-rose-400',
-  'text-cyan-600 dark:text-cyan-400',
-  'text-fuchsia-600 dark:text-fuchsia-400',
-  'text-orange-600 dark:text-orange-400',
+  'text-slate-500/75 dark:text-slate-400/75',
+  'text-violet-500/65 dark:text-violet-300/65',
+  'text-sky-500/65 dark:text-sky-300/65',
+  'text-emerald-500/65 dark:text-emerald-300/65',
+  'text-amber-500/65 dark:text-amber-300/65',
+  'text-rose-500/65 dark:text-rose-300/65',
+  'text-cyan-500/65 dark:text-cyan-300/65',
+  'text-orange-500/65 dark:text-orange-300/65',
 ]
 
-/** Use server identity, not its editable name or position in the filtered list. */
+/** Stable server order keeps the first marker neutral and other markers softly colored. */
 export function serverIconColors(connections: DesktopConnection[]): Record<string, string> {
-  const colors: Record<string, string> = {}
-  const used = new Set<number>()
-  for (const server of [...new Set(connections.map(connection => connection.server).filter(Boolean))].sort()) {
-    let hash = 0
-    for (const char of server) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0
-    let index = hash % serverIconPalette.length
-    for (let attempt = 0; attempt < serverIconPalette.length && used.has(index); attempt++) index = (index + 1) % serverIconPalette.length
-    used.add(index)
-    colors[server] = serverIconPalette[index]
-  }
-  return colors
+  const servers = [...new Set(connections.map(connection => connection.server).filter(Boolean))].sort()
+  return Object.fromEntries(servers.map((server, index) => [server, serverIconPalette[index % serverIconPalette.length]]))
 }
