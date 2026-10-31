@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, CalendarClock, RefreshCw } from 'lucide-react'
+import { CalendarClock, RefreshCw } from 'lucide-react'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -70,8 +70,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       ? <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
       : item.id === 'browser' ? <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)}/>
       : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.label}</Row>
-    return <WorkspaceContextCard title="Full menu">
-      <button type="button" onClick={() => setFullMenuScope(undefined)} className="inline-flex items-center gap-2 rounded px-1 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-3.5 w-3.5"/>Back to workspace</button>
+    return <WorkspaceContextCard title="Full menu" onBack={() => setFullMenuScope(undefined)}>
       {CREW_MENU_GROUPS.map(group => {
         const items = inventory.filter(item => item.group === group)
         if (!items.length) return null

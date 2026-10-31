@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { ChevronRight, List, Search, type LucideIcon } from 'lucide-react'
-export function WorkspaceContextCard({ children, title, summary, subtle = false, onFullMenu }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean; onFullMenu?: () => void }) {
+import { ArrowLeft, ChevronRight, List, Search, type LucideIcon } from 'lucide-react'
+export function WorkspaceContextCard({ children, title, summary, subtle = false, onFullMenu, onBack }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean; onFullMenu?: () => void; onBack?: () => void }) {
   return (
     <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
       <aside
@@ -8,7 +8,7 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
         className={`flex max-h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm ${subtle ? 'bg-muted/30 dark:bg-zinc-900/70' : 'bg-muted/70 dark:bg-zinc-800/80'}`}
       >
         {(title || summary) && <header className="shrink-0 border-b border-border pb-3">
-          {title && <h2 className="text-sm font-semibold text-foreground">{title}</h2>}
+          {title && <h2 className="text-sm font-semibold text-foreground">{onBack ? <button type="button" aria-label="Back to workspace" title="Back to workspace" onClick={onBack} className="inline-flex min-h-8 items-center gap-2 rounded hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft aria-hidden="true" className="h-3.5 w-3.5"/>{title}</button> : title}</h2>}
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
         <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
