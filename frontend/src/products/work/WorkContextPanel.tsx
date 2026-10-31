@@ -41,8 +41,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   useEffect(() => {
     if (!canReadSharing) return
     const controller = new AbortController()
-    void api.post<{ can_share: boolean; mode?: string; people?: { id: string }[]; unknown_emails?: string[] }>('/api/dashboards', { workspace: workspacePath, action: 'share_status' }, { signal: controller.signal })
-      .then(({ data }) => { if (!controller.signal.aborted) setSharing({ scope, allowed: data.can_share === true, detail: data.mode === 'everyone' ? 'Everyone' : data.mode === 'private' ? 'Only me' : data.mode === 'people' ? String(new Set((data.people || []).map(person => person.id)).size + (data.unknown_emails || []).length) : undefined }) })
+    void api.post<{ can_share: boolean; mode?: string; people?: { id: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'share_status' }, { signal: controller.signal })
+      .then(({ data }) => {
+        if (controller.signal.aborted) return
+        const count = new Set((data.people || []).map(person => person.id)).size
+        setSharing({ scope, allowed: data.can_share === true, detail: data.mode === 'everyone' ? 'Everyone' : data.mode === 'private' ? 'Private' : data.mode === 'people' ? `${count} ${count === 1 ? 'person' : 'people'}` : undefined })
+      })
       .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false }) })
     return () => controller.abort()
   }, [scope, workspacePath, canReadSharing])
@@ -85,7 +89,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const automations = snapshot?.automations || []
   const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
   const changes = reviewSessionId && allowed('files') ? <Group title="Changes"><ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reply => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reply ? `reply:${JSON.stringify(reply)}` : 'review-all-chat'); onOpen('files') }}/></Group> : null
-  return <WorkspaceContextCard onFullMenu={() => setFullMenuScope(scope)}>
+  const share = byId.get('mcp:share')
+  return <WorkspaceContextCard onFullMenu={() => setFullMenuScope(scope)} footerContent={share && <Row icon={share.icon} detail={sharing?.scope === scope ? sharing.detail : undefined} onClick={() => open(share)}>{share.label}</Row>}>
     {mode === 'dev' && changes}
     {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} workspacePath={workspacePath} profileId={profileId} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={(snapshot?.apps || []).filter(item => byId.has(item.destination))} loading={!snapshot} unavailable={snapshot?.errors.includes('Connections could not be loaded.') === true} onOpen={openID}/>

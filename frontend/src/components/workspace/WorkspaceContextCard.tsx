@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { ArrowLeft, ChevronRight, List, Search, type LucideIcon } from 'lucide-react'
-export function WorkspaceContextCard({ children, title, summary, subtle = false, onFullMenu, onBack }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean; onFullMenu?: () => void; onBack?: () => void }) {
+export function WorkspaceContextCard({ children, title, summary, subtle = false, onFullMenu, onBack, footerContent }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean; onFullMenu?: () => void; onBack?: () => void; footerContent?: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
       <aside
@@ -12,7 +12,9 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
         <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
-        <footer className="flex shrink-0 items-center gap-3 border-t border-border pt-3">
+        <footer className="shrink-0 border-t border-border pt-3">
+        {footerContent && <div className="mb-2">{footerContent}</div>}
+        <div className="flex items-center gap-3">
         <button
           type="button"
           aria-label="All tools"
@@ -30,6 +32,7 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
         {onFullMenu && <button type="button" aria-label="Full menu" onClick={onFullMenu} className="flex min-h-8 shrink-0 items-center gap-1.5 rounded px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <List className="h-3.5 w-3.5 shrink-0"/><span className="whitespace-nowrap text-left">Full menu</span><ChevronRight className="h-3 w-3"/>
         </button>}
+        </div>
         </footer>
       </aside>
     </div>
