@@ -1,7 +1,7 @@
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { LocationFilter } from './LocationFilter'
 import { useProjectMenuHistoryStore, projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
-import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
+import { connectedProjectKey, serverIconColors } from '../../utils/connectedWorkPresentation'
 import { isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -78,9 +78,10 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
   })
   const visible = rows.filter(row => filter === 'crew' || filter === 'goal' ? row.kind === filter : filter === 'all' || row.connection.id === filter)
+  const serverColors = serverIconColors(connections)
   const renderProject = (project: typeof rows[number]) => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
     selected={project.connection.id === active && project.selected}
-    remote={project.connection.id !== 'local'} location={project.connection.id !== 'local' ? project.connection.name : undefined}
+    remote={project.connection.id !== 'local'} serverColor={serverColors[project.connection.server]} location={project.connection.id !== 'local' ? project.connection.name : undefined}
     onOpen={() => {
       visit(connectedProjectKey(project.connection.id, project.kind, project.id))
       if (project.connection.id === active) openSidebarProject(project.kind, project.id)

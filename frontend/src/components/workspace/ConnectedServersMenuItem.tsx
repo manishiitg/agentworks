@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, Server, X } from 'lucide-react'
+import { serverIconColors } from '../../utils/connectedWorkPresentation'
 import { desktopRequest } from '../../services/desktopConnections'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { isChatIdentityCurrent } from '../../utils/chatIdentity'
@@ -20,6 +21,7 @@ function ConnectedServersControl() {
   const state = useConnectedWorkStore()
   const connections = connectedLocations(state)
   const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
+  const serverColors = serverIconColors(connections)
   const refresh = state.refresh
   const [adding, setAdding] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -107,7 +109,7 @@ function ConnectedServersControl() {
               <button className="text-xs text-primary">Save</button>
               <button type="button" onClick={() => setRenaming(null)} className="text-xs text-muted-foreground">Cancel</button>
             </form> : null}
-            <div className="flex items-center justify-between gap-2"><span className="font-medium">{connection.name}</span><span className="text-xs text-muted-foreground">{inventory[connection.id]?.status === 'connected' ? 'Connected' : inventory[connection.id]?.status === 'sign_in' ? 'Sign in again' : 'Unavailable'}</span></div>
+            <div className="flex items-center justify-between gap-2"><span className="flex min-w-0 items-center gap-2 font-medium">{connection.id !== 'local' && <Server aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${serverColors[connection.server]}`} />}<span className="truncate">{connection.name}</span></span><span className="text-xs text-muted-foreground">{inventory[connection.id]?.status === 'connected' ? 'Connected' : inventory[connection.id]?.status === 'sign_in' ? 'Sign in again' : 'Unavailable'}</span></div>
             {connection.server && <p className="mt-1 truncate text-xs text-muted-foreground" title={connection.server}>{connection.server}</p>}
             {connection.user && <p className="truncate text-xs text-muted-foreground">{connection.user.email || connection.user.username}</p>}
             <div className="mt-2 flex gap-4 text-xs">
