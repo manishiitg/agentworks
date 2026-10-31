@@ -69,7 +69,7 @@ function MoreMenu({ items, onSelect }: { items: ReplyCardAction[]; onSelect: (ac
 const endpoint = '/api/workspace-snapshots'
 const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId })
 // The server decides the card for this viewer: its groups (PR status once looked up) and actions.
-type ReplyCard = { groups: FileGroup[]; actions: ReplyCardAction[]; can_edit: boolean }
+type ReplyCard = { groups: FileGroup[]; actions: ReplyCardAction[]; can_edit: boolean; note?: string }
 
 export function ReplyFileChanges({ reference, panel = false, showFiles = true }: { reference: ReplyFileChangesRef; panel?: boolean; showFiles?: boolean }) {
   const mode = useProjectMode(reference.sessionId)
@@ -176,6 +176,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const sharedViewer = (checked ?? card)?.can_edit === false
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
+  const incomplete = checked?.note || card?.note || summary?.note
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
   const addButton = (message: string) => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message }).catch(() => setReviewError('Open the original chat to add a button.')) }
   const run = (action: ReplyCardAction) => action.id === 'review' ? (panel ? openChatFiles(reference.sessionId) : sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)) : action.id === 'add_button' ? addButton(action.prompt ?? '') : void ask(action.prompt ?? '')
@@ -196,7 +197,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   if (!panel) return <TooltipProvider delayDuration={150}><section className="reply-file-toolbar my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Reply changes">
     <div className="flex min-w-0 items-center gap-2">
       <button type="button" aria-label={`Open ${plural(total)} changed in this reply`} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
-        <FileDiffIcon /><span>{plural(total)}</span>
+        <FileDiffIcon /><span title={incomplete || undefined}>{incomplete ? 'Incomplete' : plural(total)}</span>
         <span className="reply-toolbar-line-counts font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
       </button>
       <div className="flex min-w-0 flex-1 items-center gap-2">

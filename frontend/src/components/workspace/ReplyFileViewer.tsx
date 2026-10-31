@@ -36,7 +36,7 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, fl
   const [comment, setComment] = useState('')
   const [sending, setSending] = useState(false)
   const name = change.path.split('/').pop() || change.path
-  const params = { workspace_path: reference.workspacePath, session_id: reference.sessionId, snapshot_id: reference.snapshotId, ...query, file: change.path }
+  const params = { workspace_path: reference.workspacePath, session_id: reference.sessionId, snapshot_id: reference.snapshotId, ...query, file: change.path, ...(change.key ? { change_key: change.key } : {}) }
   useEffect(() => {
     const controller = new AbortController()
     const identity = captureChatIdentity()
@@ -72,7 +72,7 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, fl
     }
     void load().catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'This file could not be opened. Refresh and try again.') })
     return () => controller.abort()
-  }, [reference.workspacePath, reference.sessionId, reference.snapshotId, change.path, version, name, query?.baseline_snapshot_id, query?.through_snapshot_id])
+  }, [reference.workspacePath, reference.sessionId, reference.snapshotId, change.path, change.key, version, name, query?.baseline_snapshot_id, query?.through_snapshot_id])
   const send = async () => {
     if (!anchor || !comment.trim()) return
     const identity = captureChatIdentity()
@@ -88,9 +88,10 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, fl
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not send to this chat.') }
     finally { setSending(false) }
   }
-  return <section data-review-file={change.path} className={`flex min-h-0 flex-col ${flow ? 'shrink-0 scroll-mt-2' : 'h-full'}`} aria-label="File versions">
+  return <section data-review-file={change.key || change.path} className={`flex min-h-0 flex-col ${flow ? 'shrink-0 scroll-mt-2' : 'h-full'}`} aria-label="File versions">
     <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
       <strong className="min-w-0 flex-1 break-all text-sm">{shownFilePath(change.path)}</strong>
+      {change.checkout?.branch && <span className="max-w-40 truncate text-xs text-muted-foreground" title={change.checkout.branch}>{change.checkout.branch}</span>}
       <select aria-label="File version" value={version} className="rounded border border-border bg-background p-1 text-xs" onChange={event => setVersion(event.target.value as Version)}>
         <option value="current">Current</option><option value="changes">Changes</option>
       </select>

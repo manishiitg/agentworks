@@ -61,7 +61,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   const [result, setResult] = useState<Result | null>(null)
   const [revision, refresh] = useReviewRevision()
   const [error, setError] = useState('')
-  const [selectedPath, setSelectedPath] = useState('')
+  const [selectedKey, setSelectedKey] = useState('')
   const [pullRequests, setPullRequests] = useState<ReplyFileGroup[]>([])
   const [canWatch, setCanWatch] = useState(false)
   const viewers = useRef<HTMLDivElement>(null)
@@ -92,12 +92,13 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     finally { setLoadingMore(false) }
   }
   const changes: Change[] = result?.comparison?.changes ?? []
-  const selected = changes.find(change => change.path === selectedPath) ?? changes[0]
+  const selected = changes.find(change => (change.key || change.path) === selectedKey) ?? changes[0]
   const inline = changes.length > 0 && (result?.total_changes ?? changes.length) <= INLINE_REVIEW_FILE_LIMIT && !result?.next_offset
-  const selectFile = (path: string) => {
-    setSelectedPath(path)
+  const selectFile = (change: Change) => {
+    const key = change.key || change.path
+    setSelectedKey(key)
     if (inline) Array.from(viewers.current?.querySelectorAll<HTMLElement>('[data-review-file]') ?? [])
-      .find(element => element.dataset.reviewFile === path)?.scrollIntoView?.({ block: 'start' })
+      .find(element => element.dataset.reviewFile === key)?.scrollIntoView?.({ block: 'start' })
   }
   return <section className="flex h-full min-h-0 flex-col" aria-label={reply ? "Changes in this reply" : "Changes in this chat"}>
     {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
@@ -120,16 +121,31 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
         {canWatch && <PRWatcherControls group={group} sessionId={sessionId} />}
       </div>)}
     </div>}
-    {!reply && <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{outsideGit ? 'Files outside Git changed during this chat, from its saved copies.' : (bar || allChat) ? 'Every file this chat changed, in and outside Git, from its saved copies.' : "This folder isn't a Git project, so changes come from this chat's saved copies."}</p>}
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="max-h-[35%] shrink-0 overflow-auto sm:max-h-56">
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
       {result && !result.comparison && <p className="p-3 text-sm">{result.history.note}</p>}
       <div className="grid gap-1 border-b border-border p-2">
-        {!reply && result?.comparison && <p className="p-2 text-xs text-muted-foreground">{result.total_changes ?? changes.length} changed files{!reviewId && !result.history.reviews?.length && !result.history.available ? startedFrom(result.history.start_message) : ''}</p>}
-        {changes.map(change => <button type="button" key={change.path} aria-pressed={selected?.path === change.path} className={`flex gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50 ${selected?.path === change.path ? 'bg-muted font-medium' : ''}`} onClick={() => selectFile(change.path)}>
-          <span className="min-w-0 flex-1 break-all">{shownFilePath(change.path)}</span><span>{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span><span className="text-diff-add">{!change.binary && `+${change.added ?? 0}`}</span><span className="text-diff-del">{change.binary ? 'Binary' : `−${change.removed ?? 0}`}</span>
-        </button>)}
+        {!reply && result?.comparison && <p className="p-2 text-xs text-muted-foreground" title="Saved changes observed during this chat’s replies. Other chats using the same files may contribute.">{result.total_changes ?? changes.length} file changes{!reviewId && !result.history.reviews?.length && !result.history.available ? startedFrom(result.history.start_message) : ''}</p>}
+        {changes.map((change, index) => {
+          const key = change.key || change.path
+          const active = (selected?.key || selected?.path) === key
+          const group = change.checkout
+          const previous = changes[index - 1]?.checkout
+          const heading = index === 0 || group?.id !== previous?.id || group?.branch !== previous?.branch
+          const fullPath = shownFilePath(change.path)
+          const root = group ? shownFilePath(group.root).replace(/\/$/, '') : ''
+          const path = root && fullPath.startsWith(`${root}/`) ? fullPath.slice(root.length + 1) : fullPath
+          return <div key={key}>
+            {heading && (group || changes.some(item => item.checkout)) && <div className="flex min-w-0 items-center gap-1.5 px-2 pb-1 pt-2 text-xs text-muted-foreground" title={group ? `${group.root}${group.branch ? ` · ${group.branch}` : ''}` : 'Files outside Git'}>
+              <strong className="truncate font-medium">{group?.name || 'Other files'}</strong>
+              {group?.branch && <span className="truncate">· {group.branch}</span>}
+            </div>}
+            <button type="button" aria-pressed={active} title={`${fullPath}${change.at ? ` · ${new Date(change.at).toLocaleString()}` : ''}`} className={`flex w-full gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/50 ${active ? 'bg-muted font-medium' : ''}`} onClick={() => selectFile(change)}>
+              <span className="min-w-0 flex-1 break-all">{path}</span><span>{change.status === 'A' ? 'Added' : change.status === 'D' ? 'Deleted' : ''}</span><span className="text-diff-add">{!change.binary && `+${change.added ?? 0}`}</span><span className="text-diff-del">{change.binary ? 'Binary' : `−${change.removed ?? 0}`}</span>
+            </button>
+          </div>
+        })}
         {!!result?.next_offset && <button type="button" disabled={loadingMore} className="p-2 text-xs underline" onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Show more files'}</button>}
         {result?.comparison && changes.length === 0 && <p className="p-2 text-sm">{reply ? 'No files changed in this reply.' : 'No changes since this review point.'}</p>}
       </div>
@@ -137,8 +153,8 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
       {result?.comparison?.note && <p className="px-3 py-2 text-xs text-muted-foreground">{result.comparison.note}</p>}
     </div>
     {selected && through && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${inline ? 'overflow-y-auto' : ''}`}>
-      {(inline ? changes : [selected]).map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.path}`} embedded flow={inline}
-        selection={{ reference: { workspacePath, sessionId, snapshotId: reply?.snapshotId || '' }, change, query: { ...groupParams, session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start' } }}
+      {(inline ? changes : [selected]).map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.key || change.path}`} embedded flow={inline}
+        selection={{ reference: { workspacePath, sessionId, snapshotId: reply?.snapshotId || '' }, change, query: { ...groupParams, session_id: sessionId, through_snapshot_id: through, baseline_snapshot_id: baseline || 'start', ...(change.key ? { change_key: change.key } : {}) } }}
         tabId={tabId} onBack={onBrowse} />)}
     </div>}
   </section>

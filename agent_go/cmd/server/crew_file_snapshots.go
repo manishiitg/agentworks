@@ -286,7 +286,7 @@ func replyFileSummary(ctx context.Context, store filesnapshots.Store, roots crew
 	}
 	// The actions every viewer gets (Review changes), so the card draws them
 	// before its own request returns this viewer's list.
-	summary := map[string]any{"files": totals.Files, "added": totals.Added, "removed": totals.Removed, "groups": groups, "actions": filesnapshots.CardActions(groups, false, nil)}
+	summary := map[string]any{"files": totals.Files, "added": totals.Added, "removed": totals.Removed, "groups": groups, "note": comparison.Note, "actions": filesnapshots.CardActions(groups, false, nil)}
 	// Stay well inside one durable event row; a huge reply falls back to the
 	// card's request.
 	if encoded, err := json.Marshal(summary); err != nil || len(encoded) > 24<<10 {

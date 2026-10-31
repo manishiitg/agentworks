@@ -2,12 +2,17 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[], pr: false, canReview: true }))
+const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[], pr: false, canReview: true, gitVersions: false }))
 const replies = [{ snapshot_id: 'first', end_sequence: 2 }, { snapshot_id: 'last', end_sequence: 4 }]
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
   if (options.params.op === 'chat_status') return { data: { history: { can_review: state.canReview }, groups: state.pr ? [{ kind: 'repo', root: 'app-wt', name: 'app-wt', github_repo: 'example/project', branch: 'feature', pr: { number: 7, state: 'open', url: 'https://github.com/example/project/pull/7' } }] : [] } }
   if (options.params.op === 'snapshots') return { data: { recent_repos: state.recentRepos } }
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
+  if (state.gitVersions) return { data: { history: { replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: 'start', can_review: true }, comparison: { changes: [
+    { path: 'app/same.ts', key: 'feature-copy', status: 'M', checkout: { id: 'app', root: 'app', name: 'app', branch: 'feature' } },
+    { path: 'app/same.ts', key: 'main-copy', status: 'M', checkout: { id: 'app', root: 'app', name: 'app', branch: 'main' } },
+    { path: 'tools/same.ts', key: 'tools-copy', status: 'M', checkout: { id: 'tools', root: 'tools', name: 'tools', branch: 'main' } },
+  ], snapshot: { status: 'complete' }, diff: `@@ -1 +1 @@\n-old\n+${options.params.change_key || 'list'}\n`, note: '', skipped_count: 0 } } }
   return { data: { history: { recent_repos: state.recentRepos, replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
 }), post: vi.fn(async () => { state.reviewed = true; return { data: {} } }) }, agentApi: { getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: 'current contents' } })) }, workspaceApi: { get: vi.fn() } }))
 vi.mock('../chat/ReplyFileChanges', () => ({ ReplyFileChanges: () => null }))
@@ -30,6 +35,24 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('keeps identical paths on saved branches and other checkouts bound to their exact diffs', async () => {
+    // PLAT-746-264: choosing a filename must not open another branch’s copy.
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    state.gitVersions = true; vi.mocked(api.get).mockClear()
+    try {
+      await act(async () => root.render(<ChatFileReview allChat workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(3)
+      for (const key of ['feature-copy', 'main-copy', 'tools-copy']) {
+        expect(host.textContent).toContain(key)
+        expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ change_key: key, session_id: 'chat-a', baseline_snapshot_id: 'start', through_snapshot_id: 'last' }) }))
+      }
+      expect(host.textContent).toContain('feature')
+      expect(host.textContent).toContain('tools')
+      expect(host.querySelector('[aria-label="Review history"]')).toBeNull()
+    } finally { state.gitVersions = false; await act(async () => root.unmount()); host.remove() }
+  })
+
   it('opens every saved diff for this reply immediately, even when the chat has newer replies and a review point', async () => {
     // PLAT-746-261: This reply used to stop at a filename list instead of showing its changes.
     const host = document.createElement('div'); document.body.append(host)

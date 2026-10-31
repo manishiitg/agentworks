@@ -71,7 +71,9 @@ type Record struct {
 	// BeforeHeads is each checkout's HEAD commit at the before-capture (a new
 	// checkout: the commit it was checked out at). A chat's earliest head of a
 	// checkout is where its "work done in this chat" starts.
-	BeforeHeads map[string]string `json:"-"`
+	BeforeHeads map[string]string        `json:"-"`
+	BeforeGit   map[string]gitCheckpoint `json:"-"`
+	Review      *savedReview             `json:"-"`
 }
 
 // CaptureStats explains partial captures without exposing file names or contents.
@@ -107,24 +109,29 @@ type CaptureStats struct {
 // diskRecord keeps Git object names private to the server.
 type diskRecord struct {
 	Record
-	Reviewed           bool              `json:"reviewed,omitempty"`
-	BeforeSkippedState map[string]string `json:"before_skipped_state,omitempty"`
-	AfterSkippedState  map[string]string `json:"after_skipped_state,omitempty"`
-	BeforeTree         string            `json:"before_tree"`
-	AfterTree          string            `json:"after_tree"`
-	Omitted            []string          `json:"omitted,omitempty"`
-	BeforeRepos        []string          `json:"before_repos"` // [] when none; absent on older records
-	NewRepos           map[string]string `json:"new_repos,omitempty"`
-	GoneRepos          []string          `json:"gone_repos,omitempty"`
-	BaselineSkipped    []string          `json:"baseline_skipped,omitempty"`
-	BeforeHeads        map[string]string `json:"before_heads,omitempty"`
+	Reviewed           bool                     `json:"reviewed,omitempty"`
+	BeforeSkippedState map[string]string        `json:"before_skipped_state,omitempty"`
+	AfterSkippedState  map[string]string        `json:"after_skipped_state,omitempty"`
+	BeforeTree         string                   `json:"before_tree"`
+	AfterTree          string                   `json:"after_tree"`
+	Omitted            []string                 `json:"omitted,omitempty"`
+	BeforeRepos        []string                 `json:"before_repos"` // [] when none; absent on older records
+	NewRepos           map[string]string        `json:"new_repos,omitempty"`
+	GoneRepos          []string                 `json:"gone_repos,omitempty"`
+	BaselineSkipped    []string                 `json:"baseline_skipped,omitempty"`
+	BeforeHeads        map[string]string        `json:"before_heads,omitempty"`
+	BeforeGit          map[string]gitCheckpoint `json:"before_git"`
+	Review             *savedReview             `json:"review,omitempty"`
 }
 type Change struct {
-	Path    string `json:"path"`
-	Status  string `json:"status"`
-	Added   *int   `json:"added,omitempty"`
-	Removed *int   `json:"removed,omitempty"`
-	Binary  bool   `json:"binary,omitempty"`
+	Path     string         `json:"path"`
+	Status   string         `json:"status"`
+	Added    *int           `json:"added,omitempty"`
+	Removed  *int           `json:"removed,omitempty"`
+	Binary   bool           `json:"binary,omitempty"`
+	Key      string         `json:"key,omitempty"`
+	Checkout *CheckoutLabel `json:"checkout,omitempty"`
+	At       string         `json:"at,omitempty"`
 }
 type Comparison struct {
 	UncapturedChanges int      `json:"uncaptured_changes"`
@@ -137,6 +144,7 @@ type Comparison struct {
 	// NewRepos are the checkouts that appeared during the compared turns with
 	// their checked-out commit as the baseline (cards label them "new copy").
 	NewRepos []string `json:"-"`
+	versions map[string]savedVersion
 }
 type Store struct{ Root, Private string }
 
@@ -440,11 +448,12 @@ func (s Store) read(id string) (Record, error) {
 	disk.Record.GoneRepos = disk.GoneRepos
 	disk.Record.BaselineSkipped = disk.BaselineSkipped
 	disk.Record.BeforeHeads = disk.BeforeHeads
+	disk.Record.BeforeGit, disk.Record.Review = disk.BeforeGit, disk.Review
 	return disk.Record, nil
 }
 func (s Store) save(r Record) error {
 	data, err := json.Marshal(diskRecord{Record: r, Reviewed: r.Reviewed, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState,
-		BeforeRepos: r.BeforeRepos, NewRepos: r.NewRepos, GoneRepos: r.GoneRepos, BaselineSkipped: r.BaselineSkipped, BeforeHeads: r.BeforeHeads})
+		BeforeRepos: r.BeforeRepos, NewRepos: r.NewRepos, GoneRepos: r.GoneRepos, BaselineSkipped: r.BaselineSkipped, BeforeHeads: r.BeforeHeads, BeforeGit: r.BeforeGit, Review: r.Review})
 	if err != nil {
 		return err
 	}
@@ -501,6 +510,7 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 	r.Before, r.Skipped, r.Omitted, err = s.captureRepos(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes, repos)
 	r.BeforeRepos = sortedKeys(repos)
 	r.BeforeHeads = s.repoHeads(ctx, repos)
+	r.BeforeGit, _ = s.gitCheckpoints(ctx, repos, 256)
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 		if sendPath && ctx.Err() != nil {
@@ -620,6 +630,9 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 	}
+	if err == nil && r.Before != "" {
+		s.saveReview(ctx, &r, repos)
+	}
 	saveErr := s.save(r)
 	if err != nil {
 		return r, err
@@ -675,12 +688,13 @@ func (s Store) prune(ctx context.Context) {
 	for i, r := range records {
 		// Checkout baselines describe workspace history, independently of
 		// reply retention. Older saved chat boundaries still need them.
-		if r.Reviewed || len(r.NewRepos) > 0 || len(r.GoneRepos) > 0 || (i < keepTurns && time.Since(r.StartedAt) < 14*24*time.Hour) {
+		if r.Reviewed || len(r.NewRepos) > 0 || len(r.GoneRepos) > 0 || (r.Review != nil && len(r.Review.Spans) > 0) || (i < keepTurns && time.Since(r.StartedAt) < 14*24*time.Hour) {
 			continue
 		}
-		for _, phase := range []string{"before", "after", "baseline"} {
-			_ = s.command(ctx, "update-ref", "-d", "refs/turns/"+r.ID+"/"+phase).Run()
-		}
+		refs, _ := s.command(ctx, "for-each-ref", "--format=delete %(refname)", "refs/turns/"+r.ID+"/").Output()
+		cmd := s.command(ctx, "update-ref", "--stdin")
+		cmd.Stdin = bytes.NewReader(refs)
+		_ = cmd.Run()
 		_ = os.Remove(filepath.Join(s.dir(), "turns", r.ID+".json"))
 		removed = true
 	}
@@ -718,6 +732,13 @@ func (s Store) Compare(ctx context.Context, id, file string, allow func(string) 
 }
 
 func (s Store) compare(ctx context.Context, r Record, file string, allow func(string) bool) (Comparison, error) {
+	if r.Review != nil {
+		return s.compareReview(ctx, []Record{r}, file, "", allow)
+	}
+	return s.compareRaw(ctx, r, file, allow)
+}
+
+func (s Store) compareRaw(ctx context.Context, r Record, file string, allow func(string) bool) (Comparison, error) {
 	out := Comparison{Record: r, Changes: []Change{}, Note: "Changes observed during this turn; other chats or editors may also have changed these files. Undo is not available."}
 	if r.Status != "complete" && r.Status != "partial" {
 		return out, errors.New("this turn has no completed file comparison")
@@ -893,7 +914,7 @@ func (s Store) CompareBoundaries(ctx context.Context, first, last, firstSide, fi
 		after.Status = "partial"
 	}
 	after.NewRepos, after.GoneRepos, after.BaselineSkipped = window.NewRepos, window.GoneRepos, window.BaselineSkipped
-	out, err := s.compare(ctx, after, file, allow)
+	out, err := s.compareRaw(ctx, after, file, allow)
 	out.Note = "Net changes between this chat's saved boundaries. Other chats or editors may contribute. Undo is not available."
 	return out, err
 }
@@ -929,6 +950,13 @@ func (s Store) readComparedFile(ctx context.Context, comparison Comparison, file
 	tree := comparison.Record.After
 	if side == "before" {
 		tree = comparison.Record.Before
+	}
+	if comparison.versions != nil {
+		var err error
+		tree, err = s.reviewVersion(comparison, file, side)
+		if err != nil {
+			return nil, err
+		}
 	}
 	object := tree + ":" + file
 	size, err := s.command(ctx, "cat-file", "-s", object).Output()

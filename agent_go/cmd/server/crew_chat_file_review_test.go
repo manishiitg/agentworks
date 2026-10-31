@@ -72,7 +72,7 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 		Total      int                      `json:"total_changes"`
 		Comparison filesnapshots.Comparison `json:"comparison"`
 	}
-	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 100 || len(page.Comparison.Changes) != 100 || page.Total != 106 {
+	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 100 || len(page.Comparison.Changes) != 100 || page.Total != 107 {
 		t.Fatalf("bounded file page: %v %s", err, body)
 	}
 	if strings.Join(page.History.RecentRepos, ",") != "last,first" {
@@ -84,12 +84,12 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 	pageParams.Set("offset", "100")
 	pageParams.Set("through_snapshot_id", filesnapshots.ID("last"))
 	_, body = call("alice", pageParams, true)
-	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 0 || len(page.Comparison.Changes) != 6 {
+	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Next != 0 || len(page.Comparison.Changes) != 7 {
 		t.Fatalf("remaining files: %v %s", err, body)
 	}
 	params := url.Values{"session_id": {"chat-a"}, "file": {"main.txt"}}
-	if code, body := call("alice", params, true); code != 200 || !strings.Contains(body, "+last") || !strings.Contains(body, "-zero") {
-		t.Fatalf("saved net comparison %d %s", code, body)
+	if code, body := call("alice", params, true); code != 200 || !strings.Contains(body, "+last") || !strings.Contains(body, "-first") {
+		t.Fatalf("latest saved file comparison %d %s", code, body)
 	}
 	if code, body := call("bob", params, true); code != 404 || strings.Contains(body, "main.txt") {
 		t.Fatalf("private chat exposed %d %s", code, body)

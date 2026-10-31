@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -105,6 +106,23 @@ func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite
 	defer root.Close()
 	for _, change := range comparison.Changes {
 		item := UndoItem{Path: change.Path, Status: change.Status}
+		if r.foreignCheckout(change.Path) {
+			item.Reason = "git_context_changed"
+			plan.Skipped = append(plan.Skipped, item)
+			plan.Note = "Changes spanning a Git switch or update stay unchanged. Review their saved diffs instead."
+			continue
+		}
+		if change.Checkout != nil {
+			label := change.Checkout
+			dir := filepath.Join(s.Root, filepath.FromSlash(label.Root))
+			live, _ := s.gitCheckpoints(ctx, map[string]string{label.Root: dir}, 1)
+			now, ok := live[label.Root]
+			if !ok || now.ID != label.ID || now.Branch != label.Branch {
+				item.Reason = "git_context_changed"
+				plan.Skipped = append(plan.Skipped, item)
+				continue
+			}
+		}
 		if p := newRepoWithoutBaseline(r, change.Path); p != "" {
 			leftNew[p]++
 			continue

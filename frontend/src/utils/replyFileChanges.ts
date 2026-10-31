@@ -1,7 +1,7 @@
 import type { PollingEvent } from '../services/api-types'
 import { normalizeTranscriptChunkEvents } from './transcriptChunkUpdates'
 
-type ReplyFileChange = { path: string; status: string; added?: number; removed?: number; binary?: boolean }
+export type ReplyFileChange = { path: string; key?: string; at?: string; checkout?: { id: string; root: string; name: string; branch?: string }; status: string; added?: number; removed?: number; binary?: boolean }
 export type ReplyPullRequest = { number?: number; url?: string; state: string; checks?: string; review?: string; failing_checks?: string[]; conflicts?: boolean }
 export type ReplyFileGroup = { kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; new_checkout: boolean; files: ReplyFileChange[]; total_files: number; more_count: number; pr?: ReplyPullRequest }
 // One card action, decided by the server for the viewer. icon is "octicon:<id>" or a Lucide name;
@@ -9,7 +9,7 @@ export type ReplyFileGroup = { kind: 'repo' | 'crew_files'; root: string; name: 
 export type ReplyCardAction = { id: string; kind: 'builtin' | 'git_step' | 'fix' | 'command'; label: string; aria_label?: string; description?: string; icon?: string; placement: 'row' | 'more' | 'pr_line'; prompt?: string; group?: string; editors_only?: boolean }
 // Computed by the server when the reply's files were captured; the card renders from it without a request.
 // actions are the ones every viewer gets, shown until the card's own request returns this viewer's list.
-export type ReplyFileSummary = { files: number; added: number; removed: number; groups: ReplyFileGroup[]; actions?: ReplyCardAction[] }
+export type ReplyFileSummary = { files: number; added: number; removed: number; groups: ReplyFileGroup[]; note?: string; actions?: ReplyCardAction[] }
 
 /** A Crew's own files live under _files/; that folder name is noise on screen. */
 export const shownFilePath = (path: string) => path.startsWith('_files/') ? path.slice('_files/'.length) : path
