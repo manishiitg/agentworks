@@ -415,7 +415,7 @@ func TestDenyChecksPassWhenEveryCommandIsRefused(t *testing.T) {
 		return "started\nrc=1\n", "", nil
 	}
 	got := denyRows(Check(context.Background(), l.opts))
-	for _, name := range []string{"deny-write-outside", "deny-list-users", "deny-list-releases", "deny-list-state"} {
+	for _, name := range []string{"deny-write-outside", "deny-list-users", "deny-user-manager", "deny-list-releases", "deny-list-state"} {
 		if got[name].Status != Pass {
 			t.Errorf("%s = %+v, want PASS", name, got[name])
 		}

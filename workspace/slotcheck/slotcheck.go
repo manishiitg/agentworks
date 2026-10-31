@@ -630,6 +630,9 @@ func denyChecks(ctx context.Context, opts Options, docs, slotRunRoot string, pro
 	tests := []denial{
 		{"deny-write-outside", "touch " + shQuote(outside) + " 2>/dev/null; rc=$?; rm -f " + shQuote(outside) + " 2>/dev/null; echo rc=$rc", "create a file in the docs root"},
 		{"deny-list-users", "ls " + shQuote(filepath.Join(docs, "_users")) + " >/dev/null 2>&1; echo rc=$?", "list the other users' folders"},
+		// PLAT-872-89: the account's own service manager runs outside Landlock; a command that reaches it starts an
+		// unconfined one as the slot and reads what Landlock withholds (a running CLI's environment).
+		{"deny-user-manager", "u=$(id -u); XDG_RUNTIME_DIR=/run/user/$u DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$u/bus timeout 20 systemd-run --user --quiet --pipe true >/dev/null 2>&1; echo rc=$?", "start an unconfined command through the slot's own service manager (systemd-run --user)"},
 	}
 	if slotRunRoot != "" {
 		// PLAT-480 (F1): the folder holding every slot's tmux socket must look empty from inside a slot command.
