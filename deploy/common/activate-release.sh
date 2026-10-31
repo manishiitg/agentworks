@@ -184,6 +184,9 @@ PY
   done
   {
     echo '[Service]'
+    # The services and the CLI tmux servers they start never hold an SSH agent: a login session's agent socket (set by
+    # the account's own user manager) would let anything reaching them use its keys (PLAT-872-91).
+    echo 'UnsetEnvironment=SSH_AUTH_SOCK'
     [[ -z "$runtime_path" ]] || echo "Environment=PATH=$runtime_path"
     for entry in "${EXTRA_ENV[@]:-}"; do
       [[ -n "$entry" ]] && echo "Environment=$entry"
