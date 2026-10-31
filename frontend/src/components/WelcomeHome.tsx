@@ -22,6 +22,9 @@ import { HomeRecentWork } from './HomeRecentWork'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { Button } from './ui/Button'
 import api from '../services/api'
+import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
+import { ServerIdentityIcon } from './workspace/ServerIdentityIcon'
+import { serverIconColors } from '../utils/connectedWorkPresentation'
 
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
@@ -45,6 +48,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const sidebarWidth = useProductNavigationToolbarStore(state => state.sidebarWidth)
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const connections = useConnectedWorkStore(connectedLocations)
+  const currentConnection = hasDesktopConnections() && connections.length > 1 ? connections.find(connection => connection.id === server) : undefined
   const scope = `${server}:${user?.id || ''}`
   const prompt = useRef<HTMLTextAreaElement>(null)
   const [focusPrompt, setFocusPrompt] = useState(false)
@@ -158,6 +163,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
         <section aria-labelledby="home-heading" className="mx-auto w-full max-w-3xl pt-3 sm:pt-5">
           <h1 id="home-heading" className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">What would you like to get done?</h1>
           <p className="mx-auto mt-2 max-w-xl text-center text-sm leading-6 text-muted-foreground">Start something new, automate a task, or pick up where you left off.</p>
+          {currentConnection && <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">{currentConnection.id !== 'local' && <ServerIdentityIcon connectionId={currentConnection.id} hidden className={`h-3 w-3 ${serverIconColors(connections)[currentConnection.server]}`} />}New work starts on {currentConnection.name}</p>}
           <div className="mt-5">{workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks">
             <form onSubmit={askAgentWorks} className="rounded-2xl border border-border bg-muted/20 p-3 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/20 sm:p-4">
               <label htmlFor="welcome-agentworks-message" className="sr-only">Tell AgentWorks what you want to get done</label>
@@ -173,6 +179,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             <button type="button" onClick={openProviders} className="mt-2 rounded-md px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Manage AI accounts</button>
           </section>} />}</div>
         </section>
+
+        {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} />}
 
         {workProducts.length > 0 && <HomeUseCases key={`cases:${scope}`} products={workProducts.map(product => product.id)} onChoose={message => { setAgentWorksDraft(message); setFocusPrompt(true); requestAnimationFrame(() => prompt.current?.focus()) }} />}
 
@@ -206,8 +214,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             </article>}
           </div>
         </section>}
-
-        {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} />}
 
         <section aria-labelledby="welcome-services">
           <h2 id="welcome-services" className="text-xs font-medium text-muted-foreground">Tools that work across your projects</h2>

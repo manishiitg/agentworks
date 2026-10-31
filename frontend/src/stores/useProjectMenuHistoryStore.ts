@@ -4,6 +4,13 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 export const PROJECT_MENU_RECENT_LIMIT = 10
 export const projectMenuHistoryScope = (server: string, user: string, product: string, project: string) => JSON.stringify([server, user, product, project])
 
+/** The local account owns cross-server navigation history, including after a renderer reload. */
+export function connectedWorkHistoryScope(): string {
+  let owner = ''
+  try { owner = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.user?.id || '' } catch { /* No saved owner yet. */ }
+  return owner ? projectMenuHistoryScope('local', owner, 'connected-work', 'sidebar') : ''
+}
+
 /** Presentation history only. The current destination inventory decides access. */
 export const useProjectMenuHistoryStore = create<{
   recent: Record<string, string[]>

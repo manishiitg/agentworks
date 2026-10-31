@@ -1,6 +1,6 @@
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { LocationFilter } from './LocationFilter'
-import { useProjectMenuHistoryStore, projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
+import { useProjectMenuHistoryStore, connectedWorkHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { connectedProjectKey, serverIconColors } from '../../utils/connectedWorkPresentation'
 import { isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
@@ -12,11 +12,7 @@ type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: 
 
 function useWorkHistory(projects: SidebarProject[]) {
   const active = getRawActiveWorkspaceId()
-  // Use the local account's navigation history across connection reloads.
-  // It stores only selectors; admitted inventory still decides visible rows.
-  let owner = ''
-  try { owner = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.user?.id || '' } catch { /* No saved owner yet. */ }
-  const historyScope = owner ? projectMenuHistoryScope('local', owner, 'connected-work', 'sidebar') : ''
+  const historyScope = connectedWorkHistoryScope()
   const recent = useProjectMenuHistoryStore(state => state.recent[historyScope])
   const visit = useProjectMenuHistoryStore(state => state.visit)
   const selectedProject = projects.find(project => project.selected)
