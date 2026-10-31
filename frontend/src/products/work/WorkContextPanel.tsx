@@ -88,7 +88,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   }
   const automations = snapshot?.automations || []
   const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
-  const changes = reviewSessionId && allowed('files') ? <Group title="Changes"><ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reply => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reply ? `reply:${JSON.stringify(reply)}` : 'review-all-chat'); onOpen('files') }}/></Group> : null
+  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reply => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reply ? `reply:${JSON.stringify(reply)}` : 'review-all-chat'); onOpen('files') }}/> : null
   const share = byId.get('mcp:share')
   return <WorkspaceContextCard onFullMenu={() => setFullMenuScope(scope)} footerContent={share && <Row icon={share.icon} detail={sharing?.scope === scope ? sharing.detail : undefined} onClick={() => open(share)}>{share.label}</Row>}>
     {mode === 'dev' && changes}
