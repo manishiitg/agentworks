@@ -291,7 +291,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, e
 		}
 		if binding.Editing != "server" && input.Action == "download" {
-			return out, fmt.Errorf("editing is on your Mac")
+			// PLAT-856-442: a download queued before a completed return is
+			// now empty. Any unacknowledged return was served above first.
+			return out, nil
 		}
 		if input.Action == "pull" {
 			if e := api.crewSyncIdle(roots); e != nil {

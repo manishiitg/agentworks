@@ -325,6 +325,17 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal("server edit did not reach Mac")
 			}
 			write(serverRoots.Files, "note.txt", "latest server work")
+			// A newer return is real work even after the server has switched
+			// editing to local: download must serve it until it is acknowledged.
+			serverBinding, _ := crewroot.ReadSync(serverRoots.ID)
+			pendingReturn, err := api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "pull", PairID: serverBinding.PairID})
+			if err != nil || pendingReturn.Snapshot == nil {
+				t.Fatalf("prepare pending return: %+v %v", pendingReturn, err)
+			}
+			stillPending, err := api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "download", PairID: serverBinding.PairID})
+			if err != nil || stillPending.Snapshot == nil || stillPending.TransferID != pendingReturn.TransferID {
+				t.Fatalf("newer return was discarded: %+v %v", stillPending, err)
+			}
 
 			if w := call("local", "owner", true); w.Code != 200 {
 				t.Fatalf("return: %d %s", w.Code, w.Body.String())
@@ -332,6 +343,20 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			returned, err := api.crewHandoffMain(ctx, owner, local.ID)
 			if err != nil || returned.ConversationID != main.ConversationID || returned.SessionID == main.SessionID || returned.SessionID == serverChat.SessionID {
 				t.Fatalf("return identity: %+v %v", returned, err)
+			}
+			// PLAT-856-442: a background download queued before the return
+			// must not retry forever after editing is back on the Mac.
+			staleDownload, _ := crewroot.ReadSync(local.ID)
+			staleDownload.PendingAction = "download"
+			if err := crewroot.WriteSync(local.ID, *staleDownload); err != nil {
+				t.Fatal(err)
+			}
+			if w := call("download", "owner", true); w.Code != 200 {
+				t.Fatalf("obsolete background download: %d %s", w.Code, w.Body.String())
+			}
+			settled, _ := crewroot.ReadSync(local.ID)
+			if settled.PendingAction != "" || settled.Editing != "local" {
+				t.Fatalf("obsolete download was not settled: %+v", settled)
 			}
 			checkTranscript(returned, "server continued")
 			// A failed binding write leaves journal rows behind. Retrying the same
