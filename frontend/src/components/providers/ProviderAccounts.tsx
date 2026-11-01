@@ -84,7 +84,7 @@ export function accountOptionLabel(record: ProviderConnection): string {
 
 export const NO_LONGER_AVAILABLE = 'No longer available here'
 
-type ServerAccountState = 'ready' | 'sign_in' | 'missing' | 'unavailable'
+type ServerAccountState = 'ready' | 'sign_in' | 'missing' | 'unavailable' | 'loading'
 
 export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product }: {
   provider: string
