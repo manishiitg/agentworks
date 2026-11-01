@@ -505,9 +505,11 @@ func companyAccountOffered(ctx context.Context, c desktopConnection, provider st
 	case resp.StatusCode == http.StatusOK:
 		// An older server answers with its web page (no model list): it does not offer it.
 		return len(answer.Data) > 0, true
-	case resp.StatusCode == http.StatusNotFound:
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden:
+		// 404: the server does not lend it; 403: it no longer lets this person use it. Either way it goes.
 		return false, true
 	}
+	log.Printf("[DESKTOP_ACCOUNT] %s on %s: answered %d, company account left as it is", provider, c.Name, resp.StatusCode)
 	// A refusal for now (a limit reached, the proxy down, a sign-in expired) leaves the account as it is.
 	return false, false
 }

@@ -49,11 +49,27 @@ type modelProxySignIn struct {
 	Started       time.Time `json:"started"`
 	cmd           *exec.Cmd
 	stdin         io.WriteCloser
+	// exited closes when the sign-in process has ended (read instead of cmd.ProcessState, which Wait writes).
+	exited chan struct{}
+}
+
+// running says whether a process whose Wait closes exited is still running.
+func running(exited chan struct{}) bool {
+	if exited == nil {
+		return false
+	}
+	select {
+	case <-exited:
+		return false
+	default:
+		return true
+	}
 }
 
 var companyProxy = struct {
 	sync.Mutex
 	cmd     *exec.Cmd
+	exited  chan struct{}
 	port    int
 	key     string
 	signIns map[string]*modelProxySignIn
@@ -139,7 +155,7 @@ func companyModelProxyUpstream() (string, string, bool) {
 	}
 	companyProxy.Lock()
 	defer companyProxy.Unlock()
-	if companyProxy.cmd != nil && companyProxy.cmd.ProcessState == nil {
+	if companyProxy.cmd != nil && running(companyProxy.exited) {
 		return fmt.Sprintf("http://127.0.0.1:%d", companyProxy.port), companyProxy.key, true
 	}
 	dir, err := modelProxyDir()
@@ -172,7 +188,8 @@ func companyModelProxyUpstream() (string, string, bool) {
 		log.Printf("[MODEL_PROXY] cannot start: %v", err)
 		return "", "", false
 	}
-	go func() { _ = cmd.Wait(); log.Printf("[MODEL_PROXY] proxy exited") }()
+	exited := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(exited); log.Printf("[MODEL_PROXY] proxy exited") }()
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
 	for i := 0; i < 50; i++ {
 		if conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond); err == nil {
@@ -181,7 +198,7 @@ func companyModelProxyUpstream() (string, string, bool) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	companyProxy.cmd, companyProxy.port, companyProxy.key = cmd, port, key
+	companyProxy.cmd, companyProxy.exited, companyProxy.port, companyProxy.key = cmd, exited, port, key
 	log.Printf("[MODEL_PROXY] started on 127.0.0.1:%d", port)
 	return base, key, true
 }
@@ -216,7 +233,7 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 		return nil, err
 	}
 	companyProxy.Lock()
-	if current := companyProxy.signIns[provider]; current != nil && current.cmd.ProcessState == nil && time.Since(current.Started) < 10*time.Minute {
+	if current := companyProxy.signIns[provider]; current != nil && running(current.exited) && time.Since(current.Started) < 10*time.Minute {
 		companyProxy.Unlock()
 		return current, nil
 	}
@@ -237,19 +254,23 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	signIn := &modelProxySignIn{Started: time.Now(), cmd: cmd, stdin: stdin, NeedsCallback: login.callback}
+	signIn := &modelProxySignIn{Started: time.Now(), cmd: cmd, stdin: stdin, NeedsCallback: login.callback, exited: make(chan struct{})}
 	found := make(chan struct{}, 1)
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			line := scanner.Text()
+			// URL and Code are read by the status page while this writes them: both under the proxy's lock.
+			companyProxy.Lock()
 			if signIn.URL == "" {
 				signIn.URL = strings.TrimRight(modelProxyURLPattern.FindString(line), ".,)")
 			}
 			if signIn.Code == "" && !login.callback {
 				signIn.Code = modelProxyCodePattern.FindString(line)
 			}
-			if signIn.URL != "" && (signIn.Code != "" || login.callback) {
+			ready := signIn.URL != "" && (signIn.Code != "" || login.callback)
+			companyProxy.Unlock()
+			if ready {
 				select {
 				case found <- struct{}{}:
 				default:
@@ -257,13 +278,17 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 			}
 		}
 		_ = cmd.Wait()
+		close(signIn.exited)
 		log.Printf("[MODEL_PROXY] %s sign-in ended (signed in: %v)", provider, modelProxySignedInAs(provider) != "")
 	}()
 	go func() { time.Sleep(10 * time.Minute); _ = cmd.Process.Kill() }()
 	select {
 	case <-found:
 	case <-time.After(20 * time.Second):
-		if signIn.URL == "" {
+		companyProxy.Lock()
+		started := signIn.URL != ""
+		companyProxy.Unlock()
+		if !started {
 			_ = cmd.Process.Kill()
 			return nil, fmt.Errorf("the sign-in did not start; try again")
 		}
@@ -387,7 +412,7 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 			// A sign-in still waiting for approval is ended first, so approving its link later signs nothing in.
 			companyProxy.Lock()
 			if signIn := companyProxy.signIns[provider]; signIn != nil {
-				if signIn.cmd.Process != nil && signIn.cmd.ProcessState == nil {
+				if signIn.cmd.Process != nil && running(signIn.exited) {
 					_ = signIn.cmd.Process.Kill()
 				}
 				delete(companyProxy.signIns, provider)
@@ -410,7 +435,7 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 			signIn := companyProxy.signIns[provider]
 			companyProxy.Unlock()
 			callback := strings.TrimSpace(finish.CallbackURL)
-			if signIn == nil || signIn.cmd.ProcessState != nil || !signIn.NeedsCallback {
+			if signIn == nil || !running(signIn.exited) || !signIn.NeedsCallback {
 				desktopJSONError(w, 409, "The sign-in has ended. Turn it on again.")
 				return
 			}
@@ -432,8 +457,10 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 	}
 	status := modelProxyProgramStatus{Available: true, SignedInAs: companyLendingLabel(r.Context(), provider)}
 	companyProxy.Lock()
-	if signIn := companyProxy.signIns[provider]; signIn != nil && signIn.cmd.ProcessState == nil && status.SignedInAs == "" {
-		status.SigningIn = signIn
+	if signIn := companyProxy.signIns[provider]; signIn != nil && running(signIn.exited) && status.SignedInAs == "" {
+		// A copy taken under the lock: the sign-in's reader may still be filling it in.
+		snapshot := *signIn
+		status.SigningIn = &snapshot
 	}
 	companyProxy.Unlock()
 	desktopJSON(w, status)
