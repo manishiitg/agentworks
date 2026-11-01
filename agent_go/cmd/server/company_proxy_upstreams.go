@@ -6,12 +6,16 @@ package server
 // browser login the server cannot share (Muse, or Claude/Codex without a key) goes through the model proxy's own
 // login. In every case the Mac only ever holds a placeholder, and an admin turns the program on from its card.
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -232,7 +236,7 @@ func copyRelayHeaders(to http.Header, from http.Header) {
 	}
 }
 
-func copyRelayResponse(w http.ResponseWriter, resp *http.Response) {
+func copyRelayResponse(w http.ResponseWriter, resp *http.Response, tap io.Writer) {
 	copyRelayHeaders(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	flusher, _ := w.(http.Flusher)
@@ -240,6 +244,9 @@ func copyRelayResponse(w http.ResponseWriter, resp *http.Response) {
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			if tap != nil {
+				_, _ = tap.Write(buf[:n])
+			}
 			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 				return
 			}
@@ -251,6 +258,114 @@ func copyRelayResponse(w http.ResponseWriter, resp *http.Response) {
 			return
 		}
 	}
+}
+
+// cursorRunCapture keeps a Cursor agent run's reply (Connect frames) to read its usage at the end.
+type cursorRunCapture struct {
+	data      []byte
+	truncated bool
+}
+
+func (c *cursorRunCapture) Write(p []byte) (int, error) {
+	if len(c.data)+len(p) > 16<<20 {
+		c.truncated = true
+		return len(p), nil
+	}
+	c.data = append(c.data, p...)
+	return len(p), nil
+}
+
+// cursorRunUsage reads the token usage Cursor puts at the end of an agent run: Connect frames (a flag byte and a
+// 4-byte length; flag 1 = gzip, flag 2 = the end-of-stream trailer) carrying protobuf, where field 1 holds the
+// run's updates and update 14 is the usage (1 input, 2 output, 3 cache read, 4 cache write, 5 reasoning).
+// Matched against the Cursor SDK's own usage on a live run (1 Nov 2026).
+func cursorRunUsage(data []byte) (input, output, cacheRead, cacheWrite, reasoning int, ok bool) {
+	for len(data) >= 5 {
+		flag, size := data[0], int(binary.BigEndian.Uint32(data[1:5]))
+		if size < 0 || 5+size > len(data) {
+			return
+		}
+		body := data[5 : 5+size]
+		data = data[5+size:]
+		if flag&2 != 0 {
+			continue
+		}
+		if flag&1 != 0 {
+			reader, err := gzip.NewReader(bytes.NewReader(body))
+			if err != nil {
+				return
+			}
+			body, err = io.ReadAll(io.LimitReader(reader, 16<<20))
+			if err != nil {
+				return
+			}
+		}
+		for _, field := range protoFields(body) {
+			if field.num != 1 || field.wire != 2 {
+				continue
+			}
+			for _, update := range protoFields(field.bytes) {
+				if update.num != 14 || update.wire != 2 {
+					continue
+				}
+				values := map[int]int{}
+				for _, item := range protoFields(update.bytes) {
+					if item.wire == 0 {
+						values[item.num] = int(item.value)
+					}
+				}
+				input, output, cacheRead, cacheWrite, reasoning, ok = values[1], values[2], values[3], values[4], values[5], true
+			}
+		}
+	}
+	return
+}
+
+type protoField struct {
+	num, wire int
+	value     uint64
+	bytes     []byte
+}
+
+// protoFields splits one protobuf message into its fields; a malformed message yields what was read so far.
+func protoFields(b []byte) []protoField {
+	var out []protoField
+	for len(b) > 0 {
+		key, n := binary.Uvarint(b)
+		if n <= 0 {
+			return out
+		}
+		b = b[n:]
+		field := protoField{num: int(key >> 3), wire: int(key & 7)}
+		switch field.wire {
+		case 0:
+			v, n := binary.Uvarint(b)
+			if n <= 0 {
+				return out
+			}
+			field.value, b = v, b[n:]
+		case 1:
+			if len(b) < 8 {
+				return out
+			}
+			b = b[8:]
+		case 2:
+			size, n := binary.Uvarint(b)
+			if n <= 0 || uint64(len(b)-n) < size {
+				return out
+			}
+			field.bytes, b = b[n:n+int(size)], b[n+int(size):]
+		case 5:
+			if len(b) < 4 {
+				return out
+			}
+			b = b[4:]
+		default:
+			return out
+		}
+		out = append(out, field)
+	}
+	return out
 }
 
 // ANY /api/model-proxy/cursor-cli/relay/{path} — on the server: a person's Cursor call, relayed to Cursor unchanged
@@ -303,24 +418,44 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer resp.Body.Close()
-	copyRelayResponse(w, resp)
-	// One agent run is one recorded call: Cursor's own format carries the tokens, which are not read yet.
-	if path == "agent.v1.AgentService/RunSSE" {
-		log.Printf("[MODEL_PROXY] %s used the server's cursor-cli account from the Mac: run -> %d (%s)", caller, resp.StatusCode, time.Since(started).Round(time.Millisecond))
-		if ledger := api.tokenLimitLedger(); ledger != nil {
-			_ = ledger.Append(costledger.Entry{
-				Attribution: costledger.Attribution{AttributionVersion: costledger.AttributionVersion, ActorID: caller, Activity: "mac_app"},
-				EventID:     uuid.NewString(), Timestamp: time.Now().UTC(), UserID: caller, Scope: "chat", Component: "mac_company_account",
-				Provider: "cursor-cli", AccountID: "global:cursor-cli", LLMCallCount: 1, BillingBasis: "unpriced",
-			})
-		}
+	if path != "agent.v1.AgentService/RunSSE" {
+		copyRelayResponse(w, resp, nil)
+		return
+	}
+	// An agent run: its usage is read from the end of the reply and recorded to the person.
+	capture := &cursorRunCapture{}
+	copyRelayResponse(w, resp, capture)
+	input, output, cacheRead, cacheWrite, reasoning, counted := cursorRunUsage(capture.data)
+	log.Printf("[MODEL_PROXY] %s used the server's cursor-cli account from the Mac: run -> %d (%s) tokens in=%d out=%d cached=%d counted=%v", caller, resp.StatusCode, time.Since(started).Round(time.Millisecond), input, output, cacheRead, counted && !capture.truncated)
+	if ledger := api.tokenLimitLedger(); ledger != nil {
+		_ = ledger.Append(costledger.Entry{
+			Attribution: costledger.Attribution{AttributionVersion: costledger.AttributionVersion, ActorID: caller, Activity: "mac_app"},
+			EventID:     uuid.NewString(), Timestamp: time.Now().UTC(), UserID: caller, Scope: "chat", Component: "mac_company_account",
+			Provider: "cursor-cli", AccountID: "global:cursor-cli", LLMCallCount: 1, BillingBasis: "unpriced",
+			PromptTokens: input, CompletionTokens: output, CacheReadTokens: cacheRead, CacheWriteTokens: cacheWrite, ReasoningTokens: reasoning,
+			LLMGenerationDurationMS: time.Since(started).Milliseconds(),
+		})
 	}
 }
 
 // ANY /api/desktop-model-proxy/{account}/cursor/{path} — on the Mac: Cursor's own traffic from the company Cursor
 // account, presented with that account's placeholder login, forwarded to the server's relay over the connection.
 func (api *StreamingAPI) handleDesktopCursorRelay(w http.ResponseWriter, r *http.Request) {
-	record, c, ok := desktopCompanyCaller(w, r)
+	// Cursor signs in through its key exchange even with a login file, presenting something other than that login
+	// (seen live 1 Nov 2026): answered here with the placeholder, so no sign-in ever reaches the server or Cursor.
+	// Only for a program on this Mac (loopback, no browser Origin) and an existing company Cursor account.
+	if mux.Vars(r)["path"] == "auth/exchange_user_api_key" {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		records, loadErr := loadProviderConnections(r.Context())
+		record, found := companyAccountOnMac(records, mux.Vars(r)["account"])
+		if err != nil || !net.ParseIP(host).IsLoopback() || r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" || loadErr != nil || !found || record.Provider != "cursor-cli" {
+			desktopJSONError(w, 401, "Unknown account.")
+			return
+		}
+		desktopJSON(w, map[string]string{"accessToken": record.Credential, "refreshToken": record.Credential})
+		return
+	}
+	_, c, ok := desktopCompanyCaller(w, r)
 	if !ok {
 		return
 	}
@@ -342,8 +477,7 @@ func (api *StreamingAPI) handleDesktopCursorRelay(w http.ResponseWriter, r *http
 		return
 	}
 	defer resp.Body.Close()
-	_ = record
-	copyRelayResponse(w, resp)
+	copyRelayResponse(w, resp, nil)
 }
 
 // cursorPlaceholderLogin is the company Cursor account's login on the Mac: shaped like Cursor's own token so the

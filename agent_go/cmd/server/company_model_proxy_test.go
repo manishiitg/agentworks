@@ -1,6 +1,11 @@
 package server
 
-import "testing"
+import (
+	"bytes"
+	"compress/gzip"
+	"encoding/binary"
+	"testing"
+)
 
 // Mac use of a company account counts toward the person's token limits only if the proxy reads the reply's usage:
 // from the final event of a stream (split across writes) or from a plain JSON reply.
@@ -22,5 +27,32 @@ func TestProxyUsageReadsFinalUsage(t *testing.T) {
 	_, _ = plain.Write([]byte(`{"id":"r1","usage":{"input_tokens":5,"output_tokens":2}}`))
 	if in, out, _, _, ok := plain.tokens(); !ok || in != 5 || out != 2 {
 		t.Fatalf("plain usage = %d %d %v", in, out, ok)
+	}
+}
+
+// Cursor from the Mac counts toward the person's token limits only if the relay reads the usage Cursor puts at the
+// end of an agent run: gzip Connect frames carrying protobuf (update 14), then an end-of-stream trailer. Numbers
+// as on a live run (1 Nov 2026), checked against the Cursor SDK's own usage.
+func TestCursorRunUsage(t *testing.T) {
+	varint := func(b []byte, v uint64) []byte { return binary.AppendUvarint(b, v) }
+	field := func(num int, payload []byte) []byte {
+		return append(varint(varint(nil, uint64(num<<3|2)), uint64(len(payload))), payload...)
+	}
+	number := func(num int, v uint64) []byte { return varint(varint(nil, uint64(num<<3)), v) }
+	usage := append(append(append(number(1, 7865), number(2, 40)...), number(3, 2816)...), number(4, 0)...)
+	message := field(1, field(14, usage))
+	var zipped bytes.Buffer
+	gz := gzip.NewWriter(&zipped)
+	_, _ = gz.Write(message)
+	_ = gz.Close()
+	frame := func(flag byte, body []byte) []byte {
+		head := []byte{flag, 0, 0, 0, 0}
+		binary.BigEndian.PutUint32(head[1:], uint32(len(body)))
+		return append(head, body...)
+	}
+	text := field(1, field(1, field(1, []byte("ok"))))
+	stream := append(append(frame(0, text), frame(1, zipped.Bytes())...), frame(2, []byte(`{}`))...)
+	if in, out, read, write, _, ok := cursorRunUsage(stream); !ok || in != 7865 || out != 40 || read != 2816 || write != 0 {
+		t.Fatalf("cursor usage = %d %d %d %d %v", in, out, read, write, ok)
 	}
 }
