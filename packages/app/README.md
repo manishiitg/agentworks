@@ -52,6 +52,14 @@ Git pulls. It does not install the
 packaged app or change provider sign-ins. Source development still requires the
 development tools documented in `desktop/README.md`.
 
+Startup shows progress and actionable warnings by default. Routine setup output
+goes to the startup log printed at launch; service logs stay in their usual
+locations. Add `--verbose` to show setup details in the terminal:
+
+```sh
+npx @manishiitg/agentworks dev --repo /path/to/agentworks --verbose
+```
+
 ## Installed app
 
 The installer links `~/.local/bin/agentworks` to the CLI in the app. If that

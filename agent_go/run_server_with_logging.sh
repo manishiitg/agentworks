@@ -5,6 +5,7 @@
 
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../scripts/dev-logging.sh"
 
 # Local launches always run every core product, Vault included (owner, 2026-10-26:
 # server products are not optional). Local authentication is unchanged.
@@ -124,6 +125,7 @@ print_usage() {
     printf '%s\n' '  --background, -b              Run services in the background.'
     printf '%s\n' '  --test-connections, -t [file] Test an MCP config file.'
     printf '%s\n' '  --mcp-api-token <token>       Set the MCP server API token for this run.'
+    printf '%s\n' '  --verbose                     Show routine setup details in the terminal.'
     printf '%s\n' '  --help, -h                    Show this help message.'
 }
 
@@ -176,6 +178,9 @@ for arg in "$@"; do
         --mcp-api-token=*)
             MCP_SERVER_API_TOKEN_ARG="${arg#--mcp-api-token=}"
             MCP_SERVER_API_TOKEN_ARG_SET=true
+            ;;
+        --verbose)
+            AGENTWORKS_DEV_VERBOSE=1
             ;;
         --help|-h)
             print_usage
@@ -298,10 +303,10 @@ ensure_frontend_deps() {
     want="$(cat "$dir/package.json" "$dir/package-lock.json" 2>/dev/null | shasum | awk '{print $1}')"
     have="$(cat "$stamp" 2>/dev/null || true)"
     if [ -n "$want" ] && [ "$want" = "$have" ] && [ -x "$dir/node_modules/.bin/vite" ] && frontend_deps_present "$dir" >> "$log" 2>&1; then
-        echo "📦 Frontend dependencies are up to date (skipping npm install)."
+        dev_detail "📦 Frontend dependencies are up to date (skipping npm install)."
         return 0
     fi
-    echo "📦 Ensuring frontend dependencies (npm install)..."
+    dev_detail "📦 Ensuring frontend dependencies (npm install)..."
     if ( cd "$dir" || exit 1; npm install ) >> "$log" 2>&1; then
         frontend_deps_present "$dir" >> "$log" 2>&1 || return 1
         [ -n "$want" ] && printf '%s' "$want" > "$stamp" 2>/dev/null || true
@@ -342,7 +347,7 @@ print_port_status() {
         echo "⚠️  Port $port ($label) is still in use"
         lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | sed 's/^/   /'
     else
-        echo "✅ Port $port ($label) is free"
+        dev_detail "✅ Port $port ($label) is free"
     fi
 }
 
@@ -428,7 +433,7 @@ $sessions
 EOF
 
     if [ "$count" -gt 0 ]; then
-        echo "🧹 Cleaned up $count coding-agent tmux session(s) from $TMUX_TMPDIR"
+        dev_detail "🧹 Cleaned up $count coding-agent tmux session(s) from $TMUX_TMPDIR"
     fi
 }
 
@@ -454,7 +459,7 @@ choose_frontend_port() {
 if [ "$TEST_CONNECTIONS" = true ]; then
     TEST_CONNECTIONS=true
     echo "🔌 Testing MCP Server Connections"
-    echo "========================================="
+    dev_detail "========================================="
     
     # Change to script directory
     cd "$SCRIPT_DIR" || {
@@ -464,10 +469,10 @@ if [ "$TEST_CONNECTIONS" = true ]; then
     
     # Source environment variables from .env file if it exists
     if [ -f "../agent_go/.env" ]; then
-        echo "🔧 Loading environment variables from ../agent_go/.env..."
+        dev_detail "🔧 Loading environment variables from ../agent_go/.env..."
         source ../agent_go/.env
     elif [ -f ".env" ]; then
-        echo "🔧 Loading environment variables from .env..."
+        dev_detail "🔧 Loading environment variables from .env..."
         source .env
     fi
     
@@ -537,8 +542,9 @@ launch_gateway_process() {
 
 if [ "$ONLY_GATEWAY" = true ]; then
     export AGENTWORKS_DEPLOYMENT_MODE=server
+    dev_log_location
     echo "🔌 Starting MCP Gateway only — no agent, workspace, or frontend"
-    echo "========================================="
+    dev_detail "========================================="
 
     cd "$SCRIPT_DIR" || {
         echo "❌ Error: Failed to change to script directory: $SCRIPT_DIR"
@@ -567,8 +573,8 @@ if [ "$ONLY_GATEWAY" = true ]; then
     export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
 
     echo "🚀 Starting MCP Gateway..."
-    echo "📝 Gateway log file: $GATEWAY_LOG_PATH"
-    echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
+    dev_detail "📝 Gateway log file: $GATEWAY_LOG_PATH"
+    dev_detail "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
     echo "🔑 Local admin token file: ${GATEWAY_STATE_DIR}/admin-token"
     echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
     launch_gateway_process || exit 1
@@ -623,12 +629,13 @@ if [ "$ONLY_GATEWAY" = true ]; then
 fi
 
 if [ "$ONLY_FRONTEND" = true ]; then
+    dev_log_location
     if [ "$FRONTEND_BUILD_MODE" = true ]; then
         echo "🎨 Starting frontend only (static build + Electron) — no backend, no workspace"
     else
         echo "🎨 Starting frontend only (Vite + Electron) — no backend, no workspace"
     fi
-    echo "========================================="
+    dev_detail "========================================="
 
     cd "$SCRIPT_DIR" || {
         echo "❌ Error: Failed to change to script directory: $SCRIPT_DIR"
@@ -640,7 +647,7 @@ if [ "$ONLY_FRONTEND" = true ]; then
         exit 1
     }
     if [ -z "$FRONTEND_PORT_EXPLICIT" ] && [ "$FRONTEND_PORT" != "51733" ]; then
-        echo "🔎 Frontend port 51733 is busy; using $FRONTEND_PORT"
+        dev_detail "🔎 Frontend port 51733 is busy; using $FRONTEND_PORT"
     fi
     FRONTEND_URL="http://${FRONTEND_URL_HOST}:${FRONTEND_PORT}"
     FRONTEND_DIR="${SCRIPT_DIR}/../frontend"
@@ -674,14 +681,14 @@ if [ "$ONLY_FRONTEND" = true ]; then
         detected_agent_port="$(detect_checkout_server_port '/main server')"
         if [ -n "$detected_agent_port" ]; then
             AGENT_PORT="$detected_agent_port"
-            echo "🔎 Detected AGENT_PORT=$AGENT_PORT from running backend process"
+            dev_detail "🔎 Detected AGENT_PORT=$AGENT_PORT from running backend process"
         fi
     fi
     if [ -z "${WORKSPACE_PORT:-}" ]; then
         detected_workspace_port="$(detect_checkout_server_port '/workspace server')"
         if [ -n "$detected_workspace_port" ]; then
             WORKSPACE_PORT="$detected_workspace_port"
-            echo "🔎 Detected WORKSPACE_PORT=$WORKSPACE_PORT from running workspace process"
+            dev_detail "🔎 Detected WORKSPACE_PORT=$WORKSPACE_PORT from running workspace process"
         fi
     fi
 
@@ -691,14 +698,14 @@ if [ "$ONLY_FRONTEND" = true ]; then
         detected_agent_port="$(grep -oE 'apiBaseUrl:[[:space:]]*"http://[^"]+"' "$FRONTEND_RUNTIME_CONFIG_PATH" | grep -oE '[0-9]+"' | tr -d '"' | head -1)"
         if [ -n "$detected_agent_port" ]; then
             AGENT_PORT="$detected_agent_port"
-            echo "🔎 Detected AGENT_PORT=$AGENT_PORT from existing runtime-config.js"
+            dev_detail "🔎 Detected AGENT_PORT=$AGENT_PORT from existing runtime-config.js"
         fi
     fi
     if [ -z "${WORKSPACE_PORT:-}" ] && [ -f "$FRONTEND_RUNTIME_CONFIG_PATH" ]; then
         detected_workspace_port="$(grep -oE 'workspaceServiceUrl:[[:space:]]*"http://[^"]+"' "$FRONTEND_RUNTIME_CONFIG_PATH" | grep -oE '[0-9]+"' | tr -d '"' | head -1)"
         if [ -n "$detected_workspace_port" ]; then
             WORKSPACE_PORT="$detected_workspace_port"
-            echo "🔎 Detected WORKSPACE_PORT=$WORKSPACE_PORT from existing runtime-config.js"
+            dev_detail "🔎 Detected WORKSPACE_PORT=$WORKSPACE_PORT from existing runtime-config.js"
         fi
     fi
 
@@ -721,12 +728,12 @@ if [ "$ONLY_FRONTEND" = true ]; then
         echo "   Make sure the backend is running before the frontend tries to call it."
     fi
 
-    echo "🔧 Backend (expected running): $MCP_AGENT_SERVER_URL"
-    echo "🔧 Workspace (expected running): $WORKSPACE_API_URL"
+    dev_detail "🔧 Backend (expected running): $MCP_AGENT_SERVER_URL"
+    dev_detail "🔧 Workspace (expected running): $WORKSPACE_API_URL"
     if [ "$FRONTEND_BUILD_MODE" = true ]; then
-        echo "🔧 Static frontend URL: $FRONTEND_URL"
+        dev_detail "🔧 Static frontend URL: $FRONTEND_URL"
     else
-        echo "🔧 Vite URL: $FRONTEND_URL"
+        dev_detail "🔧 Vite URL: $FRONTEND_URL"
     fi
 
     LOG_DIR="${AGENTWORKS_LOG_DIR:-logs}"
@@ -756,7 +763,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   faviconUrl: "${RUNTIME_FAVICON_URL}"${ONLY_FRONTEND_GATEWAY_LINE}
 };
 EOF
-    echo "📝 Frontend runtime config written to: $FRONTEND_RUNTIME_CONFIG_PATH"
+    dev_detail "📝 Frontend runtime config written to: $FRONTEND_RUNTIME_CONFIG_PATH"
 
     FRONTEND_LOG_PATH="${LOG_DIR}/frontend_debug.log"
     ELECTRON_LOG_PATH="${LOG_DIR}/electron_debug.log"
@@ -788,7 +795,7 @@ EOF
     fi
 
     if [ "$FRONTEND_BUILD_MODE" = true ]; then
-        echo "🔨 Building frontend..."
+        dev_detail "🔨 Building frontend..."
         (
             cd "$FRONTEND_DIR" || exit 1
             npm run build
@@ -823,9 +830,9 @@ EOF
     fi
     FRONTEND_PID=$!
     if [ "$FRONTEND_BUILD_MODE" = true ]; then
-        echo "✅ Static frontend server started (PID: $FRONTEND_PID) — $FRONTEND_URL"
+        dev_detail "✅ Static frontend server started (PID: $FRONTEND_PID) — $FRONTEND_URL"
     else
-        echo "✅ Vite dev server started (PID: $FRONTEND_PID) — $FRONTEND_URL"
+        dev_detail "✅ Vite dev server started (PID: $FRONTEND_PID) — $FRONTEND_URL"
     fi
 
     frontend_ready=false
@@ -862,7 +869,7 @@ EOF
 
     ELECTRON_PID=""
     if [ "$WITHOUT_ELECTRON" = true ]; then
-        echo "🌐 Browser-only frontend requested; Electron will not be started"
+        dev_detail "🌐 Browser-only frontend requested; Electron will not be started"
     else
         echo "🚀 Electron Session Started: $(date)" > "$ELECTRON_LOG_PATH"
         ELECTRON_EXTRA_ARGS=""
@@ -884,7 +891,7 @@ EOF
             ) >> "$ELECTRON_LOG_PATH" 2>&1 &
         fi
         ELECTRON_PID=$!
-        echo "✅ Electron started (PID: $ELECTRON_PID)"
+        dev_detail "✅ Electron started (PID: $ELECTRON_PID)"
         if [ "$DEBUG_MEMORY" = true ]; then
             echo "🧠 Memory debug on: heap snapshots at http://127.0.0.1:${ELECTRON_DEBUG_PORT} (open in Chrome → inspect → Memory)"
             echo "🧠 RSS sampler logging to $ELECTRON_LOG_PATH every 30s"
@@ -969,9 +976,10 @@ if [ "$BACKGROUND_MODE" = true ]; then
     BACKGROUND_MODE=true
     echo "🚀 Starting MCP Agent Server with Logging (Background Mode)"
 else
-    echo "🚀 Starting MCP Agent Server with Logging"
+    echo "Starting AgentWorks…"
+dev_log_location
 fi
-echo "========================================="
+dev_detail "========================================="
 
 find_random_free_port_in_range() {
     local start="$1"
@@ -1063,13 +1071,13 @@ GATEWAY_DIR="${SCRIPT_DIR}/../mcp-gateway"
 DEFAULT_GATEWAY_PORT=18745
 if [ "$WITH_GATEWAY" = true ]; then
     if [ -n "${GATEWAY_PORT:-}" ]; then
-        echo "🔎 Using requested gateway port: $GATEWAY_PORT"
+        dev_detail "🔎 Using requested gateway port: $GATEWAY_PORT"
         if port_in_use "$GATEWAY_PORT"; then
             echo "❌ Error: Requested GATEWAY_PORT $GATEWAY_PORT is already in use"
             exit 1
         fi
     else
-        echo "🔎 Selecting gateway port: default ${DEFAULT_GATEWAY_PORT}, random fallback in range 18100-18199..."
+        dev_detail "🔎 Selecting gateway port: default ${DEFAULT_GATEWAY_PORT}, random fallback in range 18100-18199..."
         GATEWAY_PORT="$(choose_default_then_random_port "$DEFAULT_GATEWAY_PORT" 18100 18199)"
         if [ -z "$GATEWAY_PORT" ]; then
             echo "❌ Error: No free gateway port available in range 18100-18199"
@@ -1094,13 +1102,13 @@ if [ -z "${AGENT_PORT:-}" ] && port_in_use "$DEFAULT_AGENT_PORT"; then
 fi
 
 if [ -n "${AGENT_PORT:-}" ]; then
-    echo "🔎 Using requested agent server port: $AGENT_PORT"
+    dev_detail "🔎 Using requested agent server port: $AGENT_PORT"
     if port_in_use "$AGENT_PORT"; then
         echo "❌ Error: Requested AGENT_PORT $AGENT_PORT is already in use"
         exit 1
     fi
 else
-    echo "🔎 Selecting agent server port: default ${DEFAULT_AGENT_PORT}, random fallback in range 18000-19000..."
+    dev_detail "🔎 Selecting agent server port: default ${DEFAULT_AGENT_PORT}, random fallback in range 18000-19000..."
     AGENT_PORT="$(choose_default_then_random_port "$DEFAULT_AGENT_PORT" 18000 19000 "$GATEWAY_PORT")"
     if [ -z "$AGENT_PORT" ]; then
         echo "❌ Error: No free port available in range 18000-19000"
@@ -1116,7 +1124,7 @@ export MCP_AGENT_SERVER_URL="${LOCALHOST_BASE_URL}:${AGENT_PORT}"
 if [ -z "${PUBLIC_URL:-}" ]; then
     export PUBLIC_URL="$MCP_AGENT_SERVER_URL"
 fi
-echo "✅ Using agent server port: $AGENT_PORT"
+dev_detail "✅ Using agent server port: $AGENT_PORT"
 
 generate_auth_secret() {
     if command -v openssl >/dev/null 2>&1; then
@@ -1200,17 +1208,17 @@ LOCAL_ENV_CREATED=false
 if [ -n "${AGENTWORKS_ENV_FILE:-}" ]; then
     ENV_FILE_PATH="$AGENTWORKS_ENV_FILE"
     if [ -f "$ENV_FILE_PATH" ]; then
-        echo "🔧 Loading environment variables from isolated instance file: $ENV_FILE_PATH"
+        dev_detail "🔧 Loading environment variables from isolated instance file: $ENV_FILE_PATH"
         source_exported_env_file "$ENV_FILE_PATH"
     else
-        echo "🔧 Isolated instance environment will be initialized at: $ENV_FILE_PATH"
+        dev_detail "🔧 Isolated instance environment will be initialized at: $ENV_FILE_PATH"
     fi
 elif [ -f "$ENV_FILE_PATH" ]; then
-    echo "🔧 Loading environment variables from $ENV_FILE_PATH..."
+    dev_detail "🔧 Loading environment variables from $ENV_FILE_PATH..."
     source_exported_env_file "$ENV_FILE_PATH"
-    echo "✅ Environment variables loaded (including Langfuse configuration)"
+    dev_detail "✅ Environment variables loaded (including Langfuse configuration)"
 else
-    echo "ℹ️  First local run: creating a minimal .env with a secure AUTH_SECRET."
+    dev_detail "ℹ️  First local run: creating a minimal .env with a secure AUTH_SECRET."
 fi
 
 # Explicit flags win over inherited and .env installation settings.
@@ -1310,7 +1318,7 @@ unset LOG_FILE
 # This ensures code generation happens in the correct location
 # (SCRIPT_DIR already set above for test-connections mode)
 export MCP_GENERATED_DIR="${MCP_GENERATED_DIR:-${SCRIPT_DIR}/generated}"
-echo "🔧 Set MCP_GENERATED_DIR to: $MCP_GENERATED_DIR"
+dev_detail "🔧 Set MCP_GENERATED_DIR to: $MCP_GENERATED_DIR"
 
 # WORKSPACE_DOCS_PATH: absolute path to workspace-docs as seen by the workspace server.
 # When workspace runs in Docker (default), this is /app/workspace-docs.
@@ -1337,7 +1345,7 @@ FRONTEND_PORT="$(choose_frontend_port "${FRONTEND_PORT:-51733}")" || {
     exit 1
 }
 if [ -z "$FRONTEND_PORT_EXPLICIT" ] && [ "$FRONTEND_PORT" != "51733" ]; then
-    echo "🔎 Frontend port 51733 is busy; using $FRONTEND_PORT"
+    dev_detail "🔎 Frontend port 51733 is busy; using $FRONTEND_PORT"
 fi
 FRONTEND_URL="http://${FRONTEND_URL_HOST}:${FRONTEND_PORT}"
 
@@ -1349,7 +1357,7 @@ FRONTEND_URL="http://${FRONTEND_URL_HOST}:${FRONTEND_PORT}"
 # callback exactly (Upwork, Google) need http://localhost:<this port>/api/oauth/callback registered.
 if [ "$WITH_FRONTEND" = true ] && [ -z "${PUBLIC_URL:-}" ]; then
     export PUBLIC_URL="http://localhost:${FRONTEND_PORT}"
-    echo "🔗 OAuth callback address (PUBLIC_URL): $PUBLIC_URL/api/oauth/callback"
+    dev_detail "🔗 OAuth callback address (PUBLIC_URL): $PUBLIC_URL/api/oauth/callback"
 fi
 
 # Device approval needs the current React app. The API server's static bundle
@@ -1366,7 +1374,7 @@ if [ -z "${AGENTWORKS_CLI_BROWSER_URL:-}" ]; then
     fi
 fi
 if [ -n "${AGENTWORKS_CLI_BROWSER_URL:-}" ]; then
-    echo "🔗 Local CLI browser approval: $AGENTWORKS_CLI_BROWSER_URL"
+    dev_detail "🔗 Local CLI browser approval: $AGENTWORKS_CLI_BROWSER_URL"
 fi
 
 # Change to script directory to ensure relative paths work correctly
@@ -1374,12 +1382,12 @@ cd "$SCRIPT_DIR" || {
     echo "❌ Error: Failed to change to script directory: $SCRIPT_DIR"
     exit 1
 }
-echo "📁 Working directory: $(pwd)"
+dev_detail "📁 Working directory: $(pwd)"
 
 # Use repo go.work so the server uses local multi-llm-provider-go (Azure streaming fix, etc.)
 if [ -f "${SCRIPT_DIR}/../go.work" ]; then
     export GOWORK="${SCRIPT_DIR}/../go.work"
-    echo "🔧 GOWORK=$GOWORK (using local multi-llm-provider-go)"
+    dev_detail "🔧 GOWORK=$GOWORK (using local multi-llm-provider-go)"
 fi
 
 if [ "$WITH_WORKSPACE" = true ]; then
@@ -1391,13 +1399,13 @@ if [ "$WITH_WORKSPACE" = true ]; then
     fi
 
     if [ -n "${WORKSPACE_PORT:-}" ]; then
-        echo "🔎 Using requested workspace server port: $WORKSPACE_PORT"
+        dev_detail "🔎 Using requested workspace server port: $WORKSPACE_PORT"
         if port_in_use "$WORKSPACE_PORT"; then
             echo "❌ Error: Requested WORKSPACE_PORT $WORKSPACE_PORT is already in use"
             exit 1
         fi
     else
-        echo "🔎 Selecting workspace server port: default ${DEFAULT_WORKSPACE_PORT}, random fallback in range 18000-19000..."
+        dev_detail "🔎 Selecting workspace server port: default ${DEFAULT_WORKSPACE_PORT}, random fallback in range 18000-19000..."
         WORKSPACE_PORT="$(choose_default_then_random_port "$DEFAULT_WORKSPACE_PORT" 18000 19000 "$AGENT_PORT,$GATEWAY_PORT")"
         if [ -z "$WORKSPACE_PORT" ]; then
             echo "❌ Error: No free workspace port available in range 18000-19000"
@@ -1421,7 +1429,7 @@ if [ "$WITH_WORKSPACE" = true ]; then
     # like /app/workspace-docs in .env can't leak in).
     if [ -n "$WORKSPACE_DOCS_PATH_FROM_SHELL" ]; then
         WORKSPACE_DOCS_PATH="$WORKSPACE_DOCS_PATH_FROM_SHELL"
-        echo "🔧 WORKSPACE_DOCS_PATH from shell environment: $WORKSPACE_DOCS_PATH"
+        dev_detail "🔧 WORKSPACE_DOCS_PATH from shell environment: $WORKSPACE_DOCS_PATH"
     else
         WORKSPACE_DOCS_PATH="${HOME}/Documents/mcp-agent-workspace"
     fi
@@ -1438,9 +1446,9 @@ if [ "$WITH_WORKSPACE" = true ]; then
     export WORKSPACE_API_TOKEN
 
     export NATIVE_WORKSPACE="true"
-    echo "🧩 Native workspace start enabled"
-    echo "🔧 WORKSPACE_API_URL=$WORKSPACE_API_URL"
-    echo "🔧 WORKSPACE_DOCS_PATH=$WORKSPACE_DOCS_PATH"
+    dev_detail "🧩 Native workspace start enabled"
+    dev_detail "🔧 WORKSPACE_API_URL=$WORKSPACE_API_URL"
+    dev_detail "🔧 WORKSPACE_DOCS_PATH=$WORKSPACE_DOCS_PATH"
 fi
 
 write_frontend_runtime_config() {
@@ -1472,7 +1480,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   faviconUrl: "${runtime_favicon_url}"${gateway_config_line}
 };
 EOF
-    echo "📝 Frontend runtime config written to: $FRONTEND_RUNTIME_CONFIG_PATH"
+    dev_detail "📝 Frontend runtime config written to: $FRONTEND_RUNTIME_CONFIG_PATH"
 }
 
 write_frontend_runtime_config
@@ -1507,7 +1515,7 @@ export MCP_CACHE_TTL_MINUTES="10080"
 
 # Set MCP cache directory to ensure consistent path across restarts
 export MCP_CACHE_DIR="${MCP_CACHE_DIR:-${SCRIPT_DIR}/cache}"
-echo "🔧 Set MCP_CACHE_DIR to: $MCP_CACHE_DIR"
+dev_detail "🔧 Set MCP_CACHE_DIR to: $MCP_CACHE_DIR"
 
 # Context summarization configuration
 export ENABLE_CONTEXT_SUMMARIZATION="true"
@@ -1557,7 +1565,7 @@ export MCPAGENT_CLAUDE_ENFORCE_HTTP_TOOL_ROUTING="${MCPAGENT_CLAUDE_ENFORCE_HTTP
 mkdir -p "$LOG_DIR"
 
 # Truncate the log files to start fresh
-echo "📝 Truncating log files for clean start..."
+dev_detail "📝 Truncating log files for clean start..."
 # Keep the last three server logs (server_debug.log.1 is the previous start) so evidence from
 # before a restart is not lost.
 if [ -s "$LOG_PATH" ]; then
@@ -1567,26 +1575,26 @@ if [ -s "$LOG_PATH" ]; then
     mv "$LOG_PATH" "$LOG_PATH.1"
 fi
 > "$LOG_PATH"
-echo "✅ Server log file started fresh (previous one kept as $LOG_PATH.1): $LOG_PATH"
+dev_detail "✅ Server log file started fresh (previous one kept as $LOG_PATH.1): $LOG_PATH"
 > "${LOG_DIR}/llm_debug.log"
-echo "✅ LLM log file truncated: ${LOG_DIR}/llm_debug.log"
+dev_detail "✅ LLM log file truncated: ${LOG_DIR}/llm_debug.log"
 if [ "$WITH_WORKSPACE" = true ]; then
     WORKSPACE_LOG_PATH="${LOG_DIR}/workspace_debug.log"
     > "$WORKSPACE_LOG_PATH"
-    echo "✅ Workspace log file truncated: $WORKSPACE_LOG_PATH"
+    dev_detail "✅ Workspace log file truncated: $WORKSPACE_LOG_PATH"
 fi
 if [ "$WITH_FRONTEND" = true ]; then
     FRONTEND_LOG_PATH="${LOG_DIR}/frontend_debug.log"
     ELECTRON_LOG_PATH="${LOG_DIR}/electron_debug.log"
     > "$FRONTEND_LOG_PATH"
     > "$ELECTRON_LOG_PATH"
-    echo "✅ Frontend log file truncated: $FRONTEND_LOG_PATH"
-    echo "✅ Electron log file truncated: $ELECTRON_LOG_PATH"
+    dev_detail "✅ Frontend log file truncated: $FRONTEND_LOG_PATH"
+    dev_detail "✅ Electron log file truncated: $ELECTRON_LOG_PATH"
 fi
 if [ "$WITH_GATEWAY" = true ]; then
     GATEWAY_LOG_PATH="${LOG_DIR}/gateway_debug.log"
     > "$GATEWAY_LOG_PATH"
-    echo "✅ Gateway log file truncated: $GATEWAY_LOG_PATH"
+    dev_detail "✅ Gateway log file truncated: $GATEWAY_LOG_PATH"
 fi
 
 # Workflow Builder chats historically lived directly under conversation/<date>.
@@ -1608,11 +1616,11 @@ run_local_builder_chat_migration() {
     fi
 
     if [ -z "$migration_workspace_root" ] || [ ! -d "$migration_workspace_root/Workflow" ]; then
-        echo "ℹ️  No local legacy Workflow Builder chats to migrate"
+        dev_detail "ℹ️  No local legacy Workflow Builder chats to migrate"
         return 0
     fi
     migration_workspace_root="$(cd "$migration_workspace_root" && pwd)"
-    echo "🔄 Checking local Workflow Builder chat migration..."
+    dev_detail "🔄 Checking local Workflow Builder chat migration..."
     if ! python3 "$migration_script" \
         --workspace-root "$migration_workspace_root" \
         --default-owner-id "${DEFAULT_USER_ID:-default}" \
@@ -1622,7 +1630,7 @@ run_local_builder_chat_migration() {
         tail -20 "$LOG_PATH"
         return 1
     fi
-    echo "✅ Local Workflow Builder chat migration complete"
+    dev_detail "✅ Local Workflow Builder chat migration complete"
 }
 
 run_local_builder_chat_migration || exit 1
@@ -1632,18 +1640,18 @@ run_local_builder_chat_migration || exit 1
 account_audience_backup="${AGENTWORKS_STATE_ROOT:-$HOME/.config/agentworks/state}/migration-backups/account-audiences-$(date -u +%Y%m%dT%H%M%SZ)"
 account_audience_args=()
 if [ -n "$ENV_FILE_PATH" ]; then account_audience_args+=(--env-file "$ENV_FILE_PATH"); fi
-python3 "$SCRIPT_DIR/../scripts/migrations/account-availability.py" \
+dev_setup python3 "$SCRIPT_DIR/../scripts/migrations/account-availability.py" \
     --workspace-dir "$WORKSPACE_DOCS_PATH" \
     --backup-dir "$account_audience_backup" \
     "${account_audience_args[@]}" || exit 1
 # Replace the saved NO_SERVERS marker with "Use all my apps automatically" (PLAT-856-394); runs once.
 vault_apps_state="${AGENTWORKS_STATE_ROOT:-$HOME/.config/agentworks/state}"
-python3 "$SCRIPT_DIR/../scripts/migrations/vault-apps-setting.py" \
+dev_setup python3 "$SCRIPT_DIR/../scripts/migrations/vault-apps-setting.py" \
     --workspace-dir "$WORKSPACE_DOCS_PATH" \
     --backup-dir "$vault_apps_state/migration-backups/vault-apps-setting-$(date -u +%Y%m%dT%H%M%SZ)" \
     --done-file "$vault_apps_state/migrations/vault-apps-setting.done" || exit 1
 # One sharing model (PLAT-856-393): retire the Goal/Flow editor tier before the server reads access.
-python3 "$SCRIPT_DIR/../scripts/migrations/one-sharing-model.py" \
+dev_setup python3 "$SCRIPT_DIR/../scripts/migrations/one-sharing-model.py" \
     --workspace-dir "$WORKSPACE_DOCS_PATH" \
     --backup-dir "${AGENTWORKS_STATE_ROOT:-$HOME/.config/agentworks/state}/migration-backups/one-sharing-model-$(date -u +%Y%m%dT%H%M%SZ)" || exit 1
 # Convert only the already-exported non-secret policy. Re-sourcing the full .env
@@ -1658,33 +1666,33 @@ fi
 LOG_ROTATE_LINES=500000
 
 # Clean up agent prompt logs to start fresh
-echo "🧹 Cleaning ${LOG_DIR}/agent_prompts..."
+dev_detail "🧹 Cleaning ${LOG_DIR}/agent_prompts..."
 if [ -d "${LOG_DIR}/agent_prompts" ]; then
     rm -rf "${LOG_DIR}/agent_prompts"/*
-    echo "✅ ${LOG_DIR}/agent_prompts cleaned"
+    dev_detail "✅ ${LOG_DIR}/agent_prompts cleaned"
 else
     mkdir -p "${LOG_DIR}/agent_prompts"
-    echo "✅ ${LOG_DIR}/agent_prompts created"
+    dev_detail "✅ ${LOG_DIR}/agent_prompts created"
 fi
 
 # Clean up tool_output_folder to start fresh
-echo "🧹 Cleaning tool_output_folder..."
+dev_detail "🧹 Cleaning tool_output_folder..."
 if [ -d "tool_output_folder" ]; then
     rm -rf tool_output_folder/*
-    echo "✅ tool_output_folder cleaned (all files and subdirectories removed)"
+    dev_detail "✅ tool_output_folder cleaned (all files and subdirectories removed)"
 else
     mkdir -p tool_output_folder
-    echo "✅ tool_output_folder created (was missing)"
+    dev_detail "✅ tool_output_folder created (was missing)"
 fi
 
 # Clean up generated/agents directory to start fresh
-echo "🧹 Cleaning generated/agents..."
+dev_detail "🧹 Cleaning generated/agents..."
 if [ -d "generated/agents" ]; then
     rm -rf generated/agents/*
-    echo "✅ generated/agents cleaned (all files and subdirectories removed)"
+    dev_detail "✅ generated/agents cleaned (all files and subdirectories removed)"
 else
     mkdir -p generated/agents
-    echo "✅ generated/agents created (was missing)"
+    dev_detail "✅ generated/agents created (was missing)"
 fi
 
 # Add timestamp header to log file
@@ -1849,7 +1857,7 @@ stop_isolated_electron_helpers() {
         case "$candidate_command" in
             *Electron*"--user-data-dir=${user_data_dir}"*)
                 if [ "$candidate_pid" != "$$" ] && kill -0 "$candidate_pid" 2>/dev/null; then
-                    echo "🧹 Stopping orphaned isolated Electron helper (PID: $candidate_pid)"
+                    dev_detail "🧹 Stopping orphaned isolated Electron helper (PID: $candidate_pid)"
                     kill_process_tree "$candidate_pid" "isolated Electron helper" 10
                 fi
                 ;;
@@ -1941,7 +1949,7 @@ cleanup_on_exit() {
 
 trap cleanup_on_exit EXIT
 trap "echo ''; echo '🛑 Shutting down (Ctrl+C)...'; exit 130" INT TERM
-echo "🔄 Log rotation started (last $LOG_ROTATE_LINES lines live, older lines in per-day files kept $LOG_KEEP_DAYS days, PID: $LOG_ROTATE_PID)"
+dev_detail "🔄 Log rotation started (last $LOG_ROTATE_LINES lines live, older lines in per-day files kept $LOG_KEEP_DAYS days, PID: $LOG_ROTATE_PID)"
 
 wait_for_workspace_health() {
     local health_url="${WORKSPACE_API_URL%/}/health"
@@ -1976,8 +1984,8 @@ start_native_workspace() {
     fi
 
     echo "🚀 Starting native workspace server..."
-    echo "📝 Workspace log file: $WORKSPACE_LOG_PATH"
-    echo "🌐 Workspace API URL: $WORKSPACE_API_URL"
+    dev_detail "📝 Workspace log file: $WORKSPACE_LOG_PATH"
+    dev_detail "🌐 Workspace API URL: $WORKSPACE_API_URL"
 
     echo "🚀 Native Workspace Session Started: $(date)" > "$WORKSPACE_LOG_PATH"
     echo "=========================================" >> "$WORKSPACE_LOG_PATH"
@@ -2001,7 +2009,7 @@ start_native_workspace() {
     fi
 
     WORKSPACE_PID=$!
-    echo "✅ Native workspace process started (PID: $WORKSPACE_PID)"
+    dev_detail "✅ Native workspace process started (PID: $WORKSPACE_PID)"
     wait_for_workspace_health
 }
 
@@ -2043,8 +2051,8 @@ start_mcp_gateway() {
     fi
 
     echo "🚀 Starting MCP Gateway..."
-    echo "📝 Gateway log file: $GATEWAY_LOG_PATH"
-    echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
+    dev_detail "📝 Gateway log file: $GATEWAY_LOG_PATH"
+    dev_detail "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
     echo "🔑 Local admin token file: ${GATEWAY_STATE_DIR}/admin-token"
 
     echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
@@ -2055,7 +2063,7 @@ start_mcp_gateway() {
     echo "" >> "$GATEWAY_LOG_PATH"
 
     launch_gateway_process || return 1
-    echo "✅ MCP Gateway process started (PID: $GATEWAY_PID)"
+    dev_detail "✅ MCP Gateway process started (PID: $GATEWAY_PID)"
     wait_for_gateway_health
 }
 
@@ -2113,11 +2121,11 @@ start_frontend_dev() {
     else
         echo "🚀 Starting Vite dev server..."
     fi
-    echo "📝 Frontend log file: $FRONTEND_LOG_PATH"
-    echo "🌐 Frontend URL: $FRONTEND_URL"
+    dev_detail "📝 Frontend log file: $FRONTEND_LOG_PATH"
+    dev_detail "🌐 Frontend URL: $FRONTEND_URL"
 
     if [ "$FRONTEND_BUILD_MODE" = true ]; then
-        echo "🔨 Building frontend..."
+        dev_detail "🔨 Building frontend..."
         echo "🔨 Frontend Build Session Started: $(date)" > "$FRONTEND_LOG_PATH"
         (
             cd "$FRONTEND_DIR" || exit 1
@@ -2158,7 +2166,7 @@ start_frontend_dev() {
     fi
 
     FRONTEND_PID=$!
-    echo "✅ Frontend server process started (PID: $FRONTEND_PID)"
+    dev_detail "✅ Frontend server process started (PID: $FRONTEND_PID)"
     wait_for_frontend_health
 }
 
@@ -2188,7 +2196,7 @@ start_electron() {
         return 0
     fi
     if [ "$WITHOUT_ELECTRON" = true ]; then
-        echo "🌐 Browser-only frontend requested; Electron will not be started"
+        dev_detail "🌐 Browser-only frontend requested; Electron will not be started"
         return 0
     fi
 
@@ -2197,7 +2205,7 @@ start_electron() {
         return 1
     fi
     if [ ! -x "$ELECTRON_BIN" ]; then
-        echo "📦 Ensuring desktop dependencies (npm install)..."
+        dev_detail "📦 Ensuring desktop dependencies (npm install)..."
         (
             cd "$DESKTOP_DIR" || exit 1
             npm install
@@ -2214,7 +2222,7 @@ start_electron() {
 
     local dev_url="$FRONTEND_URL"
     echo "🚀 Starting Electron (DEV_URL=$dev_url)..."
-    echo "📝 Electron log file: $ELECTRON_LOG_PATH"
+    dev_detail "📝 Electron log file: $ELECTRON_LOG_PATH"
 
     echo "🚀 Electron Session Started: $(date)" > "$ELECTRON_LOG_PATH"
     echo "=========================================" >> "$ELECTRON_LOG_PATH"
@@ -2233,7 +2241,7 @@ start_electron() {
     ) >> "$ELECTRON_LOG_PATH" 2>&1 &
 
     ELECTRON_PID=$!
-    echo "✅ Electron process started (PID: $ELECTRON_PID)"
+    dev_detail "✅ Electron process started (PID: $ELECTRON_PID)"
     sleep 2
     if ! kill -0 "$ELECTRON_PID" 2>/dev/null; then
         echo "❌ Error: Electron exited immediately. Check logs: $ELECTRON_LOG_PATH"
@@ -2244,16 +2252,16 @@ start_electron() {
 }
 
 # Start the server with enhanced logging and structured output LLM
-echo "🚀 Starting MCP Agent Server with enhanced logging..."
-echo "📝 Log file: $LOG_PATH"
-echo "🔀 Split Execution Learning: $SPLIT_EXECUTION_LEARNING"
-echo "⏱️  Tool Timeout: $TOOL_EXECUTION_TIMEOUT"
-echo "💾 MCP Cache TTL: $MCP_CACHE_TTL_MINUTES minutes (7 days)"
-echo "📁 Workspace Tools: Enabled"
-echo "🌐 Agent API URL: $MCP_AGENT_SERVER_URL"
-echo "📝 Context Summarization: $ENABLE_CONTEXT_SUMMARIZATION (Threshold: $TOKEN_THRESHOLD_PERCENT = 70%, Fixed: ${FIXED_TOKEN_THRESHOLD} tokens, Keep: $SUMMARY_KEEP_LAST_MESSAGES msgs)"
-echo "✂️  Context Editing: $ENABLE_CONTEXT_EDITING (Threshold: ${CONTEXT_EDITING_THRESHOLD} tokens, Age: ${CONTEXT_EDITING_TURN_THRESHOLD} turns)"
-echo "📊 Debug level: $LOG_LEVEL"
+dev_detail "🚀 Starting MCP Agent Server with enhanced logging..."
+dev_detail "📝 Log file: $LOG_PATH"
+dev_detail "🔀 Split Execution Learning: $SPLIT_EXECUTION_LEARNING"
+dev_detail "⏱️  Tool Timeout: $TOOL_EXECUTION_TIMEOUT"
+dev_detail "💾 MCP Cache TTL: $MCP_CACHE_TTL_MINUTES minutes (7 days)"
+dev_detail "📁 Workspace Tools: Enabled"
+dev_detail "🌐 Agent API URL: $MCP_AGENT_SERVER_URL"
+dev_detail "📝 Context Summarization: $ENABLE_CONTEXT_SUMMARIZATION (Threshold: $TOKEN_THRESHOLD_PERCENT = 70%, Fixed: ${FIXED_TOKEN_THRESHOLD} tokens, Keep: $SUMMARY_KEEP_LAST_MESSAGES msgs)"
+dev_detail "✂️  Context Editing: $ENABLE_CONTEXT_EDITING (Threshold: ${CONTEXT_EDITING_THRESHOLD} tokens, Age: ${CONTEXT_EDITING_TURN_THRESHOLD} turns)"
+dev_detail "📊 Debug level: $LOG_LEVEL"
 
 # Verify main.go exists before attempting to run
 if [ ! -f "main.go" ]; then
@@ -2277,7 +2285,7 @@ update_mmx_cli_if_requested() {
         return 1
     fi
 
-    echo "📦 Updating mmx-cli to latest because --update was provided..."
+    dev_detail "📦 Updating mmx-cli to latest because --update was provided..."
     npm install -g mmx-cli@latest 2>&1 | tail -5
     local npm_status=${PIPESTATUS[0]}
     if [ "$npm_status" -ne 0 ]; then
@@ -2300,7 +2308,7 @@ ensure_tmux_for_claude_code() {
         version="$(tmux -V 2>/dev/null || true)"
         major="$(printf '%s\n' "$version" | sed -E 's/^tmux ([0-9]+).*/\1/')"
         if [ "$major" -ge 3 ] 2>/dev/null; then
-            echo "✅ Claude Code experimental runtime dependency available: $version"
+            dev_detail "✅ Claude Code experimental runtime dependency available: $version"
             return 0
         fi
         echo "⚠️  Claude Code experimental runtime dependency ${version:-unknown} found, but version 3.x or newer is required."
@@ -2321,7 +2329,7 @@ ensure_tmux_for_claude_code() {
         version="$(tmux -V 2>/dev/null || true)"
         major="$(printf '%s\n' "$version" | sed -E 's/^tmux ([0-9]+).*/\1/')"
         if [ "$major" -ge 3 ] 2>/dev/null; then
-            echo "✅ Claude Code experimental runtime dependency installed: $version"
+            dev_detail "✅ Claude Code experimental runtime dependency installed: $version"
         else
             echo "⚠️  Claude Code experimental runtime dependency ${version:-unknown} is still below 3.x. Claude Code provider will fail until tmux is upgraded."
         fi
@@ -2331,7 +2339,7 @@ ensure_tmux_for_claude_code() {
 }
 
 if [ "${AGENTWORKS_SKIP_GLOBAL_DEPENDENCY_UPDATES:-false}" = "true" ]; then
-    echo "🔒 Isolated instance: skipping global tmux and agent-browser updates"
+    dev_detail "🔒 Isolated instance: skipping global tmux and agent-browser updates"
     if ! command -v tmux >/dev/null 2>&1; then
         echo "❌ Error: tmux is required and global dependency updates are disabled"
         exit 1
@@ -2350,7 +2358,7 @@ else
     # is an opaque "exit code 127: agent-browser: not found" deep inside a
     # tool call.
     echo "📦 Updating agent-browser to latest..."
-    if ! npm install -g agent-browser@latest 2>&1 | tail -5; then
+    if ! dev_setup npm install -g agent-browser@latest; then
         echo "❌ Error: npm install -g agent-browser@latest failed"
         exit 1
     fi
@@ -2358,7 +2366,7 @@ else
         echo "❌ Error: agent-browser still not on PATH after install"
         exit 1
     fi
-    echo "✅ agent-browser updated: $(agent-browser --version 2>&1)"
+    dev_detail "✅ agent-browser updated: $(agent-browser --version 2>&1)"
 fi
 
 # Serve the same private Playwright fixtures as server releases. Build these
@@ -2366,8 +2374,8 @@ fi
 # An explicit override belongs to the caller and must not be overwritten.
 if [ -z "${AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR:-}" ]; then
     export AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR="$SCRIPT_DIR/packages"
-    echo "📦 Building AgentWorks Playwright fixture packages..."
-    if ! python3 "$SCRIPT_DIR/../scripts/build-playwright-packages.py" "$AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR"; then
+    dev_detail "📦 Building AgentWorks Playwright fixture packages..."
+    if ! dev_setup python3 "$SCRIPT_DIR/../scripts/build-playwright-packages.py" "$AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR"; then
         echo "❌ Failed to build Playwright fixture packages; check Python 3 and package sources"
         exit 1
     fi
@@ -2391,13 +2399,13 @@ mkdir -p "$MCPBRIDGE_BIN_DIR"
 echo "🔨 Building mcpbridge binary from local source..."
 (cd "${SCRIPT_DIR}/../../mcpagent" && GOBIN="$MCPBRIDGE_BIN_DIR" go install ./cmd/mcpbridge/) 2>&1
 if [ $? -eq 0 ]; then
-    echo "✅ mcpbridge binary installed from local source: $MCPBRIDGE_BIN_DIR/mcpbridge"
+    dev_detail "✅ mcpbridge binary installed from local source: $MCPBRIDGE_BIN_DIR/mcpbridge"
 else
     # Fallback to published module if local build fails
     echo "⚠️  Local build failed, falling back to published release..."
     GOWORK=off GOBIN="$MCPBRIDGE_BIN_DIR" go install github.com/manishiitg/mcpagent/cmd/mcpbridge@latest 2>&1
     if [ $? -eq 0 ]; then
-        echo "✅ mcpbridge binary installed from published release: $MCPBRIDGE_BIN_DIR/mcpbridge"
+        dev_detail "✅ mcpbridge binary installed from published release: $MCPBRIDGE_BIN_DIR/mcpbridge"
     else
         echo "⚠️  Failed to install mcpbridge (CLI provider MCP bridge will not work)"
     fi
@@ -2423,15 +2431,15 @@ fi
 # These accumulate as zombies when Chrome crashes — the daemon stays alive with a
 # dead CDP connection. We kill them all at startup so the new server gets a clean slate.
 if [ "${AGENTWORKS_SKIP_GLOBAL_BROWSER_CLEANUP:-false}" = "true" ]; then
-    echo "🔒 Isolated instance: skipping global agent-browser process and state cleanup"
+    dev_detail "🔒 Isolated instance: skipping global agent-browser process and state cleanup"
 else
 ZOMBIE_COUNT=$(pgrep -f 'agent-browser-darwin-arm64' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$ZOMBIE_COUNT" -gt 0 ]; then
     echo "🧹 Killing $ZOMBIE_COUNT leftover agent-browser daemon(s) from previous run..."
     pkill -9 -f 'agent-browser-darwin-arm64' 2>/dev/null || true
-    echo "✅ agent-browser daemons cleared"
+    dev_detail "✅ agent-browser daemons cleared"
 else
-    echo "✅ No leftover agent-browser daemons"
+    dev_detail "✅ No leftover agent-browser daemons"
 fi
 
 # Kill only orphaned agent-browser-owned Chrome processes. Do not match plain
@@ -2455,9 +2463,9 @@ if [ "$CHROME_COUNT" -gt 0 ]; then
     done <<EOF
 $ORPHAN_AGENT_CHROME_PIDS
 EOF
-    echo "✅ Orphaned agent-browser Chrome processes cleared"
+    dev_detail "✅ Orphaned agent-browser Chrome processes cleared"
 else
-    echo "✅ No orphaned agent-browser Chrome processes"
+    dev_detail "✅ No orphaned agent-browser Chrome processes"
 fi
 
 # Clean up stale agent-browser runtime state (dead PID/socket files)
@@ -2469,7 +2477,7 @@ for ab_dir in "$HOME/.agent-browser" "/tmp/.agent-browser"; do
             ab_pid=$(cat "$pidfile" 2>/dev/null | tr -d '[:space:]')
             if [ -n "$ab_pid" ] && ! kill -0 "$ab_pid" 2>/dev/null; then
                 base="${pidfile%.pid}"
-                echo "🧹 Cleaning stale agent-browser state: PID $ab_pid ($(basename "$pidfile"))"
+                dev_detail "🧹 Cleaning stale agent-browser state: PID $ab_pid ($(basename "$pidfile"))"
                 rm -f "$pidfile" "${base}.sock" "${base}.stream" "${base}.engine" "${base}.version"
             fi
         done
@@ -2499,13 +2507,13 @@ GO_LDFLAGS="-X github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator
 # CLI for this machine and point the development server at that directory.
 if [ -z "${AGENTWORKS_CLI_DOWNLOAD_DIR:-}" ]; then
     export AGENTWORKS_CLI_DOWNLOAD_DIR="${SCRIPT_DIR}/bin/cli-downloads"
-    bash "${SCRIPT_DIR}/../scripts/package-agentworks-cli-local.sh" "$AGENTWORKS_CLI_DOWNLOAD_DIR" || exit 1
+    dev_setup bash "${SCRIPT_DIR}/../scripts/package-agentworks-cli-local.sh" "$AGENTWORKS_CLI_DOWNLOAD_DIR" || exit 1
 fi
 
 if [ -n "$PLATFORM_REVISION" ]; then
-    echo "🔖 Platform revision: $PLATFORM_REVISION"
+    dev_detail "🔖 Platform revision: $PLATFORM_REVISION"
 else
-    echo "🔖 Platform revision: unknown (not a git checkout) — findings will record no version"
+    dev_detail "🔖 Platform revision: unknown (not a git checkout) — findings will record no version"
 fi
 
 # The agent needs standalone dashboard/preview assets even when the person
@@ -2548,7 +2556,7 @@ if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
     fi
 elif [ "$BACKGROUND_MODE" = true ]; then
     # Background mode: run in background and capture PID
-    echo "🔄 Starting server in background mode..."
+    dev_detail "🔄 Starting server in background mode..."
     nohup go run -ldflags "$GO_LDFLAGS" main.go server \
         --port "$AGENT_PORT" \
         --log-level debug \
@@ -2560,9 +2568,9 @@ elif [ "$BACKGROUND_MODE" = true ]; then
         --mcp-config "configs/mcp_servers_clean.json" >> "$LOG_PATH" 2>&1 &
     
     SERVER_PID=$!
-    echo "✅ Server started in background (PID: $SERVER_PID)"
-    echo "📝 Logs are being written to: $LOG_PATH"
-    echo "🌐 Agent API URL: $MCP_AGENT_SERVER_URL"
+    dev_detail "✅ Server started in background (PID: $SERVER_PID)"
+    dev_detail "📝 Logs are being written to: $LOG_PATH"
+    dev_detail "🌐 Agent API URL: $MCP_AGENT_SERVER_URL"
 
     if [ "$WITH_FRONTEND" = true ]; then
         wait_for_agent_health || { stop_native_workspace; exit 1; }
@@ -2588,23 +2596,23 @@ elif [ "$BACKGROUND_MODE" = true ]; then
 
     echo "🛑 To stop the server, run: kill $SERVER_PID"
     if [ "$WITH_WORKSPACE" = true ]; then
-        echo "✅ Native workspace is running in background (PID: $WORKSPACE_PID)"
-        echo "📝 Workspace logs are being written to: $WORKSPACE_LOG_PATH"
-        echo "🌐 Workspace health: ${WORKSPACE_API_URL%/}/health"
+        dev_detail "✅ Native workspace is running in background (PID: $WORKSPACE_PID)"
+        dev_detail "📝 Workspace logs are being written to: $WORKSPACE_LOG_PATH"
+        dev_detail "🌐 Workspace health: ${WORKSPACE_API_URL%/}/health"
     fi
     if [ "$WITH_FRONTEND" = true ]; then
-        echo "✅ Vite dev server is running in background (PID: $FRONTEND_PID)"
-        echo "📝 Frontend logs: $FRONTEND_LOG_PATH"
+        dev_detail "✅ Vite dev server is running in background (PID: $FRONTEND_PID)"
+        dev_detail "📝 Frontend logs: $FRONTEND_LOG_PATH"
         if [ -n "$ELECTRON_PID" ]; then
-            echo "✅ Electron is running in background (PID: $ELECTRON_PID)"
-            echo "📝 Electron logs: $ELECTRON_LOG_PATH"
+            dev_detail "✅ Electron is running in background (PID: $ELECTRON_PID)"
+            dev_detail "📝 Electron logs: $ELECTRON_LOG_PATH"
         fi
         echo "🛑 To stop all, run: kill $SERVER_PID $FRONTEND_PID${ELECTRON_PID:+ $ELECTRON_PID}${WORKSPACE_PID:+ $WORKSPACE_PID}"
     fi
 elif [ "$WITH_FRONTEND" = true ]; then
     # Foreground + frontend: detach server so we can start frontend after it's healthy,
     # then tail the server log so the user still sees server output.
-    echo "🔄 Starting server in foreground mode (with frontend)..."
+    dev_detail "🔄 Starting server in foreground mode (with frontend)..."
     echo "   Agent API URL: $MCP_AGENT_SERVER_URL"
     nohup go run -ldflags "$GO_LDFLAGS" main.go server \
         --port "$AGENT_PORT" \
@@ -2634,7 +2642,7 @@ else
     # Foreground mode: run server in background so the INT trap fires immediately
     # on Ctrl+C. Without &, bash cannot process the trap until the foreground
     # command returns, causing Ctrl+C to appear stuck with no output.
-    echo "🔄 Starting server in foreground mode..."
+    dev_detail "🔄 Starting server in foreground mode..."
     echo "   (Press Ctrl+C to stop)"
     echo "   Agent API URL: $MCP_AGENT_SERVER_URL"
     echo ""
