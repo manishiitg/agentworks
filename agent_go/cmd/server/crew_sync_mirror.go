@@ -26,6 +26,13 @@ type crewNativeMirror struct {
 	Conversation *crewHandoffConversation `json:"conversation"`
 }
 
+type crewMirrorManifestBytes struct {
+	Stamp string
+	Raw   []byte
+}
+
+var crewMirrorManifests sync.Map
+
 // rsync writes replacement files (never --inplace/--append). Hardlinks keep
 // the completed bytes available during the next transfer without another copy.
 // The manifest points to exactly one completed directory; partial updates never
@@ -40,7 +47,7 @@ func saveCrewNativeMirror(roots crewroot.Roots, c *crewHandoffConversation) erro
 	if err := c.Native.ValidateFiles(); err != nil {
 		return err
 	}
-	if old, err := readCrewNativeMirror(roots); err == nil {
+	if old, err := readCrewNativeMirrorManifest(roots); err == nil {
 		if old.Conversation.Native.SessionID == c.Native.SessionID && old.Conversation.Native.Provider == c.Native.Provider && !strings.HasSuffix(c.Native.Format, "sqlite") {
 			if err := sessiontransfer.Ancestor(old.Conversation.Native, c.Native); err != nil {
 				return err
@@ -82,6 +89,7 @@ func saveCrewNativeMirror(roots crewroot.Roots, c *crewHandoffConversation) erro
 	if err = fsutil.WriteJSONAtomic(filepath.Join(roots.Private, "native-mirror.json"), mirror, 0600); err != nil {
 		return err
 	}
+	crewMirrorManifests.Delete(roots.Private)
 	complete = true
 	entries, _ := os.ReadDir(root)
 	for _, entry := range entries {
@@ -91,12 +99,25 @@ func saveCrewNativeMirror(roots crewroot.Roots, c *crewHandoffConversation) erro
 	}
 	return nil
 }
-func readCrewNativeMirror(roots crewroot.Roots) (crewNativeMirror, error) {
+
+// The idle comparison needs metadata only. Actual resume/transfer callers use
+// readCrewNativeMirror, which still validates every journal before using it.
+func readCrewNativeMirrorManifest(roots crewroot.Roots) (crewNativeMirror, error) {
 	var out crewNativeMirror
-	raw, err := os.ReadFile(filepath.Join(roots.Private, "native-mirror.json"))
-	if err != nil {
-		return out, err
+	path := filepath.Join(roots.Private, "native-mirror.json")
+	stamp := nativeTerminalFileStamp(path)
+	var raw []byte
+	if cached, ok := crewMirrorManifests.Load(roots.Private); ok && stamp != "" && cached.(crewMirrorManifestBytes).Stamp == stamp {
+		raw = cached.(crewMirrorManifestBytes).Raw
+	} else {
+		var err error
+		raw, err = os.ReadFile(path)
+		if err != nil {
+			return out, err
+		}
+		crewMirrorManifests.Store(roots.Private, crewMirrorManifestBytes{stamp, raw})
 	}
+	var err error
 	if err = json.Unmarshal(raw, &out); err != nil {
 		return out, err
 	}
@@ -107,10 +128,20 @@ func readCrewNativeMirror(roots crewroot.Roots) (crewNativeMirror, error) {
 		return out, fmt.Errorf("native mirror is incomplete")
 	}
 	out.Conversation.Native.Root = filepath.Join(roots.Private, "native-mirrors", out.Version)
-	if err := out.Conversation.Native.ValidateFiles(); err != nil {
+	if err := out.Conversation.Native.Validate(); err != nil {
 		return out, err
 	}
 	return out, validateCrewHandoffConversation(out.Conversation)
+}
+func readCrewNativeMirror(roots crewroot.Roots) (crewNativeMirror, error) {
+	out, err := readCrewNativeMirrorManifest(roots)
+	if err != nil {
+		return out, err
+	}
+	if err := out.Conversation.Native.ValidateFiles(); err != nil {
+		return out, err
+	}
+	return out, nil
 }
 func (api *StreamingAPI) crewNativeTurnRunning(roots crewroot.Roots) bool {
 	api.activeSessionsMux.RLock()
@@ -167,14 +198,11 @@ func (api *StreamingAPI) captureCrewMirror(ctx context.Context, claims *UserClai
 	return c, nil
 }
 
-func (api *StreamingAPI) syncCrewNativeMirror(ctx context.Context, claims *UserClaims, roots crewroot.Roots, b *crewroot.SyncBinding) error {
+func (api *StreamingAPI) syncCrewNativeMirror(ctx context.Context, claims *UserClaims, roots crewroot.Roots, b *crewroot.SyncBinding, connection desktopConnection) error {
 	if b.Mode == "manual" || b.PendingAction != "" {
 		return nil
 	}
-	connection, err := api.refreshCrewSyncAuthority(ctx, claims, roots, b)
-	if err != nil {
-		return err
-	}
+	var err error
 	var c *crewHandoffConversation
 	if b.Editing == "local" {
 		if api.crewNativeTurnRunning(roots) {
@@ -197,7 +225,7 @@ func (api *StreamingAPI) syncCrewNativeMirror(ctx context.Context, claims *UserC
 		return nil
 	}
 	raw, _ := json.Marshal(c)
-	if old, e := readCrewNativeMirror(roots); e == nil {
+	if old, e := readCrewNativeMirrorManifest(roots); e == nil {
 		previous, _ := json.Marshal(old.Conversation)
 		if string(raw) == string(previous) {
 			return nil
@@ -247,7 +275,7 @@ func (api *StreamingAPI) refreshCrewSyncAuthority(ctx context.Context, claims *U
 	if status.Binding == nil || status.Binding.PairID != b.PairID {
 		return connection, fmt.Errorf("paired project is unavailable")
 	}
-	current, err := updateCrewSyncEditing(ctx, roots, b.PairID, status.Binding.Editing)
+	current, err := updateCrewSyncEditing(ctx, roots, *b, status.Binding.Editing)
 	if err != nil {
 		return connection, err
 	}

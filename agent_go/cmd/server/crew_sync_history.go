@@ -77,11 +77,6 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 	if candidate, captureErr := api.captureCrewNative(ctx, claims, roots, conversation, doc.Runtime); captureErr != nil {
 		log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=archive native_unavailable=%q", roots.ID, captureErr)
 	} else {
-		if candidate != nil {
-			if err = stageCrewNative(roots, candidate); err != nil {
-				return nil, err
-			}
-		}
 		out.Native = candidate
 		if validateCrewHandoffConversation(out) != nil {
 			out.Native = nil

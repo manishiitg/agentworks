@@ -49,6 +49,7 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 		if e != nil {
 			return fail("Reconnect this project's server before bringing its work back.")
 		}
+		observed := *b
 		check, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		status, e := desktopCrewSyncCall(check, claims.UserID, &connection, b.PeerProjectID, crewSyncRequest{Action: "status", PairID: b.PairID})
 		cancel()
@@ -78,9 +79,12 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 			}
 			return resume()
 		}
-		b, e = updateCrewSyncEditing(r.Context(), roots, b.PairID, "server")
+		b, e = updateCrewSyncEditing(r.Context(), roots, observed, "server")
 		if e != nil {
 			return fail(e.Error())
+		}
+		if b.Editing == "local" && b.PendingAction == "" {
+			return resume()
 		}
 		response := api.runInternalCrewHandoff(r.Context(), claims, roots.ID, b.ConnectionID, "local")
 		if response.status >= 400 {

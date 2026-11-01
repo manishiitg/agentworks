@@ -211,7 +211,8 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 		if watcher == nil {
 			return
 		}
-		for _, root := range []string{roots.Files, roots.Resources} {
+		for _, area := range []struct{ root, prefix string }{{roots.Files, "files/"}, {roots.Resources, "resources/"}} {
+			root := area.root
 			_ = filepath.WalkDir(root, func(p string, e fs.DirEntry, err error) error {
 				if err != nil {
 					return nil
@@ -220,7 +221,7 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 					return nil
 				}
 				rel, _ := filepath.Rel(root, p)
-				if p != root && !crewroot.SyncContentAllowed("files/"+filepath.ToSlash(rel), true) {
+				if p != root && !crewroot.SyncContentAllowed(area.prefix+filepath.ToSlash(rel), true) {
 					return filepath.SkipDir
 				}
 				_ = watcher.Add(p)
@@ -261,7 +262,7 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 			continue
 		}
 		checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
-		_, authorityErr := api.refreshCrewSyncAuthority(checkCtx, claims, roots, b)
+		connection, authorityErr := api.refreshCrewSyncAuthority(checkCtx, claims, roots, b)
 		checkCancel()
 		if authorityErr != nil {
 			setCrewAutoStatus(id, "attention", authorityErr.Error())
@@ -271,17 +272,13 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 			mirrorCtx, mirrorCancel := context.WithTimeout(ctx, 15*time.Minute)
 			defer mirrorCancel()
 			if b.Editing == "local" {
-				connection, e := desktopConnectionFor(claims.UserID, b.ConnectionID)
 				request, _ := http.NewRequestWithContext(context.WithValue(mirrorCtx, UserContextKey, claims), http.MethodPost, "http://localhost/", nil)
-				if e == nil {
-					_, e = api.prepareCrewDependencies(request, roots, b, connection, false)
-				}
-				if e != nil {
+				if _, e := api.prepareCrewDependencies(request, roots, b, connection, false); e != nil {
 					setCrewAutoStatus(id, "attention", "Crew connections could not be prepared. Open Project sync and retry.")
 					return false
 				}
 			}
-			if e := api.syncCrewNativeMirror(mirrorCtx, claims, roots, b); e != nil {
+			if e := api.syncCrewNativeMirror(mirrorCtx, claims, roots, b, connection); e != nil {
 				setCrewAutoStatus(id, "attention", e.Error())
 				return false
 			}
