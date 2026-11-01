@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { BarChart3, Check, ChevronDown, ChevronRight, Settings2 } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -81,7 +81,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const sources = useWorkModelSources({ profileId, profileVersion: meta?.agentProfileVersion, accountProduct: profileId, workspacePath, enabled })
   const selectedOption = enabled ? sources.options.find(option => option.id === meta?.agentProfileEngine) : undefined
   const connectionId = meta?.agentProfileConnectionID || undefined
-  const { workProviderIds, selectableModels, modelsForOption, switchAccountFor, cursorModels, cursorSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
+  const { selectableModels, modelsForOption, switchAccountFor, cursorModels, cursorSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
     selectedOption, selectedConnectionId: connectionId,
     inUseConnectionId: connectionId || ownDefaultConnectionId(sources.accounts, selectedOption?.provider),
     workspacePath, accountProduct: profileId,
@@ -96,17 +96,18 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const modelLabel = models.find(model => model.id === currentModel)?.label || label
   // Every coding agent this person can run here, the chat's own first; Cursor and key accounts list
   // their models per account, so another one of those is one row that switches to its default model.
-  const groups = [selectedOption, ...sources.options.filter(option => option.id !== selectedOption.id && workProviderIds.includes(option.provider || option.id))]
+  // Only the chat's own program: switching program or account is done on the Models page (owner).
+  const groups = [selectedOption]
     .map(option => ({ option, current: option.id === selectedOption.id, models: option.id === selectedOption.id ? models : modelsForOption(option).map(model => ({ id: model.model_id, label: model.model_name || model.model_id })) }))
     .filter(group => group.current || group.models.length > 0 || group.option.provider === 'cursor-cli' || group.option.provider === 'pi-cli')
 
-  const save = async (option: AgentProfileProviderOption, modelId: string, reasoningEffort: string | undefined, account?: string) => {
+  const save = async (option: AgentProfileProviderOption, modelId: string, reasoningEffort: string | undefined) => {
     const current = option.id === selectedOption.id
-    if (saving || (current && account === undefined && modelId === currentModel && reasoningEffort === currentEffort)) return
+    if (saving || (current && modelId === currentModel && reasoningEffort === currentEffort)) return
     setSaving(true)
     try {
       await agentApi.setAgentProfileChatModel(profileId, projectId, {
-        conversation_key: conversationKey, engine: option.id, model_id: modelId, reasoning_effort: reasoningEffort, connection_id: account ?? (current ? connectionId : switchAccountFor(option)),
+        conversation_key: conversationKey, engine: option.id, model_id: modelId, reasoning_effort: reasoningEffort, connection_id: current ? connectionId : switchAccountFor(option),
       })
       await queryClient.invalidateQueries({ queryKey: workChatModelsQueryKey(profileId, projectId) })
     } catch (cause) {
@@ -121,19 +122,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     void save(option, model, effortForPick(model, defaults.reasoningEffort, option))
   }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
-  // The accounts this program can run on here: the server's (or this Mac's) and the person's own, company ones
-  // from connected servers included. Only ones that work are offered.
-  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
-  const serverAccountId = `global:${selectedOption.provider}`
-  const accountChoices: Choice[] = [
-    ...(sources.accounts ?? []).filter(account => account.provider === selectedOption.provider && account.configured !== false && account.usable !== false)
-      .map(account => ({ id: account.id, label: account.id === serverAccountId ? (onThisMac ? 'This Mac' : 'Admin-managed account') : account.display_name })),
-  ]
-  const currentAccount = connectionId || ownDefaultConnectionId(sources.accounts, selectedOption.provider) || serverAccountId
-  const accountLabel = accountChoices.find(choice => choice.id === currentAccount)?.label || (onThisMac ? 'This Mac' : 'Admin-managed account')
-  const pickAccount = (id: string) => void save(selectedOption, currentModel, currentEffort, id)
-  // Quick ways out of the menu: the full Models page (provider and account) and this project's usage.
-  const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
+  // A quick way out of the menu: this project's usage.
   const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
   // Cursor lists every variant of a model as its own entry; show them the way the Models page does:
   // by company, one row per model, variants as chips, older versions folded away.
@@ -168,16 +157,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
                 {group.current && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
               </Menu.Item>}
         </Fragment>)}
-        {separator}
-        <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Manage accounts</Menu.Item>
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>
-    {accountChoices.length > 1 && <Menu.Sub>
-      {subRow('Account', accountLabel)}
-      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
-        <ChoiceItems choices={accountChoices} value={currentAccount} onPick={pickAccount} />
-      </Menu.SubContent></Menu.Portal>
-    </Menu.Sub>}
     {levels.length > 1 && effortLabel && <Menu.Sub>
       {subRow('Effort', effortLabel)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>

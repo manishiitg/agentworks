@@ -17,6 +17,7 @@ function useSharedTokenUsage(serverConnection?: string): SharedAccountTokenUsage
   const [usage, setUsage] = useState<SharedAccountTokenUsage | null>(null)
   useEffect(() => {
     let cancelled = false
+    setUsage(null)
     // Through a promise so a missing client (older server, tests) is a quiet rejection. A company account on the
     // Mac counts on its server: that server's figures, fetched over the connection.
     const fetchUsage = () => serverConnection

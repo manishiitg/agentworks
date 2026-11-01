@@ -9,8 +9,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -158,7 +160,14 @@ var cursorSession = struct {
 	sync.Mutex
 	token   string
 	expires time.Time
+	// source names the credential the token came from, so a replaced or removed key is not reused.
+	source string
 }{}
+
+func digestString(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:8])
+}
 
 func jwtExpiry(token string) time.Time {
 	parts := strings.Split(token, ".")
@@ -181,10 +190,16 @@ func jwtExpiry(token string) time.Time {
 func serverCursorSession(ctx context.Context) (string, error) {
 	cursorSession.Lock()
 	defer cursorSession.Unlock()
-	if cursorSession.token != "" && time.Until(cursorSession.expires) > 5*time.Minute {
+	key := serverAccountKey(ctx, "cursor-cli")
+	source := "login"
+	if key != "" {
+		source = digestString(key)
+	}
+	if cursorSession.token != "" && cursorSession.source == source && time.Until(cursorSession.expires) > 5*time.Minute {
 		return cursorSession.token, nil
 	}
-	if key := serverAccountKey(ctx, "cursor-cli"); key != "" {
+	cursorSession.token, cursorSession.source = "", source
+	if key != "" {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cursorBackend+"/auth/exchange_user_api_key", strings.NewReader("{}"))
 		if err != nil {
 			return "", err
@@ -282,18 +297,33 @@ func copyRelayResponse(w http.ResponseWriter, resp *http.Response, tap io.Writer
 	}
 }
 
-// cursorRunCapture keeps a Cursor agent run's reply (Connect frames) to read its usage at the end.
+// cursorRunCapture reads a Cursor agent run's reply (Connect frames) as it streams and keeps only the usage, so a
+// long reply never has to be held.
 type cursorRunCapture struct {
-	data      []byte
-	truncated bool
+	pending                                         []byte
+	input, output, cacheRead, cacheWrite, reasoning int
+	counted, broken                                 bool
 }
 
 func (c *cursorRunCapture) Write(p []byte) (int, error) {
-	if len(c.data)+len(p) > 16<<20 {
-		c.truncated = true
+	if c.broken {
 		return len(p), nil
 	}
-	c.data = append(c.data, p...)
+	c.pending = append(c.pending, p...)
+	for len(c.pending) >= 5 {
+		size := int(binary.BigEndian.Uint32(c.pending[1:5]))
+		if size < 0 || size > 64<<20 {
+			c.broken = true
+			return len(p), nil
+		}
+		if len(c.pending) < 5+size {
+			break
+		}
+		if in, out, read, write, reasoning, ok := cursorRunUsage(c.pending[:5+size]); ok {
+			c.input, c.output, c.cacheRead, c.cacheWrite, c.reasoning, c.counted = in, out, read, write, reasoning, true
+		}
+		c.pending = append(c.pending[:0], c.pending[5+size:]...)
+	}
 	return len(p), nil
 }
 
@@ -447,8 +477,8 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 	// An agent run: its usage is read from the end of the reply and recorded to the person.
 	capture := &cursorRunCapture{}
 	copyRelayResponse(w, resp, capture)
-	input, output, cacheRead, cacheWrite, reasoning, counted := cursorRunUsage(capture.data)
-	log.Printf("[MODEL_PROXY] %s used the server's cursor-cli account from the Mac: run -> %d (%s) tokens in=%d out=%d cached=%d counted=%v", caller, resp.StatusCode, time.Since(started).Round(time.Millisecond), input, output, cacheRead, counted && !capture.truncated)
+	input, output, cacheRead, cacheWrite, reasoning, counted := capture.input, capture.output, capture.cacheRead, capture.cacheWrite, capture.reasoning, capture.counted
+	log.Printf("[MODEL_PROXY] %s used the server's cursor-cli account from the Mac: run -> %d (%s) tokens in=%d out=%d cached=%d counted=%v", caller, resp.StatusCode, time.Since(started).Round(time.Millisecond), input, output, cacheRead, counted)
 	if ledger := api.tokenLimitLedger(); ledger != nil {
 		_ = ledger.Append(costledger.Entry{
 			Attribution: costledger.Attribution{AttributionVersion: costledger.AttributionVersion, ActorID: caller, Activity: "mac_app"},
