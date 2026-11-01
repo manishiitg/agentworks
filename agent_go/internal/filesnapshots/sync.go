@@ -101,7 +101,7 @@ func (s Store) EncodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 	if err != nil {
 		return err
 	}
-	if info.Size() > publication.MaxBytes+8<<20 {
+	if info.Size() > publication.MaxBytes+(8<<20) {
 		return fmt.Errorf("project bundle exceeds transfer limit")
 	}
 	data, err := os.ReadFile(file)
@@ -125,7 +125,7 @@ func (s Store) DecodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 	}
 	defer unlock()
 	content := snapshot.Content
-	if content == nil || !objectName(content.Base) || !objectName(content.Head) || len(content.Bundle) > publication.MaxBytes+8<<20 {
+	if content == nil || !objectName(content.Base) || !objectName(content.Head) || int64(len(content.Bundle)) > publication.MaxBytes+(8<<20) {
 		return fmt.Errorf("invalid project bundle")
 	}
 	base, err := s.syncBase(ctx, pair)
@@ -164,6 +164,19 @@ func (s Store) DecodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 	}
 	if strings.TrimSpace(string(parents)) != content.Head+" "+content.Base {
 		return fmt.Errorf("unexpected project snapshot ancestry")
+	}
+	if base != content.Base {
+		tree, e := s.command(ctx, "rev-parse", content.Head+"^{tree}").Output()
+		if e != nil {
+			return e
+		}
+		acknowledged, e := s.syncRoot(ctx, strings.TrimSpace(string(tree)))
+		if e != nil {
+			return e
+		}
+		if acknowledged != base {
+			return fmt.Errorf("project baseline changed; finish the pending transfer")
+		}
 	}
 	return s.syncBytes(ctx, snapshot)
 }

@@ -381,7 +381,15 @@ func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
 	return nil
 }
 
-func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair string, snapshot *crewsync.Snapshot) error {
+func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair string, snapshot *crewsync.Snapshot) (err error) {
+	started := time.Now()
+	size := 0
+	if snapshot.Content != nil {
+		size = len(snapshot.Content.Bundle)
+	}
+	defer func() {
+		log.Printf("[CREW_SYNC] project=%s pair=%s phase=apply bytes=%d paths=%d duration_ms=%d success=%t reason=%q", roots.ID, pair, size, len(snapshot.Changes), time.Since(started).Milliseconds(), err == nil, fmt.Sprint(err))
+	}()
 	if err := (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).DecodeSync(ctx, pair, snapshot); err != nil {
 		return err
 	}
