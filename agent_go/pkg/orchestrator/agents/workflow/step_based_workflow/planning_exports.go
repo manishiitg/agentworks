@@ -763,6 +763,10 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	bindCrewRunner(controller, cfg.CrewRunner)
 	bindAgentFunctionTools(controller, cfg.AgentFunctionTools)
 
+	// Preserve nil (automatic) versus explicit empty selection before any
+	// variable-context initialization.
+	controller.enabledGroupNames = cfg.EnabledGroupNames
+
 	// Load variables manifest so execute_step can resolve variable values.
 	variablesPath := fmt.Sprintf("%s/variables/variables.json", cfg.WorkspacePath)
 	_, existingManifest, varErr := controller.variableManager.checkExistingVariables(ctx, variablesPath)
@@ -1770,7 +1774,7 @@ func RegisterRunFullWorkflowTool(
 			var enabledGroupNames []string
 			if !session.controller.isRelayExecution() {
 				var inputErr error
-				groupName, inputErr = session.controller.resolveWorkshopInputGroup(ctx, groupName, nil)
+				groupName, inputErr = session.controller.resolveWorkshopInputGroup(ctx, groupName, session.controller.enabledGroupNames)
 				if inputErr != nil {
 					return "", inputErr
 				}

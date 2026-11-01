@@ -81,7 +81,7 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 	}
 	switch destination {
 	case runDestinationNew:
-		sched.ChatKey, sched.Conversation = "", ""
+		sched.ChatKey, sched.ChatID, sched.Conversation = "", "", ""
 		return nil
 	case runDestinationChat, runDestinationIsolated:
 	default:
@@ -91,7 +91,7 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 		return fmt.Errorf("only a schedule that sends messages can run in a chat; a plan run always starts a new run")
 	}
 	if destination == runDestinationIsolated {
-		sched.ChatKey, sched.Conversation = "", runDestinationIsolated
+		sched.ChatKey, sched.ChatID, sched.Conversation = "", "", runDestinationIsolated
 		return nil
 	}
 	owner := goalScheduleOwner(manifest, *sched)
@@ -101,7 +101,8 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 	}
 	if id == "" || id == "main" {
 		// The main chat is created on first use of the Builder; until then the schedule runs in a new conversation.
-		sched.ChatKey, sched.Conversation = crewOwnerDefaultChatKey(manifest.ID, owner), ""
+		sched.ChatKey = crewOwnerDefaultChatKey(manifest.ID, owner)
+		sched.ChatID, sched.Conversation = sched.ChatKey, ""
 		return nil
 	}
 	chats, err := goalScheduleChats(ctx, owner, manifest.ID, workspace)
@@ -110,7 +111,7 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 	}
 	for _, chat := range chats {
 		if chat.Key == manifest.ID+codeChatSideMarker+id {
-			sched.ChatKey, sched.Conversation = chat.Key, ""
+			sched.ChatKey, sched.ChatID, sched.Conversation = chat.Key, chat.Key, ""
 			return nil
 		}
 	}

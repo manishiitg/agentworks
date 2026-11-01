@@ -984,7 +984,11 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		}
 		m.crewExecutable = binding
 		m.CreatedBy, _ = crewProjectOwnerID(binding.CrewRoot)
-		m.Access = &WorkflowAccess{Owners: append([]string{m.CreatedBy}, crewCoOwnerIDs(binding.CrewRoot)...)}
+		var writers []string
+		if m.Access != nil {
+			writers = append(writers, m.Access.AllowedKBWriters...)
+		}
+		m.Access = &WorkflowAccess{Owners: append([]string{m.CreatedBy}, crewCoOwnerIDs(binding.CrewRoot)...), AllowedKBWriters: writers}
 		// Membership belongs to the Crew too; an editable per-workflow team
 		// cannot add an execution leader or contributors outside that authority.
 		m.Team = nil
