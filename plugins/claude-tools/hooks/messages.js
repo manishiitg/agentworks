@@ -7,6 +7,8 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const BEGIN = new RegExp('^<<<BEGIN (msg-' + UUID + ')>>>$');
 const ROUTE = new RegExp('^reply: inbox (inbox-' + UUID + ') · connection (attach-' + UUID + ') · Delivery receipt is handled automatically; do not send an ACK\\.$');
 const expanded = new Set();
+// UI drafts only, retained by message/network while this mod is loaded; no outbox or auto-send.
+const drafts = new Map();
 let composer = null;
 
 // Parse renderer-owned lines only. Fence-looking body lines are escaped by MessageBlock.
@@ -74,8 +76,12 @@ export function register(on) {
     if (e.props.isExpanded || !['peer', 'peer-send-message'].includes(e.props.origin?.kind)) return next(e);
     const messages = parseMessages(e.props.text);
     if (!messages.length) return next(e);
+    // PLAT-856-451: keep the envelope's pending/access-check notices visible.
+    const notices = e.props.text.slice(0, e.props.text.indexOf(HEADER)).trim();
     const { Box, Text, Button } = $.ui.resolve(e);
-    return Box({ flexDirection: 'column', children: messages.map(message => {
+    return Box({ flexDirection: 'column', children: [
+      ...(notices ? [Text({ dimColor: true, children: [notices] })] : []),
+      ...messages.map(message => {
       const key = (message.network || '') + ':' + message.id;
       return Box({ flexDirection: 'column', children: [
         Text({ bold: true, children: ['AgentWorks · ' + message.sender] }),
@@ -89,15 +95,16 @@ export function register(on) {
           } }),
           Button({ key: 'reply-' + key, label: 'Reply', onPress: async () => {
             if (composer?.sending) { $.ui.toast('Wait for the current reply to finish.'); return; }
-            if (!composer || composer.message.id !== message.id || composer.message.network !== message.network) {
-              composer = { message, text: '', error: '', sending: false, sent: false };
+            if (!drafts.has(key)) {
+              drafts.set(key, { message, text: '', error: '', sending: false, sent: false });
             }
+            composer = drafts.get(key);
             await $.ui.open({ id: PANE, title: 'AgentWorks reply', focus: true, closeOnEscape: true });
             $.ui.invalidate('ui.render');
           } }),
         ] }),
       ] });
-    }) });
+    })] });
   });
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
