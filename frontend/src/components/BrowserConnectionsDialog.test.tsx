@@ -86,7 +86,7 @@ it.each(['dialog', 'panel'])('requires named browser confirmation when an old br
   vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
   const host = document.createElement('div'), root = createRoot(host), selected = vi.fn().mockResolvedValue(true), closed = vi.fn()
   try {
-    await act(async () => root.render(surface === 'dialog' ? <BrowserConnectionsDialog open onClose={closed} onConnected={selected} /> : <BrowserConnectionsPanel open startSetup onClose={closed} onConnected={selected} />))
+    await act(async () => root.render(surface === 'dialog' ? <BrowserConnectionsDialog open onClose={closed} onConnected={selected} /> : <BrowserConnectionsPanel open startSetup selectedBrowserId="old" onClose={closed} onConnected={selected} />))
     const dialog = surface === 'dialog' ? document.querySelector('[role="dialog"]')! : host
     await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Connect browser')!.click() })
     mocks.get.mockResolvedValue({ data: { browsers: [{ ...oldBrowser, connected: true }, { id: 'new', name: 'New Edge', connected: true, enabled: true }] } })
@@ -94,6 +94,11 @@ it.each(['dialog', 'panel'])('requires named browser confirmation when an old br
     expect(selected).not.toHaveBeenCalled()
     expect(closed).not.toHaveBeenCalled()
     expect(dialog.querySelector('textarea')).toBeNull()
+    // PLAT-746-287: an available browser must not look selected before the person's choice.
+    const choices = dialog.querySelector('[aria-label="Choose connected browser"]')!
+    expect(choices.querySelectorAll('button')).toHaveLength(2)
+    expect(choices.querySelectorAll('[aria-label="Selected"]')).toHaveLength(surface === 'panel' ? 1 : 0)
+    expect(choices.querySelector('button:last-child [aria-label="Selected"]')).toBeNull()
     await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Use New Edge' || button.getAttribute('aria-label') === 'Use New Edge')!.click() })
     expect(selected).toHaveBeenCalledOnce()
     expect(selected).toHaveBeenCalledWith('new')
