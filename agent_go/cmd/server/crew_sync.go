@@ -36,6 +36,7 @@ type crewSyncRequest struct {
 	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
 }
 type crewSyncReply struct {
+	RuntimeReadiness   *crewDependencyReport    `json:"runtime_readiness,omitempty"`
 	ConversationNotice string                   `json:"conversation_notice,omitempty"`
 	TransferID         string                   `json:"transfer_id,omitempty"`
 	Auto               *crewAutoSyncStatus      `json:"auto,omitempty"`
@@ -124,6 +125,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "sync_unavailable", err.Error())
 		return
 	}
+	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
 	externalJSON(w, out)
 }
 
