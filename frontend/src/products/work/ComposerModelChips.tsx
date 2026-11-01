@@ -32,10 +32,11 @@ export function ChoiceItems({ title, choices, value, onPick }: { title?: string;
   </>
 }
 
-export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean }) {
+export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns, tag }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean; tag?: string }) {
   const width = columns ? ' w-[min(560px,calc(100vw-24px))] max-h-[min(480px,var(--radix-dropdown-menu-content-available-height))]' : wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
-    <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={chipClass}>
+    <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={tag ? `${chipClass} max-w-56` : chipClass}>
+      {tag && <span className="shrink-0 rounded border border-border px-1 text-[10px] leading-4">{tag}</span>}
       <span className="min-w-0 truncate">{label}</span>
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
@@ -92,6 +93,13 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   })
 
   if (!selectedOption) return <>{fallback}</>
+  // Where this chat's model runs, shown only when there is a choice: this program has both an account on
+  // this Mac and a company account from a connected server.
+  const programAccounts = (sources.accounts || []).filter(account => account.provider === selectedOption.provider)
+  const inUseAccount = programAccounts.find(account => account.id === (connectionId || ownDefaultConnectionId(sources.accounts, selectedOption.provider)))
+  const sourceTag = inUseAccount && programAccounts.some(account => account.via_connection) && programAccounts.some(account => !account.via_connection)
+    ? inUseAccount.via_connection ? (inUseAccount.display_name.split(' · ')[0]?.trim() || 'Server') : 'Mac'
+    : undefined
   const models: Choice[] = cursorSelectionDisabled ? [] : selectableModels.map(model => ({ id: model.model_id, label: model.model_name || model.model_id }))
   const currentModel = meta?.agentProfileModelID || defaultForOption(selectedOption, connectionId).modelId
   const levels = levelsForModel(currentModel)
@@ -144,7 +152,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   if (groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallback}</>
   const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
-  return <Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen} columns={Boolean(sessionId)}>
+  return <Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceTag ? ` (${sourceTag === 'Mac' ? 'on this Mac' : `from ${sourceTag}`})` : ''}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen} columns={Boolean(sessionId)} tag={sourceTag}>
     <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
     <Menu.Sub>
       {subRow('Model', modelLabel)}
