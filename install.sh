@@ -8,6 +8,9 @@ VERSION="${RUNLOOP_VERSION:-}"
 DMG="${RUNLOOP_DMG_PATH:-}"
 CHECKSUM=""
 UPDATE=false
+DESKTOP_HANDOFF=false
+# Restart & Install passes both after the person accepts the desktop update.
+if [ -n "$VERSION" ] && [ -n "$DMG" ]; then UPDATE=true; DESKTOP_HANDOFF=true; fi
 LAUNCH=true
 log() { printf '[agentworks] %s\n' "$*"; }
 die() { printf '[agentworks] %s\n' "$*" >&2; exit 1; }
@@ -136,7 +139,15 @@ done
 for helper in agent-server workspace-server; do
   [ -x "$SOURCE/Contents/Resources/$helper" ] || die "The release is missing $helper. Nothing was installed."
 done
-if ps -axo comm= | grep -Fq "$APP/Contents/MacOS/"; then
+app_running() { ps -axo comm= | grep -F "$APP/Contents/MacOS/" >/dev/null; }
+# The desktop forks this installer before its asynchronous quit completes.
+if $DESKTOP_HANDOFF; then
+  for attempt in {1..10}; do
+    app_running || break
+    sleep 1
+  done
+fi
+if app_running; then
   die "Quit this installed AgentWorks app, then run --update again. Your development app can stay open."
 fi
 if [ -e "$APP" ]; then

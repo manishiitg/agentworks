@@ -1,5 +1,5 @@
 {
-  "name": "@agentworks/app",
+  "name": "@manishiitg/agentworks",
   "version": "0.1.0",
   "description": "Install and open the AgentWorks Mac app and CLI",
   "type": "module",
