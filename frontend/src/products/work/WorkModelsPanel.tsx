@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
-import { BrainCircuit, ChevronDown, KeyRound } from 'lucide-react'
+import { BrainCircuit, ChevronDown, Cpu, KeyRound } from 'lucide-react'
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { TierModelSelector } from '../../components/ui/TierModelSelector'
 import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -357,6 +358,8 @@ export function WorkModelsPanel({
         )}
         <ProviderChangeNotice turnRunning={Boolean(tab?.isStreaming)} runningProvider={activeRuntime?.provider} selectedProvider={selectedOption?.provider} />
         </fieldset>
+        {/* Accounts and keys for every program live in Settings; the chat's model menu stays about this chat. */}
+        <button type="button" onClick={() => openWorkspaceSettings('providers')} className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"><Cpu className="h-3.5 w-3.5" aria-hidden="true" />AI models &amp; accounts</button>
     </>
   )
 
