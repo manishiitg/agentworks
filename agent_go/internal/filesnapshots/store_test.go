@@ -429,11 +429,11 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err := s.Compare(t.Context(), r.ID, "", func(string) bool { return true })
-	if err != nil || r.Status != "partial" || len(c.Changes) != 0 || len(c.Record.Skipped) != 1 || c.UncapturedChanges != 1 {
+	if err != nil || r.Status != "partial" || len(c.Changes) != 0 || len(c.Record.Skipped) != 0 || c.UncapturedChanges != 0 {
 		t.Fatalf("false deletion: %v %+v", err, c)
 	}
-	// Large-Crew responses keep bounded examples; the count and examples
-	// must obey the same current file grant as historical contents.
+	// PLAT-746-286: routine size exclusions do not become warnings, even
+	// when many temporary/binary assets are outside the capture limit.
 	for i := 0; i < 60; i++ {
 		f, err := os.Create(filepath.Join(s.Root, fmt.Sprintf("large-%02d.bin", i)))
 		if err != nil {
@@ -453,15 +453,15 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	limited, err := s.Compare(t.Context(), many.ID, "", func(string) bool { return true })
-	if err != nil || limited.SkippedCount != 61 || len(limited.Record.Skipped) != 50 || len(many.Skipped) != 122 || limited.UncapturedChanges != 0 {
+	if err != nil || limited.SkippedCount != 0 || len(limited.Record.Skipped) != 0 || len(many.Skipped) != 122 || limited.UncapturedChanges != 0 {
 		t.Fatalf("unbounded or lost omissions: %v %+v", err, limited)
 	}
 	granted, err := s.Compare(t.Context(), many.ID, "", func(p string) bool { return p == "asset.bin" })
-	if err != nil || granted.SkippedCount != 1 || len(granted.Record.Skipped) != 1 || granted.Record.Skipped[0] != "asset.bin" {
+	if err != nil || granted.SkippedCount != 0 || len(granted.Record.Skipped) != 0 {
 		t.Fatalf("skipped response exposed denied paths/count: %v %+v", err, granted)
 	}
-	// PLAT-746-162: unchanged omitted assets are still outside the capture,
-	// but do not warn on every normal edit. A changed omitted file must warn.
+	// Size-only exclusions stay quiet when changed too; raw capture evidence
+	// remains saved so they never masquerade as captured bytes or deletions.
 	if _, err := s.Begin(t.Context(), "changed-skipped"); err != nil {
 		t.Fatal(err)
 	}
@@ -473,8 +473,8 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	warning, err := s.Compare(t.Context(), changed.ID, "", func(string) bool { return true })
-	if err != nil || warning.UncapturedChanges != 1 || warning.SkippedCount != 61 {
-		t.Fatalf("changed skipped file lost warning: %v %+v", err, warning)
+	if err != nil || warning.UncapturedChanges != 0 || warning.SkippedCount != 0 {
+		t.Fatalf("routine size exclusion raised a warning: %v %+v", err, warning)
 	}
 	// PLAT-746-163: a reply whose only edit is an uncaptured file still gets a card.
 	if s.Unchanged(t.Context(), changed) || !s.Unchanged(t.Context(), many) {
@@ -485,7 +485,7 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 		t.Fatalf("warning count exposed denied path: %v %+v", err, hidden)
 	}
 	net, err := s.CompareBetween(t.Context(), many.ID, changed.ID, "", func(string) bool { return true })
-	if err != nil || net.UncapturedChanges != 1 {
+	if err != nil || net.UncapturedChanges != 0 {
 		t.Fatalf("chat boundary warning: %v %+v", err, net)
 	}
 	// One unreadable file must not lose other files or become a false deletion.
@@ -511,8 +511,12 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 			t.Fatalf("one read error lost the whole capture: %v %+v", err, record)
 		}
 		comparison, err := s.Compare(t.Context(), record.ID, "", func(string) bool { return true })
-		if err != nil || len(comparison.Changes) != 0 {
+		if err != nil || len(comparison.Changes) != 0 || comparison.SkippedCount != 1 || comparison.UncapturedChanges != 1 || len(comparison.Record.Skipped) != 1 || comparison.Record.Skipped[0] != "unreadable.txt" {
 			t.Fatalf("unreadable file became a deletion: %v %+v", err, comparison)
+		}
+		hidden, err := s.Compare(t.Context(), record.ID, "", func(path string) bool { return path != "unreadable.txt" })
+		if err != nil || hidden.SkippedCount != 0 || len(hidden.Record.Skipped) != 0 {
+			t.Fatalf("read warning bypassed file grants: %v %+v", err, hidden)
 		}
 	}
 	if _, err := s.Begin(t.Context(), "undelivered"); err != nil {

@@ -324,6 +324,10 @@ func TestSavedSummaryCachesHistoryWithoutBypassingCurrentGrants(t *testing.T) {
 	f.put("ignored.txt", "intentionally excluded\n")
 	f.put("visible.txt", "before\n")
 	f.put("restricted.txt", "before\n")
+	f.put("tmp/tool", "binary")
+	if err := os.Truncate(filepath.Join(f.s.Root, "tmp/tool"), MaxFileBytes+1); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.s.Begin(ctx, "summary"); err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +338,7 @@ func TestSavedSummaryCachesHistoryWithoutBypassingCurrentGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	summary, err := f.s.SavedSummary(ctx, r.ID, func(string) bool { return true })
-	if err != nil || len(summary.Changes) != 2 || summary.Incomplete || len(r.Omitted) == 0 {
+	if err != nil || len(summary.Changes) != 2 || summary.Incomplete || len(r.Omitted) == 0 || len(r.Skipped) == 0 {
 		t.Fatalf("ignored files changed a complete summary: %v %+v omitted=%v", err, summary, r.Omitted)
 	}
 	// With Git unavailable, a repeated menu read must still use the completed

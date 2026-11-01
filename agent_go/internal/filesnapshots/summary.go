@@ -37,7 +37,7 @@ func (s Store) SavedSummary(ctx context.Context, id string, allow func(string) b
 	if err != nil {
 		return SavedChangeSummary{}, err
 	}
-	revision := digest("summary-capture-failures-v3\x00" + string(raw))
+	revision := digest("summary-actionable-failures-v4\x00" + string(raw))
 	dir := filepath.Join(s.dir(), "summaries")
 	name := filepath.Join(dir, id+".json")
 	var saved cachedChangeSummary
@@ -105,7 +105,9 @@ func (s Store) summaryIncompletePaths(ctx context.Context, record Record) ([]str
 	// Skipped paths are capture failures. Omitted paths include ordinary
 	// ignore rules, and baseline policy exclusions alone are not failures.
 	for _, p := range record.Skipped {
-		paths[p] = true
+		if !sizeOnlyOmission(record, p) {
+			paths[p] = true
+		}
 	}
 	if record.Review != nil && len(record.Review.IncompleteRoots) > 0 {
 		roots := map[string]bool{}

@@ -766,7 +766,7 @@ func (s Store) compareRaw(ctx context.Context, r Record, file string, allow func
 	}
 	out.Record.Skipped = nil
 	for p := range skipped {
-		if allow(p) {
+		if allow(p) && !sizeOnlyOmission(r, p) {
 			out.Record.Skipped = append(out.Record.Skipped, p)
 			before, after := r.BeforeSkippedState[p], r.AfterSkippedState[p]
 			if before == "" || after == "" || before != after {
