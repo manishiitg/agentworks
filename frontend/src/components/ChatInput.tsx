@@ -43,7 +43,6 @@ import { CHAT_TOOL_COMMAND_EVENT, chatToolCommandFromEvent } from '../utils/chat
 import { loadAgentProfileCapabilityEnabled, loadAgentProfileProviderOptions, loadAgentProfileRuntime, type AgentProfileProviderOption, type AgentProfileRuntime } from '../utils/agentProfileCapabilities'
 import NewChatControl from './ui/NewChatControl'
 import { MicButton, type MicButtonHandle, type MicState } from '../voice/MicButton'
-import { readVoiceAutoSendPref } from '../products/sparkquill/voiceAutoSend'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { hasActiveSessionWork } from '../utils/activitySessions'
 import { shouldClearAcceptedChatDraft } from '../utils/chatSubmissionDraft'
@@ -502,7 +501,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // being a profile-backed product; coupling runtime behavior to
   // surfaceVariant made it ignore the project's saved provider/model.
   const isProductProfile = Boolean(agentProfileId)
-  const isSparkQuillProfile = agentProfileId === 'sparkquill' || agentProfileId === 'sparkquill-child'
   // Mic control. On a product surface it is gated per-profile
   // (agentprofiles.RuntimeCapabilities.Voice) rather than hardcoded to any one
   // product — see agentProfileCapabilities.ts. AgentWorks' own composer has no
@@ -663,8 +661,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Voice dictation (MicButton) delivers the whole utterance ONCE, on stop —
   // the composer appends it to whatever was typed. AgentWorks leaves sending
-  // to the user; SparkQuill's opt-in voice auto-send (autoSubmitOnStop
-  // below) instead submits it right away. While recording, Enter is routed
+  // to the user. While recording, Enter is routed
   // to the mic (handleKeyDown) so it stops the dictation instead of
   // submitting a half-typed draft. The live banner renders into
   // micBannerHost, above the composer.
@@ -718,14 +715,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [activeTabId, setTabConfig, inputText, chatFileContext, tabConfig?.restoredConversationPath])
 
 
-  const handleVoiceText = useCallback((text: string, autoSubmit: boolean) => {
+  const handleVoiceText = useCallback((text: string) => {
     const base = localInputText
     const joined = base && !base.endsWith(' ') && !base.endsWith('\n') ? `${base} ${text}` : `${base}${text}`
     writeComposerText(joined)
     // So Enter immediately sends — without this the composer stays unfocused
     // after dictation and Enter does nothing.
     textareaRef.current?.focus()
-    if (autoSubmit) pendingVoiceAutoSubmitRef.current = true
   }, [localInputText, writeComposerText])
 
   // Sync local state FROM store when store changes externally (preset sync, etc.)
@@ -2189,19 +2185,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
 
-  // SparkQuill's voice auto-send: handleVoiceText already merged the
-  // transcript into localInputText, but queryToSubmit (which also layers in
-  // pasted attachments) only reflects that on the NEXT render — routeSubmit
-  // here instead of there would risk racing a stale inputText closure into
-  // the live-input-delivery failure/retry path. This effect waits for that
-  // render, then fires exactly once per stop() that asked for it.
-  const pendingVoiceAutoSubmitRef = useRef(false)
-  useEffect(() => {
-    if (!pendingVoiceAutoSubmitRef.current) return
-    pendingVoiceAutoSubmitRef.current = false
-    if (queryToSubmit?.trim()) void routeSubmit(queryToSubmit)
-  }, [localInputText, queryToSubmit, routeSubmit])
-
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
     if (showCommandDialog || showFileDialog) {
@@ -2877,7 +2860,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     )
   }
 
-  const compactComposerActions = agentProfileId === 'work' || isWorkflowPhaseChat || isSparkQuillProfile
+  const compactComposerActions = agentProfileId === 'work' || isWorkflowPhaseChat
   const nativeTerminalTools = terminalViewSelected && liveTerminalOffered && !!activeTabId
   const openAttachmentPicker = () => {
     closeComposerPickers()
@@ -2898,7 +2881,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       onStateChange={handleMicStateChange}
       bannerHost={micBannerHost}
       shortcutEnabled={!scopedTabId}
-      autoSubmitOnStop={isSparkQuillProfile ? () => readVoiceAutoSendPref() : undefined}
     />
   )
   // Compact chat box: the mic holds the send corner until there is something to send (or while dictating).

@@ -174,27 +174,3 @@ describe('MCP setup', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 })
-
-it('offers only SparkQuill connection guidance and grants', async () => {
-  vi.mocked(getApiBaseUrl).mockReturnValue('https://sparkquill.example.com')
-  vi.mocked(api.get).mockResolvedValue({ data: { connections: [
-    { id: 'platform', client_name: 'Platform app', scopes: ['workflows:read'], expires_at: '2099-01-01' },
-    { id: 'spark', client_name: 'Family app', scopes: ['sparkquill:read'], expires_at: '2099-01-01' },
-  ] } })
-  vi.mocked(api.delete).mockResolvedValue({})
-  await import('./CliMcpSetupContent')
-  const host = document.createElement('div'); const root = createRoot(host)
-  await act(async () => root.render(<CliMcpSetupPanel target="sparkquill" />))
-  try {
-    await chooseApp(host, 'Claude Code')
-    expect(host.textContent).toContain("claude mcp add --transport http sparkquill 'https://sparkquill.example.com/api/external/v1/mcp'")
-    expect(host.textContent).not.toContain('AgentWorks skill')
-    expect(host.textContent).toContain('Family app')
-    expect(host.textContent).not.toContain('Platform app')
-    await act(async () => button(host, 'Revoke').click())
-    expect(api.delete).toHaveBeenCalledWith('/api/oauth/mcp/connections/spark')
-    await chooseApp(host, 'Claude Cowork')
-    expect(host.textContent).toContain('Choose OAuth')
-    expect(host.textContent).not.toContain('Install AgentWorks')
-  } finally { await act(async () => root.unmount()) }
-})

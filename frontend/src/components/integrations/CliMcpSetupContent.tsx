@@ -23,10 +23,10 @@ function JsonBlock({ json, label, hint }: { json: string; label: string; hint: s
 }
 
 /** One connection path at a time. Browser approval keeps credentials out of setup instructions. */
-export function CliMcpSetupContent({ target = 'agentworks', endpoint, projectName, connectionName }: { target?: 'agentworks' | 'vault' | 'sparkquill'; endpoint?: string; projectName?: string; connectionName?: string } = {}) {
+export function CliMcpSetupContent({ target = 'agentworks', endpoint, projectName, connectionName }: { target?: 'agentworks' | 'vault'; endpoint?: string; projectName?: string; connectionName?: string } = {}) {
   const localAccount = useAuthStore(state => state.isMultiUserModeChecked && !state.isMultiUserMode)
   const serverName = connectionName || target
-  const serviceName = target === 'vault' ? 'Vault' : target === 'sparkquill' ? 'SparkQuill' : 'AgentWorks'
+  const serviceName = target === 'vault' ? 'Vault' : 'AgentWorks'
   const connectionPath = `/api/oauth/${target === 'vault' ? 'vault' : 'mcp'}/connections`
   const [app, setApp] = useState<AiApp | null>(null)
   const [destination, setDestination] = useState<Destination>('local-assistant')
@@ -54,7 +54,7 @@ export function CliMcpSetupContent({ target = 'agentworks', endpoint, projectNam
       .then(({ data }) => {
         if (cancelled) return
         if (Array.isArray(data?.connections)) {
-          setConnections(target === 'sparkquill' ? data.connections.filter(item => item.scopes?.includes('sparkquill:read')) : projectName ? data.connections.filter(item => item.resource === mcpUrl || item.resource?.replace(/\/(view|use)$/, '') === mcpUrl.replace(/\/(view|use)$/, '')) : data.connections)
+          setConnections(projectName ? data.connections.filter(item => item.resource === mcpUrl || item.resource?.replace(/\/(view|use)$/, '') === mcpUrl.replace(/\/(view|use)$/, '')) : data.connections)
           return
         }
         setConnections([])

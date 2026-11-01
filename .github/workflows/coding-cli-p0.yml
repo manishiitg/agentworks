@@ -122,8 +122,8 @@ jobs:
       - name: Verify product CLI model and reasoning selections
         working-directory: coding-agent-loop
         run: |
-          go -C agent_go test ./internal/workproduct ./internal/sparkquillproduct \
-            -run '^Test(WorkManifestDeclaresProjectScopeAndCodingAllowlist|EveryProviderOptionDeclaresAnOwnReasoningEffort|SparkQuillDefaultModelsAndReasoningEfforts)$' -count=1
+          go -C agent_go test ./internal/workproduct \
+            -run '^Test(WorkManifestDeclaresProjectScopeAndCodingAllowlist|EveryProviderOptionDeclaresAnOwnReasoningEffort)$' -count=1
           go -C agent_go test ./cmd/server \
             -run '^Test(CrewAgyHighEffortChatRequest|ProfileQueryReasoningEffortMustBeDeclared)$' -count=1
 

@@ -46,8 +46,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 			return wf.Result{}, &externalUpstreamError{400, "unknown Flow release"}
 		}
 	}
-	familyRoot := sparkquillRootAllowed(ctx, rootPath)
-	if !familyRoot && !crewRoot && !releaseRoot && (len(parts) != 2 || parts[0] != "Workflow" || parts[1] == ".") {
+	if !crewRoot && !releaseRoot && (len(parts) != 2 || parts[0] != "Workflow" || parts[1] == ".") {
 		return wf.Result{}, &externalUpstreamError{400, "root must identify one workflow or Crew"}
 	}
 	p, err := wf.CleanRelative(req.Path)
@@ -58,7 +57,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if req.Operation == "read" && !guard.Allows(p, false) || req.Operation != "read" && !guard.AllowsTraversal(p) {
 		return wf.Result{}, &externalUpstreamError{403, "file is outside folder grants"}
 	}
-	if externalFilePathPrivate(ctx, crewRoot, p) {
+	if externalPathPrivate(crewRoot, p) {
 		return wf.Result{}, &externalUpstreamError{403, "private path"}
 	}
 	if err := wf.ValidateGlob(req.Glob); err != nil {
@@ -73,7 +72,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	rootPath = req.Root
 	localFiles = localBound && localRoots.Local && rootPath == localRoots.FilesPath()
 	if filesPrefix != "" {
-		ctx = context.WithValue(ctx, sparkquillFileGuardKey{}, guard)
+		ctx = context.WithValue(ctx, externalFileGuardKey{}, guard)
 	}
 	var sourcePublication *publishedProject
 	skipPublication, _ := ctx.Value(publicationFileReadKey{}).(bool)
@@ -373,7 +372,7 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 			}
 			return nil
 		}
-		if d.Type()&os.ModeSymlink != 0 || externalFilePathPrivate(ctx, crewRoot, name) || shared && (name == "knowledgebase" || strings.HasPrefix(name, "knowledgebase/")) {
+		if d.Type()&os.ModeSymlink != 0 || externalPathPrivate(crewRoot, name) || shared && (name == "knowledgebase" || strings.HasPrefix(name, "knowledgebase/")) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
@@ -466,10 +465,12 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 	return result, nil
 }
 
+type externalFileGuardKey struct{}
+
 // File guards narrow every selected project, including Crew. Product roles
 // and Crew privacy checks remain independent and cannot override these caps.
 func externalFileGuard(ctx context.Context, _ bool) *wf.FolderGuard {
-	if guard, ok := ctx.Value(sparkquillFileGuardKey{}).(*wf.FolderGuard); ok {
+	if guard, ok := ctx.Value(externalFileGuardKey{}).(*wf.FolderGuard); ok {
 		return guard
 	}
 	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {

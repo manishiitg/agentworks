@@ -46,12 +46,12 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'relays', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
+async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'relays', 'knowledgebase', 'mcp-gateway'], admin = true, seed?: () => void) {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: allowed, gatewayUrl: 'http://localhost:99999' } as never
   useAuthStore.setState({ user: { id: 'u1', username: 'u1', is_admin: admin, allowed_products: allowed } as never })
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
   useChatStore.setState({ chatTabs: {}, activeTabId: null, activeSessionsCache: [], getActiveSessions: vi.fn(async () => []) })
-  useProductSurfaceStore.setState({ productSurface: 'sparkquill' })
+  useProductSurfaceStore.setState({ productSurface: 'relays' })
   seed?.()
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
@@ -218,7 +218,7 @@ it('lists every available product and opens its workspace from another product',
   const { host, onClose } = await renderNavigation('@products ')
   expect(host.textContent).not.toContain('Dominion')
   expect(host.textContent).toContain('Vault')
-  expect(host.textContent).toContain('SparkQuill')
+  expect(host.textContent).toContain('Flows')
   useAppStore.setState({ adminPage: 'users', showSchedulesOverview: true })
   await act(async () => host.querySelector('[data-navigation-id="product:work"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(useProductSurfaceStore.getState().productSurface).toBe('work')
@@ -249,10 +249,10 @@ it('hides unavailable products and admin-only menus and opens Providers on an al
 
 it('rechecks access if a menu was selected after permission changed', async () => {
   await renderNavigation('@menus ')
-  const users = quickNavigationItems(useAuthStore.getState().user, 'sparkquill').find(item => item.action === 'users')!
+  const users = quickNavigationItems(useAuthStore.getState().user, 'relays').find(item => item.action === 'users')!
   useAuthStore.setState({ user: { is_admin: false, allowed_products: ['work'] } as never })
   expect(openQuickNavigation(users)).toBe(false)
-  expect(useProductSurfaceStore.getState().productSurface).toBe('sparkquill')
+  expect(useProductSurfaceStore.getState().productSurface).toBe('relays')
 })
 
 
@@ -398,7 +398,7 @@ it.each(['mcp-gateway', 'relays'])('rejects a stale %s shortcut after local opt-
   const shortcut = quickNavigationItems(useAuthStore.getState().user, 'work').find(item => item.id === `product:${product}`)!
   Object.assign(window.__APP_RUNTIME_CONFIG__!, { localServerProducts: false })
   expect(openQuickNavigation(shortcut)).toBe(false)
-  expect(useProductSurfaceStore.getState().productSurface).toBe('sparkquill')
+  expect(useProductSurfaceStore.getState().productSurface).toBe('relays')
 })
 
 

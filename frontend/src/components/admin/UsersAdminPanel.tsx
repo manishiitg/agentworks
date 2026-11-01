@@ -55,7 +55,7 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
   can_edit: r !== 'viewer',
 })
 
-const CREATABLE_PRODUCTS = ['agentworks', 'relays', 'work', 'code', 'sparkquill']
+const CREATABLE_PRODUCTS = ['agentworks', 'relays', 'work', 'code']
 const productLabel = (id: string) => isProductSurface(id) ? PRODUCT_SURFACE_LABELS[id] : id === 'finance' ? 'Finance' : id
 const limitLabel = (n?: number) => n && n > 0 ? formatTokens(n) : 'Unlimited'
 const overrideLabel = (n?: number) => n && n < 0 ? 'Unlimited' : n ? formatTokens(n) : 'Account default'

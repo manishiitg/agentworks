@@ -56,7 +56,6 @@ bin/*
 !agent_go/cmd/server/product_secrets_migration.go
 !agent_go/cmd/server/product_secrets_migration_test.go
 # Removed-tool guidance guards: tests asserting prompts never name retired tools.
-!agent_go/internal/sparkquillproduct/secret_guidance_test.go
 !agent_go/internal/workproduct/secret_guidance_test.go
 !agent_go/internal/agentworksproduct/secret_guidance_test.go
 # The *credential* rule above is meant for credential FILES, but it also

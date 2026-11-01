@@ -2,7 +2,6 @@ import { useCompactProductNavigation, useProductNavigationSidebar } from './work
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { ChevronDown, LayoutDashboard, MessagesSquare, Network, Terminal, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
-import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
 import { VaultMark } from '../products/mcp-gateway/VaultMark'
 import { BrainMark } from '../products/knowledgebase/BrainMark'
@@ -47,7 +46,6 @@ const products: Array<{
 }> = [
   { id: 'agentworks', label: 'Goals', description: 'Give an agent a measurable goal. It runs the work, checks results and suggests improvements.', icon: RunloopMark },
   { id: 'relays', label: 'Flows', description: 'Connect agents, decisions and scripts into repeatable steps that other systems can run through an API.', icon: Waypoints },
-  { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
   { id: 'work', label: 'Crew', description: 'Private or shared projects with agents, functions, files and tools', icon: WorkMark },
   { id: 'mcp-gateway', label: 'Vault', description: 'Share secrets and MCP tools with the right users and projects. Check access and inspect call logs.', icon: VaultMark },
   { id: 'llm-gateway', label: 'LLM Gateway', description: 'Give users one endpoint for AI models, with model access, request logs and costs tracked per person.', icon: Network },

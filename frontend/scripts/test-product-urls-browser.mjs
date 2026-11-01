@@ -90,7 +90,7 @@ try {
   const unavailable = await page.getByRole('alert').textContent()
   assert.equal(new URL(page.url()).pathname, '/code/projects/missing')
   await page.goto(base + '/sparkquill')
-  await page.getByRole('alert').filter({ hasText: 'not enabled on this server' }).waitFor()
+  await page.getByRole('alert').filter({ hasText: 'not available' }).waitFor()
   await page.screenshot({ path: path.join(output, 'product-disabled.png') })
   assert.deepEqual(errors, [], 'no uncaught errors in navigation')
   await page.close()

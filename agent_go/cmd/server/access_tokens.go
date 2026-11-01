@@ -218,12 +218,9 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			// is the owner. Permissions come from the current account and enabled
 			// products; a client cannot choose a different identity.
 			req.Name = "agentworks-local"
-			req.Scopes = mcpOAuthScopesFor(c, mcpOAuthSupportedScopes())
+			req.Scopes = mcpOAuthScopesFor(c, append([]string(nil), mcpOAuthScopes...))
 			req.AllWorkflows, req.AllCrews = true, true
 			req.WorkflowIDs, req.CrewIDs = nil, nil
-			if hasSparkQuillScopes(req.Scopes) {
-				req.AllWorkflows, req.AllCrews = false, false
-			}
 			req.KnowledgebaseFolders, req.KnowledgebaseIdentityID = nil, ""
 		}
 		if req.ExpiresInDays < 0 || req.ExpiresInDays > 90 || !localPreset && req.ExpiresInDays < 1 {
@@ -241,10 +238,6 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		}
 		if err := accesstokens.Validate(t, now); err != nil {
 			externalError(w, 400, "invalid_arguments", err.Error())
-			return
-		}
-		if t.SparkQuillAccess() && !sparkquillGrantAllowed(c, t.Scopes) {
-			externalError(w, 403, "forbidden", "SparkQuill is not available with these permissions for this account.")
 			return
 		}
 		if t.KnowledgebaseAccess() {
@@ -350,7 +343,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		// Local presets and knowledge-base connections remain independent;
 		// cancel sessions only for grants actually replaced in the store.
 		for _, old := range previous {
-			if !t.LocalPreset && !old.LocalPreset && !t.KnowledgebaseAccess() && !t.SparkQuillAccess() && !t.Allows("devices:connect") && !old.KnowledgebaseAccess() && !old.SparkQuillAccess() && !old.Allows("devices:connect") && old.RevokedAt == nil && old.ExpiresAt.After(now) {
+			if !t.LocalPreset && !old.LocalPreset && !t.KnowledgebaseAccess() && !t.Allows("devices:connect") && !old.KnowledgebaseAccess() && !old.Allows("devices:connect") && old.RevokedAt == nil && old.ExpiresAt.After(now) {
 				api.cancelAccessTokenSessions(old.ID)
 			}
 		}
@@ -381,12 +374,6 @@ func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) str
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
-	if sparkquillExternalConnection(c) {
-		return tool.sparkquill && sparkquillExternalToolAllowed(c, tool)
-	}
-	if tool.sparkquill {
-		return false
-	}
 	if !agentSourceConsentAllowed(c, tool) {
 		return false
 	}

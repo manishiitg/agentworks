@@ -15,7 +15,6 @@ HETZNER=(ssh -p "${BUILD_PORT:?set BUILD_PORT in deployments/deploy.env}" -o Con
 SERVERS=(
   "excellence agents /srv/agents /srv/agents/state 24001"
   "confida confida /srv/confida /srv/confida/state 22001"
-  "sparkquill sparkquill /srv/sparkquill /srv/sparkquill/state 23001"
   "dominion dominion /srv/dominion /srv/dominion/state 21001"
   "rts video-studio /var/lib/video-studio/video-studio /data/video-studio 8080"
 )

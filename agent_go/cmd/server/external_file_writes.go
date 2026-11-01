@@ -41,13 +41,7 @@ func (api *StreamingAPI) externalWriteFile(w http.ResponseWriter, r *http.Reques
 		externalError(w, 401, "unauthorized", "Sign in first.")
 		return
 	}
-	sparkGuard, sparkWrite := r.Context().Value(sparkquillFileGuardKey{}).(*wf.FolderGuard)
-	if sparkWrite {
-		if !sparkquillRootAllowed(r.Context(), workflow.WorkspacePath) || claims.AccessToken == nil || !sparkquillGrantAllowed(claims, claims.AccessToken.Scopes) || !claims.AccessToken.Allows("sparkquill:write") {
-			externalError(w, 403, "forbidden", "This connection cannot edit the family's learning content.")
-			return
-		}
-	} else if workflow.Manifest == nil || !externalFileAuthoringAllowed(claims, workflow.Manifest) {
+	if workflow.Manifest == nil || !externalFileAuthoringAllowed(claims, workflow.Manifest) {
 		externalError(w, 403, "forbidden", "File edits require current project owner/editor access and existing authoring consent for this product.")
 		return
 	}
@@ -58,9 +52,6 @@ func (api *StreamingAPI) externalWriteFile(w http.ResponseWriter, r *http.Reques
 		req.Actor += "/" + claims.AccessToken.ID
 	}
 	_, hasText := args["content"]
-	if sparkWrite {
-		req.Guard = sparkGuard
-	}
 	_, hasBinary := args["content_base64"]
 	if hasText == hasBinary {
 		externalError(w, 400, "invalid_arguments", "Pass content (UTF-8 text) or content_base64 (a binary file), exactly one.")

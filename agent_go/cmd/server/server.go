@@ -43,7 +43,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminalleases"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
@@ -1682,7 +1681,6 @@ func init() {
 	ServerCmd.AddCommand(rotateProviderKeysCmd)
 	ServerCmd.AddCommand(rotateAuthSecretCmd)
 	ServerCmd.AddCommand(addUserCmd)
-	ServerCmd.AddCommand(migrateSparkQuillCmd)
 	ServerCmd.AddCommand(setMCPAppCmd)
 }
 
@@ -2067,21 +2065,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	if err := mediapresentation.Register(profileRegistry, getWorkspaceAPIURL()); err != nil {
 		log.Fatalf("Failed to register shared media tools: %v", err)
-	}
-	if productEnabled("sparkquill") {
-		if err := sparkquillproduct.RegisterProductSkills(); err != nil {
-			log.Printf("[SKILLS] SparkQuill skills: some were not registered; the server keeps running: %v", err)
-		}
-		for _, profile := range sparkquillproduct.BuiltinAgentProfiles() {
-			profile.Product = sparkquillproduct.ProductName
-			if err := profileRegistry.RegisterProfile(profile); err != nil {
-				log.Fatalf("Failed to register SparkQuill agent profile: %v", err)
-			}
-		}
-		if err := sparkquillproduct.RegisterAgentProfileRuntime(profileRegistry, getWorkspaceAPIURL()); err != nil {
-			log.Fatalf("Failed to register SparkQuill agent profile runtime: %v", err)
-		}
-		runSparkQuillLegacyMigrationIfNeeded()
 	}
 	if productEnabled("agentworks") {
 		// Scaffolding only: no bespoke tools yet, so no

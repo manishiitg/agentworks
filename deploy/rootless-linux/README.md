@@ -14,11 +14,11 @@ health checks, and the release's AgentWorks CLI/plugin downloads still run.
 A repeatable redeploy pipeline for fixed-workspace products running as their
 own isolated Linux account on a shared rootless-systemd host, generalized
 from server C's original deployer. One host can run several products, each under
-its own system account (`sparkquill`, `confida`, `dominion`, ...); this
+its own system account (`example`, `confida`, `dominion`, ...); this
 pipeline only ever touches the one account and `$PRODUCT-*` systemd units
 named on the command line.
 
-Server C and SparkQuill use this shared pipeline. Its local half is the
+Rootless products use this shared pipeline. Its local half is the
 `deploy_rootless_product` function in the repository-root `deploy.sh` (the only
 deployment entry point); this directory holds the server-side half and the
 per-product configuration. Video Studio and Dominion have their own cases in
@@ -59,7 +59,7 @@ per-product configuration. Video Studio and Dominion have their own cases in
 ./deploy.sh build                      # build (or reuse) the build of main's head; deploys nothing
 ./deploy.sh builds                     # list builds: name, age, build seconds, the three revisions, pinned
 ./deploy.sh <server>                 # build once if needed, then copy + activate
-./deploy.sh all-hetzner                # Server B, server C, sparkquill in sequence from ONE build (never dominion)
+./deploy.sh all-hetzner                # Server B, server C in sequence from ONE build (never dominion)
 ./deploy.sh <server>                        # same build, shipped to server A
 ./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its three revisions must be
                                        # ancestors of origin/main, so a known-good older build can go out while main is held
@@ -134,12 +134,12 @@ Requirements this template assumes:
   otherwise silently outrank the managed one).
 - The playbook catalog copy is optional per product via `COPY_PLAYBOOKS` in
   `product.env` — leave it `false` for a fixed single-workspace product like
-  SparkQuill that has no playbooks.
+  an example app that has no playbooks.
 
 ## Usage
 
 ```
-./deploy.sh sparkquill
+./deploy.sh example
 ./deploy.sh <server>
 ```
 
@@ -182,12 +182,12 @@ Chrome (an existing `<app>/tools/chrome/current`, else `tools/chrome/system` wit
 The launcher also gives Chrome a writable HOME/XDG dir under its private temp dir: with the service's own HOME (read-only in the
 sandbox) Chrome died at startup without writing DevToolsActivePort. The manual notes below remain accurate for a pinned Chrome.
 
-SparkQuill uses the `chrome-agentworks` launcher alongside its pinned Chrome
+A product can use the `chrome-agentworks` launcher alongside its pinned Chrome
 for Testing binary. Install it into the same version directory as `chrome`
 and set the service environment to its stable symlink path:
 
 ```
-AGENT_BROWSER_EXECUTABLE_PATH=/srv/sparkquill/tools/chrome/current/chrome-agentworks
+AGENT_BROWSER_EXECUTABLE_PATH=/srv/example/tools/chrome/current/chrome-agentworks
 ```
 
 The launcher uses a private, service-owned `/tmp/aw-browser-<uid>` directory
@@ -210,7 +210,7 @@ they can adopt a new executable.
 Run the regression check as the product account on the host:
 
 ```
-python3 verify-managed-chrome.py sparkquill --port 23001 --cycles 20
+python3 verify-managed-chrome.py example --port 23001 --cycles 20
 ```
 
 It creates an isolated profile, runs 80 separate sandboxed browser commands,

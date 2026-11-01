@@ -2,7 +2,7 @@
 """Full browser matrix through the real app path, as the platform sends it. Run on the product host as the service account.
 
   python3 verify-browser-matrix.py agents --port 24001 --user-id <any user id>      # Excellence (multi-user)
-  python3 verify-browser-matrix.py sparkquill --port 23001                          # single-user server
+  python3 verify-browser-matrix.py example --port 23001                          # single-user server
   python3 verify-browser-matrix.py video-studio --port 8080 --docs-dir /data/video-studio/docs
 
 Every browser operation is its own POST /api/execute (X-User-ID, Bearer token, folder_guard with browser_session), exactly the shape of

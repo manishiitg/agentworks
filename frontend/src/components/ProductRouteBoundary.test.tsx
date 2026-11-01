@@ -75,7 +75,7 @@ describe('protected deep-link boundary', () => {
 
       window.history.replaceState({}, '', '/sparkquill')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
-      expect(host.textContent).toContain('not enabled on this server')
+      expect(host.textContent).toContain('not available')
       expect(mounted).not.toHaveBeenCalled()
       expect(mocks.observe).not.toHaveBeenCalled()
     } finally { await act(async () => root.unmount()); host.remove() }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run on the product host/account; use an isolated profile, never a user's login.
 
-Example: python3 verify-managed-chrome.py sparkquill --port 23001 --cycles 20
+Example: python3 verify-managed-chrome.py example --port 23001 --cycles 20
 RTS:     python3 verify-managed-chrome.py video-studio --port 8080 --docs-dir /data/video-studio/docs
 Each browser operation is a separate sandbox request so command scratch cleanup
 is exercised. Print only test status, never service tokens or page contents.

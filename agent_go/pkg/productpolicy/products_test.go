@@ -30,7 +30,7 @@ func TestInstallationSelection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			profile(t, tc.mode, tc.opt, tc.products, tc.surfaces)
-			for _, p := range []string{"code", "knowledgebase", "mcp-gateway", "llm-gateway", "relays", "caplayer", "brain", "example-product", "sparkquill"} {
+			for _, p := range []string{"code", "knowledgebase", "mcp-gateway", "llm-gateway", "relays", "caplayer", "brain", "example-product"} {
 				if Enabled(p) != tc.server {
 					t.Errorf("Enabled(%s)=%t", p, Enabled(p))
 				}
@@ -61,11 +61,6 @@ func TestInstallationSelection(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if Enabled("knowledgebase") || Enabled("relays") {
 		t.Fatal("server ignores enabled surfaces")
-	}
-	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
-	t.Setenv("AGENT_PRODUCTS", "sparkquill")
-	if Enabled("knowledgebase") || Enabled("code") || !Enabled("sparkquill") {
-		t.Fatal("dedicated deployment allowlist drifted")
 	}
 }
 func TestCallerCannotEnableUninstalledProducts(t *testing.T) {

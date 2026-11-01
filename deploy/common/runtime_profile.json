@@ -1,5 +1,5 @@
 {
-  "_doc": "The standard runtime profile every server runs (docs/design/deploy_unification.md). {app} is the app dir, {data} the data dir. same_everywhere: must have exactly this value in the running agent and workspace. per_server: may differ, listed for the report only. MULTI_USER_MODE is per server: SparkQuill is a single-user product whose data lives in _users/default; turning it on would hide that data.",
+  "_doc": "The standard runtime profile every server runs (docs/design/deploy_unification.md). {app} is the app dir, {data} the data dir. same_everywhere: must have exactly this value in the running agent and workspace. per_server: may differ, listed for the report only. MULTI_USER_MODE is per server: single-user data lives in _users/default; turning it on would hide that data.",
   "same_everywhere": {
     "NATIVE_WORKSPACE": "true",
     "AGENT_BROWSER_CDP_ENABLED": "false",

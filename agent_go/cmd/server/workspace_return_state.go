@@ -106,7 +106,7 @@ func validWorkspaceDestination(d *workspaceDestination) bool {
 	if d == nil {
 		return true
 	}
-	known := map[string]bool{"agentworks": true, "relays": true, "work": true, "mcp-gateway": true, "llm-gateway": true, "knowledgebase": true, "bullpen": true, "sparkquill": true}
+	known := map[string]bool{"agentworks": true, "relays": true, "work": true, "mcp-gateway": true, "llm-gateway": true, "knowledgebase": true, "bullpen": true}
 	if !known[d.Surface] || (d.ID != "" && (!workspaceReturnID.MatchString(d.ID) || d.ID == "." || d.ID == "..")) || (d.View != "" && !workspaceReturnView.MatchString(d.View)) || (d.SessionID != "" && !workspaceReturnID.MatchString(d.SessionID)) {
 		return false
 	}
@@ -404,7 +404,7 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 				state.Destination = &workspaceDestination{Surface: work[0].Surface, ID: work[0].ID, WorkspacePath: work[0].WorkspacePath}
 			} else {
 				preferred := strings.TrimSpace(os.Getenv("AGENTWORKS_DEFAULT_PRODUCT_SURFACE"))
-				for _, surface := range append([]string{preferred}, "agentworks", "work", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", "bullpen", "sparkquill") {
+				for _, surface := range append([]string{preferred}, "agentworks", "work", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", "bullpen") {
 					if surface != "" && homeProductAllowed(claims, surface) {
 						state.Destination = &workspaceDestination{Surface: surface}
 						break

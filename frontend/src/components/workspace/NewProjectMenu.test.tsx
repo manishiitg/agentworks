@@ -22,7 +22,7 @@ const cleanup: (() => Promise<void>)[] = []
 const originalScroll = HTMLElement.prototype.scrollIntoView
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
-  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'work', 'sparkquill'], localServerProducts: true }
+  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'work'], localServerProducts: true }
   useAuthStore.setState({ user: { id: 'alice', allowed_products: null, can_create: true } as never, isMultiUserMode: true })
   useProductSurfaceStore.setState({ productSurface: 'work' })
   useWorkspaceConnectionStore.setState({ activeWorkspaceId: 'local' })

@@ -34,7 +34,7 @@ func TestRegisteredProductIDsIncludesBuiltInProducts(t *testing.T) {
 	for _, id := range registeredProductIDs() {
 		found[id] = true
 	}
-	for _, id := range []string{"sparkquill", "work", "relays"} {
+	for _, id := range []string{"work", "relays"} {
 		if !found[id] {
 			t.Fatalf("registeredProductIDs() = %v, want it to include %s", registeredProductIDs(), id)
 		}

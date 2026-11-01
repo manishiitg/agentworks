@@ -15,10 +15,9 @@ Servers (each one's host, domain and settings live in the private deployments re
   rts, video-studio     the AWS EC2 deployment
   confida               rootless Linux deployment
   citymall              rootless Linux deployment on its own host, reached through a jump host
-  sparkquill            rootless Linux deployment
   excellence            rootless Linux deployment (Code only)
   <product>            any named rootless product configured in the private deployments repo
-  all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
+  all-hetzner           excellence and confida in sequence from ONE build (never dominion)
   dominion              legacy host alias for the shared workflow deployment
   check <server|all>    read-only health check of a server (site, certificate, MCP, website callback, release, services, disk)
   report [server]       how each server differs from the standard runtime profile (read-only)
@@ -36,7 +35,7 @@ Servers (each one's host, domain and settings live in the private deployments re
   pin|unpin <build>     keep a known-good build from being pruned (old builds are removed after every deploy; only the newest is kept otherwise)
   prune-builds          remove old builds on the build host now (all but the newest, pinned ones and anything younger than 15 minutes)
 
-Build once, deploy everywhere (PLAT-426): rts, excellence, confida, sparkquill and all-hetzner build the release ONCE on the
+Build once, deploy everywhere (PLAT-426): rts, excellence, confida and all-hetzner build the release ONCE on the
 Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when the three revisions are unchanged), then each
 server only copies and activates it after verifying its manifest (architecture, glibc, every file hash).
   --build <name|sha>    deploy that existing build instead of main's head (see `builds`); its three revisions must be
@@ -207,7 +206,7 @@ post_deploy_smoke() {
   return 0
 }
 
-# --- Rootless Linux products (Confida, SparkQuill) -------------------------
+# --- Rootless Linux products -------------------------
 # Repeatable redeploy for a fixed-workspace product running as its own isolated
 # Linux account on the shared rootless-systemd Hetzner box. Only /srv/$PRODUCT
 # and that product's $PRODUCT-* systemd --user units are touched. Nothing is
@@ -523,7 +522,7 @@ fi
 # ./deploy.sh slotcheck <server>: run the deployed release's slot self-test (deploy/common/slotcheck.sh) as the service
 # account. Read-only; changes nothing on the server.
 if [[ "$SERVER" == slotcheck ]]; then
-  [[ $# -ge 1 && $# -le 2 ]] || { echo "Usage: ./deploy.sh slotcheck <rts|excellence|confida|sparkquill> [basic|full]" >&2; exit 2; }
+  [[ $# -ge 1 && $# -le 2 ]] || { echo "Usage: ./deploy.sh slotcheck <rts|excellence|confida> [basic|full]" >&2; exit 2; }
   check_level="${2:-full}"
   case "$check_level" in basic|full) ;; *) echo "slotcheck level must be basic or full (got '$check_level')" >&2; exit 2 ;; esac
   case "$1" in
@@ -533,7 +532,7 @@ if [[ "$SERVER" == slotcheck ]]; then
       exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@$HOST_IP" \
         "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio --level $check_level"
       ;;
-    excellence|confida|sparkquill|dominion)
+    excellence|confida|dominion)
       product="$1"; [[ "$product" == excellence ]] && product=agents; [[ "$product" == rts ]] && product=video-studio
       (
         # shellcheck disable=SC1090
@@ -543,7 +542,7 @@ if [[ "$SERVER" == slotcheck ]]; then
           "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product --level $check_level"
       )
       ;;
-    *) echo "slotcheck: unknown server $1 (rts, excellence, confida, sparkquill, dominion)" >&2; exit 2 ;;
+    *) echo "slotcheck: unknown server $1 (rts, excellence, confida, dominion)" >&2; exit 2 ;;
   esac
   exit $?
 fi
@@ -570,7 +569,7 @@ case "$SERVER" in
     prune_builds_remote
     post_deploy_smoke video-studio  # this deployment's private settings folder is products/video-studio
     ;;
-  confida|sparkquill|dominion|citymall)
+  confida|dominion|citymall)
     # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
     # A product on its own host sets SSH_JUMP, HOST_SETUP_SCRIPT and PREBUILT_DELIVERY=fetch in its private product.env.
     reject_extra_arguments "$@"
@@ -587,23 +586,22 @@ case "$SERVER" in
     post_deploy_smoke agents
     ;;
   all-hetzner)
-    # Excellence, Confida and SparkQuill from ONE build, one after the other; stops at the first failure. Never Dominion.
+    # Excellence, Confida from ONE build, one after the other; stops at the first failure. Never Dominion.
     reject_extra_arguments "$@"
     DEPLOY_PREBUILT_NAME="$(ensure_prebuilt_build)"
     [[ -n "$DEPLOY_PREBUILT_NAME" ]]
     export DEPLOY_PREBUILT_NAME
-    echo "==> all-hetzner: build $DEPLOY_PREBUILT_NAME -> excellence, confida, sparkquill"
+    echo "==> all-hetzner: build $DEPLOY_PREBUILT_NAME -> excellence, confida"
     deploy_rootless_product agents
     deploy_rootless_product confida
-    deploy_rootless_product sparkquill
-    prune_builds_remote  # once, after all three: a chosen older build must still exist for the next product
-    post_deploy_smoke agents; post_deploy_smoke confida; post_deploy_smoke sparkquill
+    prune_builds_remote  # once, after both products: a chosen older build must still exist for the next product
+    post_deploy_smoke agents; post_deploy_smoke confida
     ;;
   -h|--help|help)
     usage
     ;;
   --list)
-    printf '%s\n' rts confida sparkquill excellence all-hetzner dominion citymall
+    printf '%s\n' rts confida excellence all-hetzner dominion citymall
     ;;
   "")
     usage >&2

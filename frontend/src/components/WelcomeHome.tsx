@@ -29,7 +29,6 @@ import { LocalSetup, LOCAL_SETUP_SEEN_KEY } from './LocalSetup'
 
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
-const PERSONAL_PRODUCTS = new Set<string>(['sparkquill'])
 const WORK_PRODUCT_ORDER: ProductSurface[] = ['work', 'agentworks', 'relays']
 const SERVICE_ORDER: ProductSurface[] = ['knowledgebase', 'mcp-gateway', 'bullpen']
 const STARTING_POINTS: Partial<Record<ProductSurface, { createLabel: string; detail: string }>> = {
@@ -61,7 +60,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const products = useMemo(() => {
     const visible = new Set(navigationProductSurfaceIDs(user?.allowed_products))
-    return PRODUCT_CARDS.filter(product => visible.has(product.id) && !PERSONAL_PRODUCTS.has(product.id))
+    return PRODUCT_CARDS.filter(product => visible.has(product.id))
   }, [user?.allowed_products])
   const creationItems = useMemo(() => quickNavigationItems(user, 'work', isMultiUserMode).filter(item => item.action === 'create'), [user, isMultiUserMode])
   const leaveHome = useCallback(() => {
