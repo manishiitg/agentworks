@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Loader2, Check, ChevronDown } from 'lucide-react'
+import { Download } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../ui/Button'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
-import { BrowserConnectionsPanel, type SavedBrowserConnection } from '../BrowserConnectionsDialog'
+import { BrowserConnectionsPanel, type SavedBrowserConnection, type WorkspaceBrowserChoice } from '../BrowserConnectionsDialog'
 export { extensionVersionOlder } from '../../utils/extensionVersion'
 
 export interface ChromeExtensionStatus {
@@ -69,18 +69,10 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
-export function ChromeExtensionConnection({ connection, workspaceBrowser, expanded, onExpandedChange, startSetup = false }: { expanded: boolean; onExpandedChange: (expanded: boolean) => void; startSetup?: boolean; connection: ChromeExtensionController; workspaceBrowser?: { label: string; selected: boolean; onSelect: () => boolean | void | Promise<boolean | void> } }) {
-  const { status, busy, error, connect, download } = connection
-  const current = status.selected ? status.browsers?.find(browser => browser.id === status.browser_id)?.name || 'Browser' : workspaceBrowser?.selected ? workspaceBrowser.label.split(' · ')[0] : ''
-  return <div className="space-y-2">
-    <div className="flex items-center justify-between gap-2">
-      <span className="min-w-0 truncate text-xs font-medium" title={status.selected ? `Uses your ${current}. Your sign-ins are available to this Crew.` : undefined}>{current || 'No browser selected'}</span>
-      <Button size="sm" variant="ghost" aria-expanded={expanded} disabled={busy} onClick={() => onExpandedChange(!expanded)}>{busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <>Change<ChevronDown className="h-3 w-3" /></>}</Button>
-    </div>
-    {expanded && <div className="max-h-[60vh] space-y-1 overflow-y-auto border-t border-border pt-1" aria-label="Choose browser">
-      <BrowserConnectionsPanel open onClose={() => onExpandedChange(false)} onConnected={connect} selectedBrowserId={status.selected ? status.browser_id : undefined} startSetup={startSetup} />
-      {workspaceBrowser && <button type="button" disabled={busy} className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => { void Promise.resolve(workspaceBrowser.onSelect()).then(saved => { if (saved !== false) onExpandedChange(false) }) }}>{workspaceBrowser.label}{workspaceBrowser.selected && <Check className="h-3 w-3" aria-label="Selected" />}</button>}
-    </div>}
+export function ChromeExtensionConnection({ connection, workspaceBrowser }: { connection: ChromeExtensionController; workspaceBrowser?: WorkspaceBrowserChoice }) {
+  const { status, error, connect, download } = connection
+  return <div className="max-h-[60vh] space-y-1 overflow-y-auto" aria-label="Choose browser">
+    <BrowserConnectionsPanel open onClose={() => {}} onConnected={connect} selectedBrowserId={status.selected ? status.browser_id : undefined} workspaceBrowser={workspaceBrowser} />
     {status.update_needed && <ExtensionVersionLine status={status} download={download} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>

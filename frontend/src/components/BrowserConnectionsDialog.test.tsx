@@ -107,6 +107,7 @@ it('keeps saved-browser reconnect and per-browser actions separate from project 
   const browsers = [
     { id: 'chrome', name: 'Chrome', browser: 'Chrome', version: '0.5.0', connected: true, enabled: true },
     { id: 'edge', name: 'Edge', browser: 'Edge', version: '0.5.0', connected: false, enabled: false },
+    { id: 'saved-edge', name: 'Saved Edge', browser: 'Edge', version: '0.5.0', connected: false, enabled: true },
   ]
   mocks.get.mockResolvedValue({ data: { browsers, latest_extension_version: '0.5.0' } })
   const host = document.createElement('div'), root = createRoot(host), selected = vi.fn()
@@ -116,6 +117,9 @@ it('keeps saved-browser reconnect and per-browser actions separate from project 
     expect(host.querySelector('button[aria-label="Use Chrome"]')?.hasAttribute('disabled')).toBe(true)
     expect(host.textContent).not.toContain('Connection details')
     expect(host.textContent).not.toContain('Disconnect')
+    // PLAT-746-280: a closed, paired browser needs reopening, not another code.
+    expect(host.textContent).toContain('Open Saved Edge to reconnect')
+    expect(host.querySelector('[aria-label="Connect Saved Edge"]')).toBeNull()
     await act(async () => { (host.querySelector('[aria-label="Connect Edge"]') as HTMLButtonElement).click() })
     expect(host.querySelector('[aria-label="Connect browser"]')).toBeTruthy()
     expect(selected).not.toHaveBeenCalled()

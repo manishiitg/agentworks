@@ -3,7 +3,6 @@ import { Button } from '../ui/Button'
 import { Monitor, Loader2 } from 'lucide-react'
 import BrowserAutomationSettings, { type BrowserAutomationMode } from '../BrowserAutomationSettings'
 import WorkflowLiveBrowser, { type BrowserEmptyStateActions } from './WorkflowLiveBrowser'
-import { useEffect, useState } from 'react'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 
 interface BrowserWorkspacePanelProps {
@@ -30,9 +29,6 @@ export function BrowserWorkspacePanel({
   cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false,
   dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId,
 }: BrowserWorkspacePanelProps) {
-  const [connectionsOpen, setConnectionsOpen] = useState(false)
-  const [startSetup, setStartSetup] = useState(false)
-  useEffect(() => { setConnectionsOpen(false); setStartSetup(false) }, [workspacePath, profileId])
   const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
   const extensionAvailable = ['work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
   const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !extensionAvailable)
@@ -46,7 +42,7 @@ export function BrowserWorkspacePanel({
     return true
   }
   const selection = !readOnly && workspacePath ? <div className="shrink-0 border-b border-border px-3 py-2">
-    {extensionAvailable && <ChromeExtensionConnection connection={connection} expanded={connectionsOpen} onExpandedChange={open => { setConnectionsOpen(open); if (!open) setStartSetup(false) }} startSetup={startSetup} workspaceBrowser={directMode ? { label: directLabel, selected: !connection.status.selected && displayMode === directMode, onSelect: useWorkspaceBrowser } : undefined} />}
+    {extensionAvailable && <ChromeExtensionConnection key={`${extensionProfile}:${workspacePath}`} connection={connection} workspaceBrowser={directMode ? { label: directLabel, secondary: directMode === 'cdp', selected: !connection.status.selected && displayMode === directMode, onSelect: useWorkspaceBrowser } : undefined} />}
     {directMode === 'cdp' && displayMode === 'cdp' && !connection.status.selected && <details className="mt-2 text-xs">
       <summary className="cursor-pointer text-muted-foreground">Connection details</summary>
       <div className="pt-3"><BrowserAutomationSettings inline browserMode={displayMode} onBrowserModeChange={onBrowserModeChange} cdpPort={cdpPort} onCdpPortChange={onCdpPortChange} cdpConnected={cdpConnected} cdpError={cdpError} cdpChecking={cdpChecking} onCheckCdpConnection={onCheckCdpConnection} readOnly={readOnly || connection.busy} scopeNoun={scopeNoun} />{onSave && (dirty || saving) && <Button size="sm" disabled={saving} onClick={onSave}>{saving ? 'Saving…' : 'Apply connection settings'}</Button>}</div>
@@ -54,12 +50,11 @@ export function BrowserWorkspacePanel({
   </div> : null
   const hasSavedBrowser = connection.status.browsers?.some(browser => browser.enabled)
   const emptyBrowser = !readOnly && workspacePath ? ({ startBrowser, startingBrowser, canStart }: BrowserEmptyStateActions) => <div className="space-y-4 text-center" aria-label="Open a browser">
-    <p className="text-sm text-muted-foreground">{displayMode === 'headless' || displayMode === 'cdp' ? 'Ask your agent to open a website.' : hasSavedBrowser ? 'Choose a browser with Change.' : 'Connect a browser to start.'}</p>
+    <p className="text-sm text-muted-foreground">{displayMode === 'headless' || displayMode === 'cdp' ? 'Ask your agent to open a website.' : hasSavedBrowser ? 'Choose a browser above.' : 'Add a browser above to start.'}</p>
     {canStart && (displayMode === 'headless' || displayMode === 'cdp') && <Button type="button" disabled={startingBrowser || connection.busy} onClick={() => { void startBrowser() }} className="gap-2">
       {startingBrowser ? <Loader2 className="h-4 w-4 animate-spin" /> : <Monitor className="h-4 w-4" />}
       {startingBrowser ? 'Opening browser…' : 'Open browser'}
     </Button>}
-    {!hasSavedBrowser && <Button type="button" variant="outline" onClick={() => { setStartSetup(true); setConnectionsOpen(true) }}>Connect browser</Button>}
   </div> : undefined
   const selectedBrowser = connection.status.browsers?.find(browser => browser.id === connection.status.browser_id)
 
