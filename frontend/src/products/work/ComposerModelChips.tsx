@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { BarChart3, Check, ChevronDown, ChevronRight, Cpu, Settings2 } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, ChevronRight, Cpu, Laptop, Server, Settings2 } from 'lucide-react'
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
@@ -32,11 +32,12 @@ export function ChoiceItems({ title, choices, value, onPick }: { title?: string;
   </>
 }
 
-export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns, tag }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean; tag?: string }) {
+export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns, tag }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean; tag?: 'mac' | 'server' }) {
   const width = columns ? ' w-[min(560px,calc(100vw-24px))] max-h-[min(480px,var(--radix-dropdown-menu-content-available-height))]' : wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
-    <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={tag ? `${chipClass} max-w-56` : chipClass}>
-      {tag && <span className="shrink-0 rounded border border-border px-1 text-[10px] leading-4">{tag}</span>}
+    <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={chipClass}>
+      {tag === 'mac' && <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" />}
+      {tag === 'server' && <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 truncate">{label}</span>
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
@@ -152,8 +153,13 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   if (groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallback}</>
   const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
-  return <Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceTag ? ` (${sourceTag === 'Mac' ? 'on this Mac' : `from ${sourceTag}`})` : ''}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen} columns={Boolean(sessionId)} tag={sourceTag}>
+  const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
+  return <Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen} columns={Boolean(sessionId)} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
     <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
+    {sourceText && <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-[11px] text-muted-foreground">
+      {sourceTag === 'Mac' ? <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" /> : <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
+      <span className="min-w-0 truncate" title={sourceText}>{sourceText}</span>
+    </div>}
     <Menu.Sub>
       {subRow('Model', modelLabel)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={subContentClass}>
