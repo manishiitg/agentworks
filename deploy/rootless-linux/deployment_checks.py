@@ -181,7 +181,6 @@ def main():
         raise ValueError(f"deployment checks must run as the {SERVICE_ACCOUNT} account on Linux")
     check_environment_file()
     check_gog_keyring_file()
-    check_workspace_token_file()
     if EXPECTED_PUBLIC_URL and str(ENV_FILE) not in systemctl_value("EnvironmentFiles").split():
         raise ValueError(f"{UNIT} must load {ENV_FILE} through EnvironmentFile")
     if args.phase == "running":
@@ -191,6 +190,8 @@ def main():
         environ = Path(f"/proc/{pid}/environ").read_bytes()
         check_process_environment(environ)
         check_gog_keyring_process(environ)
+        # Only once running: the deploy's preflight runs before the activation generates the token on a server without it.
+        check_workspace_token_file()
         check_workspace_token_process(environ, UNIT)
         workspace = f"{UNIT_PREFIX}-workspace"
         workspace_pid = int(systemctl_value("MainPID", workspace))
