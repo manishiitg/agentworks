@@ -198,6 +198,28 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal("handoff under active turn")
 			}
 			delete(api.activeSessions, "busy")
+			// PLAT-856-441: the same logical conversation must survive both
+			// editing handoffs, without importing a native runtime or another tab.
+			main, err := api.crewHandoffMain(ctx, owner, local.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeHistory := func(record ProductConversationRecord, text string) {
+				t.Helper()
+				p, ok := workProjectChatHistoryConversationPath("owner", record.WorkspacePath, record.SessionID, time.Now())
+				if !ok {
+					t.Fatal("private main chat path missing")
+				}
+				data := map[string]any{"user_id": "owner", "session_id": record.SessionID,
+					"conversation_history": []map[string]any{{"Role": "human", "Parts": []map[string]any{{"Type": "text", "Text": text}}}},
+					"runtime":              map[string]any{"provider": "claude-code", "external_session_id": "do-not-transfer-native-session"},
+					"terminal_snapshots":   []string{"do-not-transfer-terminal"}}
+				raw, _ := json.Marshal(data)
+				if err := writeRawFileToWorkspace(ctx, p, string(raw)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			writeHistory(main, "Remember the project marker: blue lantern")
 			loseResponse = true
 			if w := call("server", "owner", true); w.Code != 409 {
 				t.Fatal("lost response not reported")
@@ -206,9 +228,26 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if pending.PendingAction != "server" {
 				t.Fatal("lost retry state")
 			}
+			serverChat, err := api.crewHandoffMain(ctx, owner, serverRoots.ID)
+			if err != nil || serverChat.ConversationID != main.ConversationID || serverChat.SessionID == main.SessionID {
+				t.Fatalf("handoff identity: %+v %v", serverChat, err)
+			}
+			target, found, err := resolveProductResumeTarget("owner", serverChat)
+			if err != nil || !found || target.Runtime != nil || len(target.History) == 0 {
+				t.Fatalf("archive continuation missing: %+v %v", target, err)
+			}
+			saved, err := ReadChatHistoryConversation("owner", serverChat.SessionID, serverChat.WorkspacePath)
+			if err != nil || !bytes.Contains(saved, []byte("blue lantern")) || bytes.Contains(saved, []byte("do-not-transfer")) {
+				t.Fatalf("history allowlist failed: %v", err)
+			}
+			writeHistory(serverChat, "Remember the project marker: blue lantern; server continued")
 			write(serverRoots.Files, "note.txt", "server work after handoff")
 			if w := call("server", "owner", true); w.Code != 200 {
 				t.Fatalf("retry: %d %s", w.Code, w.Body.String())
+			}
+			saved, _ = ReadChatHistoryConversation("owner", serverChat.SessionID, serverChat.WorkspacePath)
+			if !bytes.Contains(saved, []byte("server continued")) {
+				t.Fatal("handoff retry replaced the newer server turn")
 			}
 			checkWrite(local.FilesPath()+"/note.txt", 409)
 			if w := call("download", "owner", true); w.Code != 200 {
@@ -226,6 +265,14 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 
 			if w := call("local", "owner", true); w.Code != 200 {
 				t.Fatalf("return: %d %s", w.Code, w.Body.String())
+			}
+			returned, err := api.crewHandoffMain(ctx, owner, local.ID)
+			if err != nil || returned.ConversationID != main.ConversationID || returned.SessionID == main.SessionID || returned.SessionID == serverChat.SessionID {
+				t.Fatalf("return identity: %+v %v", returned, err)
+			}
+			saved, err = ReadChatHistoryConversation("owner", returned.SessionID, returned.WorkspacePath)
+			if err != nil || !bytes.Contains(saved, []byte("server continued")) || bytes.Contains(saved, []byte("do-not-transfer")) {
+				t.Fatalf("return lost conversation or copied runtime: %v", err)
 			}
 			raw, err := os.ReadFile(filepath.Join(local.Files, "note.txt"))
 			if err != nil || string(raw) != "latest server work" {

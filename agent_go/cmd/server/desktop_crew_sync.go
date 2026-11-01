@@ -223,6 +223,13 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				next = "server"
 			}
 			transfer = crewSyncRequest{Action: "push", PairID: binding.PairID, Editing: next, Snapshot: &snapshot, TransferID: uuid.NewString()}
+			if input.Action == "server" {
+				transfer.Conversation, e = api.captureCrewHandoffConversation(r.Context(), claims, roots)
+				if e != nil {
+					fail(e)
+					return
+				}
+			}
 			if e = fsutil.WriteJSONAtomic(pendingPath, transfer, 0600); e != nil {
 				fail(e)
 				return
@@ -290,6 +297,17 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(fmt.Errorf("%s", crewSyncResetMessage))
 				return
 			}
+			if remote.Binding == nil || remote.Binding.PairID != binding.PairID || remote.ProjectID != binding.PeerProjectID {
+				fail(fmt.Errorf("the returned changes do not belong to this Crew's paired server"))
+				return
+			}
+			movingLocal := input.Action == "local" && remote.Binding.Editing == "local"
+			if movingLocal {
+				if err = validateCrewHandoffConversation(remote.Conversation); err != nil {
+					fail(err)
+					return
+				}
+			}
 			if err = applyCrewSyncSnapshot(r.Context(), roots, binding.PairID, remote.Snapshot); err != nil {
 				fail(err)
 				return
@@ -297,6 +315,12 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			if err = saveCrewSyncSnapshot(roots, *remote.Snapshot); err != nil {
 				fail(err)
 				return
+			}
+			if movingLocal {
+				if err = api.importCrewHandoffConversation(r.Context(), claims, roots, binding.PairID, remote.TransferID, remote.Conversation); err != nil {
+					fail(err)
+					return
+				}
 			}
 			if _, err = call(binding.PeerProjectID, crewSyncRequest{Action: "ack", PairID: binding.PairID, TransferID: remote.TransferID}); err != nil {
 				fail(err)
