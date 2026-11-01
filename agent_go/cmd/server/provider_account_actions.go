@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -244,7 +245,7 @@ func checkProviderAccountStatus(ctx context.Context, target providerAccountTarge
 		// "Logged in using ChatGPT" / "Logged in using an API key - sk-...":
 		// keep the method, never what follows the dash.
 		method, _, _ := strings.Cut(strings.TrimPrefix(line, "Logged in using "), " - ")
-		status.Identity = safeIdentity(method)
+		status.Identity = safeIdentity(firstNonEmptyTrimmed(codexLoginEmail(target), method))
 	case "cursor-cli":
 		spec, err := cursorAccountCommand(ctx, "status")
 		if err != nil {
@@ -342,6 +343,47 @@ func museAccountStatus(target providerAccountTarget) (state, identity string) {
 		return "signed_out", ""
 	}
 	return "signed_in", safeIdentity(meta.UserEmail)
+}
+
+// codexLoginEmail reads the email of a ChatGPT login from Codex's own login record ($CODEX_HOME/auth.json, else
+// $HOME/.codex/auth.json): the "email" claim of the saved ID token, read without its signature, for display only.
+// `codex login status` names only the method.
+func codexLoginEmail(target providerAccountTarget) string {
+	codexHome := envValue(target.Env, "CODEX_HOME")
+	if codexHome == "" {
+		home := envValue(target.Env, "HOME")
+		if home == "" {
+			home = target.Home
+		}
+		codexHome = filepath.Join(home, ".codex")
+	}
+	raw, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	if err != nil {
+		return ""
+	}
+	var parsed struct {
+		Tokens struct {
+			IDToken string `json:"id_token"`
+		} `json:"tokens"`
+	}
+	if json.Unmarshal(raw, &parsed) != nil {
+		return ""
+	}
+	parts := strings.Split(parsed.Tokens.IDToken, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if json.Unmarshal(payload, &claims) != nil || !strings.Contains(claims.Email, "@") {
+		return ""
+	}
+	return claims.Email
 }
 
 // GET /api/provider-connections/{id}/status[?verify=1&workspace_path=] —
