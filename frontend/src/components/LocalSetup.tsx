@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, CheckCircle2, FolderOpen, Loader2, Plus, X } from 'lucide-react'
+import { ArrowRight, Bot, FolderOpen, Loader2, Plus } from 'lucide-react'
 import ModalPortal from './ui/ModalPortal'
 import { Button } from './ui/Button'
 import { llmConfigService } from '../services/llm-config-api'
@@ -7,6 +7,15 @@ import type { LLMDiscoveryCandidate } from '../services/api-types'
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 
 export const LOCAL_SETUP_SEEN_KEY = 'agentworks_local_setup_v1_seen'
+
+const providerIcons: Record<string, string> = {
+  'claude-code': '/provider-icons/claude.ico',
+  'codex-cli': '/provider-icons/codex.png',
+  'cursor-cli': '/provider-icons/cursor.svg',
+  'pi-cli': '/provider-icons/pi.svg',
+  'muse-cli': '/provider-icons/muse.ico',
+  'agy-cli': '/provider-icons/antigravity.svg',
+}
 
 /** The new-user setup on the Mac app (PLAT-856-441 onboarding): the AI programs already on this Mac, then where to
  *  work. Opened automatically on the first visit and from Home at any time; it only reads and opens existing flows,
@@ -22,12 +31,14 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
       .catch(() => { if (!cancelled) setError('Could not check the AI programs on this Mac.') })
     return () => { cancelled = true }
   }, [])
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
-    document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
-  }, [onClose])
   const openAccounts = () => { onClose(); openWorkspaceSettings('providers') }
+  const openProvider = (provider: string) => {
+    onClose()
+    const url = new URL('/settings/ai-accounts', window.location.origin)
+    url.searchParams.set('provider', provider)
+    window.history.pushState({ workspaceSettings: true }, '', url)
+    openWorkspaceSettings('providers')
+  }
   const start = () => { onClose(); onStartProject() }
   const stepPill = (n: 1 | 2, label: string) => (
     <span className={`rounded-full border px-2.5 py-1 text-xs ${step === n ? 'border-primary text-foreground' : 'border-border text-muted-foreground'}`}>{n} · {label}</span>
@@ -35,13 +46,12 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
   return (
     <ModalPortal>
       <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-background p-4 sm:p-8">
-        <section aria-labelledby="local-setup-title" className="w-full max-w-2xl p-5 sm:p-6">
+        <section aria-labelledby="local-setup-title" className="w-full max-w-4xl p-5 sm:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 id="local-setup-title" className="text-lg font-semibold">Set up AgentWorks on this Mac</h2>
               <p className="mt-1 text-xs text-muted-foreground">Two quick steps. Nothing you already have is changed.</p>
             </div>
-            <button type="button" aria-label="Close setup" onClick={onClose} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">{stepPill(1, 'AI programs')}{stepPill(2, 'Where to work')}</div>
 
@@ -55,18 +65,19 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
                 const installed = program.runtime_available !== false
                 const ready = installed && program.usable
                 return <li key={program.provider} className="flex items-center gap-3 rounded-xl border border-border bg-card/50 px-3.5 py-2.5">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${ready ? 'bg-emerald-500' : installed ? 'bg-amber-500' : 'bg-gray-400'}`} aria-hidden="true" />
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted/50">
+                    {providerIcons[program.provider] ? <img src={providerIcons[program.provider]} alt="" className="h-6 w-6 object-contain" /> : <Bot aria-hidden="true" className="h-5 w-5 text-muted-foreground" />}
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium">{program.label}</span>
-                    <span className="block text-xs text-muted-foreground">{ready ? 'Ready' : installed ? 'Installed, not signed in' : 'Not installed'}{!installed && program.setup_hint ? ` · ${program.setup_hint}` : ''}</span>
+                    <span className="block text-xs text-muted-foreground">{ready ? 'Ready' : installed ? 'Installed, not signed in' : 'Not installed'}</span>
                   </span>
-                  {ready ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-label="Ready" /> : installed && <Button type="button" size="xs" variant="outline" onClick={openAccounts}>Sign in</Button>}
+                  {!ready && <Button type="button" size="xs" variant="outline" onClick={() => openProvider(program.provider)}>{installed ? 'Sign in' : 'Set up'}</Button>}
                 </li>
               })}
             </ul>}
             <p className="mt-3 text-xs leading-5 text-muted-foreground">To use them on your company's server as well, open <button type="button" className="font-medium text-primary hover:underline" onClick={openAccounts}>AI accounts</button>: each account shows "Use it on your servers too".</p>
-            <div className="mt-5 flex justify-between gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setStep(2)}>Skip</Button>
+            <div className="mt-5 flex justify-end gap-2">
               <Button type="button" size="sm" onClick={() => setStep(2)}>Next<ArrowRight className="ml-1.5 h-4 w-4" /></Button>
             </div>
           </div>}
