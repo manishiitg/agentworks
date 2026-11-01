@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, Bot, FolderOpen, Loader2, Plus, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { ArrowRight, Bot, Loader2, RefreshCw } from 'lucide-react'
 import ModalPortal from './ui/ModalPortal'
 import { Button } from './ui/Button'
 import { llmConfigService } from '../services/llm-config-api'
 import type { LLMDiscoveryCandidate } from '../services/api-types'
+import { ConnectServerForm } from './providers/ProvidersOverview'
 
 export const LOCAL_SETUP_SEEN_KEY = 'agentworks_local_setup_v1_seen'
 
@@ -16,14 +17,14 @@ const providerIcons: Record<string, string> = {
   'agy-cli': '/provider-icons/antigravity.svg',
 }
 
-/** The new-user setup on the Mac app (PLAT-856-441 onboarding): the AI programs already on this Mac, then where to
- *  work. Opened automatically on the first visit and from Home at any time; it only reads and opens existing flows,
- *  so running it again never resets anything. */
-export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; onStartProject: () => void }) {
+/** Local AI discovery followed by an optional server connection. */
+export function LocalSetup({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<1 | 2>(1)
   const [programs, setPrograms] = useState<LLMDiscoveryCandidate[] | null>(null)
   const [error, setError] = useState('')
   const [check, setCheck] = useState(0)
+  const [serverConnected, setServerConnected] = useState(false)
+  const setServerConnectedTrue = useCallback(() => setServerConnected(true), [])
   useEffect(() => {
     let cancelled = false
     setError('')
@@ -33,7 +34,6 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
       .catch(() => { if (!cancelled) setError('Could not check the AI programs on this Mac.') })
     return () => { cancelled = true }
   }, [check])
-  const start = () => { onClose(); onStartProject() }
   const stepPill = (n: 1 | 2, label: string) => (
     <span className={`rounded-full border px-2.5 py-1 text-xs ${step === n ? 'border-primary text-foreground' : 'border-border text-muted-foreground'}`}>{n} · {label}</span>
   )
@@ -47,7 +47,7 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
               <p className="mt-1 text-xs text-muted-foreground">Two quick steps. Nothing you already have is changed.</p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">{stepPill(1, 'AI programs')}{stepPill(2, 'Where to work')}</div>
+          <div className="mt-4 flex flex-wrap gap-2">{stepPill(1, 'AI programs')}{stepPill(2, 'Server')}</div>
 
           {step === 1 && <div className="mt-5">
             <h3 className="text-sm font-semibold">AI programs on this Mac</h3>
@@ -76,23 +76,13 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
           </div>}
 
           {step === 2 && <div className="mt-5">
-            <h3 className="text-sm font-semibold">Where do you want to work?</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">A project holds your files, agents and chats. It starts private to you.</p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <button type="button" onClick={start} className="rounded-xl border border-border bg-card/50 p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/40">
-                <Plus className="h-5 w-5 text-primary" aria-hidden="true" />
-                <span className="mt-2 block text-sm font-semibold">Start a new project</span>
-                <span className="mt-1 block text-xs leading-5 text-muted-foreground">An empty folder AgentWorks makes for you.</span>
-              </button>
-              <button type="button" onClick={start} className="rounded-xl border border-border bg-card/50 p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/40">
-                <FolderOpen className="h-5 w-5 text-primary" aria-hidden="true" />
-                <span className="mt-2 block text-sm font-semibold">Open a project folder</span>
-                <span className="mt-1 block text-xs leading-5 text-muted-foreground">Work in a folder you already have, such as one you use with Claude Code or Codex. Its files and Git history stay where they are; choose it under Folder on the next screen.</span>
-              </button>
-            </div>
+            <h3 className="text-sm font-semibold">Connect a server <span className="font-normal text-muted-foreground">(optional)</span></h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Connect your team's AgentWorks server, or continue on this Mac. You can connect later.</p>
+            <div className="mt-4"><ConnectServerForm onConnected={setServerConnectedTrue} /></div>
+            {serverConnected && <p role="status" className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">Server connected.</p>}
             <div className="mt-5 flex justify-between gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setStep(1)}>Back</Button>
-              <Button type="button" size="sm" onClick={onClose}>Get started<ArrowRight className="ml-1.5 h-4 w-4" /></Button>
+              <Button type="button" size="sm" onClick={onClose}>Continue to Home<ArrowRight className="ml-1.5 h-4 w-4" /></Button>
             </div>
           </div>}
         </section>

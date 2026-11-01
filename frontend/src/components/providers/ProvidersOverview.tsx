@@ -99,7 +99,7 @@ function serversChanged() {
 }
 
 /** Connect a server: its address, then sign in in the browser; the server's card appears when that finishes. */
-function ConnectServerForm() {
+export function ConnectServerForm({ onConnected }: { onConnected?: () => void } = {}) {
   const [server, setServer] = useState(() => takePendingServerAddress())
   const [pending, setPending] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -118,13 +118,13 @@ function ConnectServerForm() {
         const data = await desktopRequest<{ connection_id: string; error: string }>(`/sign-in/${pending}`)
         if (disposed) return
         if (data.error) throw new Error(data.error)
-        if (data.connection_id) { setPending(null); setServer(''); serversChanged(); return }
+        if (data.connection_id) { setPending(null); setServer(''); serversChanged(); onConnected?.(); return }
         timer = setTimeout(() => void check(), 1500)
       } catch (checkError) { if (!disposed) { setPending(null); setError((checkError as Error).message) } }
     }
     void check()
     return () => { disposed = true; clearTimeout(timer) }
-  }, [pending])
+  }, [pending, onConnected])
   const connect = async () => {
     setBusy(true); setError('')
     try {
