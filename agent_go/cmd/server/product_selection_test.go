@@ -3,11 +3,11 @@ package server
 import "testing"
 
 func TestRegisteredProductIDsExcludeRetiredProduct(t *testing.T) {
-	for _, configured := range []string{"dominion", "dominion,agentworks", "sparkquill", "sparkquill,agentworks"} {
+	for _, configured := range []string{"dominion", "dominion,agentworks", "retired-product", "retired-product,agentworks"} {
 		t.Setenv("AGENT_PRODUCTS", configured)
 		products := registeredProductIDs()
 		for _, product := range products {
-			if product == "dominion" || product == "sparkquill" {
+			if product == "dominion" || product == "retired-product" {
 				t.Fatalf("retired product is advertised: %v", products)
 			}
 		}
@@ -19,7 +19,7 @@ func TestRegisteredProductIDsExcludeRetiredProduct(t *testing.T) {
 
 func TestProductEnabled(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "")
-	if !productEnabled("example-product") || !productEnabled("sparkquill") {
+	if !productEnabled("example-product") || !productEnabled("retired-product") {
 		t.Fatal("an unset product allowlist must preserve shared-server behavior")
 	}
 
@@ -27,7 +27,7 @@ func TestProductEnabled(t *testing.T) {
 	if !productEnabled("example-product") || !productEnabled("finance") {
 		t.Fatal("configured products must be enabled case-insensitively")
 	}
-	if productEnabled("sparkquill") {
+	if productEnabled("retired-product") {
 		t.Fatal("unlisted product must not be registered")
 	}
 	// Vault and Brain are core: no allowlist turns them off.
@@ -42,7 +42,7 @@ func TestIsSingleProductServerDeployment(t *testing.T) {
 		t.Fatal("unset AGENT_PRODUCTS is the shared desktop/multi-product server, not a dedicated single-product deployment")
 	}
 
-	t.Setenv("AGENT_PRODUCTS", "sparkquill")
+	t.Setenv("AGENT_PRODUCTS", "retired-product")
 	if !isSingleProductServerDeployment() {
 		t.Fatal("a single configured product must count as a dedicated single-product deployment")
 	}

@@ -324,7 +324,7 @@ func landlockSystemWritePaths(privateTmp, browserScoped bool) []string {
 		// a string prefix, so granting only the bare `profile` path left every
 		// shared-profile Chrome launch unable to create its ProcessSingleton
 		// socket: "Chrome exited early ... Failed to create socket directory."
-		// Confirmed live on SparkQuill the moment AGENT_BROWSER_SHARED_PROFILE
+		// Confirmed on a standalone deployment the moment AGENT_BROWSER_SHARED_PROFILE
 		// was first enabled.
 		// Project browsers (one per Crew/product project) live under
 		// `<profile>-projects/<id>`. Create the roots here, before the ruleset

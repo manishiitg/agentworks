@@ -130,7 +130,6 @@ this is the complete map.
 - [Product Tool Registration and Agent Visibility](design/product_tool_registration_and_visibility.md)
 - [Reusable Platform for Dedicated Agent Products](design/reusable_vertical_product_platform.md)
 - [Skill system — current state and narrow product-skill design](design/skill_system_design.md)
-- [SparkQuill desktop on the platform — plan and research record](design/sparkquill_desktop_on_platform_plan.md)
 - [User accounts, product access, and workflow sharing](design/user_accounts_and_workflow_sharing.md)
 - [Work Product Design](design/work_product.md)
 - [Schedule ownership and Builder warnings](design/workflow-schedule-guard.md)

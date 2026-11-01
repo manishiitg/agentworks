@@ -1,0 +1,1 @@
+import{G as o}from"./index-BpZBU6kh.js";const e=[["path",{d:"M19 3H5",key:"1236rx"}],["path",{d:"M12 21V7",key:"gj6g52"}],["path",{d:"m6 15 6 6 6-6",key:"h15q88"}]],t=o("arrow-down-from-line",e);export{e as __iconNode,t as default};

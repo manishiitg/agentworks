@@ -53,6 +53,7 @@ func TestGetCdpPortsIgnoresStalePortsOutsideCDPModes(t *testing.T) {
 }
 
 func TestBuildChatBrowserConfigUsesBrowserModeCDPWithoutEnableBrowserAccess(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	req := QueryRequest{BrowserMode: "cdp"}
 
 	cfg := buildChatBrowserConfig(req)
@@ -68,28 +69,13 @@ func TestBuildChatBrowserConfigUsesBrowserModeCDPWithoutEnableBrowserAccess(t *t
 	}
 }
 
-// When this deployment's CDP is disabled, "auto" mode's only possible answer
-// is headless -- getCdpPorts already returns none and
-// validateRequestedCDPPorts already rejects an explicit cdp request. Resolving
-// straight to headless here drops the "call agent_browser status first" auto
-// preamble and the phantom port-9222 candidate that would otherwise be added
-// on every single turn, for a check that can never succeed. Confirmed live on
-// SparkQuill: every turn's prompt claimed an "authorized CDP endpoint" at
-// :9222 that was never reachable on this headless-only server.
-func TestBuildChatBrowserConfigResolvesAutoToHeadlessWhenCDPDisabled(t *testing.T) {
-	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
-	req := QueryRequest{BrowserMode: "auto"}
-
-	cfg := buildChatBrowserConfig(req)
-
-	if cfg.Mode != "headless" {
-		t.Fatalf("mode = %q, want headless", cfg.Mode)
-	}
-	if cfg.CdpPort != 0 || len(cfg.CdpPorts) != 0 {
-		t.Fatalf("expected no CDP candidates when CDP is disabled, got port=%d ports=%v", cfg.CdpPort, cfg.CdpPorts)
-	}
-	if !cfg.HasAgentBrowser {
-		t.Fatalf("expected agent_browser to remain enabled in headless mode")
+// A server installation defaults to its managed headless browser and does
+// not advertise a laptop CDP endpoint.
+func TestBuildChatBrowserConfigDefaultsToHeadlessOnServer(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	cfg := buildChatBrowserConfig(QueryRequest{})
+	if cfg.Mode != "headless" || cfg.CdpPort != 0 || len(cfg.CdpPorts) != 0 || !cfg.HasAgentBrowser {
+		t.Fatalf("server browser config = %+v, want headless without CDP ports", cfg)
 	}
 }
 

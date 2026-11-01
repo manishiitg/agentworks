@@ -32,7 +32,7 @@ class ProvisionSlotsConfigTest(unittest.TestCase):
         self.assertEqual(docs_root.group(1), "$DOCS")
 
     def test_default_docs_root_is_unchanged_for_the_shared_hosts(self):
-        # Excellence/Confida/SparkQuill do not pass DOCS: the default must keep them where they were.
+        # Excellence/Confida/ExampleApp do not pass DOCS: the default must keep them where they were.
         self.assertIn('DOCS="${DOCS:-$HOME_DIR/data/docs}"', SCRIPT)
 
     def test_table_rewrites_keep_the_owner_and_group(self):

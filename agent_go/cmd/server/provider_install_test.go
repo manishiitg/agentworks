@@ -39,7 +39,7 @@ func TestProviderInstallRejectsServerAndAccountScopedRequests(t *testing.T) {
 	for _, test := range []struct{ host, body string }{
 		{"linux", `{"provider":"codex-cli","action":"install"}`},
 		{"darwin", `{"provider":"codex-cli","action":"install","connection_id":"private-account"}`},
-		{"darwin", `{"provider":"codex-cli","action":"install","workspace_path":"Chats/SparkQuill"}`},
+		{"darwin", `{"provider":"codex-cli","action":"install","workspace_path":"Chats/ExampleApp"}`},
 	} {
 		providerInstallHostOS = test.host
 		recorder := httptest.NewRecorder()

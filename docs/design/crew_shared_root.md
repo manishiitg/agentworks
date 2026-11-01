@@ -38,8 +38,7 @@ Crews move to a shared root, `Crew/<slug>-<id8>`, keeping the folder name they h
 - **Old paths**, both logical and physical, keep resolving through one alias resolver
   indefinitely. Old links, stored references we missed, and open tabs keep working, and a
   warning is logged.
-- Other products (SparkQuill `Chats/SparkQuill/activities`, Video Studio) are **not** moved. They
-  have no cross-user readers.
+- Other product workspaces are not moved. Their storage and identities remain independent.
 
 ## One resolver
 

@@ -1,0 +1,1 @@
+import{G as e}from"./index-BpZBU6kh.js";const t=[["rect",{width:"18",height:"18",x:"3",y:"3",rx:"2",ry:"2",key:"1m3agn"}],["path",{d:"M15 9h.01",key:"x1ddxp"}],["path",{d:"M9 15h.01",key:"fzyn71"}]],d=e("dice-2",t);export{t as __iconNode,d as default};

@@ -29,7 +29,7 @@ func TestParseCrewPathSpellings(t *testing.T) {
 		t.Fatalf("got %+v %v, want %+v", got, ok, want)
 	}
 	for _, raw := range []string{"", "Crew", "Crew/", "Crew/.hidden", "Workflow/x", "Crew/../Workflow/x",
-		"Chats/Work/projects/sde-1a2b", "_users/bob/Chats/Work/projects/ops-9f", "Chats/SparkQuill/activities/a"} {
+		"Chats/Work/projects/sde-1a2b", "_users/bob/Chats/Work/projects/ops-9f", "Chats/ExampleApp/activities/a"} {
 		if ref, ok := parseCrewPath("alice", raw); ok {
 			t.Fatalf("%q parsed as %+v", raw, ref)
 		}

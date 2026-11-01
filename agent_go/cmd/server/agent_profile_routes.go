@@ -509,7 +509,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// the shared turn runner can be extracted from handleQuery behind this seam
 	// without another frontend migration.
 	// The rootless product gateway identifies its loopback caller as the
-	// product (for example "sparkquill"), while a single-user deployment's
+	// product (for example "example-app"), while a single-user deployment's
 	// durable workspace remains owned by DEFAULT_USER_ID. Keep that gateway
 	// identity out of the shared query path so the folder guard, project
 	// initializer, history and registry all address the same project files.

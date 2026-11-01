@@ -47,7 +47,7 @@ func TestProductTipsFilteredByUserProducts(t *testing.T) {
 	  {"id":"b2","username":"bob","admin":false,"can_create":true,"products":["work"]}
 	]}`)
 	tips := getProductTipsCatalog(t, &UserClaims{UserID: "b2", Username: "bob"})
-	if len(tips["work"]) == 0 || len(tips["agentworks"]) != 0 || len(tips["sparkquill"]) != 0 {
+	if len(tips["work"]) == 0 || len(tips["agentworks"]) != 0 || len(tips["example-app"]) != 0 {
 		t.Fatalf("bob must see the work catalog and not the products he lacks, got %v surfaces", len(tips))
 	}
 }

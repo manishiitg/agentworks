@@ -64,12 +64,12 @@ func TestBrowserLiveEndpointFindsNamespacedMetadataBeforeLegacy(t *testing.T) {
 			t.Setenv("AGENT_BROWSER_SOCKET_DIR", "")
 			t.Setenv("XDG_RUNTIME_DIR", "")
 			t.Setenv(key, root)
-			t.Setenv("AGENT_BROWSER_NAMESPACE", "sparkquill-test")
+			t.Setenv("AGENT_BROWSER_NAMESPACE", "example-app-test")
 			base := root
 			if key == "XDG_RUNTIME_DIR" {
 				base = filepath.Join(root, "agent-browser")
 			}
-			dir := filepath.Join(base, "namespaces", "sparkquill-test", "run")
+			dir := filepath.Join(base, "namespaces", "example-app-test", "run")
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				t.Fatal(err)
 			}

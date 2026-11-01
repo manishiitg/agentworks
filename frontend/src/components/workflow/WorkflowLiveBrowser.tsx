@@ -254,7 +254,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
     setLastPlaywrightFrame(null)
     try { selectedBrowser.current = sessionStorage.getItem(`browser-selection:${workspacePath}`) || '' }
     catch { selectedBrowser.current = '' }
-    // Minimal mode (SparkQuill: agent_browser only, no Playwright fixture)
+    // Minimal mode (agent_browser only, no Playwright fixture)
     // never follows Playwright, even a selection stored by a prior session.
     if (minimal && selectedBrowser.current === AUTO_BROWSER) selectedBrowser.current = ''
     setSelection(selectedBrowser.current)

@@ -145,8 +145,8 @@ if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
   die "GitHub release already exists: $tag"
 fi
 
-# The repository's "Latest" release may be SparkQuill's (sparkquill-v*), so
-# the previous AgentWorks release is the highest published plain vX.Y.Z tag,
+# Namespaced releases from other applications may remain in the repository.
+# The previous AgentWorks release is the highest published plain vX.Y.Z tag,
 # the same filter the desktop updater uses.
 previous_tag=""
 while IFS= read -r candidate; do

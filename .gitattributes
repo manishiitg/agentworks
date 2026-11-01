@@ -1,0 +1,3 @@
+
+# Complete frontend build output; preserve generated string whitespace.
+agent_go/static/** linguist-generated=true -whitespace

@@ -1,0 +1,1 @@
+.live-browser-chrome{container:browser-chrome / inline-size}@container browser-chrome (max-width: 760px){.browser-action-label{display:none}}@container browser-chrome (max-width: 520px){.live-browser-tabs [role=tab]{max-width:100px}}

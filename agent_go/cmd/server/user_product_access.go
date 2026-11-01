@@ -18,8 +18,8 @@ import (
 // Storage: config/user-product-access.json, shape:
 //
 //	{
-//	  "owner": { "products": ["sparkquill", "agentworks"], "workflow_ids": ["demo-workflow"] },
-//	  "reader":   { "products": ["sparkquill"] }
+//	  "owner": { "products": ["example-app", "agentworks"], "workflow_ids": ["demo-workflow"] },
+//	  "reader":   { "products": ["example-app"] }
 //	}
 //
 // Keys are normalized (lowercase, trimmed) and matched against UserID,

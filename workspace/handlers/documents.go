@@ -1775,7 +1775,7 @@ func DeleteFolder(c *gin.Context) {
 	}
 	defer release()
 	// Gin's wildcard route capture always includes the leading slash
-	// ("/Chats/SparkQuill/..." for a request to /api/folders/Chats/...) —
+	// ("/Chats/ExampleApp/..." for a request to /api/folders/Chats/...) —
 	// HandleDocumentRequest strips this same leading slash from its own
 	// *filepath wildcard param before resolving a path. Without it here,
 	// SanitizeInputPath sees an absolute-looking path, IsPerUserPath's

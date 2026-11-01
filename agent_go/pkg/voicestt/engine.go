@@ -3,7 +3,7 @@
 // Package voicestt is the ONE AgentWorks speech-to-text engine. The agent
 // server (AgentWorks' composer and every product that declares
 // agentprofiles.RuntimeCapabilities.Voice in its product.yaml) and the
-// AgentWorks and SparkQuill desktop builds all embed this package: the
+// desktop builds all embed this package: the
 // same model, the same Manager (download/load/warm/unload), the same
 // /api/voice/stream WebSocket (ServeStream), the same file decoding
 // (DecodeFile). No product bundles its own STT engine, model, or transport.

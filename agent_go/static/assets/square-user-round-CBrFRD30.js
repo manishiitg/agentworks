@@ -1,0 +1,1 @@
+import{G as e}from"./index-BpZBU6kh.js";const r=[["path",{d:"M18 21a6 6 0 0 0-12 0",key:"kaz2du"}],["circle",{cx:"12",cy:"11",r:"4",key:"1gt34v"}],["rect",{width:"18",height:"18",x:"3",y:"3",rx:"2",key:"afitv7"}]],c=e("square-user-round",r);export{r as __iconNode,c as default};

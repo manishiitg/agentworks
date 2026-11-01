@@ -73,7 +73,7 @@ describe('protected deep-link boundary', () => {
       expect(window.location.pathname).toBe('/no-such-place')
       expect(mounted).not.toHaveBeenCalled()
 
-      window.history.replaceState({}, '', '/sparkquill')
+      window.history.replaceState({}, '', '/example-app')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
       expect(host.textContent).toContain('not available')
       expect(mounted).not.toHaveBeenCalled()

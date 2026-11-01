@@ -83,8 +83,8 @@ func TestStaticFrontendDirDefaultsToRelativeStatic(t *testing.T) {
 	if got := staticFrontendDir(); got != "./static/" {
 		t.Fatalf("unset STATIC_DIR must preserve the historical cwd-relative default, got %q", got)
 	}
-	t.Setenv("STATIC_DIR", "/Applications/SparkQuill.app/Contents/Resources/static")
-	if got := staticFrontendDir(); got != "/Applications/SparkQuill.app/Contents/Resources/static" {
+	t.Setenv("STATIC_DIR", "/Applications/ExampleApp.app/Contents/Resources/static")
+	if got := staticFrontendDir(); got != "/Applications/ExampleApp.app/Contents/Resources/static" {
 		t.Fatalf("STATIC_DIR must override the default, got %q", got)
 	}
 }

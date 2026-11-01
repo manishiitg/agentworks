@@ -997,7 +997,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 			// A ProcessSingleton failure on the retry itself (not just the
 			// original error) means 2s wasn't enough for the OS to finish
 			// tearing down the just-killed Chrome/daemon before this profile's
-			// singleton files were recreated -- confirmed live on SparkQuill:
+			// singleton files were recreated -- confirmed on a standalone deployment:
 			// the automatic retry failed with the identical error, but a
 			// manual retry moments later against the same profile succeeded
 			// immediately. One bounded extra attempt with a longer pause
@@ -1560,13 +1560,13 @@ func isCDPRuntimeStartupError(err error) bool {
 // /tmp/.agent-browser. The base directory for that subtree depends on
 // whether XDG_RUNTIME_DIR is visible to the process that actually spawns
 // agent-browser: the real production path -- execute_shell_command's
-// Landlock-sandboxed subprocess, invoked from sparkquill-workspace -- does
-// not propagate it even though sparkquill-workspace's own environment has it
+// Landlock-sandboxed subprocess, invoked from the workspace service -- does
+// not propagate it even though the workspace service's own environment has it
 // set, so agent-browser falls back to /tmp there. Confirmed directly:
 // running the identical command through /api/execute (the real path) wrote
 // to /tmp/.agent-browser/namespaces/$NS/run/, not
 // $XDG_RUNTIME_DIR/agent-browser/namespaces/$NS/run/, even though
-// XDG_RUNTIME_DIR was set on sparkquill-workspace.service itself. Both are
+// XDG_RUNTIME_DIR was set on the workspace service itself. Both are
 // checked, in that order, since an interactive shell (which does get
 // XDG_RUNTIME_DIR from the login session) uses the XDG one.
 //
@@ -1659,7 +1659,7 @@ func killChromePID(chromePID int, session string) {
 // right before killSessionRuntimeFully runs, so a live incident can show
 // whether Chrome was actually already dead or whether recovery is about to
 // kill a session that was still working fine. Added while chasing a
-// recurring SparkQuill failure where `open` succeeds but the very next
+// recurring standalone-browser failure where `open` succeeds but the very next
 // command (`snapshot`) immediately reports the session dead -- this answers
 // the open question of whether that's a real Chrome crash or a false
 // positive from whatever decides the session needs a fresh launch.
@@ -1932,7 +1932,7 @@ func runCommand(name string, args ...string) (string, error) {
 // Before this helper existed, three separate call sites each reimplemented
 // the first two steps but not the third -- the idle reaper, auto-eviction
 // (freeing a session slot for a new open), and KillAllTrackedSessions (every
-// server SIGTERM, i.e. every deploy). Confirmed live on SparkQuill: any one
+// server SIGTERM, i.e. every deploy). Confirmed on a standalone deployment: any one
 // of those killing a session with an active Chrome left its SingletonLock/
 // SingletonSocket/SingletonCookie behind, and the next launch attempt against
 // that persistent profile -- sometimes tens of minutes later, on the very
@@ -1977,7 +1977,7 @@ func removeSessionFiles(session string) {
 // just killed it above). removeSessionFiles only cleans agent-browser's own
 // daemon bookkeeping files (.pid/.sock/...), never Chrome's, so every single
 // auto-recovery retry after a crash was guaranteed to hit this immediately.
-// Confirmed live on SparkQuill: a crashed session's every recovery attempt
+// Confirmed on a standalone deployment: a crashed session's every recovery attempt
 // failed with exactly this error until the lock was removed by hand.
 func removeStaleChromeSingletonLock(session string) {
 	profile := ProfilePathForSession(session)

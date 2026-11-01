@@ -527,7 +527,6 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/costobserver/observer.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/context_aware_bridge.go`
 Consumers:
-- `mcp-agent-builder-go/frontend/src/products/sparkquill/api/platform/events.ts`
 - `mcp-agent-builder-go/frontend/src/stores/useRunningWorkflowsStore.ts`
 - `mcp-agent-builder-go/frontend/src/stores/useChatStore.ts`
 - `mcp-agent-builder-go/frontend/src/utils/cleanConversation.ts`
@@ -761,7 +760,6 @@ Producers:
 - `mcp-agent-builder-go/agent_go/cmd/schema-gen/main.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/events/types.go`
 Consumers:
-- `mcp-agent-builder-go/frontend/src/products/sparkquill/api/platform/events.ts`
 - `mcp-agent-builder-go/frontend/src/components/TerminalEventTranscript.tsx`
 
 ## `request_human_feedback` — LIVE
@@ -1222,7 +1220,6 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/context_aware_bridge.go`
 - `mcp-agent-builder-go/agent_go/internal/events/event_identity.go`
 Consumers:
-- `mcp-agent-builder-go/frontend/src/products/sparkquill/api/platform/events.ts`
 - `mcp-agent-builder-go/frontend/src/constants/runningWorkflows.ts`
 - `mcp-agent-builder-go/frontend/src/stores/useChatStore.ts`
 - `mcp-agent-builder-go/frontend/src/stores/useWorkflowStore.ts`
@@ -1275,7 +1272,6 @@ Producers:
 - `multi-llm-provider-go/pkg/adapters/anthropic/anthropic_adapter.go`
 - `multi-llm-provider-go/pkg/adapters/openai/openai_adapter.go`
 Consumers:
-- `mcp-agent-builder-go/frontend/src/products/sparkquill/api/platform/events.ts`
 - `mcp-agent-builder-go/frontend/src/products/work/WorkModelsPanel.tsx`
 - `mcp-agent-builder-go/frontend/src/stores/useChatStore.ts`
 - `mcp-agent-builder-go/frontend/src/utils/internalChatEvents.ts`

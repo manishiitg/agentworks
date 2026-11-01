@@ -1,0 +1,1 @@
+import{G as c}from"./index-BpZBU6kh.js";const e=[["circle",{cx:"12",cy:"12",r:"10",key:"1mglay"}],["path",{d:"M12 8v8",key:"napkw2"}],["path",{d:"m8 12 4 4 4-4",key:"k98ssh"}]],r=c("circle-arrow-down",e);export{e as __iconNode,r as default};

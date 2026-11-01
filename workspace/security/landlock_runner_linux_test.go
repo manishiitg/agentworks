@@ -125,7 +125,7 @@ func TestLandlockSystemReadPathsGrantAllOfEtcReadOnly(t *testing.T) {
 // sibling paths that merely share a string prefix, so the write baseline
 // must grant those siblings explicitly or Chrome can't create its
 // ProcessSingleton socket ("Failed to create socket directory"), confirmed
-// live the moment SparkQuill first enabled AGENT_BROWSER_SHARED_PROFILE.
+// live the moment ExampleApp first enabled AGENT_BROWSER_SHARED_PROFILE.
 func TestLandlockSystemWritePathsCoverSharedProfileUserAndWorkflowSiblings(t *testing.T) {
 	base := t.TempDir()
 	profile := filepath.Join(base, "browser-profile")

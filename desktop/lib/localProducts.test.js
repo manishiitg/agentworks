@@ -6,7 +6,7 @@ const { localProductEnv } = require('./localProducts');
 test('desktop excludes server products and inherited Vault connections', () => {
   const inherited = {
     AGENTWORKS_DEPLOYMENT_MODE: 'server',
-    AGENT_PRODUCTS: 'relays,sparkquill',
+    AGENT_PRODUCTS: 'relays,example-app',
     AGENTWORKS_LOCAL_SERVER_PRODUCTS: '1',
     AGENTWORKS_ENABLED_PRODUCT_SURFACES: 'relays,knowledgebase,mcp-gateway,llm-gateway',
     AGENTWORKS_DEFAULT_PRODUCT_SURFACE: 'knowledgebase',

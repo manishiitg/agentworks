@@ -1,0 +1,1 @@
+import{G as e}from"./index-BpZBU6kh.js";const t=[["path",{d:"M10 12h11",key:"6m4ad9"}],["path",{d:"M10 18h11",key:"11hvi2"}],["path",{d:"M10 6h11",key:"c7qv1k"}],["path",{d:"m3 10 3-3-3-3",key:"i7pm08"}],["path",{d:"m3 20 3-3-3-3",key:"20gx1n"}]],o=e("list-collapse",t);export{t as __iconNode,o as default};

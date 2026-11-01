@@ -11,7 +11,7 @@ import (
 func TestSuggestActionsEmitsTheBindingsKindTaggedWithTheProduct(t *testing.T) {
 	var got []*orchestratorevents.ProductInteractionEvent
 	rt := agentprofiles.ToolRuntimeContext{
-		Product:     "sparkquill",
+		Product:     "example-app",
 		Interaction: &agentprofiles.InteractionBinding{Kind: "next_steps", Render: "chat.suggestions"},
 		Emit: func(ev any) {
 			if e, ok := ev.(*orchestratorevents.ProductInteractionEvent); ok {
@@ -33,7 +33,7 @@ func TestSuggestActionsEmitsTheBindingsKindTaggedWithTheProduct(t *testing.T) {
 	if err != nil || out != `{"count":1,"status":"ok"}` {
 		t.Fatalf("out=%s err=%v", out, err)
 	}
-	if len(got) != 1 || got[0].Kind != "next_steps" || got[0].Product != "sparkquill" {
+	if len(got) != 1 || got[0].Kind != "next_steps" || got[0].Product != "example-app" {
 		t.Fatalf("event = %+v", got)
 	}
 	if actions, _ := got[0].Payload["actions"].([]map[string]interface{}); len(actions) != 1 || actions[0]["label"] != "How's she doing?" {

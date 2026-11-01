@@ -11,9 +11,8 @@ import (
 )
 
 // Status is everything a UI needs to describe the engine on this machine.
-// It is the one shape shared by AgentWorks' /api/capabilities, Video Studio's
-// composer, and SparkQuill's Settings → Voice card, so no product carries its
-// own notion of "installed" or "warm".
+// Every voice consumer uses this shape, so no product carries its own
+// notion of "installed" or "warm".
 type Status struct {
 	// Available is a build-time fact: false in a CGO_ENABLED=0 binary, where
 	// nothing below can ever become true.

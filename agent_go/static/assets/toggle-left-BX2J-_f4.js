@@ -1,0 +1,1 @@
+import{G as e}from"./index-BpZBU6kh.js";const t=[["circle",{cx:"9",cy:"12",r:"3",key:"u3jwor"}],["rect",{width:"20",height:"14",x:"2",y:"5",rx:"7",key:"g7kal2"}]],o=e("toggle-left",t);export{t as __iconNode,o as default};

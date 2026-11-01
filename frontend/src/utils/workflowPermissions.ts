@@ -27,8 +27,8 @@ export function hasWorkflowCreateAccess(user: AuthUser | null | undefined, isMul
   return hasProductCreateAccess(user, isMultiUserMode, 'agentworks')
 }
 
-// Creating is allowed per product (PLAT-767): 'agentworks' (workflows), 'relays', 'work' (Crews), 'code',
-// 'sparkquill'. The server sends the answer per product; older servers only send can_create.
+// Creating is allowed per product (PLAT-767). The server sends each product's
+// answer; older servers only send can_create.
 export function hasProductCreateAccess(user: AuthUser | null | undefined, isMultiUserMode: boolean, product: string): boolean {
   if (!isMultiUserMode) {
     return true

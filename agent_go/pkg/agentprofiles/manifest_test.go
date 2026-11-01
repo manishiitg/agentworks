@@ -121,7 +121,7 @@ const childProfile = `profiles:
         key_type: project
       workspace:
         mode: project
-        projects_root: Chats/SparkQuill/activities
+        projects_root: Chats/ExampleApp/activities
       capabilities:
         secrets: disabled
       sandbox:

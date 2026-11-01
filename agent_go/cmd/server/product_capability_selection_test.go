@@ -57,20 +57,20 @@ func TestProductSelectedSecretsUsesSharedCapabilityContractAndPreservesManifest(
 	}
 }
 
-// Fixed-workspace products (SparkQuill, ...) never run a "create
+// Fixed-workspace products (ExampleApp, ...) never run a "create
 // project" step, so no product.json exists ahead of time -- unlike Work,
-// which always has one to migrate from. Confirmed live: a SparkQuill parent's
+// which always has one to migrate from. Confirmed live: a ExampleApp parent's
 // saved secret never reached agent_browser because this path returned
 // "product manifest not found" forever instead of creating one on first use.
 func TestProductSelectedSecretsCreatesManifestForFixedWorkspaceProductOnFirstUse(t *testing.T) {
-	const workspacePath = "Chats/SparkQuill"
+	const workspacePath = "Chats/ExampleApp"
 	const manifestPath = workspacePath + "/product.json"
 	workspace := &mockWorkspaceAPI{files: map[string]string{}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
 
-	names, initialized, err := productSelectedSecrets(context.Background(), "sparkquill", workspacePath)
+	names, initialized, err := productSelectedSecrets(context.Background(), "example-app", workspacePath)
 	if err != nil {
 		t.Fatalf("before any manifest exists: names=%v initialized=%v err=%v", names, initialized, err)
 	}
@@ -78,7 +78,7 @@ func TestProductSelectedSecretsCreatesManifestForFixedWorkspaceProductOnFirstUse
 		t.Fatalf("expected an uninitialized (not erroring) read before migration: names=%v initialized=%v", names, initialized)
 	}
 
-	if err := updateProductSelectedSecrets(context.Background(), "sparkquill", workspacePath, func(current []string) []string {
+	if err := updateProductSelectedSecrets(context.Background(), "example-app", workspacePath, func(current []string) []string {
 		return append(current, "MYRA_VERACROSS_PASSWORD")
 	}); err != nil {
 		t.Fatalf("expected the manifest to be created on first attach, got: %v", err)
@@ -91,7 +91,7 @@ func TestProductSelectedSecretsCreatesManifestForFixedWorkspaceProductOnFirstUse
 		t.Fatalf("expected %s to be created", manifestPath)
 	}
 
-	names, initialized, err = productSelectedSecrets(context.Background(), "sparkquill", workspacePath)
+	names, initialized, err = productSelectedSecrets(context.Background(), "example-app", workspacePath)
 	if err != nil || !initialized || len(names) != 1 || names[0] != "MYRA_VERACROSS_PASSWORD" {
 		t.Fatalf("after attach: names=%v initialized=%v err=%v", names, initialized, err)
 	}

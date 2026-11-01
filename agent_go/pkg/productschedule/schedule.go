@@ -3,7 +3,7 @@
 // sending a fixed list of messages one at a time into its conversation.
 //
 // The definition and the timing rule live here so that a product running
-// on its own (SparkQuill's family server) and a product hosted by AgentWorks
+// on its own and a product hosted by AgentWorks
 // (whose scheduler executes the same definition) agree on what a schedule
 // is. Execution belongs to whoever hosts the product; Runner is the
 // standalone executor.

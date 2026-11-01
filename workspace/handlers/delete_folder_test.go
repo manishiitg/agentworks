@@ -92,7 +92,7 @@ func TestDeleteFolderResolvesPerUserPathDespiteWildcardLeadingSlash(t *testing.T
 	docsDir, cleanup := setupTestDocsDir(t)
 	defer cleanup()
 
-	target := filepath.Join(docsDir, utils.UsersDirectory, "default", "Chats", "SparkQuill", "activities", "old-one")
+	target := filepath.Join(docsDir, utils.UsersDirectory, "default", "Chats", "ExampleApp", "activities", "old-one")
 	if err := os.MkdirAll(target, 0755); err != nil {
 		t.Fatalf("mkdir target: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestDeleteFolderResolvesPerUserPathDespiteWildcardLeadingSlash(t *testing.T
 	r := gin.New()
 	r.DELETE("/api/folders/*folderpath", DeleteFolder)
 
-	req, _ := http.NewRequest("DELETE", "/api/folders/Chats/SparkQuill/activities/old-one?confirm=true", nil)
+	req, _ := http.NewRequest("DELETE", "/api/folders/Chats/ExampleApp/activities/old-one?confirm=true", nil)
 	req.Header.Set("X-User-ID", "default")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -129,7 +129,7 @@ func TestDeleteFolderRequiresConfirmation(t *testing.T) {
 	r := gin.New()
 	r.DELETE("/api/folders/*folderpath", DeleteFolder)
 
-	req, _ := http.NewRequest("DELETE", "/api/folders/Chats/SparkQuill/activities/old-one", nil)
+	req, _ := http.NewRequest("DELETE", "/api/folders/Chats/ExampleApp/activities/old-one", nil)
 	req.Header.Set("X-User-ID", "default")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

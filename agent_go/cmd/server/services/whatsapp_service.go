@@ -2078,7 +2078,7 @@ func (w *WhatsAppService) shouldSendActiveRouteHint(chatJID, slug string) bool {
 
 // applyActiveRouteHint runs the sticky-route bookkeeping for one outbound
 // message: a workflow slug gets the periodic "[slug active | @off]" suffix,
-// and a slug that names nothing is dropped. A product @token (SparkQuill's
+// and a slug that names nothing is dropped. A product @token (a product's
 // @child/@parent) is neither: it is left alone, without the hint. The
 // inbound router re-resolves a remembered token on every message and
 // deactivates it when the product no longer serves it, so the outbound path
@@ -2604,7 +2604,7 @@ func (w *WhatsAppService) HandleMessage(ctx context.Context, msg *whatsappbot.Me
 
 	// The router populates Route both for an explicit @slug and for a slug
 	// remembered by ActiveSlugStore. A product pairing may instead declare a
-	// default profile (SparkQuill's parent chat); that is an explicit product
+	// default profile; that is an explicit product
 	// destination too and is resolved by botProfileTurn below. Only a pairing
 	// with neither kind of destination should stop and offer destination slugs.
 	if msg.Route == nil && owner.DefaultProfileID == "" {

@@ -9,7 +9,7 @@ import (
 
 // TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly pins the
 // exact incident this gate closes: a dedicated single-product deployment
-// (SparkQuill or Example Product) resolving to claude-code with no
+// (ExampleApp or Example Product) resolving to claude-code with no
 // configured token must refuse instead of silently falling back to whatever
 // Claude Code CLI login happens to exist on that host.
 func TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly(t *testing.T) {
@@ -25,42 +25,42 @@ func TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly(t *testi
 	}{
 		{
 			name:            "single-product deployment, claude-code, no profile keys at all",
-			agentProducts:   "sparkquill",
+			agentProducts:   "example-app",
 			resolvedProfile: &resolvedAgentProfile{APIKeys: nil},
 			finalProvider:   "claude-code",
 			wantMissing:     true,
 		},
 		{
 			name:            "single-product deployment, claude-code, keys present but token nil",
-			agentProducts:   "sparkquill",
+			agentProducts:   "example-app",
 			resolvedProfile: &resolvedAgentProfile{APIKeys: &llm.ProviderAPIKeys{}},
 			finalProvider:   "claude-code",
 			wantMissing:     true,
 		},
 		{
 			name:            "single-product deployment, claude-code, token blank",
-			agentProducts:   "sparkquill",
+			agentProducts:   "example-app",
 			resolvedProfile: &resolvedAgentProfile{APIKeys: &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &blank}},
 			finalProvider:   "claude-code",
 			wantMissing:     true,
 		},
 		{
 			name:            "single-product deployment, claude-code, token present",
-			agentProducts:   "sparkquill",
+			agentProducts:   "example-app",
 			resolvedProfile: &resolvedAgentProfile{APIKeys: &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &token}},
 			finalProvider:   "claude-code",
 			wantMissing:     false,
 		},
 		{
 			name:            "single-product deployment, non-claude-code provider, no token",
-			agentProducts:   "sparkquill",
+			agentProducts:   "example-app",
 			resolvedProfile: &resolvedAgentProfile{APIKeys: nil},
 			finalProvider:   "openai",
 			wantMissing:     false,
 		},
 		{
 			name:            "no active product profile (profile-less chat)",
-			agentProducts:   "sparkquill",
+			agentProducts:   "example-app",
 			resolvedProfile: nil,
 			finalProvider:   "claude-code",
 			wantMissing:     false,
@@ -74,7 +74,7 @@ func TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly(t *testi
 		},
 		{
 			name:            "server hosting more than one product is not a dedicated single-product deployment",
-			agentProducts:   "example-product,sparkquill",
+			agentProducts:   "example-product,example-app",
 			resolvedProfile: &resolvedAgentProfile{APIKeys: nil},
 			finalProvider:   "claude-code",
 			wantMissing:     false,

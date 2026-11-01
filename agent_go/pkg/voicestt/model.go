@@ -140,7 +140,7 @@ func pendingModelDownloads(dir string) (todo []pendingModel, needPunct bool) {
 }
 
 // acquireModelDownloadLock serializes first-time model downloads across
-// processes sharing dir (e.g. the AgentWorks and SparkQuill desktops running
+// processes sharing dir (e.g. two desktop instances running
 // side by side both warm the voice engine on launch): an O_EXCL lock file
 // beside dir means the second process waits for the first to finish instead
 // of writing the same partial files concurrently.

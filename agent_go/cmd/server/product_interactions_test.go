@@ -55,7 +55,7 @@ func newTestTracker(store *fakeInteractionStore, now *time.Time) *productInterac
 func TestProductInteractionTrackerNeverUsedReadsAsIdle(t *testing.T) {
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	tr := newTestTracker(&fakeInteractionStore{files: map[string]string{}}, &now)
-	if got := tr.SinceInteractive(context.Background(), "default", "sparkquill"); got != productInteractionNever {
+	if got := tr.SinceInteractive(context.Background(), "default", "example-app"); got != productInteractionNever {
 		t.Fatalf("SinceInteractive = %s, want %s", got, productInteractionNever)
 	}
 }
@@ -66,7 +66,7 @@ func TestProductInteractionTrackerNoteThenSinceAndPersistence(t *testing.T) {
 	tr := newTestTracker(store, &now)
 	ctx := context.Background()
 
-	tr.Note(ctx, "default", "sparkquill")
+	tr.Note(ctx, "default", "example-app")
 	store.waitWrites(t, 1)
 	if got := tr.SinceInteractive(ctx, "default", "example-product"); got != productInteractionNever {
 		t.Fatal("another product must not inherit this one's activity")
@@ -74,7 +74,7 @@ func TestProductInteractionTrackerNoteThenSinceAndPersistence(t *testing.T) {
 
 	// A second stamp inside the write interval updates memory but not the file.
 	now = now.Add(20 * time.Second)
-	tr.Note(ctx, "default", "sparkquill")
+	tr.Note(ctx, "default", "example-app")
 	time.Sleep(20 * time.Millisecond)
 	store.mu.Lock()
 	wrote := store.wrote
@@ -82,11 +82,11 @@ func TestProductInteractionTrackerNoteThenSinceAndPersistence(t *testing.T) {
 	if wrote != 1 {
 		t.Fatalf("expected the second stamp to be rate-limited, got %d writes", wrote)
 	}
-	if got := tr.SinceInteractive(ctx, "default", "sparkquill"); got != 0 {
+	if got := tr.SinceInteractive(ctx, "default", "example-app"); got != 0 {
 		t.Fatalf("memory must be current even when the file is not, got %s", got)
 	}
 	now = now.Add(3 * time.Minute)
-	if got := tr.SinceInteractive(ctx, "default", "sparkquill"); got != 3*time.Minute {
+	if got := tr.SinceInteractive(ctx, "default", "example-app"); got != 3*time.Minute {
 		t.Fatalf("SinceInteractive = %s, want 3m", got)
 	}
 
@@ -95,11 +95,11 @@ func TestProductInteractionTrackerNoteThenSinceAndPersistence(t *testing.T) {
 	if err := json.Unmarshal([]byte(store.files[productInteractionsPath("default")]), &stored); err != nil {
 		t.Fatal(err)
 	}
-	if stored["sparkquill"] == "" {
+	if stored["example-app"] == "" {
 		t.Fatalf("persisted record = %v", stored)
 	}
 	restarted := newTestTracker(store, &now)
-	if got := restarted.SinceInteractive(ctx, "default", "sparkquill"); got >= productInteractionNever {
+	if got := restarted.SinceInteractive(ctx, "default", "example-app"); got >= productInteractionNever {
 		t.Fatalf("after a restart the persisted stamp must count, got %s", got)
 	}
 }

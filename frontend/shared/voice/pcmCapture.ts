@@ -1,9 +1,7 @@
 /**
  * Raw-PCM microphone capture at 16kHz mono, matching the sample rate
- * pkg/voicestt.SampleRate expects server-side. Ported from the SparkQuill
- * learning-app's proven implementation (frontend/learning-app/src/voice/nativePcm.ts)
- * — that app is a separate Vite project frontend/src cannot import from, so
- * this is a copy, not a shared module.
+ * pkg/voicestt.SampleRate expects server-side. Shared by every microphone
+ * consumer so resampling and chunk boundaries stay consistent.
  *
  * The AudioContext runs at the device's own rate (44.1/48kHz). Asking the
  * browser for a 16kHz context made it deliver only about a third of the audio

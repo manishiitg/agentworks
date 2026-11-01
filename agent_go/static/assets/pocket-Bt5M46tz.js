@@ -1,0 +1,1 @@
+import{G as o}from"./index-BpZBU6kh.js";const e=[["path",{d:"M20 3a2 2 0 0 1 2 2v6a1 1 0 0 1-20 0V5a2 2 0 0 1 2-2z",key:"1uodqw"}],["path",{d:"m8 10 4 4 4-4",key:"1mxd5q"}]],a=o("pocket",e);export{e as __iconNode,a as default};

@@ -514,21 +514,22 @@ func TestLiveBrowserRealHeadless(t *testing.T) {
 
 func TestUserBrowserDiscoveryHonorsOwnershipAndWorkflowAccess(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "/data/browser-profile")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]},{"id":"outsider","username":"outsider","can_create":true,"products":[]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":["agentworks"]},{"id":"bob","username":"bob","can_create":true,"products":["agentworks"]},{"id":"outsider","username":"outsider","can_create":true,"products":["agentworks"]}]}`)
 	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]string{"content": `{"version":"1","id":"shared-view-check","label":"Shared check","capabilities":{"browser_mode":"auto"},"access":{"owners":["alice"],"readers":["bob"]}}`}})
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]string{"content": `{"version":"1","id":"shared-view-check","label":"Shared check","capabilities":{"browser_mode":"headless"},"access":{"owners":["alice"],"readers":["bob"]}}`}})
 	}))
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api := &StreamingAPI{}
 	// A product browser belonging to a workflow owner must not be exposed as
 	// that workflow's browser, even though the owner may access both.
-	productBrowser := browserSessionForWorkspace("alice", "Chats/SparkQuill")
+	productBrowser := browserSessionForWorkspace("alice", "Chats/ExampleApp")
 	browser.GetSessionTracker().Touch(productBrowser, "product-chat", "product-chat")
 	defer browser.GetSessionTracker().Remove(productBrowser)
 	name := common.PrefixBrowserSessionID(common.WorkflowBrowserSessionNamespace("Workflow/shared-view-check") + "--browser")
@@ -559,13 +560,13 @@ func TestProductBrowserDiscoveryUsesActualUserBinding(t *testing.T) {
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api := &StreamingAPI{}
-	common.BindSessionBrowserIsolationForProject("live-product-binding-test", "_users/default/Chats/SparkQuill")
+	common.BindSessionBrowserIsolationForProject("live-product-binding-test", "_users/default/Chats/ExampleApp")
 	defer common.ClearSessionShellConfig("live-product-binding-test")
 	name := common.ResolveBrowserSessionID("live-product-binding-test", "default")
 	browser.GetSessionTracker().Touch(name, "live-product-binding-test", "live-product-binding-test")
 	defer browser.GetSessionTracker().Remove(name)
 	for _, user := range []string{"default", "other-user"} {
-		r := httptest.NewRequest("GET", "/?workspace_path=Chats/SparkQuill", nil)
+		r := httptest.NewRequest("GET", "/?workspace_path=Chats/ExampleApp", nil)
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user}))
 		items := api.liveBrowserSessions(r)
 		if user == "default" {
@@ -578,9 +579,9 @@ func TestProductBrowserDiscoveryUsesActualUserBinding(t *testing.T) {
 	}
 }
 
-// Fixed-workspace products (SparkQuill, ...) have no workflow.json
+// Fixed-workspace products (ExampleApp, ...) have no workflow.json
 // at their workspace path, so workflowAccessForWorkspacePath always returns a
-// nil manifest for them. Confirmed live: this made every SparkQuill managed-
+// nil manifest for them. Confirmed live: this made every ExampleApp managed-
 // browser session invisible to /api/browser/live/sessions, since the discovery
 // code previously required a non-nil manifest with capabilities.browser_mode
 // set before showing a user-scoped shared-profile session at all.
@@ -596,11 +597,11 @@ func TestUserBrowserDiscoveryShowsFixedWorkspaceProductSessionInSingleUserMode(t
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api := &StreamingAPI{}
-	session := browserSessionForWorkspace("default", "Chats/SparkQuill")
+	session := browserSessionForWorkspace("default", "Chats/ExampleApp")
 	browser.GetSessionTracker().Touch(session, "default-chat", "default-chat")
 	defer browser.GetSessionTracker().Remove(session)
 
-	r := httptest.NewRequest("GET", "/?workspace_path=Chats/SparkQuill", nil)
+	r := httptest.NewRequest("GET", "/?workspace_path=Chats/ExampleApp", nil)
 	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "default"}))
 	items := api.liveBrowserSessions(r)
 	if len(items) != 1 || items[0]["browser_session"] != session {
@@ -711,7 +712,7 @@ func TestCanControlLiveBrowserTreatsManifestBackedCrewAsProductWorkspace(t *test
 
 // canControlLiveBrowser is the "take control" gate; it must apply the exact
 // same fixed-workspace-product fallback liveBrowserSessions does, or nobody
-// could ever take control of a SparkQuill live browser (manifest is
+// could ever take control of a ExampleApp live browser (manifest is
 // always nil for them) even after they became visible in the session list.
 func TestCanControlLiveBrowserAppliesSameFixedWorkspaceFallbackAsDiscovery(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "/data/browser-profile")
@@ -723,7 +724,7 @@ func TestCanControlLiveBrowserAppliesSameFixedWorkspaceFallbackAsDiscovery(t *te
 
 	t.Run("single user mode trusts the account", func(t *testing.T) {
 		api := &StreamingAPI{}
-		if !api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "default"}, "Chats/SparkQuill") {
+		if !api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "default"}, "Chats/ExampleApp") {
 			t.Fatal("expected control to be granted outside multi-user mode")
 		}
 	})
@@ -731,11 +732,11 @@ func TestCanControlLiveBrowserAppliesSameFixedWorkspaceFallbackAsDiscovery(t *te
 	t.Run("multi user mode grants the owner only", func(t *testing.T) {
 		t.Setenv("MULTI_USER_MODE", "true")
 		withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]}]}`)
-		api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"alice-chat": {UserID: "alice", WorkspacePath: "Chats/SparkQuill"}}}
-		if !api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "alice"}, "Chats/SparkQuill") {
+		api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"alice-chat": {UserID: "alice", WorkspacePath: "Chats/ExampleApp"}}}
+		if !api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "alice"}, "Chats/ExampleApp") {
 			t.Fatal("expected alice to control her own project browser")
 		}
-		if api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "bob"}, "_users/alice/Chats/SparkQuill") {
+		if api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "bob"}, "_users/alice/Chats/ExampleApp") {
 			t.Fatal("bob must not control alice's project browser")
 		}
 	})

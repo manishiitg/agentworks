@@ -1,0 +1,1 @@
+import{u as a,af as u,ag as c}from"./index-BpZBU6kh.js";const f="Run access";function i(e){const r=a(s=>u(s.user,s.isMultiUserMode)),o=c(s=>e?s.workflows.find(t=>t.workspace_path===e)?.my_access:void 0);return!(!r||o==="read")}export{f as R,i as u};

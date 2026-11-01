@@ -75,9 +75,8 @@ discovers a tool's schema via `get_api_spec` and then calls it through
 route exists **because** the full tool catalog is too large/dynamic to hand the
 model natively every session.
 
-Small, standalone apps with a fixed, known-in-advance tool set (e.g.
-`agent_go/internal/agentsession`, which SparkQuill's standalone family server used until it was retired in September 2026) use a **leaner
-variant of the same bridge**, not the curl-discovery route:
+Small standalone apps with a fixed tool set can use
+`agent_go/internal/agentsession`, a **leaner variant of the same bridge**:
 
 1. **No Gin server, no HTTP handlers in the app itself.** Tools are plain Go
    functions: `agentsession.Tool{Name, Description, Params, Handler}`, passed

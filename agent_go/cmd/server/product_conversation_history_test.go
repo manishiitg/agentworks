@@ -100,7 +100,7 @@ func TestConversationTitleComesFromTheFirstMessage(t *testing.T) {
 	if got := conversationTitleFrom(nil, ""); got != "New chat" {
 		t.Fatalf("empty title = %q", got)
 	}
-	if got := normalizeConversationWorkspace("/_users/default/Chats/SparkQuill/"); got != "Chats/SparkQuill" {
+	if got := normalizeConversationWorkspace("/_users/default/Chats/ExampleApp/"); got != "Chats/ExampleApp" {
 		t.Fatalf("normalized workspace = %q", got)
 	}
 	if got := normalizeConversationWorkspace("/data/example-product/docs/_users/default/Chats/Work/projects/example"); got != "Chats/Work/projects/example" {

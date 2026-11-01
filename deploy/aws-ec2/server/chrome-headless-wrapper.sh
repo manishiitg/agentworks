@@ -19,7 +19,7 @@ fi
 export TMPDIR="$browser_tmp" TMP="$browser_tmp" TEMP="$browser_tmp"
 
 # Multi-process Chromium under the workspace's Landlock policy (same launcher
-# as deploy/rootless-linux/chrome-agentworks, live-verified on SparkQuill).
+# as deploy/rootless-linux/chrome-agentworks).
 # Landlock's /proc/self grant is bound to the launcher's PID, so a child's own
 # /proc entries are unreadable: the zygote (proc_util.cc) and the separate GPU
 # process (sandbox_linux.cc) abort on them. --no-zygote and --in-process-gpu

@@ -7,7 +7,7 @@ import (
 )
 
 func TestSummaryRequiresWorkflowAuthority(t *testing.T) {
-	for _, profile := range []string{"work", "code", "relays", "sparkquill", "sparkquill-child", "example-product"} {
+	for _, profile := range []string{"work", "code", "relays", "example-app", "example-app-child", "example-product"} {
 		t.Run(profile, func(t *testing.T) {
 			gate := newProductToolGate(profileWithPolicy(profile, agentprofiles.ToolPolicy{Mode: agentprofiles.ToolPolicyModeAllowlist, Enabled: []string{"record_summary", "read_image"}}))
 			gate.AllowWorkflowNotifications(true) // A shared runner cannot grant a product this tool.
@@ -61,7 +61,7 @@ func TestWorkflowNotificationScopeUsesSavedKind(t *testing.T) {
 	if workflowNotificationsForPath("Workflow/mail") || workflowNotificationsForPath("") || workflowNotificationsForPath("Workflow/missing") {
 		t.Fatal("Relay or missing manifest gained workflow notifications")
 	}
-	for _, product := range []string{"work", "code", "sparkquill"} {
+	for _, product := range []string{"work", "code", "example-app"} {
 		workspace.files["Workflow/mail/workflow.json"] = `{"product":"` + product + `","id":"project"}`
 		if workflowNotificationsForPath("Workflow/mail") {
 			t.Fatalf("%s project gained notifications through the shared runner", product)

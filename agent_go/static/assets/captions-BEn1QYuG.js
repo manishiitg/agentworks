@@ -1,0 +1,1 @@
+import{G as t}from"./index-BpZBU6kh.js";const e=[["rect",{width:"18",height:"14",x:"3",y:"5",rx:"2",ry:"2",key:"12ruh7"}],["path",{d:"M7 15h4M15 15h2M7 11h2M13 11h4",key:"1ueiar"}]],h=t("captions",e);export{e as __iconNode,h as default};

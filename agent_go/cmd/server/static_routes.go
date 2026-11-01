@@ -61,7 +61,7 @@ func (api *StreamingAPI) handlePublicFolderDownload(w http.ResponseWriter, r *ht
 
 // publicWorkspaceUserID selects the durable workspace owner for public file
 // routes. In a single-user deployment, the gateway's JWT subject is an
-// internal product label (for example "sparkquill"), not another workspace
+// internal product label (for example "example-app"), not another workspace
 // owner. Every public asset must therefore resolve to DEFAULT_USER_ID. The
 // uid query parameter is not an access grant; personal files stay with the
 // authenticated owner. Workflow links follow workflow sharing permissions.

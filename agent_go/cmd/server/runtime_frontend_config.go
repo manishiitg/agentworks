@@ -18,7 +18,7 @@ import (
 // product-surface and branding keys can be overridden via env. A plain AgentWorks
 // server retains its shared products. Local launchers select workflows and Crew
 // unless source development explicitly opts into server products; a shell or
-// deployment running a different product (e.g. SparkQuill) sets
+// deployment running a different product sets
 // AGENTWORKS_ENABLED_PRODUCT_SURFACES/AGENTWORKS_DEFAULT_PRODUCT_SURFACE so
 // the frontend's product-surface switcher pins to its intended surface(s).
 func runtimeFrontendConfigJS(actualPort int, workspaceURL string) string {
@@ -118,8 +118,7 @@ func jsStringArrayLiteral(items []string) string {
 // (spaStaticFileHandler in runServer). Defaults to the historical
 // cwd-relative "./static/" so every existing deployment is unaffected;
 // STATIC_DIR lets a desktop shell pass an absolute Resources path instead of
-// having to chdir there itself (docs/design/sparkquill_desktop_on_platform_plan.md
-// P0 — this is what lets the shell drop its log-symlink cwd workaround).
+// having to change its working directory.
 func staticFrontendDir() string {
 	if override := strings.TrimSpace(os.Getenv("STATIC_DIR")); override != "" {
 		return override
