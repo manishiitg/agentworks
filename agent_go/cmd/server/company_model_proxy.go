@@ -513,8 +513,29 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 	defer cancel()
 	want := map[string]map[string]bool{}
 	names := map[string]string{}
+	// models[connection][program]: the models the server's account allows this person (empty = all), so the Mac
+	// only offers what the server will run.
+	models := map[string]map[string][]string{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
+	for _, c := range connections {
+		wg.Add(1)
+		go func(c desktopConnection) {
+			defer wg.Done()
+			views, status, err := remoteAccountViews(ctx, c)
+			if err != nil || status != http.StatusOK {
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			models[c.ID] = map[string][]string{}
+			for _, view := range views {
+				if view.Relation == "server" {
+					models[c.ID][view.Provider] = view.AllowedModels
+				}
+			}
+		}(c)
+	}
 	for _, c := range connections {
 		want[c.ID], names[c.ID] = map[string]bool{}, friendlyServerName(c.Name, c.Server)
 		for provider := range companyProxyModels {
@@ -551,6 +572,9 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 			if name := names[record.ViaConnection] + " · " + providerAccountProductName(record.Provider) + " (company)"; names[record.ViaConnection] != "" && record.DisplayName != name {
 				record.DisplayName, changed = name, true
 			}
+			if allowed, known := models[record.ViaConnection][record.Provider]; known && strings.Join(allowed, ",") != strings.Join(record.AllowedModels, ",") {
+				record.AllowedModels, changed = allowed, true
+			}
 		}
 		next = append(next, record)
 	}
@@ -564,7 +588,7 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 				return
 			}
 			record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: provider, DisplayName: names[id] + " · " + providerAccountProductName(provider) + " (company)",
-				OwnerUserID: owner, Scope: "user", AuthMethod: "api_key", UpdatedAt: time.Now().UTC(), ViaConnection: id}, Credential: hex.EncodeToString(secret)}
+				OwnerUserID: owner, Scope: "user", AuthMethod: "api_key", UpdatedAt: time.Now().UTC(), ViaConnection: id, AllowedModels: models[id][provider]}, Credential: hex.EncodeToString(secret)}
 			switch provider {
 			case "cursor-cli":
 				// Cursor signs in from a login file in the account's home; its key mode needs a real key.
