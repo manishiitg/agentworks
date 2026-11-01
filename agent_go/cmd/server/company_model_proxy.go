@@ -67,7 +67,7 @@ func copyProxyResponse(w http.ResponseWriter, resp *http.Response, tap io.Writer
 	if resp.StatusCode >= 400 {
 		// A refusal says why in its body; log the start of it (an error message, never a key) so a failing program
 		// is not blind.
-		head := make([]byte, 400)
+		head := make([]byte, 300)
 		n, _ := io.ReadFull(resp.Body, head)
 		log.Printf("[MODEL_PROXY] %s refused %d: %s", resp.Request.URL.Host, resp.StatusCode, strings.TrimSpace(string(head[:n])))
 		_, _ = w.Write(head[:n])
@@ -286,7 +286,7 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 	if model != "" {
 		allowed, _, _ := accountAllowedModels(withModelLimitPerson(r.Context(), caller), provider, account)
 		// capped: another allowed model is left; limitErr: none is. Either way this model is used up.
-		if _, capped, limitErr := applyModelTokenLimit(withModelLimitPerson(r.Context(), caller), provider, account, model, allowed); limitErr != nil || capped {
+		if _, capped, limitErr := applyModelTokenLimit(withModelLimitPerson(r.Context(), caller), provider, account, model, allowed); modelLimitRefuses(capped, limitErr) {
 			desktopJSONError(w, 429, "You have used your token limit for "+model+" on this account. Pick another model.")
 			return
 		}
@@ -681,4 +681,10 @@ func withProxyModel(body []byte, model string) ([]byte, error) {
 	encoded, _ := json.Marshal(model)
 	request["model"] = encoded
 	return json.Marshal(request)
+}
+
+// modelLimitRefuses says whether the company proxy refuses a model after the per-model token limit check: capped
+// means another allowed model is left, an error means none is; either way this model is used up.
+func modelLimitRefuses(capped bool, err error) bool {
+	return capped || err != nil
 }
