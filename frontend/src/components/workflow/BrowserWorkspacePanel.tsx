@@ -41,7 +41,7 @@ export function BrowserWorkspacePanel({
     onBrowserModeChange(directMode)
     return true
   }
-  const selection = !readOnly && workspacePath ? <div className="shrink-0 border-b border-border px-3 py-2">
+  const controls = !readOnly && workspacePath ? <div className="space-y-3">
     {extensionAvailable && <ChromeExtensionConnection key={`${extensionProfile}:${workspacePath}`} connection={connection} workspaceBrowser={directMode ? { label: directLabel, secondary: directMode === 'cdp', selected: !connection.status.selected && displayMode === directMode, onSelect: useWorkspaceBrowser } : undefined} />}
     {directMode === 'cdp' && displayMode === 'cdp' && !connection.status.selected && <details className="mt-2 text-xs">
       <summary className="cursor-pointer text-muted-foreground">Connection details</summary>
@@ -56,18 +56,12 @@ export function BrowserWorkspacePanel({
       {startingBrowser ? 'Opening browser…' : 'Open browser'}
     </Button>}
   </div> : undefined
-  const selectedBrowser = connection.status.browsers?.find(browser => browser.id === connection.status.browser_id)
+  const extensionView = !readOnly && (connection.status.selected || displayMode === 'extension' || displayMode === 'none')
 
   return <div className="relative flex h-full min-h-0 flex-1 flex-col">
-    {connection.loading ? <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Checking browser connection…</div> : connection.status.selected ? <>
-      <WorkspaceViewHeader icon={Monitor} title="Browser"  />
-      {selection}
-      <div className="min-h-0 flex-1 overflow-y-auto p-6">
-        <div className="mx-auto my-6 max-w-sm space-y-4 text-center">
-          <p role="status" className="text-sm text-muted-foreground">{connection.status.connected ? (connection.status.tabs ? `${connection.status.tabs} tabs open in ${selectedBrowser?.name || 'your browser'}` : 'Ask your agent to open a website.') : selectedBrowser?.connected ? 'Connecting…' : `Open ${selectedBrowser?.name || 'your browser'} to reconnect.`}</p>
-          {connection.status.connected && !!connection.status.tab_titles?.length && <ul className="space-y-1.5 text-left" aria-label="Project browser tabs">{connection.status.tab_titles.map((title, index) => <li key={index} title={title} className="truncate rounded-md border border-border px-3 py-2 text-xs">{title}</li>)}</ul>}
-        </div>
-      </div>
-    </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} emptyContent={emptyBrowser} browserSelection={selection} />}
+    {connection.loading ? <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Checking browser connection…</div> : extensionView ? <>
+      <WorkspaceViewHeader icon={Monitor} title="Browser" />
+      <div className="min-h-0 flex-1 overflow-y-auto p-4" aria-label="Browser content">{controls}</div>
+    </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} emptyContent={emptyBrowser} browserSelection={controls && <div className="max-h-[40vh] shrink-0 overflow-y-auto border-b border-border px-3 py-2">{controls}</div>} />}
   </div>
 }

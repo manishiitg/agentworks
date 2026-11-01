@@ -71,8 +71,10 @@ export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConn
 
 export function ChromeExtensionConnection({ connection, workspaceBrowser }: { connection: ChromeExtensionController; workspaceBrowser?: WorkspaceBrowserChoice }) {
   const { status, error, connect, download } = connection
-  return <div className="max-h-[60vh] space-y-1 overflow-y-auto" aria-label="Choose browser">
-    <BrowserConnectionsPanel open onClose={() => {}} onConnected={connect} selectedBrowserId={status.selected ? status.browser_id : undefined} workspaceBrowser={workspaceBrowser} />
+  const accountBrowser = status.browsers?.find(browser => browser.id === status.browser_id)
+  const projectStatus = status.selected ? (status.connected ? (status.tabs ? undefined : 'Ask your agent to open a website.') : accountBrowser?.connected ? 'Connecting this browser…' : undefined) : undefined
+  return <div className="space-y-3" aria-label="Choose browser">
+    <BrowserConnectionsPanel open onClose={() => {}} onConnected={connect} selectedBrowserId={status.selected ? status.browser_id : undefined} workspaceBrowser={workspaceBrowser} tabTitles={status.connected ? status.tab_titles : undefined} tabCount={status.tabs} projectStatus={projectStatus} />
     {status.update_needed && <ExtensionVersionLine status={status} download={download} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>

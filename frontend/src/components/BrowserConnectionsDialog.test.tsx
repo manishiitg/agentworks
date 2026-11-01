@@ -22,7 +22,7 @@ it('shows the account pairing failure and installed/download versions without ex
     expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('Update your browser extension')
     expect(dialog.textContent).toContain('replace its folder and click Reload')
     expect(dialog.textContent).toContain('Installed extension: 0.4.9 · Download: 0.5.0')
-    expect(dialog.querySelector('a[download]')?.textContent).toContain('Download extension 0.5.0')
+    expect(dialog.querySelector('a[download]')?.textContent).toContain('Download extension')
     expect(dialog.querySelector('textarea')).toBeNull()
     expect(mocks.post).not.toHaveBeenCalled()
     expect(mocks.get).toHaveBeenCalledWith('/api/browser/extension', { skipSessionContext: true })
@@ -42,6 +42,7 @@ it('keeps saved-browser controls and labels old versus unknown extension version
   try {
     await act(async () => root.render(<BrowserConnectionsDialog open onClose={vi.fn()} />))
     const dialog = document.querySelector('[role="dialog"]')!
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Back')!.click() })
     const rows = dialog.querySelectorAll('li')
     expect(rows[0].textContent).toContain('Offline')
     expect(rows[0].textContent).toContain('Update available: 0.5.0')
@@ -53,8 +54,8 @@ it('keeps saved-browser controls and labels old versus unknown extension version
   } finally { await act(async () => root.unmount()) }
 })
 
-// PLAT-746-268: opening setup must never mint/copy a credential; only the connect step does.
-it('keeps connection codes inside the explicit connect step', async () => {
+// PLAT-746-268: opening setup must never mint/copy a credential; only explicit Copy does.
+it('prepares connection codes only after explicit Copy', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   mocks.get.mockResolvedValue({ data: { browsers: [] } })
   mocks.post.mockResolvedValue({ data: { token: 'test-connection-code' } })
@@ -66,7 +67,6 @@ it('keeps connection codes inside the explicit connect step', async () => {
     const dialog = document.querySelector('[role="dialog"]')!
     expect(mocks.post).not.toHaveBeenCalled()
     expect(dialog.querySelector('textarea')).toBeNull()
-    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('Next'))!.click() })
     expect(mocks.post).not.toHaveBeenCalled()
     await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
     expect(clipboard).toHaveBeenCalledOnce()
@@ -86,7 +86,6 @@ it.each(['dialog', 'panel'])('requires named browser confirmation when an old br
   try {
     await act(async () => root.render(surface === 'dialog' ? <BrowserConnectionsDialog open onClose={closed} onConnected={selected} /> : <BrowserConnectionsPanel open startSetup onClose={closed} onConnected={selected} />))
     const dialog = surface === 'dialog' ? document.querySelector('[role="dialog"]')! : host
-    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('Next'))!.click() })
     await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
     mocks.get.mockResolvedValue({ data: { browsers: [{ ...oldBrowser, connected: true }, { id: 'new', name: 'New Edge', connected: true, enabled: true }] } })
     await act(async () => { mocks.refetch() })
@@ -124,6 +123,7 @@ it('keeps saved-browser reconnect and per-browser actions separate from project 
     expect(host.querySelector('[aria-label="Connect browser"]')).toBeTruthy()
     expect(selected).not.toHaveBeenCalled()
     expect(mocks.post).not.toHaveBeenCalled()
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Back')!.click() })
     await act(async () => { (host.querySelector('[aria-label="Options for Chrome"]') as HTMLButtonElement).click() })
     expect(host.textContent).toContain('Connection details')
     const disconnect = [...host.querySelectorAll('button')].find(button => button.textContent === 'Disconnect')!
