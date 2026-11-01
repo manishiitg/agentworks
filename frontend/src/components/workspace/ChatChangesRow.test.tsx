@@ -37,3 +37,24 @@ it('shows failed status with retry and keeps shared checkout history when the ac
     expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 'chat-b', snapshotId: 'saved-a', checkoutId: 'worktree-a', historyScope: 'project' }))
   } finally { await act(async () => root.unmount()); host.remove() }
 })
+
+it('keeps captured totals and exact checkout navigation when skipped files make a comparison partial', async () => {
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host); const onOpen = vi.fn()
+  const warning = 'Some files could not be captured or compared.'
+  const reply = await savedReply()
+  get.mockResolvedValue({ data: { ...reply.data, checkouts: reply.data.checkouts.map((checkout, index) => ({ ...checkout, captures: checkout.captures.map(capture => ({ ...capture, note: index === 0 ? warning : undefined })) })) } })
+  try {
+    await act(async () => root.render(<ChatChangesRow workspacePath="Crew/example" sessionId="chat-a" onOpen={onOpen} />))
+    const rows = host.querySelectorAll<HTMLButtonElement>('button')
+    expect(rows[0].textContent).toContain('3 files')
+    expect(rows[0].textContent).toContain('+48')
+    expect(rows[0].textContent).toContain('−12')
+    expect(rows[0].textContent).not.toContain('Incomplete')
+    expect(rows[0].querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(warning)
+    expect(rows[0].querySelector('[role="img"]')?.getAttribute('title')).toBe(warning)
+    expect(rows[1].querySelector('[role="img"]')).toBeNull()
+    await act(async () => rows[0].click())
+    expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ snapshotId: 'saved-a', checkoutId: 'worktree-a', historyScope: 'project' }))
+  } finally { await act(async () => root.unmount()); host.remove() }
+})
