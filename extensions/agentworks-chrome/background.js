@@ -1,3 +1,4 @@
+import { setupConnection, exchangePairing } from './pairing.js';
 // Remember explicitly enabled connections locally; tab grants survive only the browser session.
 // Each project has its own socket, target/session maps, controller and tab groups.
 const connections = new Map();
@@ -63,7 +64,7 @@ let retryTimer;
 let storageError = '';
 let resumeQueued = false;
 function saveRemembered() {
- const record = {pairings:[...savedPairings.values()],selectedScope,projects:availableProjects,account:accountPairing ? {url:accountPairing.url,token:accountPairing.token,brand:accountPairing.brand,resume:accountResume} : null};
+ const record = {pairings:[...savedPairings.values()],selectedScope,projects:availableProjects,account:accountPairing ? {url:accountPairing.url,token:accountPairing.token,brand:accountPairing.brand,accountID:accountPairing.accountID,accountName:accountPairing.accountName,resume:accountResume} : null};
  const grants = Object.fromEntries(savedTabs);
  const hasPairings = !!accountPairing || record.pairings.length > 0;
  const write = () => Promise.all([
@@ -152,7 +153,7 @@ function state() {
  const remembered=!!accountPairing;
  const live=c?.state() || {connected:false,workspace:'',server:'',error:'',tabs:[]};
  return {...live, connected:accountOnline, projectConnected:live.connected,
-  accountConnected:accountOnline, accountName:accountPairing?.brand || 'AgentWorks',
+  accountConnected:accountOnline, accountName:accountPairing?.accountName || accountPairing?.brand || 'AgentWorks',
   workspace:live.workspace || availableProjects.find(p=>p.scope===selectedScope)?.workspace || '',
   server:accountPairing ? new URL(accountPairing.url).host : '',
   error:accountError || live.error || storageError,
@@ -164,9 +165,9 @@ function state() {
 async function connectAccount(raw, manual=false) {
  if(accountConnecting)return accountConnecting;
  const pairing=JSON.parse(raw),endpoint=new URL(pairing.url);
- if(endpoint.pathname!=='/api/browser/extension/connect'||endpoint.search||endpoint.hash||endpoint.username||endpoint.password||typeof pairing.token!=='string'||pairing.token.length<32||(endpoint.protocol!=='wss:'&&!(endpoint.protocol==='ws:'&&['localhost','127.0.0.1'].includes(endpoint.hostname))))throw new Error('Paste the connection code from Account → Browser connections.');
- if(accountOnline && accountPairing && (accountPairing.url!==pairing.url||accountPairing.token!==pairing.token))throw new Error('Disconnect this browser before connecting another account.');
- accountPairing={url:pairing.url,token:pairing.token,brand:pairing.brand};
+ if(endpoint.pathname!=='/api/browser/extension/connect'||endpoint.search||endpoint.hash||endpoint.username||endpoint.password||typeof pairing.token!=='string'||pairing.token.length<32||(endpoint.protocol!=='wss:'&&!(endpoint.protocol==='ws:'&&['localhost','127.0.0.1'].includes(endpoint.hostname))))throw new Error('Open a new connection from AgentWorks.');
+ if(accountPairing && (accountPairing.url!==pairing.url||accountPairing.token!==pairing.token))throw new Error('Disconnect this browser before connecting another account.');
+ accountPairing={url:pairing.url,token:pairing.token,brand:pairing.brand,accountID:pairing.accountID,accountName:pairing.accountName};
  const attempt=new Promise((resolve,reject)=>{
   const ws=new WebSocket(endpoint.href),previous=accountSocket;accountSocket=ws;previous?.close();accountOnline=false;
   let heartbeat;const timer=setTimeout(()=>{if(accountSocket===ws)ws.close();reject(new Error('Cannot connect to AgentWorks. Open the app and try again.'));},10000);
@@ -711,6 +712,24 @@ chrome.runtime.onMessage.addListener((request,sender,respond)=>{
  const run=async()=>{
   await ready;
   if(request.action==='state')return state();
+  if(request.action==='pairing-preview' || request.action==='pairing-connect') {
+   const tab = await chrome.tabs.get(request.tabId);
+   const setup = setupConnection(tab.url);
+   if (setup.url !== request.setupURL) throw new Error('The connection tab changed. Open Browser Bridge on the new setup tab.');
+   if (!await chrome.permissions.contains({origins:[setup.permission]})) throw new Error('Allow this browser connection first.');
+   let identity;
+   try { identity = await exchangePairing(setup,'peek'); }
+   catch (error) { if (error.message.includes('expired')) await chrome.tabs.update(tab.id,{url:`${setup.origin}/api/browser/extension/setup?state=expired`}); throw error; }
+   if (accountPairing && (new URL(accountPairing.url).origin.replace(/^ws/,'http') !== setup.origin || accountPairing.accountID && accountPairing.accountID !== identity.account_id)) throw new Error(`This browser is connected to ${accountPairing.accountName || 'another account'} on ${new URL(accountPairing.url).host}. Disconnect that browser connection first.`);
+   if (request.action==='pairing-preview') return {...state(),setup:{account_id:identity.account_id,account:identity.account,origin:setup.origin}};
+   if (identity.account_id !== request.accountId) throw new Error('The connection account changed. Open Browser Bridge again.');
+   const pairing = await exchangePairing(setup,'redeem');
+   const endpoint = new URL('/api/browser/extension/connect',setup.origin); endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : 'ws:';
+   await chrome.tabs.update(tab.id,{url:`${setup.origin}/api/browser/extension/setup?state=connecting`});
+   await connectAccount(JSON.stringify({url:endpoint.href,token:pairing.token,brand:'AgentWorks',accountID:pairing.account_id,accountName:pairing.account}),true);
+   await chrome.tabs.update(tab.id,{url:`${setup.origin}/api/browser/extension/setup?state=connected`});
+   return state();
+  }
   if(request.action==='connect') { await connectAccount(request.pairing, true); return state(); }
   if(request.action==='select-project') {
    if(!availableProjects.some(p=>p.scope===request.scope) || !accountOnline)throw new Error('Connect this browser to your account first.');

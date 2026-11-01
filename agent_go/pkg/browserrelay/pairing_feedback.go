@@ -114,7 +114,7 @@ func (m *Manager) rejectOutdatedExtension(conn *websocket.Conn, user, version st
 // Unknown, revoked and denied credentials deliberately produce the same
 // payload and close frame. Neither channel may reveal a code's validity.
 func (m *Manager) rejectConnectionCode(conn *websocket.Conn, version, cause string) {
-	m.rejectPairingWithCause(conn, "", "invalid_connection_code", "This browser could not connect with that code. In AgentWorks, open your account menu → Browser connections → Copy connection code. Paste the full code here and choose Connect browser. If it still fails, download the latest extension there, replace its folder and click Reload on the browser’s Extensions page, then try again.", version, cause)
+	m.rejectPairingWithCause(conn, "", "invalid_connection_code", "This browser could not connect with that code. In AgentWorks, open Browser connections and choose Connect browser, then finish in Browser Bridge. If it still fails, download the latest extension there, replace its folder and click Reload on the browser’s Extensions page, then try again.", version, cause)
 }
 
 func (m *Manager) connectionCodeStillOwned(token, user string) bool {

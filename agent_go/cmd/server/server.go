@@ -2753,6 +2753,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/browser/workspace", api.handleWorkspaceBrowser).Methods("GET", "POST")
 	apiRouter.HandleFunc("/browser/extension", api.handleBrowserExtension).Methods("GET", "POST")
 	apiRouter.HandleFunc("/browser/extension/connect", api.handleBrowserExtensionConnect).Methods("GET")
+	apiRouter.HandleFunc("/browser/extension/setup", api.handleBrowserPairingSetup).Methods("GET")
+	apiRouter.HandleFunc("/browser/extension/pairing/peek", api.handleBrowserPairingExchange).Methods("POST")
+	apiRouter.HandleFunc("/browser/extension/pairing/redeem", api.handleBrowserPairingExchange).Methods("POST")
 	apiRouter.HandleFunc("/downloads/chrome-extension.zip", api.handleBrowserExtensionDownload).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/sessions", api.handleLiveBrowserSessions).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/stream", api.handleLiveBrowserStream).Methods("GET")
@@ -3593,7 +3596,7 @@ func (api *StreamingAPI) loadSelectedSecrets(ctx context.Context, userID, workfl
 func (api *StreamingAPI) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		originAllowed := origin != "" && isAllowedCORSOrigin(origin, api.config.CORSOrigins)
+		originAllowed := origin != "" && isAllowedCORSOrigin(origin, api.config.CORSOrigins) && r.URL.Path != browserPairingPeekPath && r.URL.Path != browserPairingRedeemPath
 		if originAllowed {
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Origin", origin)

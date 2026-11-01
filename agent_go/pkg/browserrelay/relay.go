@@ -78,6 +78,7 @@ type Binding struct {
 	recordingInterruptions             uint64
 }
 type Manager struct {
+	accountPairings  map[[32]byte]accountPairingGrant
 	mu               sync.Mutex
 	pairs            map[string]grant
 	bindings         map[string]*Binding

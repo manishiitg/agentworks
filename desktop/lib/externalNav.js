@@ -36,7 +36,7 @@ function makeOpenExternalUrl(shell) {
       return;
     }
     shell.openExternal(externalUrl).catch((err) => {
-      console.error(`[main] Failed to open external URL from ${source}:`, err);
+      console.error(`[main] Failed to open external URL from ${source}`);
     });
   };
 }

@@ -4,7 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import BrowserConnectionsDialog, { BrowserConnectionsPanel } from './BrowserConnectionsDialog'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), refetch: () => {} }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), open: vi.fn(() => true), close: vi.fn(), refetch: () => {} }))
+vi.mock('../utils/signInWindow', () => ({ prepareSignInWindow: () => ({ open: mocks.open, close: mocks.close }) }))
 vi.mock('../services/api', () => ({ default: { defaults: {}, get: mocks.get, post: mocks.post } }))
 vi.mock('../hooks/useLiveRefetch', () => ({ useLiveRefetch: (refetch: () => void) => { mocks.refetch = refetch } }))
 afterEach(() => vi.clearAllMocks())
@@ -54,11 +55,11 @@ it('keeps saved-browser controls and labels old versus unknown extension version
   } finally { await act(async () => root.unmount()) }
 })
 
-// PLAT-746-268: opening setup must never mint/copy a credential; only explicit Copy does.
-it('prepares connection codes only after explicit Copy', async () => {
+// PLAT-746-268: opening setup must never issue a handoff; only explicit Connect does.
+it('opens a one-use browser handoff only after explicit Connect without clipboard access', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   mocks.get.mockResolvedValue({ data: { browsers: [] } })
-  mocks.post.mockResolvedValue({ data: { token: 'test-connection-code' } })
+  mocks.post.mockResolvedValue({ data: { handoff: 'a'.repeat(43) } })
   const host = document.createElement('div'), root = createRoot(host)
   const clipboard = vi.fn().mockResolvedValue(undefined)
   vi.stubGlobal('navigator', { clipboard: { writeText: clipboard } })
@@ -68,10 +69,11 @@ it('prepares connection codes only after explicit Copy', async () => {
     expect(mocks.post).not.toHaveBeenCalled()
     expect(dialog.querySelector('textarea')).toBeNull()
     expect(mocks.post).not.toHaveBeenCalled()
-    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
-    expect(clipboard).toHaveBeenCalledOnce()
-    expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
-    expect(dialog.querySelector('textarea')?.closest('details')?.open).toBe(false)
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Connect browser')!.click() })
+    expect(clipboard).not.toHaveBeenCalled()
+    expect(mocks.open).toHaveBeenCalledWith(expect.stringContaining('/api/browser/extension/setup#handoff='))
+    expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'pair' }, { skipSessionContext: true })
+    expect(dialog.querySelector('textarea')).toBeNull()
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals() }
 })
 
@@ -80,18 +82,18 @@ it.each(['dialog', 'panel'])('requires named browser confirmation when an old br
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   const oldBrowser = { id: 'old', name: 'Old Chrome', connected: false, enabled: true }
   mocks.get.mockResolvedValue({ data: { browsers: [oldBrowser] } })
-  mocks.post.mockResolvedValue({ data: { token: 'test-connection-code' } })
+  mocks.post.mockResolvedValue({ data: { handoff: 'a'.repeat(43) } })
   vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
   const host = document.createElement('div'), root = createRoot(host), selected = vi.fn().mockResolvedValue(true), closed = vi.fn()
   try {
     await act(async () => root.render(surface === 'dialog' ? <BrowserConnectionsDialog open onClose={closed} onConnected={selected} /> : <BrowserConnectionsPanel open startSetup onClose={closed} onConnected={selected} />))
     const dialog = surface === 'dialog' ? document.querySelector('[role="dialog"]')! : host
-    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Connect browser')!.click() })
     mocks.get.mockResolvedValue({ data: { browsers: [{ ...oldBrowser, connected: true }, { id: 'new', name: 'New Edge', connected: true, enabled: true }] } })
     await act(async () => { mocks.refetch() })
     expect(selected).not.toHaveBeenCalled()
     expect(closed).not.toHaveBeenCalled()
-    expect(dialog.querySelector('[aria-label="Account browser connection code"]')).toBeTruthy()
+    expect(dialog.querySelector('textarea')).toBeNull()
     await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Use New Edge' || button.getAttribute('aria-label') === 'Use New Edge')!.click() })
     expect(selected).toHaveBeenCalledOnce()
     expect(selected).toHaveBeenCalledWith('new')
