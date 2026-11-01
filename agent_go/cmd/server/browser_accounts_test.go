@@ -24,7 +24,9 @@ func TestBrowserConnectionsKeepAccountCodeOutOfProjectTokens(t *testing.T) {
 	claims := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"builder:chat", "workflows:read", "files:read", "runs:execute"}, WorkflowIDs: []string{"invoices"}}}
 	call := func(args map[string]any) *httptest.ResponseRecorder {
 		t.Helper()
-		raw, _ := json.Marshal(map[string]any{"name": "browser_connections", "arguments": args})
+		action := externalArg(args, "action")
+		delete(args, "action")
+		raw, _ := json.Marshal(map[string]any{"name": "browser_connections__" + action, "arguments": args})
 		w := httptest.NewRecorder()
 		f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(raw), claims, nil))
 		return w
