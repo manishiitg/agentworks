@@ -75,3 +75,17 @@ func TestCursorAppendModel(t *testing.T) {
 		t.Fatalf("non-run append model = %q", got)
 	}
 }
+
+// Muse's serve lane asks for muse-spark-1.3 and a background model while the admin allows only the contributor
+// model; the company proxy moves those to an allowed model instead of failing the turn (only allowed models run).
+func TestAllowedSubstitute(t *testing.T) {
+	allowed := []string{"muse-spark-1.3-contributor"}
+	for model, want := range map[string]string{"muse-spark-1.3": "muse-spark-1.3-contributor", "muse-wonder-1.0-contributor": "muse-spark-1.3-contributor"} {
+		if got := allowedSubstitute(model, allowed); got != want {
+			t.Fatalf("%s -> %q, want %q", model, got, want)
+		}
+	}
+	if got := allowedSubstitute("x", nil); got != "" {
+		t.Fatalf("nothing allowed -> %q", got)
+	}
+}
