@@ -136,7 +136,14 @@ func (api *StreamingAPI) handleProviderConnections(w http.ResponseWriter, r *htt
 	}
 	switch r.Method {
 	case http.MethodGet:
-		api.syncCompanyAccounts(r.Context(), userID)
+		// Matching company accounts with the servers asks each server; the list waits for it at most 3 s (it carries
+		// on and the next list shows its result) so a slow server never holds up the accounts page.
+		synced := make(chan struct{})
+		go func() { api.syncCompanyAccounts(context.Background(), userID); close(synced) }()
+		select {
+		case <-synced:
+		case <-time.After(3 * time.Second):
+		}
 		connections, err := api.listProviderAccountViews(r.Context(), userID, currentUserIsAdmin(r), providerAccountScope{Principal: userID, WorkspacePath: r.URL.Query().Get("workspace_path"), Product: r.URL.Query().Get("product")})
 		if err != nil {
 			http.Error(w, "cannot load provider connections", http.StatusInternalServerError)
