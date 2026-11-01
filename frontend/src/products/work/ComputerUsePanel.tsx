@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MonitorCog, Square } from 'lucide-react'
+import { Check, MonitorCog } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../../components/ui/Button'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
@@ -40,7 +40,7 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
     window.addEventListener('focus', load)
     return () => { abort.abort(); window.clearInterval(timer); window.removeEventListener('focus', load) }
   }, [scope, projectId, revision])
-  const run = async (action: 'install' | 'permissions' | 'enable' | 'disable' | 'stop') => {
+  const run = async (action: 'install' | 'permissions' | 'enable' | 'disable') => {
     const identity = captureChatIdentity()
     const current = () => isChatIdentityCurrent(identity) && currentScope.current === scope
     generation.current++; setBusy(true); setError('')
@@ -57,8 +57,11 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
       }
     } finally { if (current()) setBusy(false) }
   }
-  const accessibility = status?.permissions?.data?.accessibility?.state
-  const ready = accessibility === 'granted' || status?.platform !== 'darwin' && status?.installed
+  const permissionRows = [
+    { label: 'App control', state: status?.permissions?.data?.accessibility?.state },
+    { label: 'Screenshots', state: status?.permissions?.data?.screen_recording?.state },
+  ]
+  const ready = status?.installed && (status.platform !== 'darwin' || permissionRows.every(({ state }) => state === 'granted' || state === 'not_required'))
   return <section aria-label="Computer use" className="max-w-xl space-y-4 text-sm">
     <p className="text-muted-foreground">Give this Crew control of this computer, including apps, Terminal and clipboard.</p>
     {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
@@ -67,15 +70,28 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
       <div className="flex items-center gap-3"><MonitorCog aria-hidden="true" className="h-5 w-5 text-muted-foreground"/><div className="min-w-0 flex-1"><p className="font-medium">This computer</p><p role="status" className="text-xs text-muted-foreground">{status.active ? 'Desktop action running' : !status.installed ? 'Needs setup' : !ready ? 'Needs permission' : status.enabled ? 'Ready' : 'Off for this Crew'}</p></div>
         {status.installed && <button type="button" role="switch" aria-label="Enable computer use" aria-checked={status.enabled} disabled={busy} onClick={() => void run(status.enabled ? 'disable' : 'enable')} className={`relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:opacity-50 ${status.enabled ? 'bg-primary' : 'bg-muted'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-foreground transition-transform ${status.enabled ? 'left-5' : 'left-1'}`}/></button>}
       </div>
+      {status.installed && status.platform === 'darwin' && <dl className="space-y-2 border-t border-border pt-3" aria-label="Computer permissions">
+        {permissionRows.map(({ label, state }) => <div key={label} className="flex items-center justify-between gap-4">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="flex items-center gap-1.5 text-xs">
+            {state === 'granted' && <Check aria-hidden="true" className="h-3.5 w-3.5"/>}
+            {state === 'granted' ? 'Allowed' : state === 'denied' ? 'Not allowed' : state === 'not_required' ? 'Not needed' : 'Could not check'}
+          </dd>
+        </div>)}
+      </dl>}
       {status.permission_setup_note && <p className="text-xs text-muted-foreground">{status.permission_setup_note}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {!status.installed && <Button type="button" disabled={busy} onClick={() => void run('install')}>{busy ? 'Installing…' : 'Install computer use'}</Button>}
         {status.installed && status.platform === 'darwin' && <Button type="button" variant="outline" disabled={busy} onClick={() => void run('permissions')}>Open permission settings</Button>}
-        {status.enabled && <Button type="button" variant="outline" onClick={() => void run('stop')}><Square aria-hidden="true" className="mr-1.5 h-3 w-3"/>Stop</Button>}
       </div>
     </div>}
-    <p className="text-xs text-muted-foreground">Your phone or website chat can use this computer while this Crew runs here. Shared Crew users and server agents cannot use it.</p>
-    {status?.platform === 'darwin' && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">macOS permissions</summary><p className="mt-2">Approve the app named by the permission guide. macOS may give that app and processes it starts access to your screen. Accessibility controls apps; Screen Recording allows screenshots.</p></details>}
-    <p className="text-xs text-muted-foreground">App text and screenshots used in chat go to your selected AI provider. Screenshots stay in private chat storage. Stop cancels pending commands; an action already sent may finish.</p>
+    <details className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer">About computer use</summary>
+      <div className="mt-2 space-y-2">
+        <p>Only you can use this Crew’s computer control, including from your phone or website chat.</p>
+        <p>App content goes to your AI provider. Screenshots stay in private chat storage.</p>
+        {status?.platform === 'darwin' && <p>macOS permissions apply to the app named in the permission guide and processes it starts.</p>}
+      </div>
+    </details>
   </section>
 }
