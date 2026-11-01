@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { BarChart3, Check, ChevronDown, ChevronRight, Settings2 } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, ChevronRight, Cpu, Settings2 } from 'lucide-react'
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -81,6 +82,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const sources = useWorkModelSources({ profileId, profileVersion: meta?.agentProfileVersion, accountProduct: profileId, workspacePath, enabled })
   const selectedOption = enabled ? sources.options.find(option => option.id === meta?.agentProfileEngine) : undefined
   const connectionId = meta?.agentProfileConnectionID || undefined
+  // A company account from a connected server counts on that server: its limits come from there.
+  const companyServer = sources.accounts?.find(account => account.id === (connectionId || meta?.agentProfileChatConnectionID))?.via_connection
   const { selectableModels, modelsForOption, switchAccountFor, cursorModels, cursorSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
     selectedOption, selectedConnectionId: connectionId,
     inUseConnectionId: connectionId || ownDefaultConnectionId(sources.accounts, selectedOption?.provider),
@@ -166,12 +169,15 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} />
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
-    <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Change program or account…</Menu.Item>
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
     {sessionId && <ChatContextItems sessionId={sessionId} modelLabel={label} />}
-    <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
-      || (meta?.agentProfileChatProvider === selectedOption.provider ? meta?.agentProfileChatConnectionID : undefined), selectedOption.provider)} />
+    {companyServer
+      ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
+      : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
+        || (meta?.agentProfileChatProvider === selectedOption.provider ? meta?.agentProfileChatConnectionID : undefined), selectedOption.provider)} />}
     {separator}
     <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
+    <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models</Menu.Item>
+    <Menu.Item className={rowClass} onSelect={() => openWorkspaceSettings('providers')}><Cpu className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />AI models &amp; accounts</Menu.Item>
   </Chip>
 }

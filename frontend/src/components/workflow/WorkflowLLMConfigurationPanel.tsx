@@ -212,7 +212,9 @@ export default function WorkflowLLMConfigurationPanel({
   const advanced = llmConfig?.mode === 'explicit'
   // A workflow that already runs on a provider opens on the compact "runs on
   // X" line; the provider list only appears on "Change provider".
-  const [changing, setChanging] = useState(false)
+  // The program list is always shown below the account in use; the "Change provider"/"Cancel" toggle that
+  // folded it away is gone (owner). changing stays false: the selected account and its models show above.
+  const [changing] = useState(false)
   // Pi backends list one company row each; its models unfold underneath on
   // click. The backend the workflow runs on is always unfolded.
   const [openPiGroups, setOpenPiGroups] = useState<Set<string>>(() => new Set())
@@ -513,7 +515,6 @@ export default function WorkflowLLMConfigurationPanel({
     try {
       onChange(stripRetiredLLMFallbacks(config))
       if (onUseProvider) await onUseProvider(config)
-      setChanging(false)
     } finally {
       setRowUsing(null)
     }
@@ -660,7 +661,7 @@ export default function WorkflowLLMConfigurationPanel({
       const relation = accountRelation(account)
       const keyService = 'underlying_provider' in account ? byokServiceOf(account) : undefined
       const company = 'via_connection' in account && Boolean(account.via_connection)
-      const note = company ? "Company account · the server's limits apply"
+      const note = company ? 'Company account'
         : relation === 'own' ? `${keyService ? `Your ${keyService.label} key · ` : ''}${'sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private'}`
         : relation === 'server' ? `${onThisMac ? 'Your login on this Mac' : 'Managed by admin'}${'identity' in account && account.identity ? ` · ${account.identity}` : ''}`
           : `Shared${'owner_name' in account && account.owner_name ? ` by ${account.owner_name}` : ''}`
@@ -741,17 +742,6 @@ export default function WorkflowLLMConfigurationPanel({
               </Button>
             </>
           )}
-          {!readOnly && (
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => setChanging(open => !open)}
-              className="ml-auto"
-            >
-              {changing ? 'Cancel' : 'Change provider'}
-            </Button>
-          )}
         </div>
       )
     }
@@ -764,17 +754,6 @@ export default function WorkflowLLMConfigurationPanel({
           <span className="text-muted-foreground">This {scopeNoun} uses a</span>
           <span className="font-medium text-foreground">custom per-role setup</span>
           <span className="text-muted-foreground">— see the models below.</span>
-          {!readOnly && (
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => setChanging(open => !open)}
-              className="ml-auto"
-            >
-              {changing ? 'Cancel' : 'Change provider'}
-            </Button>
-          )}
         </div>
       )
     }
@@ -1032,7 +1011,8 @@ export default function WorkflowLLMConfigurationPanel({
       {accountSelectionError && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{accountSelectionError}</p>}
       {selectedPrivateAccount && <p className="text-xs text-muted-foreground">New runs use this account. Start a new Builder conversation to switch an existing chat.</p>}
 
-      {((!selectedRow && !advanced) || changing || globalLockApplies) && (
+      {/* Every connected program, always listed (owner). */}
+      {(
       <>
       {globalLockApplies && (
         <p className="text-xs text-muted-foreground">
@@ -1066,7 +1046,8 @@ export default function WorkflowLLMConfigurationPanel({
             {renderGroup(
               'Coding agent CLIs',
               'Open a provider to choose a connected admin-managed or personal account.',
-              visibleRows.filter(row => row.entry.integration_kind === 'coding_agent' && !row.groupFilter),
+              // The program in use shows above with its accounts; the list holds the others.
+              visibleRows.filter(row => row.entry.integration_kind === 'coding_agent' && !row.groupFilter && !(selectedRow?.entry.integration_kind === 'coding_agent' && row.id === selectedRowId)),
             )}
             {renderGroup(
               'Models via Pi',

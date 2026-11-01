@@ -312,7 +312,8 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
 
       expect(host.textContent).toContain('This project runs onClaude Code')
       expect(host.textContent).not.toContain('Set by your administrator')
-      expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Change provider')).toBe(true)
+      // Editable: the program list is shown (there is no Change provider toggle any more).
+      expect(host.textContent).toContain('Coding agent CLIs')
     } finally {
       await act(async () => root.unmount())
       host.remove()
