@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"log"
 	"os"
 	"strings"
@@ -163,6 +164,14 @@ func (o *nativeTerminalObserver) read() ([]builderConversationMessage, string, b
 				}
 			}
 		}
+	}
+	// /clear, /resume or /branch typed in a Claude terminal moved it to another
+	// session; its mod names the current one.
+	if current := claudecode.ClaudeModCurrentSessionID(o.snapshot.TmuxSession); current != "" && current != o.nativeID {
+		if current != o.cachedNativeID {
+			log.Printf("[CLAUDE_MOD] terminal observer session=%s follows native session %s -> %s", o.snapshot.SessionID, o.nativeID, current)
+		}
+		o.nativeID = current
 	}
 	if o.nativeID == "" {
 		return nil, "", false

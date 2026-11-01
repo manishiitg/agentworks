@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"io"
 	"log"
 	"net/http"
@@ -2024,6 +2025,11 @@ func (api *StreamingAPI) liveAttachRawInput(ctx context.Context, tmuxSession str
 		if len(data) == 0 {
 			return nil
 		}
+	}
+	// A Claude terminal running the AgentWorks mod reports its session switches,
+	// so every slash command may be typed there.
+	if claudecode.ClaudeModRunsIn(tmuxSession) {
+		return api.liveAttachRawSend(ctx, tmuxSession, data, streams...)
 	}
 	switch decision, erase := terminalSlashGuard.decide(tmuxSession, data); decision {
 	case slashDrop:
