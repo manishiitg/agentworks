@@ -84,7 +84,14 @@ func isPrintableASCII(data []byte) bool {
 
 // decide classifies one chunk of raw terminal input. On slashCancel the second result is how many
 // characters to erase (backspaces to send).
-func (g *slashGuard) decide(session string, data []byte) (slashDecision, int) {
+// claudeModSessionCommands switch a Claude terminal's session. A terminal
+// running the AgentWorks mod reports the switch, so the chat follows it; the
+// commands that change the CLI's own login or settings stay blocked.
+var claudeModSessionCommands = map[string]bool{"clear": true, "new": true, "resume": true, "branch": true, "fork": true}
+
+// decide also allows the commands named in extra, matched on the command's
+// first word so their arguments may follow.
+func (g *slashGuard) decide(session string, data []byte, extra ...map[string]bool) (slashDecision, int) {
 	allowAll, allowed := slashPolicy()
 	if allowAll || len(data) == 0 {
 		return slashForward, 0
@@ -139,6 +146,13 @@ func (g *slashGuard) decide(session string, data []byte) (slashDecision, int) {
 		reset()
 		if allowAll || allowed[name] {
 			return slashForward, 0
+		}
+		if fields := strings.Fields(name); len(fields) > 0 {
+			for _, set := range extra {
+				if set[fields[0]] {
+					return slashForward, 0
+				}
+			}
 		}
 		return slashCancel, erase
 	case b == 0x7f || b == 0x08:

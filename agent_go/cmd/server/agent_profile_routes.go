@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"io"
 	"log"
 	"net/http"
@@ -1048,6 +1049,17 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		return QueryRequest{}, err
 	}
 	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
+	// Claude Code runs as the chat chose: the native terminal or the chat view. A Claude already running on the
+	// other transport (the choice changed from inside a reply) is relaunched by this turn; the conversation resumes.
+	if strings.EqualFold(strings.TrimSpace(query.Provider), string(llmproviders.ProviderClaudeCode)) {
+		query.ClaudeCodeTransport = llmproviders.ClaudeCodeTransportSDK
+		if own.ClaudeTerminal {
+			query.ClaudeCodeTransport = llmproviders.ClaudeCodeTransportTmux
+		}
+		if running := liveCodingProviderTransport(conversation.SessionID); running != "" && running != query.ClaudeCodeTransport {
+			query.RestartCodingCLI = true
+		}
+	}
 	// A chat has one account, and only the person's choice in Models changes it (owner, 2026-10-07).
 	// When neither the request nor the chat names one for this provider (a new chat, or the first
 	// turn after a provider switch), it is resolved here once, the same way the turn itself would

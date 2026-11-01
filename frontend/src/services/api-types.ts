@@ -272,6 +272,8 @@ export interface ChatContextView {
   limits?: { label: string; used_percent: number; resets_at?: string }[]
   idle_compaction?: { on: boolean }
   idle_compaction_hint?: string
+  /** A Claude chat only: on runs Claude Code as the native terminal (the AgentWorks mod drives it), off as the chat view. */
+  claude_terminal?: { on: boolean }
   can_compact: boolean
   can_fresh: boolean
 }

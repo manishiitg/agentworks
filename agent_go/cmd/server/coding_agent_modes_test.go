@@ -212,11 +212,16 @@ func TestCodingAgentRequestAllowsPersistentInteractive(t *testing.T) {
 	}
 }
 
+// A Claude chat runs on its own choice (native terminal or chat view); with none
+// it inherits the server's setting. Other providers never take one.
 func TestCodingAgentClaudeCodeChatTransport(t *testing.T) {
-	if got := codingAgentClaudeCodeChatTransport(string(llm.ProviderClaudeCode)); got != "" {
-		t.Fatalf("claude-code chat transport = %q; must inherit server transport", got)
+	if got := codingAgentClaudeCodeChatTransport(string(llm.ProviderClaudeCode), ""); got != "" {
+		t.Fatalf("claude-code chat transport = %q; with no choice it must inherit the server transport", got)
 	}
-	if got := codingAgentClaudeCodeChatTransport(string(llm.ProviderCodexCLI)); got != "" {
+	if got := codingAgentClaudeCodeChatTransport(string(llm.ProviderClaudeCode), "tmux"); got != "tmux" {
+		t.Fatalf("claude-code chat transport = %q, want the chat's choice tmux", got)
+	}
+	if got := codingAgentClaudeCodeChatTransport(string(llm.ProviderCodexCLI), "tmux"); got != "" {
 		t.Fatalf("non-Claude chat transport = %q, want empty", got)
 	}
 }

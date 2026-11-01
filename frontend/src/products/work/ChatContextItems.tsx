@@ -61,16 +61,21 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
   const used = view.used_tokens ?? 0
   const windowTokens = view.window_tokens ?? 0
   const limits = chatLimitsText(view.limits)
-  const offersSomething = Boolean(view.idle_compaction || view.can_compact || view.can_fresh)
+  const offersSomething = Boolean(view.idle_compaction || view.claude_terminal || view.can_compact || view.can_fresh)
   if (!(used > 0) && !limits && !offersSomething) return null
 
-  const send = async (body: { idle_compaction?: boolean; action?: 'compact' | 'fresh' }) => {
+  const send = async (body: { idle_compaction?: boolean; claude_terminal?: boolean; action?: 'compact' | 'fresh' }) => {
     if (busy) return
     setBusy(true)
     try {
       const result = await agentApi.setChatContext({ session_id: sessionId, ...body })
       setView(result.context)
       window.dispatchEvent(new CustomEvent(chatContextChangedEvent, { detail: result.context }))
+      if (body.claude_terminal !== undefined) {
+        // Show the chat the way it now runs; the terminal opens with the next message's launch.
+        const tab = Object.values(useChatStore.getState().chatTabs).find(candidate => candidate.sessionId === sessionId)
+        if (tab) useChatStore.getState().setTabViewMode(tab.tabId, body.claude_terminal ? 'terminal' : 'formatted')
+      }
       if (result.message) useChatStore.getState().addToast(result.message, 'success')
     } catch (cause) {
       const reason = (cause as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -93,6 +98,14 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
       <span className="min-w-0 flex-1">
         <span className="block">Auto-compact when idle</span>
         {view.idle_compaction_hint && <span className="block text-[11px] leading-snug text-muted-foreground">{view.idle_compaction_hint}</span>}
+      </span>
+      <Menu.ItemIndicator className="pt-0.5"><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
+    </Menu.CheckboxItem>}
+    {view.claude_terminal && <Menu.CheckboxItem className={`${menuRowClass} items-start`} checked={view.claude_terminal.on} disabled={busy} onSelect={keepOpen}
+      onCheckedChange={checked => void send({ claude_terminal: checked === true })}>
+      <span className="min-w-0 flex-1">
+        <span className="block">Native Claude Code terminal</span>
+        <span className="block text-[11px] leading-snug text-muted-foreground">Claude Code as you know it, slash commands included. From the next message; the conversation continues.</span>
       </span>
       <Menu.ItemIndicator className="pt-0.5"><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
     </Menu.CheckboxItem>}

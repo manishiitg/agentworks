@@ -1,6 +1,7 @@
 package server
 
 import (
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -102,9 +103,11 @@ func codingAgentTurnAttended(claims *UserClaims, req *QueryRequest, sessionID st
 	return trigger == "" || trigger == "interactive"
 }
 
-func codingAgentClaudeCodeChatTransport(provider string) string {
-	if strings.ToLower(strings.TrimSpace(provider)) == strings.ToLower(string(llm.ProviderClaudeCode)) {
-		return "" // Let the Claude-only environment setting choose tmux (default) or sdk.
+// codingAgentClaudeCodeChatTransport is the transport a chat's Claude Code runs on: the chat's own choice, else
+// "" for the server's setting (the Agent SDK by default).
+func codingAgentClaudeCodeChatTransport(provider, chosen string) string {
+	if strings.EqualFold(strings.TrimSpace(provider), string(llm.ProviderClaudeCode)) {
+		return strings.TrimSpace(chosen)
 	}
 	return ""
 }
@@ -127,4 +130,18 @@ func codingAgentWorkspaceWorkingDir(workspaceRelativeFolder string) string {
 		return ""
 	}
 	return resolved
+}
+
+// liveCodingProviderTransport is the transport of the coding CLI running for a chat now ("tmux", "sdk", ...);
+// empty when none runs.
+func liveCodingProviderTransport(sessionID string) string {
+	session, ok := mcpagent.LookupSession(sessionID)
+	if !ok {
+		return ""
+	}
+	handle := session.Snapshot()
+	if handle == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(string(handle.Provider.Transport)))
 }
