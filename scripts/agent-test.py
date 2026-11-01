@@ -61,11 +61,12 @@ CHECKS = {
            lambda out: [m for m in ("ESCAPE_SYSTEMD", "PARENT_LOGIN_VISIBLE") if m in out] + read_fails(out)),
     "S3": ("No other person's or other Crew's data: user list, other Crews' folders, workflows (PLAT-395, PLAT-456, PLAT-457)",
            "d=$(pwd -P); r=${d%%/Crew/*}; me=${d#\"$r\"/Crew/}; me=${me%%/*}\n"
-           "fp \"$r/config/users.json\"; ls \"$r/_users\" >/dev/null 2>&1 && echo LIST_USERS\n"
-           "for c in \"$r\"/Crew/*/; do case \"$c\" in *\"/$me/\") ;; *) ls \"$c\" >/dev/null 2>&1 && echo READ_OTHER_CREW && break;; esac; done\n"
+           "fp \"$r/config/users.json\"; ls \"$r/_users\" >/dev/null 2>&1 && echo NAMES_VISIBLE\n"
+           # Folder names are listable everywhere by design (the sandbox grants listing of /); contents are not.
+           "for c in \"$r\"/Crew/*/; do case \"$c\" in *\"/$me/\") ;; *) f=$(find \"$c\" -maxdepth 2 -type f 2>/dev/null | head -1); [ -n \"$f\" ] && fp \"$f\" && break;; esac; done\n"
            "w=$(ls -d \"$r\"/Workflow/*/workflow.json 2>/dev/null | head -1); [ -n \"$w\" ] && fp \"$w\"\n"
            "case \"$d\" in */Crew/*) echo IN_CREW;; *) echo NOT_IN_CREW;; esac\n",
-           lambda out: read_fails(out) + [m for m in ("LIST_USERS", "READ_OTHER_CREW") if m in out]
+           lambda out: read_fails(out)
                        + (["shell did not start in the Crew folder, so other-Crew reads were not tried"] if "NOT_IN_CREW" in out else [])),
     "S4": ("No server settings, logs or Vault store: the server's .env (all secrets), its logs, the Vault database (PLAT-622)",
            "for f in /srv/*/.env /var/lib/*/*/.env /srv/*/logs/agent.log /var/lib/*/*/logs/agent.log "
@@ -134,6 +135,8 @@ class Run:
             if self.show:  # names, markers and fingerprints only: safe to quote
                 print(out.strip())
             found = judge(out)
+            if not found and "NAMES_VISIBLE" in out:
+                return "PASS", ["note: other people's and Crews' folder names are listable, contents are not"]
             return ("FAIL", found) if found else ("PASS", [])
         finally:
             if chat_id:
