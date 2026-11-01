@@ -6,6 +6,7 @@
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../scripts/dev-logging.sh"
+source "${SCRIPT_DIR}/../scripts/dev-processes.sh"
 
 # Local launches always run every core product, Vault included (owner, 2026-10-26:
 # server products are not optional). Local authentication is unchanged.
@@ -360,26 +361,6 @@ print_stop_target() {
         echo "🛑 Stopping $label (PID: $pid, port: $port)..."
     else
         echo "🛑 Stopping $label (PID: $pid)..."
-    fi
-}
-
-kill_process_on_port() {
-    local port="$1"
-    local label="${2:-process on port $port}"
-    local grace_attempts="${3:-50}"
-
-    if [ "${AGENTWORKS_STRICT_PROCESS_OWNERSHIP:-false}" = "true" ]; then
-        if port_in_use "$port"; then
-            echo "⚠️  Strict process ownership: refusing to kill unrecorded $label on port $port"
-        fi
-        return 0
-    fi
-
-    local pid
-    pid="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1)"
-    if [ -n "$pid" ]; then
-        echo "⚠️  $label still listening on port $port (PID: $pid); killing..."
-        kill_process_tree "$pid" "$label" "$grace_attempts"
     fi
 }
 
@@ -977,7 +958,12 @@ if [ "$BACKGROUND_MODE" = true ]; then
     echo "🚀 Starting MCP Agent Server with Logging (Background Mode)"
 else
     echo "Starting AgentWorks…"
-dev_log_location
+    dev_log_location
+fi
+if [ "$BACKGROUND_MODE" != true ] && [ "$WITH_FRONTEND" = true ] && [ "$WITH_WORKSPACE" = true ]; then
+    dev_instance_claim "${SCRIPT_DIR}/run_server_with_logging.sh" || exit 1
+    trap dev_instance_release EXIT
+    trap 'exit 130' INT TERM
 fi
 dev_detail "========================================="
 
@@ -1077,10 +1063,10 @@ if [ "$WITH_GATEWAY" = true ]; then
             exit 1
         fi
     else
-        dev_detail "🔎 Selecting gateway port: default ${DEFAULT_GATEWAY_PORT}, random fallback in range 18100-18199..."
-        GATEWAY_PORT="$(choose_default_then_random_port "$DEFAULT_GATEWAY_PORT" 18100 18199)"
-        if [ -z "$GATEWAY_PORT" ]; then
-            echo "❌ Error: No free gateway port available in range 18100-18199"
+        GATEWAY_PORT="$DEFAULT_GATEWAY_PORT"
+        if port_in_use "$GATEWAY_PORT"; then
+            echo "Port $GATEWAY_PORT is already in use. Quit the other AgentWorks instance, then run again."
+            dev_detail "Gateway port owner: $(lsof -nP -iTCP:"$GATEWAY_PORT" -sTCP:LISTEN 2>/dev/null)"
             exit 1
         fi
     fi
@@ -1092,14 +1078,6 @@ export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT
 export GATEWAY_DEMO="${GATEWAY_DEMO:-}"
 export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
 export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
-
-# Kill any orphaned agent server from a previous run on the default port so we can
-# reuse it (avoids accumulating background servers on different random ports).
-if [ -z "${AGENT_PORT:-}" ] && port_in_use "$DEFAULT_AGENT_PORT"; then
-    echo "⚠️  Port $DEFAULT_AGENT_PORT busy — killing orphaned server from previous run..."
-    kill_process_on_port "$DEFAULT_AGENT_PORT" "orphaned agent server" 50
-    sleep 0.5
-fi
 
 if [ -n "${AGENT_PORT:-}" ]; then
     dev_detail "🔎 Using requested agent server port: $AGENT_PORT"
@@ -1391,13 +1369,6 @@ if [ -f "${SCRIPT_DIR}/../go.work" ]; then
 fi
 
 if [ "$WITH_WORKSPACE" = true ]; then
-    # Kill any orphaned workspace server from a previous run on the default port.
-    if [ -z "${WORKSPACE_PORT:-}" ] && port_in_use "$DEFAULT_WORKSPACE_PORT"; then
-        echo "⚠️  Port $DEFAULT_WORKSPACE_PORT busy — killing orphaned workspace server from previous run..."
-        kill_process_on_port "$DEFAULT_WORKSPACE_PORT" "orphaned workspace server" 50
-        sleep 0.5
-    fi
-
     if [ -n "${WORKSPACE_PORT:-}" ]; then
         dev_detail "🔎 Using requested workspace server port: $WORKSPACE_PORT"
         if port_in_use "$WORKSPACE_PORT"; then
@@ -1789,12 +1760,7 @@ stop_native_workspace() {
         wait "$WORKSPACE_PID" 2>/dev/null
         print_port_status "$WORKSPACE_PORT" "workspace"
     fi
-    # Fallback: go run exits on SIGINT before our cleanup runs, leaving the compiled
-    # binary orphaned (re-parented to PID 1). Kill anything still on the port.
-    if [ -n "$WORKSPACE_PORT" ]; then
-        kill_process_on_port "$WORKSPACE_PORT" "orphaned workspace server" 50
-        print_port_status "$WORKSPACE_PORT" "workspace"
-    fi
+    dev_stop_recorded_listener "${WORKSPACE_LISTENER:-}" "workspace server"
 }
 
 stop_mcp_gateway() {
@@ -1804,11 +1770,7 @@ stop_mcp_gateway() {
         wait "$GATEWAY_PID" 2>/dev/null
         print_port_status "$GATEWAY_PORT" "gateway"
     fi
-    # Same go-run orphan fallback as the workspace server.
-    if [ -n "$GATEWAY_PORT" ]; then
-        kill_process_on_port "$GATEWAY_PORT" "orphaned gateway server" 50
-        print_port_status "$GATEWAY_PORT" "gateway"
-    fi
+    dev_stop_recorded_listener "${GATEWAY_LISTENER:-}" "gateway server"
 }
 
 process_tree_rss_kb() {
@@ -1920,17 +1882,12 @@ stop_agent_server() {
         wait "$SERVER_PID" 2>/dev/null
         print_port_status "$AGENT_PORT" "agent"
     fi
-    # Fallback: go run exits on SIGINT before our cleanup runs, leaving the compiled
-    # binary orphaned (re-parented to PID 1, invisible via pgrep -P SERVER_PID).
-    # Kill anything still listening on the agent port.
-    if [ -n "$AGENT_PORT" ]; then
-        kill_process_on_port "$AGENT_PORT" "orphaned agent server" 50
-        print_port_status "$AGENT_PORT" "agent"
-    fi
+    dev_stop_recorded_listener "${AGENT_LISTENER:-}" "agent server"
     cleanup_coding_agent_tmux_sessions
 }
 
 cleanup_on_exit() {
+    trap '' INT TERM
     kill "$LOG_ROTATE_PID" 2>/dev/null
     wait "$LOG_ROTATE_PID" 2>/dev/null
     if [ "$BACKGROUND_MODE" != true ]; then
@@ -1945,6 +1902,7 @@ cleanup_on_exit() {
     if [ "$AGENTWORKS_AUTO_TMUX_TMPDIR" = true ]; then
         rm -rf "$TMUX_TMPDIR"
     fi
+    dev_instance_release
 }
 
 trap cleanup_on_exit EXIT
@@ -1956,6 +1914,7 @@ wait_for_workspace_health() {
     local attempt
     for attempt in $(seq 1 90); do
         if curl -fsS "$health_url" >/dev/null 2>&1; then
+            WORKSPACE_LISTENER="$(dev_owned_listener "$WORKSPACE_PID" "$WORKSPACE_PORT")"
             echo "✅ Native workspace is healthy at: $health_url"
             return 0
         fi
@@ -2018,6 +1977,7 @@ wait_for_gateway_health() {
     local attempt
     for attempt in $(seq 1 90); do
         if curl -fsS "$health_url" >/dev/null 2>&1; then
+            GATEWAY_LISTENER="$(dev_owned_listener "$GATEWAY_PID" "$GATEWAY_PORT")"
             echo "✅ MCP Gateway is healthy at: ${GATEWAY_PUBLIC_URL}/mcp"
             return 0
         fi
@@ -2175,6 +2135,7 @@ wait_for_agent_health() {
     local attempt
     for attempt in $(seq 1 180); do
         if curl -fsS "$url" >/dev/null 2>&1; then
+            AGENT_LISTENER="$(dev_owned_listener "$SERVER_PID" "$AGENT_PORT")"
             echo "✅ Agent server is healthy at: $url"
             return 0
         fi
