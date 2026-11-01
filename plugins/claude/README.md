@@ -1,5 +1,25 @@
 # AgentWorks for Claude
 
+## Compact messages and Reply
+
+Claude Code 2.1.287 or later can display incoming AgentWorks messages as compact
+rows with the sender, a short preview, **Expand**, and **Reply**. Reply opens a
+text field and sends through the existing AgentWorks connection to the original
+conversation. Replies to another joined server stay on that server; messages
+from another person's agent keep their ownership label.
+
+The mod changes only the display. Claude receives the complete original message,
+and Ctrl+O shows the full native transcript with routing details. Existing live
+delivery, access checks and automatic receipts remain in use. A failed send keeps
+your reply available to retry; unchanged retries use the same submission ID.
+
+After updating the installed plugin, run `/reload-plugins` in Claude to load the
+mod. Claude and your organization's settings decide whether mods can run; review
+any trust prompt yourself. Installing or loading this UI does not attach a chat.
+
+Focused checks: `claude plugin validate plugins/claude` and
+`claude plugin test plugins/claude` from the source checkout.
+
 Manual plugin install: `/plugin install agentworks --marketplace manishiitg/agentworks-plugins`.
 
 Install the AgentWorks CLI and sign in with `agentworks login`. Run
@@ -50,7 +70,7 @@ See https://code.claude.com/docs/en/channels .
 Existing native sessions can use explicit desktop/session transports and the
 process-bound `agentworks bridge message` fallback. See [native transports](../../docs/communication-protocols.md#existing-desktop-and-claude-session-transports).
 
-Terminal attach discovers live Claude registrations and verifies Codex candidates with the exact desktop owner before offering a person selection. Technical process/session overrides are hidden from normal help. Native idle wake uses the chat's existing approval/sandbox settings. The desktop IPC is a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbox recovery. CLI updates and stop/start restore still-live existing attachments without rotating their identity or repeating AgentWorks guidance. A provider process restart reconnects the same saved native chat automatically. Claude itself adds a notice to every native session message; AgentWorks cannot suppress that host notice.
+Terminal attach discovers live Claude registrations and verifies Codex candidates with the exact desktop owner before offering a person selection. Technical process/session overrides are hidden from normal help. Native idle wake uses the chat's existing approval/sandbox settings. The desktop IPC is a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbox recovery. CLI updates and stop/start restore still-live existing attachments without rotating their identity or repeating AgentWorks guidance. A provider process restart reconnects the same saved native chat automatically. Claude itself adds a notice to native session messages. The compact-message mod replaces the visible row on supported hosts; the full native notice remains in the transcript and model input.
 
 The person chooses only the attachment name. The attached agent can describe its work with `the agentworks tool (action=set_purpose)` or `agentworks bridge message purpose --provider claude --purpose "WHAT YOU WORK ON"`. Purpose updates cannot attach, rename or grant permissions.
 

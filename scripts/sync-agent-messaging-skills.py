@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate provider messaging skills from one source; --check detects drift."""
+"""Generate provider messaging skills and Claude message UI; --check detects drift."""
 
 import argparse
 from pathlib import Path
@@ -41,6 +41,20 @@ def main():
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(expected)
+        if provider == "claude-tools":
+            # The UI is identical in the full and command-hook-free packages.
+            for file in ("hooks/messages.js", "tests/messages.test.ts"):
+                expected_ui = (ROOT / "plugins/claude" / file).read_bytes()
+                expected_ui = expected_ui.replace(b"plugin:agentworks:agentworks-live", b"plugin:agentworks-tools:agentworks-live")
+                if file.endswith(".test.ts"):
+                    expected_ui = expected_ui.replace(b"plugin: 'agentworks'", b"plugin: 'agentworks-tools'")
+                target_ui = ROOT / "plugins/claude-tools" / file
+                if args.check:
+                    if not target_ui.is_file() or target_ui.read_bytes() != expected_ui:
+                        stale.append(str(target_ui.relative_to(ROOT)))
+                else:
+                    target_ui.parent.mkdir(parents=True, exist_ok=True)
+                    target_ui.write_bytes(expected_ui)
     if stale:
         parser.exit(1, "Messaging skills need regeneration:\n" + "\n".join(stale) + "\n")
     print(f"Messaging skills {'checked' if args.check else 'generated'}: {', '.join(providers)}")

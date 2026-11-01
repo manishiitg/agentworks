@@ -1,7 +1,7 @@
 {
   "name": "agentworks-tools",
-  "version": "1.0.4",
-  "description": "AgentWorks messaging tools for Claude Code with no hooks: ask your agent to connect, share, message and ping",
+  "version": "1.0.5",
+  "description": "AgentWorks messaging tools with compact incoming messages and Reply for Claude Code",
   "author": {
     "name": "AgentWorks"
   },
