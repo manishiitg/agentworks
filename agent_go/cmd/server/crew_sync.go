@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
@@ -30,9 +34,11 @@ type crewSyncRequest struct {
 	Snapshot   *crewsync.Snapshot `json:"snapshot,omitempty"`
 }
 type crewSyncReply struct {
-	ProjectID string                `json:"project_id"`
-	Binding   *crewroot.SyncBinding `json:"binding"`
-	Snapshot  *crewsync.Snapshot    `json:"snapshot,omitempty"`
+	TransferID string                `json:"transfer_id,omitempty"`
+	Auto       *crewAutoSyncStatus   `json:"auto,omitempty"`
+	ProjectID  string                `json:"project_id"`
+	Binding    *crewroot.SyncBinding `json:"binding"`
+	Snapshot   *crewsync.Snapshot    `json:"snapshot,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -157,7 +163,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if err != nil {
 		return crewSyncReply{}, err
 	}
-	out := crewSyncReply{ProjectID: roots.ID, Binding: binding}
+	out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)}
 	if input.Action == "status" {
 		return out, nil
 	}
@@ -185,39 +191,92 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if input.Editing != "local" && input.Editing != "server" {
 			return out, fmt.Errorf("choose where to work")
 		}
-		if err = crewsync.Apply(ctx, roots, *input.Snapshot); err != nil {
+		if err = applyCrewSyncSnapshot(ctx, roots, binding.PairID, input.Snapshot); err != nil {
 			return out, err
 		}
 		ensureSharedCrewFolderAccess(strings.TrimPrefix(roots.Virtual, "Crew/"), roots.Owner)
-		if err = saveCrewSyncSnapshot(roots.ID, *input.Snapshot); err != nil {
+		if err = saveCrewSyncSnapshot(roots, *input.Snapshot); err != nil {
 			return out, err
 		}
 		binding.Editing = input.Editing
 		binding.LastTransfer = input.TransferID
-	case "pull":
-		if err := api.crewSyncIdle(roots); err != nil {
+	case "pull", "download":
+		pendingPath, e := crewSyncManifestPath(roots.ID)
+		if e != nil {
+			return out, e
+		}
+		pendingPath += ".return"
+		var pending crewSyncReply
+		if raw, e := os.ReadFile(pendingPath); e == nil {
+			if json.Unmarshal(raw, &pending) != nil || pending.Snapshot == nil {
+				return out, fmt.Errorf("pending sync is unavailable")
+			}
+			// Finish the acknowledged background copy before changing editing.
+
+			return pending, nil
+		} else if !os.IsNotExist(e) {
+			return out, e
+		}
+		if binding.Editing != "server" && input.Action == "download" {
+			return out, fmt.Errorf("editing is on your Mac")
+		}
+		if input.Action == "pull" {
+			if e := api.crewSyncIdle(roots); e != nil {
+				return out, e
+			}
+			binding.Editing = "local"
+			if e := crewroot.WriteSync(roots.ID, *binding); e != nil {
+				return out, e
+			}
+		}
+		if input.Action == "download" && !crewSyncNeedsCapture(roots) {
+			return out, nil
+		}
+		stamp := crewSyncStamp(roots)
+		snapshot, e := captureCrewSyncSnapshot(ctx, roots, previous)
+		if e != nil {
+			return out, e
+		}
+		if input.Action == "download" && !crewSnapshotChanged(snapshot) {
+			crewSyncRememberScan(roots, stamp)
+			return out, nil
+		}
+		crewSyncRememberScan(roots, stamp)
+		out.Snapshot = &snapshot
+		out.TransferID = uuid.NewString()
+		if e = fsutil.WriteJSONAtomic(pendingPath, out, 0600); e != nil {
+			return out, e
+		}
+		return out, nil
+	case "ack":
+		if input.TransferID == "" {
+			return out, fmt.Errorf("a sync receipt is required")
+		}
+		if binding.LastTransfer == input.TransferID {
+			return out, nil
+		}
+		p, e := crewSyncManifestPath(roots.ID)
+		if e != nil {
+			return out, e
+		}
+		p += ".return"
+		raw, e := os.ReadFile(p)
+		if e != nil {
+			return out, e
+		}
+		var pending crewSyncReply
+		if json.Unmarshal(raw, &pending) != nil || pending.TransferID != input.TransferID || pending.Snapshot == nil {
+			return out, fmt.Errorf("receipt does not match pending sync")
+		}
+		if err = saveCrewSyncSnapshot(roots, *pending.Snapshot); err != nil {
 			return out, err
 		}
-		// Freeze authored writes before capturing the return copy. Retrying a
-		// failed return keeps the same side selected; it never discards files.
-		binding.Editing = "local"
+		binding.LastTransfer = input.TransferID
+		binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 			return out, err
 		}
-		snapshot, captureErr := captureCrewSyncSnapshot(ctx, roots, previous)
-		if captureErr != nil {
-			return out, captureErr
-		}
-		out.Snapshot = &snapshot
-		// The receiver acknowledges only after its conflict checks and writes.
-		return out, nil
-	case "ack":
-		if binding.Editing != "local" || input.Snapshot == nil {
-			return out, fmt.Errorf("finish returning this Crew to your Mac first")
-		}
-		if err = saveCrewSyncSnapshot(roots.ID, *input.Snapshot); err != nil {
-			return out, err
-		}
+		_ = os.Remove(p)
 	default:
 		return out, fmt.Errorf("unknown sync action")
 	}
@@ -255,9 +314,31 @@ func captureCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, previous
 		return snapshot, err
 	}
 	snapshot.Git, err = crewsync.CaptureGit(ctx, roots.Files, prior)
+	if err != nil {
+		return snapshot, err
+	}
+	binding, err := crewroot.ReadSync(roots.ID)
+	if err != nil {
+		return snapshot, err
+	}
+	if binding == nil {
+		return snapshot, fmt.Errorf("pair this Crew before syncing")
+	}
+	err = (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).EncodeSync(ctx, binding.PairID, &snapshot)
 	return snapshot, err
 }
-func saveCrewSyncSnapshot(id string, snapshot crewsync.Snapshot) error {
+func saveCrewSyncSnapshot(roots crewroot.Roots, snapshot crewsync.Snapshot) error {
+	id := roots.ID
+	binding, err := crewroot.ReadSync(id)
+	if err != nil {
+		return err
+	}
+	if binding == nil {
+		return fmt.Errorf("Crew is not paired")
+	}
+	if err = (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).AckSync(context.Background(), binding.PairID, snapshot.Content); err != nil {
+		return err
+	}
 	if err := saveCrewSyncManifest(id, snapshot.Files); err != nil {
 		return err
 	}
@@ -298,4 +379,22 @@ func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
 		}
 	}
 	return nil
+}
+
+func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair string, snapshot *crewsync.Snapshot) error {
+	if err := (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).DecodeSync(ctx, pair, snapshot); err != nil {
+		return err
+	}
+	return crewsync.Apply(ctx, roots, *snapshot)
+}
+func crewSnapshotChanged(snapshot crewsync.Snapshot) bool {
+	if len(snapshot.Changes) > 0 {
+		return true
+	}
+	g := snapshot.Git
+	if g == nil {
+		return false
+	}
+	hash := sha256.Sum256(g.IndexPatch)
+	return g.Head != g.Before || g.Branch != g.BeforeBranch || hex.EncodeToString(hash[:]) != g.BeforeIndexHash
 }
