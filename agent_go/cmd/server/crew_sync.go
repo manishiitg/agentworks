@@ -156,6 +156,15 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if err != nil {
 		return crewSyncReply{}, err
 	}
+	// Main-chat initialization may write the project manifest through workspace
+	// HTTP. Complete it before taking the file lock used by that endpoint.
+	var main ProductConversationRecord
+	if input.Action == "pull" || (input.Action == "push" && input.Editing == "server") {
+		main, err = api.crewHandoffMain(ctx, claims, roots.ID)
+		if err != nil {
+			return crewSyncReply{}, err
+		}
+	}
 	unlock, err := wf.LockWorkspace(ctx, roots.Files)
 	if err != nil {
 		return crewSyncReply{}, err
@@ -206,7 +215,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, err
 		}
 		if input.Editing == "server" {
-			if err = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, input.TransferID, input.Conversation); err != nil {
+			if err = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, input.TransferID, input.Conversation, main); err != nil {
 				return out, err
 			}
 		}
@@ -236,7 +245,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			if e := api.crewSyncIdle(roots); e != nil {
 				return out, e
 			}
-			out.Conversation, e = api.captureCrewHandoffConversation(ctx, claims, roots)
+			out.Conversation, e = api.captureCrewHandoffConversation(ctx, claims, roots, main)
 			if e != nil {
 				return out, e
 			}

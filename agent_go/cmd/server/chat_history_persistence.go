@@ -606,6 +606,13 @@ func updatePersistedChatHistoryIndex(userID, sessionID, agentMode string, histor
 // updatePersistedChatHistoryIndexWithCount indexes a conversation from a
 // (possibly recent-only) slice of its history and its true message count.
 func updatePersistedChatHistoryIndexWithCount(userID, sessionID, agentMode string, history []llmtypes.MessageContent, messageCount int, runtime *ChatHistoryAgentRuntime, conversationPath string, sourceSize int64, now time.Time, botMeta *ChatHistoryBotMetadata) error {
+	return updatePersistedChatHistoryIndexWithWriter(userID, sessionID, agentMode, history, messageCount, runtime, conversationPath, sourceSize, now, botMeta, func(path, content string) error {
+		return writeRawFileToWorkspace(context.Background(), path, content)
+	})
+}
+
+// Handoffs already hold the destination folder lock and supply a local writer.
+func updatePersistedChatHistoryIndexWithWriter(userID, sessionID, agentMode string, history []llmtypes.MessageContent, messageCount int, runtime *ChatHistoryAgentRuntime, conversationPath string, sourceSize int64, now time.Time, botMeta *ChatHistoryBotMetadata, write func(string, string) error) error {
 	conversationPath = chatHistoryStoragePath(conversationPath)
 	indexPath := chatHistoryIndexWorkspacePath(userID, conversationPath)
 	if indexPath == "" {
@@ -682,7 +689,7 @@ func updatePersistedChatHistoryIndexWithCount(userID, sessionID, agentMode strin
 	if err != nil {
 		return fmt.Errorf("encode %s: %w", indexPath, err)
 	}
-	return writeRawFileToWorkspace(context.Background(), indexPath, string(data))
+	return write(indexPath, string(data))
 }
 
 func chatHistoryIndexTitleForSession(index chatHistoryIndex, sessionID string) string {

@@ -35,7 +35,10 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
     setBusy(true); setError('')
     try {
       const data = await desktopRequest<Status>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
-      if (current()) setStatus(data)
+      if (current()) {
+        setStatus(data)
+        if (action === 'local') window.dispatchEvent(new CustomEvent('agentworks:local-chat-opened', { detail: { projectId } }))
+      }
       void useConnectedWorkStore.getState().refresh()
     } catch (cause) {
       if (current()) {
@@ -64,7 +67,7 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
       <p className="font-medium">Editing on {binding.editing === 'local' ? 'your Mac' : 'the server'}</p>
       {binding.updated_at && <p className="text-muted-foreground">Last synced {new Date(binding.updated_at).toLocaleString()}</p>}
       <p role="status">{status.auto?.state === 'syncing' ? 'Syncing…' : status.auto?.state === 'synced' ? 'Up to date' : status.auto?.message || 'Files sync automatically while AgentWorks is open on your Mac.'}</p>
-      <p className="text-muted-foreground">Saved file changes sync automatically from the editing computer. Switching waits for the latest changes. Switching to the server uses its separate conversation and agent.</p>
+      <p className="text-muted-foreground">Saved files sync automatically from the editing computer. Switching carries your main chat's history with the latest files and starts a fresh agent session on the destination. Other chats stay on their computer.</p>
     </div>}
     {local ? <>
       {!binding && <label className="block space-y-2"><span>Server</span><select aria-label="Sync server" value={connection} onChange={event => setConnection(event.target.value)} className="w-full rounded-md border border-border bg-background p-2">
@@ -81,7 +84,7 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
         {!binding?.pending_action && binding?.editing === 'server' && <Button disabled={busy} onClick={() => void run('local')}>{busy ? 'Bringing changes back…' : 'Work on this Mac'}</Button>}
       </div>
       {binding?.peer_server && <a className="inline-block underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">Open server Crew</a>}
-      <p className="text-xs text-muted-foreground">Starts Only me. Logins, private chats and platform records stay on their own computer. Current Git branch, history and staged changes travel with the files. Other branches and Git logins stay put. Edits outside AgentWorks are checked before replacement.</p>
+      <p className="text-xs text-muted-foreground">Starts Only me. Your main chat moves only when you switch computers; it uses the destination's model and account. Set up that account before moving. Logins and other private chats are not copied by file sync. Current Git branch, history and staged changes travel with the files. Other branches and Git logins stay put.</p>
     </> : <p className="text-muted-foreground">{binding ? 'Keep AgentWorks open on your Mac for automatic file sync. Use the Mac app to move editing between computers.' : 'Open a local project in the Mac app and choose this server to set up sync.'}</p>}
   </section>
 }
