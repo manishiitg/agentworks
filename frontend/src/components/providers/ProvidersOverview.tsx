@@ -10,7 +10,7 @@ type OverviewCell = { state: 'ready' | 'sign_in' | 'off' | 'absent'; use?: strin
 type OverviewPlace = { id: string; name: string; signed_in_as?: string; reachable: boolean }
 type Overview = { places: OverviewPlace[]; cells: Record<string, Record<string, OverviewCell>> }
 
-const ACTION_TEXT: Record<string, string> = { sign_in: 'Sign in', sign_in_there: 'Sign in there', add_mine: 'Add mine' }
+const ACTION_TEXT: Record<string, string> = { sign_in: 'Sign in', sign_in_there: 'Sign in there', add_mine: 'Add mine', add_key: 'Add a key' }
 
 function useOverview(providers: ProviderManifestEntry[]) {
   const [overview, setOverview] = useState<Overview | null>(null)

@@ -151,6 +151,20 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const canReview = useCanReviewCode()
   // On the Mac app: the servers it is connected to, managed here next to the AI accounts they lend.
   const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
+  // On the Mac app: the overview of where each program runs, then the programs, then the connected servers.
+  const macNavItem = (id: 'overview' | 'servers') => {
+    const Icon = id === 'overview' ? Cpu : Server
+    return (
+      <button type="button" key={id} onClick={() => setView(id)} aria-pressed={view === id}
+        className={`min-w-[10rem] rounded-lg border px-2.5 py-2 text-left transition-colors md:min-w-0 ${view === id ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800' : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'}`}>
+        <div className="flex min-h-6 items-center gap-2">
+          <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{id === 'overview' ? 'Overview' : 'Servers'}</span>
+          {id === 'servers' && servers.length > 0 && <span className="text-xs text-gray-400">{servers.length}</span>}
+        </div>
+      </button>
+    )
+  }
   const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
   useEffect(() => { if (!canReview) setView(current => current === 'costs' || current === 'chats' ? 'provider' : current) }, [canReview])
   const canRunGuidedSetup = !isMultiUserMode || isAdmin
@@ -314,20 +328,8 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   <Loader2 className="h-4 w-4 animate-spin" /> Checking the server…
                 </div>
               ) : (
-                onThisMac ? (
-                  <div className="flex gap-1.5 overflow-x-auto md:flex-col md:overflow-x-visible">
-                    {([{ id: 'overview', label: 'Overview', icon: Cpu }, { id: 'servers', label: 'Servers', icon: Server }] as const).map(item => (
-                      <button type="button" key={item.id} onClick={() => setView(item.id)} aria-pressed={view === item.id || (item.id === 'overview' && view === 'provider')}
-                        className={`min-w-[10rem] rounded-lg border px-2.5 py-2 text-left transition-colors md:min-w-0 ${view === item.id || (item.id === 'overview' && view === 'provider') ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800' : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'}`}>
-                        <div className="flex min-h-6 items-center gap-2">
-                          <item.icon aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{item.label}</span>
-                          {item.id === 'servers' && servers.length > 0 && <span className="text-xs text-gray-400">{servers.length}</span>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) :
+                <>
+                {onThisMac && macNavItem('overview')}
                 <div data-tour="providers-list" className="flex gap-1.5 overflow-x-auto md:flex-col md:overflow-x-visible">
                   {orderedProviders.map(provider => (
                     <button
@@ -351,6 +353,8 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                     </button>
                   ))}
                 </div>
+                {onThisMac && macNavItem('servers')}
+                </>
               )}
               {canReview && <>
                 <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Review</div>
@@ -403,7 +407,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                       </div>
                     </section>
                   )}
-                  {onThisMac && <button type="button" onClick={() => setView('overview')} className="mb-3 text-xs font-medium text-violet-600 hover:underline dark:text-violet-400">← Overview</button>}
                   <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
