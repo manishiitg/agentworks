@@ -5,6 +5,7 @@ import type { ProviderManifestEntry } from '../../services/llm-config-api'
 import { codingProviderName } from '../../utils/codingProviderName'
 import { takePendingServerAddress } from '../workspace/ConnectedServersMenuItem'
 import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 
 /** One box of the overview, as the Mac's backend decides it (desktop_overview.go). */
 type OverviewCell = { state: 'ready' | 'sign_in' | 'off' | 'absent'; use?: string; detail?: string; action?: string }
@@ -43,7 +44,11 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
   const [confirming, setConfirming] = useState<string | null>(null)
   const disconnect = async (id: string) => {
     setConfirming(null); setActionError('')
-    try { await desktopRequest(`/${encodeURIComponent(id)}`, 'DELETE'); serversChanged() }
+    try {
+      await desktopRequest(`/${encodeURIComponent(id)}`, 'DELETE')
+      if (getRawActiveWorkspaceId() === id) void window.electronAPI?.openDesktopConnection?.('local', '/home')
+      serversChanged()
+    }
     catch (disconnectError) { setActionError(disconnectError instanceof Error ? disconnectError.message : 'Could not disconnect.') }
   }
   return (

@@ -384,6 +384,15 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 				return
 			}
 		case "sign_out":
+			// A sign-in still waiting for approval is ended first, so approving its link later signs nothing in.
+			companyProxy.Lock()
+			if signIn := companyProxy.signIns[provider]; signIn != nil {
+				if signIn.cmd.Process != nil && signIn.cmd.ProcessState == nil {
+					_ = signIn.cmd.Process.Kill()
+				}
+				delete(companyProxy.signIns, provider)
+			}
+			companyProxy.Unlock()
 			_ = os.Remove(lendFile(provider))
 			if dir, err := modelProxyDir(); err == nil {
 				for _, file := range modelProxyLoginFiles(dir, provider) {

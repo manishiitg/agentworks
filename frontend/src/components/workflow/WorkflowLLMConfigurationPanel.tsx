@@ -637,6 +637,7 @@ export default function WorkflowLLMConfigurationPanel({
     } finally { setRowUsing(null) }
   }
 
+  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
   const renderAccountTree = (row: ProviderRow) => {
     const serverID = `global:${row.entry.id}`
     const global = accountRecords.find(record => record.id === serverID)
@@ -646,8 +647,10 @@ export default function WorkflowLLMConfigurationPanel({
     const activeID = selectedConnectionID || serverID
     // Only configured accounts usable here are listed; the one this item already uses
     // stays visible when it is not, so saving never silently switches it.
+    // On the Mac the "server" account is this Mac's own login: offered only when the Mac is signed in.
+    const macSignedIn = !onThisMac || row.entry.auth_configured !== false
     const listed = [server, ...userAccounts].filter(account => (accountUsable(account) && accountConfigured(account)
-      && (account.scope === 'global' ? Boolean(row.entry.usable) : global?.personal_accounts_allowed !== false))
+      && (account.scope === 'global' ? Boolean(row.entry.usable) && macSignedIn : global?.personal_accounts_allowed !== false))
       || (selectedProvider && account.id === activeID))
     const missingSelected = selectedProvider && !listed.some(account => account.id === activeID)
     const renderAccount = (account: typeof server | import('../../services/llm-config-api').ProviderConnection, unavailable: boolean) => {
@@ -659,11 +662,11 @@ export default function WorkflowLLMConfigurationPanel({
       const company = 'via_connection' in account && Boolean(account.via_connection)
       const note = company ? "Company account · the server's limits apply"
         : relation === 'own' ? `${keyService ? `Your ${keyService.label} key · ` : ''}${'sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private'}`
-        : relation === 'server' ? `Managed by admin${'identity' in account && account.identity ? ` · ${account.identity}` : ''}`
+        : relation === 'server' ? `${onThisMac ? 'Your login on this Mac' : 'Managed by admin'}${'identity' in account && account.identity ? ` · ${account.identity}` : ''}`
           : `Shared${'owner_name' in account && account.owner_name ? ` by ${account.owner_name}` : ''}`
       return <div key={account.id} className="flex flex-wrap items-center gap-2 py-2">
         {account.scope === 'global' ? <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" /> : <UserRound className="h-3.5 w-3.5 text-muted-foreground" />}
-        <span className="min-w-0 break-words text-xs font-medium text-foreground">{relation === 'server' ? ADMIN_MANAGED_ACCOUNT_LABEL : account.display_name}</span>
+        <span className="min-w-0 break-words text-xs font-medium text-foreground">{relation === 'server' ? (onThisMac ? 'This Mac' : ADMIN_MANAGED_ACCOUNT_LABEL) : account.display_name}</span>
         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{note}</span>
         {unavailable && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{NO_LONGER_AVAILABLE}</span>}
         {inUse && <span className="text-[10px] font-medium text-primary">In use</span>}
@@ -804,11 +807,8 @@ export default function WorkflowLLMConfigurationPanel({
             </span>
           )}
           <span className="min-w-0 flex-1" />
-          {connected ? (
-            <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400" title={selectedPrivateAccount && selected ? "Private account configured; authentication is checked when it runs" : "Provider account configured"}>
-              <CheckCircle2 className="h-3 w-3" /> {selected && selectedPrivateAccount ? 'Account configured' : 'Connected'}
-            </span>
-          ) : (
+          {/* Only connected programs are listed, so a connected one needs no label (owner). */}
+          {!connected && (
             <span
               className={`inline-flex shrink-0 items-center gap-1 text-[11px] font-medium ${tone.text}`}
               title={statusTitle(status.label)}

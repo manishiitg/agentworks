@@ -4,6 +4,7 @@ import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
 import ConversationsOverview from './ConversationsOverview'
 import { ServersOverview } from './ProvidersOverview'
+import { takeServersPageRequest } from '../workspace/ConnectedServersMenuItem'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -108,7 +109,8 @@ function StatusBadge({ provider }: { provider: ProviderManifestEntry }) {
  *  (alone when this Mac is not signed in, beside the ✓ when it is). */
 function ProviderListStatus({ provider, viaServer = false }: { provider: ProviderManifestEntry; viaServer?: boolean }) {
   const status = providerStatus(provider)
-  if (viaServer) {
+  // A program not installed on this Mac cannot run here even with a server's account: keep its warning.
+  if (viaServer && provider.runtime_available !== false) {
     const local = status === 'ready'
     return (
       <span className="inline-flex shrink-0 items-center gap-0.5 text-emerald-500 dark:text-emerald-400"
@@ -138,10 +140,6 @@ function ProviderListStatus({ provider, viaServer = false }: { provider: Provide
   )
 }
 
-// Set when the Servers page is asked for before this page is open (openConnectedServers).
-let serversPageRequested = false
-if (typeof window !== 'undefined') window.addEventListener('show-servers-page', () => { serversPageRequested = true })
-
 export default function CodingProvidersPanel({ isOpen, onClose, embedded = false, allowedProviderIds, product, welcomeSetup = false, initialProviderId }: CodingProvidersPanelProps) {
   const welcomeBack = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -153,10 +151,9 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
-  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'chats'>(() => serversPageRequested ? 'servers' : 'provider')
+  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'chats'>(() => takeServersPageRequest() ? 'servers' : 'provider')
   useEffect(() => {
-    serversPageRequested = false
-    const show = () => setView('servers')
+    const show = () => { takeServersPageRequest(); setView('servers') }
     window.addEventListener('show-servers-page', show)
     return () => window.removeEventListener('show-servers-page', show)
   }, [])
@@ -198,7 +195,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
     load()
     window.addEventListener('provider-connections-changed', load)
     return () => window.removeEventListener('provider-connections-changed', load)
-  }, [onThisMac])
+  }, [onThisMac, isOpen])
   useEffect(() => { if (!canReview) setView(current => current === 'costs' || current === 'chats' ? 'provider' : current) }, [canReview])
   const canRunGuidedSetup = !isMultiUserMode || isAdmin
 

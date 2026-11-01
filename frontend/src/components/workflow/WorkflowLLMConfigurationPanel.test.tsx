@@ -201,7 +201,7 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
       await act(async () => Promise.resolve())
 
       expect(host.textContent).toContain('Claude Code')
-      expect(host.textContent).toContain('Connected')
+      expect(host.textContent).not.toContain('Connected')
       expect(host.textContent).not.toContain('OpenAI Codex CLI')
       expect(host.textContent).not.toContain('Needs setup')
       expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Test')).toBe(false)

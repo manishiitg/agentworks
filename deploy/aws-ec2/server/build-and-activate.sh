@@ -183,6 +183,8 @@ esac
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS_DIR'" < "$REPO_ROOT/deploy/common/install-gog.sh"
 # Pinned rsync for native session sync (PLAT-856-442); lands in <tools>/bin, which the services' PATH already lists.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS_DIR'" < "$REPO_ROOT/deploy/common/install-rsync.sh"
+# The model proxy for company logins used from the Mac app (PLAT-856-441), as on rootless servers.
+"${SSH[@]}" "bash -s -- '$REMOTE_TOOLS_DIR'" < "$REPO_ROOT/deploy/common/install-cli-proxy-api.sh"
 export PATH="$REMOTE_TOOLS_DIR/bin:$PATH"
 # Teaching needs CDP URL discovery and stable target IDs (agent-browser 0.38.2).
 # Upgrade only this service account's tool prefix; leave system tools intact.

@@ -261,6 +261,15 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		desktopJSONError(w, 400, err.Error())
 		return
 	}
+	// A model whose own token limit the person has used up is refused like on the server (a chat there is moved to
+	// another allowed model; here the program picked the model, so it is told to pick another).
+	if model != "" {
+		allowed, _, _ := accountAllowedModels(withModelLimitPerson(r.Context(), caller), provider, account)
+		if _, capped, limitErr := applyModelTokenLimit(withModelLimitPerson(r.Context(), caller), provider, account, model, allowed); limitErr == nil && capped {
+			desktopJSONError(w, 429, "You have used your token limit for "+model+" on this account. Pick another model.")
+			return
+		}
+	}
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, base+"/"+path, bytes.NewReader(body))
 	if err != nil {
 		desktopJSONError(w, 500, "Cannot reach the model proxy.")
@@ -470,7 +479,15 @@ func companyAccountOffered(ctx context.Context, c desktopConnection, provider st
 		Data []json.RawMessage `json:"data"`
 	}
 	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&answer)
-	return resp.StatusCode == http.StatusOK && len(answer.Data) > 0, true
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		// An older server answers with its web page (no model list): it does not offer it.
+		return len(answer.Data) > 0, true
+	case resp.StatusCode == http.StatusNotFound:
+		return false, true
+	}
+	// A refusal for now (a limit reached, the proxy down, a sign-in expired) leaves the account as it is.
+	return false, false
 }
 
 // companySync remembers when each person's company accounts were last matched with their servers.
@@ -478,6 +495,8 @@ var companySync = struct {
 	sync.Mutex
 	at map[string]time.Time
 }{at: map[string]time.Time{}}
+
+var companySyncLocks sync.Map
 
 // forgetCompanySync makes the next account list ask the servers again (a server was connected or removed).
 func forgetCompanySync(owner string) {
@@ -493,6 +512,10 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 	if desktopBootstrapHost == "" {
 		return
 	}
+	// One sync at a time per person: a second account list waits for the first rather than returning old accounts.
+	lock, _ := companySyncLocks.LoadOrStore(owner, &sync.Mutex{})
+	lock.(*sync.Mutex).Lock()
+	defer lock.(*sync.Mutex).Unlock()
 	companySync.Lock()
 	if time.Since(companySync.at[owner]) < 2*time.Minute {
 		companySync.Unlock()
@@ -538,6 +561,8 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 	}
 	for _, c := range connections {
 		want[c.ID], names[c.ID] = map[string]bool{}, friendlyServerName(c.Name, c.Server)
+	}
+	for _, c := range connections {
 		for provider := range companyProxyModels {
 			wg.Add(1)
 			go func(c desktopConnection, provider string) {
