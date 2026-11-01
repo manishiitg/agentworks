@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -108,9 +109,43 @@ func remoteMatch(own []providerAccountView, account desktopAccountToCopy) *provi
 	return nil
 }
 
+// remoteAccountLogin asks the connected server who its account is signed in as (its own free status check).
+func remoteAccountLogin(r *http.Request, c desktopConnection, id string) (providerAccountStatus, error) {
+	var status providerAccountStatus
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, c.Server+"/api/provider-connections/"+url.PathEscape(id)+"/status", nil)
+	if err != nil {
+		return status, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := desktopHTTPClient().Do(req)
+	if err != nil {
+		return status, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return status, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	err = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&status)
+	return status, err
+}
+
+// desktopServerAccount is where one of your accounts on this Mac stands on a server, and the login on each side.
+type desktopServerAccount struct {
+	// State is ready, sign_in, different_login or missing.
+	State       string `json:"state"`
+	MacLogin    string `json:"mac_login,omitempty"`
+	ServerLogin string `json:"server_login,omitempty"`
+}
+
+// sameLogin compares two logins as the CLIs report them (an email, usually); unknown on either side is not a mismatch.
+func sameLogin(mac, server string) bool {
+	return mac == "" || server == "" || strings.EqualFold(strings.TrimSpace(mac), strings.TrimSpace(server))
+}
+
 // GET /api/desktop-connections/{connection}/provider-accounts?provider=<program>
-// -> {"accounts": {"<local account>": "ready" | "sign_in" | "missing"}, "signed_in_as": "..."}: where each of your
-// accounts on this Mac stands on that server, for the "On your servers" row.
+// -> {"accounts": {"<local account>": {"state", "mac_login", "server_login"}}, "signed_in_as": "..."}: where each of
+// your accounts on this Mac stands on that server, for the "Use it on your servers too" row. A browser login is
+// signed in separately on each side, so both sides' logins are read and compared.
 func (api *StreamingAPI) handleDesktopProviderAccountStatus(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
 		return
@@ -143,20 +178,39 @@ func (api *StreamingAPI) handleDesktopProviderAccountStatus(w http.ResponseWrite
 			ids = append(ids, record.ID)
 		}
 	}
-	accounts := map[string]string{}
+	accounts := map[string]desktopServerAccount{}
 	for _, id := range ids {
 		account, err := localAccountForServer(records, stored, owner, id, currentUserIsAdmin(r))
 		if err != nil {
 			continue
 		}
-		switch match := remoteMatch(own, account); {
+		match := remoteMatch(own, account)
+		switch {
 		case match == nil:
-			accounts[id] = "missing"
+			accounts[id] = desktopServerAccount{State: "missing"}
+			continue
 		case match.Configured != nil && !*match.Configured:
-			accounts[id] = "sign_in"
-		default:
-			accounts[id] = "ready"
+			accounts[id] = desktopServerAccount{State: "sign_in"}
+			continue
+		case account.AuthMethod != "cli_login":
+			// A copied key is the same key on both sides.
+			accounts[id] = desktopServerAccount{State: "ready"}
+			continue
 		}
+		result := desktopServerAccount{State: "ready"}
+		if remote, err := remoteAccountLogin(r, c, match.ID); err == nil {
+			if remote.State == "signed_out" {
+				result.State = "sign_in"
+			}
+			result.ServerLogin = remote.Identity
+		}
+		if target, err := api.resolveProviderAccountTarget(r.Context(), id, provider); err == nil {
+			result.MacLogin = checkProviderAccountStatus(r.Context(), target, false).Identity
+		}
+		if result.State == "ready" && !sameLogin(result.MacLogin, result.ServerLogin) {
+			result.State = "different_login"
+		}
+		accounts[id] = result
 	}
 	desktopJSON(w, map[string]any{"accounts": accounts, "signed_in_as": c.User.Email})
 }
@@ -205,8 +259,11 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 		req.Header.Set("Content-Type", "application/json")
 		return desktopHTTPClient().Do(req)
 	}
-	// The server's AI accounts page, where a browser-login account is signed in.
-	signIn := c.Server + "/settings/ai-accounts"
+	// The server's AI accounts page, where a browser-login account is signed in; with the account named, the page
+	// starts its sign-in at once.
+	signIn := func(id string) string {
+		return c.Server + "/settings/ai-accounts?" + url.Values{"provider": {account.Provider}, "sign_in": {id}}.Encode()
+	}
 	// An account already added under the same name is not added again.
 	own, status, err := remoteOwnAccounts(r, c)
 	if err != nil {
@@ -220,7 +277,7 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 	if view := remoteMatch(own, account); view != nil {
 		// Added before but not signed in there yet: the person still has to sign in, so say that, not "exists".
 		if view.Configured != nil && !*view.Configured {
-			desktopJSON(w, map[string]string{"status": "sign_in", "account_id": view.ID, "server_url": signIn})
+			desktopJSON(w, map[string]string{"status": "sign_in", "account_id": view.ID, "server_url": signIn(view.ID)})
 			return
 		}
 		// "exists" says only that it was added before and the server counts it as set up.
@@ -228,7 +285,7 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 			desktopJSONError(w, 409, "You already have an account named \""+account.Name+"\" on this server that signs in another way. Rename one of them, then try again.")
 			return
 		}
-		desktopJSON(w, map[string]string{"status": "exists", "account_id": view.ID, "server_url": signIn})
+		desktopJSON(w, map[string]string{"status": "exists", "account_id": view.ID, "server_url": signIn(view.ID)})
 		return
 	}
 	request := map[string]any{"provider": account.Provider, "display_name": account.Name, "auth_method": account.AuthMethod,
@@ -266,7 +323,7 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 		result = "sign_in"
 	}
 	log.Printf("[DESKTOP_ACCOUNT] %s added %s account %s to connection %s as %s (%s)", owner, account.Provider, input.AccountID, c.ID, created.ID, result)
-	desktopJSON(w, map[string]string{"status": result, "account_id": created.ID, "server_url": signIn})
+	desktopJSON(w, map[string]string{"status": result, "account_id": created.ID, "server_url": signIn(created.ID)})
 }
 
 func desktopJSONError(w http.ResponseWriter, status int, message string) {

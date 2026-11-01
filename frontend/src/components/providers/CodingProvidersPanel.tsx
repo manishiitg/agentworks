@@ -138,7 +138,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   }, [isOpen, welcomeSetup])
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
   const [view, setView] = useState<'provider' | 'costs' | 'chats'>('provider')
   // "Use your own model key" opens Pi's add flow (PLAT-717).
   const [keyRequest, setKeyRequest] = useState(0)
