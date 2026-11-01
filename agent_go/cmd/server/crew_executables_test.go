@@ -51,6 +51,10 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	if workflowOwner(binding.Root) != "owner" || manifest.CreatedBy != "owner" || manifest.Team != nil || workflowExecutionOwnerUserID(manifest) != "owner" {
 		t.Fatal("manifest overrode execution owner")
 	}
+	listed := filterWorkflowManifestsForUser(&UserClaims{UserID: "owner", Username: "owner"}, []DiscoveredWorkflow{{WorkspacePath: binding.Root, Manifest: manifest}})
+	if len(listed) != 1 || listed[0].CrewID != binding.CrewID {
+		t.Fatal("discovery lost the trusted Crew parent")
+	}
 	// Review regressions exercise the actual context and scoped access edges.
 	sctx := buildScheduleContext(binding.Root, manifest, WorkflowSchedule{RunAs: "builder"})
 	if sctx.OwnerUserID != "owner" {

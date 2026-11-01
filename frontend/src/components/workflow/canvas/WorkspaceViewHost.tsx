@@ -234,13 +234,15 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     hideToolbar = false,
     embeddedPlanOnly = false,
     openHumanActionsOnMount = false,
+    scope,
   } = props
 
   const panelChatTabId = useChatStore(state => {
     const tab = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
     return tab?.metadata?.presetQueryId === presetQueryId && tab?.metadata?.phaseId === 'workflow-builder' && !tab.metadata.isViewOnly && tab.metadata.agentProfileTabCanWrite !== false ? tab.tabId : undefined
   })
-  const selectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
+  const globalSelectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
+  const selectedRunFolder = scope ? scope.selectedRunFolder : globalSelectedRunFolder
   const pythonRelay = useWorkflowManifestStore(state => relayMode && state.workflows.some(item => item.workspace_path === workspacePath && item.manifest.relay_runtime === 'python'))
   const relayID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
   const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
@@ -249,14 +251,15 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   // The registry decides what renders: no explicit view means the last canvas
   // view (Plan or Report). An embedded plan-only canvas (Video Studio) is
   // always the flow body regardless of the shared store.
-  const effectiveView: WorkspaceViewId = workflowWorkspaceView ?? lastCanvasView
+  const effectiveView: WorkspaceViewId = scope?.view ?? workflowWorkspaceView ?? lastCanvasView
   const canWrite = useCanWriteWorkflow(workspacePath)
   const kind: WorkspaceViewKind = embeddedPlanOnly ? 'canvas' : getWorkspaceView(effectiveView).kind
 
   // --- Toolbar data, loaded once for every view ---------------------------
   const planData = usePlanData(pythonRelay ? null : workspacePath)
-  const { status } = useWorkflowExecution()
-  const workspace = useWorkspaceState(workspacePath, selectedRunFolder)
+  const { status: chatStatus } = useWorkflowExecution()
+  const workspace = useWorkspaceState(workspacePath, selectedRunFolder, !scope)
+  const status = scope ? (workspace.state?.active_executions?.length ? 'running' : 'idle') : chatStatus
   const plan = planData.plan
   const workspaceState = workspace.state
   const isLoadingWorkspaceState = workspace.loading
@@ -347,7 +350,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   const setLoadingFileContent = useWorkspaceStore(state => state.setLoadingFileContent)
   const setBinaryFileData = useWorkspaceStore(state => state.setBinaryFileData)
   useEffect(() => {
-    if (!workspaceViewTarget) return
+    if (scope || !workspaceViewTarget) return
     const { view, target } = workspaceViewTarget
     if (view === 'flow') {
       // The canvas mounts and lays out its nodes after this effect; give it a
@@ -402,7 +405,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
         }
       })()
     }
-  }, [workspacePath, workspaceViewTarget, setBinaryFileData, setFileContent, setLoadingFileContent, setSelectedFile, setShowFileContent])
+  }, [scope, workspacePath, workspaceViewTarget, setBinaryFileData, setFileContent, setLoadingFileContent, setSelectedFile, setShowFileContent])
   const loadPlanRefresh = planData.refresh
   const refreshWorkspaceState = workspace.refresh
   const sharedRefresh = useCallback(async () => {
@@ -426,6 +429,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   }), [kind, sharedRefresh, plan])
 
   const data = useMemo<WorkspaceViewData>(() => ({
+    scope,
     planData,
     status,
     workspace,
@@ -440,7 +444,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     flowError,
     registerExportHandler,
   }), [
-    planData, status, workspace, selectedRunFolder, runFolderNames,
+    scope, planData, status, workspace, selectedRunFolder, runFolderNames,
     variablesManifest, isLoadingVariables, isRefreshingPlan, flowShell, flowError, registerExportHandler,
   ])
 
@@ -451,7 +455,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   let body: React.ReactNode
   if (kind === 'canvas' && pythonRelay) {
     body = toolbarOnly ? null : <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Flow…</div>}>
-      <RelayPythonView workspacePath={workspacePath} relayID={relayID} onBuild={onCreatePlan || noop} />
+      <RelayPythonView workspacePath={workspacePath} relayID={relayID} onBuild={onCreatePlan || noop} scope={scope} />
     </Suspense>
   } else if (kind === 'canvas') {
     // The flow canvas handles `toolbarOnly` itself: its loading and error

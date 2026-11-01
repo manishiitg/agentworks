@@ -3,10 +3,9 @@ import { Code2, Plus, Route } from 'lucide-react'
 import { isAxiosError } from 'axios'
 import api from '../../services/api'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
-import { buildWorkflowPresetsFromManifests } from '../../stores/useGlobalPresetStore'
-import { selectWorkflowPreset } from '../../utils/workflowNavigation'
+import { CrewExecutableEditor, type CrewExecutable } from './CrewExecutableEditor'
 
-type Executable = { id: string; kind: 'workflow' | 'relay'; workspace_path: string; manifest: { label: string } }
+type Executable = CrewExecutable
 
 function failureMessage(error: unknown, fallback: string) {
   if (isAxiosError(error) && typeof error.response?.data === 'string') return error.response.data
@@ -14,7 +13,9 @@ function failureMessage(error: unknown, fallback: string) {
 }
 
 /** Crew owns the definitions; their existing editors and runners remain authoritative. */
-export function CrewExecutablesPanel({ projectId }: { projectId: string }) {
+export function CrewExecutablesPanel({ projectId, chatTabId }: { projectId: string; chatTabId: string }) {
+  const [selected, setSelected] = useState<Executable | null>(null)
+  const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
   const [items, setItems] = useState<Executable[]>([])
   const [name, setName] = useState('')
   const [kind, setKind] = useState<'workflow' | 'relay'>('workflow')
@@ -23,8 +24,9 @@ export function CrewExecutablesPanel({ projectId }: { projectId: string }) {
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
   const refresh = useCallback(async (signal?: AbortSignal) => {
-    const { data } = await api.get<{ executables: Executable[] }>('/api/crew-executables', { params: { crew_id: projectId }, signal })
+    const { data } = await api.get<{ executables: Executable[]; agents: Array<{ id: string; name: string }> }>('/api/crew-executables', { params: { crew_id: projectId }, signal })
     setItems(data.executables)
+    setAgents(data.agents)
     setLoaded(true)
   }, [projectId])
   useEffect(() => {
@@ -46,11 +48,11 @@ export function CrewExecutablesPanel({ projectId }: { projectId: string }) {
     setBusy(true); setError('')
     try {
       await useWorkflowManifestStore.getState().refreshWorkflows()
-      const preset = buildWorkflowPresetsFromManifests().find(preset => preset.id === item.id)
-      if (!preset || !selectWorkflowPreset(preset)) throw new Error('Could not open this workflow. Try again.')
+      setSelected(item)
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not open.') }
     finally { setBusy(false) }
   }
+  if (selected) return <CrewExecutableEditor key={selected.id} item={selected} crewAgents={agents} chatTabId={chatTabId} onBack={() => setSelected(null)} />
   return <div className="mx-auto w-full max-w-3xl space-y-6 p-6">
     <div className="flex items-center justify-between gap-4">
       <p className="text-sm text-muted-foreground">Repeat a sequence of steps, or call a saved program.</p>
