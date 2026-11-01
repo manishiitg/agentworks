@@ -38,8 +38,19 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
     const manage = [...host.querySelectorAll('button')].find(button => button.textContent === 'Connect another browser')!
     expect(manage).toBeTruthy()
     await act(async () => manage.click())
-    expect(document.querySelector('[role="dialog"]')).toBeTruthy()
+    // PLAT-746-275: setup belongs to this pane, never a separate portal/dialog.
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    const setup = host.querySelector('[aria-label="Connect browser"]')!
+    expect(setup).toBeTruthy()
+    expect(setup.querySelector('a[download]')).toBeTruthy()
+    expect(host.querySelector('[aria-label="Saved browsers"]')?.textContent).toContain('My Edge')
     expect(clipboard).not.toHaveBeenCalled()
+    await act(async () => { [...setup.querySelectorAll('button')].find(button => button.textContent?.includes('Next'))!.click() })
+    mocks.post.mockResolvedValueOnce({ data: { token: 'test-connection-code' } })
+    await act(async () => { [...setup.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
+    expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
+    expect(clipboard).toHaveBeenCalledOnce()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
   } finally {
     await act(async () => root.unmount())
     vi.unstubAllGlobals()
@@ -82,5 +93,19 @@ it('applies direct browser selection immediately and retains the saved browser o
     expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'workspace', mode: 'cdp', port: 9222 }, expect.anything())
     expect(changed).toHaveBeenCalledWith('cdp')
     expect(host.querySelector('[aria-label="Choose browser"]')).toBeNull()
+  } finally { await act(async () => root.unmount()) }
+})
+
+// PLAT-746-275: the inline account browser controls remain Builder-only.
+it('does not load personal browser connections inside a shared Run pane', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  mocks.get.mockClear(); mocks.post.mockClear()
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<BrowserWorkspacePanel readOnly workspacePath="Crew/shared-example" profileId="work" browserMode="extension" onBrowserModeChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} />))
+    expect(host.querySelector('[aria-label="Browser connections"]')).toBeNull()
+    expect([...host.querySelectorAll('button')].some(button => /Change|Connect browser/.test(button.textContent || ''))).toBe(false)
+    expect(mocks.get).not.toHaveBeenCalled()
+    expect(mocks.post).not.toHaveBeenCalled()
   } finally { await act(async () => root.unmount()) }
 })

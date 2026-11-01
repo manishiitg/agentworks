@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import BrowserConnectionsDialog from './BrowserConnectionsDialog'
+import BrowserConnectionsDialog, { BrowserConnectionsPanel } from './BrowserConnectionsDialog'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), refetch: () => {} }))
 vi.mock('../services/api', () => ({ default: { defaults: {}, get: mocks.get, post: mocks.post } }))
@@ -46,7 +46,7 @@ it('keeps saved-browser controls and labels old versus unknown extension version
     expect(rows[0].textContent).toContain('Offline')
     expect(rows[0].textContent).toContain('Update available: 0.5.0')
     expect(rows[0].querySelector('button')?.textContent).toBe('Disconnect')
-    expect(rows[1].textContent).toContain('Connected')
+    expect(rows[1].textContent).toContain('Disconnected')
     expect(rows[1].textContent).not.toContain('Update available')
     expect(rows[1].querySelector('button')).toBeNull()
     expect(dialog.querySelector('[role="alert"]')).toBeNull()
@@ -75,8 +75,8 @@ it('keeps connection codes inside the explicit connect step', async () => {
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals() }
 })
 
-// PLAT-746-269 / PR477: saved offline browsers resume without an explicit pairing attempt.
-it('requires a named browser confirmation when an old browser reconnects during setup', async () => {
+// PLAT-746-270 / PR477: saved offline browsers resume without an explicit pairing attempt.
+it.each(['dialog', 'panel'])('requires named browser confirmation when an old browser reconnects in the %s', async (surface) => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   const oldBrowser = { id: 'old', name: 'Old Chrome', connected: false, enabled: true }
   mocks.get.mockResolvedValue({ data: { browsers: [oldBrowser] } })
@@ -84,8 +84,8 @@ it('requires a named browser confirmation when an old browser reconnects during 
   vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
   const host = document.createElement('div'), root = createRoot(host), selected = vi.fn().mockResolvedValue(true), closed = vi.fn()
   try {
-    await act(async () => root.render(<BrowserConnectionsDialog open onClose={closed} onConnected={selected} />))
-    const dialog = document.querySelector('[role="dialog"]')!
+    await act(async () => root.render(surface === 'dialog' ? <BrowserConnectionsDialog open onClose={closed} onConnected={selected} /> : <BrowserConnectionsPanel open startSetup onClose={closed} onConnected={selected} />))
+    const dialog = surface === 'dialog' ? document.querySelector('[role="dialog"]')! : host
     await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('Next'))!.click() })
     await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
     mocks.get.mockResolvedValue({ data: { browsers: [{ ...oldBrowser, connected: true }, { id: 'new', name: 'New Edge', connected: true, enabled: true }] } })
