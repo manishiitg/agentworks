@@ -287,8 +287,78 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if !json.Valid(data) {
 		data, _ = json.Marshal(map[string]string{"error": string(data)})
 	}
+	if call.Operation == "events" && status == http.StatusOK {
+		data, err = projectCrewMacEvents(data, conversation.SessionID, crewChatSessionID(b.PeerProjectID, conversation.ConversationID))
+		if err != nil {
+			return fail(409, "The Mac's conversation changed. Reopen this Crew to load its messages.")
+		}
+	}
 	if call.Operation == "send" || call.Operation == "cancel" || call.Operation == "answer" {
 		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=%s session=%s conversation=%s request=%s status=%d", project, call.Operation, conversation.SessionID, conversation.ConversationID, call.ID, status)
 	}
 	return crewChatResult{ID: call.ID, Status: status, Body: data}
+}
+
+// The browser owns a virtual paired session. Project only events proven to
+// belong to the locally resolved main conversation; never relabel another
+// session or an arbitrary execution. Content and durable event IDs stay intact.
+func projectCrewMacEvents(raw []byte, local, paired string) ([]byte, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, err
+	}
+	var owner string
+	if json.Unmarshal(envelope["session_id"], &owner) != nil || owner != local || local == "" {
+		return nil, fmt.Errorf("event envelope belongs to another conversation")
+	}
+	var rows []map[string]json.RawMessage
+	if err := json.Unmarshal(envelope["events"], &rows); err != nil {
+		return nil, err
+	}
+	identities := map[string]string{
+		local: paired, "main:" + local: "main:" + paired,
+		"session:" + local:       "session:" + paired,
+		local + ":main:" + local: paired + ":main:" + paired,
+	}
+	var project func(map[string]json.RawMessage, int) bool
+	project = func(record map[string]json.RawMessage, depth int) bool {
+		for _, key := range []string{"session_id", "execution_id", "parent_execution_id", "terminal_id", "terminal_owner_id"} {
+			value, exists := record[key]
+			if !exists {
+				continue
+			}
+			var id string
+			if json.Unmarshal(value, &id) != nil {
+				return false
+			}
+			if id == "" {
+				continue
+			}
+			replacement, ok := identities[id]
+			if !ok || key == "session_id" && id != local {
+				return false
+			}
+			record[key], _ = json.Marshal(replacement)
+		}
+		if depth > 0 {
+			var nested map[string]json.RawMessage
+			if json.Unmarshal(record["data"], &nested) == nil && nested != nil {
+				if !project(nested, depth-1) {
+					return false
+				}
+				record["data"], _ = json.Marshal(nested)
+			}
+		}
+		return true
+	}
+	kept := make([]map[string]json.RawMessage, 0, len(rows))
+	for _, row := range rows {
+		var session string
+		if json.Unmarshal(row["session_id"], &session) == nil && session == local && project(row, 2) {
+			kept = append(kept, row)
+		}
+	}
+	envelope["session_id"], _ = json.Marshal(paired)
+	envelope["events"], _ = json.Marshal(kept)
+	return json.Marshal(envelope)
 }
