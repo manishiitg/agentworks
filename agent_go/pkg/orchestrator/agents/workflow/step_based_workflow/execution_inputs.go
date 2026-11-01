@@ -87,10 +87,25 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveWorkshopInputGroup(ctx context
 	hcpo.variablesManifest = manifest
 	if requested != "" {
 		if manifest != nil {
+			exact := false
 			for _, group := range manifest.Groups {
-				if inputSetFolderName(group.Name) == requested {
-					requested = group.Name
+				if group.Name == requested {
+					exact = true
 					break
+				}
+			}
+			if !exact {
+				alias := ""
+				for _, group := range manifest.Groups {
+					if inputSetFolderName(group.Name) == requested {
+						if alias != "" {
+							return "", fmt.Errorf("input-set alias %q matches several names; use an exact saved name", requested)
+						}
+						alias = group.Name
+					}
+				}
+				if alias != "" {
+					requested = alias
 				}
 			}
 		}
