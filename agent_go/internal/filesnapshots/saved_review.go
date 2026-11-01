@@ -12,7 +12,7 @@ import (
 // CompareSaved accepts only the reply IDs the server resolved from one
 // authorized chat. Spans remain separate comparisons, never stitched across
 // checkout/pull transitions. A key selects a saved file version, not a Git ref.
-func (s Store) CompareSaved(ctx context.Context, ids []string, file, key string, allow func(string) bool) (Comparison, error) {
+func (s Store) CompareSaved(ctx context.Context, ids []string, file, key string, allow func(string) bool, checkoutID ...string) (Comparison, error) {
 	var records []Record
 	seen := map[string]bool{}
 	for _, id := range ids {
@@ -30,10 +30,10 @@ func (s Store) CompareSaved(ctx context.Context, ids []string, file, key string,
 		return Comparison{Changes: []Change{}}, nil
 	}
 	sort.SliceStable(records, func(i, j int) bool { return records[i].StartedAt.Before(records[j].StartedAt) })
-	return s.compareReview(ctx, records, file, key, allow)
+	return s.compareReview(ctx, records, file, key, allow, checkoutID...)
 }
 
-func (s Store) compareReview(ctx context.Context, records []Record, file, key string, allow func(string) bool) (Comparison, error) {
+func (s Store) compareReview(ctx context.Context, records []Record, file, key string, allow func(string) bool, checkoutID ...string) (Comparison, error) {
 	out := Comparison{Record: records[len(records)-1], Changes: []Change{}, versions: map[string]savedVersion{}}
 	out.Record.StartedAt = records[0].StartedAt
 	out.Record.Skipped = nil
@@ -57,6 +57,9 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 				return err
 			}
 			for _, change := range comparison.Changes {
+				if len(checkoutID) > 0 && !matchesCheckout(label, checkoutID[0]) {
+					continue
+				}
 				change.Key = digest(r.ID + ":" + fmt.Sprint(ordinal) + ":" + change.Path)
 				change.Checkout = label
 				change.At = r.StartedAt.UTC().Format("2006-01-02T15:04:05Z")
@@ -274,4 +277,18 @@ func (s Store) authorizedCheckout(ctx context.Context, r Record, root string, al
 		}
 	}
 	return false
+}
+
+// LooseCheckout identifies files outside Git without conflating them with a
+// checkout whose repository happens to be the project root.
+const LooseCheckout = "project-files"
+
+func matchesCheckout(label *CheckoutLabel, id string) bool {
+	if id == "" {
+		return true
+	}
+	if label == nil {
+		return id == LooseCheckout
+	}
+	return label.ID == id
 }

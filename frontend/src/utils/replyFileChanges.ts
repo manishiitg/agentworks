@@ -3,7 +3,7 @@ import { normalizeTranscriptChunkEvents } from './transcriptChunkUpdates'
 
 export type ReplyFileChange = { path: string; key?: string; at?: string; edits?: ReplyFileChange[]; checkout?: { id: string; root: string; name: string; branch?: string }; status: string; added?: number; removed?: number; binary?: boolean }
 export type ReplyPullRequest = { number?: number; url?: string; state: string; checks?: string; review?: string; failing_checks?: string[]; conflicts?: boolean }
-export type ReplyFileGroup = { kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; new_checkout: boolean; files: ReplyFileChange[]; total_files: number; more_count: number; pr?: ReplyPullRequest }
+export type ReplyFileGroup = { checkout_id?: string; working_tree?: 'clean' | 'dirty'; kind: 'repo' | 'crew_files'; root: string; name: string; branch?: string; github_repo?: string; new_checkout: boolean; files: ReplyFileChange[]; total_files: number; more_count: number; pr?: ReplyPullRequest }
 // One card action, decided by the server for the viewer. icon is "octicon:<id>" or a Lucide name;
 // prompt is sent to the chat's agent as is (Review opens Review; Add button puts it in the composer).
 export type ReplyCardAction = { id: string; kind: 'builtin' | 'git_step' | 'fix' | 'command'; label: string; aria_label?: string; description?: string; icon?: string; placement: 'row' | 'more' | 'pr_line'; prompt?: string; group?: string; editors_only?: boolean }
@@ -16,6 +16,8 @@ export const shownFilePath = (path: string) => path.startsWith('_files/') ? path
 
 export interface ReplyFileChangesRef {
   snapshotId: string
+  historyScope?: 'project'
+  checkoutId?: string
   workspacePath: string
   sessionId: string
   latestSnapshotId?: string

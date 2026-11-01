@@ -72,7 +72,7 @@ export function ReplyFileViewer({ selection, tabId, onBack, embedded = false, fl
     }
     void load().catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'This file could not be opened. Refresh and try again.') })
     return () => controller.abort()
-  }, [reference.workspacePath, reference.sessionId, reference.snapshotId, change.path, change.key, version, name, query?.baseline_snapshot_id, query?.through_snapshot_id])
+  }, [reference.workspacePath, reference.sessionId, reference.snapshotId, change.path, change.key, version, name, query?.baseline_snapshot_id, query?.through_snapshot_id, query?.history_scope, query?.checkout_id])
   const send = async () => {
     if (!anchor || !comment.trim()) return
     const identity = captureChatIdentity()

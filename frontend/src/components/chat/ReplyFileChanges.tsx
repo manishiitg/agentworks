@@ -67,7 +67,7 @@ function MoreMenu({ items, onSelect }: { items: ReplyCardAction[]; onSelect: (ac
   </Menu.Root>
 }
 const endpoint = '/api/workspace-snapshots'
-const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId })
+const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId, ...(reference.historyScope ? { history_scope: reference.historyScope } : {}), ...(reference.checkoutId ? { checkout_id: reference.checkoutId } : {}) })
 // The server decides the card for this viewer: its groups (PR status once looked up) and actions.
 type ReplyCard = { groups: FileGroup[]; actions: ReplyCardAction[]; can_edit: boolean; note?: string }
 
@@ -75,7 +75,7 @@ export function ReplyFileChanges({ reference, panel = false, showFiles = true }:
   const mode = useProjectMode(reference.sessionId)
   const account = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const scope = JSON.stringify([account, server, reference.workspacePath, reference.snapshotId])
+  const scope = JSON.stringify([account, server, reference.workspacePath, reference.snapshotId, reference.historyScope, reference.checkoutId])
   if (mode !== 'dev') return null
   if (reference.unavailable) return <p className="my-2 text-xs text-muted-foreground">{reference.unavailable}</p>
   return <ScopedFileChanges key={`${scope}:${panel}`} reference={reference} panel={panel} showFiles={showFiles} />
@@ -99,6 +99,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
     window.addEventListener(githubConnectionChanged, refresh)
     return () => window.removeEventListener(githubConnectionChanged, refresh)
   }, [])
+  const [undoCheckoutId, setUndoCheckoutId] = useState('')
   const [undo, setUndo] = useState<{ plan?: UndoPlan; busy?: boolean; done?: string; error?: string } | null>(null)
   const latest = !reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId
   const reviewed = reference.reviewedSnapshotId === reference.snapshotId
@@ -124,18 +125,19 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
       .catch(() => { /* Only the actions every viewer gets. */ })
     return () => controller.abort()
   }, [reference.workspacePath, reference.snapshotId, reference.sessionId, hasSummary])
-  const undoParams = (op: string) => ({ ...paramsFor(reference), session_id: reference.sessionId, op })
+  const undoParams = (op: string) => ({ ...paramsFor(reference), session_id: reference.sessionId, op, ...(revertCheckoutId ? { checkout_id: revertCheckoutId } : {}) })
   const undoCall = (method: 'get' | 'post', op: string) => method === 'get' ? api.get<{ undo: UndoPlan }>(endpoint, { params: undoParams(op) }) : api.post<{ undo: UndoPlan }>(endpoint, {}, { params: undoParams(op) })
   const startUndo = async () => {
     setUndo({ busy: true })
-    try { setUndo({ plan: (await undoCall('get', 'snapshot_undo_preview')).data.undo }) } catch (cause) { setUndo({ error: errorText(cause, 'Could not check what to undo. Try again.') }) }
+    try { setUndo({ plan: (await undoCall('get', 'snapshot_undo_preview')).data.undo }) } catch (cause) { setUndo({ error: errorText(cause, 'Could not check what to revert. Try again.') }) }
   }
   const confirmUndo = async () => {
     setUndo({ busy: true })
     try {
       const plan = (await undoCall('post', 'snapshot_undo')).data.undo
+      window.dispatchEvent(new Event('chat-file-review-changed'))
       setUndo({ done: `Restored ${plural(plan.restore.length)}${plan.skipped.length ? `, left ${plural(plan.skipped.length)} alone` : ''}.` })
-    } catch (cause) { setUndo({ error: errorText(cause, 'Could not undo this reply. Try again.') }) }
+    } catch (cause) { setUndo({ error: errorText(cause, 'Could not revert these changes. Try again.') }) }
   }
   const ask = async (message: string) => {
     setReviewError('')
@@ -172,6 +174,8 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []
   const actions = checked?.actions ?? card?.actions ?? summary?.actions ?? []
+  const checkoutOptions = groups.map(group => ({ id: group.checkout_id || (group.kind === 'crew_files' ? 'project-files' : ''), name: group.name })).filter(group => !!group.id)
+  const revertCheckoutId = reference.checkoutId || undoCheckoutId || checkoutOptions[0]?.id || ''
   const canEdit = (checked ?? card)?.can_edit === true
   const sharedViewer = (checked ?? card)?.can_edit === false
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
@@ -194,9 +198,9 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   if (total === 0) return loadFailed ? <section className="my-2 rounded-md border border-border px-2.5 py-2 text-xs text-muted-foreground" aria-label="File changes unavailable">
     Saved file changes for this reply could not be loaded. <button type="button" className="underline hover:text-foreground" onClick={() => openChatFiles(reference.sessionId)}>Review chat changes</button>
   </section> : null
-  if (!panel) return <TooltipProvider delayDuration={150}><section className="reply-file-toolbar my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Reply changes">
+  if (!panel) return <TooltipProvider delayDuration={150}><section className="reply-file-toolbar my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Project changes during this turn" title="Project changes during this turn; other chats or editors may contribute.">
     <div className="flex min-w-0 items-center gap-2">
-      <button type="button" aria-label={`Open ${plural(total)} changed in this reply`} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
+      <button type="button" aria-label={`Open ${plural(total)} changed during this turn`} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
         <FileDiffIcon /><span title={incomplete || undefined}>{incomplete ? 'Incomplete' : plural(total)}</span>
         <span className="reply-toolbar-line-counts font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
       </button>
@@ -204,7 +208,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
       {repoGroups.length > 1 ? checkoutSummary() : <>
       <div className="reply-toolbar-checkout-inline flex min-w-0 flex-1 items-center gap-2">
       {repoGroups.map(group => <div key={group.root} className="flex min-w-0 flex-1 items-center gap-1">
-        <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
+        <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}${group.working_tree === 'clean' ? ' · Working tree clean' : group.working_tree === 'dirty' ? ' · Uncommitted changes' : ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
         {group.pr?.state === 'connect_github' && canEdit && <IconButton label="Connect GitHub" hint="Use your saved account to see PR status." onClick={() => openProjectIntegrations('github', reference.sessionId)}><Github /></IconButton>}
         {group.pr?.state === 'unavailable' && <IconButton label="Retry PR status" hint="GitHub status could not be checked." onClick={() => setGitHubRevision(value => value + 1)}><Github /></IconButton>}
         {!!group.pr?.number && group.pr.url && <>
@@ -235,7 +239,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
     </div>}
   </section></TooltipProvider>
   return (
-    <section className="p-3 text-xs" aria-label="Files changed during this reply">
+    <section className="p-3 text-xs" aria-label="Project changes during this turn">
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 font-medium text-muted-foreground">
           {plural(total)}
@@ -256,6 +260,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
           <div key={`${group.kind}:${group.root}`} className="mt-3 border-t border-border pt-2 first:mt-2 first:border-0 first:pt-0">
             <div className="flex flex-wrap items-center gap-2">
               {group.kind === 'crew_files' ? <span className="text-xs text-muted-foreground">Crew files · not in Git</span> : <b>{group.name}</b>}
+              {group.working_tree && <span className="text-xs text-muted-foreground" title="Current checkout status; saved diffs remain after commit or push.">{group.working_tree === 'clean' ? 'Working tree clean' : 'Uncommitted changes'}</span>}
               {group.new_checkout && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">new copy · {group.total_files} files</span>}
               {group.kind === 'repo' && group.branch && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">branch {group.branch}</span>}
             </div>
@@ -279,16 +284,18 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
             </div>}
           </div>
         ))}
-        {canEdit && undo === null && <button type="button" className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" onClick={() => void startUndo()}><Undo2 />Undo this reply</button>}
-        {canEdit && undo && <div className="mt-2 rounded border border-border p-2 text-xs" role="group" aria-label="Undo this reply">
+        {canEdit && !reference.checkoutId && checkoutOptions.length > 1 && <select aria-label="Worktree to revert" value={revertCheckoutId} className="mt-3 mr-2 max-w-full rounded border border-border bg-background px-2 py-1 text-xs" onChange={event => { setUndoCheckoutId(event.target.value); setUndo(null) }}>{checkoutOptions.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select>}
+        {canEdit && undo === null && <button type="button" className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" onClick={() => void startUndo()}><Undo2 />Revert these changes</button>}
+        {canEdit && undo && <div className="mt-2 rounded border border-border p-2 text-xs" role="group" aria-label="Revert these changes">
           {undo.busy && <span>Working…</span>}
           {undo.error && <p role="alert">{undo.error}</p>}
           {undo.done && <p>{undo.done}</p>}
           {undo.plan && <>
-            <p>{undo.plan.restore.length ? `This will put back ${plural(undo.plan.restore.length)} (${fileList(undo.plan.restore)})` : 'There is nothing to put back'}{undo.plan.skipped.length ? ` and leave ${plural(undo.plan.skipped.length)} alone because a later reply changed them (${fileList(undo.plan.skipped)}).` : '.'}</p>
+            <p>{undo.plan.restore.length ? `This will put back ${plural(undo.plan.restore.length)} (${fileList(undo.plan.restore)})` : 'There is nothing to put back'}{undo.plan.skipped.length ? ` and leave ${plural(undo.plan.skipped.length)} alone because they changed later or cannot be restored (${fileList(undo.plan.skipped)}).` : '.'}</p>
+            <ul className="mt-1 space-y-1">{undo.plan.skipped.map(item => <li key={item.path} className="break-all">{shownFilePath(item.path)} · {item.reason === 'changed_later' ? 'Changed since this capture' : item.reason === 'git_context_changed' ? 'Checkout or branch changed' : item.reason === 'already_restored' ? 'Already restored' : item.reason === 'not_allowed' ? 'No write access' : 'Could not restore'}</li>)}</ul>
             {undo.plan.note && <p className="mt-1">{undo.plan.note}</p>}
             <div className="mt-1 flex gap-2">
-              {undo.plan.restore.length > 0 && <button type="button" className="rounded border border-primary px-2 py-1" onClick={() => void confirmUndo()}>Undo {plural(undo.plan.restore.length)}</button>}
+              {undo.plan.restore.length > 0 && <button type="button" className="rounded border border-primary px-2 py-1" onClick={() => void confirmUndo()}>Revert {plural(undo.plan.restore.length)}</button>}
               <button type="button" className="rounded border px-2 py-1" onClick={() => setUndo(null)}>Cancel</button>
             </div>
           </>}

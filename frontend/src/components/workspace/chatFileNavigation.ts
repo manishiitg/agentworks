@@ -9,7 +9,7 @@ export const chatFilesNavigationEvent = 'agentworks:open-chat-files'
 // Navigation only. Saved bytes and line anchors still pass the server's chat
 // and file grants. Never apply a click from an old chat to the current chat.
 export function openChatFiles(sessionId: string, selection?: SavedFileSelection) {
-  openFilesTarget(sessionId, selection ? `saved:${JSON.stringify(selection)}` : 'review-all-chat')
+  openFilesTarget(sessionId, selection ? `saved:${JSON.stringify(selection)}` : 'review-project')
 }
 
 export function openReplyChanges(reference: ReplyFileChangesRef) {

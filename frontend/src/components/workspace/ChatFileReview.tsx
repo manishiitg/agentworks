@@ -1,3 +1,4 @@
+import { ProjectChangesPanel } from './ProjectChangesPanel'
 import { ReplyFileChanges } from '../chat/ReplyFileChanges'
 import { openChatFiles } from './chatFileNavigation'
 import { PRWatcherControls } from '../chat/PRWatcherControls'
@@ -21,13 +22,18 @@ const startedFrom = (message?: { text: string; at?: string }) => {
 
 const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-type ReviewProps = { reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
+type ReviewProps = { projectHistory?: boolean; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
 
 /** Mounted with an account/server/chat key by its owner. A folder holding Git
  * repositories is reviewed with Git (Uncommitted or Branch / PR); any other
  * folder keeps "Changes in this chat" from the chat's saved copies. Git is
  * never set up here. */
 export function ChatFileReview(props: ReviewProps) {
+  if (props.projectHistory) return <ProjectChangesPanel {...props} />
+  return <CheckoutFileReview {...props} />
+}
+
+function CheckoutFileReview(props: ReviewProps) {
   const [repos, setRepos] = useState<GitRepo[] | null>(null)
   const [recentRepos, setRecentRepos] = useState<string[]>([])
   const [revision, setRevision] = useState(0)
@@ -56,7 +62,7 @@ export function ChatFileReview(props: ReviewProps) {
 
 /** All requests and sends stay with that chat; the server resolves and
  * authorizes its saved boundaries. */
-function SnapshotReview({ reply, allChat = false, outsideGit = false, workspacePath, sessionId, tabId, onBrowse, bar }: ReviewProps & { bar?: ReactNode }) {
+function SnapshotReview({ reply, allChat = false, outsideGit = false, workspacePath, sessionId, tabId, onBrowse, bar, toolbar }: ReviewProps & { bar?: ReactNode }) {
   const [reviewId, setReviewId] = useState('')
   const [result, setResult] = useState<Result | null>(null)
   const [revision, refresh] = useReviewRevision()
@@ -67,7 +73,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   const viewers = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const baseline = (reply || allChat) ? 'start' : result?.history.baseline_snapshot_id
-  const groupParams: Record<string, string> = reply ? { snapshot_id: reply.snapshotId } : outsideGit ? { group_kind: 'crew_files' } : {}
+  const groupParams: Record<string, string> = reply ? { snapshot_id: reply.snapshotId, ...(reply.historyScope ? { history_scope: reply.historyScope } : {}), ...(reply.checkoutId ? { checkout_id: reply.checkoutId } : {}) } : outsideGit ? { group_kind: 'crew_files' } : {}
   const params = { ...groupParams, workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, baseline_snapshot_id: baseline }
   useEffect(() => {
     const controller = new AbortController()
@@ -103,8 +109,8 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   }
   return <section className="flex h-full min-h-0 flex-col" aria-label={reply ? "Changes in this reply" : "Changes in this chat"}>
     {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
-    <WorkspaceViewHeader title="Files" subtitle={reply ? 'This reply' : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
-      {reply && <button type="button" className="text-xs underline" onClick={() => openChatFiles(sessionId)}>All chat changes</button>}
+    <WorkspaceViewHeader title="Files" subtitle={reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
+      {reply && <button type="button" className="text-xs underline" onClick={() => openChatFiles(sessionId)}>Project history</button>}
       {!reply && !allChat && !!result?.history.reviews?.length && <select aria-label="Review history" title="Review history" value={reviewId} onChange={event => setReviewId(event.target.value)}
         className="max-w-40 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground">
         <option value="">Since your last review</option>
@@ -113,7 +119,8 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
       <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>
       <button type="button" aria-label="Browse files" title="Browse files" onClick={onBrowse} className={iconButton}><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
     </>} />
-    {bar}
+    {bar || toolbar}
+    <p className="border-b border-border px-3 py-1 text-xs text-muted-foreground">Saved project differences. Other chats or editors may contribute.</p>
     {reply && <ReplyFileChanges reference={reply} panel showFiles={false} />}
     {pullRequests.length > 0 && <div className="space-y-2 border-b border-border px-3 py-2 text-xs" aria-label="Pull requests in this chat">
       {pullRequests.map(group => <div key={group.root} className="flex flex-wrap items-center gap-x-3 gap-y-1">
