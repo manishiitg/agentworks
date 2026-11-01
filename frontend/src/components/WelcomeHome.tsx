@@ -2,7 +2,7 @@ import { quickNavigationItems, openQuickNavigation } from '../utils/quickNavigat
 import { HomeAgentModel } from './HomeAgentModel'
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, Plus, Settings2 } from 'lucide-react'
+import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, Plus } from 'lucide-react'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
@@ -174,9 +174,14 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
               </div>
               {agentWorksError && <p role="alert" className="mt-2 text-xs text-destructive">{agentWorksError}</p>}
             </form>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/40 px-3 py-2">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={openProviders}>
+                <span aria-hidden="true" className="mr-2 inline-flex items-center -space-x-1.5">
+                  {['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-6 w-6 place-items-center rounded-full bg-background ring-2 ring-background"><img src={`/provider-icons/${icon}`} alt="" className="h-4 w-4 object-contain" /></span>)}
+                </span>
+                AI accounts
+              </Button>
               <HomeAgentModel key={scope} />
-              <Button type="button" size="sm" variant="outline" onClick={openProviders}><Settings2 className="mr-2 h-4 w-4" />AI accounts</Button>
             </div>
           </section>} />}</div>
         </section>
