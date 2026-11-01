@@ -137,7 +137,12 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 		if view.Relation != "own" || view.Provider != account.Provider || view.DisplayName != account.Name {
 			continue
 		}
-		// "exists" says only that it was added before, not that its login still works there.
+		// Added before but not signed in there yet: the person still has to sign in, so say that, not "exists".
+		if view.Configured != nil && !*view.Configured {
+			desktopJSON(w, map[string]string{"status": "sign_in", "account_id": view.ID, "server_url": signIn})
+			return
+		}
+		// "exists" says only that it was added before and the server counts it as set up.
 		if (view.AuthMethod == "cli_login") != (account.AuthMethod == "cli_login") {
 			desktopJSONError(w, 409, "You already have an account named \""+account.Name+"\" on this server that signs in another way. Rename one of them, then try again.")
 			return
