@@ -6,7 +6,7 @@
 #
 # All arguments are forwarded to agent_go/run_server_with_logging.sh, so
 # partial stacks and modifiers work too, e.g.:
-#   ./run_agentworks --with-workspace        # agent + workspace, no frontend
+#   ./run_agentworks --only-backend          # agent + workspace, no frontend (alias of --with-workspace)
 #   ./run_agentworks --only-frontend         # frontend only
 #   ./run_agentworks --only-frontend --debug-memory  # + heap snapshots (:9333) & RSS log
 #   ./run_agentworks --only-gateway          # standalone server gateway development
