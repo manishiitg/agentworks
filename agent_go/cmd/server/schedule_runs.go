@@ -45,7 +45,7 @@ type ScheduleRunEntry struct {
 	FinalResponse string     `json:"final_response,omitempty"`
 	RanWorkflow   *bool      `json:"ran_workflow,omitempty"`
 	DurationMs    *int64     `json:"duration_ms,omitempty"`
-	GroupNames    []string   `json:"group_names,omitempty"`
+	GroupNames    []string   `json:"group_names"`
 	StartedAt     time.Time  `json:"started_at"`
 	CompletedAt   *time.Time `json:"completed_at,omitempty"`
 	// Caller stamps the workflow step that invoked this run through a

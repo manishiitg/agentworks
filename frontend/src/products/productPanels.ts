@@ -24,7 +24,7 @@ export interface ProductPanel<Id extends string = string> { id: Id; label: strin
 export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWorkspaceView>[]> = {
   views: [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'plan', label: 'Plan', icon: Route },
+    { id: 'plan', label: 'Workflows & programs', icon: Route },
     { id: 'memory', label: 'Memory & skills', icon: Brain },
     { id: 'browser', label: 'Browser', icon: Monitor },
     { id: 'schedules', label: 'Automations', icon: Zap },

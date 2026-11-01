@@ -56,3 +56,51 @@ func TestResolvedGroupClearsPriorExecutionOverride(t *testing.T) {
 		t.Fatal("batch group resolution must clear the optional override and retain shared defaults")
 	}
 }
+
+// PLAT-746-265: omission may run once; an empty/disabled/unknown selection
+// must never accidentally start work or select another group's data.
+func TestOptionalInputSetsDoNotEnableUnselectedWork(t *testing.T) {
+	manifest := &VariablesManifest{Variables: []Variable{{Name: "region", Value: "base"}}, Groups: []VariableGroup{
+		{Name: "one", Enabled: true, Values: map[string]string{"region": "one"}},
+		{Name: "two", Enabled: false, Values: map[string]string{"region": "two"}},
+	}}
+	cases := []struct {
+		name      string
+		manifest  *VariablesManifest
+		selection []string
+		count     int
+		wantError bool
+	}{
+		{"absent inputs", nil, nil, 1, false},
+		{"defaults only", &VariablesManifest{Variables: manifest.Variables}, nil, 1, false},
+		{"explicit empty", nil, []string{}, 0, false},
+		{"enabled only", manifest, nil, 1, false},
+		{"disabled batch", &VariablesManifest{Groups: manifest.Groups[1:]}, nil, 0, false},
+		{"unknown without groups", nil, []string{"missing"}, 0, true},
+		{"partly unknown", manifest, []string{"one", "missing"}, 0, true},
+		{"explicit selection", manifest, []string{"two"}, 1, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			items, err := ResolveExecutionInputs(tc.manifest, tc.selection)
+			if (err != nil) != tc.wantError || len(items) != tc.count {
+				t.Fatalf("items=%+v err=%v", items, err)
+			}
+			if tc.manifest == nil && len(items) == 1 && items[0].Name != "" {
+				t.Fatal("invented named group")
+			}
+		})
+	}
+	items, err := ResolveExecutionInputs(manifest, []string{"one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items[0].Values["region"] = "modified"
+	if manifest.Groups[0].Values["region"] != "one" {
+		t.Fatal("run changed saved inputs")
+	}
+	c := &StepBasedWorkflowOrchestrator{}
+	if got := c.createGroupRunFolder("iteration-0", "", 1); got != "iteration-0" {
+		t.Fatal(got)
+	}
+}
