@@ -14,6 +14,7 @@ vi.mock('./WelcomeAiReadiness', () => ({ default: ({ onSetup, crewReadyView }: {
 vi.mock('../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../services/api')>(), default: { post: vi.fn() } }))
 vi.mock('./HomeRecentWork', () => ({ HomeRecentWork: () => <section>Recent work</section> }))
 vi.mock('./HomeAgentModel', () => ({ HomeAgentModel: () => <span>Runs on Test model</span> }))
+vi.mock('../voice/MicButton', () => ({ MicButton: ({ onText }: { onText: (text: string, autoSubmit: boolean) => void }) => <button type="button" aria-label="Dictate" onClick={() => onText('spoken words', false)}>Mic</button> }))
 const readiness = vi.hoisted(() => ({ crewReady: false }))
 
 import { WelcomeHome, WELCOME_HOME_DISMISSED_KEY } from './WelcomeHome'
@@ -25,6 +26,7 @@ import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import api from '../services/api'
 import { productRoutePath } from '../utils/productRoutes'
+import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
@@ -56,6 +58,7 @@ describe('WelcomeHome', () => {
     useCommandDialogStore.getState().closeAll()
     useAppStore.setState({ adminPage: null })
     useLLMStore.setState({ showLLMModal: false })
+    useCapabilitiesStore.setState({ capabilities: null })
     useProductNavigationToolbarStore.setState({ sidebarWidth: 0 })
     readiness.crewReady = false
     vi.restoreAllMocks()
@@ -78,6 +81,22 @@ describe('WelcomeHome', () => {
     await act(async () => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(api.post).toHaveBeenCalledWith('/api/agentworks', { message: 'Plan my week' })
     expect(window.location.pathname).toBe(productRoutePath({ surface: 'work', id: 'crew-1' }))
+  })
+
+  it('adds dictation to the Home draft without sending it automatically', async () => {
+    configure()
+    readiness.crewReady = true
+    useCapabilitiesStore.setState({ capabilities: { voice: { available: true } } as never })
+    const host = await renderWelcome()
+    const box = host.querySelector<HTMLTextAreaElement>('#welcome-agentworks-message')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, 'My typed words')
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => button(host, 'Dictate').click())
+    expect(box.value).toBe('My typed words spoken words')
+    expect(document.activeElement).toBe(box)
+    expect(api.post).not.toHaveBeenCalled()
   })
 
   it('shows only permitted products and remembers dismissal', async () => {
