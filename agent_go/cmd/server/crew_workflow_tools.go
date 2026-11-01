@@ -377,7 +377,11 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 			return sched.ID, false, nil
 		}
 	}
-	groups, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, []string{"default"})
+	selection := []string{"default"}
+	if manifest != nil && manifest.crewExecutable != nil {
+		selection = nil
+	}
+	groups, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, selection)
 	if err != nil {
 		return "", false, fmt.Errorf("cannot create the binding: %w", err)
 	}
