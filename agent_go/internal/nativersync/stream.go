@@ -19,15 +19,11 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 // Capacity is operational configuration, never selected by the remote peer.
-func MaxBytes() int64 {
-	if n, e := strconv.ParseInt(os.Getenv("AGENTWORKS_NATIVE_SYNC_MAX_BYTES"), 10, 64); e == nil && n >= 1<<20 && n <= 32<<30 {
-		return n
-	}
-	return 2 << 30
-}
+func MaxBytes() int64 { return sessiontransfer.MaxBytes() }
 
 // Socket uses binary frames for bytes and one text frame for stream EOF.
 // Each direction has one writer; there are no credentials in this stream.

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -21,6 +22,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 type crewSyncRequest struct {
@@ -140,6 +142,24 @@ func updateCrewSyncEditing(ctx context.Context, roots crewroot.Roots, observed c
 	return current, nil
 }
 
+const crewNativeDivergedCode = "native_history_diverged"
+
+func crewSyncErrorCode(err error) string {
+	if errors.Is(err, sessiontransfer.ErrDiverged) {
+		return crewNativeDivergedCode
+	}
+	return "sync_unavailable"
+}
+func crewSyncPeerError(code, message string) error {
+	if code == crewNativeDivergedCode {
+		return sessiontransfer.ErrDiverged
+	}
+	return fmt.Errorf("server sync failed: %s", message)
+}
+func crewNativeErrorReply(err error) map[string]string {
+	return map[string]string{"error": err.Error(), "code": crewSyncErrorCode(err)}
+}
+
 // The transport carries project content, never paths or credentials chosen by
 // another machine. Every operation rechecks the destination's actual owner.
 func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +172,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	out, err := api.crewSync(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"], input)
 	if err != nil {
-		externalError(w, 409, "sync_unavailable", err.Error())
+		externalError(w, 409, crewSyncErrorCode(err), err.Error())
 		return
 	}
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
