@@ -83,7 +83,7 @@ describe('WelcomeHome', () => {
     configure(['work', 'mcp-gateway'])
     const host = await renderWelcome()
     expect(host.textContent).toContain('Acme Agents')
-    expect(host.querySelectorAll('[data-welcome-product]')).toHaveLength(1)
+    expect(host.querySelector('[aria-label="Direct product creation"]')).toBeNull()
     expect(host.textContent).not.toContain('Goals')
     await act(async () => button(host, 'Open Vault').click())
     expect(openProductWorkspace).toHaveBeenCalledWith('mcp-gateway')
@@ -93,35 +93,12 @@ describe('WelcomeHome', () => {
     expect(returning.querySelector('main[aria-label="Home"]')).toBeNull()
   })
 
-  it('orders the cards Crew first and disables creation for Run-only users', async () => {
+  it('offers Crew use cases without separate product creation cards', async () => {
     configure()
     const host = await renderWelcome()
-    expect([...host.querySelectorAll('[data-welcome-product]')].map(item => item.getAttribute('data-welcome-product'))).toEqual(['work', 'agentworks', 'relays'])
-    expect([...host.querySelectorAll<HTMLButtonElement>('[aria-label^="Create a"]')].every(item => item.disabled)).toBe(true)
-    expect(host.querySelector('[aria-label="Direct product creation"] [aria-label^="Open"]')).toBeNull()
-  })
-
-  it.each([
-    ['work', 'Create a Crew'], ['agentworks', 'Create a Goal'], ['relays', 'Create a Flow'],
-  ])('opens the existing %s creation flow only with its product permission', async (surface, label) => {
-    configure()
-    useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { [surface]: true } } as never })
-    const host = await renderWelcome()
-    expect(host.querySelectorAll('[aria-label^="Create a"]:not(:disabled)')).toHaveLength(1)
-    await act(async () => button(host, label).click())
-    expect(openProductWorkspace).toHaveBeenCalledWith(surface, { keepHome: true })
-    expect(useCommandDialogStore.getState().productCreateSurface).toBe(surface)
-    expect(host.querySelector('main[aria-label="Home"]')).not.toBeNull()
-  })
-
-  it('uses the existing Crew create permission and request for Studio', async () => {
-    configure()
-    const host = await renderWelcome()
-    expect(button(host, 'Create Studio').disabled).toBe(true)
-    await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { work: true } } as never }))
-    await act(async () => button(host, 'Create Studio').click())
-    expect(useCommandDialogStore.getState().productCreateSurface).toBe('work')
-    expect(useCommandDialogStore.getState().productCreateIntent).toBe('studio')
+    expect(host.querySelector('[aria-label="Direct product creation"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Use cases"]')?.textContent).not.toContain('Studio')
+    expect(host.querySelector('[aria-label="Use cases"]')?.textContent).not.toContain('Goals')
   })
 
   it('keeps existing work in Recent work and removes Open from creation cards', async () => {

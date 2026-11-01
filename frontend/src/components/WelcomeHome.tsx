@@ -1,6 +1,6 @@
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, Plus, PanelsTopLeft, LayoutDashboard } from 'lucide-react'
+import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, LayoutDashboard } from 'lucide-react'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
@@ -31,11 +31,6 @@ import { LocalSetup, LOCAL_SETUP_SEEN_KEY } from './LocalSetup'
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
 const WORK_PRODUCT_ORDER: ProductSurface[] = ['work', 'agentworks', 'relays']
 const SERVICE_ORDER: ProductSurface[] = ['knowledgebase', 'mcp-gateway', 'bullpen']
-const STARTING_POINTS: Partial<Record<ProductSurface, { createLabel: string; detail: string }>> = {
-  work: { createLabel: 'Create a Crew', detail: 'An AI specialist for your team.' },
-  agentworks: { createLabel: 'Create a Goal', detail: 'Set a target. Let agents move it forward.' },
-  relays: { createLabel: 'Create a Flow', detail: 'Connect steps into a repeatable process.' },
-}
 const SERVICE_DESCRIPTIONS: Partial<Record<ProductSurface, string>> = {
   knowledgebase: 'Knowledge your agents can reuse',
   'mcp-gateway': 'Your connected tools and credentials',
@@ -150,10 +145,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const openMcpSetup = () => openWorkspaceSettings('mcp')
   const openProviders = () => openWorkspaceSettings('providers')
   const studioCreation = creationItems.find(item => item.surface === 'work')
-  const openStudio = () => {
-    if (!studioCreation || !openQuickNavigation(studioCreation)) return
-    useCommandDialogStore.getState().requestProductCreate('work', 'studio')
-  }
   const startProject = () => {
     if (!studioCreation || !openQuickNavigation(studioCreation)) return
     useCommandDialogStore.getState().requestProductCreate('work')
@@ -191,37 +182,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
         {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} />}
 
         {workProducts.length > 0 && <HomeUseCases key={`cases:${scope}`} products={workProducts.map(product => product.id)} onChoose={message => { setAgentWorksDraft(message); setFocusPrompt(true); requestAnimationFrame(() => prompt.current?.focus()) }} />}
-
-        {workProducts.length > 0 && <section aria-label="Direct product creation">
-          <h2 className="mb-3 text-xs font-medium text-muted-foreground">Create directly</h2>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {workProducts.map(product => {
-              const creation = creationItems.find(item => item.surface === product.id)
-              const copy = STARTING_POINTS[product.id]!
-              const Icon = product.icon
-              return <article key={product.id} data-welcome-product={product.id} className="flex min-w-0 flex-col rounded-xl border border-border bg-card/50 p-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted/60"><Icon className="h-5 w-5" title="" /></span>
-                  <h3 className="text-sm font-semibold">{product.label}</h3>
-                </div>
-                <p className="mb-3 mt-2 min-h-10 text-xs leading-5 text-muted-foreground">{copy.detail}</p>
-                <div className="mt-auto border-t border-border/60 pt-2.5">
-                  <Button type="button" size="xs" variant="secondary" aria-label={copy.createLabel} disabled={!creation} title={creation ? copy.createLabel : 'Ask an administrator for access to create here'} onClick={() => { if (creation) openQuickNavigation(creation) }} className="w-full gap-1 bg-primary/10 px-1.5 text-primary shadow-none hover:bg-primary/20 [&_svg]:size-3"><Plus aria-hidden="true" />Create</Button>
-                </div>
-              </article>
-            })}
-            {workProducts.some(product => product.id === 'work') && <article className="flex min-w-0 flex-col rounded-xl border border-border bg-card/50 p-3">
-              <div className="flex items-center gap-2.5">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted/60"><PanelsTopLeft aria-hidden="true" className="h-5 w-5 text-muted-foreground" /></span>
-                <h3 className="text-sm font-semibold">Studio</h3>
-              </div>
-              <p className="mb-3 mt-2 min-h-10 text-xs leading-5 text-muted-foreground">A private space for Code or Cowork.</p>
-              <div className="mt-auto border-t border-border/60 pt-2.5">
-                <Button type="button" size="xs" variant="secondary" aria-label="Create Studio" disabled={!studioCreation} onClick={openStudio} title={studioCreation ? 'Start a private Code or Cowork workspace' : 'Ask an administrator for access to create a workspace'} className="w-full gap-1 bg-primary/10 text-primary shadow-none hover:bg-primary/20 [&_svg]:size-3"><Plus aria-hidden="true" />Create</Button>
-              </div>
-            </article>}
-          </div>
-        </section>}
 
         <section aria-labelledby="welcome-services">
           <h2 id="welcome-services" className="text-xs font-medium text-muted-foreground">Tools that work across your projects</h2>
