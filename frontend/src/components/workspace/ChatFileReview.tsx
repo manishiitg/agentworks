@@ -85,7 +85,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
       .then(({ data }) => { if (!controller.signal.aborted) setResult(data) })
       .catch(() => { if (!controller.signal.aborted) setError('Could not load this saved comparison. Refresh and try again.') })
     return () => controller.abort()
-  }, [workspacePath, sessionId, reviewId, revision, outsideGit, allChat, reply?.snapshotId])
+  }, [workspacePath, sessionId, reviewId, revision, outsideGit, allChat, reply?.snapshotId, reply?.historyScope, reply?.checkoutId])
   const through = reply?.snapshotId || result?.history.last_snapshot_id
   const loadMore = async () => {
     if (!result?.next_offset || !result.comparison) return

@@ -10,7 +10,7 @@ import (
 )
 
 // CompareSaved accepts only the reply IDs the server resolved from one
-// authorized chat. Spans remain separate comparisons, never stitched across
+// authorized chat or project. Spans remain separate comparisons, never stitched across
 // checkout/pull transitions. A key selects a saved file version, not a Git ref.
 func (s Store) CompareSaved(ctx context.Context, ids []string, file, key string, allow func(string) bool, checkoutID ...string) (Comparison, error) {
 	var records []Record
@@ -46,6 +46,9 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 			}
 		}
 		add := func(before, after string, label *CheckoutLabel, ordinal int, skipped []string, filter func(string) bool) error {
+			if len(checkoutID) > 0 && !matchesCheckout(label, checkoutID[0]) {
+				return nil
+			}
 			part := r
 			part.Before, part.After, part.NewRepos, part.GoneRepos = before, after, nil, nil
 			part.Omitted = append(append([]string{}, r.Omitted...), skipped...)
@@ -57,9 +60,6 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 				return err
 			}
 			for _, change := range comparison.Changes {
-				if len(checkoutID) > 0 && !matchesCheckout(label, checkoutID[0]) {
-					continue
-				}
 				change.Key = digest(r.ID + ":" + fmt.Sprint(ordinal) + ":" + change.Path)
 				change.Checkout = label
 				change.At = r.StartedAt.UTC().Format("2006-01-02T15:04:05Z")

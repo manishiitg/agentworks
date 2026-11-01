@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -44,6 +45,23 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 		externalError(w, 403, "forbidden", "Undo changes from a chat you can write in.")
 		return
 	}
+	if apply {
+		if err := crewroot.CheckSyncWrite(workspaceGitDocsRoot(), store.Root); err != nil {
+			externalError(w, http.StatusConflict, "editing_elsewhere", err.Error())
+			return
+		}
+	}
+	project := r.URL.Query().Get("history_scope") == "project"
+	if apply && project {
+		roots, found, _ := crewStorageRoots(root)
+		if !found {
+			roots = crewroot.Roots{Virtual: root}
+		}
+		if api.crewSyncIdle(roots) != nil {
+			externalError(w, http.StatusConflict, "turn_running", "Wait until the agents in this Crew finish, then revert.")
+			return
+		}
+	}
 	if apply && api.sessionTurnRunning(sessionID) {
 		externalError(w, http.StatusConflict, "turn_running", "Wait until this reply finishes, or press Stop, then revert these changes.")
 		return
@@ -52,7 +70,7 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 	defer cancel()
 	var history chatFileReview
 	var err error
-	if r.URL.Query().Get("history_scope") == "project" {
+	if project {
 		history, err = projectFileReviewHistory(ctx, store, root, allowRead, false)
 	} else {
 		history, err = api.chatFileReviewHistory(ctx, store, sessionID, root)
@@ -93,6 +111,7 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 			externalError(w, 500, "undo_failed", "Undo could not finish. Check the files and try again.")
 			return
 		}
+		log.Printf("[FILE_REVERT] scope=%s checkout=%q snapshot=%s files=%d skipped=%d", r.URL.Query().Get("history_scope"), r.URL.Query().Get("checkout_id"), id, len(plan.Restore), len(plan.Skipped))
 		api.recordCrewReplyUndo(sessionID, root, id, undoExecution, undoRecord, finishErr, started, plan)
 	}
 	prefixItems := func(items []filesnapshots.UndoItem) {
