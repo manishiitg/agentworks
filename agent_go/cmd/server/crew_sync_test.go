@@ -240,6 +240,12 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			// screen. The same events endpoint must show it only to its owner.
 			checkTranscript := func(record ProductConversationRecord, marker string) {
 				t.Helper()
+				projectID := strings.Split(record.ConversationKey, ":")[0]
+				request := httptest.NewRequest("GET", "/api/workspace-state", nil).WithContext(ctx)
+				restored, ok := api.validateWorkspaceReturn(request, &workspaceDestination{Surface: "work", ID: projectID, SessionID: record.SessionID}, []homeWork{{Surface: "work", ID: projectID, WorkspacePath: record.WorkspacePath}})
+				if !ok || restored == nil || restored.SessionID != record.SessionID {
+					t.Fatalf("imported archive without native runtime cannot reopen: %+v", restored)
+				}
 				for _, person := range []string{"owner", "other"} {
 					r := httptest.NewRequest("GET", "/api/sessions/"+record.SessionID+"/events?durable_chat=1&limit=40&view=compact&workspace_path="+record.WorkspacePath, nil)
 					r = mux.SetURLVars(r, map[string]string{"session_id": record.SessionID})

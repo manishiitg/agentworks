@@ -186,6 +186,7 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 	if copy.SessionID != "" {
 		allowed := false
 		historyMissing := false
+		historyWithoutRuntime := false
 		currentConversation := false
 		var history ChatHistorySession
 		var trigger, title, mode, platform string
@@ -203,8 +204,12 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 				runtime, runtimeErr := chatHistoryRuntimeFromJSON(data)
 				visible := chatHistoryVisibleTo(owner, claims.UserID, false) || ((copy.Surface == "agentworks" || copy.Surface == "relays") && isWorkflowBotHistory(history))
 				allowed = visible && runtimeErr == nil && runtime != nil && canonicalChatHistoryWorkspacePath(claims.UserID, runtime.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace)
+				historyWithoutRuntime = visible && runtimeErr == nil && runtime == nil
 				history.CanResume = chatHistoryCanResume(owner, claims.UserID, false)
-				title, mode, platform = history.Title, firstNonEmptyTrimmed(history.WorkshopMode, runtime.WorkshopMode), history.BotPlatform
+				title, mode, platform = history.Title, history.WorkshopMode, history.BotPlatform
+				if runtime != nil {
+					mode = firstNonEmptyTrimmed(mode, runtime.WorkshopMode)
+				}
 			}
 		}
 		conversationKey := ""
@@ -234,9 +239,9 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 				}
 			}
 		}
-		// An empty side chat has a server-owned registry slot before its first
-		// transcript exists. A foreign or mismatched transcript still fails closed.
-		if !active && historyMissing && currentConversation && conversationKey != "" {
+		// A current registry-owned chat can be empty or have an imported archive
+		// before its first native turn. Foreign and mismatched histories stay denied.
+		if !active && (historyMissing || historyWithoutRuntime) && currentConversation && conversationKey != "" {
 			allowed = true
 			history.CanResume = true
 		}
