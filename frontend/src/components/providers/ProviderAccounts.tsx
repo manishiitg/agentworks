@@ -87,6 +87,7 @@ export const NO_LONGER_AVAILABLE = 'No longer available here'
 type ServerAccountState = 'ready' | 'sign_in' | 'different_login' | 'missing' | 'unavailable' | 'loading'
 /** Where one of your accounts on this Mac stands on a server, with the login each side reports (an email, usually). */
 type ServerAccount = { state: ServerAccountState; mac_login?: string; server_login?: string }
+type CompanyAccount = { state: 'added' | 'available' | 'unavailable' | 'not_offered'; reason?: string }
 
 export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product }: {
   provider: string
@@ -143,12 +144,17 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // Where each of your accounts stands on each connected server: ready, needs sign-in, or not there yet.
   const [onServers, setOnServers] = useState<Record<string, Record<string, ServerAccount> | 'unavailable'>>({})
   const serverIds = servers.map(server => server.id).join(',')
+  // A server's own (company) login for this program, used from this Mac: the server says whether it offers it to you.
+  const [company, setCompany] = useState<Record<string, CompanyAccount>>({})
+  const loadCompany = (serverId: string) => desktopRequest<CompanyAccount>(`/${encodeURIComponent(serverId)}/company-accounts?provider=${encodeURIComponent(provider)}`)
+    .then(result => setCompany(current => ({ ...current, [serverId]: result })))
+    .catch(() => setCompany(current => ({ ...current, [serverId]: { state: 'not_offered' } })))
   const loadOnServer = (serverId: string) => desktopRequest<{ accounts: Record<string, ServerAccount> }>(`/${encodeURIComponent(serverId)}/provider-accounts?provider=${encodeURIComponent(provider)}`)
     .then(result => setOnServers(current => ({ ...current, [serverId]: result.accounts })))
     .catch(() => setOnServers(current => ({ ...current, [serverId]: 'unavailable' })))
   useEffect(() => {
     if (!onThisMac || !manage) return
-    for (const id of serverIds.split(',').filter(Boolean)) void loadOnServer(id)
+    for (const id of serverIds.split(',').filter(Boolean)) { void loadOnServer(id); void loadCompany(id) }
   }, [onThisMac, manage, serverIds, provider, connections.length])
   useEffect(() => {
     let cancelled = false
@@ -364,7 +370,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     finally { setBusy(false); void loadOnServer(server.id) }
   }
   // "On your servers": one line under each of your accounts on this Mac, with what to do on each server.
-  const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && servers.length > 0 && (
+  const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && !record.via_connection && servers.length > 0 && (
     <div className="mt-3 w-full border-t border-gray-100 pt-3 pl-11 text-xs dark:border-gray-800">
       <p className="mb-2 text-gray-500 dark:text-gray-400">Use it on your servers too</p>
       <div className="flex flex-wrap items-center gap-2">
@@ -587,6 +593,30 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       {notice.signInUrl && <button type="button" className="font-medium underline" onClick={() => window.electronAPI?.openExternal?.(notice.signInUrl!)}>Open sign-in</button>}
     </p>
   )
+  // "Use <server>'s login on this Mac": the program runs here, on the company login the server holds.
+  const useCompany = async (server: DesktopConnection) => {
+    setBusy(true); setError(null)
+    try {
+      await desktopRequest(`/${encodeURIComponent(server.id)}/company-accounts`, 'POST', { provider })
+      changed()
+    } catch (addError) { setError(addError instanceof Error ? addError.message : 'Could not add the account.') }
+    finally { setBusy(false); void loadCompany(server.id) }
+  }
+  const offering = onThisMac && manage ? servers.filter(server => company[server.id] && company[server.id].state !== 'not_offered') : []
+  const companySection = offering.length > 0 && <div className="mt-5">
+    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Your company's login</div>
+    <ul className="space-y-2">
+      {offering.map(server => {
+        const entry = company[server.id]
+        return <li key={server.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className="text-gray-700 dark:text-gray-300"><span className="font-medium">{server.name}</span>: runs {providerLabel || provider} on this Mac with {server.name}'s login</span>
+          {entry.state === 'added' && <span className="text-emerald-600 dark:text-emerald-400">✓ Added to your accounts</span>}
+          {entry.state === 'available' && <button type="button" disabled={busy} className={secondaryButtonClass} onClick={() => void useCompany(server)}>Use on this Mac</button>}
+          {entry.state === 'unavailable' && <span className="text-gray-500 dark:text-gray-400">{entry.reason}</span>}
+        </li>
+      })}
+    </ul>
+  </div>
   const errorLine = error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
 
   if (manage) {
@@ -608,6 +638,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{onThisMac ? 'This Mac' : ADMIN_MANAGED_ACCOUNT_LABEL}</div>
             {serverBlock(server)}
           </div>}
+          {companySection}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
           {group('Other people\'s accounts', connections.filter(record => accountRelation(record) === 'admin_view'))}
           {errorLine}

@@ -46,6 +46,9 @@ type ProviderConnection struct {
 	// Sharing is who besides the owner may use a user account. Only the
 	// owner and admins see it.
 	Sharing *ProviderConnectionSharing `json:"sharing,omitempty"`
+	// ViaConnection is set on a Mac account that runs on a connected server's company login (the saved connection's
+	// id): the program runs on the Mac and its model requests go through that server (company_model_proxy.go).
+	ViaConnection string `json:"via_connection,omitempty"`
 }
 type storedProviderConnection struct {
 	ProviderConnection
@@ -258,6 +261,9 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, fmt.Errorf("cannot prepare provider connection storage")
 		}
+	}
+	if record.ViaConnection != "" && record.Provider == "muse-cli" {
+		keys.RuntimeEnvironment[llmtypes.MuseBaseURLKey] = companyAccountBaseURL(record)
 	}
 	if record.Provider == "codex-cli" {
 		configPath := filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "config.toml")
