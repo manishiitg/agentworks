@@ -154,7 +154,8 @@ class Run:
                 return "NOT RUN", [f"turn 1: {p}" for p in problems]
             self.use(chat_id, second)
             problems, _ = self.ask(chat_id, "What code word did I give you earlier in this chat? Reply with only the word.",
-                                   started, lambda a: word in a.upper(), word)
+                                   # The random part proves the memory; a model may misspell the fixed word.
+                                   started, lambda a: word.split("-")[1] in a.upper(), word)
             return ("FAIL", [f"turn 2 on {second['provider']}: {p}" for p in problems]) if problems else ("PASS", [])
         finally:
             if chat_id:

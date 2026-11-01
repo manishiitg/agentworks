@@ -84,6 +84,13 @@ def turn(config, workspace, chat_id, prompt, started, limit, accept, expected):
                                        "message": prompt})
     query = asked.get("query_id", "")
     after, messages = 0, []
+
+    def mine(message):
+        # After a switch of AI program the platform stores its hand-over notice in front of the person's text,
+        # which follows "[USER MESSAGE]" (shown as a notice on the website).
+        text = message.get("text") or ""
+        return message.get("role") == "you" and (text == prompt or text.endswith("\n[USER MESSAGE]\n" + prompt))
+
     while time.monotonic() - started < limit:
         page = call(config, "workspace", {"action": "read_chat", "workspace_id": workspace, "chat_id": chat_id, "query_id": query,
                                           "after": after, "wait_seconds": 25})
@@ -91,11 +98,11 @@ def turn(config, workspace, chat_id, prompt, started, limit, accept, expected):
         after = page.get("next_after", after)
         # Only this prompt's own answer ends the wait: in a chat with history an earlier turn's answer is already there
         # before this turn starts, and stopping on it read the turn as never accepted.
-        mine = {m.get("turn") for m in messages if m.get("role") == "you" and m.get("text") == prompt}
-        if not page.get("working") and any(m.get("role") == "assistant" and m.get("turn") in mine for m in messages):
+        turns = {m.get("turn") for m in messages if mine(m)}
+        if not page.get("working") and any(m.get("role") == "assistant" and m.get("turn") in turns for m in messages):
             break
     # Chat messages carry the chat's own turn id: follow the turn of the message this check sent.
-    sent = [m for m in messages if m.get("role") == "you" and m.get("text") == prompt]
+    sent = [m for m in messages if mine(m)]
     turns = {m.get("turn") for m in sent}
     this = [m for m in messages if m.get("turn") in turns]
     answers = [m.get("text", "").strip() for m in this if m.get("role") == "assistant" and m.get("text", "").strip()]
