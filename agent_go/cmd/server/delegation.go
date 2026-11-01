@@ -114,11 +114,13 @@ func scopeDelegatedHumanInputExecutor(workflowPath string, executor func(context
 // workshop step/background executions in bgAgentRegistry so that HasRunningAgents()
 // returns true and the frontend keeps polling for events.
 type workshopExecutionBgNotifier struct {
-	api           *StreamingAPI
-	sessionID     string
-	workspacePath string
-	presetQueryID string
-	userID        string
+	// Whole runs already deliver one result to their saved chat.
+	suppressAutoNotification bool
+	api                      *StreamingAPI
+	sessionID                string
+	workspacePath            string
+	presetQueryID            string
+	userID                   string
 }
 
 func (n *workshopExecutionBgNotifier) OnExecutionStart(start todo_creation_human.WorkshopExecutionStart) {
@@ -158,6 +160,9 @@ func (n *workshopExecutionBgNotifier) OnExecutionStart(start todo_creation_human
 		}
 		metadata[k] = v
 	}
+	if n.suppressAutoNotification {
+		metadata["suppress_auto_notification"] = "true"
+	}
 	bgAgent := &BackgroundAgent{
 		ID:                start.ID,
 		ParentExecutionID: parentExecutionID,
@@ -179,16 +184,16 @@ func (n *workshopExecutionBgNotifier) OnExecutionStart(start todo_creation_human
 		return
 	}
 
-	// Pre-create the channel so NotifyCompletion never drops a completion
-	n.api.bgAgentRegistry.GetNotificationChannel(n.sessionID)
-
-	// Ensure background completion loop is running
-	n.api.completionLoopStartedMu.Lock()
-	if !n.api.completionLoopStarted[n.sessionID] {
-		n.api.completionLoopStarted[n.sessionID] = true
-		go n.api.backgroundCompletionLoop(n.sessionID)
+	if !n.suppressAutoNotification {
+		// Pre-create the channel so NotifyCompletion never drops a completion.
+		n.api.bgAgentRegistry.GetNotificationChannel(n.sessionID)
+		n.api.completionLoopStartedMu.Lock()
+		if !n.api.completionLoopStarted[n.sessionID] {
+			n.api.completionLoopStarted[n.sessionID] = true
+			go n.api.backgroundCompletionLoop(n.sessionID)
+		}
+		n.api.completionLoopStartedMu.Unlock()
 	}
-	n.api.completionLoopStartedMu.Unlock()
 
 	// Emit background_agent_started so the execution remains visible and follows
 	// the same parent-notification lifecycle as workflow steps. Long coding-CLI
