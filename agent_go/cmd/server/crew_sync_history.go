@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -141,6 +142,31 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	if err = updatePersistedChatHistoryIndexWithWriter(claims.UserID, session, "multi-agent", in.History, len(in.History), nil, path, int64(len(raw)), now, nil, write); err != nil {
 		return err
 	}
+	// The chat screen reads the durable journal, not the resume archive. Register
+	// the destination owner through the normal path and project only dialogue;
+	// source terminal events, handles and execution identities never travel.
+	if api.eventStore == nil {
+		return fmt.Errorf("the destination conversation journal is unavailable")
+	}
+	api.eventStore.SetSessionOwner(session, claims.UserID)
+	if err = api.eventStore.SetSessionPersistenceClass(session, events.SessionPersistenceInteractiveChat); err != nil {
+		return err
+	}
+	var conversation builderConversationLog
+	if err = json.Unmarshal(raw, &conversation); err != nil {
+		return err
+	}
+	var dialogue []events.Event
+	for _, row := range builderConversationToRawEventsLimit(conversation, 0) {
+		var event events.Event
+		if err = json.Unmarshal(row, &event); err != nil {
+			return err
+		}
+		dialogue = append(dialogue, event)
+	}
+	if err = api.eventStore.ImportDurableChatEvents(session, dialogue); err != nil {
+		return err
+	}
 	rememberPreviousConversation(&doc, key, current)
 	current.SessionID, current.ConversationID = session, in.ConversationID
 	current.FreshNative = true
@@ -149,6 +175,6 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	if err = store.writeDocument(ctx, registryPath, doc); err != nil {
 		return err
 	}
-	log.Printf("[CREW_HANDOFF] project=%s pair=%s transfer=%s phase=import mode=archive conversation=%s session=%s messages=%d bytes=%d", roots.ID, pair, transfer, in.ConversationID, session, len(in.History), len(raw))
+	log.Printf("[CREW_HANDOFF] project=%s pair=%s transfer=%s phase=import mode=archive conversation=%s session=%s messages=%d journal_rows=%d bytes=%d", roots.ID, pair, transfer, in.ConversationID, session, len(in.History), len(dialogue), len(raw))
 	return nil
 }
