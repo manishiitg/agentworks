@@ -14,6 +14,7 @@ import { parseTokenAmount } from '../../utils/tokenLimits'
 import {
   llmConfigService,
   providerApiErrorText,
+  type MacAppLending,
   type ProviderAccountRelation,
   type ProviderAccountSharing,
   type ProviderAccountStatus,
@@ -204,6 +205,25 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const server = connections.find(record => accountRelation(record) === 'server')
   const personalAllowed = server?.personal_accounts_allowed !== false
   const changed = () => window.dispatchEvent(new Event('provider-connections-changed'))
+  const [macApp, setMacApp] = useState<MacAppLending | null>(null)
+  useEffect(() => {
+    if (onThisMac || !manage || !server?.can_manage) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    const load = () => Promise.resolve().then(() => llmConfigService.getMacAppLending(provider)).then(state => {
+      if (cancelled) return
+      setMacApp(state)
+      if (state.signing_in && !state.signed_in_as) timer = setTimeout(() => void load(), 3000)
+    }).catch(() => undefined)
+    void load()
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [provider, onThisMac, manage, server?.can_manage, macApp?.signing_in?.url])
+  const changeMacApp = async (action: 'sign_in' | 'sign_out') => {
+    setBusy(true); setError(null)
+    try { setMacApp(await llmConfigService.setMacAppLending(provider, action)) }
+    catch (macError) { setError(providerApiErrorText(macError, action === 'sign_in' ? 'Could not start the sign-in.' : 'Could not turn it off.')) }
+    finally { setBusy(false) }
+  }
   const save = async () => {
     if (disabled || !personalAllowed) return
     setBusy(true); setError(null)
@@ -460,6 +480,26 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     )
   }
 
+  // "Use from the Mac app": the server's proxy holds its own login for the program, and everyone the account is
+  // available to gets it on their Mac as "<server> · <program> (company)". The sign-in is the switch.
+  const macAppRow = (record: ProviderConnection) => !onThisMac && record.can_manage && macApp?.available && (
+    <div className="mt-3 border-t border-gray-100 pt-3 pl-11 text-xs dark:border-gray-800">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-medium text-gray-800 dark:text-gray-200">Use from the Mac app</p>
+          <p className="mt-0.5 text-gray-500 dark:text-gray-400">{macApp.signed_in_as
+            ? <>On · signed in as {macApp.signed_in_as}. People it is available to see it in their Mac app; this account's limits apply and the usage counts here.</>
+            : <>Off. Turn it on to let people run {providerLabel || provider} on their own Mac with this account. You sign in once; it is a separate login from the one above.</>}</p>
+        </div>
+        {macApp.signed_in_as
+          ? <button type="button" disabled={busy} className={secondaryButtonClass} onClick={() => void changeMacApp('sign_out')}>Turn off</button>
+          : !macApp.signing_in && <button type="button" disabled={busy} className={secondaryButtonClass} onClick={() => void changeMacApp('sign_in')}>Turn on</button>}
+      </div>
+      {macApp.signing_in && !macApp.signed_in_as && <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100">
+        <p>Open <a className="font-medium underline" href={macApp.signing_in.url} target="_blank" rel="noreferrer">{macApp.signing_in.url}</a>{macApp.signing_in.code && <> and enter <strong className="font-mono">{macApp.signing_in.code}</strong></>}, then approve with the company's {providerLabel || provider} account. This updates by itself.</p>
+      </div>}
+    </div>
+  )
   const serverBlock = (record: ProviderConnection) => {
     const availability = record.availability
     return (
@@ -502,6 +542,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           )}
         </div>
         {serverRow(record)}
+        {macAppRow(record)}
         {noticeFor(record)}
         {availabilityDraft !== null && record.availability_editable && (
           <form className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }} onKeyDown={event => { if (event.key === 'Escape') setAvailabilityDraft(null) }}>
