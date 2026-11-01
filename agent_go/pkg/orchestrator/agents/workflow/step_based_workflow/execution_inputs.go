@@ -1,6 +1,7 @@
 package step_based_workflow
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -73,4 +74,37 @@ func ResolveExecutionInputs(manifest *VariablesManifest, selected []string) ([]V
 		}
 	}
 	return result, nil
+}
+
+// Workshop tools run one input set at a time. Share the controller's omitted
+// versus empty selection rules, and refresh from disk so deleted/malformed
+// inputs cannot silently reuse the previous turn's selection.
+func (hcpo *StepBasedWorkflowOrchestrator) resolveWorkshopInputGroup(ctx context.Context, requested string, selection []string) (string, error) {
+	_, manifest, err := NewVariableManager(hcpo.BaseOrchestrator).checkExistingVariables(ctx, "variables/variables.json")
+	if err != nil {
+		return "", err
+	}
+	hcpo.variablesManifest = manifest
+	if requested != "" {
+		if manifest != nil {
+			for _, group := range manifest.Groups {
+				if inputSetFolderName(group.Name) == requested {
+					requested = group.Name
+					break
+				}
+			}
+		}
+		selection = []string{requested}
+	}
+	groups, err := ResolveExecutionInputs(manifest, selection)
+	if err != nil {
+		return "", err
+	}
+	if len(groups) == 0 {
+		return "", fmt.Errorf("no input sets selected; choose an enabled input set")
+	}
+	if len(groups) != 1 {
+		return "", fmt.Errorf("group_name is required when several input sets are enabled; choose one from variables/variables.json")
+	}
+	return groups[0].Name, nil
 }

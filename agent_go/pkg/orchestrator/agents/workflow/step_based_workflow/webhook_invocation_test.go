@@ -12,6 +12,14 @@ import (
 )
 
 func TestWebhookRunBindingKeepsRouteGroupAndHumanInputsScoped(t *testing.T) {
+	// Omitted selection permits the resolver's unnamed invocation; an
+	// explicit empty selection must never turn into automatic work.
+	if _, err := (&WebhookInvocation{}).RoutesForGroup(""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&WebhookInvocation{GroupNames: []string{}}).RoutesForGroup(""); err == nil {
+		t.Fatal("empty selection allowed an unnamed invocation")
+	}
 	binding := &WebhookInvocation{InputFile: "Workflow/testing/webhooks/deliveries/run.json", RouteSelections: map[string]string{"router": "issues"}, GroupNames: []string{"prod"}}
 	if _, err := binding.RoutesForGroup("other"); err == nil {
 		t.Fatal("unconfigured group accepted")

@@ -24,24 +24,7 @@ import (
 // workspace HTTP server, writes the workflow database and saves durable assets.
 // Obsolete fields in saved JSON cannot select another execution mode.
 func TestBuilderStepExecutionUsesLiveDatabaseAndAssets(t *testing.T) {
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	t.Setenv("LOCAL_MODE", "true")
-	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("NATIVE_WORKSPACE", "true")
-	oldDocs := viper.Get("docs-dir")
-	viper.Set("docs-dir", docs)
-	t.Cleanup(func() { viper.Set("docs-dir", oldDocs) })
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Any("/api/documents/*filepath", workspacehandlers.HandleDocumentRequest)
-	router.GET("/api/documents", workspacehandlers.ListDocuments)
-	router.POST("/api/folders", workspacehandlers.CreateFolder)
-	router.DELETE("/api/folders/*folderpath", workspacehandlers.DeleteFolder)
-	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
-	server := httptest.NewServer(router)
-	defer server.Close()
-	t.Setenv("WORKSPACE_API_URL", server.URL)
+	docs, server := workflowHTTPTestWorkspace(t)
 
 	const workflow = "Workflow/real-execution"
 	write := func(rel, content string) {
@@ -126,4 +109,28 @@ print('STATUS: COMPLETED')
 	if _, err := os.Stat(filepath.Join(docs, workflow, "runs/test-historical/test_mode.json")); err != nil {
 		t.Fatalf("historical receipt was removed: %v", err)
 	}
+}
+
+func workflowHTTPTestWorkspace(t *testing.T) (string, *httptest.Server) {
+	t.Helper()
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("NATIVE_WORKSPACE", "true")
+	oldDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", oldDocs) })
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Any("/api/documents/*filepath", workspacehandlers.HandleDocumentRequest)
+	router.GET("/api/documents", workspacehandlers.ListDocuments)
+	router.POST("/api/folders", workspacehandlers.CreateFolder)
+	router.DELETE("/api/folders/*folderpath", workspacehandlers.DeleteFolder)
+	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+
+	return docs, server
 }

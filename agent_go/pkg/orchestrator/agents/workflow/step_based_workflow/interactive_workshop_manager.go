@@ -1937,20 +1937,16 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			groupNameRaw, _ := args["group_name"]
 			groupName, _ := groupNameRaw.(string)
 
-			// Fallback to session-level group from toolbar selection
-			if !iwm.controller.isRelayExecution() && groupName == "" && len(iwm.controller.enabledGroupNames) > 0 {
-				groupName = iwm.controller.enabledGroupNames[0]
+			if value, supplied := args["group_name"]; supplied {
+				if _, ok := value.(string); !ok {
+					return "group_name must be a string", nil
+				}
 			}
-
-			// Resolve an execution group when the workspace defines them. Products
-			// with no user-visible variables may omit group_name and supply only a
-			// run folder; this preserves a stable execution scope without forcing a
-			// user to choose workflow machinery.
-			if !iwm.controller.isRelayExecution() && groupName == "" {
-				iwm.refreshVariablesManifest(ctx)
-				if iwm.controller.variablesManifest != nil && len(iwm.controller.variablesManifest.Groups) > 0 {
-					// Auto-select the first available group.
-					groupName = iwm.controller.variablesManifest.Groups[0].Name
+			if !iwm.controller.isRelayExecution() {
+				var inputErr error
+				groupName, inputErr = iwm.controller.resolveWorkshopInputGroup(ctx, groupName, iwm.controller.enabledGroupNames)
+				if inputErr != nil {
+					return "", inputErr
 				}
 			}
 
@@ -1979,7 +1975,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 				}
 			}
-			runFolder := fmt.Sprintf("%s/%s", iteration, groupFolderName)
+			runFolder := filepath.Join(iteration, groupFolderName)
 			if iwm.controller.isRelayExecution() {
 				runFolder, _ = args["run_folder"].(string)
 				if runFolder == "" {

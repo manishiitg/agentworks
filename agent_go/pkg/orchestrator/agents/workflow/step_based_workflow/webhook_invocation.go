@@ -20,7 +20,7 @@ type WebhookInvocation struct {
 }
 
 func (w *WebhookInvocation) RoutesForGroup(group string) (map[string]string, error) {
-	if !slices.Contains(w.GroupNames, group) {
+	if w.GroupNames != nil && !slices.Contains(w.GroupNames, group) {
 		return nil, fmt.Errorf("API trigger does not allow variable group %q", group)
 	}
 	return maps.Clone(w.RouteSelections), nil

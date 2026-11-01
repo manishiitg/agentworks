@@ -1720,7 +1720,7 @@ func RegisterRunFullWorkflowTool(
 			"properties": map[string]interface{}{
 				"group_name": map[string]interface{}{
 					"type":        "string",
-					"description": "Variable group name to execute (e.g., 'group-1', 'saurabh'). Required. Only one group runs at a time.",
+					"description": "Optional input-set name. Omit when no input sets are configured or exactly one is enabled. Only one input set runs at a time.",
 				},
 				"human_inputs": map[string]interface{}{
 					"type":        "object",
@@ -1744,7 +1744,7 @@ func RegisterRunFullWorkflowTool(
 					},
 				},
 			},
-			"required": []string{"group_name"},
+			"required": []string{},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 
@@ -1761,17 +1761,22 @@ func RegisterRunFullWorkflowTool(
 			}
 			strategy := "start_from_beginning_no_human"
 
-			// Single group only — required
-			groupName := ""
-			if g, ok := args["group_name"].(string); ok && g != "" {
-				groupName = g
+			groupName, _ := args["group_name"].(string)
+			if value, supplied := args["group_name"]; supplied {
+				if _, ok := value.(string); !ok {
+					return "group_name must be a string", nil
+				}
 			}
 			var enabledGroupNames []string
 			if !session.controller.isRelayExecution() {
-				if groupName == "" {
-					return "group_name is required. Read variables.json to see available groups.", nil
+				var inputErr error
+				groupName, inputErr = session.controller.resolveWorkshopInputGroup(ctx, groupName, nil)
+				if inputErr != nil {
+					return "", inputErr
 				}
-				enabledGroupNames = []string{groupName}
+				if groupName != "" {
+					enabledGroupNames = []string{groupName}
+				}
 			}
 
 			// Parse human_inputs strictly. The old assertion silently discarded
