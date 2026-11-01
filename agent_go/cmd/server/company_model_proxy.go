@@ -15,6 +15,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -246,7 +247,7 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 	}
 	account := "global:" + provider
 	if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: caller}, provider, account); err != nil {
-		desktopJSONError(w, 403, err.Error())
+		desktopJSONError(w, admissionStatus(err), err.Error())
 		return
 	}
 	// A key or Cursor relay has no proxy model list: the Mac only asks whether the program is offered.
@@ -354,7 +355,7 @@ func (api *StreamingAPI) handleCompanyModelCatalog(w http.ResponseWriter, r *htt
 		return
 	}
 	if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: caller}, provider, "global:"+provider); err != nil {
-		desktopJSONError(w, 403, err.Error())
+		desktopJSONError(w, admissionStatus(err), err.Error())
 		return
 	}
 	raw, err := modelProxyCatalog(r.Context(), provider)
@@ -692,4 +693,14 @@ func withProxyModel(body []byte, model string) ([]byte, error) {
 // means another allowed model is left, an error means none is; either way this model is used up.
 func modelLimitRefuses(capped bool, err error) bool {
 	return capped || err != nil
+}
+
+// admissionStatus is the answer for a refused use of the server's account: 429 when the person has reached a token
+// limit (it comes back), 403 only when the account is not available to them (the Mac then removes it).
+func admissionStatus(err error) int {
+	var limit *sharedAccountTokenLimitError
+	if errors.As(err, &limit) {
+		return http.StatusTooManyRequests
+	}
+	return http.StatusForbidden
 }
