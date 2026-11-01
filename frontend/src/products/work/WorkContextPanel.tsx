@@ -8,6 +8,7 @@ import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
+import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -55,7 +56,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
   const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })
-  const integrations = inventory.filter(item => item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
+  const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' }>()
   const showMenu = (view: 'full' | 'integrations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
@@ -75,10 +76,14 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
   if (menu?.scope === scope) {
-    const renderItem = (item: CrewMenuItem) => item.id === 'dashboard'
-      ? <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
-      : item.id === 'browser' ? <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)}/>
-      : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.label}</Row>
+    const renderItem = (item: CrewMenuItem) => {
+      if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
+      if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)}/>
+      const connections = menu.view === 'integrations' ? (snapshot?.apps || []).filter(row => row.destination === item.id) : []
+      const status = connectionSummary(connections, item.id === 'mcp:connected' && !!snapshot && !snapshot.errors.includes('Connections could not be loaded.'))
+      const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
+      return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{item.label}</Row>
+    }
     return <WorkspaceContextCard title={menu.view === 'integrations' ? 'Integrations' : 'Full menu'} onBack={() => setMenu(undefined)}>
       {menu.view === 'integrations' ? <div className="space-y-0.5">{integrations.map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
         const items = inventory.filter(item => item.group === group)

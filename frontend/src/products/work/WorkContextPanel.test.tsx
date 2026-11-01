@@ -12,7 +12,6 @@ vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxE
 vi.mock('./useWorkspaceStatus', () => ({ useWorkspaceStatus: () => ({ snapshot: mocks.status, refresh: vi.fn() }) }))
 vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: (reference?: { workspacePath: string; sessionId: string; snapshotId: string }) => void }) => <button onClick={() => onOpen({ workspacePath: 'Crew/example', sessionId: 'chat', snapshotId: 'latest' })}>Changes</button> }))
 vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => mocks.browser }))
-vi.mock('../../components/workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser · Connected</button> }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: mocks.documents }), selectReportDocument: vi.fn() }))
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { WorkContextPanel } from './WorkContextPanel'
@@ -69,10 +68,15 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   await act(async () => manage.click())
   expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.target).not.toHaveBeenCalled()
   for (const [label, target] of [['Google apps','gmail'],['My Slack account','slack-account'],['GitHub','github'],['MCPs','connected'],['WhatsApp','whatsapp']]) {
-   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === label)!.click())
+   const row = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!
+   expect(row.textContent).toContain(label === 'MCPs' ? '1 connected · 1 need attention' : 'Connected')
+   await act(async () => row.click())
    expect(mocks.target).toHaveBeenLastCalledWith('mcp', target)
    expect(mocks.open).toHaveBeenLastCalledWith('mcp')
   }
+  const browser = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Browser')!
+  expect(browser.textContent).toContain('Chrome · Connected')
+  await act(async () => browser.click()); expect(mocks.open).toHaveBeenLastCalledWith('browser')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to workspace"]')!.click())
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
   expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Build')?.open).toBe(true)
@@ -152,6 +156,10 @@ it('keeps offline connections out of the icon strip but reachable through expans
   const whatsapp = [...host.querySelectorAll('button')].find(node => node.textContent === 'WhatsAppNot connected')!
   await act(async () => whatsapp.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'whatsapp')
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!.click())
+  expect(host.textContent).toContain('Google appsNeeds attention')
+  expect(host.textContent).toContain('GitHubNot connected')
+  expect(host.textContent).toContain('BrowserChrome · Browser offline')
  })
 })
 
