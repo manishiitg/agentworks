@@ -47,7 +47,7 @@ func TestStampProductOwnerNeverOverwritesAndPreservesFields(t *testing.T) {
 		t.Fatalf("second stamp changed the manifest: %v %v", changed, err)
 	}
 	// Not a Crew or Code manifest, or no owner: untouched.
-	for _, other := range []string{`{"product":"sparkquill","id":"x"}`, `{"id":"x"}`, `not json`} {
+	for _, other := range []string{`{"product":"example-app","id":"x"}`, `{"id":"x"}`, `not json`} {
 		if out, changed, _ := stampProductOwner(other, "alice"); changed || out != other {
 			t.Fatalf("stamped a foreign manifest %q", other)
 		}

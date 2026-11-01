@@ -1,5 +1,5 @@
 // The session-event contract shared by every app that reads the agent
-// server's event stream (AgentWorks, SparkQuill). Moved here from the
+// server's event stream. Moved here from the
 // AgentWorks api-types so a second app does not have to carry that whole
 // file. The generated event schema stays where the generator writes it.
 import type { PollingEventSchema } from '../../src/generated/event-types'

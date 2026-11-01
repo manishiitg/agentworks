@@ -55,7 +55,7 @@ func (api *StreamingAPI) liveBrowserSessions(r *http.Request) []map[string]strin
 					result = append(result, item)
 				}
 			} else if api.ownsProjectWorkspace(userID, workspace) {
-				// A fixed-workspace product project (SparkQuill, ...):
+				// A fixed-workspace product project:
 				// its browser belongs to the project owner.
 				item["label"] = "Project browser"
 				result = append(result, item)

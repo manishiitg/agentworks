@@ -1,0 +1,1 @@
+.chat-history-panel{container:chat-history / inline-size}@container chat-history (max-width: 560px){.chat-history-filter-label{display:none}}@container chat-history (max-width: 320px){.chat-history-filter-count{display:none}}

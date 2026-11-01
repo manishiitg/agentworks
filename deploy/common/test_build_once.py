@@ -127,7 +127,6 @@ class EntryPointTest(unittest.TestCase):
         block = entry[entry.index("\n  all-hetzner)\n"):entry.index("\n  -h|--help|help)")]
         # PLAT-856-454: platform batches exclude separately developed products.
         self.assertNotIn("dominion", block.lower().replace("never dominion", ""))
-        self.assertNotIn("sparkquill", block.lower())
         self.assertEqual([l.strip() for l in block.splitlines() if l.strip().startswith("deploy_rootless_product ")],
                          ["deploy_rootless_product agents", "deploy_rootless_product confida"])
 

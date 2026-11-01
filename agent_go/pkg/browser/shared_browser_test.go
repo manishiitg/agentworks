@@ -76,14 +76,14 @@ func TestRemoveStaleChromeSingletonLockNoopWithoutSharedProfile(t *testing.T) {
 func TestSessionDirsChecksBothNamespacedLocationsWhenSet(t *testing.T) {
 	runtimeDir := t.TempDir()
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
-	t.Setenv("AGENT_BROWSER_NAMESPACE", "sparkquill")
+	t.Setenv("AGENT_BROWSER_NAMESPACE", "example-app")
 
 	dirs := sessionDirs()
 	if len(dirs) < 2 {
 		t.Fatalf("expected at least two namespaced candidate dirs, got %v", dirs)
 	}
-	wantXDG := filepath.Join(runtimeDir, "agent-browser", "namespaces", "sparkquill", "run")
-	wantTmp := filepath.Join("/tmp/.agent-browser", "namespaces", "sparkquill", "run")
+	wantXDG := filepath.Join(runtimeDir, "agent-browser", "namespaces", "example-app", "run")
+	wantTmp := filepath.Join("/tmp/.agent-browser", "namespaces", "example-app", "run")
 	if dirs[0] != wantXDG {
 		t.Fatalf("expected XDG runtime dir first, got %v", dirs)
 	}

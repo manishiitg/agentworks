@@ -10,7 +10,7 @@ import (
 
 func TestStampEventDataFillsAZeroTimestampOnly(t *testing.T) {
 	now := time.Date(2026, 9, 3, 13, 30, 0, 0, time.UTC)
-	ev := &orchestratorevents.ProductInteractionEvent{Product: "sparkquill", Kind: "suggestions"}
+	ev := &orchestratorevents.ProductInteractionEvent{Product: "example-app", Kind: "suggestions"}
 	stampEventData(ev, now)
 	if !ev.Timestamp.Equal(now) {
 		t.Fatalf("zero timestamp must be stamped, got %v", ev.Timestamp)

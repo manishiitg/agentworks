@@ -125,7 +125,7 @@ var mcpBridgeVirtualToolCategories = map[string]bool{}
 // productEnabled reports whether a product's profiles and skills should be
 // loaded by this server. An unset AGENT_PRODUCTS preserves the shared-server
 // behavior of loading every product. Dedicated deployments can set a
-// comma-separated allowlist (for example, "sparkquill") so unrelated
+// comma-separated allowlist (for example, "example-app") so unrelated
 // product startup failures cannot take down their agent API.
 func allowlistHasProduct(configured, product string) bool {
 	for _, candidate := range strings.Split(configured, ",") {
@@ -139,7 +139,7 @@ func allowlistHasProduct(configured, product string) bool {
 func productEnabled(product string) bool { return productpolicy.Enabled(product) }
 
 // isSingleProductServerDeployment reports whether this server instance is
-// dedicated to exactly one product surface (SparkQuill)
+// dedicated to exactly one product surface
 // via AGENT_PRODUCTS, as opposed to the shared desktop/multi-product server
 // where AGENT_PRODUCTS is unset. Only a genuinely dedicated deployment is
 // eligible for the missing-Claude-Code-token refusal in handleQuery: on the
@@ -4635,7 +4635,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// branch), "workflow" (direct plan execution, see below), or "multi-agent" — the
 	// generic direct-chat mode (model + skills + tools + workspace context)
 	// that the base agentworks surface uses by default and that other product
-	// surfaces (SparkQuill) opt into explicitly for plain chat.
+	// surfaces opt into explicitly for plain chat.
 	// "multi-agent" is NOT a "Chief of Staff" product — no such product exists
 	// on main (only on the separate, unmerged feature/chief-of-staff-product
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
@@ -5669,7 +5669,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if resolvedProfile != nil && resolvedProfile.APIKeys != nil {
 		// resolveAgentProfileForQuery resolved a project-scoped credential for a
-		// product surface (e.g. SparkQuill) from the encrypted per-workspace
+		// product surface from the encrypted per-workspace
 		// store. Recomputing mergedAPIKeys from scratch below would discard it:
 		// NewLLMAgentWrapper reads mergedAPIKeys, not req.LLMConfig.
 		//
@@ -7499,7 +7499,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// already the authoritative source of what tools exist. The generic
 			// text predates per-product custom tools: it names platform tools an
 			// allowlist filters out and never mentions the product's own tool at
-			// all, so a CLI-provider product chat (e.g. SparkQuill) can
+			// all, so a CLI-provider product chat can
 			// correctly run its one allowlisted tool and then, in the very same
 			// turn, tell the user it has no working tool because this stale text
 			// contradicted what actually happened.

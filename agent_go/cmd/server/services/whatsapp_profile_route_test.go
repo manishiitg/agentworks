@@ -20,7 +20,7 @@ func TestResolveFallsBackToTheProductRouterAfterWorkflowSlugs(t *testing.T) {
 	svc.SetProfileRouter(func(_ context.Context, token string) (*ProfileRoute, error) {
 		switch token {
 		case "child":
-			return &ProfileRoute{ProfileID: "sparkquill-child", ConversationKey: "fractions", Label: "Myra's tutor"}, nil
+			return &ProfileRoute{ProfileID: "example-app-child", ConversationKey: "fractions", Label: "Example tutor"}, nil
 		case "report":
 			t.Fatal("product router consulted for a workflow slug")
 		case "broken":
@@ -38,7 +38,7 @@ func TestResolveFallsBackToTheProductRouterAfterWorkflowSlugs(t *testing.T) {
 	if route == nil || route.Key != "child" {
 		t.Fatalf("@child = %+v, want the profile route", route)
 	}
-	if profile, ok := route.Value.(*ProfileRoute); !ok || profile.ProfileID != "sparkquill-child" || profile.ConversationKey != "fractions" {
+	if profile, ok := route.Value.(*ProfileRoute); !ok || profile.ProfileID != "example-app-child" || profile.ConversationKey != "fractions" {
 		t.Fatalf("@child value = %+v, want the child profile keyed by the activity", route.Value)
 	}
 	if route := svc.Resolve(context.Background(), "dm", "nothing"); route != nil {
@@ -56,12 +56,12 @@ func TestProfileRoutedMessageKeepsItsProfileAcrossTurns(t *testing.T) {
 	manager := NewBotConversationManager(nil, "", "")
 	manager.RegisterConnector(&testBotConnector{})
 
-	child := &ProfileRoute{ProfileID: "sparkquill-child", ConversationKey: "fractions"}
+	child := &ProfileRoute{ProfileID: "example-app-child", ConversationKey: "fractions"}
 	manager.SetProfileTurnFunc(func(_ context.Context, _ string, msg BotIncomingMessage, _ ThreadID) (map[string]interface{}, string, bool, error) {
-		if msg.PresetProfile == nil || msg.PresetProfile.ProfileID != "sparkquill-child" {
+		if msg.PresetProfile == nil || msg.PresetProfile.ProfileID != "example-app-child" {
 			t.Errorf("profile turn built without the @child route: %+v", msg.PresetProfile)
 		}
-		return map[string]interface{}{"agent_profile_id": "sparkquill-child", "query": msg.Text}, "conv-fractions", true, nil
+		return map[string]interface{}{"agent_profile_id": "example-app-child", "query": msg.Text}, "conv-fractions", true, nil
 	})
 	started := make(chan string, 1)
 	manager.SetStartSessionFunc(func(_ context.Context, _ map[string]interface{}, sessionID, _ string, _ func(*events.AgentEvent)) error {
@@ -86,11 +86,11 @@ func TestProfileRoutedMessageKeepsItsProfileAcrossTurns(t *testing.T) {
 	manager.mu.RLock()
 	active := manager.sessions[ThreadID{Platform: "whatsapp", ChannelID: "dm", ThreadTS: "dm"}.Key()]
 	manager.mu.RUnlock()
-	if active == nil || active.profileRoute == nil || active.profileRoute.ProfileID != "sparkquill-child" {
+	if active == nil || active.profileRoute == nil || active.profileRoute.ProfileID != "example-app-child" {
 		t.Fatalf("active session = %+v, want the @child route remembered", active)
 	}
 	req := manager.turnRequestForActive(active, "is it 3/5?", "user-1", "whatsapp", active.ThreadID)
-	if req["agent_profile_id"] != "sparkquill-child" || req["query"] != "is it 3/5?" {
+	if req["agent_profile_id"] != "example-app-child" || req["query"] != "is it 3/5?" {
 		t.Fatalf("follow-up = %#v, want built as the child's turn", req)
 	}
 }
@@ -106,7 +106,7 @@ func TestOutboundReplyKeepsTheActiveProductRoute(t *testing.T) {
 	child := &WhatsAppService{routing: WhatsAppRouting{"report": {WorkflowID: "wf-report", WorkspacePath: "Workflow/report"}}}
 	child.SetProfileRouter(func(_ context.Context, token string) (*ProfileRoute, error) {
 		if token == "child" {
-			return &ProfileRoute{ProfileID: "sparkquill-child", ConversationKey: "fractions", Label: "Myra's tutor"}, nil
+			return &ProfileRoute{ProfileID: "example-app-child", ConversationKey: "fractions", Label: "Example tutor"}, nil
 		}
 		return nil, nil
 	})
@@ -150,7 +150,7 @@ func TestStatusKeepsTheActiveProductRoute(t *testing.T) {
 	svc := &WhatsAppService{messageHandler: func(BotIncomingMessage) {}}
 	svc.SetProfileRouter(func(_ context.Context, token string) (*ProfileRoute, error) {
 		if token == "child" {
-			return &ProfileRoute{ProfileID: "sparkquill-child", ConversationKey: "fractions", Label: "Myra's tutor"}, nil
+			return &ProfileRoute{ProfileID: "example-app-child", ConversationKey: "fractions", Label: "Example tutor"}, nil
 		}
 		return nil, nil
 	})

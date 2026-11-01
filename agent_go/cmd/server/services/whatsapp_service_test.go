@@ -17,8 +17,8 @@ func TestWhatsAppDefaultProfileAcceptsMessageWithoutWorkflowSlug(t *testing.T) {
 		messageHandler: func(msg BotIncomingMessage) { got = &msg },
 		owner: &WhatsAppOwner{
 			UserID:              "user-1",
-			DefaultProfileID:    "sparkquill",
-			DefaultUploadFolder: "Chats/SparkQuill/inbox",
+			DefaultProfileID:    "example-app",
+			DefaultUploadFolder: "Chats/ExampleApp/inbox",
 		},
 	}
 	chat := types.JID{User: "15551234567", Server: types.DefaultUserServer}

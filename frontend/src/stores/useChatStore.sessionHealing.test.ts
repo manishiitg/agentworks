@@ -9,7 +9,7 @@ import { reconcileSessionTabStreamingState, type ChatState, type ChatTab } from 
 // UI never submitted anything, and the tab's SSE stream can be silently dead
 // (a queued EventSource sits "connecting" forever without ever firing
 // onerror — see ChatArea.tsx's foreground-catch-up comment). Caught live: a
-// WhatsApp-triggered SparkQuill reply saved to chat history but never
+// WhatsApp-triggered ExampleApp reply saved to chat history but never
 // appeared in the already-open parent tab, even after switching tabs away
 // and back.
 const baseTab = (overrides: Partial<ChatTab>): ChatTab => ({

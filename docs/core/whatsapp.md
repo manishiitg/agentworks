@@ -22,8 +22,8 @@ BotConversationManager (BotConnector; Capabilities: WorkflowProgress only)
   Pairing is QR-based (`EnsurePairingQR` / `GetQR`); `IsPaired` gates
   readiness. Asking to pair another phone (`?device=next` once paired, or a
   named slot) is refused: unpair the linked phone first.
-- Accounts could once link extra phones (`devices/<slot>/`, for a second
-  parent in SparkQuill). Startup logs each one out of WhatsApp and deletes it
+- Accounts could once link extra phones (`devices/<slot>/`). Startup logs
+  each one out of WhatsApp and deletes it
   (`retireExtraWhatsAppDevices`); one that cannot be logged out right then
   keeps its files and is retried at the next start. A managed channel id
   minted for an extra phone (`<user>~<slot>|…`) names no service.

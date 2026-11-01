@@ -219,7 +219,7 @@ func TestUnauthenticatedFrontendRequestStillRedirectsToLogin(t *testing.T) {
 }
 
 func TestGatewaySSOOnlyRemovesPasswordLogin(t *testing.T) {
-	g := &gateway{ssoOnly: true, appName: "SparkQuill", sessionCookie: sessionCookieName("sparkquill")}
+	g := &gateway{ssoOnly: true, appName: "ExampleApp", sessionCookie: sessionCookieName("example-app")}
 	page := httptest.NewRecorder()
 	g.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/login", nil))
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "href='/auth/google/start?next=%2F'") || strings.Contains(page.Body.String(), "type=password") {
@@ -237,7 +237,7 @@ func TestNewGatewaySSOOnlyReadsApprovedEmails(t *testing.T) {
 	t.Setenv("GATEWAY_SSO_ONLY", "true")
 	t.Setenv("GATEWAY_SSO_SUPABASE_URL", "https://example.supabase.co")
 	t.Setenv("GATEWAY_SSO_SUPABASE_ANON_KEY", "public-key")
-	t.Setenv("GATEWAY_SSO_REDIRECT_URL", "https://sparkquill.example/auth/google/callback")
+	t.Setenv("GATEWAY_SSO_REDIRECT_URL", "https://example-app.example/auth/google/callback")
 	t.Setenv("GATEWAY_SSO_ALLOWED_EMAILS", " Member@example.com, owner@example.com ")
 	g := newGateway()
 	if !g.ssoOnly || !g.ssoAllowedEmail["member@example.com"] || !g.ssoAllowedEmail["owner@example.com"] {
@@ -269,12 +269,12 @@ func TestGoogleSSOGatewayAllowsOnlyApprovedEmailAndSurvivesRestart(t *testing.T)
 	}))
 	defer supabase.Close()
 	frontendDir := t.TempDir()
-	if err := os.WriteFile(frontendDir+"/index.html", []byte("SparkQuill family"), 0o644); err != nil {
+	if err := os.WriteFile(frontendDir+"/index.html", []byte("ExampleApp family"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	g := &gateway{
-		secret: []byte("test-secret-that-is-long-enough"), sessionCookie: sessionCookieName("sparkquill"), frontendDir: frontendDir,
-		ssoOnly: true, ssoURL: supabase.URL, ssoAnonKey: "public-key", ssoRedirectURL: "https://sparkquill.example/auth/google/callback",
+		secret: []byte("test-secret-that-is-long-enough"), sessionCookie: sessionCookieName("example-app"), frontendDir: frontendDir,
+		ssoOnly: true, ssoURL: supabase.URL, ssoAnonKey: "public-key", ssoRedirectURL: "https://example-app.example/auth/google/callback",
 		ssoAllowedEmail: map[string]bool{"member@example.com": true, "owner@example.com": true}, ssoClient: supabase.Client(),
 	}
 	start := httptest.NewRecorder()
@@ -321,7 +321,7 @@ func TestGoogleSSOGatewayAllowsOnlyApprovedEmailAndSurvivesRestart(t *testing.T)
 	request.AddCookie(session)
 	page := httptest.NewRecorder()
 	restarted.ServeHTTP(page, request)
-	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "SparkQuill family") {
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "ExampleApp family") {
 		t.Fatalf("session after restart: status=%d body=%q", page.Code, page.Body.String())
 	}
 
@@ -811,7 +811,7 @@ func TestSandboxedLessonMediaUsesJWTWithoutLoginCookie(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mediaPath := "/api/wp/api/documents/Chats/SparkQuill/activities/lesson/lesson.mp4/raw"
+	mediaPath := "/api/wp/api/documents/Chats/ExampleApp/activities/lesson/lesson.mp4/raw"
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		req := httptest.NewRequest(method, mediaPath+"?token="+token, nil)
 		req.Header.Set("Range", "bytes=0-3")

@@ -72,10 +72,9 @@ renders each prompt and returns the profiles ready to register. The three
 shipped products use it through a one-line `type ProductManifest =
 agentprofiles.ProductManifest` alias; do not copy the loader again.
 
-The first product with two profiles is SparkQuill (parent and child). The
-child is a PIN on the parent's account, not a user of its own, so the child
-profile lives under the same user folder and switching between the two is a
-surface concern gated by the PIN, not a permission change.
+A product may declare multiple profiles with different runtime capabilities.
+Use the existing authenticated account and product access checks; a surface's
+profile switch does not grant access to a different person's workspace.
 
 ## Field-by-field, with the load-bearing gotchas
 

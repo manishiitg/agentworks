@@ -7,6 +7,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -366,11 +368,63 @@ func TestFixedProductProfileLoadsSecretsFromSettingsWorkspace(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
-			t.Setenv("CAPLAYER_SERVICE_URL", "")
-			t.Setenv("CAPLAYER_SERVICE_TOKEN", "")
+			t.Setenv("MULTI_USER_MODE", "true")
+			withMemoryUserDirectory(t, `{"users":[{"id":"user-1","username":"owner","can_create":true,"products":["example-app"]}]}`)
+			// Settings now stores project secrets in Vault. Keep its external
+			// boundary keyed by workspace so the unowned alias cannot win.
+			roots := map[string]string{}
+			names := map[string][]string{}
+			vault := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !strings.HasPrefix(r.URL.Path, "/api/admin/") && r.Header.Get("X-CapLayer-Actor") != "user-1" {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				switch {
+				case r.URL.Path == "/api/project-vaults":
+					var in struct {
+						Root string `json:"workspace_root"`
+					}
+					if json.NewDecoder(r.Body).Decode(&in) != nil {
+						w.WriteHeader(400)
+						return
+					}
+					id := roots[in.Root]
+					if id == "" {
+						id = fmt.Sprintf("v-%06d", len(roots)+1)
+						roots[in.Root] = id
+					}
+					json.NewEncoder(w).Encode(map[string]string{"id": id})
+				case strings.HasPrefix(r.URL.Path, "/api/vaults/"):
+					parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/vaults/"), "/")
+					if len(parts) == 2 && parts[1] == "secrets" && r.Method == http.MethodPost {
+						var in struct{ Name string }
+						json.NewDecoder(r.Body).Decode(&in)
+						names[parts[0]] = append(names[parts[0]], in.Name)
+						json.NewEncoder(w).Encode(map[string]any{})
+					} else if len(parts) == 1 {
+						json.NewEncoder(w).Encode(map[string]any{"secret_names": names[parts[0]]})
+					} else {
+						w.WriteHeader(404)
+					}
+				case r.URL.Path == "/api/admin/runtime/secrets":
+					json.NewEncoder(w).Encode(map[string]any{"secrets": []any{}})
+				case strings.HasPrefix(r.URL.Path, "/api/admin/secrets"):
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					w.WriteHeader(404)
+				}
+			}))
+			defer vault.Close()
+			t.Setenv("CAPLAYER_SERVICE_URL", vault.URL)
+			t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
 			t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+			managedGlobalsMu.Lock()
+			oldManaged := managedGlobals
+			managedGlobals = map[string]string{}
+			managedGlobalsMu.Unlock()
+			t.Cleanup(func() { managedGlobalsMu.Lock(); managedGlobals = oldManaged; managedGlobalsMu.Unlock() })
 			const userID = "user-1"
-			const logical = "Chats/SparkQuill"
+			const logical = "Chats/ExampleApp"
 			physical := agentProfileRuntimeWorkspace(userID, logical)
 			manifest := `{"capabilities":{}}`
 			if initialized {
@@ -386,14 +440,14 @@ func TestFixedProductProfileLoadsSecretsFromSettingsWorkspace(t *testing.T) {
 			}
 			registry := agentprofiles.NewRegistry()
 			if err := registry.RegisterProfile(agentprofiles.Profile{
-				ID: "sparkquill", Name: "SparkQuill", Version: 1, BuiltIn: true,
+				ID: "example-app", Name: "ExampleApp", Version: 1, BuiltIn: true,
 				SystemPromptTemplate: "{{.ProjectTitle}}",
 				Runtime:              agentprofiles.RuntimePolicy{Transport: "structured"},
 			}); err != nil {
 				t.Fatal(err)
 			}
 			api := &StreamingAPI{agentProfiles: registry, chatStore: store}
-			ctx := context.Background()
+			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID, Username: "owner"})
 			if err := api.upsertSharedWorkflowSecret(ctx, physical, "PORTAL_PASSWORD", "settings-value"); err != nil {
 				t.Fatal(err)
 			}
@@ -401,7 +455,7 @@ func TestFixedProductProfileLoadsSecretsFromSettingsWorkspace(t *testing.T) {
 			if err := api.upsertSharedWorkflowSecret(ctx, logical, "PORTAL_PASSWORD", "wrong-store-value"); err != nil {
 				t.Fatal(err)
 			}
-			req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "sparkquill", SelectedFolder: logical, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "SparkQuill"}}
+			req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "example-app", SelectedFolder: logical, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "ExampleApp"}}
 			if _, err := api.resolveAgentProfileForQuery(ctx, &req, userID, "session-1"); err != nil {
 				t.Fatal(err)
 			}
@@ -639,7 +693,7 @@ func TestResolveProfileRuntimeModelAcceptsCatalogModelsWhenUncurated(t *testing.
 }
 
 // A provider option's ModelID is only its own default model — Models is the
-// full curated list a turn may request within it (matches SparkQuill's real
+// full curated list a turn may request within it (matches ExampleApp's real
 // product.yaml: one codex-cli option with model_id gpt-6-luna and
 // models: [gpt-6-luna, gpt-6.1-sol, gpt-6-sol, gpt-6-astra]). Caught
 // live: switching the composer's model from Luna to another Codex model

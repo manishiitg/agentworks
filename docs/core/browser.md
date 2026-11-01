@@ -45,7 +45,6 @@ session fallback. Browsers start on demand, not when a workflow is created.
 | Crew and Code | Browser capability and current product grants remain enforced. `.browser-settings.json` in the physical project is canonical; chat/tab caches cannot override it. |
 | Work browser panel | Reads and writes those project settings through the authenticated browser API. |
 | Video Studio | Required browser and shared workflow viewer; server uses managed Chrome. |
-| SparkQuill | Parent can start and sign in through its browser drawer; Local CDP installation instructions appear only when enabled. Child browser remains explicitly disabled. |
 | Dominion | Tool allowlist still excludes `agent_browser`; starting a browser cannot bypass that restriction. |
 
 Code offers Workspace browser, My Chrome or Edge · extension, and Chrome ·
@@ -745,24 +744,11 @@ connection pooling in `mcpagent` is independent of browser state.
 
 This applies to configured direct CDP. The extension rejects `file://` URLs.
 
-In CDP mode the browser is the user's **own** Chrome — a host process this app
-neither owns nor sandboxes — so `agent_browser` can read any file on the
-machine via a `file://` URL, including files the shell tool is explicitly
-denied. SparkQuill's standalone server rejected any `file://` URL resolving
-outside the workspace or host Downloads (`validateBrowserFileURLs` in its
-`browser_tool.go`), verified against a real exploit: the shell tool refused a
-decoy file outside the workspace while the browser read the same path's
-contents straight back.
-
-That server was deleted on 2026-09-06 and the platform's `agent_browser` has
-no equivalent guard: a product's browser access is all-or-nothing
-(`runtime.browser` in its `product.yaml`; SparkQuill's child profile sets it
-to `disabled`, the parent profile to `preferred`). This gap was raised with
-SparkQuill's owner on 2026-09-06 and left unrestored by their explicit choice
-— they'd rather the model use its own judgment about which files to read than
-have a hard path guard. Not a platform default recommendation for other
-products; a single-user deployment's owner deciding what their own AI may
-read on their own machine.
+In direct CDP mode the browser is the user's own host process. Its file access
+is independent of the shell sandbox, so a browser may read a file through a
+`file://` URL that a workspace shell cannot read. A product's browser capability
+controls whether it may use the browser; shell folder grants do not become
+browser URL restrictions. The extension rejects `file://` URLs.
 
 **Canonical reference:** [`docs/agent-execution-architecture.html`](../agent-execution-architecture.html)
 §4 — the measured before/after, the full list of rejected spellings, and how

@@ -382,7 +382,7 @@ it('installs a missing desktop provider through the shared setup API', async () 
   document.body.append(host)
   const root = createRoot(host)
   try {
-    await act(async () => root.render(<CodingProvidersPanel isOpen product="sparkquill" onClose={vi.fn()} />))
+    await act(async () => root.render(<CodingProvidersPanel isOpen product="example-app" onClose={vi.fn()} />))
     await act(async () => [...host.querySelectorAll('button'), ...document.querySelectorAll('button')].find(button => button.textContent === 'Install Codex')!.click())
     expect(llmConfigService.startProviderSetup).toHaveBeenCalledWith('codex-cli', 'install', 100, 24, undefined, false)
     expect(document.querySelector('[data-testid="guided-terminal"]')?.textContent).toContain('install-1')

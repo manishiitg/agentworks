@@ -11,7 +11,7 @@
 # extra rpath baked in here (@executable_path/lib), which is where the desktop
 # apps' extraResources put them (Contents/Resources/lib beside the server).
 #
-# Used by desktop-sparkquill/dev-setup.sh and both desktop CI workflows to
+# Used by desktop development and CI to
 # build agent-server.
 set -euo pipefail
 

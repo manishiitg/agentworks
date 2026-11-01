@@ -282,12 +282,6 @@ On the AgentWorks server `cmd/server/product_schedules.go` runs them:
   work on them for the calling user. `PUT` and `DELETE` are refused: a
   product declares its schedules, users only switch them on or off.
 
-SparkQuill's Pulse is the first schedule expressed this way (in its
-standalone family server it runs through `productschedule.Runner` with the
-parent's cadence settings, the quiet rule and per-check status at
-`GET /api/pulse/status`); when SparkQuill becomes a hosted product its
-`schedules:` block is the same definition.
-
 ## UI Surfaces
 
 The current frontend scheduling surfaces are:

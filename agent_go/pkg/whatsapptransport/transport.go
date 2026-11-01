@@ -5,10 +5,8 @@
 //
 // It deliberately knows nothing about routing or policy — which chat is
 // allowed, what an attachment means, who gets a reply. Those stay with the
-// product (SparkQuill's family routing and inbox policy, AgentWorks' workflow
-// routing). See docs/design/reusable_vertical_product_platform.md, step 6:
-// "extract connector transport while retaining Family routing and media
-// policy".
+// product. See docs/design/reusable_vertical_product_platform.md for the
+// shared transport boundary.
 package whatsapptransport
 
 import (

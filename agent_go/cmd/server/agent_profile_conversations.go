@@ -69,7 +69,7 @@ func conversationTitleFrom(session *ChatHistorySession, fallback string) string 
 // document root). It answers "which product/project is this", never "may this
 // caller touch it"; access identity is workspacepathsMatchForUser.
 func normalizeConversationWorkspace(workspacePath string) string {
-	return workspaceref.MustParse(foldCrewRootForStoredReference(workspacePath)).Logical()
+	return workspaceref.MustParse(workspacePath).Logical()
 }
 
 func chatHistorySessionWorkspace(session ChatHistorySession) string {

@@ -5,7 +5,7 @@
 // Read the user's interactive-login environment once at startup and merge it
 // into process.env for every child we spawn.
 //
-// Shared by every AgentWorks-family desktop shell (desktop/, desktop-sparkquill/).
+// Shared by desktop shells and their spawned tools.
 
 const { spawnSync } = require('child_process');
 

@@ -1495,7 +1495,7 @@ describe('main agent start card', () => {
 describe('product side-channel events', () => {
   it('keeps product_interaction out of the transcript', () => {
     const ev = { id: 'pi-1', type: 'product_interaction', session_id: 's1', execution_kind: 'main_agent', execution_id: 'main:s1',
-      data: { type: 'product_interaction', data: { product: 'sparkquill', kind: 'suggestions', payload: { actions: [] } } } } as unknown as PollingEvent
+      data: { type: 'product_interaction', data: { product: 'example-app', kind: 'suggestions', payload: { actions: [] } } } } as unknown as PollingEvent
     expect(selectTerminalEvents([ev], null, [])).toEqual([])
   })
 

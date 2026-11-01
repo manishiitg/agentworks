@@ -566,10 +566,10 @@ it('hides startup for an existing browser and supports manual tabs without teach
 it('keeps startup and tab controls in the minimal browser', async () => {
   api.get.mockResolvedValue({ data: { sessions: [] } })
   const { root, host } = await mountBrowser()
-  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/SparkQuill" profileId="sparkquill" minimal />) })
+  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/ExampleApp" profileId="example-app" minimal />) })
   api.post.mockResolvedValueOnce({ data: { browser_session: 'workspace-browser' } })
   await act(async () => { buttonNamed(host, 'Start browser')!.click() })
-  expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Chats/SparkQuill', profile_id: 'sparkquill' } }))
+  expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Chats/ExampleApp', profile_id: 'example-app' } }))
   const ws = FakeSocket.instances.at(-1)!
   await act(async () => {
     ws.onmessage?.(frameMessage())

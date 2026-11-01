@@ -1,3 +1,2 @@
-// Moved to the shared session client so every product surface (AgentWorks,
-// Video Studio, SparkQuill) classifies streaming chunks with the same rules.
+// Every product surface classifies streaming chunks through the shared client.
 export * from '../../shared/session/streamingStatus'

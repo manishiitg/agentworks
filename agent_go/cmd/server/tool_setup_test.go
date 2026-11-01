@@ -391,13 +391,13 @@ func TestPlanFolderGuardBlocksConfigWriteByDefault(t *testing.T) {
 	}
 }
 
-// Seen live in a real SparkQuill session: a model retried a blocked
+// Seen live in a real ExampleApp session: a model retried a blocked
 // diff_patch_workspace_file write 5 times in a row (a bare relative path,
 // the real host filesystem path, "./...") without ever landing on the one
 // thing that works -- prefixing its relative path with the allowed folder.
 // The error now spells out that exact combination as a concrete suggestion.
 func TestPlanFolderGuardWriteDeniedSuggestsThePrefixedPath(t *testing.T) {
-	const activityFolder = "_users/default/Chats/SparkQuill/activities/2026-09-09-science"
+	const activityFolder = "_users/default/Chats/ExampleApp/activities/2026-09-09-science"
 
 	noop := func(ctx context.Context, args map[string]interface{}) (string, error) {
 		return "OK", nil

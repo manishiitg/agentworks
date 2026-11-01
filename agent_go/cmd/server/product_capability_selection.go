@@ -83,14 +83,14 @@ func ensureProjectRuntimeManifest(ctx context.Context, profileID, workspacePath 
 	if found {
 		return raw, manifestPath, nil
 	}
-	// Fixed-workspace products (SparkQuill, ...) never run a "create
+	// Fixed-workspace products never run a "create
 	// project" step that would leave a manifest behind, so one must be created
 	// here on first use -- unlike Work, there is no legacy product.json to
 	// migrate from. Without this, every read/write of selected_secrets or
 	// selected_servers for such a profile failed with "product manifest not
 	// found" forever, silently: a secret saved via the secret tools was stored
 	// but never attached to the conversation, so it never reached the agent's
-	// environment (confirmed live: SparkQuill's agent_browser tool could not
+	// environment (confirmed live: a product's agent_browser tool could not
 	// see a parent-saved portal password).
 	if !isProjectProfileID(profileID) {
 		manifest := map[string]interface{}{
@@ -158,8 +158,8 @@ func productSelectedSecrets(ctx context.Context, profileID, workspacePath string
 		// not a hard failure: the caller's not-yet-initialized fallback
 		// migrates any already-stored secrets and persists them, which creates
 		// the manifest (see ensureProjectRuntimeManifest). Treating this as an
-		// error instead left every fixed-workspace product (SparkQuill,
-		// SparkQuill, ...) permanently unable to attach secrets, since nothing
+		// error instead left fixed-workspace products unable to attach secrets,
+		// since nothing
 		// ever creates this file for them ahead of time.
 		return nil, false, nil
 	}

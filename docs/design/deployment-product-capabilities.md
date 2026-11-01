@@ -36,8 +36,7 @@ data and audit retention settings are preserved.
 2. `AGENTWORKS_LOCAL_SERVER_PRODUCTS=1`, always set by the source launcher.
 3. `AGENTWORKS_ENABLED_PRODUCT_SURFACES`, when explicitly configured.
 4. `AGENT_PRODUCTS`, retaining the existing shared-server Brain/Vault baseline
-   unless an explicit surface selection excludes them. Dedicated SparkQuill
-   deployments retain their own allowlist.
+   unless an explicit surface selection excludes them.
 
 An old local surface list containing only excluded server products falls back
 to the normal local product set. An account can narrow this policy and cannot

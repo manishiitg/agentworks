@@ -368,7 +368,7 @@ func resolveProfileRuntimeModel(runtime agentprofiles.RuntimePolicy, requestedPr
 		// own doc comment: "narrows ... the server's accepted model_id to
 		// exactly these ids"). Missing this fell through to the profile's
 		// unrelated default provider option below, discarding both the
-		// requested provider AND model. Caught live: switching SparkQuill's
+		// requested provider AND model. Caught live: switching a product's
 		// composer from Luna to Sol (both codex-cli) silently
 		// ran the next turn on claude-code with no prior conversation context.
 		for _, id := range option.Models {

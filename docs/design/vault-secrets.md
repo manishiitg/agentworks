@@ -4,9 +4,8 @@ Current overview and verification: [Vault implementation status](vault-current-s
 
 ## User flow
 
-All products use `SecretSelectionSection`. Crew, Code and Goals place it under
-Integrations > Secrets. Video Studio's Integrations dialog and SparkQuill's
-Integrations panel use the same component. Project and Vault are separate sources.
+Product integrations reuse `SecretSelectionSection` for their project secrets.
+Project and Vault are separate sources.
 Project owners manage project values; the existing project sharing rules still apply.
 Only names and references are written to project configuration.
 
@@ -27,8 +26,7 @@ and one or more existing groups, then share. No group is preselected, including
 Platform. Newly registered shared secrets also inherit Platform access under the
 installation default; administrators can revoke that grant in Vault. Ordinary
 project users cannot publish shared values or grant access.
-This works through the same component in Crew, Code, Goals, workflows, Relays,
-Video Studio and SparkQuill wherever the project secrets list is used.
+This works through the shared component wherever the project secrets list is used.
 
 The server authorizes both Vault management and the source workspace, reads and
 decrypts the source internally, and encrypts a new global copy with its Vault name

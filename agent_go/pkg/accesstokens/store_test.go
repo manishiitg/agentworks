@@ -427,7 +427,7 @@ func TestWriteGuardAndDeviceConnectionsPersistIndependently(t *testing.T) {
 	}
 	// Emulate a persisted grant from before permission retirement. Reading it
 	// drops the obsolete value without changing authoring consent or folder caps.
-	legacyScopes, _ := json.Marshal(append(append([]string(nil), writer.Scopes...), "files:write", "dashboards:write", "plan:write", "sparkquill:read", "sparkquill:write", "sparkquill:run"))
+	legacyScopes, _ := json.Marshal(append(append([]string(nil), writer.Scopes...), "files:write", "dashboards:write", "plan:write", "retired:read", "retired:write", "retired:run"))
 	if _, err := store.db.Exec(`UPDATE access_tokens SET scopes=? WHERE id=?`, string(legacyScopes), writer.ID); err != nil {
 		t.Fatal(err)
 	}

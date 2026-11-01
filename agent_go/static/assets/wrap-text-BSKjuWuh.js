@@ -1,0 +1,1 @@
+import{G as t}from"./index-BpZBU6kh.js";const e=[["path",{d:"m16 16-2 2 2 2",key:"kkc6pm"}],["path",{d:"M3 12h15a3 3 0 1 1 0 6h-4",key:"1cl7v7"}],["path",{d:"M3 18h7",key:"sq21v6"}],["path",{d:"M3 6h18",key:"d0wm0j"}]],p=t("wrap-text",e);export{e as __iconNode,p as default};

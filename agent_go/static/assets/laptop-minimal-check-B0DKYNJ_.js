@@ -1,0 +1,1 @@
+import{G as e}from"./index-BpZBU6kh.js";const t=[["path",{d:"M2 20h20",key:"owomy5"}],["path",{d:"m9 10 2 2 4-4",key:"1gnqz4"}],["rect",{x:"3",y:"4",width:"18",height:"12",rx:"2",key:"8ur36m"}]],a=e("laptop-minimal-check",t);export{t as __iconNode,a as default};

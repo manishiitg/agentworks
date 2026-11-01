@@ -20,7 +20,7 @@ func TestDefaultRootHonorsOverrideEnv(t *testing.T) {
 		t.Fatalf("unset override must fall back to the shared AgentWorks root, got %q", unset)
 	}
 
-	override := filepath.Join(t.TempDir(), "sparkquill-dev-instance", "cli-security")
+	override := filepath.Join(t.TempDir(), "example-app-dev-instance", "cli-security")
 	t.Setenv("AGENTWORKS_CLI_SECURITY_DIR", override)
 	got, err := DefaultRoot()
 	if err != nil {

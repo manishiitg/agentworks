@@ -22,7 +22,7 @@ func TestUnroutedMessageRunsInTheDefaultProfileConversation(t *testing.T) {
 		if userID != "user-1" {
 			t.Fatalf("profile turn userID = %q, want user-1", userID)
 		}
-		return map[string]interface{}{"agent_profile_id": "sparkquill", "query": msg.Text}, "conv-sparkquill", true, nil
+		return map[string]interface{}{"agent_profile_id": "example-app", "query": msg.Text}, "conv-example-app", true, nil
 	})
 
 	started := make(chan struct {
@@ -48,10 +48,10 @@ func TestUnroutedMessageRunsInTheDefaultProfileConversation(t *testing.T) {
 
 	select {
 	case got := <-started:
-		if got.sessionID != "conv-sparkquill" {
-			t.Fatalf("session = %q, want the profile conversation conv-sparkquill", got.sessionID)
+		if got.sessionID != "conv-example-app" {
+			t.Fatalf("session = %q, want the profile conversation conv-example-app", got.sessionID)
 		}
-		if got.req["agent_profile_id"] != "sparkquill" || got.req["query"] != "how is she doing?" {
+		if got.req["agent_profile_id"] != "example-app" || got.req["query"] != "how is she doing?" {
 			t.Fatalf("request = %#v, want the profile turn", got.req)
 		}
 	case <-time.After(5 * time.Second):
@@ -61,13 +61,13 @@ func TestUnroutedMessageRunsInTheDefaultProfileConversation(t *testing.T) {
 	manager.mu.RLock()
 	active := manager.sessions[ThreadID{Platform: "whatsapp", ChannelID: "dm", ThreadTS: "dm"}.Key()]
 	manager.mu.RUnlock()
-	if active == nil || !active.profileTurn || active.SessionID != "conv-sparkquill" {
-		t.Fatalf("active session = %+v, want a profile-turn session on conv-sparkquill", active)
+	if active == nil || !active.profileTurn || active.SessionID != "conv-example-app" {
+		t.Fatalf("active session = %+v, want a profile-turn session on conv-example-app", active)
 	}
 	// Later turns in that session are built the same way, never the generic
 	// bot request with its workflow-runtime preamble.
 	req := manager.turnRequestForActive(active, "and maths?", "user-1", "whatsapp", active.ThreadID)
-	if req["agent_profile_id"] != "sparkquill" || req["query"] != "and maths?" {
+	if req["agent_profile_id"] != "example-app" || req["query"] != "and maths?" {
 		t.Fatalf("follow-up request = %#v, want the profile turn", req)
 	}
 	if text := manager.withBotRuntimeState(active, "and maths?"); text != "and maths?" {
@@ -217,24 +217,24 @@ func TestDefaultProfilePersistsWithTheOwner(t *testing.T) {
 	if err := svc.openMetaStore(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SetDefaultProfile("user-1", "sparkquill", "Chats/SparkQuill/inbox"); err == nil {
+	if err := svc.SetDefaultProfile("user-1", "example-app", "Chats/ExampleApp/inbox"); err == nil {
 		t.Fatal("SetDefaultProfile before pairing succeeded, want an error")
 	}
 	if err := svc.ClaimOwnership("user-1", "user@example.com", "user"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SetDefaultProfile("user-2", "sparkquill", ""); err == nil {
+	if err := svc.SetDefaultProfile("user-2", "example-app", ""); err == nil {
 		t.Fatal("another user set the default profile, want an error")
 	}
-	if err := svc.SetDefaultProfile("user-1", "sparkquill", "/Chats/SparkQuill/inbox/"); err != nil {
+	if err := svc.SetDefaultProfile("user-1", "example-app", "/Chats/ExampleApp/inbox/"); err != nil {
 		t.Fatal(err)
 	}
 	// The pairing screen polls the QR, which re-claims ownership every time.
 	if err := svc.ClaimOwnership("user-1", "user@example.com", "user"); err != nil {
 		t.Fatal(err)
 	}
-	if profileID, folder := svc.DefaultProfile(); profileID != "sparkquill" || folder != "Chats/SparkQuill/inbox" {
-		t.Fatalf("default profile after re-claim = (%q, %q), want (sparkquill, Chats/SparkQuill/inbox)", profileID, folder)
+	if profileID, folder := svc.DefaultProfile(); profileID != "example-app" || folder != "Chats/ExampleApp/inbox" {
+		t.Fatalf("default profile after re-claim = (%q, %q), want (example-app, Chats/ExampleApp/inbox)", profileID, folder)
 	}
 
 	reopened := NewWhatsAppService(dbPath)
@@ -242,7 +242,7 @@ func TestDefaultProfilePersistsWithTheOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened.loadOwner(ctx)
-	if profileID, folder := reopened.DefaultProfile(); profileID != "sparkquill" || folder != "Chats/SparkQuill/inbox" {
+	if profileID, folder := reopened.DefaultProfile(); profileID != "example-app" || folder != "Chats/ExampleApp/inbox" {
 		t.Fatalf("default profile after restart = (%q, %q), want it persisted", profileID, folder)
 	}
 	if err := reopened.SetDefaultProfile("user-1", "", "ignored"); err != nil {

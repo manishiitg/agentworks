@@ -1,0 +1,1 @@
+import{G as e}from"./index-BpZBU6kh.js";const t=[["path",{d:"M2 7v10",key:"a2pl2d"}],["path",{d:"M6 5v14",key:"1kq3d7"}],["rect",{width:"12",height:"18",x:"10",y:"3",rx:"2",key:"13i7bc"}]],a=e("gallery-horizontal-end",t);export{t as __iconNode,a as default};

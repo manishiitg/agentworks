@@ -58,8 +58,7 @@ import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 
 
 // Message text sizes multiply --chat-scale (default 1), so a product can offer
-// a bigger reading size (SparkQuill's Child Mode "T" button sets it on the
-// chat section) without the transcript knowing about the control.
+// a bigger reading size without coupling the transcript to its zoom control.
 type WorkingStep = Extract<TranscriptItem, { kind: 'tools' | 'thinking' }>
 
 type TranscriptRenderItem = TranscriptItem | {

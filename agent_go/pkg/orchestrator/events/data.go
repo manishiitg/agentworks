@@ -191,12 +191,9 @@ func (e *PresentationUpdatedEvent) GetEventType() events.EventType {
 	return PresentationUpdated
 }
 
-// ProductInteractionEvent is emitted by a product tool for its own surface:
-// Product names the product, Kind is the product's own vocabulary (for
-// SparkQuill: "suggestions", "celebrate", "scene", "family_updated",
-// "activity_created"), Payload is the kind's data. Transient by design --
-// nothing is persisted beyond the session's event stream; a product that
-// needs a durable panel item uses a presentation instead.
+// ProductInteractionEvent is emitted by a product tool for its own surface.
+// Product identifies the consumer; Kind and Payload describe its interaction.
+// Transient by design: a durable panel item uses a presentation instead.
 type ProductInteractionEvent struct {
 	events.BaseEventData
 	Product string                 `json:"product"`
