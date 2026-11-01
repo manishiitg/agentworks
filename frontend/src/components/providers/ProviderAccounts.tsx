@@ -393,8 +393,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // "On your servers": one line under each of your accounts on this Mac, with what to do on each server.
   const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && !record.via_connection && servers.length > 0 && (
     <div className="mt-3 w-full border-t border-gray-100 pt-3 pl-11 text-xs dark:border-gray-800">
-      <p className="mb-2 text-gray-500 dark:text-gray-400">Use it on your servers too</p>
       <div className="flex flex-wrap items-center gap-2">
+      <span className="text-gray-500 dark:text-gray-400">Servers:</span>
       {servers.map(server => {
         const entry = onServers[server.id]
         const account: ServerAccount = entry === 'unavailable' ? { state: 'unavailable' } : entry?.[record.id] ?? { state: 'loading' }
@@ -495,8 +495,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         <div>
           <p className="font-medium text-gray-800 dark:text-gray-200">Use from the Mac app</p>
           <p className="mt-0.5 text-gray-500 dark:text-gray-400">{macApp.signed_in_as
-            ? <>On · uses {macApp.signed_in_as}. People it is available to see it in their Mac app; this account's limits apply and the usage counts here.{provider === 'cursor-cli' && <> Everyone shares this Cursor account, so its Cursor privacy mode and indexing settings apply to their work; check them in Cursor's settings.</>}</>
-            : <>Off. Turn it on to let people run {providerLabel || provider} on their own Mac with this account. You sign in once; it is a separate login from the one above.</>}</p>
+            ? <>On · {macApp.signed_in_as}{provider === 'cursor-cli' && <> · shares this account's Cursor privacy settings</>}</>
+            : <>Off</>}</p>
         </div>
         {macApp.signed_in_as
           ? <button type="button" disabled={busy} className={secondaryButtonClass} onClick={() => void changeMacApp('sign_out')}>Turn off</button>
@@ -531,7 +531,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
                 {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
               </p>}
-              {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Models anyone may run on this account; a different list for one person is set in Access → Users. A turn on another model runs on the first allowed one.">
+              {manage && !(onThisMac && !accountModels(record)?.length) && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Models anyone may run on this account; a different list for one person is set in Access → Users. A turn on another model runs on the first allowed one.">
                 Models: {allowedModelsText(accountModels(record))}
                 {record.can_manage && !disabled && !onThisMac && <button type="button" disabled={busy} className="ml-1.5 text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => setModelsId(modelsId === record.id ? null : record.id)}>Edit</button>}
               </p>}
@@ -668,21 +668,13 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     return (
       <>
         <section className="mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-violet-600 dark:text-violet-300" />
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Accounts</h3>
-          </div>
-          <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">The {providerLabel || 'provider'} logins and keys your work can run on.</p>
-          {group('Your accounts', own, addButton)}
-          {!personalAllowed && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">The installation does not allow personal accounts for this provider.</p>}
-          {personalAllowed && own.length === 0 && !adding && (provider === 'pi-cli'
-            ? <p className="text-xs text-gray-500 dark:text-gray-400">No keys yet. <strong>Add a model key</strong> for OpenRouter, NVIDIA NIM, Groq, Google AI Studio or any OpenAI-compatible endpoint; many have free models. Private to you unless you share it.</p>
-            : <p className="text-xs text-gray-500 dark:text-gray-400">You have no accounts yet. <strong>Add my account</strong> signs in your own {providerLabel || 'provider'} login: private to you unless you share it.</p>)}
-          {addForm}
-          {server && <div className="mt-5">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{onThisMac ? 'This Mac' : ADMIN_MANAGED_ACCOUNT_LABEL}</div>
+          {server && <div>
+            {!onThisMac && <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{ADMIN_MANAGED_ACCOUNT_LABEL}</div>}
             {serverBlock(server)}
           </div>}
+          {own.length > 0 ? group('Your accounts', own, addButton) : personalAllowed && !adding && <div className="mt-4">{addButton}</div>}
+          {provider === 'pi-cli' && own.length === 0 && !adding && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">OpenRouter, NVIDIA NIM, Groq, Google AI Studio… many have free models.</p>}
+          {addForm}
           {companySection}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
           {group('Other people\'s accounts', connections.filter(record => accountRelation(record) === 'admin_view'))}

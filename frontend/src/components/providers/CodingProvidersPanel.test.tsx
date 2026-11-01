@@ -72,7 +72,7 @@ describe('CodingProvidersPanel', () => {
       await act(async () => root.render(<CodingProvidersPanel isOpen welcomeSetup initialProviderId="codex-cli" product="work" onClose={onClose} />))
       const dialog = document.querySelector('[aria-label="Set up your AI"]')!
       expect(dialog.querySelector('h2')?.textContent).toBe('Set up your AI')
-      expect(dialog.textContent).toContain('Codex CLI')
+      expect(dialog.textContent).toContain('Codex')
       expect(llmConfigService.getProviderConnections).toHaveBeenCalledWith({ product: 'work', workspacePath: undefined })
       expect(llmConfigService.startProviderSetup).not.toHaveBeenCalled()
       await act(async () => [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('Back to getting started'))!.click())
@@ -366,7 +366,7 @@ describe('CodingProvidersPanel', () => {
       await act(async () => Promise.resolve())
 
       const dialog = document.querySelector('[role="dialog"]')!
-      expect(dialog.textContent).toContain('Future CLI')
+      expect(dialog.textContent).toContain('Future')
       expect(dialog.textContent).toContain('Guided sign-in for this provider is not available yet')
     } finally {
       await act(async () => root.unmount())
