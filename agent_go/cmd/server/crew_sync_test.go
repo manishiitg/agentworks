@@ -476,6 +476,45 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err = stageCrewMuse(roots, moved.Muse); err != nil {
 		t.Fatal(err)
 	}
+	// PLAT-856-442: a failed next transfer must not invalidate offline resume.
+	if err = saveCrewNativeMirror(roots, &moved); err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(moved.Muse.Root, "session.jsonl")
+	if err = os.WriteFile(staged+".partial", []byte("interrupted replacement"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Rename(staged+".partial", staged); err != nil {
+		t.Fatal(err)
+	}
+	mirror, err := readCrewNativeMirror(roots)
+	if err != nil {
+		t.Fatalf("last complete native mirror lost: %v", err)
+	}
+	// The same native ID with rewritten history must not quietly replace the
+	// completed mirror when an offline branch reconnects.
+	var forkRow map[string]any
+	json.Unmarshal(row, &forkRow)
+	forkRow["offline_fork"] = true
+	forkBytes, _ := json.Marshal(forkRow)
+	if err = os.WriteFile(sourcePath, append(forkBytes, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fork := moved
+	fork.Muse, err = musecli.ExportNativeSession(sourceHome, id, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = stageCrewMuse(roots, fork.Muse); err != nil {
+		t.Fatal(err)
+	}
+	if err = saveCrewNativeMirror(roots, &fork); err == nil || !strings.Contains(err.Error(), "both copies were kept") {
+		t.Fatalf("offline fork replaced mirror: %v", err)
+	}
+	if _, err = readCrewNativeMirror(roots); err != nil {
+		t.Fatal(err)
+	}
+	moved = *mirror.Conversation
 	if err = api.importCrewHandoffConversation(ctx, owner, roots, "native-pair", "native-first", &moved, current); err != nil {
 		t.Fatal(err)
 	}

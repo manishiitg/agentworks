@@ -197,10 +197,12 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 		externalError(w, 409, "native_sync_unavailable", "The active computer changed; sync again.")
 		return
 	}
-	if _, err = nativersync.Binary(); err != nil {
+	binary, err := nativersync.Binary()
+	if err != nil {
 		externalError(w, 503, "native_sync_unavailable", err.Error())
 		return
 	}
+	log.Printf("[NATIVE_SYNC] project=%s helper=%s protocol=31", roots.ID, binary)
 	conn, err := (&websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return r.Header.Get("Origin") == "" }}).Upgrade(w, r, nil)
 	if err != nil {
 		return
