@@ -89,7 +89,10 @@ def turn(config, workspace, chat_id, prompt, started, limit, accept, expected):
                                           "after": after, "wait_seconds": 25})
         messages += page.get("messages") or []
         after = page.get("next_after", after)
-        if not page.get("working") and any(m.get("role") == "assistant" for m in messages):
+        # Only this prompt's own answer ends the wait: in a chat with history an earlier turn's answer is already there
+        # before this turn starts, and stopping on it read the turn as never accepted.
+        mine = {m.get("turn") for m in messages if m.get("role") == "you" and m.get("text") == prompt}
+        if not page.get("working") and any(m.get("role") == "assistant" and m.get("turn") in mine for m in messages):
             break
     # Chat messages carry the chat's own turn id: follow the turn of the message this check sent.
     sent = [m for m in messages if m.get("role") == "you" and m.get("text") == prompt]

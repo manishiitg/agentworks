@@ -83,9 +83,24 @@ def check_gog_keyring_process(raw):
         raise ValueError(f"running {UNIT} has a missing or empty GOG_KEYRING_PASSWORD")
 
 
-def systemctl_value(property_name):
+# The agent and workspace services share WORKSPACE_API_TOKEN. Without it the workspace service took commands and file writes
+# from any local process, agent shells included, and every MCP file write failed (a customer server, 2026-11-01; a demo
+# server missed it the same way on 2026-10-24). The activation generates it once.
+def check_workspace_token_file(path=ENV_FILE):
+    tokens = env_file_values(path).get("WORKSPACE_API_TOKEN", [])
+    if len(tokens) != 1 or not tokens[0]:
+        raise ValueError(f"{path} must contain exactly one non-empty WORKSPACE_API_TOKEN")
+
+
+def check_workspace_token_process(raw, unit):
+    tokens = [e for e in raw.split(b"\0") if e.startswith(b"WORKSPACE_API_TOKEN=")]
+    if len(tokens) != 1 or tokens[0] == b"WORKSPACE_API_TOKEN=":
+        raise ValueError(f"running {unit} has a missing or empty WORKSPACE_API_TOKEN")
+
+
+def systemctl_value(property_name, unit=UNIT):
     return subprocess.check_output(
-        ["systemctl", "--user", "show", UNIT, f"--property={property_name}", "--value"],
+        ["systemctl", "--user", "show", unit, f"--property={property_name}", "--value"],
         text=True, timeout=10,
     ).strip()
 
@@ -166,6 +181,7 @@ def main():
         raise ValueError(f"deployment checks must run as the {SERVICE_ACCOUNT} account on Linux")
     check_environment_file()
     check_gog_keyring_file()
+    check_workspace_token_file()
     if EXPECTED_PUBLIC_URL and str(ENV_FILE) not in systemctl_value("EnvironmentFiles").split():
         raise ValueError(f"{UNIT} must load {ENV_FILE} through EnvironmentFile")
     if args.phase == "running":
@@ -175,6 +191,11 @@ def main():
         environ = Path(f"/proc/{pid}/environ").read_bytes()
         check_process_environment(environ)
         check_gog_keyring_process(environ)
+        check_workspace_token_process(environ, UNIT)
+        workspace = f"{UNIT_PREFIX}-workspace"
+        workspace_pid = int(systemctl_value("MainPID", workspace))
+        if workspace_pid > 0:
+            check_workspace_token_process(Path(f"/proc/{workspace_pid}/environ").read_bytes(), workspace)
         check_user_slots()
         check_private_tmp()
     print(f"PASS {args.phase}: {PRODUCT} deployment configuration")

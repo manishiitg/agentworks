@@ -104,6 +104,17 @@ class GogKeyringDeploymentCheckTest(unittest.TestCase):
             with self.subTest(environ=bad), self.assertRaises(ValueError):
                 self.checks.check_gog_keyring_process(bad)
 
+    # Without the shared token the workspace service took commands and file writes from any local process (2026-11-01).
+    def test_workspace_token_must_be_set_once_in_the_file_and_both_services(self):
+        self.checks.check_workspace_token_file(self.env("WORKSPACE_API_TOKEN=abc\n"))
+        for bad in ("", "WORKSPACE_API_TOKEN=\n", "WORKSPACE_API_TOKEN=abc\nWORKSPACE_API_TOKEN=def\n"):
+            with self.subTest(env=bad), self.assertRaises(ValueError):
+                self.checks.check_workspace_token_file(self.env(bad))
+        self.checks.check_workspace_token_process(b"PATH=/bin\0WORKSPACE_API_TOKEN=abc\0", "x-workspace")
+        for bad in (b"PATH=/bin\0", b"WORKSPACE_API_TOKEN=\0"):
+            with self.subTest(environ=bad), self.assertRaises(ValueError):
+                self.checks.check_workspace_token_process(bad, "x-workspace")
+
     def test_every_deploy_path_sets_the_keyring_and_updates_gog(self):
         rootless = (ROOT / "build-and-activate.sh").read_text()
         rts = (REPO / "deploy/aws-ec2/server/build-and-activate.sh").read_text()
