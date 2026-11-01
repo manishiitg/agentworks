@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileDiff } from 'lucide-react'
+import { AlertTriangle, FileDiff } from 'lucide-react'
 import api from '../../services/api'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
 import { useChatStore } from '../../stores/useChatStore'
@@ -32,8 +32,10 @@ export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspace
     {checkouts?.length ? checkouts.map(checkout => {
       const capture = checkout.captures[0]
       if (!capture) return null
-      return <WorkspaceContextRow key={checkout.id} icon={FileDiff} hint={`${checkout.root || checkout.name}${capture.branch ? ` · ${capture.branch}` : ''}. ${capture.note || note || 'Latest saved project changes; other chats or editors may contribute.'}${checkout.working_tree === 'clean' ? ' Working tree clean.' : checkout.working_tree === 'dirty' ? ' Uncommitted changes present.' : ''}`} onClick={() => onOpen({ workspacePath, sessionId, snapshotId: capture.snapshot_id, historyScope: 'project', checkoutId: checkout.id })} detail={capture.note || note ? 'Incomplete' : <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums">
+      const warning = capture.note || note
+      return <WorkspaceContextRow key={checkout.id} icon={FileDiff} hint={`${checkout.root || checkout.name}${capture.branch ? ` · ${capture.branch}` : ''}. ${warning || 'Latest saved project changes; other chats or editors may contribute.'}${checkout.working_tree === 'clean' ? ' Working tree clean.' : checkout.working_tree === 'dirty' ? ' Uncommitted changes present.' : ''}`} onClick={() => onOpen({ workspacePath, sessionId, snapshotId: capture.snapshot_id, historyScope: 'project', checkoutId: checkout.id })} detail={<span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums">
         <span>{capture.files} file{capture.files === 1 ? '' : 's'}</span><span className="text-diff-add">+{capture.added}</span><span className="text-diff-del">−{capture.removed}</span>
+        {warning && <span role="img" aria-label={warning} title={warning} className="inline-flex shrink-0 text-amber-500"><AlertTriangle aria-hidden="true" className="h-3 w-3" /></span>}
       </span>}><span className="flex min-w-0 items-center gap-1.5"><span>Changes</span><span className="truncate text-xs text-muted-foreground">{checkout.name}</span></span></WorkspaceContextRow>
     }) : <WorkspaceContextRow icon={FileDiff} hint="Saved project changes, separated by worktree." onClick={() => onOpen()} detail={error ? 'Unavailable' : checkouts === null ? 'Loading…' : '0 files'}>Changes</WorkspaceContextRow>}
     {error && <p role="alert" className="px-1 text-xs text-muted-foreground">{error} <button type="button" className="underline hover:text-foreground" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
