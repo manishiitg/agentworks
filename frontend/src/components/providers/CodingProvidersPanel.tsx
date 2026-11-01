@@ -215,7 +215,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const guide = selectedProvider ? (CODING_PROVIDER_GUIDES[selectedProvider.id] ?? DEFAULT_CODING_PROVIDER_GUIDE) : undefined
 
   // The shared server login is everyone's: confirm before signing it in, and
-  // point to Add my account (Provider accounts above) for a private one.
+  // point to Add my account (Accounts above) for a private one.
   const [confirmSharedSetup, setConfirmSharedSetup] = useState(false)
   const signInShared = (provider: ProviderManifestEntry) => {
     if (provider.id === 'pi-cli') { void startGuidedSetup('authenticate'); return }
@@ -369,7 +369,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                 onClose={() => setConfirmSharedSetup(false)}
                 onConfirm={() => { setConfirmSharedSetup(false); void startGuidedSetup('authenticate') }}
                 title={`Sign in the shared ${selectedProvider.display_name} login?`}
-                message="This is the shared account, not yours. Everyone it is available to will run on the login you sign in with, and on its plan. To add a login only you use, cancel and choose \u201cAdd my account\u201d under Provider accounts."
+                message="This is the shared account, not yours. Everyone it is available to will run on the login you sign in with, and on its plan. To add a login only you use, cancel and choose \u201cAdd my account\u201d under Accounts."
                 confirmText="Sign in shared login"
                 type="warning"
               />}
@@ -387,7 +387,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                         <div>
                           <p className="text-sm font-medium text-violet-950 dark:text-violet-100">Set up your own account</p>
                           <p className="mt-1 text-sm leading-6 text-violet-800/80 dark:text-violet-200/80">
-                            An administrator manages the shared account, and it may not be available to you. Choose <strong>Add my account</strong> under Provider accounts below to sign in with your own login or key. Only you can use it unless you share it.
+                            An administrator manages the shared account, and it may not be available to you. Choose <strong>Add my account</strong> under Accounts below to sign in with your own login or key. Only you can use it unless you share it.
                           </p>
                         </div>
                       </div>

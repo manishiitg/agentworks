@@ -1,9 +1,8 @@
 import CostTokenBreakdown from './CostTokenBreakdown'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
-import { ChevronRight, CircleAlert, Loader2 } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import type { CostAggregate, ProviderAccountCost, ProviderCostGroup } from '../../services/api-types'
-import { llmConfigService } from '../../services/llm-config-api'
 import { tokenSummary, costAmountLabel } from '../../utils/costTokens'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 
@@ -81,51 +80,5 @@ export function AccountCostList({ providers, showProviderHeading = true }: { pro
         </section>
       ))}
     </div>
-  )
-}
-
-const isoDay = (date: Date) => date.toISOString().slice(0, 10)
-export const lastDaysRange = (days: number, now = new Date()) => {
-  const from = new Date(now)
-  from.setUTCDate(from.getUTCDate() - (days - 1))
-  return { from: isoDay(from), to: isoDay(now) }
-}
-
-/** Providers page: cost by account for one provider (or all), over a date range. */
-export default function ProviderAccountCostsSection({ provider }: { provider?: string }) {
-  const [range, setRange] = useState(() => lastDaysRange(30))
-  const [providers, setProviders] = useState<ProviderCostGroup[] | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  useEffect(() => {
-    if (!range.from || !range.to) return
-    const controller = new AbortController()
-    setLoading(true); setError(null)
-    llmConfigService.getProviderAccountCosts(range.from, range.to, controller.signal)
-      .then(result => setProviders(result.providers.filter(group => !provider || group.provider === provider)))
-      .catch(() => { if (!controller.signal.aborted) setError('Could not load costs.') })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    return () => controller.abort()
-  }, [range.from, range.to, provider])
-  const total = providers?.[0]?.total
-  const dateClass = 'rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100'
-  return (
-    <section className="mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Cost by account</h3>
-          {provider && total && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{costText(total)} and {tokenText(total)} tokens in this range</p>}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-          <label className="inline-flex items-center gap-1">From <input type="date" aria-label="From date" value={range.from} max={range.to} onChange={event => setRange(current => ({ ...current, from: event.target.value }))} className={dateClass} /></label>
-          <label className="inline-flex items-center gap-1">To <input type="date" aria-label="To date" value={range.to} min={range.from} onChange={event => setRange(current => ({ ...current, to: event.target.value }))} className={dateClass} /></label>
-        </div>
-      </div>
-      <div className="mt-3">
-        {error && <p className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400"><CircleAlert className="h-3.5 w-3.5" />{error}</p>}
-        {loading && !providers && <p className="flex items-center gap-2 text-xs text-gray-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading costs…</p>}
-        {providers && <AccountCostList providers={providers} showProviderHeading={!provider} />}
-      </div>
-    </section>
   )
 }

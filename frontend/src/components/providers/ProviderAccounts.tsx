@@ -2,8 +2,6 @@ import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'rea
 import { Users, Plus, ShieldCheck, UserRound, LogIn, Loader2, X, Share2, Lock, MoreHorizontal } from 'lucide-react'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
-import ProviderAccountCostsSection from './AccountCosts'
-import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import AllowedModelsEditor from './AllowedModelsEditor'
@@ -86,6 +84,8 @@ export function accountOptionLabel(record: ProviderConnection): string {
 
 export const NO_LONGER_AVAILABLE = 'No longer available here'
 
+type ServerAccountState = 'ready' | 'sign_in' | 'missing' | 'unavailable'
+
 export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product }: {
   provider: string
   /** Display name of the provider, e.g. "Claude Code". */
@@ -103,7 +103,6 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   product?: string
 }) {
   const manage = !onSelect && !formOnly && !selectionOnly
-  const canReview = useCanReviewCode()
   const [connections, setConnections] = useState<ProviderConnection[]>([])
   // The server account row is manageable only by admins; members share their own accounts only with named colleagues (PLAT-715).
   const isAdmin = connections.some(record => accountRelation(record) === 'server' && record.can_manage === true)
@@ -139,6 +138,16 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
   const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
   useEffect(() => { if (onThisMac && manage) void useConnectedWorkStore.getState().refresh() }, [onThisMac, manage])
+  // Where each of your accounts stands on each connected server: ready, needs sign-in, or not there yet.
+  const [onServers, setOnServers] = useState<Record<string, Record<string, ServerAccountState>>>({})
+  const serverIds = servers.map(server => server.id).join(',')
+  const loadOnServer = (serverId: string) => desktopRequest<{ accounts: Record<string, 'ready' | 'sign_in' | 'missing'> }>(`/${encodeURIComponent(serverId)}/provider-accounts?provider=${encodeURIComponent(provider)}`)
+    .then(result => setOnServers(current => ({ ...current, [serverId]: result.accounts })))
+    .catch(() => setOnServers(current => ({ ...current, [serverId]: { unavailable: 'unavailable' } })))
+  useEffect(() => {
+    if (!onThisMac || !manage) return
+    for (const id of serverIds.split(',').filter(Boolean)) void loadOnServer(id)
+  }, [onThisMac, manage, serverIds, provider, connections.length])
   useEffect(() => {
     let cancelled = false
     setError(null)
@@ -338,10 +347,28 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         window.electronAPI?.openExternal?.(result.server_url)
       } else setNotice({ id: record.id, text: result.status === 'exists' ? `Already on ${server.name} as a private account${who}.` : `Added to ${server.name} as a private account${who}. It is ready to use there.` })
     } catch (addError) { setError(addError instanceof Error ? addError.message : 'Could not add the account.') }
-    finally { setBusy(false) }
+    finally { setBusy(false); void loadOnServer(server.id) }
   }
-  const serverItems = (record: ProviderConnection) => onThisMac && manage && record.can_manage
-    ? servers.map(server => ({ label: `Also use on ${server.name}${signedInAs(server) ? ` (as ${signedInAs(server)})` : ''}`, onSelect: () => void addToServer(record, server) })) : []
+  // "On your servers": one line under each of your accounts on this Mac, with what to do on each server.
+  const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && servers.length > 0 && (
+    <div className="mt-2 flex w-full flex-wrap items-center gap-2 pl-11 text-xs">
+      <span className="text-gray-500 dark:text-gray-400">On your servers:</span>
+      {servers.map(server => {
+        const state = onServers[server.id]?.[record.id] ?? (onServers[server.id]?.unavailable ? 'unavailable' : 'loading')
+        const title = signedInAs(server) ? `Your login there: ${signedInAs(server)}` : undefined
+        return (
+          <span key={server.id} title={title} className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 dark:border-gray-700">
+            <span className="font-medium text-gray-800 dark:text-gray-200">{server.name}</span>
+            {state === 'ready' && <span className="text-emerald-600 dark:text-emerald-400">✓ Ready</span>}
+            {state === 'sign_in' && <button type="button" disabled={busy} className="font-medium text-amber-600 hover:underline disabled:opacity-50 dark:text-amber-400" onClick={() => void addToServer(record, server)}>Sign in needed</button>}
+            {state === 'missing' && <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void addToServer(record, server)}>Add</button>}
+            {state === 'loading' && <span className="text-gray-400">…</span>}
+            {state === 'unavailable' && <span className="text-gray-400">Can't reach</span>}
+          </span>
+        )
+      })}
+    </div>
+  )
   const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login')
   // The terminal is where a person signs in by hand and checks usage (/usage); there is no
   // separate usage check.
@@ -398,11 +425,11 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               ...(canManage && manage ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
               ...(own ? modelsItem({ ...record, can_manage: true }) : []),
               ...(own && personalAllowed ? [{ label: keyService ? 'Rename or replace key' : 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
-              ...(own ? serverItems(record) : []),
               ...(canManage ? [{ label: 'Remove', danger: true, onSelect: () => void remove(record) }] : []),
             ]} />
           </div>
         )}
+        {serverRow(record)}
         {noticeFor(record)}
         {sharingEditor(record)}
         {modelsEditor(record)}
@@ -447,12 +474,12 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 ...(canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
                 ...(record.availability_editable ? [{ label: 'Who can use it', onSelect: () => setAvailabilityDraft(availability?.available_to ?? 'all') }] : []),
                 ...modelsItem(record),
-                ...serverItems(record),
                 ...(manage ? [{ label: 'Limits', onSelect: () => setLimitsDraft(limitsDraft ? null : { daily: record.token_limits?.daily ? String(record.token_limits.daily) : '', weekly: record.token_limits?.weekly ? String(record.token_limits.weekly) : '' }) }] : []),
               ]} />
             </div>
           )}
         </div>
+        {serverRow(record)}
         {noticeFor(record)}
         {availabilityDraft !== null && record.availability_editable && (
           <form className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }} onKeyDown={event => { if (event.key === 'Escape') setAvailabilityDraft(null) }}>
@@ -546,9 +573,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         <section className="mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-violet-600 dark:text-violet-300" />
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Provider accounts</h3>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Accounts</h3>
           </div>
-          <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">Which {providerLabel || 'provider'} login or key a workflow, Crew or Code runs as.</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">The {providerLabel || 'provider'} logins and keys your work can run on.</p>
           {group('Your accounts', own, addButton)}
           {!personalAllowed && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">The installation does not allow personal accounts for this provider.</p>}
           {personalAllowed && own.length === 0 && !adding && (provider === 'pi-cli'
@@ -572,11 +599,6 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             type="warning"
           />
         </section>
-        {/* Cost is not part of setting up an account: collapsed, one click away. */}
-        {canReview && <details className="mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-          <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">Cost by account</summary>
-          <div className="mt-3"><ProviderAccountCostsSection provider={provider} /></div>
-        </details>}
       </>
     )
   }
@@ -587,7 +609,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         <div>
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-violet-600 dark:text-violet-300" />
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Provider accounts</h3>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Accounts</h3>
           </div>
           <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">Use the admin-managed account or one of your own.</p>
         </div>
