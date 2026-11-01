@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // PLAT-746-265: an editable executable cannot choose its owner or gain another
@@ -80,6 +82,31 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	sctx := buildScheduleContext(binding.Root, manifest, WorkflowSchedule{RunAs: "builder"})
 	if sctx.OwnerUserID != "owner" {
 		t.Fatal("schedule RunAs selected a coowner account")
+	}
+	// A non-owner's admitted call launches under a fresh scheduler context
+	// and the trusted main owner, rather than borrowing the calling chat.
+	parentAPI := &StreamingAPI{}
+	scheduler := NewSchedulerService(parentAPI)
+	const parentSession = "schedule-non-owner-call"
+	runCtx := scheduler.activateScheduleRunLocked(&ScheduleRuntimeState{}, parentSession, time.Now())
+	defer scheduler.releaseScheduleRunContext(parentSession)
+	executionCtx := internalBotRequestContext(runCtx, sctx.OwnerUserID)
+	principal := GetUserIDFromContext(executionCtx)
+	if principal != "owner" {
+		t.Fatalf("co-owner call selected parent identity %q", principal)
+	}
+	parentPath := stableBuilderConversationLogPath(executionCtx, binding.Root, principal, parentSession)
+	parentAPI.persistChatConversationToPathWithTerminalSession(parentSession, "", "workflow", principal,
+		[]llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Run the saved function"}}}},
+		&ChatHistoryAgentRuntime{Kind: "workflow", WorkspacePath: binding.Root, WorkshopMode: "run"}, nil,
+		parentPath)
+	materializeWorkspaceFixtureFile(t, files, docs, parentPath)
+	for _, user := range []string{"owner", "builder"} {
+		request := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+		_, allowed := parentAPI.inspectionParentSessionInAuthorizedWorkspace(request, parentSession, binding.Root)
+		if allowed != (user == "owner") {
+			t.Fatalf("saved parent access user=%s allowed=%v", user, allowed)
+		}
 	}
 	for _, target := range []string{"executable", "unrelated"} {
 		claims := &UserClaims{UserID: "bot-route", Provider: "bot_route", BotRouteWorkflowID: target, BotRouteGrant: "read"}

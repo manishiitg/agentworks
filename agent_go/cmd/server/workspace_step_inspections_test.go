@@ -15,6 +15,7 @@ import (
 
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
@@ -75,6 +76,17 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 		} else {
 			step(session, "step-"+session, "conversation-turn-root", "workflow_step")
 			api.emitBackgroundAgentCompleted(session, "step-"+session, "Research", "completed", "PRIVATE RESULT", "", "1s")
+		}
+		if origin == "schedule" {
+			// Script-only direct runs save a real parent request through the
+			// normal writer; the reader below clears all in-memory sessions.
+			parentPath := stableBuilderConversationLogPath(context.Background(), "Workflow/example", user, session)
+			api.persistChatConversationToPathWithTerminalSession(session, "", "workflow", user,
+				[]llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Run the saved work"}}}},
+				&ChatHistoryAgentRuntime{Kind: "workflow", WorkspacePath: "Workflow/example", WorkshopMode: "run"}, nil,
+				parentPath)
+			materializeWorkspaceFixtureFile(t, workspace, docs, parentPath)
+			return
 		}
 		directory := filepath.Join(docs, "Workflow/example/builder/conversation/2026-10-18")
 		if err := os.MkdirAll(directory, 0755); err != nil {

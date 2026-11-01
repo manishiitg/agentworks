@@ -5115,6 +5115,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Open this workflow's own chat to run it.", http.StatusConflict)
 				return
 			}
+			// A script-only run has no model chat to persist its parent identity.
+			// Save the actual request through the normal conversation store so
+			// existing inspection ownership checks also work after restart.
+			api.persistChatConversationToPathWithTerminalSession(sessionID, "", "workflow", currentUserID,
+				[]llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: req.Query}}}},
+				&ChatHistoryAgentRuntime{Kind: "workflow", WorkspacePath: manifestWorkspacePath, WorkshopMode: "run"}, nil,
+				stableBuilderConversationLogPath(r.Context(), manifestWorkspacePath, currentUserID, sessionID))
 			workflowOrchestrator.SetWorkshopExecutionNotifier(&workshopExecutionBgNotifier{
 				api: api, sessionID: sessionID, workspacePath: manifestWorkspacePath,
 				presetQueryID: req.PresetQueryID, userID: currentUserID,
