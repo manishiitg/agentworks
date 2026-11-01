@@ -146,6 +146,20 @@ func matchCrewConnection(want crewDependencyConnection, inventory projectVaultIn
 	return nil, false
 }
 
+// An unrelated app status lookup does not make a removed dependency unknown.
+func crewDependencyInventoryUnavailable(inventory projectVaultInventory, kind string) bool {
+	for _, notice := range inventory.Notices {
+		if strings.HasPrefix(notice, "Vaults could not") ||
+			(kind == "mcp" && strings.HasPrefix(notice, "Project app access")) ||
+			((kind == "mcp" || kind == "shared_secret") && strings.HasPrefix(notice, "Shared Vault access")) ||
+			(kind == "google" && strings.HasPrefix(notice, "Google account status")) ||
+			(kind == "slack" && strings.HasPrefix(notice, "Slack account status")) {
+			return true
+		}
+	}
+	return false
+}
+
 func (api *StreamingAPI) handleCrewDependencies(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	roots, e := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
@@ -184,6 +198,24 @@ func (api *StreamingAPI) handleCrewDependencies(w http.ResponseWriter, r *http.R
 		for _, item := range old.configured {
 			if wanted[item.SourceKey] || input.SourceUnavailable {
 				out.configured = append(out.configured, item)
+				continue
+			}
+			current, e := api.projectVaultInventory(r.Context(), claims.UserID, roots.Virtual)
+			if e != nil || crewDependencyInventoryUnavailable(current, item.Kind) {
+				externalError(w, 502, "dependencies_unavailable", "Open the server Crew's Vault to check its connections, then retry sync.")
+				return
+			}
+			selectable := false
+			for _, group := range current.Vaults {
+				for _, row := range group.Items {
+					if row.Kind == item.Kind && row.ID == item.ID && row.CanSelect && row.Selected {
+						selectable = true
+					}
+				}
+			}
+			// Already removed, revoked or unselected is clean. Keep no stale
+			// tracking entry that would require restoring a deleted connection.
+			if !selectable {
 				continue
 			}
 			if _, e := api.selectProjectVaultItem(r.Context(), claims.UserID, roots.Virtual, item.Kind, item.ID, false); e != nil {
