@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import api from '../../services/api'
 import { ChatFileReview } from './ChatFileReview'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
-import { ProjectTurnPanel } from './ProjectTurnPanel'
 import { reviewEndpoint, useReviewRevision, type ReviewHistory } from './chatFileReviewData'
+
+const ProjectTurnPanel = lazy(() => import('./ProjectTurnPanel').then(module => ({ default: module.ProjectTurnPanel })))
 
 // History selects an exact saved capture within a real checkout. It never
 // combines overlapping turns into an invented net diff or attributes authorship.
@@ -30,7 +31,7 @@ export function ProjectChangesPanel({ workspacePath, sessionId, tabId, onBrowse,
     <p className="p-3 text-sm">{error || history?.note || (history ? 'No saved project changes yet.' : 'Loading…')}</p>
     {error && <button type="button" className="p-3 text-xs underline" onClick={refresh}>Retry</button>}
   </section>
-  if (sourceOpen) return <ProjectTurnPanel key={`${checkout.id}:${capture.snapshot_id}`} workspacePath={workspacePath} checkoutId={checkout.id} snapshotId={capture.snapshot_id} onBack={() => setSourceOpen(false)} />
+  if (sourceOpen) return <Suspense fallback={<p className="p-3 text-xs">Loading original turn…</p>}><ProjectTurnPanel key={`${checkout.id}:${capture.snapshot_id}`} workspacePath={workspacePath} checkoutId={checkout.id} snapshotId={capture.snapshot_id} onBack={() => setSourceOpen(false)} /></Suspense>
   const toolbar = <><div className="flex min-w-0 gap-2 border-b border-border px-3 py-2" title={history?.note || undefined}>
     <select aria-label="Worktree" className={`${select} flex-1`} value={checkout.id} onChange={event => { setCheckoutId(event.target.value); setSnapshotId('') }}>
       {history!.checkouts!.map(item => <option key={item.id} value={item.id}>{item.name}{item.captures[0]?.branch ? ` · ${item.captures[0].branch}` : ''}</option>)}
