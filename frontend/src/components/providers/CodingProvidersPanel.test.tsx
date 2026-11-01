@@ -304,7 +304,7 @@ describe('CodingProvidersPanel', () => {
     }
   })
 
-  it('shows the installed CLI version and warns when it is below the supported floor', async () => {
+  it('warns only when the installed program is below the supported floor', async () => {
     vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({
       providers: [
         provider({ installed_version: '0.155.1', min_supported_version: '0.155.1', update_status: 'supported' }),
@@ -329,12 +329,10 @@ describe('CodingProvidersPanel', () => {
       await act(async () => Promise.resolve())
 
       const dialog = document.querySelector('[role="dialog"]')!
-      expect(dialog.textContent).toContain('CLI version 0.155.1')
-      expect(dialog.textContent).not.toContain('below the minimum supported')
+      expect(dialog.textContent).not.toContain('too old')
 
       await act(async () => Array.from(dialog.querySelectorAll('button')).find(button => button.textContent?.includes('Claude Code'))!.click())
-      expect(dialog.textContent).toContain('CLI version 2.1.0')
-      expect(dialog.textContent).toContain('below the minimum supported version 2.1.278')
+      expect(dialog.textContent).toContain('too old to work here')
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -369,7 +367,6 @@ describe('CodingProvidersPanel', () => {
 
       const dialog = document.querySelector('[role="dialog"]')!
       expect(dialog.textContent).toContain('Future CLI')
-      expect(dialog.textContent).toContain('CLI version 9.9.9')
       expect(dialog.textContent).toContain('Guided sign-in for this provider is not available yet')
     } finally {
       await act(async () => root.unmount())

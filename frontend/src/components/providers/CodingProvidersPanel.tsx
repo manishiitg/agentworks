@@ -82,19 +82,13 @@ const STATUS_STYLES: Record<ProviderStatus, { label: string; className: string }
 const GUIDED_SETUP_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli'])
 
 
+// People never need the program's version; they only need to know when it is too old to work.
 function CliVersionStatus({ provider }: { provider: ProviderManifestEntry }) {
-  if (!provider.installed_version && provider.update_status !== 'unsupported') return null
+  if (provider.update_status !== 'unsupported') return null
   return (
-    <>
-      {provider.installed_version && (
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">CLI version {provider.installed_version}</p>
-      )}
-      {provider.update_status === 'unsupported' && (
-        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-          This CLI is below the minimum supported version{provider.min_supported_version ? ` ${provider.min_supported_version}` : ''}. Update the CLI on the backend server and re-run P0 certification.
-        </p>
-      )}
-    </>
+    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      This version of {provider.display_name} is too old to work here. Ask an admin to update it.
+    </p>
   )
 }
 
@@ -404,7 +398,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                         <h2 className="text-xl font-semibold text-gray-950 dark:text-white">{selectedProvider.display_name}</h2>
                         <StatusBadge provider={selectedProvider} />
                       </div>
-                      <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">{selectedProvider.description}</p>
                       <CliVersionStatus provider={selectedProvider} />
                     </div>
                   </div>
