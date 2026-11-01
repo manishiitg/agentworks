@@ -657,6 +657,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           <div className="min-w-0">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{record.display_name}</p>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Runs on this Mac with {server}'s login. {server}'s limits apply and the usage counts there.</p>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsText(record.allowed_models)}</p>
           </div>
         </li>
       })}
