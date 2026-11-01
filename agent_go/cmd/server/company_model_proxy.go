@@ -28,10 +28,29 @@ import (
 )
 
 // companyProxyModels is each program the server can lend through its model proxy, and the model names it may ask for.
-var companyProxyModels = map[string]string{"muse-cli": "muse-", "codex-cli": "gpt-"}
+var companyProxyModels = map[string]string{"muse-cli": "muse-", "codex-cli": "gpt-", "claude-code": "claude-"}
 
 // companyProxyPaths are the only proxy routes a program needs.
-var companyProxyPaths = map[string]bool{"responses": true, "models": true}
+var companyProxyPaths = map[string]bool{"responses": true, "models": true, "messages": true, "messages/count_tokens": true}
+
+// companyProxyHeaders are the request headers a program's API needs passed through (Anthropic's version and betas).
+var companyProxyHeaders = []string{"Accept", "Anthropic-Version", "Anthropic-Beta"}
+
+func copyProxyHeaders(to, from *http.Request) {
+	for _, name := range companyProxyHeaders {
+		if value := from.Header.Get(name); value != "" {
+			to.Header.Set(name, value)
+		}
+	}
+}
+
+// proxyCallerKey is the key a program on the Mac presents: a Bearer token, or Anthropic's x-api-key.
+func proxyCallerKey(r *http.Request) string {
+	if key := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); key != "" && key != r.Header.Get("Authorization") {
+		return key
+	}
+	return r.Header.Get("X-Api-Key")
+}
 
 // companyProxyClient streams replies for as long as a turn runs.
 var companyProxyClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -87,10 +106,25 @@ func readProxyRequest(r *http.Request, provider string) ([]byte, string, error) 
 // proxyUsage keeps the final usage of a Responses reply as it streams past: the whole body of a plain JSON reply, or
 // the "response.completed" event of a stream.
 type proxyUsage struct {
-	stream  bool
-	line    []byte
-	final   []byte
-	partial bool
+	stream       bool
+	line         []byte
+	final        []byte
+	partial      bool
+	anthropic    anthropicUsage
+	sawAnthropic bool
+}
+
+// anthropicUsage is Anthropic's usage block; output_tokens in a stream is the running total, so the largest wins.
+type anthropicUsage struct {
+	Input       int `json:"input_tokens"`
+	Output      int `json:"output_tokens"`
+	CacheRead   int `json:"cache_read_input_tokens"`
+	CacheCreate int `json:"cache_creation_input_tokens"`
+}
+
+func (a *anthropicUsage) add(next anthropicUsage) {
+	a.Input, a.CacheRead, a.CacheCreate = max(a.Input, next.Input), max(a.CacheRead, next.CacheRead), max(a.CacheCreate, next.CacheCreate)
+	a.Output = max(a.Output, next.Output)
 }
 
 func (u *proxyUsage) Write(p []byte) (int, error) {
@@ -109,8 +143,24 @@ func (u *proxyUsage) Write(p []byte) (int, error) {
 			}
 			continue
 		}
-		if data, ok := bytes.CutPrefix(u.line, []byte("data:")); ok && bytes.Contains(data, []byte(`"response.completed"`)) {
-			u.final = append([]byte(nil), bytes.TrimSpace(data)...)
+		if data, ok := bytes.CutPrefix(u.line, []byte("data:")); ok {
+			switch {
+			case bytes.Contains(data, []byte(`"response.completed"`)):
+				u.final = append([]byte(nil), bytes.TrimSpace(data)...)
+			case bytes.Contains(data, []byte(`"message_start"`)), bytes.Contains(data, []byte(`"message_delta"`)):
+				// Anthropic: input usage arrives with message_start, output usage with the last message_delta.
+				var event struct {
+					Message struct {
+						Usage anthropicUsage `json:"usage"`
+					} `json:"message"`
+					Usage anthropicUsage `json:"usage"`
+				}
+				if json.Unmarshal(bytes.TrimSpace(data), &event) == nil {
+					u.anthropic.add(event.Message.Usage)
+					u.anthropic.add(event.Usage)
+					u.sawAnthropic = true
+				}
+			}
 		}
 		u.line = u.line[:0]
 	}
@@ -119,6 +169,18 @@ func (u *proxyUsage) Write(p []byte) (int, error) {
 
 // tokens reads input, output, reasoning and cached-input tokens from the reply's usage.
 func (u *proxyUsage) tokens() (input, output, reasoning, cached int, ok bool) {
+	if u.sawAnthropic {
+		a := u.anthropic
+		return a.Input + a.CacheRead + a.CacheCreate, a.Output, 0, a.CacheRead, true
+	}
+	var plain struct {
+		Type  string         `json:"type"`
+		Usage anthropicUsage `json:"usage"`
+	}
+	if !u.stream && json.Unmarshal(u.final, &plain) == nil && plain.Type == "message" {
+		a := plain.Usage
+		return a.Input + a.CacheRead + a.CacheCreate, a.Output, 0, a.CacheRead, true
+	}
 	var reply struct {
 		Response *struct {
 			Usage json.RawMessage `json:"usage"`
@@ -197,7 +259,7 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", r.Header.Get("Accept"))
+	copyProxyHeaders(req, r)
 	started := time.Now()
 	resp, err := companyProxyClient.Do(req)
 	if err != nil {
@@ -337,7 +399,7 @@ func (api *StreamingAPI) handleDesktopModelProxy(w http.ResponseWriter, r *http.
 		return
 	}
 	record, ok := companyAccountOnMac(records, mux.Vars(r)["account"])
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	token := proxyCallerKey(r)
 	if !ok || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(record.Credential)) != 1 {
 		desktopJSONError(w, 401, "Unknown account.")
 		return
@@ -359,7 +421,7 @@ func (api *StreamingAPI) handleDesktopModelProxy(w http.ResponseWriter, r *http.
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", r.Header.Get("Accept"))
+	copyProxyHeaders(req, r)
 	resp, err := companyProxyClient.Do(req)
 	if err != nil {
 		desktopJSONError(w, 502, "Cannot reach "+c.Name+".")
