@@ -44,17 +44,35 @@ for crew in root.iterdir() if root.exists() else []:
                 changed = descriptor(conversation["native"])
         else:
             changed = descriptor(value)
+        destination = None
+        if path != mirror and re.fullmatch(r"[0-9a-f-]{36}", path.parent.name):
+            destination = path.parent.with_name("muse-cli-" + path.parent.name)
+            if destination.exists():
+                # A newer sync may already have populated the current stage.
+                # Keep it and archive the entire old stage, including a record
+                # converted by an interrupted earlier migration (PLAT-856-442).
+                target = destination / "manifest.json"
+                if destination.is_symlink() or not destination.is_dir() or target.is_symlink():
+                    raise RuntimeError("native staging target is not a plain directory")
+                current = json.loads(target.read_text())
+                if any(current.get(k) != value.get(k) for k in ("provider", "format", "session_id")) or current.get("provider") != "muse-cli":
+                    raise RuntimeError("native staging target belongs to a different session")
+                archive = crew / ("native-sync.before-native-format-" + stamp)
+                archive.mkdir(mode=0o700, exist_ok=True)
+                path.parent.rename(archive / path.parent.name)
+                count += 1
+                continue
         if not changed:
+            if destination is not None and value.get("provider") == "muse-cli":
+                path.parent.rename(destination)
+                count += 1
             continue
         backup = path.with_name(path.name + ".before-native-format-" + stamp)
         shutil.copy2(path, backup)
         backup.chmod(0o600)
         path.write_text(json.dumps(value, separators=(",", ":")))
         path.chmod(0o600)
-        if path != mirror and re.fullmatch(r"[0-9a-f-]{36}", path.parent.name):
-            destination = path.parent.with_name("muse-cli-" + path.parent.name)
-            if destination.exists():
-                raise RuntimeError("native staging target already exists")
+        if destination is not None:
             path.parent.rename(destination)
         count += 1
 print(f"Updated {count} private native sync descriptors; each prior record was backed up.")
