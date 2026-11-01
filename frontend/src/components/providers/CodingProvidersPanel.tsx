@@ -104,8 +104,21 @@ function StatusBadge({ provider }: { provider: ProviderManifestEntry }) {
   )
 }
 
-function ProviderListStatus({ provider }: { provider: ProviderManifestEntry }) {
+/** On the Mac: ✓ works here with your login; a server icon when a connected server's company account covers it
+ *  (alone when this Mac is not signed in, beside the ✓ when it is). */
+function ProviderListStatus({ provider, viaServer = false }: { provider: ProviderManifestEntry; viaServer?: boolean }) {
   const status = providerStatus(provider)
+  if (viaServer) {
+    const local = status === 'ready'
+    return (
+      <span className="inline-flex shrink-0 items-center gap-0.5 text-emerald-500 dark:text-emerald-400"
+        title={local ? 'Works on this Mac, and a server\'s company account is available' : 'Works through a server\'s company account'}
+        aria-label={local ? `${provider.display_name} works on this Mac and through a server` : `${provider.display_name} works through a server`}>
+        {local && <CheckCircle2 className="h-4 w-4" />}
+        <Server className={local ? 'h-3 w-3' : 'h-4 w-4'} />
+      </span>
+    )
+  }
   const label = STATUS_STYLES[status].label
   const color = status === 'ready'
     ? 'text-emerald-500 dark:text-emerald-400'
@@ -175,6 +188,17 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
     )
   }
   const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
+  // Programs a connected server's company account covers on this Mac (the backend keeps these accounts in step).
+  const [companyPrograms, setCompanyPrograms] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (!onThisMac) return
+    const load = () => void llmConfigService.getProviderConnections()
+      .then(records => setCompanyPrograms(new Set(records.filter(record => record.via_connection).map(record => record.provider))))
+      .catch(() => undefined)
+    load()
+    window.addEventListener('provider-connections-changed', load)
+    return () => window.removeEventListener('provider-connections-changed', load)
+  }, [onThisMac])
   useEffect(() => { if (!canReview) setView(current => current === 'costs' || current === 'chats' ? 'provider' : current) }, [canReview])
   const canRunGuidedSetup = !isMultiUserMode || isAdmin
 
@@ -355,7 +379,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                           <img src={PROVIDER_SIDEBAR_ICONS[provider.id]} alt="" className={`h-5 w-5 shrink-0 rounded object-contain ${provider.id === 'pi-cli' ? 'bg-[#f6f6f6] p-0.5' : ''}`} />
                         ) : <Terminal aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />}
                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{codingProviderName(provider)}</span>
-                        <ProviderListStatus provider={provider} />
+                        <ProviderListStatus provider={provider} viaServer={companyPrograms.has(provider.id)} />
                         <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-gray-400 ${view === 'provider' && selectedProvider?.id === provider.id ? 'text-violet-500' : ''}`} />
                       </div>
                     </button>
