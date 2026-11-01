@@ -52,6 +52,12 @@ Git pulls. It does not install the
 packaged app or change provider sign-ins. Source development still requires the
 development tools documented in `desktop/README.md`.
 
+Running the full development command again restarts its previous instance in
+that checkout, including Electron and the connected servers. Separate instances
+with their own log directory stay running. An occupied Vault port without a
+matching launcher stops startup with instructions to quit the other instance;
+the launcher never kills a process merely because it uses a port.
+
 Startup shows progress and actionable warnings by default. Routine setup output
 goes to the startup log printed at launch; service logs stay in their usual
 locations. Add `--verbose` to show setup details in the terminal:
