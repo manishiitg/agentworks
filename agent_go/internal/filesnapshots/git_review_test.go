@@ -319,6 +319,9 @@ func TestCheckoutScopedHistoryAndRevert(t *testing.T) {
 func TestSavedSummaryCachesHistoryWithoutBypassingCurrentGrants(t *testing.T) {
 	f := newCrew(t)
 	ctx := t.Context()
+	// PR533: an intentionally ignored loose file is not an incomplete capture.
+	f.put(".gitignore", "ignored.txt\n")
+	f.put("ignored.txt", "intentionally excluded\n")
 	f.put("visible.txt", "before\n")
 	f.put("restricted.txt", "before\n")
 	if _, err := f.s.Begin(ctx, "summary"); err != nil {
@@ -331,8 +334,8 @@ func TestSavedSummaryCachesHistoryWithoutBypassingCurrentGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	summary, err := f.s.SavedSummary(ctx, r.ID, func(string) bool { return true })
-	if err != nil || len(summary.Changes) != 2 {
-		t.Fatalf("warm summary: %v %+v", err, summary)
+	if err != nil || len(summary.Changes) != 2 || summary.Incomplete || len(r.Omitted) == 0 {
+		t.Fatalf("ignored files changed a complete summary: %v %+v omitted=%v", err, summary, r.Omitted)
 	}
 	// With Git unavailable, a repeated menu read must still use the completed
 	// immutable summary and recheck the now narrower grant.
