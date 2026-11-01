@@ -5,7 +5,6 @@ import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
-import { openQuickNavigation, quickNavigationItems } from '../utils/quickNavigation'
 import { isGuideRemembered, rememberGuide } from '../utils/onboarding'
 import { getRuntimeAppName, runtimeBrandingConfig } from '../runtime-branding'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
@@ -19,7 +18,6 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentit
 import { AgentWorksIcon, AGENTWORKS_SUBTITLE } from './ui/AgentWorksIdentity'
 import { HomeUseCases } from './HomeUseCases'
 import { HomeRecentWork } from './HomeRecentWork'
-import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { Button } from './ui/Button'
 import api from '../services/api'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
@@ -52,12 +50,10 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const [agentWorksError, setAgentWorksError] = useState('')
   const [agentWorksDraft, setAgentWorksDraft] = useState('')
   const [agentWorksSending, setAgentWorksSending] = useState(false)
-  const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const products = useMemo(() => {
     const visible = new Set(navigationProductSurfaceIDs(user?.allowed_products))
     return PRODUCT_CARDS.filter(product => visible.has(product.id))
   }, [user?.allowed_products])
-  const creationItems = useMemo(() => quickNavigationItems(user, 'work', isMultiUserMode).filter(item => item.action === 'create'), [user, isMultiUserMode])
   const leaveHome = useCallback(() => {
     rememberGuide(WELCOME_HOME_DISMISSED_KEY)
     useWorkspaceReturnStore.setState({ firstVisit: false })
@@ -144,11 +140,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   }
   const openMcpSetup = () => openWorkspaceSettings('mcp')
   const openProviders = () => openWorkspaceSettings('providers')
-  const studioCreation = creationItems.find(item => item.surface === 'work')
-  const startProject = () => {
-    if (!studioCreation || !openQuickNavigation(studioCreation)) return
-    useCommandDialogStore.getState().requestProductCreate('work')
-  }
 
   return (
     <main aria-label="Home"
@@ -209,10 +200,10 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
         </section>
 
         {onThisMac && <section aria-labelledby="welcome-setup" className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-dashed border-primary/40 p-5 sm:flex-row sm:items-center">
-          <div><h2 id="welcome-setup" className="text-sm font-semibold">Start new-user setup</h2><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">See what someone gets on first install: the AI programs on this Mac, then a new project or a folder you already have. Nothing you have is reset.</p></div>
+          <div><h2 id="welcome-setup" className="text-sm font-semibold">Start new-user setup</h2><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">Check the AI programs on this Mac and optionally connect a server. Nothing you have is reset.</p></div>
           <Button type="button" onClick={() => setSetupOpen(true)} className="shrink-0">Start setup</Button>
         </section>}
-        {setupOpen && <LocalSetup onClose={closeSetup} onStartProject={startProject} />}
+        {setupOpen && <LocalSetup onClose={closeSetup} />}
 
       </div>
     </main>
