@@ -424,6 +424,16 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if pendingLocal.PendingAction != "" {
 				t.Fatal("pending return was not acknowledged before send")
 			}
+			// PLAT-856-485 / PR633: an ordinary stale tab must still fail
+			// continuation validation, rather than join the current conversation.
+			staleSend := httptest.NewRequest("POST", "/api/agent-profiles/work/query", nil).WithContext(ctx)
+			staleSend.Header.Set("X-Session-ID", main.SessionID)
+			if api.ensureCrewNativeExecution(httptest.NewRecorder(), staleSend, "work", local.ID) {
+				t.Fatal("ordinary local continuation unexpectedly required a handoff")
+			}
+			if staleSend.Header.Get("X-Session-ID") != main.SessionID {
+				t.Fatal("ordinary stale continuation was rebound to a different conversation")
+			}
 			// PLAT-856-442: a background download queued before the return
 			// must not retry forever after editing is back on the Mac.
 			staleDownload, _ := crewroot.ReadSync(local.ID)
