@@ -19,6 +19,8 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
+const crewSyncResetMessage = "this saved transfer cannot be resumed; your files are kept. Ask your administrator to reset Project sync, then pair this Crew again"
+
 func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
 		return
@@ -187,6 +189,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(fmt.Errorf("the pending transfer is unavailable; restore its private sync record before continuing"))
 				return
 			}
+			if transfer.Snapshot == nil || transfer.Snapshot.Content == nil {
+				fail(fmt.Errorf("%s", crewSyncResetMessage))
+				return
+			}
 		} else {
 			remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "status"})
 			if e != nil {
@@ -278,6 +284,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 					return
 				}
 				fail(fmt.Errorf("server did not return the project changes"))
+				return
+			}
+			if remote.Snapshot.Content == nil {
+				fail(fmt.Errorf("%s", crewSyncResetMessage))
 				return
 			}
 			if err = applyCrewSyncSnapshot(r.Context(), roots, binding.PairID, remote.Snapshot); err != nil {

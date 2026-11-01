@@ -233,10 +233,28 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			checkWrite(local.FilesPath()+"/new.txt", 200)
 			// Exercise the actual watcher, saved-login HTTP and real files.
-			workerCtx, stop := context.WithCancel(t.Context())
-			done := make(chan struct{})
-			go func() { defer close(done); api.watchDesktopCrewSync(workerCtx, local.ID) }()
-			defer func() { stop(); <-done }()
+			// PLAT-856-440: an unavailable selected drive at startup must recover
+			// when it returns, without restarting the app or changing its pairing.
+			if split {
+				crewAutoStates.Delete(local.ID)
+				if err := os.Rename(local.Files, local.Files+"-unavailable"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stop := api.startDesktopCrewSync()
+			defer stop()
+			if split {
+				deadline := time.Now().Add(5 * time.Second)
+				for crewAutoStatus(local.ID) == nil && time.Now().Before(deadline) {
+					time.Sleep(50 * time.Millisecond)
+				}
+				if status := crewAutoStatus(local.ID); status == nil || status.State != "attention" {
+					t.Fatalf("missing folder was not reported: %+v", status)
+				}
+				if err := os.Rename(local.Files+"-unavailable", local.Files); err != nil {
+					t.Fatal(err)
+				}
+			}
 			awaitFile := func(root, name, want string) {
 				t.Helper()
 				deadline := time.Now().Add(15 * time.Second)
