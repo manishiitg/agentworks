@@ -51,7 +51,8 @@ export interface UseWorkspaceStateReturn {
  */
 export function useWorkspaceState(
   workspacePath: string | null,
-  selectedFolder?: string | null
+  selectedFolder?: string | null,
+  syncWorkflowStore = true,
 ): UseWorkspaceStateReturn {
   const [state, setState] = useState<WorkspaceState | null>(null)
   const [loading, setLoading] = useState(false)
@@ -77,6 +78,8 @@ export function useWorkspaceState(
 
   const applyWorkspaceState = useCallback((nextState: WorkspaceState) => {
     setState(nextState)
+    initialLoadCompleteRef.current = true
+    if (!syncWorkflowStore) return
 
     const workflowStore = useWorkflowStore.getState()
     const folders = nextState.run_folders
@@ -87,7 +90,7 @@ export function useWorkspaceState(
 
     initialLoadCompleteRef.current = true
     workflowStore.restoreSelectionFromLocalStorage()
-  }, [])
+  }, [syncWorkflowStore])
 
   const scheduleRetry = useCallback(() => {
     if (retryTimeoutRef.current) {

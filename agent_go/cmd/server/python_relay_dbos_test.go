@@ -181,6 +181,9 @@ async def run(INPUT):
 	if native && publishedManifest.crewExecutable == nil {
 		t.Fatal("published program lost its Crew binding")
 	}
+	if native && !workflowStepInspectionWorkspace(ctx, published) {
+		t.Fatal("Crew-owned published program cannot expose its step records")
+	}
 	publishedFunction, err := findWorkflowFunctionTrigger(publishedManifest, "process")
 	if err != nil {
 		t.Fatal(err)

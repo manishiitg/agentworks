@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
 const workspaceInspectionPageSize = 20
@@ -57,7 +58,7 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 	if userID == "" {
 		userID = GetDefaultUserID()
 	}
-	if !valid || len(strings.Split(workspace, "/")) != 2 ||
+	if !valid || (len(strings.Split(workspace, "/")) != 2 && workflowtypes.RelayReleaseWorkspace(workspace) != workspace) ||
 		(claims != nil && !userAllowedProduct(claims, "agentworks")) ||
 		!workspaceReadAllowed(r.Context(), claims, workspace, logicalPathIsDefaultUser, false) || !workflowStepInspectionWorkspace(r.Context(), workspace) {
 		http.Error(w, "Workspace not found", http.StatusNotFound)

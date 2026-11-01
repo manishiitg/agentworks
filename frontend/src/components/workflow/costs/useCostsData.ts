@@ -25,9 +25,10 @@ import {
 interface UseCostsDataArgs {
   workspacePath: string | null
   selectedRunFolder: string | null
+  runOnly?: boolean
 }
 
-export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataArgs) {
+export function useCostsData({ workspacePath, selectedRunFolder, runOnly = false }: UseCostsDataArgs) {
   const [loading, setLoading] = useState(false)
   const [runCosts, setRunCosts] = useState<RunCosts[]>([])
   const [phaseCostSummary, setPhaseCostSummary] = useState<PhaseCostSummary | null>(null)
@@ -74,7 +75,7 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
       loadGenerationRef.current += 1
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspacePath])
+  }, [workspacePath, runOnly, runOnly ? selectedRunFolder : null])
 
   // Auto-expand selected run folder when it changes
   useEffect(() => {
@@ -95,6 +96,29 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
     setLoading(true)
     setError(null)
     try {
+      // A run inspector must never present the workspace-wide ledger as this
+      // run's cost. Use the immutable artifact with its exact folder identity.
+      if (runOnly) {
+        setRunCosts([])
+        setPhaseCostSummary(null)
+        setPhaseDailyCostSummaries([])
+        setRunDailyCostSummaries([])
+        setScopedCosts(null)
+        setActivityTiming(null)
+        setCostHistory(null)
+        if (!selectedRunFolder) return
+        const [response, logs] = await Promise.all([
+          agentApi.getCosts(workspacePath),
+          agentApi.getExecutionLogs(workspacePath, selectedRunFolder).catch(() => null),
+        ])
+        if (generation !== loadGenerationRef.current) return
+        const entry = response.runs?.find(run => run.run_folder === selectedRunFolder)
+        if (entry?.token_usage) {
+          setRunCosts([{ runFolder: selectedRunFolder, tokenUsage: entry.token_usage, evaluationTokenUsage: null, steps: logs?.steps, costSummary: calculateCostSummary(entry.token_usage, null, logs?.steps) }])
+          setExpandedRunFolders(new Set([selectedRunFolder]))
+        }
+        return
+      }
       const summaryResponse = await agentApi.getCosts(workspacePath, { view: 'summary', days: 30 })
       if (generation !== loadGenerationRef.current) return
       const summaryScopes = summaryResponse.scoped_costs?.by_scope || {}

@@ -12,7 +12,7 @@ State and synthetic workspaces live under `.local/agentworks-instances/unified-c
 
 ## Try this increment
 
-Open a Crew's menu and choose **Workflows & programs**. Add a workflow or program and open it. The existing workflow and Relay editors/runners handle editing and execution. During this increment they still open their existing product screens and may appear in the sidebar.
+Open a Crew's menu and choose **Workflows & programs**. Add a workflow or program and open it. Open a definition inside its Crew with **Steps · Runs · Settings**. The existing canvas, source, logs, Inspect and cost panels remain in use; opening them does not switch the Crew chat. Crew-owned definitions no longer get duplicate standalone sidebar rows.
 
 The original preview instance's prepared **Crew Lab** contains a greeting workflow (two Python steps, no model calls, variables or groups), a greeting program (native DBOS Relay), and a second workflow created through the browser.
 
@@ -30,9 +30,8 @@ The original preview instance's prepared **Crew Lab** contains a greeting workfl
 ## Still unfinished
 
 - Split definition/code/run/data locations and the final shared Crew folder structure.
-- Moving the complete editor/run experience inside the Crew, removing standalone child rows and shells.
-- Referencing Crew conversational agents in workflows; direct-script publishing and one shared callable input contract.
-- Final input-selection API cleanup and complete embedded authoring experience.
+- Direct-script publishing and one shared callable input contract.
+- Final input-selection API cleanup, full direct form authoring, and remaining global-monitor/deep-link navigation into a child inside its Crew.
 - Targets/measurement integration, conversion tooling, existing-data conversion and old-path removal.
 - Linux slot/Landlock checks for the future split-root layout, full permissions/agentic scenarios and live rollout.
 
@@ -53,3 +52,14 @@ Updating the review branch does not update an already-running preview. To start 
 ```
 
 The existing isolated instance and the normal app may remain running. This branch remains review-only; existing Goal/Relay records have not been converted. The saved-chat rule applies to executables bound to a Crew in this refactor. Existing standalone products retain their current behavior until conversion.
+
+
+## Embedded editor and agent reuse
+
+The review branch now keeps editing inside the Crew. Steps reuses the existing canvas and Python program view. Runs shows the selected workflow run's logs, files, exact step inspection receipts and per-run costs. Programs reuse the existing release/run selector, so changing from draft to a published version changes the workspace used by every detail panel. Settings reuses schedules, functions and webhooks; their saved chat targets remain authoritative. Edit/Run in chat prepares a request in the existing Crew chat.
+
+Selecting a Crew agent on an agent step reuses its saved role, Crew instructions, model/account, apps and skills. Explicit step overrides stay in effect and existing workflow tool/folder limits still apply. The executor uses its existing run-scoped sequence; no ordinary chat messages, native handle or session identity are imported. A reference to another Crew, even one with the same owner, is refused. The configuration is copied for each new sequence and retained for route reentry within that run.
+
+Run users do not mount this editor. The server's Crew access response gates the screen, and all child reads/writes still use normal server authorization. Parent metadata used for navigation is derived from the private binding, not editable workflow fields.
+
+Focused checks cover preserving the active Crew and unrelated workflow state, selecting the exact run/step, per-run costs without workspace-total fallback, owner/foreign access, saved-specialist updates, and configuration/history separation. Real coding-agent calls and Linux split-root behavior remain unverified. The separate preview uses synthetic scripts and the real workspace/DBOS path.

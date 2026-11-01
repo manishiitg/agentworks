@@ -130,6 +130,7 @@ import type { ExecutionOptions } from '../../../services/api-types'
 
 
 export interface WorkflowCanvasProps {
+  scope?: import('./workspaceViewData').EmbeddedWorkflowScope
   workspacePath: string | null
   presetQueryId: string | null
   relayMode?: boolean
@@ -756,10 +757,16 @@ export function ReadOnlyStepDetailPanel({
   node,
   workspacePath,
   onClose,
+  onOpenFile,
+  crewAgents,
+  onSetCrewAgent,
 }: {
   node: WorkflowNode
   workspacePath: string | null
   onClose: () => void
+  onOpenFile?: (file: string) => void
+  crewAgents?: Array<{ id: string; name: string }>
+  onSetCrewAgent?: (stepId: string, agentId: string) => Promise<void>
 }) {
   const data = node.data as WorkflowNodeData
   const step = 'step' in data && data.step ? data.step as PlanStep : null
@@ -786,6 +793,8 @@ export function ReadOnlyStepDetailPanel({
   const contextOutputs = Array.isArray(contextOutput) ? contextOutput : (contextOutput ? [contextOutput] : [])
   const routingQuestion = typeof data.routing_question === 'string' ? data.routing_question : undefined
   const [openingScript, setOpeningScript] = React.useState(false)
+  const [savingAgent, setSavingAgent] = React.useState(false)
+  const [agentError, setAgentError] = React.useState('')
   const openScript = React.useCallback(async () => {
     if (!step?.id || (step.type !== 'scripted' && step.type !== 'regular') || openingScript) return
 
@@ -802,14 +811,18 @@ export function ReadOnlyStepDetailPanel({
           if (Number.isFinite(configuredVersion)) codeLayoutVersion = configuredVersion
         }
       }
-      useWorkflowStore.getState().openWorkspaceView('files', scriptedStepFilePath(step.id, codeLayoutVersion))
+      const file = scriptedStepFilePath(step.id, codeLayoutVersion)
+      if (onOpenFile) onOpenFile(file)
+      else useWorkflowStore.getState().openWorkspaceView('files', file)
     } catch {
       // An absent or unreadable workflow.json is the supported legacy layout.
-      useWorkflowStore.getState().openWorkspaceView('files', scriptedStepFilePath(step.id, 0))
+      const file = scriptedStepFilePath(step.id, 0)
+      if (onOpenFile) onOpenFile(file)
+      else useWorkflowStore.getState().openWorkspaceView('files', file)
     } finally {
       setOpeningScript(false)
     }
-  }, [openingScript, step, workspacePath])
+  }, [openingScript, step, workspacePath, onOpenFile])
 
   return (
     <aside
@@ -853,6 +866,16 @@ export function ReadOnlyStepDetailPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {step?.type === 'agent' && crewAgents && onSetCrewAgent && <DetailSection icon={Settings} title="Crew agent">
+          <select aria-label="Crew agent for this step" disabled={savingAgent} value={step.crew_agent ?? ''} className="w-full rounded border bg-background p-2 text-sm" onChange={async event => {
+            setSavingAgent(true); setAgentError('')
+            try { await onSetCrewAgent(step.id, event.target.value) }
+            catch (cause) { setAgentError(cause instanceof Error ? cause.message : 'Could not save the agent.') }
+            finally { setSavingAgent(false) }
+          }}><option value="">Use workflow settings</option>{step.crew_agent && !crewAgents.some(agent => agent.id === step.crew_agent) && <option value={step.crew_agent}>Agent unavailable</option>}{crewAgents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>
+          <p className="mt-2 text-xs text-muted-foreground">Uses the saved role, model, apps and skills. Conversation stays within this run.</p>
+          {agentError && <p role="alert" className="mt-2 text-xs text-destructive">{agentError}</p>}
+        </DetailSection>}
         {step?.type === 'agent' && step.authored_prompt && (
           <DetailSection icon={Braces} title="Authored agent">
             <p className="mb-1 text-xs text-muted-foreground">Exact system prompt</p>
@@ -1096,6 +1119,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   toolbarOnly = false,
   readOnly = false,
   embeddedPlanOnly = false,
+  scope,
 }, ref) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -1126,10 +1150,11 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const refreshTriggers = triggers.refresh
   const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
   const selectedGroupIds = useWorkflowStore(state => state.selectedGroupIds)
-  const setSelectedRunFolder = useWorkflowStore(state => state.setSelectedRunFolder)
+  const globalSetSelectedRunFolder = useWorkflowStore(state => state.setSelectedRunFolder)
+  const setSelectedRunFolder = scope?.setSelectedRunFolder ?? globalSetSelectedRunFolder
 
   // No explicit view: the default builder workspace.
-  const isBuilderWorkspace = workflowWorkspaceView === null
+  const isBuilderWorkspace = !scope && workflowWorkspaceView === null
 
   // Generate localStorage key for viewport state (workspace-specific)
   const getViewportStorageKey = React.useCallback(() => {
@@ -1248,8 +1273,11 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const pendingPlanStepFocusRef = React.useRef<string | null>(null)
   
   // Workflow store actions
-  const setVariablesManifestInStore = useWorkflowStore.getState().setVariablesManifest
-  const selectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
+  const setVariablesManifestInStore = useCallback((manifest: VariablesManifest | null) => {
+    if (!scope) useWorkflowStore.getState().setVariablesManifest(manifest)
+  }, [scope])
+  const globalSelectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
+  const selectedRunFolder = scope ? scope.selectedRunFolder : globalSelectedRunFolder
   // Device-width preview also constrains the plan/flow pane (centered shell).
   const previewDevice = usePreviewDevice(workspacePath)
   // Changing the device width resizes the flow pane; re-fit the diagram after the
@@ -1266,6 +1294,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const highlightFile = useWorkspaceStore(state => state.highlightFile)
   const prevSelectedRunFolderRef = useRef<string | null>(null)
   useEffect(() => {
+    if (scope) return
     // Reset ref if selectedRunFolder is cleared
     if (!selectedRunFolder || selectedRunFolder === 'new') {
       prevSelectedRunFolderRef.current = null
@@ -1301,7 +1330,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
         highlightFile(executionPath)
       })
     }
-  }, [selectedRunFolder, workspacePath, highlightFile])
+  }, [selectedRunFolder, workspacePath, highlightFile, scope])
 
   // Plan, execution status, and workspace state come from the
   // host so that switching views never re-runs their loaders.
@@ -1449,8 +1478,9 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const [selectedTrigger, setSelectedTrigger] = React.useState<{ workspace: string | null; id: string } | null>(null)
   const selectedTriggerJob = selectedTrigger?.workspace === workspacePath ? triggers.jobs.find(job => job.id === selectedTrigger.id) : undefined
   const openTriggerSettings = useCallback((section: 'schedules' | 'webhooks') => {
-    useWorkflowStore.getState().openWorkspaceView(section === 'webhooks' ? 'webhooks' : 'schedules')
-  }, [])
+    if (scope) scope.openView(section)
+    else useWorkflowStore.getState().openWorkspaceView(section)
+  }, [scope])
 
   // React Flow state (need to define before usePlanToFlow to use in callbacks)
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<WorkflowNode>([])
@@ -2660,6 +2690,9 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
 
         {selectedFlowNode && (
           <ReadOnlyStepDetailPanel
+            onOpenFile={scope ? file => scope.openView('files', file) : undefined}
+            crewAgents={scope?.crewAgents}
+            onSetCrewAgent={scope ? async (stepId, agentId) => { await agentApi.updatePlanStep(workspacePath!, stepId, { crew_agent: agentId }); await loadPlanRefresh() } : undefined}
             node={selectedFlowNode}
             workspacePath={workspacePath}
             onClose={() => setSelectedFlowNodeID(null)}

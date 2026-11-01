@@ -2493,7 +2493,7 @@ export const agentApi = {
   updatePlanStep: async (
     workspacePath: string,
     stepId: string,
-    updates: Partial<Omit<PlanStep, 'agent_configs'>>
+    updates: import('../utils/stepConfigMatching').PlanStepPatch
   ): Promise<{ success: boolean; message: string; data?: { step: PlanStep } }> => {
     const response = await api.post('/api/workflow/plan/update-step', {
       workspace_path: workspacePath,

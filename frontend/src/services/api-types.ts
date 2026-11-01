@@ -3060,6 +3060,7 @@ export interface WorkflowScheduleEntry {
 }
 
 export interface DiscoveredWorkflow {
+  crew_id?: string
   workspace_path: string
   manifest: WorkflowManifest
   /** The signed-in user's level on this workflow: owner/write may edit and

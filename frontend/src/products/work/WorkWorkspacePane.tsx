@@ -356,7 +356,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {view === 'plan' && <CrewExecutablesPanel key={projectId} projectId={projectId} />}
+        {view === 'plan' && (canEditConnections ? <CrewExecutablesPanel key={projectId} projectId={projectId} chatTabId={tabId} /> : <p className="p-6 text-sm text-muted-foreground">{!shared && projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>)}
         {view === 'mcp' && <WorkIntegrationsPanel
           canEdit={canEditConnections}
           accessLoading={!shared && projectAccess?.key !== accessKey}

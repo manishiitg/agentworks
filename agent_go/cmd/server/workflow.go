@@ -2004,6 +2004,7 @@ type PlanStepUpdate struct {
 	NextStepID *string `json:"next_step_id,omitempty"`
 
 	// Agent step fields
+	CrewAgent        *string                                       `json:"crew_agent,omitempty"`
 	PredefinedRoutes *[]todo_creation_human.PlanOrchestrationRoute `json:"predefined_routes,omitempty"`
 	Items            *[]todo_creation_human.AgentItem              `json:"items,omitempty"`
 	ValidationSchema *todo_creation_human.ValidationSchema         `json:"validation_schema,omitempty"`
@@ -2360,6 +2361,11 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 
 	step, path := findStepInPlan(plan, stepID)
 	if step == nil {
+		// Saved specialists live in orphan_steps and are referenced by routes.
+		// Reuse the same updater against that slice rather than a second editor.
+		if len(plan.OrphanSteps) > 0 {
+			return updateStepInPlan(&todo_creation_human.PlanningResponse{Steps: plan.OrphanSteps}, stepID, updates)
+		}
 		return fmt.Errorf("step with ID %q not found", stepID)
 	}
 
@@ -2373,6 +2379,9 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 
 	case *todo_creation_human.AgentPlanStep:
 		updated := *s // Copy the step
+		if updates.CrewAgent != nil {
+			updated.CrewAgent = strings.TrimSpace(*updates.CrewAgent)
+		}
 		if updates.Title != nil {
 			updated.Title = *updates.Title
 		}
@@ -2553,6 +2562,9 @@ func (api *StreamingAPI) handleUpdatePlanStep(w http.ResponseWriter, r *http.Req
 
 	// Find updated step to return
 	updatedStep, _ := findStepInPlan(plan, req.StepID)
+	if updatedStep == nil {
+		updatedStep, _ = findStepInPlan(&todo_creation_human.PlanningResponse{Steps: plan.OrphanSteps}, req.StepID)
+	}
 	if updatedStep == nil {
 		http.Error(w, "Step not found after update", http.StatusInternalServerError)
 		return
