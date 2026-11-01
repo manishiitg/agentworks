@@ -112,6 +112,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 	if !ok {
 		return false, "", fmt.Errorf("step is not a AgentPlanStep")
 	}
+	// Resolve before building the delegation factory and folder/skill policy,
+	// so its closure receives the same configuration snapshot as the sequence.
+	var resolveErr error
+	orchestratorStep, resolveErr = hcpo.resolveCrewAgentStep(ctx, orchestratorStep)
+	if resolveErr != nil {
+		return false, "", resolveErr
+	}
 
 	// Filter only the runtime copy: the saved plan remains available for explicit migration.
 	runtimeStep := *orchestratorStep

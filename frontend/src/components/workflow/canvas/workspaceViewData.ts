@@ -3,6 +3,16 @@ import type { UsePlanDataReturn } from '../hooks/usePlanData'
 import type { UseWorkspaceStateReturn } from '../hooks/useWorkspaceState'
 import type { WorkflowExecutionStatus } from '../hooks/useWorkflowExecution'
 import type { VariablesManifest } from '../../../services/api-types'
+import type { WorkspaceViewId } from '../workspaceViews'
+
+/** Embedded editors own their selection without changing the active product/chat. */
+export interface EmbeddedWorkflowScope {
+  crewAgents?: Array<{ id: string; name: string }>
+  view: WorkspaceViewId
+  selectedRunFolder: string | null
+  setSelectedRunFolder: (folder: string | null) => void
+  openView: (view: WorkspaceViewId, target?: string) => void
+}
 
 export type WorkflowImageExportFormat = 'svg' | 'png' | 'jpeg'
 
@@ -17,6 +27,7 @@ export type FlowShell = 'loading' | 'error' | 'ready'
  * four hooks itself, so switching views remounted the data layer.
  */
 export interface WorkspaceViewData {
+  scope?: EmbeddedWorkflowScope
   planData: UsePlanDataReturn
   status: WorkflowExecutionStatus
   workspace: UseWorkspaceStateReturn

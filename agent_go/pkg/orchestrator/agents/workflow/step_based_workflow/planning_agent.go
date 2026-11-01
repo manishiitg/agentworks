@@ -722,7 +722,11 @@ type AgentItem struct {
 type AgentPlanStep struct {
 	Type StepType `json:"type"`
 	CommonStepFields
-	Items []AgentItem `json:"items,omitempty"`
+	// CrewAgent selects configuration from this workflow's owning Crew. It
+	// never selects a conversation to continue or imports that chat's messages.
+	CrewAgent         string      `json:"crew_agent,omitempty"`
+	crewAgentResolved bool        // runtime snapshot only; never serialized into the plan
+	Items             []AgentItem `json:"items,omitempty"`
 	// Empty contract retains the saved system-charter semantics until reviewed migration.
 	PromptContract     string            `json:"prompt_contract,omitempty"`
 	SystemRules        string            `json:"system_rules,omitempty"`
@@ -760,6 +764,7 @@ func (m *AgentPlanStep) UnmarshalJSON(data []byte) error {
 	type agentSequenceAlias struct {
 		Type StepType `json:"type"`
 		CommonStepFields
+		CrewAgent           string            `json:"crew_agent,omitempty"`
 		Items               []AgentItem       `json:"items,omitempty"`
 		PromptContract      string            `json:"prompt_contract,omitempty"`
 		SystemRules         string            `json:"system_rules,omitempty"`
@@ -776,6 +781,7 @@ func (m *AgentPlanStep) UnmarshalJSON(data []byte) error {
 
 	m.Type = StepTypeAgent
 	m.CommonStepFields = raw.CommonStepFields
+	m.CrewAgent = raw.CrewAgent
 	m.Items = raw.Items
 	m.PromptContract = raw.PromptContract
 	m.SystemRules = raw.SystemRules
@@ -1010,6 +1016,7 @@ type PartialPlanStep struct {
 	ScriptParameters       map[string]ScriptParameterDefinition `json:"script_parameters,omitempty"`        // Optional: replace the scripted runtime parameter contract; pass {} to clear
 	ScriptParametersSchema map[string]interface{}               `json:"script_parameters_schema,omitempty"` // Optional: replace the full JSON Schema contract; pass {} to clear
 	// Agent fields
+	CrewAgentRef       *string           `json:"crew_agent,omitempty"`
 	Items              []AgentItem       `json:"items,omitempty"`
 	PromptContract     *string           `json:"prompt_contract,omitempty"`
 	SystemRules        *string           `json:"system_rules,omitempty"`
@@ -1465,6 +1472,7 @@ func getAddAgentStepSchema() string {
 			"id": {"type": "string", "description": "REQUIRED: Stable URL-friendly step ID."},
 			"title": {"type": "string", "description": "REQUIRED: Short title for the agent step."},
 			"description": {"type": "string", "description": "REQUIRED: The executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put task-specific policies in the description's Rules section. items[] are optional subsequent turns, not a repeated execution instruction."},
+			"crew_agent": {"type": "string", "description": "Optional exact agent id from the owning Crew. Reuse its role, model, apps and skills with run-scoped memory, without continuing its chat. Empty clears the selection."},
 			"authored_prompt": {"type": "boolean", "description": "Flow agent mode: run the exact system_prompt and user_message items without generated workflow turns. The final user_message must return valid JSON."},
 			"system_prompt": {"type": "string", "description": "Required when authored_prompt is true. The author's system prompt; supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
 			"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
@@ -1525,6 +1533,7 @@ func getUpdateAgentStepSchema() string {
 			"existing_step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: ID of the agent step to update. Legacy non-scripted steps are accepted and atomically upgraded to agent because that is already their effective runtime type."},
 			"title": {"type": "string", "description": "OPTIONAL: New title. Omit to preserve the existing title."},
 			"description": {"type": "string", "description": "OPTIONAL: Replaces the executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Put task-specific policies in the description's Rules section. items[] are optional subsequent turns, not a repeated execution instruction. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
+			"crew_agent": {"type": "string", "description": "Exact agent id from the owning Crew, configuration only with run-scoped history. Empty clears it."},
 			"authored_prompt": {"type": "boolean", "description": "Switch exact authored prompt mode on or off. When true, provide system_prompt and end items with a JSON-returning user_message."},
 			"system_prompt": {"type": "string", "description": "Replace the authored system prompt. Supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
 			"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
@@ -2912,6 +2921,9 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		if partialUpdate.AuthoredPrompt != nil {
 			updated.AuthoredPrompt = *partialUpdate.AuthoredPrompt
 		}
+		if partialUpdate.CrewAgentRef != nil {
+			updated.CrewAgent = strings.TrimSpace(*partialUpdate.CrewAgentRef)
+		}
 		if partialUpdate.SystemPrompt != nil {
 			updated.SystemPrompt = *partialUpdate.SystemPrompt
 		}
@@ -3260,6 +3272,10 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 		})
 	}
 	if sequenceStep, ok := existingStep.(*AgentPlanStep); ok {
+		if partialUpdate.CrewAgentRef != nil {
+			changedFields = append(changedFields, "crew_agent")
+			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "crew_agent", OldValue: sequenceStep.CrewAgent, NewValue: *partialUpdate.CrewAgentRef})
+		}
 		if partialUpdate.PromptContract != nil {
 			changedFields = append(changedFields, "prompt_contract")
 			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "prompt_contract", OldValue: sequenceStep.PromptContract, NewValue: *partialUpdate.PromptContract})

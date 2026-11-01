@@ -288,6 +288,9 @@ func filterWorkflowManifestsForUser(claims *UserClaims, discovered []DiscoveredW
 			continue
 		}
 		workflow.MyAccess = level
+		if workflow.Manifest.crewExecutable != nil {
+			workflow.CrewID = workflow.Manifest.crewExecutable.CrewID
+		}
 		filtered = append(filtered, workflow)
 	}
 	return filtered

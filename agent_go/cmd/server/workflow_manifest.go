@@ -1508,6 +1508,7 @@ func discoverWorkflowManifests(ctx context.Context, persistMigrations bool) ([]D
 
 // DiscoveredWorkflow pairs a manifest with its workspace path.
 type DiscoveredWorkflow struct {
+	CrewID        string            `json:"crew_id,omitempty"` // server-resolved parent; never read from editable manifest fields
 	WorkspacePath string            `json:"workspace_path"`
 	Manifest      *WorkflowManifest `json:"manifest"`
 	// MyAccess is the requesting user's level on this workflow (owner, write,

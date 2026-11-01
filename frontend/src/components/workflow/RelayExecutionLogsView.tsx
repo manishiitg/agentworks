@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { workflowWebhooksApi, type RelayReleasesResponse } from '../../api/workflowWebhooks'
 import { agentApi } from '../../services/api'
 import type { RunFolderInfo } from '../../services/api-types'
@@ -7,13 +7,14 @@ import DBOSExecutionTimeline from './DBOSExecutionTimeline'
 import { WorkspacePanelHeaderBoundary } from '../workspace/WorkspacePanelHeaderSlots'
 
 /** Selects a Flow release, then uses the shared workflow execution log viewer. */
-export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, draftRunFolders, draftRunFolderInfos, draftSelectedRunFolder, onRefreshDraftRuns }: {
+export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, draftRunFolders, draftRunFolderInfos, draftSelectedRunFolder, onRefreshDraftRuns, renderRunDetails }: {
   relayID: string
   draftWorkspacePath: string
   draftRunFolders: string[]
   draftRunFolderInfos: RunFolderInfo[]
   draftSelectedRunFolder: string | null
   onRefreshDraftRuns: () => void | Promise<void>
+  renderRunDetails?: (workspacePath: string, runFolder: string | null) => ReactNode
 }) {
   const [releases, setReleases] = useState<RelayReleasesResponse | null>(null)
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null)
@@ -71,7 +72,7 @@ export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, dr
         id="relay-log-version"
         className="rounded-md border border-border bg-background px-2 py-1"
         value={selectedVersion || 'draft'}
-        onChange={event => setSelectedVersion(event.target.value)}
+        onChange={event => { setSelectedVersion(event.target.value); setPublishedRuns([]); setSelectedRun(null) }}
       >
         <option value="draft">Draft tests</option>
         {releases?.releases.map(release => <option key={release.version} value={release.version}>
@@ -82,9 +83,10 @@ export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, dr
       {releases?.active_error && <span role="alert" className="text-destructive">{releases.active_error}</span>}
       {error && <span role="alert" className="text-destructive">{error}</span>}
       <label htmlFor="relay-log-run">Run</label><select id="relay-log-run" value={folder || ''} onChange={event => { setSelectedRun(event.target.value); setHasDBOS(null); setMode('steps') }} className="rounded-md border border-border bg-background px-2 py-1"><option value="" disabled>No runs yet</option>{runFolders.map(run => <option key={run} value={run}>{run}</option>)}</select>
-      <button type="button" disabled={hasDBOS === false} aria-pressed={mode === 'steps'} onClick={() => setMode('steps')} className="rounded border border-border px-2 py-1 disabled:opacity-40">DBOS steps</button>
-      <button type="button" aria-pressed={mode === 'files'} onClick={() => setMode('files')} className="rounded border border-border px-2 py-1">Agent files</button>
+      {!renderRunDetails && <><button type="button" disabled={hasDBOS === false} aria-pressed={mode === 'steps'} onClick={() => setMode('steps')} className="rounded border border-border px-2 py-1 disabled:opacity-40">DBOS steps</button>
+      <button type="button" aria-pressed={mode === 'files'} onClick={() => setMode('files')} className="rounded border border-border px-2 py-1">Agent files</button></>}
     </div>
+    {!releases || (selectedVersion !== 'draft' && (!selectedRelease || selectedRelease.error)) ? <p className="p-4 text-sm text-muted-foreground">{error || selectedRelease?.error || (releases ? 'Choose an available version.' : 'Loading versions…')}</p> : renderRunDetails ? <div className="min-h-0 flex-1">{renderRunDetails(workspacePath, folder)}</div> : <>
     <div className={mode === 'steps' ? 'min-h-0 flex-1 overflow-auto' : 'hidden'}>
       <DBOSExecutionTimeline key={`${workspacePath}/${folder}`} workspacePath={workspacePath} runFolder={folder} onAvailable={onAvailable} />
     </div>
@@ -100,5 +102,6 @@ export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, dr
       />
       </WorkspacePanelHeaderBoundary>
     </div>
+    </>}
   </div>
 }

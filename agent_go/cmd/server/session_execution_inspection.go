@@ -19,8 +19,8 @@ func inspectionIdentityPart(value string) bool {
 	return value != "" && value != "." && value != ".." && !strings.ContainsAny(value, "/\\\x00")
 }
 
-// Only goal-workflow executions get the step inspector. Crew/product chats and
-// Relays can share the execution recorder without advertising this workflow UI.
+// Workflows and Crew-owned programs expose their saved step records. Ordinary
+// Crew chats and standalone programs keep their existing conversation surfaces.
 func workflowStepInspectionWorkspace(ctx context.Context, workspace string) bool {
 	if !strings.HasPrefix(strings.Trim(workspace, "/"), "Workflow/") {
 		return false
@@ -38,7 +38,14 @@ func workflowStepInspectionWorkspace(ctx context.Context, workspace string) bool
 	if json.Unmarshal([]byte(content), &manifest) != nil {
 		return false
 	}
-	return manifest.Kind == "" || manifest.Kind == "workflow"
+	if manifest.Kind == "" || manifest.Kind == "workflow" {
+		return true
+	}
+	if manifest.Kind == "relay" {
+		binding, err := findCrewExecutable(workspace)
+		return err == nil && binding != nil && binding.Kind == "relay"
+	}
+	return false
 }
 
 func workflowStepInspectionKind(kind string) bool {
