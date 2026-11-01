@@ -2,6 +2,7 @@ package server
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -45,6 +46,14 @@ func TestDecideCLIConfinement(t *testing.T) {
 		got, runner, why := decideCLIConfinement(tc.provider, tc.workingDir)
 		if got != tc.want {
 			t.Errorf("%s: got %s, want %s", tc.name, got, tc.want)
+		}
+		// PLAT-856-442: Mac Codex stores its journals in the launcher's private
+		// CODEX_HOME, even though the person's ordinary HOME remains open.
+		if tc.os == runtime.GOOS && tc.provider == "codex-cli" && tc.want == cliRunSeatbelt {
+			env := cliNativeHomeEnvironment(tc.provider, "/runtime")
+			if env["CODEX_HOME"] != filepath.Join(cliPrivateHome(tc.provider, "/runtime"), ".codex") || env["HOME"] != "" {
+				t.Fatalf("Mac native-store routing diverges from launch: %v", env)
+			}
 		}
 		if got == cliRunConfined && runner == "" {
 			t.Errorf("%s: confined without a launcher", tc.name)

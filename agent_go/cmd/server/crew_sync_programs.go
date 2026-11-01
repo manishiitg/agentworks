@@ -74,12 +74,17 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 	if err != nil {
 		return "", "", err
 	}
+	sandboxHome := cliNativeHomeEnvironment(c.Provider, runtimeDir)
+	nativeEnv := append([]string{}, target.Env...)
+	for key, value := range sandboxHome {
+		nativeEnv = append(nativeEnv, key+"="+value)
+	}
 	if c.Provider == "cursor-cli" {
 		if transport == "sdk" {
 			store, err = sessiontransfer.PathDirectory(runtimeDir, security.SandboxPersistentDirName+"/cursor-sdk-state", importing)
 			return
 		}
-		store, err = cursorcli.NativeRuntimeConfigDirectory(runtimeDir, target.Env)
+		store, err = cursorcli.NativeRuntimeConfigDirectory(runtimeDir, nativeEnv)
 		if err == nil && importing && crewroot.Within(runtimeDir, store) {
 			rel, e := filepath.Rel(runtimeDir, store)
 			if e != nil {
@@ -89,29 +94,25 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 		}
 		return
 	}
-	home := target.Home
-	if !cliPersonalMac() || c.Provider == "codex-cli" {
-		home, err = sessiontransfer.PathDirectory(runtimeDir, security.SandboxPersistentDirName+"/cli-home/"+c.Provider, importing)
-		if err != nil {
-			return "", "", err
-		}
-	}
 	sub, key := ".claude", "CLAUDE_CONFIG_DIR"
 	if c.Provider == "codex-cli" {
 		sub, key = ".codex", "CODEX_HOME"
 	}
-	store = filepath.Join(home, sub)
-	if !cliPersonalMac() || c.Provider == "codex-cli" {
-		store, err = sessiontransfer.PathDirectory(home, sub, importing)
+	if confined := sandboxHome[key]; confined != "" {
+		rel, e := filepath.Rel(runtimeDir, confined)
+		if e != nil {
+			return "", "", e
+		}
+		store, err = sessiontransfer.PathDirectory(runtimeDir, filepath.ToSlash(rel), importing)
 		return
 	}
-	if cliPersonalMac() {
-		for _, entry := range target.Env {
-			if k, v, ok := strings.Cut(entry, "="); ok && k == key && strings.TrimSpace(v) != "" {
-				store = v
-			}
+	store = filepath.Join(target.Home, sub)
+	for _, entry := range target.Env {
+		if k, v, ok := strings.Cut(entry, "="); ok && k == key && strings.TrimSpace(v) != "" {
+			store = v
 		}
 	}
+
 	return
 }
 
