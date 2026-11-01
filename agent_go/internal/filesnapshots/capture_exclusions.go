@@ -41,3 +41,23 @@ func sizeOnlyOmission(record Record, path string) bool {
 	}
 	return omissions == 1
 }
+
+// A combined comparison selects one boundary from each record. Omission
+// entries from the unselected boundaries must not turn absence into failure.
+func boundaryOmissions(record Record, before bool) []string {
+	selected, other := record.AfterSkippedState, record.BeforeSkippedState
+	if before {
+		selected, other = other, selected
+	}
+	counts := map[string]int{}
+	for _, path := range record.Skipped {
+		counts[path]++
+	}
+	paths := []string{}
+	for path, count := range counts {
+		if selected[path] != "" || other[path] == "" || count > 1 {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
