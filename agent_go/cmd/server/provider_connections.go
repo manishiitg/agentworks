@@ -276,6 +276,13 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 					return nil, fmt.Errorf("cannot configure Cursor for the company account")
 				}
 			}
+			// The Cursor SDK on a Mac reads its own login record (~/.cursor/sdk/auth.json: a backend and a key); the key
+			// is the placeholder, exchanged on this Mac for the same placeholder session.
+			sdkLogin, _ := json.Marshal(map[string]any{"version": 1, "backendUrl": keys.RuntimeEnvironment[llmtypes.CursorBackendURLKey], "apiKey": record.Credential, "createdAtMs": time.Now().UnixMilli()})
+			sdkDir := filepath.Join(keys.RuntimeEnvironment["HOME"], ".cursor", "sdk")
+			if os.MkdirAll(sdkDir, 0700) != nil || os.WriteFile(filepath.Join(sdkDir, "auth.json"), sdkLogin, 0600) != nil {
+				return nil, fmt.Errorf("cannot configure Cursor for the company account")
+			}
 		case "claude-code":
 			// Claude Code adds /v1/messages itself.
 			keys.RuntimeEnvironment[llmtypes.AnthropicBaseURLKey] = strings.TrimSuffix(companyAccountBaseURL(record), "/v1")

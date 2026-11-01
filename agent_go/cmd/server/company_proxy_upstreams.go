@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -436,6 +437,33 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 		desktopJSONError(w, 404, "This server does not offer its Cursor account for use on your Mac.")
 		return
 	}
+	// Cursor checks the requested model against the account's model list before a run (GET v1/models on its
+	// public API, which needs a Cursor API key the server may not have). The server answers it: the models of its
+	// own Cursor account, limited to the ones the account allows this person.
+	if path == "v1/models" && r.Method == http.MethodGet {
+		if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: caller}, "cursor-cli", "global:cursor-cli"); err != nil {
+			desktopJSONError(w, 403, err.Error())
+			return
+		}
+		items, err := serverCursorModels(r.Context())
+		if err != nil {
+			log.Printf("[MODEL_PROXY] cursor model list unavailable: %v", err)
+			desktopJSONError(w, 502, "The server could not list its Cursor models.")
+			return
+		}
+		allowed, _, _ := accountAllowedModels(withModelLimitPerson(r.Context(), caller), "cursor-cli", "global:cursor-cli")
+		kept := []json.RawMessage{}
+		for _, item := range items {
+			var model struct {
+				ID string `json:"id"`
+			}
+			if json.Unmarshal(item, &model) == nil && modelAllowed(allowed, model.ID) {
+				kept = append(kept, item)
+			}
+		}
+		desktopJSON(w, map[string]any{"items": kept})
+		return
+	}
 	if !cursorRelayAllowed(path) {
 		log.Printf("[MODEL_PROXY] %s cursor relay refused %s", caller, path)
 		desktopJSONError(w, 403, "Not available through the company account.")
@@ -540,4 +568,49 @@ func (api *StreamingAPI) handleDesktopCursorRelay(w http.ResponseWriter, r *http
 func cursorPlaceholderLogin(secret string) string {
 	part := func(v any) string { raw, _ := json.Marshal(v); return base64.RawURLEncoding.EncodeToString(raw) }
 	return part(map[string]string{"alg": "none", "typ": "JWT"}) + "." + part(map[string]any{"sub": "agentworks-company", "exp": 4102444800}) + "." + secret
+}
+
+// cursorModelList caches the server's Cursor model catalog as the Cursor SDK itself reports it.
+var cursorModelList = struct {
+	sync.Mutex
+	items []json.RawMessage
+	at    time.Time
+}{}
+
+// serverCursorModels lists the server's Cursor account's models with the Cursor SDK (Cursor.models.list), in the
+// form the SDK expects back from its model list; cached for five minutes.
+func serverCursorModels(ctx context.Context) ([]json.RawMessage, error) {
+	cursorModelList.Lock()
+	defer cursorModelList.Unlock()
+	if cursorModelList.items != nil && time.Since(cursorModelList.at) < 5*time.Minute {
+		return cursorModelList.items, nil
+	}
+	sdk := strings.TrimSpace(os.Getenv("CURSOR_SDK_PATH"))
+	if sdk == "" {
+		if agent, err := exec.LookPath("cursor-agent"); err == nil {
+			sdk = filepath.Join(filepath.Dir(agent), "..", "lib", "node_modules", "@cursor", "sdk")
+		}
+	}
+	if sdk == "" {
+		return nil, fmt.Errorf("the Cursor SDK is not installed")
+	}
+	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	script := `const { Cursor } = require(process.argv[1]); const key = process.env.CURSOR_API_KEY || undefined;
+Cursor.models.list({ apiKey: key }).then(m => { process.stdout.write(JSON.stringify(m)); process.exit(0) }).catch(e => { process.stderr.write(String(e && e.message || e)); process.exit(1) })`
+	cmd := exec.CommandContext(runCtx, "node", "-e", script, sdk)
+	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("CURSOR_API_KEY")...)
+	if key := serverAccountKey(ctx, "cursor-cli"); key != "" {
+		cmd.Env = append(cmd.Env, "CURSOR_API_KEY="+key)
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("listing Cursor models: %w", err)
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(out, &items); err != nil {
+		return nil, fmt.Errorf("reading Cursor models: %w", err)
+	}
+	cursorModelList.items, cursorModelList.at = items, time.Now()
+	return items, nil
 }
