@@ -221,6 +221,10 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		history, err = api.chatFileReviewHistory(ctx, store, sessionID, root)
 	}
 	if err != nil {
+		if project {
+			externalError(w, http.StatusServiceUnavailable, "history_unavailable", "Project history could not finish loading. Refresh to retry.")
+			return
+		}
 		externalError(w, 404, "not_found", "This chat has no saved file history.")
 		return
 	}

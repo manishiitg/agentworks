@@ -303,3 +303,39 @@ func TestCheckoutScopedHistoryAndRevert(t *testing.T) {
 		t.Fatalf("branch boundary not preserved: %v %+v", err, plan)
 	}
 }
+
+// PLAT-746-286 / PR527: listing history must reuse saved metadata rather than
+// replay every Git diff, without reusing a previous caller's file grants.
+func TestSavedSummaryCachesHistoryWithoutBypassingCurrentGrants(t *testing.T) {
+	f := newCrew(t)
+	ctx := t.Context()
+	f.put("visible.txt", "before\n")
+	f.put("restricted.txt", "before\n")
+	if _, err := f.s.Begin(ctx, "summary"); err != nil {
+		t.Fatal(err)
+	}
+	f.put("visible.txt", "after\n")
+	f.put("restricted.txt", "after\n")
+	r, err := f.s.Finish(ctx, "summary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := f.s.SavedSummary(ctx, r.ID, func(string) bool { return true })
+	if err != nil || len(summary.Changes) != 2 {
+		t.Fatalf("warm summary: %v %+v", err, summary)
+	}
+	// With Git unavailable, a repeated menu read must still use the completed
+	// immutable summary and recheck the now narrower grant.
+	t.Setenv("PATH", t.TempDir())
+	summary, err = f.s.SavedSummary(ctx, r.ID, func(p string) bool { return p == "visible.txt" })
+	if err != nil || len(summary.Changes) != 1 || summary.Changes[0].Path != "visible.txt" {
+		t.Fatalf("cache hit lost grant or replayed Git: %v %+v", err, summary)
+	}
+	r.Status = "unavailable"
+	if err := f.s.save(r); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.SavedSummary(ctx, r.ID, func(string) bool { return true }); err == nil {
+		t.Fatal("stale cache hid an unavailable saved comparison")
+	}
+}
