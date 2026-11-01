@@ -100,13 +100,13 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     .map(option => ({ option, current: option.id === selectedOption.id, models: option.id === selectedOption.id ? models : modelsForOption(option).map(model => ({ id: model.model_id, label: model.model_name || model.model_id })) }))
     .filter(group => group.current || group.models.length > 0 || group.option.provider === 'cursor-cli' || group.option.provider === 'pi-cli')
 
-  const save = async (option: AgentProfileProviderOption, modelId: string, reasoningEffort: string | undefined) => {
+  const save = async (option: AgentProfileProviderOption, modelId: string, reasoningEffort: string | undefined, account?: string) => {
     const current = option.id === selectedOption.id
-    if (saving || (current && modelId === currentModel && reasoningEffort === currentEffort)) return
+    if (saving || (current && account === undefined && modelId === currentModel && reasoningEffort === currentEffort)) return
     setSaving(true)
     try {
       await agentApi.setAgentProfileChatModel(profileId, projectId, {
-        conversation_key: conversationKey, engine: option.id, model_id: modelId, reasoning_effort: reasoningEffort, connection_id: current ? connectionId : switchAccountFor(option),
+        conversation_key: conversationKey, engine: option.id, model_id: modelId, reasoning_effort: reasoningEffort, connection_id: account ?? (current ? connectionId : switchAccountFor(option)),
       })
       await queryClient.invalidateQueries({ queryKey: workChatModelsQueryKey(profileId, projectId) })
     } catch (cause) {
@@ -121,6 +121,17 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     void save(option, model, effortForPick(model, defaults.reasoningEffort, option))
   }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
+  // The accounts this program can run on here: the server's (or this Mac's) and the person's own, company ones
+  // from connected servers included. Only ones that work are offered.
+  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
+  const serverAccountId = `global:${selectedOption.provider}`
+  const accountChoices: Choice[] = [
+    ...(sources.accounts ?? []).filter(account => account.provider === selectedOption.provider && account.configured !== false && account.usable !== false)
+      .map(account => ({ id: account.id, label: account.id === serverAccountId ? (onThisMac ? 'This Mac' : 'Admin-managed account') : account.display_name })),
+  ]
+  const currentAccount = connectionId || ownDefaultConnectionId(sources.accounts, selectedOption.provider) || serverAccountId
+  const accountLabel = accountChoices.find(choice => choice.id === currentAccount)?.label || (onThisMac ? 'This Mac' : 'Admin-managed account')
+  const pickAccount = (id: string) => void save(selectedOption, currentModel, currentEffort, id)
   // Quick ways out of the menu: the full Models page (provider and account) and this project's usage.
   const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
   const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
@@ -161,6 +172,12 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Manage accounts</Menu.Item>
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>
+    {accountChoices.length > 1 && <Menu.Sub>
+      {subRow('Account', accountLabel)}
+      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
+        <ChoiceItems choices={accountChoices} value={currentAccount} onPick={pickAccount} />
+      </Menu.SubContent></Menu.Portal>
+    </Menu.Sub>}
     {levels.length > 1 && effortLabel && <Menu.Sub>
       {subRow('Effort', effortLabel)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
