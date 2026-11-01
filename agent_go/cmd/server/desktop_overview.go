@@ -61,7 +61,7 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 		wg.Add(1)
 		go func(provider string) {
 			defer wg.Done()
-			cell := overviewCell{State: "sign_in", Action: "sign_in"}
+			cell := overviewCell{State: "sign_in", Use: "Not signed in", Action: "sign_in"}
 			status, ok := providerAccountStatus{}, false
 			if entry, cached := cachedProviderAccountEntry("global:" + provider); cached && entry.configured != nil {
 				status, ok = providerAccountStatus{State: map[bool]string{true: "signed_in", false: "signed_out"}[*entry.configured], Identity: entry.identity}, true
@@ -69,10 +69,15 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 				status, ok = checkProviderAccountStatus(ctx, target, false), true
 				rememberProviderAccountStatus("global:"+provider, status)
 			}
-			if ok && status.State == "signed_in" {
+			switch {
+			case ok && status.State == "signed_in":
 				cell = overviewCell{State: "ready", Use: "Your login", Detail: status.Identity}
-			} else if ok && strings.Contains(status.Detail, "not installed") {
+			case ok && strings.Contains(status.Detail, "not installed"):
 				cell = overviewCell{State: "absent", Detail: "Not installed"}
+			case provider == "pi-cli":
+				cell = overviewCell{State: "sign_in", Use: "No model key", Action: "add_key"}
+			case !ok:
+				cell = overviewCell{State: "sign_in", Use: "Not checked", Detail: "Open it to check"}
 			}
 			mu.Lock()
 			cells[provider]["local"] = cell
@@ -82,7 +87,7 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 
 	// Each server: the company account it lends you, and your own account there.
 	for _, c := range connections {
-		places = append(places, overviewPlace{ID: c.ID, Name: c.Name, SignedInAs: firstNonEmptyTrimmed(c.User.Email, c.User.Username)})
+		places = append(places, overviewPlace{ID: c.ID, Name: friendlyServerName(c.Name, c.Server), SignedInAs: firstNonEmptyTrimmed(c.User.Email, c.User.Username)})
 	}
 	for index, c := range connections {
 		wg.Add(1)
@@ -107,7 +112,8 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 					}
 					switch view.Relation {
 					case "server":
-						offered = true
+						// The server has the program only when its own account is set up there.
+						offered = offered || view.Configured == nil || *view.Configured
 					case "own":
 						mine = true
 						mineReady = mineReady || view.Configured == nil || *view.Configured
@@ -126,7 +132,7 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 				case mine:
 					cell = overviewCell{State: "sign_in", Use: "Yours", Detail: "Sign in needed", Action: "sign_in_there"}
 				case offered:
-					cell = overviewCell{State: "off", Use: "Company: off", Detail: "An admin can turn it on", Action: "add_mine"}
+					cell = overviewCell{State: "off", Use: "Company: off", Action: "add_mine"}
 				}
 				cells[provider][c.ID] = cell
 			}
@@ -155,4 +161,25 @@ func remoteAccountViews(ctx context.Context, c desktopConnection) ([]providerAcc
 		_ = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&list)
 	}
 	return list.Connections, resp.StatusCode, nil
+}
+
+// friendlyServerName turns an address like agents.example.com into "Example"; a name that is not an address stays.
+func friendlyServerName(name, server string) string {
+	host := strings.TrimSpace(name)
+	if host == "" || strings.Contains(host, ".") {
+		if host == "" {
+			host = strings.TrimPrefix(strings.TrimPrefix(server, "https://"), "http://")
+		}
+		labels := strings.Split(strings.Split(host, "/")[0], ".")
+		for _, label := range labels {
+			switch strings.ToLower(label) {
+			case "agents", "video", "www", "app", "ai":
+				continue
+			}
+			if label != "" {
+				return strings.ToUpper(label[:1]) + label[1:]
+			}
+		}
+	}
+	return host
 }
