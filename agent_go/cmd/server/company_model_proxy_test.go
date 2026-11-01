@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
+	"encoding/hex"
 	"testing"
 )
 
@@ -54,5 +55,23 @@ func TestCursorRunUsage(t *testing.T) {
 	stream := append(append(frame(0, text), frame(1, zipped.Bytes())...), frame(2, []byte(`{}`))...)
 	if in, out, read, write, _, ok := cursorRunUsage(stream); !ok || in != 7865 || out != 40 || read != 2816 || write != 0 {
 		t.Fatalf("cursor usage = %d %d %d %d %v", in, out, read, write, ok)
+	}
+}
+
+// The server refuses a Cursor run on a model the account does not allow (PLAT-856-474); the model sits in the
+// hex-encoded client message of the run's BidiAppend, captured from a real Cursor SDK run.
+func TestCursorAppendModel(t *testing.T) {
+	field := func(num int, value []byte) []byte {
+		out := binary.AppendUvarint(nil, uint64(num<<3|2))
+		out = binary.AppendUvarint(out, uint64(len(value)))
+		return append(out, value...)
+	}
+	run := append(field(2, field(1, field(1, []byte("hello")))), field(9, field(1, []byte("composer-2.5")))...)
+	body := append(field(1, []byte(hex.EncodeToString(field(1, run)))), field(2, field(1, []byte("request-id")))...)
+	if got := cursorAppendModel(body); got != "composer-2.5" {
+		t.Fatalf("model = %q", got)
+	}
+	if got := cursorAppendModel(field(1, []byte(hex.EncodeToString(field(2, []byte("tool result")))))); got != "" {
+		t.Fatalf("non-run append model = %q", got)
 	}
 }
