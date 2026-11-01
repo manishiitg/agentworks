@@ -38,7 +38,11 @@ with sync_playwright() as playwright:
   },
 }
 
+const agentBrowserExample = `agent_browser(command="status")
+agent_browser(command="skills", args=["get", "core"])`
+
 export function BrowserScriptSetup({ onSendToAgent }: { onSendToAgent?: (message: string) => Promise<unknown> }) {
+  const [integration, setIntegration] = useState<'playwright' | 'agent-browser'>('playwright')
   const [language, setLanguage] = useState<'node' | 'python'>('node')
   const [copied, setCopied] = useState('')
   const [sending, setSending] = useState(false)
@@ -48,11 +52,16 @@ export function BrowserScriptSetup({ onSendToAgent }: { onSendToAgent?: (message
     try { await navigator.clipboard.writeText(value); setCopied(kind) } catch { setCopied('') }
   }
   const example = examples[language]
+  function resetFeedback() { setCopied(''); setSent(false); setError('') }
   async function sendToAgent() {
     if (!onSendToAgent || sending) return
     setSending(true); setSent(false); setError('')
-    const name = language === 'node' ? 'Node' : 'Python'
-    const message = [
+    const name = language === 'node' ? 'Node.js' : 'Python'
+    const message = integration === 'agent-browser' ? [
+      'Use the managed AgentWorks agent_browser tool for browser work in this project. Adapt it to the current task using the project’s selected browser. First check live status and read the installed command guide:',
+      '', '```text', agentBrowserExample, '```', '',
+      'Follow the returned mode, authorized endpoints and tab guidance. Reuse a suitable project tab, or create a labeled tab when needed, and take a fresh snapshot before acting. Do not run the standalone agent-browser CLI through the shell, launch another browser, invent a CDP port, or change the selected browser. If the connection is unavailable, explain how to reconnect it.',
+    ].join('\n') : [
       `Use the AgentWorks ${name} Playwright integration for browser scripts in this project so their live browser appears in the Browser panel under Running. Adapt this example to the current task and reuse existing project dependencies where possible. Run setup from this project's session; use its MCP_API_URL and MCP_API_TOKEN environment variables without putting credential values in code or logs.`,
       '', 'Package setup:', '```sh', example.install, '```', '', `${name} example:`,
       language === 'node' ? '```javascript' : '```python', example.script, '```',
@@ -64,13 +73,20 @@ export function BrowserScriptSetup({ onSendToAgent }: { onSendToAgent?: (message
   return <details className="border-t border-border pt-3" aria-label="Use browser from code">
     <summary className="cursor-pointer text-xs text-muted-foreground"><Code2 className="mr-1.5 inline h-3.5 w-3.5" />Use from code</summary>
     <div className="space-y-3 pt-3">
-      <p className="text-xs text-muted-foreground">Ask your agent to set this up, or run it in this project’s terminal. Its session supplies the connection; no keys go in your script.</p>
-      <div className="flex gap-1" role="group" aria-label="Script language">{(['node', 'python'] as const).map(value => <Button key={value} size="xs" variant={language === value ? 'secondary' : 'ghost'} aria-pressed={language === value} disabled={sending} onClick={() => { setLanguage(value); setCopied(''); setSent(false); setError('') }}>{value === 'node' ? 'Node' : 'Python'}</Button>)}</div>
-      <details><summary className="cursor-pointer text-xs text-muted-foreground">Install packages</summary><pre className="mt-2 overflow-x-auto rounded bg-muted/40 p-2 text-[11px]"><code>{example.install}</code></pre><Button size="xs" variant="ghost" onClick={() => void copy(example.install, 'install')}>{copied === 'install' ? <Check /> : <Copy />}{copied === 'install' ? 'Copied' : 'Copy install command'}</Button></details>
-      <pre className="overflow-x-auto rounded bg-muted/40 p-2 text-[11px]"><code>{example.script}</code></pre>
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Browser library">{(['playwright', 'agent-browser'] as const).map(value => <Button key={value} size="sm" variant={integration === value ? 'secondary' : 'ghost'} aria-pressed={integration === value} disabled={sending} onClick={() => { setIntegration(value); resetFeedback() }}>{value === 'playwright' ? 'Playwright' : 'agent-browser'}</Button>)}</div>
+      {integration === 'playwright' ? <>
+        <p className="text-xs text-muted-foreground">Scripts and tests with a live browser in this panel.</p>
+        <div className="flex gap-1" role="group" aria-label="Script language">{(['node', 'python'] as const).map(value => <Button key={value} size="xs" variant={language === value ? 'secondary' : 'ghost'} aria-pressed={language === value} disabled={sending} onClick={() => { setLanguage(value); resetFeedback() }}>{value === 'node' ? 'Node.js' : 'Python'}</Button>)}</div>
+        <details><summary className="cursor-pointer text-xs text-muted-foreground">Setup details</summary><p className="mt-2 text-xs text-muted-foreground">Run in this project’s terminal. Its session supplies the connection; no keys go in your script.</p><pre className="mt-2 overflow-x-auto rounded bg-muted/40 p-2 text-[11px]"><code>{example.install}</code></pre><Button size="xs" variant="ghost" onClick={() => void copy(example.install, 'install')}>{copied === 'install' ? <Check /> : <Copy />}{copied === 'install' ? 'Copied' : 'Copy install command'}</Button></details>
+        <pre className="overflow-x-auto rounded bg-muted/40 p-2 text-[11px]"><code>{example.script}</code></pre>
+      </> : <>
+        <p className="text-xs text-muted-foreground">Agent commands using this project’s selected browser.</p>
+        <pre className="overflow-x-auto rounded bg-muted/40 p-2 text-[11px]"><code>{agentBrowserExample}</code></pre>
+        <details><summary className="cursor-pointer text-xs text-muted-foreground">Setup details</summary><p className="mt-2 text-xs text-muted-foreground">The agent uses the built-in browser tool. Check its live status and command guide before opening a website.</p></details>
+      </>}
       <Button size="sm" variant="ghost" disabled={!onSendToAgent || sending} onClick={() => void sendToAgent()}>{sending ? <Loader2 className="animate-spin" /> : sent ? <Check /> : <Send />}{sending ? 'Sending…' : sent ? 'Sent to agent' : 'Send to agent'}</Button>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-      <p className="text-xs text-muted-foreground">Scripts and tests appear in Running, then Replays when a recording is available. Existing Playwright contexts can use the same helpers.</p>
+      {integration === 'playwright' && <p className="text-xs text-muted-foreground">Sessions appear in Running, then Replays when a recording is available.</p>}
     </div>
   </details>
 }
