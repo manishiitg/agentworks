@@ -443,7 +443,7 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 	// own Cursor account, limited to the ones the account allows this person.
 	if path == "v1/models" && r.Method == http.MethodGet {
 		if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: caller}, "cursor-cli", "global:cursor-cli"); err != nil {
-			desktopJSONError(w, 403, err.Error())
+			desktopJSONError(w, admissionStatus(err), err.Error())
 			return
 		}
 		items, err := serverCursorModels(r.Context())
@@ -471,7 +471,7 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: caller}, "cursor-cli", "global:cursor-cli"); err != nil {
-		desktopJSONError(w, 403, err.Error())
+		desktopJSONError(w, admissionStatus(err), err.Error())
 		return
 	}
 	if path == "aiserver.v1.BidiService/BidiAppend" {

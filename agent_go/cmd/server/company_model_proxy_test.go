@@ -3,9 +3,12 @@ package server
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -120,5 +123,21 @@ func TestCursorAppendModelRead(t *testing.T) {
 	}
 	if id := cursorAppendRequestID(body); id != "run-1" {
 		t.Fatalf("request id = %q", id)
+	}
+}
+
+// A person at their token limit keeps the company account on the Mac (review of 6): the server answers a limit with
+// 429, not the 403 that means "no longer yours", and the Mac leaves the account as it is on a 429.
+func TestTokenLimitKeepsCompanyAccount(t *testing.T) {
+	if got := admissionStatus(&sharedAccountTokenLimitError{"limit"}); got != http.StatusTooManyRequests {
+		t.Fatalf("limit status = %d", got)
+	}
+	if got := admissionStatus(errors.New("not available to you")); got != http.StatusForbidden {
+		t.Fatalf("refusal status = %d", got)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTooManyRequests) }))
+	defer server.Close()
+	if _, known := companyAccountOffered(context.Background(), desktopConnection{Server: server.URL, Name: "test"}, "codex-cli"); known {
+		t.Fatal("a 429 must leave the company account as it is")
 	}
 }
