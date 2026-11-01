@@ -166,7 +166,10 @@ func (api *StreamingAPI) crewNativeTurnRunning(roots crewroot.Roots) bool {
 var crewMirrorCaptures sync.Map
 var crewMirrorConflicts sync.Map
 
-type crewMirrorConflict struct{ fingerprint, message string }
+type crewMirrorConflict struct {
+	fingerprint string
+	err         error
+}
 
 type crewMirrorCapture struct {
 	fingerprint  string
@@ -234,13 +237,11 @@ func (api *StreamingAPI) syncCrewNativeMirror(ctx context.Context, claims *UserC
 	sum := sha256.Sum256(raw)
 	fingerprint := b.PairID + "/" + b.Editing + "/" + hex.EncodeToString(sum[:])
 	if old, ok := crewMirrorConflicts.Load(roots.Private); ok && old.(crewMirrorConflict).fingerprint == fingerprint {
-		return fmt.Errorf("%s", old.(crewMirrorConflict).message)
+		return old.(crewMirrorConflict).err
 	}
 	failure := func(err error) error {
-		if err != nil && strings.Contains(err.Error(), "both copies were kept") {
-			message := "This conversation changed on both computers. Both copies were kept; conversation sync needs attention."
-			crewMirrorConflicts.Store(roots.Private, crewMirrorConflict{fingerprint, message})
-			return fmt.Errorf("%s", message)
+		if errors.Is(err, sessiontransfer.ErrDiverged) {
+			crewMirrorConflicts.Store(roots.Private, crewMirrorConflict{fingerprint, err})
 		}
 		return err
 	}

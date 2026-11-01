@@ -110,6 +110,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			loseResponse := false
 			var offline atomic.Bool
+			var forcedErrorCode atomic.Value
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if offline.Load() {
 					w.WriteHeader(503)
@@ -118,6 +119,10 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				if r.Header.Get("Authorization") != "Bearer saved-login" || r.Header.Get("X-AgentWorks-Desktop") != "" {
 					t.Error("credential boundary crossed")
 					w.WriteHeader(403)
+					return
+				}
+				if code, _ := forcedErrorCode.Load().(string); code != "" {
+					externalError(w, 409, code, "Both copies were kept.")
 					return
 				}
 				r = r.WithContext(context.WithValue(r.Context(), UserContextKey, owner))
@@ -136,6 +141,15 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: remote.URL, Token: "saved-login", User: UserInfo{ID: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
+			// The machine-readable code, not human wording, determines forks.
+			for _, code := range []string{crewNativeDivergedCode, "sync_unavailable"} {
+				forcedErrorCode.Store(code)
+				_, err := desktopCrewSyncCall(ctx, owner.UserID, &desktopConnection{Server: remote.URL, Token: "saved-login"}, "fixture", crewSyncRequest{Action: "status"})
+				if errors.Is(err, sessiontransfer.ErrDiverged) != (code == crewNativeDivergedCode) {
+					t.Fatal("remote conflict identity depended on wording")
+				}
+			}
+			forcedErrorCode.Store("")
 			call := func(action, who string, proof bool) *httptest.ResponseRecorder {
 				t.Helper()
 				r := desktopTestRequest("POST", "/", `{"action":"`+action+`"}`, who)
@@ -633,7 +647,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err = stageCrewNative(roots, fork.Native); err != nil {
 		t.Fatal(err)
 	}
-	if err = saveCrewNativeMirror(roots, &fork); err == nil || !strings.Contains(err.Error(), "both copies were kept") {
+	if err = saveCrewNativeMirror(roots, &fork); !errors.Is(err, sessiontransfer.ErrDiverged) {
 		t.Fatalf("offline fork replaced mirror: %v", err)
 	}
 	if _, err = readCrewNativeMirror(roots); err != nil {

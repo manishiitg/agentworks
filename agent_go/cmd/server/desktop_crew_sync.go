@@ -83,7 +83,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, request)
 	}
 
-	fail := func(err error) { externalError(w, 409, "sync_unavailable", err.Error()) }
+	fail := func(err error) { externalError(w, 409, crewSyncErrorCode(err), err.Error()) }
 	if input.Action == "status" {
 		out := crewSyncReply{ProjectID: roots.ID, Binding: binding, RuntimeReadiness: readCrewDependencies(roots.ID), Auto: crewAutoStatus(roots.ID)}
 		if binding != nil {
@@ -400,11 +400,12 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 	if response.StatusCode != 200 {
 		var failure struct {
 			Error struct {
+				Code    string `json:"code"`
 				Message string `json:"message"`
 			} `json:"error"`
 		}
 		_ = json.NewDecoder(io.LimitReader(response.Body, 8192)).Decode(&failure)
-		return crewSyncReply{}, fmt.Errorf("server sync failed: %s", firstNonEmptyTrimmed(failure.Error.Message, http.StatusText(response.StatusCode)))
+		return crewSyncReply{}, crewSyncPeerError(failure.Error.Code, firstNonEmptyTrimmed(failure.Error.Message, http.StatusText(response.StatusCode)))
 	}
 	var out crewSyncReply
 	e = json.NewDecoder(io.LimitReader(response.Body, 800<<20)).Decode(&out)

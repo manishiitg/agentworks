@@ -227,7 +227,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	}()
 	stage, err := crewNativeStage(roots, &b)
 	if err != nil {
-		conn.WriteJSON(map[string]string{"error": err.Error()})
+		conn.WriteJSON(crewNativeErrorReply(err))
 		return
 	}
 	if direction == "pull" {
@@ -284,6 +284,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	result := map[string]any{"complete": err == nil}
 	if err != nil {
 		result["error"] = err.Error()
+		result["code"] = crewSyncErrorCode(err)
 	}
 	conn.WriteJSON(result)
 	log.Printf("[NATIVE_SYNC] project=%s provider=%s native_session=%s direction=%s sent=%d received=%d complete=%t", roots.ID, b.Provider, b.SessionID, direction, stream.Sent, stream.Received, err == nil)
@@ -340,12 +341,13 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 	var ready struct {
 		Ready bool
 		Error string
+		Code  string `json:"code"`
 	}
 	if err = conn.ReadJSON(&ready); err != nil {
 		return err
 	}
 	if !ready.Ready {
-		return fmt.Errorf("native session sync: %s", ready.Error)
+		return crewSyncPeerError(ready.Code, ready.Error)
 	}
 	stream := &nativersync.Socket{Conn: conn}
 	if err = nativersync.Client(ctx, stage, upload, stream); err != nil {
@@ -354,12 +356,13 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 	var result struct {
 		Complete bool
 		Error    string
+		Code     string `json:"code"`
 	}
 	if err = conn.ReadJSON(&result); err != nil {
 		return err
 	}
 	if !result.Complete {
-		return fmt.Errorf("native session sync: %s", result.Error)
+		return crewSyncPeerError(result.Code, result.Error)
 	}
 	b.Root = stage
 	if err = pruneCrewNativeStage(stage, b); err != nil {

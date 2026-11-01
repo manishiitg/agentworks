@@ -179,7 +179,7 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		}
 		log.Printf("[CREW_HANDOFF] project=%s phase=import mode=archive native_unavailable=%q", roots.ID, nativeErr)
 		in.Notice = "The native session could not resume on this computer. The next reply will continue from saved conversation history."
-		if strings.Contains(nativeErr.Error(), "both copies were kept") {
+		if errors.Is(nativeErr, sessiontransfer.ErrDiverged) {
 			in.Notice = "The native history changed on both computers. Both copies were kept; the next reply will continue from saved conversation history."
 		}
 	} else if runtime != nil {
