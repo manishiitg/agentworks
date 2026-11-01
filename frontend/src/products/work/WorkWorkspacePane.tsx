@@ -175,6 +175,7 @@ export function WorkBrowserPanel({ tabId, workspacePath }: { tabId: string; work
   return (
     <BrowserWorkspacePanel
       workspacePath={workspacePath}
+      onSendToAgent={message => sendWorkspacePaneMessageToChat({ tabId, message })}
       browserMode={browserMode}
       onBrowserModeChange={setBrowserMode}
       cdpPort={cdpPort}

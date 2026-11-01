@@ -22,10 +22,11 @@ interface BrowserWorkspacePanelProps {
   onSave?: () => void
   scopeNoun?: 'workflow' | 'project'
   profileId?: string
+  onSendToAgent?: (message: string) => Promise<unknown>
 }
 
 /** Browser configuration and observing a running session are separate actions. */
-export function BrowserWorkspacePanel({ workspacePath, browserMode, onBrowserModeChange, cdpPort = 9222, onCdpPortChange, cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false, dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId }: BrowserWorkspacePanelProps) {
+export function BrowserWorkspacePanel({ workspacePath, browserMode, onBrowserModeChange, cdpPort = 9222, onCdpPortChange, cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false, dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId, onSendToAgent }: BrowserWorkspacePanelProps) {
   const [cdpSetupOpen, setCdpSetupOpen] = useState(false)
   const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
   const configurable = ['work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
@@ -47,5 +48,5 @@ export function BrowserWorkspacePanel({ workspacePath, browserMode, onBrowserMod
     </div>} />}
   </> : undefined
 
-  return <div className="flex h-full min-h-0 flex-1 flex-col"><WorkflowLiveBrowser key={workspacePath} workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} overview={overview} overviewFooter={configurable ? <BrowserScriptSetup /> : undefined} /></div>
+  return <div className="flex h-full min-h-0 flex-1 flex-col"><WorkflowLiveBrowser key={workspacePath} workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} overview={overview} overviewFooter={configurable ? <BrowserScriptSetup onSendToAgent={onSendToAgent} /> : undefined} /></div>
 }
