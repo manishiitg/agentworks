@@ -1259,15 +1259,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (onboarding) {
         const next = await prepareCrewOnboarding({
           scope: projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, created.id),
-          workspacePath: created.workspacePath, onboarding, isCurrent,
+          onboarding, isCurrent,
         })
         if (next === 'stale') return
-        const view = next === 'sharing' ? 'mcp' : 'context'
-        if (next === 'sharing') setWorkspaceViewTarget('mcp', 'share')
-        if (next === 'sharing-unavailable') useChatStore.getState().addToast('Crew created. Sharing setup is unavailable right now; you can check People & access from the project menu.', 'info')
         setPanelOpen(true)
-        setWorkspaceView(view)
-        writeWorkWorkspaceView(created.id, product.profileId, view)
+        setWorkspaceView('context')
+        writeWorkWorkspaceView(created.id, product.profileId, 'context')
       }
       setCreateOpen(false)
       if (startedAtHome && window.location.pathname === '/home') openAppProduct({ surface: 'work', id: created.id })

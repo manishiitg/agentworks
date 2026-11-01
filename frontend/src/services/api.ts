@@ -1357,6 +1357,11 @@ export const agentApi = {
     return response.data
   },
 
+  getProjectCreationLocation: async (profileId: string, name: string): Promise<{ folder: string; can_choose_folder: boolean }> => {
+    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/location`, { params: { name }, skipSessionContext: true })
+    return response.data
+  },
+
   listSharedProjects: async (profileId: string): Promise<{ projects: SharedProjectSummary[] }> => {
     const response = await api.get(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects`,

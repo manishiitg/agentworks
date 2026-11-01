@@ -548,7 +548,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 		}
 		crewID = creation.ReservedID
 	}
-	workspacePath := runtimeRoot + "/" + slugifyCrewTitle(spec.Name) + "-" + crewID[:8]
+	workspacePath := crewCreationPath(runtimeRoot, spec.Name, crewID[:8])
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}

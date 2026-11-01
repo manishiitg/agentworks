@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 )
 
@@ -29,6 +31,46 @@ func projectCreationGate(claims *UserClaims, profileID string) (int, string) {
 
 func projectCreationWarning(err error) string {
 	return "The Crew was created, but some setup needs attention: " + err.Error() + ". Open it to finish setup; you do not need to create it again."
+}
+
+func crewCreationPath(root, name, suffix string) string {
+	return root + "/" + slugifyCrewTitle(name) + "-" + suffix
+}
+
+// A display-only preview. It neither reserves an identity nor probes folders.
+func (api *StreamingAPI) handleProjectCreationLocation(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	profileID := strings.TrimSpace(mux.Vars(r)["id"])
+	if status, message := projectCreationGate(claims, profileID); status != 0 {
+		writeAgentProfileError(w, status, message)
+		return
+	}
+	if api == nil || api.agentProfiles == nil {
+		writeAgentProfileError(w, http.StatusNotFound, "Project creation is unavailable")
+		return
+	}
+	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusNotFound, "Project creation is unavailable")
+		return
+	}
+	root, err := projectProfileProjectsRoot(profile, claims.UserID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "The project folder could not be resolved")
+		return
+	}
+	root = crewCreationRoot(profileID, agentProfileRuntimeWorkspace(claims.UserID, root))
+	if IsLocalMode() {
+		root = filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(root))
+	}
+	writeAgentProfileJSON(w, http.StatusOK, map[string]any{
+		"folder":            crewCreationPath(root, r.URL.Query().Get("name"), "…"),
+		"can_choose_folder": IsLocalMode(),
+	})
 }
 
 func (api *StreamingAPI) createdProjectResponse(ctx context.Context, claims *UserClaims, profileID, id string) (map[string]any, error) {
