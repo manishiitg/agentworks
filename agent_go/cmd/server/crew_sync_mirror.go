@@ -133,6 +133,9 @@ func (api *StreamingAPI) crewNativeTurnRunning(roots crewroot.Roots) bool {
 // The archive is committed after each native turn. Its fingerprint avoids
 // scanning a large, unchanged native journal on every background tick.
 var crewMirrorCaptures sync.Map
+var crewMirrorConflicts sync.Map
+
+type crewMirrorConflict struct{ fingerprint, message string }
 
 type crewMirrorCapture struct {
 	fingerprint  string
@@ -200,19 +203,36 @@ func (api *StreamingAPI) syncCrewNativeMirror(ctx context.Context, claims *UserC
 			return nil
 		}
 	}
+	sum := sha256.Sum256(raw)
+	fingerprint := b.PairID + "/" + b.Editing + "/" + hex.EncodeToString(sum[:])
+	if old, ok := crewMirrorConflicts.Load(roots.Private); ok && old.(crewMirrorConflict).fingerprint == fingerprint {
+		return fmt.Errorf("%s", old.(crewMirrorConflict).message)
+	}
+	failure := func(err error) error {
+		if err != nil && strings.Contains(err.Error(), "both copies were kept") {
+			message := "This conversation changed on both computers. Both copies were kept; conversation sync needs attention."
+			crewMirrorConflicts.Store(roots.Private, crewMirrorConflict{fingerprint, message})
+			return fmt.Errorf("%s", message)
+		}
+		return err
+	}
 	if b.Editing == "local" {
 		if err = desktopCrewNativeSync(ctx, roots, connection, b, c.Muse, true); err != nil {
-			return err
+			return failure(err)
 		}
 		if _, err = desktopCrewSyncCall(ctx, claims.UserID, &connection, b.PeerProjectID, crewSyncRequest{Action: "mirror-put", PairID: b.PairID, Conversation: c}); err != nil {
-			return err
+			return failure(err)
 		}
 	} else {
 		if err = desktopCrewNativeSync(ctx, roots, connection, b, c.Muse, false); err != nil {
-			return err
+			return failure(err)
 		}
 	}
-	return saveCrewNativeMirror(roots, c)
+	err = saveCrewNativeMirror(roots, c)
+	if err == nil {
+		crewMirrorConflicts.Delete(roots.Private)
+	}
+	return failure(err)
 }
 
 func (api *StreamingAPI) refreshCrewSyncAuthority(ctx context.Context, claims *UserClaims, roots crewroot.Roots, b *crewroot.SyncBinding) (desktopConnection, error) {
