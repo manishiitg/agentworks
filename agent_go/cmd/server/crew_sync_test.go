@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -238,6 +239,18 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// A background receipt racing a local turn must retry without
+			// replacing its registry or falling back to a fresh native chat.
+			api.activeSessions[main.SessionID] = &ActiveSessionInfo{SessionID: main.SessionID, WorkspacePath: local.Virtual, Status: "running"}
+			busy := &crewHandoffConversation{ConversationID: main.ConversationID}
+			if err := api.importCrewHandoffConversation(ctx, owner, local, "busy-pair", "busy-transfer", busy, main); !errors.Is(err, errCrewNativeDestinationBusy) {
+				t.Fatalf("running destination import must retry: %v", err)
+			}
+			unchanged, err := api.crewHandoffMain(ctx, owner, local.ID)
+			if err != nil || unchanged.SessionID != main.SessionID || unchanged.FreshNative != main.FreshNative {
+				t.Fatal("busy import replaced the current conversation")
+			}
+			delete(api.activeSessions, main.SessionID)
 			writeHistory(main, "Remember the project marker: blue lantern")
 			// PLAT-856-442: imported JSON alone returned 404 to the actual chat
 			// screen. The same events endpoint must show it only to its owner.
