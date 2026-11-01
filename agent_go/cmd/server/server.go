@@ -5098,6 +5098,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// registers each step's durable inspection owner. Reuse its recorder
 		// for Crew children; the run itself owns the saved-chat notification.
 		if child, bindingErr := findCrewExecutable(manifestWorkspacePath); bindingErr == nil && child != nil {
+			// A preset-only request has no selected_folder at initial session
+			// tracking. Durable logs/transcripts resolve their root from the
+			// session, so bind the server-resolved child before any step starts.
+			api.activeSessionsMux.Lock()
+			mismatchedWorkspace := false
+			if session := api.activeSessions[sessionID]; session != nil {
+				mismatchedWorkspace = session.WorkspacePath != "" && crewExecutableWorkspace(session.WorkspacePath) != crewExecutableWorkspace(manifestWorkspacePath)
+				if !mismatchedWorkspace {
+					session.WorkspacePath = manifestWorkspacePath
+				}
+			}
+			api.activeSessionsMux.Unlock()
+			if mismatchedWorkspace {
+				log.Printf("[CREW_EXECUTABLE] refused mismatched session workspace session=%s target=%s", sessionID, manifestWorkspacePath)
+				http.Error(w, "Open this workflow's own chat to run it.", http.StatusConflict)
+				return
+			}
 			workflowOrchestrator.SetWorkshopExecutionNotifier(&workshopExecutionBgNotifier{
 				api: api, sessionID: sessionID, workspacePath: manifestWorkspacePath,
 				presetQueryID: req.PresetQueryID, userID: currentUserID,
