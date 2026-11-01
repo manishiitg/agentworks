@@ -113,7 +113,7 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 // Status and send paths run outside the transfer's workspace lock. Re-read
 // under that same lock and change only the requested field, preserving a
 // PendingAction or receipt committed by an in-flight transfer.
-func updateCrewSyncEditing(ctx context.Context, roots crewroot.Roots, pair, editing string) (*crewroot.SyncBinding, error) {
+func updateCrewSyncEditing(ctx context.Context, roots crewroot.Roots, observed crewroot.SyncBinding, editing string) (*crewroot.SyncBinding, error) {
 	unlock, err := wf.LockWorkspace(ctx, roots.Files)
 	if err != nil {
 		return nil, err
@@ -123,8 +123,13 @@ func updateCrewSyncEditing(ctx context.Context, roots crewroot.Roots, pair, edit
 	if err != nil {
 		return nil, err
 	}
-	if current == nil || current.PairID != pair {
+	if current == nil || current.PairID != observed.PairID {
 		return nil, fmt.Errorf("paired project is unavailable")
+	}
+	// The remote reply describes the observed state, not a handoff that
+	// committed while it was in flight. Retry authority on the next tick.
+	if *current != observed {
+		return current, nil
 	}
 	if current.Editing != editing {
 		current.Editing = editing
@@ -311,7 +316,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			if json.Unmarshal(raw, &pending) != nil || pending.Snapshot == nil {
 				return out, fmt.Errorf("pending sync is unavailable")
 			}
-			// Finish the acknowledged background copy before changing editing.
+			// Finish the unacknowledged background copy before changing editing.
 
 			return pending, nil
 		} else if !os.IsNotExist(e) {
@@ -464,19 +469,8 @@ func saveCrewSyncSnapshot(roots crewroot.Roots, snapshot crewsync.Snapshot) erro
 // Editing handoff is between turns. Existing native processes retain the
 // permissions they started with, so a running/retained terminal must finish.
 func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
-	api.activeSessionsMux.RLock()
-	defer api.activeSessionsMux.RUnlock()
-	for _, session := range api.activeSessions {
-		if session == nil {
-			continue
-		}
-		at := canonicalCrewWorkspaceRoot(session.WorkspacePath)
-		if at != roots.Virtual && !strings.HasPrefix(at, roots.Virtual+"/") {
-			continue
-		}
-		if session.Status == "running" || session.Status == "paused" || session.HasRunningBackgroundAgents {
-			return fmt.Errorf("finish or stop this Crew's running chat and terminal before moving editing; after this reply, use Project sync")
-		}
+	if api.crewNativeTurnRunning(roots) {
+		return fmt.Errorf("finish or stop this Crew's running chat and terminal before moving editing; after this reply, use Project sync")
 	}
 	codeShells.Lock()
 	defer codeShells.Unlock()

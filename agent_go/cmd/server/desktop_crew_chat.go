@@ -236,7 +236,6 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		if api.crewNativeTurnRunning(roots) {
 			return fail(409, "Let the current reply finish on your Mac, then send again.")
 		}
-		closeWorkflowPolicyCLI(conversation.SessionID, conversation.Provider, "moving native session to server")
 		capture := api.runInternalCrewHandoff(ctx, claims, project, b.ConnectionID, "server")
 		status := capture.status
 		if status == 0 {
@@ -376,7 +375,7 @@ func projectCrewMacEvents(raw []byte, local, paired string) ([]byte, error) {
 			kept = append(kept, row)
 		}
 	}
-	if len(rows) > 0 {
+	if len(kept) != len(rows) {
 		log.Printf("[CREW_CHAT_RELAY] phase=event_projection local_session=%s paired_session=%s kept=%d dropped=%d", local, paired, len(kept), len(rows)-len(kept))
 	}
 	envelope["session_id"], _ = json.Marshal(paired)

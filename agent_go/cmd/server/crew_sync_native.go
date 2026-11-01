@@ -249,6 +249,9 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 		if err == nil {
 			err = b.ValidateFiles()
 		}
+		// File handoffs acquire workspace then session. Release the stream's
+		// session lock before taking workspace in the same order, then recheck
+		// the stage after reacquiring it. A competing transfer is retryable.
 		lock.Unlock()
 		locked = false
 		if err == nil {
@@ -287,14 +290,12 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 }
 
 func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *sessiontransfer.Bundle, upload bool) error {
-	if b != nil {
-		lock := crewNativeLock(roots, b.Provider+"-"+b.SessionID)
-		lock.Lock()
-		defer lock.Unlock()
-	}
 	if b == nil {
 		return nil
 	}
+	lock := crewNativeLock(roots, b.Provider+"-"+b.SessionID)
+	lock.Lock()
+	defer lock.Unlock()
 	stage, err := crewNativeStage(roots, b)
 	if err != nil {
 		return err

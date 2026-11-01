@@ -16,7 +16,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/nativersync"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -342,6 +344,17 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if preserved.PendingAction != "download" || stale.PendingAction != "download" {
 				t.Fatal("stale authority refresh dropped the pending transfer")
 			}
+			// A stale local authority reply must not roll back a completed
+			// handoff and unlock source writes while the server owns editing.
+			beforeHandoff := *preserved
+			beforeHandoff.Editing, beforeHandoff.LastTransfer = "local", "old-transfer"
+			if _, err := updateCrewSyncEditing(ctx, local, beforeHandoff, "local"); err != nil {
+				t.Fatal(err)
+			}
+			stillServer, _ := crewroot.ReadSync(local.ID)
+			if stillServer.Editing != "server" || stillServer.PendingAction != "download" {
+				t.Fatal("stale authority rolled back the completed handoff")
+			}
 			if w := call("download", "owner", true); w.Code != 200 {
 				t.Fatalf("background return: %d %s", w.Code, w.Body.String())
 			}
@@ -535,6 +548,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("history retry after removing symlink: %d %s", w.Code, w.Body.String())
 			}
 
+			checkCrewNativeSyncAdmission(t, api, ctx, owner, serverRoots)
 			checkCrewDependencySecretBoundary(t, api, ctx, owner, local, serverRoots)
 
 		})
@@ -676,4 +690,72 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if data, _ := os.ReadFile(path); !bytes.Equal(data, advanced) {
 		t.Fatal("native conflict overwrote the destination copy")
 	}
+	// Caching metadata must never turn a corrupt journal into a valid resume.
+	if _, err := readCrewNativeMirrorManifest(roots); err != nil {
+		t.Fatal(err)
+	}
+	mirrorFile := filepath.Join(mirror.Conversation.Native.Root, "session.jsonl")
+	original, err := os.ReadFile(mirrorFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.WriteFile(mirrorFile, original, 0600)
+	if err := os.WriteFile(mirrorFile, []byte("corrupt journal"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readCrewNativeMirror(roots); err == nil {
+		t.Fatal("cached manifest bypassed journal validation")
+	}
+}
+
+// The allowed upgrade proves these refusals are the owner/pair/location rules,
+// rather than an absent binary or a websocket that can never be opened.
+func checkCrewNativeSyncAdmission(t *testing.T, api *StreamingAPI, ctx context.Context, owner *UserClaims, roots crewroot.Roots) {
+	t.Helper()
+	t.Run("native-websocket-admission", func(t *testing.T) {
+		if _, err := nativersync.Binary(); err != nil {
+			t.Skip(err)
+		}
+		original, err := crewroot.ReadSync(roots.ID)
+		if err != nil || original == nil {
+			t.Fatal("paired fixture unavailable")
+		}
+		defer crewroot.WriteSync(roots.ID, *original)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			person := owner
+			if r.URL.Query().Get("who") == "other" {
+				person = &UserClaims{UserID: "other", Username: "other"}
+			}
+			r = r.WithContext(context.WithValue(ctx, UserContextKey, person))
+			r = mux.SetURLVars(r, map[string]string{"project": roots.ID})
+			api.handleCrewNativeSync(w, r)
+		}))
+		defer server.Close()
+		for _, tc := range []struct {
+			who, pair, editing string
+			status             int
+		}{
+			{"other", original.PairID, "local", 403},
+			{"owner", "wrong-pair", "local", 409},
+			{"owner", original.PairID, "server", 409},
+			{"owner", original.PairID, "local", 101},
+		} {
+			binding := *original
+			binding.Editing = tc.editing
+			if err := crewroot.WriteSync(roots.ID, binding); err != nil {
+				t.Fatal(err)
+			}
+			address := "ws" + strings.TrimPrefix(server.URL, "http") + "?pair=" + tc.pair + "&direction=push&who=" + tc.who
+			conn, response, err := websocket.DefaultDialer.DialContext(ctx, address, nil)
+			if conn != nil {
+				conn.Close()
+			}
+			if response == nil || response.StatusCode != tc.status || (tc.status == 101 && err != nil) {
+				t.Fatalf("native admission who=%s pair=%s editing=%s: response=%v error=%v", tc.who, tc.pair, tc.editing, response, err)
+			}
+			if tc.status != 101 {
+				response.Body.Close()
+			}
+		}
+	})
 }
