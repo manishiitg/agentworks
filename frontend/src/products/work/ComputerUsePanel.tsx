@@ -66,7 +66,7 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
     <p className="text-muted-foreground">Give this Crew control of this computer, including apps, Terminal and clipboard.</p>
     {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
     {!status && !error && <p role="status">Checking Computer use…</p>}
-    {status && <div className="space-y-4 rounded-lg border border-border p-4">
+    {status && <div className="space-y-4">
       <div className="flex items-center gap-3"><MonitorCog aria-hidden="true" className="h-5 w-5 text-muted-foreground"/><div className="min-w-0 flex-1"><p className="font-medium">This computer</p><p role="status" className="text-xs text-muted-foreground">{status.active ? 'Desktop action running' : !status.installed ? 'Needs setup' : !ready ? 'Needs permission' : status.enabled ? 'Ready' : 'Off for this Crew'}</p></div>
         {status.installed && <button type="button" role="switch" aria-label="Enable computer use" aria-checked={status.enabled} disabled={busy} onClick={() => void run(status.enabled ? 'disable' : 'enable')} className={`relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:opacity-50 ${status.enabled ? 'bg-primary' : 'bg-muted'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-foreground transition-transform ${status.enabled ? 'left-5' : 'left-1'}`}/></button>}
       </div>
