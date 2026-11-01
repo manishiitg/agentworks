@@ -277,6 +277,24 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("handoff identity: %+v %v", serverChat, err)
 			}
 			checkTranscript(serverChat, "blue lantern")
+			// PLAT-856-442: the browser marks an automatic-switch send as a
+			// continuation. Removing its old session header caused a real 422.
+			profile, err := api.agentProfiles.Resolve("work", 0, owner.UserID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			continued := httptest.NewRequest("POST", "/api/agent-profiles/work/query", nil).WithContext(ctx)
+			continued.Header.Set("X-Conversation-Continuation", "true")
+			if _, err = api.resolveAgentProfileConversation(continued, profile, serverRoots.ID, ""); err == nil || !strings.Contains(err.Error(), "explicit session ID") {
+				t.Fatalf("missing continuation header did not reproduce: %v", err)
+			}
+			if err = api.bindCrewHandoffContinuation(continued, serverRoots.ID); err != nil {
+				t.Fatal(err)
+			}
+			bound, err := api.resolveAgentProfileConversation(continued, profile, serverRoots.ID, "")
+			if err != nil || bound.SessionID != serverChat.SessionID {
+				t.Fatalf("handoff continuation did not bind: %+v %v", bound, err)
+			}
 			target, found, err := resolveProductResumeTarget("owner", serverChat)
 			if err != nil || !found || target.Runtime != nil || len(target.History) == 0 {
 				t.Fatalf("archive continuation missing: %+v %v", target, err)

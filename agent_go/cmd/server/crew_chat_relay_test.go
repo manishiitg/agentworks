@@ -19,6 +19,8 @@ import (
 func TestCrewMacEventProjectionKeepsMainAndDropsForeignSessions(t *testing.T) {
 	raw := []byte(`{"session_id":"local","latest_sequence":9,"events":[
 {"id":"kept","session_id":"local","execution_id":"main:local","terminal_owner_id":"main:local","terminal_id":"local:main:local","data":{"session_id":"local","data":{"session_id":"local","content":"local main:local must stay in this text"}}},
+{"id":"per-turn","session_id":"local","execution_id":"opaque-turn","parent_execution_id":"main:local","terminal_owner_id":"main:local","terminal_id":"local:main:local"},
+{"id":"unanchored-turn","session_id":"local","execution_id":"opaque-turn","parent_execution_id":"main:local"},
 {"id":"foreign","session_id":"other","data":{"content":"private"}},
 {"id":"prefix","session_id":"local-other"},
 {"id":"foreign-nested","session_id":"local","data":{"session_id":"other"}},
@@ -32,18 +34,22 @@ func TestCrewMacEventProjectionKeepsMainAndDropsForeignSessions(t *testing.T) {
 		SessionID string `json:"session_id"`
 		Sequence  int    `json:"latest_sequence"`
 		Events    []struct {
-			ID         string `json:"id"`
-			SessionID  string `json:"session_id"`
-			TerminalID string `json:"terminal_id"`
-			Owner      string `json:"terminal_owner_id"`
+			ID          string `json:"id"`
+			SessionID   string `json:"session_id"`
+			ExecutionID string `json:"execution_id"`
+			TerminalID  string `json:"terminal_id"`
+			Owner       string `json:"terminal_owner_id"`
 		} `json:"events"`
 	}
-	if json.Unmarshal(got, &response) != nil || response.SessionID != "paired" || response.Sequence != 9 || len(response.Events) != 1 {
+	if json.Unmarshal(got, &response) != nil || response.SessionID != "paired" || response.Sequence != 9 || len(response.Events) != 2 {
 		t.Fatalf("invalid projection: %s", got)
 	}
 	event := response.Events[0]
 	if event.ID != "kept" || event.SessionID != "paired" || event.TerminalID != "paired:main:paired" || event.Owner != "main:paired" || !bytes.Contains(got, []byte("local main:local must stay in this text")) {
 		t.Fatalf("routing or content changed incorrectly: %s", got)
+	}
+	if response.Events[1].ID != "per-turn" || response.Events[1].ExecutionID != "opaque-turn" || response.Events[1].SessionID != "paired" {
+		t.Fatalf("anchored per-turn identity changed: %s", got)
 	}
 	if _, err := projectCrewMacEvents(raw, "another-conversation", "paired"); err == nil {
 		t.Fatal("foreign envelope was relabeled")
