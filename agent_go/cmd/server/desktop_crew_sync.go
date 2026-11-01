@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -47,6 +48,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	var input struct {
 		Action string `json:"action"`
+		Mode   string `json:"mode"`
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -78,54 +80,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	call := func(project string, request crewSyncRequest) (crewSyncReply, error) {
-		data, _ := json.Marshal(request)
-		upstream, e := http.NewRequestWithContext(r.Context(), http.MethodPost, connection.Server+"/api/crew-sync/"+url.PathEscape(project), bytes.NewReader(data))
-		if e != nil {
-			return crewSyncReply{}, e
-		}
-		upstream.Header.Set("Authorization", "Bearer "+connection.Token)
-		upstream.Header.Set("Content-Type", "application/json")
-		client := desktopHTTPClient()
-		client.Timeout = 5 * time.Minute
-		response, e := client.Do(upstream)
-		if e != nil {
-			return crewSyncReply{}, fmt.Errorf("cannot reach the server; your local files are unchanged")
-		}
-		defer response.Body.Close()
-		if token := response.Header.Get("X-Renewed-Token"); token != "" {
-			desktopConnectionsMu.Lock()
-			records, renewErr := readDesktopConnections(claims.UserID)
-			if renewErr == nil {
-				for i := range records {
-					if records[i].ID == connection.ID && records[i].Token == connection.Token {
-						records[i].Token = token
-					}
-				}
-				renewErr = writeDesktopConnections(claims.UserID, records)
-			}
-			desktopConnectionsMu.Unlock()
-			if renewErr != nil {
-				return crewSyncReply{}, renewErr
-			}
-			connection.Token = token
-		}
-		if response.StatusCode == http.StatusUnauthorized {
-			return crewSyncReply{}, fmt.Errorf("reconnect this server from Connected servers, then retry Project sync")
-		}
-
-		if response.StatusCode != 200 {
-			var failure struct {
-				Error struct {
-					Message string `json:"message"`
-				} `json:"error"`
-			}
-			_ = json.NewDecoder(io.LimitReader(response.Body, 8192)).Decode(&failure)
-			return crewSyncReply{}, fmt.Errorf("server sync failed: %s", firstNonEmptyTrimmed(failure.Error.Message, http.StatusText(response.StatusCode)))
-		}
-		var out crewSyncReply
-		e = json.NewDecoder(io.LimitReader(response.Body, 800<<20)).Decode(&out)
-		return out, e
+		return desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, request)
 	}
+
 	fail := func(err error) { externalError(w, 409, "sync_unavailable", err.Error()) }
 	if input.Action == "status" {
 		out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)}
@@ -141,6 +98,19 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			}
 		}
 		externalJSON(w, out)
+		return
+	}
+	if input.Action == "mode" && binding != nil {
+		if _, err = call(binding.PeerProjectID, crewSyncRequest{Action: "mode", PairID: binding.PairID, Mode: input.Mode}); err != nil {
+			fail(err)
+			return
+		}
+		binding.Mode = input.Mode
+		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
+			fail(err)
+			return
+		}
+		externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
 		return
 	}
 	if binding == nil {
@@ -178,6 +148,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		fail(err)
 		return
 	}
+	conversationNotice := ""
 	switch input.Action {
 	case "update", "server":
 		pendingPath, e := crewSyncManifestPath(roots.ID)
@@ -232,6 +203,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			}
 			transfer = crewSyncRequest{Action: "push", PairID: binding.PairID, Editing: next, Snapshot: &snapshot, TransferID: uuid.NewString()}
 			if input.Action == "server" {
+				closeWorkflowPolicyCLI(main.SessionID, main.Provider, "moving native session to server")
 				transfer.Conversation, e = api.captureCrewHandoffConversation(r.Context(), claims, roots, main)
 				if e != nil {
 					fail(e)
@@ -246,6 +218,17 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			binding.Editing = next
 			if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
 				fail(e)
+				return
+			}
+		}
+		if transfer.Conversation != nil && transfer.Conversation.Muse != nil {
+			b := transfer.Conversation.Muse
+			if err = bindCrewMuseStage(roots, b); err != nil {
+				fail(err)
+				return
+			}
+			if err = desktopCrewNativeSync(r.Context(), roots, connection, binding, b, true); err != nil {
+				fail(err)
 				return
 			}
 		}
@@ -264,6 +247,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		}
 		log.Printf("[CREW_SYNC] project=%s pair=%s phase=receipt direction=upload bytes=%d paths=%d duration_ms=%d transfer=%s", roots.ID, binding.PairID, len(transfer.Snapshot.Content.Bundle), len(transfer.Snapshot.Changes), time.Since(started).Milliseconds(), transfer.TransferID)
 		binding.Editing = remote.Binding.Editing
+		conversationNotice = remote.ConversationNotice
 		binding.PendingAction = ""
 	case "local", "download":
 		if binding.PendingAction != "" && binding.PendingAction != input.Action {
@@ -325,10 +309,17 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			if movingLocal {
+				if remote.Conversation.Muse != nil {
+					if err = desktopCrewNativeSync(r.Context(), roots, connection, binding, remote.Conversation.Muse, false); err != nil {
+						fail(err)
+						return
+					}
+				}
 				if err = api.importCrewHandoffConversation(r.Context(), claims, roots, binding.PairID, remote.TransferID, remote.Conversation, main); err != nil {
 					fail(err)
 					return
 				}
+				conversationNotice = remote.Conversation.Notice
 			}
 			if _, err = call(binding.PeerProjectID, crewSyncRequest{Action: "ack", PairID: binding.PairID, TransferID: remote.TransferID}); err != nil {
 				fail(err)
@@ -355,5 +346,55 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	if p, e := crewSyncManifestPath(roots.ID); e == nil {
 		_ = os.Remove(p + ".pending")
 	}
-	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)})
+	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID), ConversationNotice: conversationNotice})
+}
+
+func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktopConnection, project string, request crewSyncRequest) (crewSyncReply, error) {
+	data, _ := json.Marshal(request)
+	upstream, e := http.NewRequestWithContext(ctx, http.MethodPost, connection.Server+"/api/crew-sync/"+url.PathEscape(project), bytes.NewReader(data))
+	if e != nil {
+		return crewSyncReply{}, e
+	}
+	upstream.Header.Set("Authorization", "Bearer "+connection.Token)
+	upstream.Header.Set("Content-Type", "application/json")
+	client := desktopHTTPClient()
+	client.Timeout = 5 * time.Minute
+	response, e := client.Do(upstream)
+	if e != nil {
+		return crewSyncReply{}, fmt.Errorf("cannot reach the server; your local files are unchanged")
+	}
+	defer response.Body.Close()
+	if token := response.Header.Get("X-Renewed-Token"); token != "" {
+		desktopConnectionsMu.Lock()
+		records, renewErr := readDesktopConnections(userID)
+		if renewErr == nil {
+			for i := range records {
+				if records[i].ID == connection.ID && records[i].Token == connection.Token {
+					records[i].Token = token
+				}
+			}
+			renewErr = writeDesktopConnections(userID, records)
+		}
+		desktopConnectionsMu.Unlock()
+		if renewErr != nil {
+			return crewSyncReply{}, renewErr
+		}
+		connection.Token = token
+	}
+	if response.StatusCode == http.StatusUnauthorized {
+		return crewSyncReply{}, fmt.Errorf("reconnect this server from Connected servers, then retry Project sync")
+	}
+
+	if response.StatusCode != 200 {
+		var failure struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(io.LimitReader(response.Body, 8192)).Decode(&failure)
+		return crewSyncReply{}, fmt.Errorf("server sync failed: %s", firstNonEmptyTrimmed(failure.Error.Message, http.StatusText(response.StatusCode)))
+	}
+	var out crewSyncReply
+	e = json.NewDecoder(io.LimitReader(response.Body, 800<<20)).Decode(&out)
+	return out, e
 }

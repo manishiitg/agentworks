@@ -59,6 +59,9 @@ type ChatHistorySession struct {
 // ChatHistoryAgentRuntime records enough information to reopen a previous chat
 // with its original runtime when that runtime supports native resume.
 type ChatHistoryAgentRuntime struct {
+	// Set only by an admitted Crew handoff. The Muse adapter restates the
+	// destination's complete current instructions on its first resumed turn.
+	NativeHandoff bool `json:"native_handoff,omitempty"`
 	// Fingerprint the options actually launched, so cold retained turns can
 	// detect effort changes without persisting arbitrary option values.
 	ModelOptionsKey string `json:"model_options_key,omitempty"`

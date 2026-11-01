@@ -257,7 +257,29 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 		if e != nil || b == nil || b.Side != "local" {
 			return
 		}
+		if b.Mode == "manual" {
+			continue
+		}
+		checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
+		_, authorityErr := api.refreshCrewSyncAuthority(checkCtx, claims, roots, b)
+		checkCancel()
+		if authorityErr != nil {
+			setCrewAutoStatus(id, "attention", authorityErr.Error())
+			continue
+		}
+		mirror := func() bool {
+			mirrorCtx, mirrorCancel := context.WithTimeout(ctx, 15*time.Minute)
+			defer mirrorCancel()
+			if e := api.syncCrewNativeMirror(mirrorCtx, claims, roots, b); e != nil {
+				setCrewAutoStatus(id, "attention", e.Error())
+				return false
+			}
+			return true
+		}
 		if b.PendingAction == "" && b.Editing == "local" && !dirty && !crewSyncNeedsCapture(roots) {
+			if mirror() {
+				setCrewAutoStatus(id, "synced", "")
+			}
 			continue
 		}
 		stamp := crewSyncStamp(roots)
@@ -297,7 +319,9 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 			}
 			dirty = true
 		} else {
-			setCrewAutoStatus(id, "synced", "")
+			if mirror() {
+				setCrewAutoStatus(id, "synced", "")
+			}
 			crewSyncRememberScan(roots, stamp)
 		}
 		addWatches()

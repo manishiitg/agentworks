@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"github.com/spf13/viper"
 )
 
@@ -339,6 +340,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("journal retry duplicated or truncated dialogue: %d %v", len(page.Events), err)
 			}
 			checkTranscript(retried, "server continued")
+			checkCrewMuseNativeHandoff(t, api, ctx, owner, local, retried, replay)
 			saved, err = ReadChatHistoryConversation("owner", returned.SessionID, returned.WorkspacePath)
 			if err != nil || !bytes.Contains(saved, []byte("server continued")) || bytes.Contains(saved, []byte("do-not-transfer")) {
 				t.Fatalf("return lost conversation or copied runtime: %v", err)
@@ -431,5 +433,97 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 
 		})
+	}
+}
+
+// The existing HTTP fixture supplies both managed and selected-folder Crews.
+// Pin the new private-store/owner/conflict rules without another server fixture.
+func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Context, owner *UserClaims, roots crewroot.Roots, current ProductConversationRecord, history *crewHandoffConversation) {
+	t.Helper()
+	oldOS := cliHostOS
+	cliHostOS = "linux"
+	defer func() { cliHostOS = oldOS }()
+	store := defaultProductConversationRegistryStore()
+	registry := productConversationRegistryPath(owner.UserID)
+	doc, err := store.loadDocument(ctx, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := productConversationRegistryEntryKey("work", current.ConversationKey)
+	current.Provider = "muse-cli"
+	current.ConnectionID = "global:muse-cli"
+	doc.Entries[key] = current
+	if err = store.writeDocument(ctx, registry, doc); err != nil {
+		t.Fatal(err)
+	}
+	source := t.TempDir()
+	id := "11111111-1111-4111-8111-111111111111"
+	row, _ := json.Marshal(map[string]any{"stream": map[string]string{"kind": "session", "id": id}, "payload_type": "runtime.session.metadata", "payload": map[string]any{"record": map[string]any{"workspace_root": source, "build": map[string]string{"semver": "1.4.14"}}}})
+	row = append(row, '\n')
+	moved := *history
+	sourceHome := t.TempDir()
+	sourcePath := filepath.Join(sourceHome, "muse", "sessions", "2026", "11", "01", id, "session.jsonl")
+	if err = os.MkdirAll(filepath.Dir(sourcePath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(sourcePath, row, 0600); err != nil {
+		t.Fatal(err)
+	}
+	moved.Muse, err = musecli.ExportNativeSession(sourceHome, id, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = stageCrewMuse(roots, moved.Muse); err != nil {
+		t.Fatal(err)
+	}
+	if err = api.importCrewHandoffConversation(ctx, owner, roots, "native-pair", "native-first", &moved, current); err != nil {
+		t.Fatal(err)
+	}
+	imported, err := api.crewHandoffMain(ctx, owner, roots.ID)
+	if err != nil || imported.FreshNative {
+		t.Fatalf("native import did not bind: %+v %v", imported, err)
+	}
+	runtime, ok, err := ReadChatHistoryRuntimeForSession(owner.UserID, imported.SessionID, imported.WorkspacePath)
+	expectedDir, dirErr := crewCLIWorkingDir(roots.Virtual, owner.UserID, imported.SessionID, "muse-cli", false)
+	if err != nil || dirErr != nil || !ok || runtime == nil || !runtime.NativeHandoff || runtime.ExternalSessionID != id || runtime.AgentSessionHandle.ConnectionID != "global:muse-cli" || runtime.AgentSessionHandle.Provider.WorkingDir != expectedDir {
+		t.Fatalf("native runtime: %+v %v", runtime, err)
+	}
+	home, private, err := api.crewMuseStore(ctx, owner, roots, imported)
+	if err != nil || !strings.HasPrefix(home, private+string(filepath.Separator)) {
+		t.Fatalf("shared Muse store: %s %s %v", home, private, err)
+	}
+	path := filepath.Join(home, "muse", "sessions", "2026", "11", "01", id, "session.jsonl")
+	if data, err := os.ReadFile(path); err != nil || !bytes.Equal(data, row) {
+		t.Fatalf("private native journal: %v", err)
+	}
+	if _, _, err = api.crewMuseStore(ctx, &UserClaims{UserID: "other"}, roots, imported); err == nil {
+		t.Fatal("other owner obtained a native store")
+	}
+	if err = os.Rename(home, home+"-saved"); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(t.TempDir(), home); err != nil {
+		t.Fatal(err)
+	}
+	_, _, linkErr := api.crewMuseStore(ctx, owner, roots, imported)
+	os.Remove(home)
+	os.Rename(home+"-saved", home)
+	if linkErr == nil {
+		t.Fatal("private Muse home followed a symlink")
+	}
+	// A new destination runtime must not conceal changes to its previous copy.
+	advanced := append(append([]byte{}, row...), []byte("{\"payload_type\":\"local.new.turn\"}\n")...)
+	if err = os.WriteFile(path, advanced, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = api.importCrewHandoffConversation(ctx, owner, roots, "native-pair", "native-conflict", &moved, imported); err != nil {
+		t.Fatal(err)
+	}
+	fallback, err := api.crewHandoffMain(ctx, owner, roots.ID)
+	if err != nil || !fallback.FreshNative || !strings.Contains(moved.Notice, "saved conversation history") {
+		t.Fatalf("conflict did not fall back clearly: %+v %s %v", fallback, moved.Notice, err)
+	}
+	if data, _ := os.ReadFile(path); !bytes.Equal(data, advanced) {
+		t.Fatal("native conflict overwrote the destination copy")
 	}
 }

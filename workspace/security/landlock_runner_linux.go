@@ -114,7 +114,11 @@ func restrictLandlock(policy LandlockPolicy, abi int) error {
 			return err
 		}
 	}
-	for _, path := range landlockSystemWritePaths(policy.PrivateTmp, policy.BrowserScoped) {
+	systemWrite := landlockSystemWritePaths(policy.PrivateTmp, policy.BrowserScoped)
+	if policy.StagingOnly {
+		systemWrite = []string{"/dev/null"}
+	}
+	for _, path := range systemWrite {
 		if err := addLandlockPathRule(int(rulesetFD), path, writeAccess); err != nil {
 			return err
 		}

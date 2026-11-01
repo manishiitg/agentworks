@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // PLAT-856-426: extend the real paired-Crew fixture, so refusals cannot pass
@@ -60,6 +61,55 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 	if got.Status != 200 || !bytes.Contains(got.Body, []byte("local-conversation")) || !bytes.Contains(got.Body, []byte(crewChatSessionID(project, ""))) {
 		t.Fatalf("owner response lost local conversation: %+v", got)
 	}
+	t.Run("handoff completion remains admitted after editing moves to server", func(t *testing.T) {
+		// PLAT-856-442: the handoff changes Editing before the Mac posts its
+		// reply. Only that owner's pending handoff may complete in this state.
+		result := make(chan crewChatResult, 1)
+		go func() { result <- api.callCrewMac(r, project, crewChatCall{Operation: "handoff"}) }()
+		poll := httptest.NewRecorder()
+		api.handleCrewChatPoll(poll, get)
+		var call crewChatCall
+		if poll.Code != 200 || json.Unmarshal(poll.Body.Bytes(), &call) != nil || call.Operation != "handoff" {
+			t.Fatalf("handoff poll: %d %s", poll.Code, poll.Body.String())
+		}
+		binding, e := crewroot.ReadSync(project)
+		if e != nil || binding == nil {
+			t.Fatal("missing paired fixture")
+		}
+		binding.Editing = "server"
+		if e = crewroot.WriteSync(project, *binding); e != nil {
+			t.Fatal(e)
+		}
+		defer func() {
+			binding.Editing = "local"
+			if e := crewroot.WriteSync(project, *binding); e != nil {
+				t.Fatal(e)
+			}
+		}()
+		body, _ := json.Marshal(crewChatResult{ID: call.ID, Status: 200, Body: json.RawMessage(`{"complete":true}`)})
+		for _, tc := range []struct {
+			who  *UserClaims
+			id   string
+			want int
+		}{
+			{&UserClaims{UserID: "other", Username: "other"}, call.ID, 403},
+			{owner, "unrelated", 403},
+			{owner, call.ID, 204},
+		} {
+			var reply crewChatResult
+			json.Unmarshal(body, &reply)
+			reply.ID = tc.id
+			raw, _ := json.Marshal(reply)
+			w := httptest.NewRecorder()
+			api.handleCrewChatPoll(w, request(tc.who, pair, raw))
+			if w.Code != tc.want {
+				t.Fatalf("handoff completion: got %d want %d: %s", w.Code, tc.want, w.Body.String())
+			}
+		}
+		if got := <-result; got.Status != 200 {
+			t.Fatalf("completion lost: %d %s", got.Status, got.Body)
+		}
+	})
 	crewChatRelays.Lock()
 	box := crewChatRelays.boxes[crewChatMailboxKey("owner", project, pair)]
 	box.lastPoll = time.Time{}

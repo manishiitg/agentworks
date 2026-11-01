@@ -3135,6 +3135,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         consumeSubmittedFiles()
         acceptReceipt()
 
+        if (response.sync_notice) chatStore.addToast(response.sync_notice, 'info')
+
         if (response.omitted_context && response.omitted_context > 0) {
           chatStore.addToast(response.omitted_context === 1 ? '1 attached item was left out because you cannot open it.' : `${response.omitted_context} attached items were left out because you cannot open them.`, 'info')
         }

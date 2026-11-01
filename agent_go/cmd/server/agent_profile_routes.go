@@ -451,6 +451,9 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// due schedule back. Scheduled runs enter through Run, never here, so a
 	// check-in's own turns are not mistaken for family activity.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
+	if api.ensureCrewNativeExecution(w, r, profile.ID, input.ConversationKey) {
+		return
+	}
 	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
 		return
 	}

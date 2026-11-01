@@ -14,6 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 const crewHandoffHistoryLimit = 32 << 20
@@ -23,8 +24,10 @@ const crewHandoffHistoryLimit = 32 << 20
 // portable authority. UI events can contain terminal panes and source-machine
 // handles too; the destination renders the canonical message history instead.
 type crewHandoffConversation struct {
-	ConversationID string                    `json:"conversation_id"`
-	History        []llmtypes.MessageContent `json:"conversation_history"`
+	ConversationID string                       `json:"conversation_id"`
+	History        []llmtypes.MessageContent    `json:"conversation_history"`
+	Muse           *musecli.NativeSessionBundle `json:"muse,omitempty"`
+	Notice         string                       `json:"-"`
 }
 
 func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {
@@ -36,7 +39,13 @@ func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
-	return defaultProductConversationRegistryStore().resolveOrCreate(ctx, claims.UserID, profile, binding, "")
+	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, claims.UserID, profile, binding, "")
+	if err != nil {
+		return record, err
+	}
+	applyCrewNativeToolPolicy(&profile, true, binding.ProjectNativeAgentTools)
+	record.handoffAgentToolsMode = normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)
+	return record, nil
 }
 
 func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, conversation ProductConversationRecord) (*crewHandoffConversation, error) {
@@ -52,6 +61,7 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 	var doc struct {
 		UserID  string                    `json:"user_id"`
 		History []llmtypes.MessageContent `json:"conversation_history"`
+		Runtime *ChatHistoryAgentRuntime  `json:"runtime"`
 	}
 	if len(data) > crewHandoffHistoryLimit {
 		return nil, fmt.Errorf("this conversation is too large to move; keep using its agent on this computer")
@@ -63,10 +73,27 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 		return nil, fmt.Errorf("only your own main conversation can move with this Crew")
 	}
 	out := &crewHandoffConversation{ConversationID: conversation.ConversationID, History: doc.History}
+	if candidate, captureErr := api.captureCrewMuse(ctx, claims, roots, conversation, doc.Runtime); captureErr != nil {
+		log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=archive native_unavailable=%q", roots.ID, captureErr)
+	} else {
+		if candidate != nil {
+			if err = stageCrewMuse(roots, candidate); err != nil {
+				return nil, err
+			}
+		}
+		out.Muse = candidate
+		if validateCrewHandoffConversation(out) != nil {
+			out.Muse = nil
+		}
+	}
 	if err = validateCrewHandoffConversation(out); err != nil {
 		return nil, err
 	}
-	log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=archive conversation=%s messages=%d", roots.ID, out.ConversationID, len(out.History))
+	mode := "archive"
+	if out.Muse != nil {
+		mode = "native_candidate"
+	}
+	log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=%s conversation=%s messages=%d", roots.ID, mode, out.ConversationID, len(out.History))
 	return out, nil
 }
 
@@ -88,6 +115,7 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	if err := validateCrewHandoffConversation(in); err != nil {
 		return err
 	}
+	in.Notice = "The next reply will continue from saved conversation history."
 	session := "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(claims.UserID+"/"+roots.ID+"/"+pair+"/"+transfer)).String()
 	store := defaultProductConversationRegistryStore()
 	registryPath := productConversationRegistryPath(claims.UserID)
@@ -99,12 +127,15 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		return err
 	}
 	key := productConversationRegistryEntryKey("work", current.ConversationKey)
+	destinationToolsMode := current.handoffAgentToolsMode
 	current, ok := doc.Entries[key]
 	if !ok {
 		return fmt.Errorf("the destination main conversation is unavailable")
 	}
+	current.handoffAgentToolsMode = destinationToolsMode
 	// A retried file receipt must not replace turns already made after import.
 	if current.SessionID == session && current.ConversationID == in.ConversationID {
+		in.Notice = "Your main conversation is available on the destination computer."
 		return nil
 	}
 	now := time.Now().UTC()
@@ -116,6 +147,23 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		"session_id": session, "user_id": claims.UserID,
 		"username": chatHistoryUsername(claims.UserID, ""), "agent_mode": "multi-agent",
 		"conversation_history": in.History, "updated_at": now.Format(time.RFC3339),
+	}
+	if in.Muse != nil {
+		nativeLock := crewNativeLock(roots, in.Muse.SessionID)
+		nativeLock.Lock()
+		defer nativeLock.Unlock()
+		if err := bindCrewMuseStage(roots, in.Muse); err != nil {
+			return err
+		}
+	}
+	if runtime, nativeErr := api.importCrewMuse(ctx, claims, roots, current, session, in.Muse); nativeErr != nil {
+		log.Printf("[CREW_HANDOFF] project=%s phase=import mode=archive native_unavailable=%q", roots.ID, nativeErr)
+		if strings.Contains(nativeErr.Error(), "both copies were kept") {
+			in.Notice = "Muse's native history changed on both computers. Both copies were kept; the next reply will continue from saved conversation history."
+		}
+	} else if runtime != nil {
+		data["runtime"] = runtime
+		in.Notice = "Muse's saved native session is ready to resume on the destination computer."
 	}
 	raw, err := json.Marshal(data)
 	if err != nil {
@@ -169,12 +217,16 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	}
 	rememberPreviousConversation(&doc, key, current)
 	current.SessionID, current.ConversationID = session, in.ConversationID
-	current.FreshNative = true
+	current.FreshNative = data["runtime"] == nil
 	current.UpdatedAt = now.Format(time.RFC3339Nano)
 	doc.Entries[key] = current
 	if err = store.writeDocument(ctx, registryPath, doc); err != nil {
 		return err
 	}
-	log.Printf("[CREW_HANDOFF] project=%s pair=%s transfer=%s phase=import mode=archive conversation=%s session=%s messages=%d journal_rows=%d bytes=%d", roots.ID, pair, transfer, in.ConversationID, session, len(in.History), len(dialogue), len(raw))
+	mode := "archive"
+	if !current.FreshNative {
+		mode = "native_candidate"
+	}
+	log.Printf("[CREW_HANDOFF] project=%s pair=%s transfer=%s phase=import mode=%s conversation=%s session=%s messages=%d journal_rows=%d bytes=%d", roots.ID, pair, transfer, mode, in.ConversationID, session, len(in.History), len(dialogue), len(raw))
 	return nil
 }

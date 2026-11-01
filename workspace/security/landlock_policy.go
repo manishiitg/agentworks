@@ -8,9 +8,11 @@ const landlockRunnerName = "video-studio-landlock-runner"
 // dedicated Linux launcher. Keeping restriction setup in the child avoids
 // irreversibly sandboxing the long-lived Go server process.
 type LandlockPolicy struct {
-	ReadPaths  []string `json:"read_paths"`
-	WritePaths []string `json:"write_paths"`
-	WorkDir    string   `json:"work_dir"`
+	// StagingOnly omits shared browser/temp writes for fixed native-sync helpers.
+	StagingOnly bool     `json:"staging_only,omitempty"`
+	ReadPaths   []string `json:"read_paths"`
+	WritePaths  []string `json:"write_paths"`
+	WorkDir     string   `json:"work_dir"`
 	// ListPaths may be listed (folder names only, no file reads). Coding
 	// CLIs get "/": Muse opens every folder from / down to its workspace.
 	ListPaths []string `json:"list_paths,omitempty"`

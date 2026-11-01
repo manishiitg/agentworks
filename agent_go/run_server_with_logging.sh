@@ -2350,6 +2350,13 @@ for fixture_archive in agentworks-playwright.tgz agentworks-playwright-python.zi
 done
 export AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR
 
+# Native sync helper is built only for source development. Packaged apps ship it.
+if [ ! -x "${SCRIPT_DIR}/.native-sync/bin/rsync" ]; then
+    echo "Preparing native session sync…"
+    dev_setup bash "${SCRIPT_DIR}/../deploy/common/install-rsync.sh" "${SCRIPT_DIR}/.native-sync" || exit 1
+fi
+export AGENTWORKS_RSYNC_BIN="${SCRIPT_DIR}/.native-sync/bin/rsync"
+
 # Build mcpbridge binary (required for CLI provider MCP bridge)
 # Install from local source to pick up latest fixes (e.g., virtual tool scoping).
 # Each checkout installs its own copy under agent_go/.bin and points its server
