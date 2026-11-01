@@ -275,7 +275,8 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 	// another allowed model; here the program picked the model, so it is told to pick another).
 	if model != "" {
 		allowed, _, _ := accountAllowedModels(withModelLimitPerson(r.Context(), caller), provider, account)
-		if _, capped, limitErr := applyModelTokenLimit(withModelLimitPerson(r.Context(), caller), provider, account, model, allowed); limitErr == nil && capped {
+		// capped: another allowed model is left; limitErr: none is. Either way this model is used up.
+		if _, capped, limitErr := applyModelTokenLimit(withModelLimitPerson(r.Context(), caller), provider, account, model, allowed); limitErr != nil || capped {
 			desktopJSONError(w, 429, "You have used your token limit for "+model+" on this account. Pick another model.")
 			return
 		}

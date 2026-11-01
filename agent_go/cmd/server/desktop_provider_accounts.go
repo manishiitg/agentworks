@@ -62,6 +62,11 @@ func localAccountForServer(records []storedProviderConnection, stored *StoredPro
 		if record.OwnerUserID != owner || !providerEnabled(record.Provider) {
 			break
 		}
+		if record.ViaConnection != "" {
+			// A company account is the server's own login reached from this Mac; its key here is only this Mac's
+			// placeholder.
+			return desktopAccountToCopy{}, fmt.Errorf("A company account already lives on its server; it can't be added there.")
+		}
 		account := desktopAccountToCopy{Provider: record.Provider, Name: record.DisplayName, AuthMethod: "api_key", Credential: strings.TrimSpace(record.Credential),
 			UnderlyingProvider: record.UnderlyingProvider, BaseURL: record.BaseURL}
 		if record.AuthMethod == "cli_login" || account.Credential == "" {
