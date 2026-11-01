@@ -2619,6 +2619,9 @@ else
         --mcp-config "configs/mcp_servers_clean.json" >> "$LOG_PATH" 2>&1 &
 
     SERVER_PID=$!
+    # Records the compiled child listening on the port (AGENT_LISTENER): go run can exit before it on Ctrl+C,
+    # and cleanup then stops it by that record (PLAT-856-439).
+    wait_for_agent_health || exit 1
     wait "$SERVER_PID"
     EXIT_CODE=$?
     if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 130 ]; then

@@ -25,8 +25,10 @@ dev_instance_claim() {
         old_start="$(sed -n '2p' "$DEV_INSTANCE_FILE")"
         if dev_process_matches "$old_pid" "$old_start"; then
             command="$(ps -p "$old_pid" -o command=)"
+            # The PID and birth time come from this checkout's own record; the command only has to be this
+            # launcher, however it was invoked (an absolute path, or ./run_server_with_logging.sh from agent_go).
             case "$command" in
-                *"bash $launcher"|*"bash $launcher "*) ;;
+                *"bash $launcher"|*"bash $launcher "*|*"bash ./${launcher##*/}"|*"bash ./${launcher##*/} "*|*"bash ${launcher##*/}"|*"bash ${launcher##*/} "*) ;;
                 *) echo "Cannot restart: the recorded process is not this AgentWorks launcher." >&2; return 1 ;;
             esac
             echo "Stopping the AgentWorks already running here…"
