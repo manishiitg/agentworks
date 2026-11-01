@@ -394,8 +394,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login')
   // The terminal is where a person signs in by hand and checks usage (/usage); there is no
   // separate usage check.
-  const terminalItem = (record: ProviderConnection) => record.can_manage ? [{ label: 'Terminal (sign in, check usage)', onSelect: () => void runSetup(record, 'inspect') }] : []
-  const checkItem = (record: ProviderConnection) => statuses[record.id] !== undefined || byokServiceOf(record) ? [{ label: byokServiceOf(record) ? 'Test key again' : 'Check sign-in again', onSelect: () => void refreshStatus(record) }] : []
+  const terminalItem = (record: ProviderConnection) => record.can_manage ? [{ label: 'Terminal (check usage)', onSelect: () => void runSetup(record, 'inspect') }] : []
+  const checkItem = (record: ProviderConnection) => statuses[record.id] !== undefined || byokServiceOf(record) ? [{ label: byokServiceOf(record) ? 'Test key again' : 'Check it works', onSelect: () => void refreshStatus(record) }] : []
   const terminalFor = (record: ProviderConnection) => (session && sessionRowId === record.id && (
     <div className="mt-3 w-full"><GuidedProviderTerminal session={session} onFinished={value => { setSession(value); changed() }} onClose={() => { setSession(null); setSessionRowId(null) }} /></div>
   ))
