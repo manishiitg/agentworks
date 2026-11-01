@@ -65,3 +65,5 @@ Run users do not mount this editor. The server's Crew access response gates the 
 Focused checks cover preserving the active Crew and unrelated workflow state, selecting the exact run/step, per-run costs without workspace-total fallback, owner/foreign access, saved-specialist updates, and configuration/history separation. Real coding-agent calls and Linux split-root behavior remain unverified. The separate preview uses synthetic scripts and the real workspace/DBOS path.
 
 The preview’s whole-plan file writes do not yet reuse the external Builder’s revision/conflict and plan-changelog contract. Concurrent edits can overwrite each other. This remains a recorded limitation, rather than a second revision system.
+
+Crew-owned whole-workflow runs now use the existing durable step recorder, as workshop runs already do. The whole run retains responsibility for the saved-chat outcome; recording a step does not schedule another model notification. Old runs without receipts continue to show their available logs.

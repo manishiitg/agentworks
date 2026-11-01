@@ -145,7 +145,8 @@ type WorkflowOrchestrator struct {
 
 	// extraSubAgentNotifier is an additional notifier set by the server layer (e.g. for bgAgentRegistry).
 	// It is reserved for execution paths that need extra sub-agent notifications.
-	extraSubAgentNotifier step_based_workflow.SubAgentNotifier
+	extraSubAgentNotifier     step_based_workflow.SubAgentNotifier
+	workshopExecutionNotifier step_based_workflow.WorkshopExecutionNotifier
 }
 
 // SetToolCallQueryFunc sets the function for querying live tool calls from the event store.
@@ -158,6 +159,12 @@ func (wo *WorkflowOrchestrator) SetToolCallQueryFunc(fn step_based_workflow.Tool
 // Used by server.go to hook bgAgentRegistry for synthetic turn notifications.
 func (wo *WorkflowOrchestrator) SetExtraSubAgentNotifier(n step_based_workflow.SubAgentNotifier) {
 	wo.extraSubAgentNotifier = n
+}
+
+// SetWorkshopExecutionNotifier reuses the server's durable step recorder for
+// whole runs, whose child controller is created only when execution starts.
+func (wo *WorkflowOrchestrator) SetWorkshopExecutionNotifier(n step_based_workflow.WorkshopExecutionNotifier) {
+	wo.workshopExecutionNotifier = n
 }
 
 // SetVirtualPlan sets a synthetic plan for the workflow (used by Task Agent mode)
@@ -425,6 +432,7 @@ func (wo *WorkflowOrchestrator) runHumanControlledPlanning(ctx context.Context, 
 
 	// Propagate MCP session ID to child orchestrator for connection sharing
 	todoPlannerAgent.SetMCPSessionID(wo.getSessionID())
+	todoPlannerAgent.SetWorkshopExecutionNotifier(wo.workshopExecutionNotifier)
 	// Propagate HTTP session ID for MCP cleanup scoping
 	if wo.httpSessionID != "" {
 		todoPlannerAgent.SetHTTPSessionID(wo.httpSessionID)
