@@ -351,8 +351,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   }
   // "On your servers": one line under each of your accounts on this Mac, with what to do on each server.
   const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && servers.length > 0 && (
-    <div className="mt-2 flex w-full flex-wrap items-center gap-2 pl-11 text-xs">
-      <span className="text-gray-500 dark:text-gray-400">On your servers:</span>
+    <div className="mt-3 w-full border-t border-gray-100 pt-3 pl-11 text-xs dark:border-gray-800">
+      <p className="mb-2 text-gray-500 dark:text-gray-400">Use it on your servers too</p>
+      <div className="flex flex-wrap items-center gap-2">
       {servers.map(server => {
         const state = onServers[server.id]?.[record.id] ?? (onServers[server.id]?.unavailable ? 'unavailable' : 'loading')
         const title = signedInAs(server) ? `Your login there: ${signedInAs(server)}` : undefined
@@ -363,10 +364,11 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             {state === 'sign_in' && <button type="button" disabled={busy} className="font-medium text-amber-600 hover:underline disabled:opacity-50 dark:text-amber-400" onClick={() => void addToServer(record, server)}>Sign in needed</button>}
             {state === 'missing' && <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void addToServer(record, server)}>Add</button>}
             {state === 'loading' && <span className="text-gray-400">…</span>}
-            {state === 'unavailable' && <span className="text-gray-400">Can't reach</span>}
+            {state === 'unavailable' && <span className="text-gray-400">Status unknown</span>}
           </span>
         )
       })}
+      </div>
     </div>
   )
   const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login')
@@ -419,10 +421,10 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             {canManage && record.auth_method === 'cli_login' && personalAllowed && needsSignIn(record) && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void login(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
             <ActionsMenu label={`More for ${record.display_name}`} disabled={busy} items={[
               ...terminalItem(record),
-              ...checkItem(record),
+              ...(onThisMac ? [] : checkItem(record)),
               ...(canManage && record.auth_method === 'cli_login' && personalAllowed && !needsSignIn(record) ? [{ label: 'Sign in again', onSelect: () => void login(record) }] : []),
               ...(personalAllowed && canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
-              ...(canManage && manage ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
+              ...(canManage && manage && !onThisMac ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
               ...(own ? modelsItem({ ...record, can_manage: true }) : []),
               ...(own && personalAllowed ? [{ label: keyService ? 'Rename or replace key' : 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
               ...(canManage ? [{ label: 'Remove', danger: true, onSelect: () => void remove(record) }] : []),
@@ -447,17 +449,18 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><ShieldCheck className="h-4 w-4" /></div>
             <div className="min-w-0">
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{ADMIN_MANAGED_ACCOUNT_LABEL}</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{onThisMac ? `${providerLabel || provider} on this Mac` : ADMIN_MANAGED_ACCOUNT_LABEL}</span>
               {statusLine(record) || (record.identity && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Signed in as {record.identity}</p>)}
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              {/* On a personal Mac nobody else uses it: who may use it and per-person limits only matter on a server. */}
+              {!onThisMac && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                 {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
                 {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
-              </p>
+              </p>}
               {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Models anyone may run on this account; a different list for one person is set in Access → Users. A turn on another model runs on the first allowed one.">
                 Models: {allowedModelsText(accountModels(record))}
-                {record.can_manage && !disabled && <button type="button" disabled={busy} className="ml-1.5 text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => setModelsId(modelsId === record.id ? null : record.id)}>Edit</button>}
+                {record.can_manage && !disabled && !onThisMac && <button type="button" disabled={busy} className="ml-1.5 text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => setModelsId(modelsId === record.id ? null : record.id)}>Edit</button>}
               </p>}
-              {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Tokens (input + output) each person may use on this account; overrides per person are in Access → Users. Day and week are UTC; weeks start Monday.">
+              {manage && !onThisMac && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Tokens (input + output) each person may use on this account; overrides per person are in Access → Users. Day and week are UTC; weeks start Monday.">
                 Limit per person: {record.token_limits?.daily || record.token_limits?.weekly
                   ? [record.token_limits?.daily ? `${formatTokens(record.token_limits.daily)} a day` : '', record.token_limits?.weekly ? `${formatTokens(record.token_limits.weekly)} a week` : ''].filter(Boolean).join(' · ')
                   : 'none'}
@@ -467,14 +470,14 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           {!disabled && record.can_manage && (
             <div className="flex flex-wrap items-center gap-1">
               {needsSignIn(record) && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setConfirmSharedLogin(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
-              <ActionsMenu label="More for the admin-managed account" disabled={busy} items={[
+              <ActionsMenu label={onThisMac ? `More for ${providerLabel || provider} on this Mac` : 'More for the admin-managed account'} disabled={busy} items={[
                 ...terminalItem(record),
-                ...checkItem(record),
+                ...(onThisMac ? [] : checkItem(record)),
                 ...(!needsSignIn(record) ? [{ label: 'Sign in with another login', onSelect: () => setConfirmSharedLogin(record) }] : []),
                 ...(canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
-                ...(record.availability_editable ? [{ label: 'Who can use it', onSelect: () => setAvailabilityDraft(availability?.available_to ?? 'all') }] : []),
+                ...(record.availability_editable && !onThisMac ? [{ label: 'Who can use it', onSelect: () => setAvailabilityDraft(availability?.available_to ?? 'all') }] : []),
                 ...modelsItem(record),
-                ...(manage ? [{ label: 'Limits', onSelect: () => setLimitsDraft(limitsDraft ? null : { daily: record.token_limits?.daily ? String(record.token_limits.daily) : '', weekly: record.token_limits?.weekly ? String(record.token_limits.weekly) : '' }) }] : []),
+                ...(manage && !onThisMac ? [{ label: 'Limits', onSelect: () => setLimitsDraft(limitsDraft ? null : { daily: record.token_limits?.daily ? String(record.token_limits.daily) : '', weekly: record.token_limits?.weekly ? String(record.token_limits.weekly) : '' }) }] : []),
               ]} />
             </div>
           )}
@@ -583,7 +586,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             : <p className="text-xs text-gray-500 dark:text-gray-400">You have no accounts yet. <strong>Add my account</strong> signs in your own {providerLabel || 'provider'} login: private to you unless you share it.</p>)}
           {addForm}
           {server && <div className="mt-5">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{ADMIN_MANAGED_ACCOUNT_LABEL}</div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{onThisMac ? 'This Mac' : ADMIN_MANAGED_ACCOUNT_LABEL}</div>
             {serverBlock(server)}
           </div>}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
