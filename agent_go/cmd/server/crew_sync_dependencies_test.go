@@ -192,6 +192,21 @@ func checkCrewDependencySecretBoundary(t *testing.T, api *StreamingAPI, ctx cont
 	if strings.Contains(string(encoded)+string(cached)+captured.String(), value) || strings.Contains(string(encoded), ignored) {
 		t.Fatal("secret value escaped to response, metadata or logs")
 	}
+	// PLAT-856-480: a deleted/revoked auto-added connection must not wedge
+	// cleanup and therefore all later file syncs.
+	previous := readCrewDependencies(remote.ID)
+	previous.configured = append(previous.configured, crewConfiguredDependency{"mcp", "deleted-server-connection", "removed-source-connection"})
+	if e := saveCrewDependencies(remote.ID, previous); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := api.prepareCrewDependencies(request, local, binding, connection, true); e != nil {
+		t.Fatal("deleted destination connection blocked sync", e)
+	}
+	for _, item := range readCrewDependencies(remote.ID).configured {
+		if item.ID == "deleted-server-connection" {
+			t.Fatal("stale mapping retained")
+		}
+	}
 	// Retrying after a local rotation must keep the destination's existing value.
 	if e := api.upsertSharedWorkflowSecret(ctx, local.Virtual, "TRANSFER_ME", "new-source-value-480"); e != nil {
 		t.Fatal(e)
