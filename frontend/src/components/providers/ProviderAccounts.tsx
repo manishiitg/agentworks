@@ -87,7 +87,6 @@ export const NO_LONGER_AVAILABLE = 'No longer available here'
 type ServerAccountState = 'ready' | 'sign_in' | 'different_login' | 'missing' | 'unavailable' | 'loading'
 /** Where one of your accounts on this Mac stands on a server, with the login each side reports (an email, usually). */
 type ServerAccount = { state: ServerAccountState; mac_login?: string; server_login?: string }
-type CompanyAccount = { state: 'added' | 'available' | 'unavailable' | 'not_offered'; reason?: string }
 
 export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product }: {
   provider: string
@@ -144,17 +143,12 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // Where each of your accounts stands on each connected server: ready, needs sign-in, or not there yet.
   const [onServers, setOnServers] = useState<Record<string, Record<string, ServerAccount> | 'unavailable'>>({})
   const serverIds = servers.map(server => server.id).join(',')
-  // A server's own (company) login for this program, used from this Mac: the server says whether it offers it to you.
-  const [company, setCompany] = useState<Record<string, CompanyAccount>>({})
-  const loadCompany = (serverId: string) => desktopRequest<CompanyAccount>(`/${encodeURIComponent(serverId)}/company-accounts?provider=${encodeURIComponent(provider)}`)
-    .then(result => setCompany(current => ({ ...current, [serverId]: result })))
-    .catch(() => setCompany(current => ({ ...current, [serverId]: { state: 'not_offered' } })))
   const loadOnServer = (serverId: string) => desktopRequest<{ accounts: Record<string, ServerAccount> }>(`/${encodeURIComponent(serverId)}/provider-accounts?provider=${encodeURIComponent(provider)}`)
     .then(result => setOnServers(current => ({ ...current, [serverId]: result.accounts })))
     .catch(() => setOnServers(current => ({ ...current, [serverId]: 'unavailable' })))
   useEffect(() => {
     if (!onThisMac || !manage) return
-    for (const id of serverIds.split(',').filter(Boolean)) { void loadOnServer(id); void loadCompany(id) }
+    for (const id of serverIds.split(',').filter(Boolean)) void loadOnServer(id)
   }, [onThisMac, manage, serverIds, provider, connections.length])
   useEffect(() => {
     let cancelled = false
@@ -555,7 +549,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const selectedRecord = connections.find(record => record.id === selectedValue)
   const selectedMissing = !selectable.some(record => record.id === selectedValue)
   const selectedUnavailableText = selectedRecord?.configured === false ? "needs setup" : NO_LONGER_AVAILABLE.toLowerCase()
-  const own = connections.filter(record => accountRelation(record) === 'own')
+  const own = connections.filter(record => accountRelation(record) === 'own' && !record.via_connection)
 
   // Pi: adding an account is the guided "Use your own model key" flow.
   const keySetup = adding && !editingId && provider === 'pi-cli' && (
@@ -593,26 +587,20 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       {notice.signInUrl && <button type="button" className="font-medium underline" onClick={() => window.electronAPI?.openExternal?.(notice.signInUrl!)}>Open sign-in</button>}
     </p>
   )
-  // "Use <server>'s login on this Mac": the program runs here, on the company login the server holds.
-  const useCompany = async (server: DesktopConnection) => {
-    setBusy(true); setError(null)
-    try {
-      await desktopRequest(`/${encodeURIComponent(server.id)}/company-accounts`, 'POST', { provider })
-      changed()
-    } catch (addError) { setError(addError instanceof Error ? addError.message : 'Could not add the account.') }
-    finally { setBusy(false); void loadCompany(server.id) }
-  }
-  const offering = onThisMac && manage ? servers.filter(server => company[server.id] && company[server.id].state !== 'not_offered') : []
-  const companySection = offering.length > 0 && <div className="mt-5">
-    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Your company's login</div>
-    <ul className="space-y-2">
-      {offering.map(server => {
-        const entry = company[server.id]
-        return <li key={server.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          <span className="text-gray-700 dark:text-gray-300"><span className="font-medium">{server.name}</span>: runs {providerLabel || provider} on this Mac with {server.name}'s login</span>
-          {entry.state === 'added' && <span className="text-emerald-600 dark:text-emerald-400">✓ Added to your accounts</span>}
-          {entry.state === 'available' && <button type="button" disabled={busy} className={secondaryButtonClass} onClick={() => void useCompany(server)}>Use on this Mac</button>}
-          {entry.state === 'unavailable' && <span className="text-gray-500 dark:text-gray-400">{entry.reason}</span>}
+  // A connected server's company login, used from this Mac: added and removed by the backend as the server allows.
+  // The program runs here; the server applies its own limits and records the usage.
+  const companyRows = connections.filter(record => record.via_connection)
+  const companySection = companyRows.length > 0 && <div className="mt-5">
+    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">From your company's servers</div>
+    <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+      {companyRows.map(record => {
+        const server = servers.find(item => item.id === record.via_connection)?.name || 'your server'
+        return <li key={record.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><Users className="h-4 w-4" /></div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{record.display_name}</p>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Runs on this Mac with {server}'s login. {server}'s limits apply and the usage counts there.</p>
+          </div>
         </li>
       })}
     </ul>

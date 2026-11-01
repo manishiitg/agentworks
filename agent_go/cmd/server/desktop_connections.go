@@ -141,6 +141,7 @@ func readDesktopConnections(owner string) ([]desktopConnection, error) {
 	return records, err
 }
 func writeDesktopConnections(owner string, records []desktopConnection) error {
+	defer forgetCompanySync(owner)
 	path, err := desktopConnectionFile(owner)
 	if err != nil {
 		return err

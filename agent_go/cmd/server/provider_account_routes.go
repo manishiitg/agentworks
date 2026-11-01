@@ -136,6 +136,7 @@ func (api *StreamingAPI) handleProviderConnections(w http.ResponseWriter, r *htt
 	}
 	switch r.Method {
 	case http.MethodGet:
+		api.syncCompanyAccounts(r.Context(), userID)
 		connections, err := api.listProviderAccountViews(r.Context(), userID, currentUserIsAdmin(r), providerAccountScope{Principal: userID, WorkspacePath: r.URL.Query().Get("workspace_path"), Product: r.URL.Query().Get("product")})
 		if err != nil {
 			http.Error(w, "cannot load provider connections", http.StatusInternalServerError)
