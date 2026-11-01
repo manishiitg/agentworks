@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -252,6 +253,15 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 	accountHome, err := providerConnectionHome(record.ID)
 	if err != nil {
 		return nil, err
+	}
+	// A company account signs in only with what this Mac writes for it. A login file linked in from elsewhere (seen:
+	// .codex/auth.json linked to the person's own Codex login) would make it refuse to start: drop the link, never its
+	// target.
+	if record.ViaConnection != "" && checkPrivateProviderCredentialLinks(accountHome) != nil {
+		log.Printf("[DESKTOP_ACCOUNT] company %s account %s: removed a login file linked from elsewhere", record.Provider, record.ID)
+		if err := detachPrivateProviderCredentialLinks(accountHome); err != nil {
+			return nil, err
+		}
 	}
 	if err := checkPrivateProviderCredentialLinks(accountHome); err != nil {
 		return nil, err
