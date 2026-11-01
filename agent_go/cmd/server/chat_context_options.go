@@ -477,6 +477,31 @@ func (api *StreamingAPI) compactChatNow(owner string, tab chatContextTab, afterT
 	return http.StatusAccepted, "Compacting this chat now."
 }
 
+// startClaudeTerminalNow starts the chat's Claude Code terminal at once when the person turns it on: the same
+// internal turn as "Compact now", built as for the next message, which starts Claude in the terminal instead of
+// compacting. A chat with no message since the server started has no turn to build from; its terminal starts
+// with the next message, as before.
+func (api *StreamingAPI) startClaudeTerminalNow(owner string, tab chatContextTab) string {
+	sessionID := tab.Record.SessionID
+	chat, _, refusal := chatCompactRefusal(sessionID)
+	if refusal != "" || chat.lastPerson.IsZero() {
+		log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=start result=deferred reason=%q", sessionID, owner, refusal)
+		return "The terminal starts with your next message."
+	}
+	runAs := api.idleCompactOwner(sessionID, chat.personUser)
+	if runAs != strings.TrimSpace(owner) {
+		return "The terminal starts with the next message."
+	}
+	run := newIdleCompactRun()
+	run.manual, run.startTerminal = true, true
+	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
+		return "The terminal starts with your next message."
+	}
+	log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=start reason=switched_on", sessionID, owner)
+	go api.runIdleCompaction(sessionID, runAs, chat, 0, 0, run)
+	return "Starting Claude Code in the terminal."
+}
+
 // compactChatAfterTurn waits (up to 15 minutes) for the chat's turns to end, then compacts it once.
 func (api *StreamingAPI) compactChatAfterTurn(owner string, tab chatContextTab) {
 	sessionID := tab.Record.SessionID
@@ -554,6 +579,9 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 		retireProductCodingCLI(tab.Record.SessionID, "claude runtime changed")
 	}
 	status, message := http.StatusOK, ""
+	if runtimeChanged && !afterTurn && tab.Identity.ClaudeTerminal {
+		message = api.startClaudeTerminalNow(owner, tab)
+	}
 	switch strings.TrimSpace(input.Action) {
 	case "":
 	case "compact":
