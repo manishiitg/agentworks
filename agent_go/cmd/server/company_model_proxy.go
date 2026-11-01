@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -242,6 +243,86 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 	}
 	if err := api.tokenLimitLedger().Append(entry); err != nil {
 		log.Printf("[COST_LEDGER] Mac use of the %s account by %s not recorded: %v", provider, caller, err)
+	}
+}
+
+// companyProxyCatalogs is where each program asks for its model catalog, relative to the root of its address. Muse's
+// full-screen program will not start without it (exec does not need it). The catalog carries each model's settings,
+// so the server serves the provider's own catalog, which a root job on the server refreshes next to the proxy key.
+var companyProxyCatalogs = map[string]string{"muse-cli": "/muse-code/models"}
+
+// GET /api/model-proxy/{provider}/catalog — on the server: the program's model catalog, for people who may use the
+// server's account.
+func (api *StreamingAPI) handleCompanyModelCatalog(w http.ResponseWriter, r *http.Request) {
+	caller, ok := requireSignedIn(w, r)
+	if !ok {
+		return
+	}
+	if u := GetUserFromContext(r.Context()); u == nil || u.AccessToken != nil {
+		desktopJSONError(w, 403, "Use the Mac app's connection to this server.")
+		return
+	}
+	provider := mux.Vars(r)["provider"]
+	if _, _, configured := companyModelProxyUpstream(); !configured || companyProxyCatalogs[provider] == "" {
+		desktopJSONError(w, 404, "Not found.")
+		return
+	}
+	if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: caller}, provider, "global:"+provider); err != nil {
+		desktopJSONError(w, 403, err.Error())
+		return
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(companyProxyKeyFile), provider+"-catalog.json"))
+	if err != nil {
+		log.Printf("[MODEL_PROXY] %s catalog unavailable: %v", provider, err)
+		desktopJSONError(w, 503, "The server has no model list for this program yet.")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(raw)
+}
+
+// GET /muse-code/models (and other programs' catalog paths) — on the Mac: the program asks at the root of its
+// address, so the account is found by the key it presents; then the server's catalog is fetched over the connection.
+func (api *StreamingAPI) handleDesktopModelCatalog(provider string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err != nil || !net.ParseIP(host).IsLoopback() {
+			desktopJSONError(w, 403, "Only programs on this Mac can use this.")
+			return
+		}
+		records, err := loadProviderConnections(r.Context())
+		if err != nil {
+			desktopJSONError(w, 500, "Cannot read your accounts.")
+			return
+		}
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		var record *storedProviderConnection
+		for i := range records {
+			if records[i].ViaConnection != "" && records[i].Provider == provider && token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(records[i].Credential)) == 1 {
+				record = &records[i]
+			}
+		}
+		if record == nil {
+			desktopJSONError(w, 401, "Unknown account.")
+			return
+		}
+		c, err := desktopConnectionFor(record.OwnerUserID, record.ViaConnection)
+		if err != nil {
+			desktopJSONError(w, 502, "The server connection is gone. Connect to the server again in the Mac app.")
+			return
+		}
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, c.Server+"/api/model-proxy/"+provider+"/catalog", nil)
+		if err != nil {
+			desktopJSONError(w, 500, "Cannot reach the server.")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+		resp, err := desktopHTTPClient().Do(req)
+		if err != nil {
+			desktopJSONError(w, 502, "Cannot reach "+c.Name+".")
+			return
+		}
+		defer resp.Body.Close()
+		copyProxyResponse(w, resp, nil)
 	}
 }
 
