@@ -13,7 +13,13 @@ if [[ -x "$prefix/bin/rsync" ]]; then
 fi
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
-curl -fsSL --connect-timeout 15 --max-time 120 --proto '=https' --tlsv1.2 "https://download.samba.org/pub/rsync/rsync-$version.tar.gz" -o "$stage/source.tgz"
+# samba.org is the home; the project's GitHub release carries the same file (same checksum) when it is down.
+for source in "https://download.samba.org/pub/rsync/rsync-$version.tar.gz" "https://github.com/RsyncProject/rsync/releases/download/v$version/rsync-$version.tar.gz"; do
+  curl -fsSL --connect-timeout 15 --max-time 120 --proto '=https' --tlsv1.2 "$source" -o "$stage/source.tgz" && break
+  echo "rsync source unavailable from $source; trying the next one" >&2
+  rm -f "$stage/source.tgz"
+done
+[[ -s "$stage/source.tgz" ]] || { echo 'rsync source could not be downloaded' >&2; exit 1; }
 actual="$(shasum -a 256 "$stage/source.tgz" | cut -d' ' -f1)"
 [[ "$actual" == "$sha" ]] || { echo 'rsync source checksum mismatch' >&2; exit 1; }
 tar -xzf "$stage/source.tgz" -C "$stage"
