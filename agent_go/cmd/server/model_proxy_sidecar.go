@@ -348,7 +348,8 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 		return
 	}
 	provider := mux.Vars(r)["provider"]
-	if _, ok := modelProxyLogins[provider]; !ok || modelProxyBinary() == "" {
+	direct := companyLendsDirectly(r.Context(), provider)
+	if _, ok := modelProxyLogins[provider]; direct == "" && (!ok || modelProxyBinary() == "") {
 		desktopJSON(w, modelProxyProgramStatus{})
 		return
 	}
@@ -360,11 +361,27 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 		_ = json.Unmarshal(raw, &input)
 		switch input.Action {
 		case "sign_in":
+			if direct != "" {
+				// A key or the server's Cursor account: nothing to sign in; check it works, then turn it on.
+				if direct == "cursor" {
+					if _, err := serverCursorSession(r.Context()); err != nil {
+						desktopJSONError(w, 502, err.Error())
+						return
+					}
+				}
+				if err := os.WriteFile(lendFile(provider), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600); err != nil {
+					desktopJSONError(w, 500, "Could not turn it on.")
+					return
+				}
+				log.Printf("[MODEL_PROXY] %s turned on for the Mac app by %s (%s)", provider, GetUserFromContext(r.Context()).UserID, direct)
+				break
+			}
 			if _, err := startModelProxySignIn(provider); err != nil {
 				desktopJSONError(w, 502, err.Error())
 				return
 			}
 		case "sign_out":
+			_ = os.Remove(lendFile(provider))
 			if dir, err := modelProxyDir(); err == nil {
 				for _, file := range modelProxyLoginFiles(dir, provider) {
 					_ = os.Remove(file)
@@ -401,7 +418,7 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
-	status := modelProxyProgramStatus{Available: true, SignedInAs: modelProxySignedInAs(provider)}
+	status := modelProxyProgramStatus{Available: true, SignedInAs: companyLendingLabel(r.Context(), provider)}
 	companyProxy.Lock()
 	if signIn := companyProxy.signIns[provider]; signIn != nil && signIn.cmd.ProcessState == nil && status.SignedInAs == "" {
 		status.SigningIn = signIn

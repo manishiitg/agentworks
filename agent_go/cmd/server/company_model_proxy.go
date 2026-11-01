@@ -28,13 +28,13 @@ import (
 )
 
 // companyProxyModels is each program the server can lend through its model proxy, and the model names it may ask for.
-var companyProxyModels = map[string]string{"muse-cli": "muse-", "codex-cli": "gpt-", "claude-code": "claude-"}
+var companyProxyModels = map[string]string{"muse-cli": "muse-", "codex-cli": "gpt-", "claude-code": "claude-", "cursor-cli": ""}
 
 // companyProxyPaths are the only proxy routes a program needs.
 var companyProxyPaths = map[string]bool{"responses": true, "models": true, "messages": true, "messages/count_tokens": true}
 
 // companyProxyHeaders are the request headers a program's API needs passed through (Anthropic's version and betas).
-var companyProxyHeaders = []string{"Accept", "Anthropic-Version", "Anthropic-Beta"}
+var companyProxyHeaders = []string{"Accept", "Anthropic-Version", "Anthropic-Beta", "Openai-Beta"}
 
 func copyProxyHeaders(to, from *http.Request) {
 	for _, name := range companyProxyHeaders {
@@ -225,12 +225,7 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		return
 	}
 	provider, path := mux.Vars(r)["provider"], mux.Vars(r)["path"]
-	if _, offered := companyProxyModels[provider]; !offered || !providerEnabled(provider) || modelProxySignedInAs(provider) == "" {
-		desktopJSONError(w, 404, "This server does not offer its "+providerAccountProductName(provider)+" account for use on your Mac.")
-		return
-	}
-	base, key, configured := companyModelProxyUpstream()
-	if !configured {
+	if _, offered := companyProxyModels[provider]; !offered || !providerEnabled(provider) || companyLendingLabel(r.Context(), provider) == "" {
 		desktopJSONError(w, 404, "This server does not offer its "+providerAccountProductName(provider)+" account for use on your Mac.")
 		return
 	}
@@ -243,6 +238,20 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		desktopJSONError(w, 403, err.Error())
 		return
 	}
+	// A key or Cursor relay has no proxy model list: the Mac only asks whether the program is offered.
+	if path == "models" && (companyLendsDirectly(r.Context(), provider) != "" || provider == "cursor-cli") {
+		desktopJSON(w, map[string]any{"object": "list", "data": []map[string]string{{"id": provider, "object": "model"}}})
+		return
+	}
+	if provider == "cursor-cli" {
+		desktopJSONError(w, 404, "Not found.")
+		return
+	}
+	base, sign, configured := companyUpstream(r.Context(), provider)
+	if !configured {
+		desktopJSONError(w, 404, "This server does not offer its "+providerAccountProductName(provider)+" account for use on your Mac.")
+		return
+	}
 	body, model, err := readProxyRequest(r, provider)
 	if err != nil {
 		desktopJSONError(w, 400, err.Error())
@@ -252,14 +261,14 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		desktopJSONError(w, 400, err.Error())
 		return
 	}
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, base+"/v1/"+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, base+"/"+path, bytes.NewReader(body))
 	if err != nil {
 		desktopJSONError(w, 500, "Cannot reach the model proxy.")
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/json")
 	copyProxyHeaders(req, r)
+	sign(req)
 	started := time.Now()
 	resp, err := companyProxyClient.Do(req)
 	if err != nil {
@@ -307,7 +316,7 @@ func (api *StreamingAPI) handleCompanyModelCatalog(w http.ResponseWriter, r *htt
 		return
 	}
 	provider := mux.Vars(r)["provider"]
-	if companyProxyCatalogs[provider] == "" || modelProxySignedInAs(provider) == "" {
+	if companyProxyCatalogs[provider] == "" || companyLendingLabel(r.Context(), provider) == "" {
 		desktopJSONError(w, 404, "Not found.")
 		return
 	}
@@ -370,6 +379,32 @@ func (api *StreamingAPI) handleDesktopModelCatalog(provider string) http.Handler
 	}
 }
 
+// desktopCompanyCaller checks a program on this Mac presenting a company account's own key, and returns the account
+// and the server connection it runs on.
+func desktopCompanyCaller(w http.ResponseWriter, r *http.Request) (storedProviderConnection, desktopConnection, bool) {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err != nil || !net.ParseIP(host).IsLoopback() {
+		desktopJSONError(w, 403, "Only programs on this Mac can use this.")
+		return storedProviderConnection{}, desktopConnection{}, false
+	}
+	records, err := loadProviderConnections(r.Context())
+	if err != nil {
+		desktopJSONError(w, 500, "Cannot read your accounts.")
+		return storedProviderConnection{}, desktopConnection{}, false
+	}
+	record, ok := companyAccountOnMac(records, mux.Vars(r)["account"])
+	token := proxyCallerKey(r)
+	if !ok || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(record.Credential)) != 1 {
+		desktopJSONError(w, 401, "Unknown account.")
+		return storedProviderConnection{}, desktopConnection{}, false
+	}
+	c, err := desktopConnectionFor(record.OwnerUserID, record.ViaConnection)
+	if err != nil {
+		desktopJSONError(w, 502, "The server connection is gone. Connect to the server again in the Mac app.")
+		return storedProviderConnection{}, desktopConnection{}, false
+	}
+	return record, c, true
+}
+
 // companyAccountOnMac finds the Mac's account for a server's company account, by its local id.
 func companyAccountOnMac(records []storedProviderConnection, id string) (storedProviderConnection, bool) {
 	for _, record := range records {
@@ -389,24 +424,8 @@ func companyAccountBaseURL(record storedProviderConnection) string {
 // over the saved connection. The program proves itself with the account's own key, which only this Mac knows; it
 // never sees the connection's sign-in.
 func (api *StreamingAPI) handleDesktopModelProxy(w http.ResponseWriter, r *http.Request) {
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err != nil || !net.ParseIP(host).IsLoopback() {
-		desktopJSONError(w, 403, "Only programs on this Mac can use this.")
-		return
-	}
-	records, err := loadProviderConnections(r.Context())
-	if err != nil {
-		desktopJSONError(w, 500, "Cannot read your accounts.")
-		return
-	}
-	record, ok := companyAccountOnMac(records, mux.Vars(r)["account"])
-	token := proxyCallerKey(r)
-	if !ok || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(record.Credential)) != 1 {
-		desktopJSONError(w, 401, "Unknown account.")
-		return
-	}
-	c, err := desktopConnectionFor(record.OwnerUserID, record.ViaConnection)
-	if err != nil {
-		desktopJSONError(w, 502, "The server connection is gone. Connect to the server again in the Mac app.")
+	record, c, ok := desktopCompanyCaller(w, r)
+	if !ok {
 		return
 	}
 	path := mux.Vars(r)["path"]
@@ -530,6 +549,15 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 			}
 			record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: provider, DisplayName: names[id] + " · " + providerAccountProductName(provider) + " (company)",
 				OwnerUserID: owner, Scope: "user", AuthMethod: "api_key", UpdatedAt: time.Now().UTC(), ViaConnection: id}, Credential: hex.EncodeToString(secret)}
+			switch provider {
+			case "cursor-cli":
+				// Cursor signs in from a login file in the account's home; its key mode needs a real key.
+				record.AuthMethod, record.Credential = "cli_login", cursorPlaceholderLogin(record.Credential)
+			case "claude-code":
+				record.Credential = "sk-ant-oat01-agentworks-" + record.Credential
+			case "codex-cli":
+				record.Credential = "sk-agentworks-" + record.Credential
+			}
 			next = append(next, record)
 			changed = true
 			log.Printf("[DESKTOP_ACCOUNT] %s: company %s account of connection %s added as %s", owner, provider, id, record.ID)
