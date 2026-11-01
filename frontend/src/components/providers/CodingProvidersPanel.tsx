@@ -3,7 +3,7 @@ import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
 import ConversationsOverview from './ConversationsOverview'
-import { ProvidersOverview, ServersOverview } from './ProvidersOverview'
+import { ServersOverview } from './ProvidersOverview'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -136,8 +136,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
-  // On the Mac app the page opens on the overview of this Mac and its servers; a server's website opens a program.
-  const [view, setView] = useState<'overview' | 'servers' | 'provider' | 'costs' | 'chats'>(() => window.electronAPI?.getDesktopConnection?.() === 'local' && !initialProviderId && !new URLSearchParams(window.location.search).get('provider') ? 'overview' : 'provider')
+  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'chats'>('provider')
   // "Use your own model key" opens Pi's add flow (PLAT-717).
   const [keyRequest, setKeyRequest] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -151,15 +150,15 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const canReview = useCanReviewCode()
   // On the Mac app: the servers it is connected to, managed here next to the AI accounts they lend.
   const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
-  // On the Mac app: the overview of where each program runs, then the programs, then the connected servers.
-  const macNavItem = (id: 'overview' | 'servers') => {
-    const Icon = id === 'overview' ? Cpu : Server
+  // On the Mac app: the connected servers, after the programs.
+  const macNavItem = (id: 'servers') => {
+    const Icon = Server
     return (
       <button type="button" key={id} onClick={() => setView(id)} aria-pressed={view === id}
         className={`min-w-[10rem] rounded-lg border px-2.5 py-2 text-left transition-colors md:min-w-0 ${view === id ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800' : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'}`}>
         <div className="flex min-h-6 items-center gap-2">
           <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{id === 'overview' ? 'Overview' : 'Servers'}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">Servers</span>
           {id === 'servers' && servers.length > 0 && <span className="text-xs text-gray-400">{servers.length}</span>}
         </div>
       </button>
@@ -329,7 +328,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                 </div>
               ) : (
                 <>
-                {onThisMac && macNavItem('overview')}
                 <div data-tour="providers-list" className="flex gap-1.5 overflow-x-auto md:flex-col md:overflow-x-visible">
                   {orderedProviders.map(provider => (
                     <button
@@ -374,7 +372,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
             </aside>
 
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
-              {view === 'overview' && <ProvidersOverview providers={orderedProviders} onOpen={id => { setSelectedId(id); setView('provider') }} />}
               {view === 'servers' && <ServersOverview providers={orderedProviders} />}
               {canReview && view === 'costs' && <CostsOverview />}
               {canReview && view === 'chats' && <ConversationsOverview />}
