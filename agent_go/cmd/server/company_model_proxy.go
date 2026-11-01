@@ -530,7 +530,7 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 		if record.ViaConnection != "" && record.OwnerUserID == owner {
 			offered, known := want[record.ViaConnection][record.Provider]
 			if _, connected := want[record.ViaConnection]; !connected || (known && !offered) {
-				log.Printf("[DESKTOP_ACCOUNT] %s: company %s account %s removed (connection %s gone or no longer lends it)", owner, record.Provider, record.ID, record.ViaConnection)
+				log.Printf("[DESKTOP_ACCOUNT] %s: company %s account removed (connection %s gone or no longer lends it)", owner, record.Provider, record.ViaConnection)
 				changed = true
 				continue
 			}
@@ -560,7 +560,7 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 			}
 			next = append(next, record)
 			changed = true
-			log.Printf("[DESKTOP_ACCOUNT] %s: company %s account of connection %s added as %s", owner, provider, id, record.ID)
+			log.Printf("[DESKTOP_ACCOUNT] %s: company %s account of connection %s added", owner, provider, id)
 		}
 	}
 	if changed {

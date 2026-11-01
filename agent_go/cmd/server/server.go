@@ -3841,8 +3841,17 @@ func requestLogID(r *http.Request) string {
 }
 
 func requestLogPath(r *http.Request) string {
+	path := r.URL.Path
+	// A company account's id on the Mac works like a credential for its local model proxy: never logged.
+	if rest, ok := strings.CutPrefix(path, "/api/desktop-model-proxy/"); ok {
+		if _, tail, found := strings.Cut(rest, "/"); found {
+			path = "/api/desktop-model-proxy/[account]/" + tail
+		} else {
+			path = "/api/desktop-model-proxy/[account]"
+		}
+	}
 	if r.URL.RawQuery == "" {
-		return r.URL.Path
+		return path
 	}
 	query := r.URL.Query()
 	for _, key := range []string{"token", "access_token", "auth_token"} {
@@ -3850,7 +3859,7 @@ func requestLogPath(r *http.Request) string {
 			query.Set(key, "[REDACTED]")
 		}
 	}
-	return r.URL.Path + "?" + query.Encode()
+	return path + "?" + query.Encode()
 }
 
 // Query endpoint - handles POST requests to start agent streaming.
