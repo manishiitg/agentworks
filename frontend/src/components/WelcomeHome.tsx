@@ -27,6 +27,8 @@ import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from
 import { ServerIdentityIcon } from './workspace/ServerIdentityIcon'
 import { serverIconColors } from '../utils/connectedWorkPresentation'
 import { LocalSetup, LOCAL_SETUP_SEEN_KEY } from './LocalSetup'
+import { MicButton, type MicButtonHandle, type MicState } from '../voice/MicButton'
+import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
@@ -49,6 +51,12 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const currentConnection = hasDesktopConnections() && connections.length > 1 ? connections.find(connection => connection.id === server) : undefined
   const scope = `${server}:${user?.id || ''}`
   const prompt = useRef<HTMLTextAreaElement>(null)
+  const mic = useRef<MicButtonHandle>(null)
+  const micState = useRef<MicState>('idle')
+  const [voiceState, setVoiceState] = useState<MicState>('idle')
+  const [voiceBanner, setVoiceBanner] = useState<HTMLDivElement | null>(null)
+  const voiceAvailable = useCapabilitiesStore(state => state.capabilities?.voice?.available ?? false)
+  const voiceIdentity = captureChatIdentity()
   const [focusPrompt, setFocusPrompt] = useState(false)
   const operation = useRef(0)
   const [agentWorksError, setAgentWorksError] = useState('')
@@ -96,12 +104,16 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
 
   useEffect(() => {
     operation.current++; setAgentWorksDraft(''); setAgentWorksError(''); setAgentWorksSending(false)
+    micState.current = 'idle'; setVoiceState('idle')
   }, [scope])
 
   // The new-user setup belongs to the Mac app's own view: it opens once on the first visit there, then from Home.
   const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
   const [setupOpen, setSetupOpen] = useState(() => onThisMac && !isGuideRemembered(LOCAL_SETUP_SEEN_KEY))
   const closeSetup = useCallback(() => { rememberGuide(LOCAL_SETUP_SEEN_KEY); setSetupOpen(false) }, [])
+  useEffect(() => {
+    if (setupOpen || !open) { micState.current = 'idle'; setVoiceState('idle') }
+  }, [setupOpen, open])
   if (!open) return null
 
   const branding = runtimeBrandingConfig()
@@ -122,7 +134,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const askAgentWorks = async (event: FormEvent) => {
     event.preventDefault()
     const message = agentWorksDraft.trim()
-    if (!message || agentWorksSending) return
+    if (!message || agentWorksSending || micState.current !== 'idle') return
     const identity = captureChatIdentity()
     const sequence = ++operation.current
     const current = () => sequence === operation.current && isChatIdentityCurrent(identity)
@@ -160,13 +172,19 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
           {currentConnection && <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">{currentConnection.id !== 'local' && <ServerIdentityIcon connectionId={currentConnection.id} hidden className={`h-3 w-3 ${serverIconColors(connections)[currentConnection.server]}`} />}New work starts on {currentConnection.name}</p>}
           <div className="mt-5">{workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks">
             <form onSubmit={askAgentWorks} className="rounded-2xl border border-border bg-muted/20 p-3 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/20 sm:p-4">
+              <div ref={setVoiceBanner} className="relative" />
               <label htmlFor="welcome-agentworks-message" className="sr-only">Tell AgentWorks what you want to get done</label>
               <textarea ref={prompt} autoFocus={focusPrompt} id="welcome-agentworks-message" value={agentWorksDraft} onChange={event => setAgentWorksDraft(event.target.value)} maxLength={20000} rows={3} disabled={agentWorksSending}
-                onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }}
+                onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (micState.current === 'recording') mic.current?.stopDictation(); else if (micState.current === 'idle') event.currentTarget.form?.requestSubmit() } }}
                 placeholder="Ask AgentWorks to coordinate your agents or help you get work done" className="block w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50" />
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-2"><AgentWorksIcon /><span className="text-xs font-medium">AgentWorks<span className="ml-2 hidden font-normal text-muted-foreground sm:inline">Your agent manager</span></span></span>
-                <button type="submit" aria-label="Send to AgentWorks" title="Send to AgentWorks" disabled={agentWorksSending || !agentWorksDraft.trim()} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{agentWorksSending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowUp aria-hidden="true" className="h-4 w-4" />}</button>
+                <span className="flex shrink-0 items-center gap-2">
+                  {voiceAvailable && !setupOpen && <MicButton key={scope} ref={mic} profileId="" bannerHost={voiceBanner} shortcutEnabled={false} disabled={agentWorksSending}
+                    onStateChange={state => { if (isChatIdentityCurrent(voiceIdentity)) { micState.current = state; setVoiceState(state) } }}
+                    onText={text => { if (!isChatIdentityCurrent(voiceIdentity)) return; setAgentWorksDraft(previous => previous ? `${previous}${/\s$/.test(previous) ? '' : ' '}${text}` : text); prompt.current?.focus() }} />}
+                  <button type="submit" aria-label="Send to AgentWorks" title="Send to AgentWorks" disabled={agentWorksSending || !agentWorksDraft.trim() || voiceState !== 'idle'} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{agentWorksSending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowUp aria-hidden="true" className="h-4 w-4" />}</button>
+                </span>
               </div>
               {agentWorksError && <p role="alert" className="mt-2 text-xs text-destructive">{agentWorksError}</p>}
             </form>

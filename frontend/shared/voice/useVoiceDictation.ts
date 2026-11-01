@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ensurePcmWorklet, startPcmCapture, type PcmCapture } from './pcmCapture'
 
 export type VoiceDictationState = 'idle' | 'starting' | 'listening' | 'finishing' | 'error'
@@ -61,6 +61,7 @@ export function useVoiceDictation(options: VoiceDictationOptions) {
   const committedRef = useRef('')
   const finishWaiterRef = useRef<((text: string) => void) | null>(null)
   const stateRef = useRef<VoiceDictationState>('idle')
+  const mounted = useRef(true)
   const setStateBoth = useCallback((next: VoiceDictationState) => { stateRef.current = next; setState(next) }, [])
 
   const stopCapture = useCallback(() => {
@@ -86,6 +87,19 @@ export function useVoiceDictation(options: VoiceDictationOptions) {
     wsRef.current = null
   }, [])
 
+  // Leaving a composer must release its microphone, including when the
+  // browser's permission prompt is still open.
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      stopCapture()
+      closeSocket()
+      finishWaiterRef.current?.('')
+      finishWaiterRef.current = null
+    }
+  }, [stopCapture, closeSocket])
+
   const start = useCallback(async () => {
     if (stateRef.current === 'starting' || stateRef.current === 'listening' || stateRef.current === 'finishing') return
     onStart?.()
@@ -106,6 +120,7 @@ export function useVoiceDictation(options: VoiceDictationOptions) {
       const audioCtx = new AudioContext()
       audioCtxRef.current = audioCtx
       const workletReady = ensurePcmWorklet(audioCtx)
+      workletReady.catch(() => {})
 
       const ws = new WebSocket(streamUrl())
       ws.binaryType = 'arraybuffer'
@@ -119,8 +134,10 @@ export function useVoiceDictation(options: VoiceDictationOptions) {
       socketOpen.catch(() => {})
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (!mounted.current) { stream.getTracks().forEach(track => track.stop()); return }
       mediaStreamRef.current = stream
       await Promise.all([socketOpen, workletReady])
+      if (!mounted.current) return
 
       ws.onmessage = (event) => {
         let msg: VoiceStreamMessage
@@ -178,14 +195,17 @@ export function useVoiceDictation(options: VoiceDictationOptions) {
       }
       tickLevel()
 
-      captureRef.current = await startPcmCapture(audioCtx, stream, (pcm16) => {
+      const capture = await startPcmCapture(audioCtx, stream, (pcm16) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(pcm16)
       })
+      if (!mounted.current) { capture.stop(); return }
+      captureRef.current = capture
 
       setStateBoth('listening')
     } catch (err) {
       stopCapture()
       closeSocket()
+      if (!mounted.current) return
       setError(err instanceof Error ? err.message : 'microphone access failed')
       setStateBoth('error')
     }
