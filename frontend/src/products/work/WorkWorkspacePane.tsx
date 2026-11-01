@@ -231,12 +231,13 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewOutsideGit, setReviewOutsideGit] = useState(false)
   const [reviewUncommitted, setReviewUncommitted] = useState(false)
-  const [reviewAllChat, setReviewAllChat] = useState(false)
+  const [reviewProject, setReviewProject] = useState(false)
+  const [reviewProjectCheckout, setReviewProjectCheckout] = useState('')
   const [replyReference, setReplyReference] = useState<ReplyFileChangesRef | null>(null)
   const [savedFile, setSavedFile] = useState<SavedFileSelection | null>(null)
   useEffect(() => { setReviewOpen(false); setSavedFile(null); setReplyReference(null) }, [tabId, activeSessionId, contextMode, accessKey])
   useWorkspaceViewTarget('files', target => {
-    setSavedFile(null); setReviewOpen(target === 'review' || target === 'review-project' || target === 'review-outside-git' || target === 'review-uncommitted'); setReviewOutsideGit(target === 'review-outside-git'); setReviewUncommitted(target === 'review-uncommitted'); setReviewAllChat(target === 'review-project')
+    setSavedFile(null); setReviewOpen(target === 'review' || (target === 'review-project' || target.startsWith('review-project:')) || target === 'review-outside-git' || target === 'review-uncommitted'); setReviewOutsideGit(target === 'review-outside-git'); setReviewUncommitted(target === 'review-uncommitted'); setReviewProject((target === 'review-project' || target.startsWith('review-project:'))); setReviewProjectCheckout(target.startsWith('review-project:') ? target.slice('review-project:'.length) : '')
     if (target.startsWith('reply:')) {
       setReplyReference(null)
       try {
@@ -330,7 +331,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{savedFile && contextMode === 'dev' ? <ReplyFileViewer key={JSON.stringify(savedFile)} selection={savedFile} tabId={tabId} onBack={() => { setSavedFile(null); setReviewOpen(true) }} /> : replyReference && replyReference.sessionId === activeSessionId && contextMode === 'dev' ? <ReplyChangesPanel key={`${accessKey}:${replyReference.snapshotId}:${replyReference.checkoutId || ''}:${replyReference.historyScope || ''}`} reference={replyReference} tabId={tabId} onBrowse={() => { setReplyReference(null); setReviewOpen(false) }} /> : reviewOpen && contextMode === 'dev' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${reviewOutsideGit}:${reviewUncommitted}:${reviewAllChat}`} projectHistory={reviewAllChat} outsideGit={reviewOutsideGit} initialScope={reviewUncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => setReviewOpen(false)} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{savedFile && contextMode === 'dev' ? <ReplyFileViewer key={JSON.stringify(savedFile)} selection={savedFile} tabId={tabId} onBack={() => { setSavedFile(null); setReviewOpen(true) }} /> : replyReference && replyReference.sessionId === activeSessionId && contextMode === 'dev' ? <ReplyChangesPanel key={`${accessKey}:${replyReference.snapshotId}:${replyReference.checkoutId || ''}:${replyReference.historyScope || ''}`} reference={replyReference} tabId={tabId} onBrowse={() => { setReplyReference(null); setReviewOpen(false) }} /> : reviewOpen && contextMode === 'dev' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${reviewOutsideGit}:${reviewUncommitted}:${reviewProject}:${reviewProjectCheckout}`} projectHistory={reviewProject} initialCheckoutId={reviewProjectCheckout} outsideGit={reviewOutsideGit} initialScope={reviewUncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => setReviewOpen(false)} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
 

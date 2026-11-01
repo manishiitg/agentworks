@@ -301,6 +301,31 @@ func TestUndoReplyApplyRefusedWhileTurnRunning(t *testing.T) {
 	if w.Code != 409 || !strings.Contains(w.Body.String(), "agents in this Crew finish") {
 		t.Fatalf("project revert ignored another running chat: %d %s", w.Code, w.Body.String())
 	}
+	// A warm retained terminal after a finished chat is not an active writer.
+	api.activeSessionsMux.Lock()
+	api.activeSessions["other-chat"].Status = "completed"
+	api.activeSessions["other-chat"].HasRetainedTmuxSession = true
+	api.activeSessionsMux.Unlock()
+	file := filepath.Join(store.Root, "visible.txt")
+	if err := os.WriteFile(file, []byte("before\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Begin(t.Context(), "idle-revert"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("after\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	record, err := store.Finish(t.Context(), "idle-revert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	api.serveCrewReplyUndo(w, req, root, "", "snapshot_undo", record.ID, store, all, all)
+	restored, readErr := os.ReadFile(file)
+	if w.Code != 200 || readErr != nil || string(restored) != "before\n" {
+		t.Fatalf("idle retained terminal blocked real revert: %d %s %q %v", w.Code, w.Body.String(), restored, readErr)
+	}
 }
 
 func TestChatReviewRecentRepositoriesRespectsFileGrants(t *testing.T) {

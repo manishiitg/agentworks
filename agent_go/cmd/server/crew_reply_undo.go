@@ -52,16 +52,11 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	project := r.URL.Query().Get("history_scope") == "project"
-	if apply && project {
-		roots, found, _ := crewStorageRoots(root)
-		if !found {
-			roots = crewroot.Roots{Virtual: root}
-		}
-		if api.crewSyncIdle(roots) != nil {
-			externalError(w, http.StatusConflict, "turn_running", "Wait until the agents in this Crew finish, then revert.")
-			return
-		}
+	if apply && project && api.crewRevertBusy(root) {
+		externalError(w, http.StatusConflict, "turn_running", "Wait until the agents in this Crew finish, then revert.")
+		return
 	}
+
 	if apply && api.sessionTurnRunning(sessionID) {
 		externalError(w, http.StatusConflict, "turn_running", "Wait until this reply finishes, or press Stop, then revert these changes.")
 		return
@@ -161,4 +156,37 @@ func (api *StreamingAPI) recordCrewReplyUndo(sessionID, root, undone, execution 
 		ID: "file-snapshot:" + record.ID, Type: "reply_file_changes", Timestamp: time.Now(), SessionID: sessionID,
 		ExecutionID: execution, ExecutionKind: "main_agent", TerminalOwnerID: "main:" + sessionID, Data: event,
 	})
+}
+
+// Reverting files must not race another known turn in this shared Crew. Unlike
+// editing handoff, a retained idle terminal does not make the project busy.
+func (api *StreamingAPI) crewRevertBusy(root string) bool {
+	root = canonicalCrewWorkspaceRoot(root)
+	api.activeSessionsMux.RLock()
+	sessions := []string{}
+	busy := false
+	for id, session := range api.activeSessions {
+		if session == nil {
+			continue
+		}
+		at := canonicalCrewWorkspaceRoot(session.WorkspacePath)
+		if at != root && !strings.HasPrefix(at, root+"/") {
+			continue
+		}
+		if session.Status == "running" || session.Status == "paused" || session.HasRunningBackgroundAgents {
+			busy = true
+			break
+		}
+		sessions = append(sessions, id)
+	}
+	api.activeSessionsMux.RUnlock()
+	if busy {
+		return true
+	}
+	for _, id := range sessions {
+		if api.sessionTurnRunning(id) {
+			return true
+		}
+	}
+	return false
 }
