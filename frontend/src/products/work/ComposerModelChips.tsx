@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { BarChart3, Check, ChevronDown, ChevronRight } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, ChevronRight, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -122,7 +122,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     void save(option, model, effortForPick(model, defaults.reasoningEffort, option))
   }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
-  // A quick way out of the menu: this project's usage.
+  // Quick ways out of the menu: the Models page (program and account) and this project's usage.
+  const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
   const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
   // Cursor lists every variant of a model as its own entry; show them the way the Models page does:
   // by company, one row per model, variants as chips, older versions folded away.
@@ -165,6 +166,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} />
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
+    <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Change program or account…</Menu.Item>
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
     {sessionId && <ChatContextItems sessionId={sessionId} modelLabel={label} />}
     <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
