@@ -107,6 +107,10 @@ PY
   if [[ -f "$env_file" ]]; then
     grep -q '^GOG_KEYRING_PASSWORD=' "$env_file" || printf 'GOG_KEYRING_PASSWORD=%s\n' "$(openssl rand -hex 32)" >> "$env_file"
     grep -q '^GOG_KEYRING_BACKEND=' "$env_file" || echo 'GOG_KEYRING_BACKEND=file' >> "$env_file"
+    # The agent and workspace services share this token for MCP file writes; without it every Crew file write over
+    # MCP failed "guarded file write failed" (workspace 503). Generated once per server and kept; both services read it here.
+    sed -i '/^WORKSPACE_API_TOKEN=$/d' "$env_file"
+    grep -q '^WORKSPACE_API_TOKEN=.' "$env_file" || printf 'WORKSPACE_API_TOKEN=%s\n' "$(openssl rand -hex 32)" >> "$env_file"
     chmod 600 "$env_file"
   fi
   activate_checks preflight

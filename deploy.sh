@@ -22,6 +22,7 @@ Servers (each one's host, domain and settings live in the private deployments re
   dominion              legacy host alias for the shared workflow deployment
   check <server|all>    read-only health check of a server (site, certificate, MCP, website callback, release, services, disk)
   report [server]       how each server differs from the standard runtime profile (read-only)
+  agent-test <server> [S1,..]  on-request Crew agent tests (happy paths and security) per provider, in the Smoke test Crew
   smoke <server>        post-deploy smoke check: one real tool call per configured provider over public MCP (PLAT-424); every
                         deploy runs it when the private products/<server>/smoke.env exists. Reports only; never fails a deploy
   slotcheck <server> [basic|full]   the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
@@ -493,6 +494,19 @@ if [[ "$SERVER" == build ]]; then
   name="$(build_release_remote)"
   echo "Build ready: $name (on ${BUILD_HOST:-the build host}:$BUILDS_DIR/$name). Nothing was deployed."
   exit 0
+fi
+
+# ./deploy.sh agent-test <server> [scenario ids]: the on-request Crew agent tests in the server's Smoke test Crew
+# (scripts/agent-test.py); reports, changes only its own side chats.
+if [[ "$SERVER" == agent-test ]]; then
+  [[ $# -ge 1 ]] || { echo "Usage: ./deploy.sh agent-test <server> [S1,S2,...]" >&2; exit 2; }
+  product="$1"; [[ "$product" == excellence ]] && product=agents; [[ "$product" == rts ]] && product=video-studio
+  config="$(deployments_dir)/products/$product/smoke.env"
+  [[ -f "$config" ]] || { echo "No products/$product/smoke.env: this server has no Smoke test Crew yet" >&2; exit 1; }
+  # shellcheck disable=SC1090
+  source "$config"
+  exec python3 -I "$REPO_ROOT/scripts/agent-test.py" --login "$SMOKE_LOGIN" --workspace-id "$SMOKE_WORKSPACE" \
+    ${SMOKE_WORKSPACE_PORT:+--workspace-port "$SMOKE_WORKSPACE_PORT"} ${2:+--only "$2"}
 fi
 
 # ./deploy.sh smoke <server>: the post-deploy smoke check alone (PLAT-424); reports, changes only its own side chats.

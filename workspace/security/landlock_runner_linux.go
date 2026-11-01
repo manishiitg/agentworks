@@ -364,14 +364,14 @@ func browserTempDir() string {
 // environment (sign-in, Supabase, the keyring password, the admin and allow lists, the service tokens). A confined
 // coding CLI and everything it runs inherits the launcher's environment, so without this its built-in shell could
 // print them (PLAT-491: SUPABASE_SERVICE_ROLE_KEY and GOG_KEYRING_PASSWORD were readable from a Crew's native shell).
-// A CLI's OWN login (CLAUDE_CODE_OAUTH_TOKEN, CURSOR_API_KEY, provider keys) and the per-chat scope (SECRET_*, MCP_*)
-// are deliberately not here: the adapters set those for the launch.
-var platformSecretEnvNames = []string{
-	"AUTH_SECRET", "ACCESS_PASSWORD", "GOG_KEYRING_PASSWORD", "ADMIN_USERS", "AUTH_ALLOWED_EMAILS",
-	"CAPLAYER_SERVICE_TOKEN_FILE", "SSH_AUTH_SOCK",
-}
+// The service-wide part is shared with the terminal (serviceSecretEnvNames/Prefixes in environment.go). A CLI's OWN
+// login (CLAUDE_CODE_OAUTH_TOKEN, CURSOR_API_KEY, provider keys) and the per-chat scope (SECRET_* and the per-session
+// MCP_API_TOKEN) are deliberately not here: the adapters set those for the launch. Every other MCP_ service token is.
+var platformSecretEnvNames = append([]string{
+	"AUTH_SECRET", "GOG_KEYRING_PASSWORD", "ADMIN_USERS", "CAPLAYER_SERVICE_TOKEN_FILE",
+}, serviceSecretEnvNames...)
 
-var platformSecretEnvPrefixes = []string{"SUPABASE_", "GLOBAL_SECRET_", "VAULT_"}
+var platformSecretEnvPrefixes = append([]string{"VAULT_"}, serviceSecretEnvPrefixes...)
 
 // platformSecretEnvExtraEnv adds host-specific names (comma separated) to the list above.
 const platformSecretEnvExtraEnv = "AGENTWORKS_CLI_ENV_DENY"

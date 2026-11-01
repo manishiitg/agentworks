@@ -122,6 +122,37 @@ func configuredBrowserExecutable() string {
 	return "/usr/bin/chromium"
 }
 
+// serviceSecretEnvPrefixes and serviceSecretEnvNames are the server's own secrets and settings: no command a person or
+// agent starts may inherit them, from the terminal (buildNativeEnvironment) or from a coding CLI (ScrubPlatformSecretEnv).
+// One list for both: the CLI launcher kept its own copy, it drifted, and Crew agent shells held WORKSPACE_API_TOKEN,
+// MCP_SERVER_API_TOKEN and MCP_BRIDGE_TOKEN_SECRET (PLAT-872-94).
+var serviceSecretEnvPrefixes = []string{
+	"GLOBAL_SECRET_",
+	"CAPLAYER_SERVICE_",
+	"DATABASE_URL",
+	"JWT_SECRET",
+	"LANGFUSE_",
+	"SUPABASE_",
+	// Sign-in configuration (who may sign in, providers) and the gateway's settings are the server's, not a
+	// shell's: AUTH_ALLOWED_EMAILS listed every allowed person in each user's Code terminal (server B 2026-10-06).
+	"AUTH_",
+	"GATEWAY_",
+}
+
+var serviceSecretEnvNames = []string{
+	"WORKSPACE_API_TOKEN",
+	// The server's API token, and the secret that signs per-session bridge tokens when an operator pins it: a shell
+	// holding the secret could mint a token for any session.
+	"MCP_SERVER_API_TOKEN",
+	"MCP_BRIDGE_TOKEN_SECRET",
+	// The app's global login password and the legacy user list (emails and password hashes or passwords): a shell
+	// holding either could sign in as anyone.
+	"ACCESS_PASSWORD",
+	"AUTH_USERS",
+	// The service's SSH agent.
+	"SSH_AUTH_SOCK",
+}
+
 // buildNativeEnvironment inherits the host environment but strips secrets.
 // This preserves PATH, HOME, and tool configs (AWS, Node, Go, etc.) so
 // host-installed CLIs work normally, while preventing accidental leakage
@@ -129,14 +160,7 @@ func configuredBrowserExecutable() string {
 func buildNativeEnvironment() []string {
 	// Env var names (case-insensitive prefix match) that must NOT leak to shell commands.
 	// These are server-internal secrets, not user/agent credentials.
-	blockedPrefixes := []string{
-		"GLOBAL_SECRET_",
-		"CAPLAYER_SERVICE_",
-		"GATEWAY_HUMAN_TOKEN",
-		"DATABASE_URL",
-		"JWT_SECRET",
-		"LANGFUSE_",
-		"SUPABASE_",
+	blockedPrefixes := append([]string{
 		"OPENAI_API_KEY",
 		"ANTHROPIC_API_KEY",
 		"AZURE_OPENAI_",
@@ -147,38 +171,24 @@ func buildNativeEnvironment() []string {
 		"AGENT_MODEL",
 		"DEEP_SEARCH_",
 		"MULTI_USER_",
-		// Per-deployment global secrets (GLOBAL_SECRET_<NAME>) belong to workflows that declare them.
-		"GLOBAL_SECRET_",
-		// Sign-in configuration (who may sign in, providers) and the gateway's settings are the server's, not a
-		// shell's: AUTH_ALLOWED_EMAILS listed every allowed person in each user's Code terminal (server B 2026-10-06).
-		"AUTH_",
-		"GATEWAY_",
-	}
+	}, serviceSecretEnvPrefixes...)
 
 	// Exact env var names to block
 	blockedExact := map[string]bool{
-		"MCP_API_TOKEN":       true,
-		"WORKSPACE_API_TOKEN": true,
-		// The server's API token, and the secret that signs per-session bridge
-		// tokens when an operator pins it: a shell holding the secret could
-		// mint a token for any session.
-		"MCP_SERVER_API_TOKEN":    true,
-		"MCP_BRIDGE_TOKEN_SECRET": true,
+		"MCP_API_TOKEN": true,
 		// The JWT signing and stored-secret encryption key: a shell holding
 		// it could forge sessions and decrypt stored secrets.
 		"AUTH_SECRET": true,
-		// The app's global login password and the legacy user list (emails and password hashes or
-		// passwords): a shell holding either could sign in as anyone.
-		"ACCESS_PASSWORD": true,
-		"AUTH_USERS":      true,
-		// The service's SSH agent and systemd bookkeeping.
-		"SSH_AUTH_SOCK":         true,
+		// systemd bookkeeping.
 		"MEMORY_PRESSURE_WRITE": true,
 		"MEMORY_PRESSURE_WATCH": true,
 		"NOTIFY_SOCKET":         true,
 		"INVOCATION_ID":         true,
 		"JOURNAL_STREAM":        true,
 		"SYSTEMD_EXEC_PID":      true,
+	}
+	for _, name := range serviceSecretEnvNames {
+		blockedExact[name] = true
 	}
 
 	var env []string
