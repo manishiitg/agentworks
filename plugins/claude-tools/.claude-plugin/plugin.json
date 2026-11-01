@@ -1,7 +1,7 @@
 {
   "name": "agentworks-tools",
-  "version": "1.0.6",
-  "description": "AgentWorks messaging tools with compact incoming messages and Reply for Claude Code",
+  "version": "1.0.7",
+  "description": "AgentWorks messaging tools with compact messages and sender labels for Claude Code",
   "author": {
     "name": "AgentWorks"
   },

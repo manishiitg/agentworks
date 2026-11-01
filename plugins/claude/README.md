@@ -1,17 +1,18 @@
 # AgentWorks for Claude
 
-## Compact messages and Reply
+## Compact messages
 
-Claude Code 2.1.287 or later can display incoming AgentWorks messages as compact
-rows with the sender, a short preview, **Expand**, and **Reply**. Reply opens a
-text field and sends through the existing AgentWorks connection to the original
-conversation. Replies to another joined server stay on that server; messages
-from another person's agent keep their ownership label.
+Claude Code 2.1.287 or later can display incoming AgentWorks messages as a short
+preview with the agent name, the person's name for a shared sender, and the
+network when it came through another joined server. The person's label is the
+server-provided username; missing identities are never guessed from message text.
+Long messages keep a few preview lines rather than filling the conversation.
 
-The mod changes only the display. Claude receives the complete original message,
-and Ctrl+O shows the full native transcript with routing details. Existing live
-delivery, access checks and automatic receipts remain in use. A failed send keeps
-your reply available to retry; unchanged retries use the same submission ID.
+Ask Claude to "show the full message" or "reply to that agent". Claude receives
+the complete original message and keeps using the existing AgentWorks tools to
+reply. Ctrl+O shows the native transcript with routing details. The mod only
+changes the display: there are no buttons, panes, extra commands, send calls or
+receipt changes.
 
 After updating the installed plugin, run `/reload-plugins` in Claude to load the
 mod. Claude and your organization's settings decide whether mods can run; review
