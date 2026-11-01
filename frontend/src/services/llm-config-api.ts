@@ -39,7 +39,7 @@ export type ProviderAccountRelation = 'server' | 'own' | 'shared_with_you' | 'sh
 export interface MacAppLending {
   available: boolean
   signed_in_as?: string
-  signing_in?: { url: string; code?: string }
+  signing_in?: { url: string; code?: string; needs_callback?: boolean }
 }
 
 export interface ProviderConnection {
@@ -452,8 +452,8 @@ export const llmConfigService = {
     const response = await llmConfigApi.get(`/api/model-proxy/${encodeURIComponent(provider)}/mac-app`)
     return response.data
   },
-  setMacAppLending: async (provider: string, action: 'sign_in' | 'sign_out'): Promise<MacAppLending> => {
-    const response = await llmConfigApi.post(`/api/model-proxy/${encodeURIComponent(provider)}/mac-app`, { action })
+  setMacAppLending: async (provider: string, action: 'sign_in' | 'sign_out' | 'finish', callbackUrl?: string): Promise<MacAppLending> => {
+    const response = await llmConfigApi.post(`/api/model-proxy/${encodeURIComponent(provider)}/mac-app`, { action, ...(callbackUrl ? { callback_url: callbackUrl } : {}) })
     return response.data
   },
 

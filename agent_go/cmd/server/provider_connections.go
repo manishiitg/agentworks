@@ -266,6 +266,9 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 		switch record.Provider {
 		case "muse-cli":
 			keys.RuntimeEnvironment[llmtypes.MuseBaseURLKey] = companyAccountBaseURL(record)
+		case "claude-code":
+			// Claude Code adds /v1/messages itself.
+			keys.RuntimeEnvironment[llmtypes.AnthropicBaseURLKey] = strings.TrimSuffix(companyAccountBaseURL(record), "/v1")
 		case "codex-cli":
 			// Codex reads its address from its own config, which belongs to this account alone.
 			config := fmt.Sprintf("cli_auth_credentials_store = \"file\"\nopenai_base_url = %q\n", companyAccountBaseURL(record))

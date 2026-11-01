@@ -218,6 +218,13 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     void load()
     return () => { cancelled = true; clearTimeout(timer) }
   }, [provider, onThisMac, manage, server?.can_manage, macApp?.signing_in?.url])
+  const [callbackUrl, setCallbackUrl] = useState('')
+  const finishMacApp = async () => {
+    setBusy(true); setError(null)
+    try { setMacApp(await llmConfigService.setMacAppLending(provider, 'finish', callbackUrl.trim())); setCallbackUrl('') }
+    catch (finishError) { setError(providerApiErrorText(finishError, 'Could not finish the sign-in.')) }
+    finally { setBusy(false) }
+  }
   const changeMacApp = async (action: 'sign_in' | 'sign_out') => {
     setBusy(true); setError(null)
     try { setMacApp(await llmConfigService.setMacAppLending(provider, action)) }
@@ -496,7 +503,16 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           : !macApp.signing_in && <button type="button" disabled={busy} className={secondaryButtonClass} onClick={() => void changeMacApp('sign_in')}>Turn on</button>}
       </div>
       {macApp.signing_in && !macApp.signed_in_as && <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100">
-        <p>Open <a className="font-medium underline" href={macApp.signing_in.url} target="_blank" rel="noreferrer">{macApp.signing_in.url}</a>{macApp.signing_in.code && <> and enter <strong className="font-mono">{macApp.signing_in.code}</strong></>}, then approve with the company's {providerLabel || provider} account. This updates by itself.</p>
+        {macApp.signing_in.needs_callback
+          ? <>
+            <p>1. <a className="font-medium underline" href={macApp.signing_in.url} target="_blank" rel="noreferrer">Open the sign-in</a> and approve with the company's {providerLabel || provider} account.</p>
+            <p className="mt-1">2. Your browser then shows a page that cannot load (an address starting with http://localhost). Copy that whole address and paste it here.</p>
+            <form className="mt-2 flex gap-2" onSubmit={event => { event.preventDefault(); void finishMacApp() }}>
+              <input aria-label="Address after approving" value={callbackUrl} onChange={event => setCallbackUrl(event.target.value)} placeholder="http://localhost:54545/callback?code=…" className={`${inputClass} flex-1`} />
+              <button type="submit" disabled={busy || !callbackUrl.trim()} className={secondaryButtonClass}>Finish</button>
+            </form>
+          </>
+          : <p>Open <a className="font-medium underline" href={macApp.signing_in.url} target="_blank" rel="noreferrer">{macApp.signing_in.url}</a>{macApp.signing_in.code && <> and enter <strong className="font-mono">{macApp.signing_in.code}</strong></>}, then approve with the company's {providerLabel || provider} account. This updates by itself.</p>}
       </div>}
     </div>
   )

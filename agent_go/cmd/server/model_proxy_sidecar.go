@@ -31,16 +31,24 @@ import (
 
 // modelProxyLogins is each program the proxy can hold a login for: its sign-in option and the prefix of the login
 // files it writes.
-var modelProxyLogins = map[string]struct{ flag, prefix string }{
-	"muse-cli":  {"--meta-login", "meta-"},
-	"codex-cli": {"--codex-device-login", "codex-"},
+var modelProxyLogins = map[string]struct {
+	flag, prefix string
+	// callback: the sign-in ends on a page of the server (localhost) that the admin's browser cannot reach; the
+	// admin pastes the address it ended on and it is typed into the sign-in.
+	callback bool
+}{
+	"muse-cli":    {flag: "--meta-login", prefix: "meta-"},
+	"codex-cli":   {flag: "--codex-device-login", prefix: "codex-"},
+	"claude-code": {flag: "--claude-login", prefix: "claude-", callback: true},
 }
 
 type modelProxySignIn struct {
-	URL     string    `json:"url"`
-	Code    string    `json:"code,omitempty"`
-	Started time.Time `json:"started"`
-	cmd     *exec.Cmd
+	URL           string    `json:"url"`
+	Code          string    `json:"code,omitempty"`
+	NeedsCallback bool      `json:"needs_callback,omitempty"`
+	Started       time.Time `json:"started"`
+	cmd           *exec.Cmd
+	stdin         io.WriteCloser
 }
 
 var companyProxy = struct {
@@ -221,11 +229,15 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 	if err != nil {
 		return nil, err
 	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
 	cmd.Stderr = cmd.Stdout
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	signIn := &modelProxySignIn{Started: time.Now(), cmd: cmd}
+	signIn := &modelProxySignIn{Started: time.Now(), cmd: cmd, stdin: stdin, NeedsCallback: login.callback}
 	found := make(chan struct{}, 1)
 	go func() {
 		scanner := bufio.NewScanner(stdout)
@@ -234,10 +246,10 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 			if signIn.URL == "" {
 				signIn.URL = strings.TrimRight(modelProxyURLPattern.FindString(line), ".,)")
 			}
-			if signIn.Code == "" {
+			if signIn.Code == "" && !login.callback {
 				signIn.Code = modelProxyCodePattern.FindString(line)
 			}
-			if signIn.URL != "" && signIn.Code != "" {
+			if signIn.URL != "" && (signIn.Code != "" || login.callback) {
 				select {
 				case found <- struct{}{}:
 				default:
@@ -325,7 +337,8 @@ type modelProxyProgramStatus struct {
 }
 
 // /api/model-proxy/{provider}/mac-app — admins: GET the state of "Use from the Mac app" for the program's
-// admin-managed account; POST {"action": "sign_in" | "sign_out"} turns it on (returns the link and code) or off.
+// admin-managed account; POST {"action": "sign_in" | "sign_out"} turns it on (returns the link and code) or off;
+// {"action": "finish", "callback_url"} completes a sign-in that ends on the server's own page (Claude).
 func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireSignedIn(w, r); !ok {
 		return
@@ -343,7 +356,8 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 		var input struct {
 			Action string `json:"action"`
 		}
-		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&input)
+		raw, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
+		_ = json.Unmarshal(raw, &input)
 		switch input.Action {
 		case "sign_in":
 			if _, err := startModelProxySignIn(provider); err != nil {
@@ -357,6 +371,31 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 				}
 			}
 			log.Printf("[MODEL_PROXY] %s signed out by %s", provider, GetUserFromContext(r.Context()).UserID)
+		case "finish":
+			// The address the Claude sign-in ended on, typed into the waiting sign-in.
+			var finish struct {
+				CallbackURL string `json:"callback_url"`
+			}
+			_ = json.Unmarshal(raw, &finish)
+			companyProxy.Lock()
+			signIn := companyProxy.signIns[provider]
+			companyProxy.Unlock()
+			callback := strings.TrimSpace(finish.CallbackURL)
+			if signIn == nil || signIn.cmd.ProcessState != nil || !signIn.NeedsCallback {
+				desktopJSONError(w, 409, "The sign-in has ended. Turn it on again.")
+				return
+			}
+			if !strings.Contains(callback, "code=") || strings.ContainsAny(callback, "\r\n") {
+				desktopJSONError(w, 400, "Paste the whole address from the browser after approving (it contains code=).")
+				return
+			}
+			if _, err := io.WriteString(signIn.stdin, callback+"\n"); err != nil {
+				desktopJSONError(w, 409, "The sign-in has ended. Turn it on again.")
+				return
+			}
+			for i := 0; i < 40 && modelProxySignedInAs(provider) == ""; i++ {
+				time.Sleep(250 * time.Millisecond)
+			}
 		default:
 			desktopJSONError(w, 400, "Unknown action.")
 			return
