@@ -37,3 +37,20 @@ func resetCrewOwnerCache() {
 	crewOwners.entries = map[string]crewOwnerEntry{}
 	crewOwners.mu.Unlock()
 }
+
+func materializeWorkspaceFixtureFile(t *testing.T, workspace *mockWorkspaceAPI, docs, logical string) {
+	t.Helper()
+	workspace.mu.Lock()
+	content, found := workspace.files[logical]
+	workspace.mu.Unlock()
+	if !found {
+		t.Fatal("workspace writer did not save fixture", logical)
+	}
+	file := filepath.Join(docs, filepath.FromSlash(logical))
+	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
