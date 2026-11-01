@@ -110,6 +110,31 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 	return roots, nil
 }
 
+// Status and send paths run outside the transfer's workspace lock. Re-read
+// under that same lock and change only the requested field, preserving a
+// PendingAction or receipt committed by an in-flight transfer.
+func updateCrewSyncEditing(ctx context.Context, roots crewroot.Roots, pair, editing string) (*crewroot.SyncBinding, error) {
+	unlock, err := wf.LockWorkspace(ctx, roots.Files)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	current, err := crewroot.ReadSync(roots.ID)
+	if err != nil {
+		return nil, err
+	}
+	if current == nil || current.PairID != pair {
+		return nil, fmt.Errorf("paired project is unavailable")
+	}
+	if current.Editing != editing {
+		current.Editing = editing
+		if err := crewroot.WriteSync(roots.ID, *current); err != nil {
+			return nil, err
+		}
+	}
+	return current, nil
+}
+
 // The transport carries project content, never paths or credentials chosen by
 // another machine. Every operation rechecks the destination's actual owner.
 func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) {

@@ -247,11 +247,10 @@ func (api *StreamingAPI) refreshCrewSyncAuthority(ctx context.Context, claims *U
 	if status.Binding == nil || status.Binding.PairID != b.PairID {
 		return connection, fmt.Errorf("paired project is unavailable")
 	}
-	if status.Binding.Editing != b.Editing {
-		b.Editing = status.Binding.Editing
-		if err = crewroot.WriteSync(roots.ID, *b); err != nil {
-			return connection, err
-		}
+	current, err := updateCrewSyncEditing(ctx, roots, b.PairID, status.Binding.Editing)
+	if err != nil {
+		return connection, err
 	}
+	*b = *current
 	return connection, nil
 }

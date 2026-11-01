@@ -78,8 +78,8 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 			}
 			return resume()
 		}
-		b.Editing = "server"
-		if e = crewroot.WriteSync(roots.ID, *b); e != nil {
+		b, e = updateCrewSyncEditing(r.Context(), roots, b.PairID, "server")
+		if e != nil {
 			return fail(e.Error())
 		}
 		response := api.runInternalCrewHandoff(r.Context(), claims, roots.ID, b.ConnectionID, "local")

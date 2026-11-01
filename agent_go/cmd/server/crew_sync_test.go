@@ -326,6 +326,22 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal("handoff retry replaced the newer server turn")
 			}
 			checkWrite(local.FilesPath()+"/note.txt", 409)
+			// Authority refresh must not write an old snapshot over a transfer
+			// that recorded PendingAction after the refresh read its binding.
+			stale, _ := crewroot.ReadSync(local.ID)
+			stale.Editing, stale.PendingAction = "local", ""
+			fresh, _ := crewroot.ReadSync(local.ID)
+			fresh.PendingAction = "download"
+			if err := crewroot.WriteSync(local.ID, *fresh); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := api.refreshCrewSyncAuthority(ctx, owner, local, stale); err != nil {
+				t.Fatal(err)
+			}
+			preserved, _ := crewroot.ReadSync(local.ID)
+			if preserved.PendingAction != "download" || stale.PendingAction != "download" {
+				t.Fatal("stale authority refresh dropped the pending transfer")
+			}
 			if w := call("download", "owner", true); w.Code != 200 {
 				t.Fatalf("background return: %d %s", w.Code, w.Body.String())
 			}
