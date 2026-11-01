@@ -17,7 +17,7 @@ import (
 // work, not a second scheduler policy. Team stamps remain server-owned.
 type scheduleExecutionInput struct {
 	Messages           []string                 `json:"messages,omitempty"`
-	Groups             []string                 `json:"groups,omitempty"`
+	Groups             []string                 `json:"groups"`
 	Routes             map[string]string        `json:"routes,omitempty"`
 	Payload            json.RawMessage          `json:"payload,omitempty"`
 	Condition          *conditiontrigger.Config `json:"condition,omitempty"`

@@ -676,9 +676,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 	variablesPath := fmt.Sprintf("%s/variables/variables.json", hcpo.GetWorkspacePath())
 	variablesExist, existingVariablesManifest, err := hcpo.variableManager.checkExistingVariables(ctx, variablesPath)
 	if err != nil {
-		// Log error but continue without variables (planning agent can create them)
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to check for existing variables: %v - proceeding without variables", err))
-		variablesExist = false
+		return "", fmt.Errorf("read workflow inputs: %w", err)
 	}
 
 	var templatedObjective string
@@ -1140,11 +1138,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 	// Build execution context once from current controller state
 	execCtx := hcpo.buildExecutionContext()
 
-	// Always use batch execution mode (even for single group) to ensure:
-	// - Proper session ID management with actual group name (not "default-group")
-	// - Consistent folder structure (runs/iteration-X/group-Y/)
-	// - Better isolation and cleanup per group
-	enabledGroups := hcpo.getEnabledGroupsForExecution()
+	// The same runner handles an ordinary invocation and named input sets.
+	enabledGroups, err := hcpo.getEnabledGroupsForExecution()
+	if err != nil {
+		return "", err
+	}
 
 	// NOTE: Progress initialization is skipped here because batch execution will handle it per group
 	// Each group has its own run folder and progress file, initialized by ApplyCleanup in runBatchExecution
@@ -1152,14 +1150,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 
 	if len(enabledGroups) == 0 {
 		return "", fmt.Errorf("no enabled variable groups found for execution")
-	}
-
-	// Validate that all groups have valid Names
-	for i, group := range enabledGroups {
-		if group.Name == "" {
-			// PANIC for debugging: name is required for session ID and folder structure
-			panic(fmt.Sprintf("CRITICAL: Group at index %d has empty Name - all groups must have valid names for batch execution. Group values: %v", i, group.Values))
-		}
 	}
 
 	if len(enabledGroups) > 1 {

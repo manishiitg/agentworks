@@ -18,7 +18,7 @@ export function workWorkspacePanels({
       .filter((item) =>
         readOnly
           ? item.id === 'dashboard' && (!enabledPanels || enabledPanels.has('dashboard'))
-          : !enabledPanels || enabledPanels.has(item.id) || item.id === 'suggestions' || (item.id === 'memory' && enabledPanels.has('skills'))
+          : !enabledPanels || enabledPanels.has(item.id) || item.id === 'plan' || item.id === 'suggestions' || (item.id === 'memory' && enabledPanels.has('skills'))
       )
       .filter((item) => isWorkWorkspaceViewEnabled(item.id, undefined)),
     ops: WORK_PANELS.ops

@@ -607,6 +607,14 @@ func workflowExecutionOwnerUserID(manifest *WorkflowManifest) string {
 	if manifest == nil {
 		return ""
 	}
+	if manifest.crewExecutable != nil {
+		owner, found := crewProjectOwnerID(manifest.crewExecutable.CrewRoot)
+		if found && workflowExecutionAccountActive(owner) {
+			return owner
+		}
+		// A Crew's work never switches to a co-owner's machine or logins.
+		return ""
+	}
 	if manifest.Kind == "relay" {
 		// Only a Flow's one Builder runs it unattended: if that account is inactive the run fails closed, and it never falls to
 		// another listed owner (now Run mode), whose slot would write journals into the Flow.

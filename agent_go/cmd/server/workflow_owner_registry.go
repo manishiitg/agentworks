@@ -63,6 +63,15 @@ func workflowOwnerKey(workspacePath string) string {
 
 // workflowOwner is the registered creator of a workflow, or "" when it has none.
 func workflowOwner(workspacePath string) string {
+	binding, err := findCrewExecutable(workspacePath)
+	if err != nil {
+		return ""
+	}
+	if binding != nil {
+		owner, _ := crewProjectOwnerID(binding.CrewRoot)
+		return owner
+	}
+
 	path := workflowOwnersPath()
 	key := workflowOwnerKey(workspacePath)
 	if path == "" || key == "" {

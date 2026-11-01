@@ -154,6 +154,24 @@ func effectiveWorkflowAccessMap(ctx context.Context, claims *UserClaims) (map[st
 }
 
 func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) WorkflowAccessLevel {
+	if m != nil && m.crewExecutable != nil {
+		if claims == nil || userAccessForClaims(claims).Disabled {
+			return WorkflowAccessNone
+		}
+		ref, ok := resolveCrewPath(context.Background(), claims.UserID, m.crewExecutable.CrewRoot)
+		if !ok {
+			return WorkflowAccessNone
+		}
+		switch crewAccessFor(claims, ref) {
+		case crewAccessOwner:
+			return WorkflowAccessOwner
+		case crewAccessReader:
+			return WorkflowAccessRead
+		default:
+			return WorkflowAccessNone
+		}
+	}
+
 	product := "agentworks"
 	if m != nil && m.Kind == "relay" {
 		product = "relays"
