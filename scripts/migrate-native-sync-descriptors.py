@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("docs", type=Path)
+parser.add_argument("--crew", action="append", default=[], help="Only these project IDs; repeat to select several.")
 args = parser.parse_args()
 root = args.docs.resolve() / "_system" / "crew-data"
 stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -25,6 +26,8 @@ def descriptor(value):
     return False
 
 for crew in root.iterdir() if root.exists() else []:
+    if args.crew and crew.name not in args.crew:
+        continue
     if crew.is_symlink() or not crew.is_dir():
         continue
     mirror = crew / "native-mirror.json"
