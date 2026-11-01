@@ -36,7 +36,7 @@ test('PLAT-856-434: verified Mac install preserves standalone CLI and requires e
     const installedHelper = join(appDir, 'AgentWorks.app/Contents/Resources/bin/mcpbridge');
     writeFileSync(installedHelper, 'preserve on second run');
     rmSync(standalone);
-    const reopened = run('/bin/bash', args);
+    const reopened = run('/bin/bash', args, { env: { ...process.env, RUNLOOP_VERSION: 'v1.2.3', RUNLOOP_DMG_PATH: '' } });
     assert.equal(reopened.status, 0, reopened.stderr);
     assert.equal(readFileSync(installedHelper, 'utf8'), 'preserve on second run');
     assert.equal(readlinkSync(standalone), realpathSync(join(appDir, 'AgentWorks.app/Contents/Resources/bin/agentworks')));
@@ -54,6 +54,20 @@ test('PLAT-856-434: verified Mac install preserves standalone CLI and requires e
     assert.equal(readFileSync(installedHelper, 'utf8'), 'preserve on second run');
     const updated = run('/bin/bash', [...args, '--update']);
     assert.equal(updated.status, 0, updated.stdout + updated.stderr);
+    assert.match(readFileSync(installedHelper, 'utf8'), /fixture/);
+    // PLAT-856-435: Restart & Install passes the selected release via env.
+    // Its app has no bundled CLI, so opening it instead cannot finish an update.
+    rmSync(join(appDir, 'AgentWorks.app/Contents/Resources/bin/agentworks'));
+    writeFileSync(installedHelper, 'old app');
+    const handoffTools = join(root, 'handoff-tools'); mkdirSync(handoffTools);
+    // The old process is visible once, then finishes quitting. Never kill it.
+    const quitMarker = join(root, 'quit-observed');
+    writeFileSync(join(handoffTools, 'ps'), '#!/bin/sh\nif [ ! -f "$QUIT_MARKER" ]; then touch "$QUIT_MARKER"; printf "%s/Contents/MacOS/AgentWorks\\n" "$TEST_APP"; fi\n', { mode: 0o755 });
+    const handedOff = run('/bin/bash', [join(repo, 'install.sh'), '--app-dir', appDir, '--bin-dir', bin, '--sha256-file', sum, '--no-open'], {
+      env: { ...process.env, RUNLOOP_VERSION: 'v1.2.3', RUNLOOP_DMG_PATH: dmg, PATH: handoffTools + ':' + process.env.PATH, QUIT_MARKER: quitMarker, TEST_APP: join(appDir, 'AgentWorks.app') },
+    });
+    assert.equal(handedOff.status, 0, handedOff.stdout + handedOff.stderr);
+    assert.equal(existsSync(quitMarker), true);
     assert.match(readFileSync(installedHelper, 'utf8'), /fixture/);
     const checkout = join(root, 'checkout'); mkdirSync(join(checkout, '.git'), { recursive: true });
     const devRefused = run('/bin/bash', [join(repo, 'install.sh'), '--app-dir', checkout, '--bin-dir', bin, '--no-open']);

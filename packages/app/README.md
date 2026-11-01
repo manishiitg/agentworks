@@ -8,20 +8,23 @@ This package is prepared for npm distribution; it is not published by building
 or testing it. A combined desktop release with checksums must exist before
 advertising the public install command.
 
+After publication, install and open the app with `npx @manishiitg/agentworks`.
+The app remains AgentWorks and its bundled CLI remains `agentworks`.
+
 ## Test the unpublished package
 
 From the repository:
 
 ```sh
 npm pack ./packages/app --pack-destination /tmp
-npm exec --yes --package /tmp/agentworks-app-0.1.0.tgz -- agentworks-app --help
+npm exec --yes --package /tmp/manishiitg-agentworks-0.1.0.tgz -- agentworks-app --help
 ```
 
 Install a real locally built DMG into a separate location, leaving your usual
 app, CLI and running AgentBridge alone:
 
 ```sh
-npm exec --yes --package /tmp/agentworks-app-0.1.0.tgz -- agentworks-app \
+npm exec --yes --package /tmp/manishiitg-agentworks-0.1.0.tgz -- agentworks-app \
   --dmg /tmp/AgentWorks-test.dmg --sha256-file /tmp/AgentWorks-test.dmg.sha256 \
   --app-dir /tmp/agentworks-test/Applications --bin-dir /tmp/agentworks-test/bin \
   --no-open
