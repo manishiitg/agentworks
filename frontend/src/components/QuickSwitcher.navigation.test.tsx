@@ -51,7 +51,7 @@ async function renderNavigation(query: string, allowed = ['agentworks', 'work', 
   useAuthStore.setState({ user: { id: 'u1', username: 'u1', is_admin: admin, allowed_products: allowed } as never })
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
   useChatStore.setState({ chatTabs: {}, activeTabId: null, activeSessionsCache: [], getActiveSessions: vi.fn(async () => []) })
-  useProductSurfaceStore.setState({ productSurface: 'relays' })
+  useProductSurfaceStore.setState({ productSurface: 'knowledgebase' })
   seed?.()
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
@@ -249,10 +249,10 @@ it('hides unavailable products and admin-only menus and opens Providers on an al
 
 it('rechecks access if a menu was selected after permission changed', async () => {
   await renderNavigation('@menus ')
-  const users = quickNavigationItems(useAuthStore.getState().user, 'relays').find(item => item.action === 'users')!
+  const users = quickNavigationItems(useAuthStore.getState().user, 'knowledgebase').find(item => item.action === 'users')!
   useAuthStore.setState({ user: { is_admin: false, allowed_products: ['work'] } as never })
   expect(openQuickNavigation(users)).toBe(false)
-  expect(useProductSurfaceStore.getState().productSurface).toBe('relays')
+  expect(useProductSurfaceStore.getState().productSurface).toBe('knowledgebase')
 })
 
 
@@ -398,7 +398,7 @@ it.each(['mcp-gateway', 'relays'])('rejects a stale %s shortcut after local opt-
   const shortcut = quickNavigationItems(useAuthStore.getState().user, 'work').find(item => item.id === `product:${product}`)!
   Object.assign(window.__APP_RUNTIME_CONFIG__!, { localServerProducts: false })
   expect(openQuickNavigation(shortcut)).toBe(false)
-  expect(useProductSurfaceStore.getState().productSurface).toBe('relays')
+  expect(useProductSurfaceStore.getState().productSurface).toBe('knowledgebase')
 })
 
 

@@ -122,12 +122,14 @@ class EntryPointTest(unittest.TestCase):
         for word in ("all-hetzner", "builds", "build [--force]", "--build <name|sha>", "pin|unpin"):
             self.assertIn(word, help_text)
 
-    def test_all_hetzner_never_deploys_dominion(self):
+    def test_all_hetzner_excludes_separated_products(self):
         entry = (DEPLOY.parent / "deploy.sh").read_text()
         block = entry[entry.index("\n  all-hetzner)\n"):entry.index("\n  -h|--help|help)")]
+        # PLAT-856-454: platform batches exclude separately developed products.
         self.assertNotIn("dominion", block.lower().replace("never dominion", ""))
+        self.assertNotIn("sparkquill", block.lower())
         self.assertEqual([l.strip() for l in block.splitlines() if l.strip().startswith("deploy_rootless_product ")],
-                         ["deploy_rootless_product agents", "deploy_rootless_product confida", "deploy_rootless_product sparkquill"])
+                         ["deploy_rootless_product agents", "deploy_rootless_product confida"])
 
 
 
