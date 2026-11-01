@@ -71,7 +71,7 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 			groups[id] = append(groups[id], change)
 			labels[id] = change.Checkout
 		}
-		if comparison.Note != "" || record.Status == "partial" {
+		if comparison.Note != "" {
 			out.Note = "Some project changes could not be captured or compared."
 		}
 		if len(groups) == 0 {
@@ -97,9 +97,6 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 			}
 			summary := reviewSummary(filesnapshots.Comparison{Changes: changes})
 			capture := projectCapture{SnapshotID: record.ID, At: record.StartedAt, chatReviewSummary: summary, Note: comparison.Note}
-			if record.Status == "partial" && capture.Note == "" {
-				capture.Note = "Some files were not captured."
-			}
 			if label := labels[id]; label != nil {
 				capture.Branch = label.Branch
 				for _, change := range changes {

@@ -158,6 +158,16 @@ func TestGitReviewRestoredDirtyFileIsIncompleteAcrossSwitch(t *testing.T) {
 	if err != nil || denied.Note != "" || len(denied.Changes) != 0 {
 		t.Fatalf("incomplete metadata bypassed current grants: %v %+v", err, denied)
 	}
+	// PR532: cached incompleteness must obey the same grant rule as diffs.
+	summary, err := f.s.SavedSummary(ctx, r.ID, func(string) bool { return true })
+	if err != nil || !summary.Incomplete {
+		t.Fatalf("visible incomplete checkout lost its warning: %v %+v", err, summary)
+	}
+	t.Setenv("PATH", t.TempDir())
+	summary, err = f.s.SavedSummary(ctx, r.ID, func(string) bool { return false })
+	if err != nil || summary.Incomplete || len(summary.Changes) != 0 {
+		t.Fatalf("cached incomplete metadata bypassed grants: %v %+v", err, summary)
+	}
 }
 
 // PR460: returning a later branch's file to the initial branch's HEAD is a
