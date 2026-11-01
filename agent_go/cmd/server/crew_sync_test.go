@@ -495,18 +495,19 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err = os.WriteFile(sourcePath, row, 0600); err != nil {
 		t.Fatal(err)
 	}
-	moved.Muse, err = musecli.ExportNativeSession(sourceHome, id, source)
+	mb, err := musecli.ExportNativeSession(sourceHome, id, source)
+	moved.Native = crewMuseBundle(mb, "structured")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = stageCrewMuse(roots, moved.Muse); err != nil {
+	if err = stageCrewNative(roots, moved.Native); err != nil {
 		t.Fatal(err)
 	}
 	// PLAT-856-442: a failed next transfer must not invalidate offline resume.
 	if err = saveCrewNativeMirror(roots, &moved); err != nil {
 		t.Fatal(err)
 	}
-	staged := filepath.Join(moved.Muse.Root, "session.jsonl")
+	staged := filepath.Join(moved.Native.Root, "session.jsonl")
 	if err = os.WriteFile(staged+".partial", []byte("interrupted replacement"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -527,11 +528,12 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 		t.Fatal(err)
 	}
 	fork := moved
-	fork.Muse, err = musecli.ExportNativeSession(sourceHome, id, source)
+	mb, err = musecli.ExportNativeSession(sourceHome, id, source)
+	fork.Native = crewMuseBundle(mb, "structured")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = stageCrewMuse(roots, fork.Muse); err != nil {
+	if err = stageCrewNative(roots, fork.Native); err != nil {
 		t.Fatal(err)
 	}
 	if err = saveCrewNativeMirror(roots, &fork); err == nil || !strings.Contains(err.Error(), "both copies were kept") {

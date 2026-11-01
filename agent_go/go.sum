@@ -253,6 +253,8 @@ github.com/manishiitg/mcpagent v1.7.12-0.20261029112022-ca62a5dccaa0 h1:wPrT+fHN
 github.com/manishiitg/mcpagent v1.7.12-0.20261029112022-ca62a5dccaa0/go.mod h1:w0LAHsH+VkS63TvQuUJP2QMzoA/LMvNqMcpFnUdlH+w=
 github.com/manishiitg/mcpagent v1.7.12-0.20261029172800-0ab699cecd2f h1:BJCXztYwTOmkHT+rU/3iJPhHkQj3gljYymxdtFwu4HI=
 github.com/manishiitg/mcpagent v1.7.12-0.20261029172800-0ab699cecd2f/go.mod h1:w0LAHsH+VkS63TvQuUJP2QMzoA/LMvNqMcpFnUdlH+w=
+github.com/manishiitg/mcpagent v1.7.12-0.20261101152206-9b00ecaf0cd2 h1:gmHI162GpqF21bdJT7VEgGUIKPjl6MOpPQmRb8Nwx1U=
+github.com/manishiitg/mcpagent v1.7.12-0.20261101152206-9b00ecaf0cd2/go.mod h1:GdGx+mCyRjEwSuutEKTvsVqIRLI4D6EwRyAJM+SLXhM=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261022063829-a9567e9cb526 h1:cIkuS26PzSru2diFqKhtTVt9FTFnig9KkHeQdw0//g8=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261022063829-a9567e9cb526/go.mod h1:fr7WUUOqYFzI7+2zVubwRK7GoL/tfyf2fuKzqxONOUI=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261022143203-f8ae92ef3209 h1:EniFvZwkoNg1ORlLB2ebfmJps49Mzm09V72rHUZerRQ=
@@ -445,6 +447,8 @@ github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261101142804-332b80d63e36
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261101142804-332b80d63e36/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261101150927-4ef556af4dd0 h1:51hSlDgoyEInknbirUAF3L80hTohPQBT1vZQCznahIM=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261101150927-4ef556af4dd0/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261101152010-b9cf24ad31fa h1:JXQBcj1xjSwMGQPQ6kKGo8fq84JmKe7ynrOsLISkvzs=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261101152010-b9cf24ad31fa/go.mod h1:AIrs6ufwUk40d9pI/P8+vCGn2P6D14UqHrxfp4KZBA8=
 github.com/mark3labs/mcp-go v1.0.0 h1:CZqCzXwUiTOstkIdW1MyOZGuM+LaKMEJSu+ZYluN4DU=
 github.com/mark3labs/mcp-go v1.0.0/go.mod h1:r2fW4o3wsoJ7IMsx1Wuq5xeP8PRGXPDfNveoGAYbb/s=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=

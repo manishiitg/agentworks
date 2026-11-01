@@ -20,7 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 var crewNativeLocks sync.Map
@@ -30,7 +30,7 @@ func crewNativeLock(roots crewroot.Roots, id string) *sync.Mutex {
 	return value.(*sync.Mutex)
 }
 
-func pruneCrewNativeStage(stage string, b *musecli.NativeSessionBundle) error {
+func pruneCrewNativeStage(stage string, b *sessiontransfer.Bundle) error {
 	return filepath.WalkDir(stage, func(path string, d os.DirEntry, e error) error {
 		if e != nil {
 			return e
@@ -66,7 +66,7 @@ func pruneOldCrewNativeStages(roots crewroot.Roots, id string) {
 
 // This private directory is outside both the project file snapshot and the
 // CLI's writable home. Never use a path supplied by a transfer descriptor.
-func crewNativeStage(roots crewroot.Roots, b *musecli.NativeSessionBundle) (string, error) {
+func crewNativeStage(roots crewroot.Roots, b *sessiontransfer.Bundle) (string, error) {
 	if err := b.Validate(); err != nil {
 		return "", err
 	}
@@ -78,7 +78,7 @@ func crewNativeStage(roots crewroot.Roots, b *musecli.NativeSessionBundle) (stri
 		return "", fmt.Errorf("this native session exceeds the configured sync capacity")
 	}
 	root := roots.Private
-	for _, part := range []string{"native-sync", b.SessionID, "journals"} {
+	for _, part := range []string{"native-sync", b.Provider + "-" + b.SessionID, "journals"} {
 		root = filepath.Join(root, part)
 		if err := os.Mkdir(root, 0700); err != nil && !os.IsExist(err) {
 			return "", err
@@ -91,11 +91,11 @@ func crewNativeStage(roots crewroot.Roots, b *musecli.NativeSessionBundle) (stri
 	return root, nil
 }
 
-func stageCrewMuse(roots crewroot.Roots, b *musecli.NativeSessionBundle) error {
+func stageCrewNative(roots crewroot.Roots, b *sessiontransfer.Bundle) error {
 	if b == nil {
 		return nil
 	}
-	lock := crewNativeLock(roots, b.SessionID)
+	lock := crewNativeLock(roots, b.Provider+"-"+b.SessionID)
 	lock.Lock()
 	defer lock.Unlock()
 	if err := b.ValidateFiles(); err != nil {
@@ -154,7 +154,7 @@ func stageCrewMuse(roots crewroot.Roots, b *musecli.NativeSessionBundle) error {
 	return fsutil.WriteJSONAtomic(filepath.Join(filepath.Dir(stage), "manifest.json"), b, 0600)
 }
 
-func bindCrewMuseStage(roots crewroot.Roots, b *musecli.NativeSessionBundle) error {
+func bindCrewNativeStage(roots crewroot.Roots, b *sessiontransfer.Bundle) error {
 	if b == nil {
 		return nil
 	}
@@ -210,11 +210,11 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	defer conn.Close()
 	conn.SetReadLimit(1 << 20)
 	conn.SetReadDeadline(time.Now().Add(15 * time.Minute))
-	var b musecli.NativeSessionBundle
+	var b sessiontransfer.Bundle
 	if err = conn.ReadJSON(&b); err != nil {
 		return
 	}
-	lock := crewNativeLock(roots, b.SessionID)
+	lock := crewNativeLock(roots, b.Provider+"-"+b.SessionID)
 	if !lock.TryLock() {
 		conn.WriteJSON(map[string]string{"error": "This session is syncing; retry shortly."})
 		return
@@ -231,9 +231,9 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if direction == "pull" {
-		var saved musecli.NativeSessionBundle
+		var saved sessiontransfer.Bundle
 		raw, e := os.ReadFile(filepath.Join(filepath.Dir(stage), "manifest.json"))
-		if e != nil || json.Unmarshal(raw, &saved) != nil || !reflect.DeepEqual(saved.Files, b.Files) || saved.Workspace != b.Workspace {
+		if e != nil || json.Unmarshal(raw, &saved) != nil || !reflect.DeepEqual(saved, b) {
 			conn.WriteJSON(map[string]string{"error": "The session changed; sync it again."})
 			return
 		}
@@ -275,7 +275,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 			}
 		}
 		if err == nil {
-			pruneOldCrewNativeStages(roots, b.SessionID)
+			pruneOldCrewNativeStages(roots, b.Provider+"-"+b.SessionID)
 		}
 	}
 	result := map[string]any{"complete": err == nil}
@@ -283,12 +283,12 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 		result["error"] = err.Error()
 	}
 	conn.WriteJSON(result)
-	log.Printf("[NATIVE_SYNC] project=%s provider=muse-cli native_session=%s direction=%s sent=%d received=%d complete=%t", roots.ID, b.SessionID, direction, stream.Sent, stream.Received, err == nil)
+	log.Printf("[NATIVE_SYNC] project=%s provider=%s native_session=%s direction=%s sent=%d received=%d complete=%t", roots.ID, b.Provider, b.SessionID, direction, stream.Sent, stream.Received, err == nil)
 }
 
-func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *musecli.NativeSessionBundle, upload bool) error {
+func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *sessiontransfer.Bundle, upload bool) error {
 	if b != nil {
-		lock := crewNativeLock(roots, b.SessionID)
+		lock := crewNativeLock(roots, b.Provider+"-"+b.SessionID)
 		lock.Lock()
 		defer lock.Unlock()
 	}
@@ -370,7 +370,7 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 	if err = fsutil.WriteJSONAtomic(filepath.Join(filepath.Dir(stage), "manifest.json"), b, 0600); err != nil {
 		return err
 	}
-	pruneOldCrewNativeStages(roots, b.SessionID)
-	log.Printf("[NATIVE_SYNC] project=%s provider=muse-cli native_session=%s direction=%s sent=%d received=%d complete=true", roots.ID, b.SessionID, direction, stream.Sent, stream.Received)
+	pruneOldCrewNativeStages(roots, b.Provider+"-"+b.SessionID)
+	log.Printf("[NATIVE_SYNC] project=%s provider=%s native_session=%s direction=%s sent=%d received=%d complete=true", roots.ID, b.Provider, b.SessionID, direction, stream.Sent, stream.Received)
 	return nil
 }

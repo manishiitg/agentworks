@@ -14,7 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 const crewHandoffHistoryLimit = 32 << 20
@@ -24,11 +24,11 @@ const crewHandoffHistoryLimit = 32 << 20
 // portable authority. UI events can contain terminal panes and source-machine
 // handles too; the destination renders the canonical message history instead.
 type crewHandoffConversation struct {
-	ConversationID string                       `json:"conversation_id"`
-	ModelID        string                       `json:"model_id,omitempty"`
-	History        []llmtypes.MessageContent    `json:"conversation_history"`
-	Muse           *musecli.NativeSessionBundle `json:"muse,omitempty"`
-	Notice         string                       `json:"-"`
+	ConversationID string                    `json:"conversation_id"`
+	ModelID        string                    `json:"model_id,omitempty"`
+	History        []llmtypes.MessageContent `json:"conversation_history"`
+	Native         *sessiontransfer.Bundle   `json:"native,omitempty"`
+	Notice         string                    `json:"-"`
 }
 
 func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {
@@ -74,24 +74,24 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 		return nil, fmt.Errorf("only your own main conversation can move with this Crew")
 	}
 	out := &crewHandoffConversation{ConversationID: conversation.ConversationID, ModelID: conversation.ModelID, History: doc.History}
-	if candidate, captureErr := api.captureCrewMuse(ctx, claims, roots, conversation, doc.Runtime); captureErr != nil {
+	if candidate, captureErr := api.captureCrewNative(ctx, claims, roots, conversation, doc.Runtime); captureErr != nil {
 		log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=archive native_unavailable=%q", roots.ID, captureErr)
 	} else {
 		if candidate != nil {
-			if err = stageCrewMuse(roots, candidate); err != nil {
+			if err = stageCrewNative(roots, candidate); err != nil {
 				return nil, err
 			}
 		}
-		out.Muse = candidate
+		out.Native = candidate
 		if validateCrewHandoffConversation(out) != nil {
-			out.Muse = nil
+			out.Native = nil
 		}
 	}
 	if err = validateCrewHandoffConversation(out); err != nil {
 		return nil, err
 	}
 	mode := "archive"
-	if out.Muse != nil {
+	if out.Native != nil {
 		mode = "native_candidate"
 	}
 	log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=%s conversation=%s messages=%d", roots.ID, mode, out.ConversationID, len(out.History))
@@ -134,13 +134,13 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		return fmt.Errorf("the destination main conversation is unavailable")
 	}
 	current.handoffAgentToolsMode = destinationToolsMode
-	nativeCandidate := in.Muse
+	nativeCandidate := in.Native
 	// Use the destination's own admitted account for the source AI program.
 	// A new paired Crew may otherwise inherit an unrelated company default.
-	if in.Muse != nil {
+	if in.Native != nil {
 		identity := doc.Agents[key]
-		if chosen, reason := api.crewMuseDestination(ctx, claims, roots, current, identity, in.ModelID); chosen != nil {
-			current.Provider, current.ModelID, current.ConnectionID = "muse-cli", chosen.ModelID, chosen.ConnectionID
+		if chosen, reason := api.crewNativeDestination(ctx, claims, roots, current, identity, in.ModelID, in.Native.Provider); chosen != nil {
+			current.Provider, current.ModelID, current.ConnectionID = in.Native.Provider, chosen.ModelID, chosen.ConnectionID
 			if doc.Agents == nil {
 				doc.Agents = map[string]ProductAgentIdentity{}
 			}
@@ -166,21 +166,22 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		"conversation_history": in.History, "updated_at": now.Format(time.RFC3339),
 	}
 	if nativeCandidate != nil {
-		nativeLock := crewNativeLock(roots, nativeCandidate.SessionID)
+		nativeLock := crewNativeLock(roots, nativeCandidate.Provider+"-"+nativeCandidate.SessionID)
 		nativeLock.Lock()
 		defer nativeLock.Unlock()
-		if err := bindCrewMuseStage(roots, nativeCandidate); err != nil {
+		if err := bindCrewNativeStage(roots, nativeCandidate); err != nil {
 			return err
 		}
 	}
-	if runtime, nativeErr := api.importCrewMuse(ctx, claims, roots, current, session, nativeCandidate); nativeErr != nil {
+	if runtime, nativeErr := api.importCrewNative(ctx, claims, roots, current, session, nativeCandidate); nativeErr != nil {
 		log.Printf("[CREW_HANDOFF] project=%s phase=import mode=archive native_unavailable=%q", roots.ID, nativeErr)
+		in.Notice = "The native session could not resume on this computer. The next reply will continue from saved conversation history."
 		if strings.Contains(nativeErr.Error(), "both copies were kept") {
-			in.Notice = "Muse's native history changed on both computers. Both copies were kept; the next reply will continue from saved conversation history."
+			in.Notice = "The native history changed on both computers. Both copies were kept; the next reply will continue from saved conversation history."
 		}
 	} else if runtime != nil {
 		data["runtime"] = runtime
-		in.Notice = "Muse's saved native session is ready to resume on the destination computer."
+		in.Notice = "The saved native session is ready to resume on the destination computer."
 	}
 	raw, err := json.Marshal(data)
 	if err != nil {

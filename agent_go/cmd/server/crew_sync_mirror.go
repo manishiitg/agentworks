@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 type crewNativeMirror struct {
@@ -31,18 +31,18 @@ type crewNativeMirror struct {
 // The manifest points to exactly one completed directory; partial updates never
 // become a resume source.
 func saveCrewNativeMirror(roots crewroot.Roots, c *crewHandoffConversation) error {
-	if c == nil || c.Muse == nil {
+	if c == nil || c.Native == nil {
 		return fmt.Errorf("native mirror is incomplete")
 	}
-	lock := crewNativeLock(roots, c.Muse.SessionID)
+	lock := crewNativeLock(roots, c.Native.Provider+"-"+c.Native.SessionID)
 	lock.Lock()
 	defer lock.Unlock()
-	if err := c.Muse.ValidateFiles(); err != nil {
+	if err := c.Native.ValidateFiles(); err != nil {
 		return err
 	}
 	if old, err := readCrewNativeMirror(roots); err == nil {
-		if old.Conversation.Muse.SessionID == c.Muse.SessionID {
-			if err := musecli.NativeSessionAncestor(old.Conversation.Muse, c.Muse); err != nil {
+		if old.Conversation.Native.SessionID == c.Native.SessionID && old.Conversation.Native.Provider == c.Native.Provider && !strings.HasSuffix(c.Native.Format, "sqlite") {
+			if err := sessiontransfer.Ancestor(old.Conversation.Native, c.Native); err != nil {
 				return err
 			}
 		}
@@ -64,12 +64,12 @@ func saveCrewNativeMirror(roots crewroot.Roots, c *crewHandoffConversation) erro
 			os.RemoveAll(dir)
 		}
 	}()
-	for name := range c.Muse.Files {
+	for name := range c.Native.Files {
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			return err
 		}
-		if err := os.Link(filepath.Join(c.Muse.Root, filepath.FromSlash(name)), path); err != nil {
+		if err := os.Link(filepath.Join(c.Native.Root, filepath.FromSlash(name)), path); err != nil {
 			return err
 		}
 	}
@@ -100,14 +100,14 @@ func readCrewNativeMirror(roots crewroot.Roots) (crewNativeMirror, error) {
 	if err = json.Unmarshal(raw, &out); err != nil {
 		return out, err
 	}
-	if out.TransferID == "" || out.Conversation == nil || out.Conversation.Muse == nil {
+	if out.TransferID == "" || out.Conversation == nil || out.Conversation.Native == nil {
 		return out, fmt.Errorf("native mirror is incomplete")
 	}
 	if _, err := uuid.Parse(out.Version); err != nil {
 		return out, fmt.Errorf("native mirror is incomplete")
 	}
-	out.Conversation.Muse.Root = filepath.Join(roots.Private, "native-mirrors", out.Version)
-	if err := out.Conversation.Muse.ValidateFiles(); err != nil {
+	out.Conversation.Native.Root = filepath.Join(roots.Private, "native-mirrors", out.Version)
+	if err := out.Conversation.Native.ValidateFiles(); err != nil {
 		return out, err
 	}
 	return out, validateCrewHandoffConversation(out.Conversation)
@@ -160,7 +160,7 @@ func (api *StreamingAPI) captureCrewMirror(ctx context.Context, claims *UserClai
 	if err != nil {
 		return nil, err
 	}
-	if c.Muse == nil {
+	if c.Native == nil {
 		return nil, nil
 	}
 	crewMirrorCaptures.Store(key, crewMirrorCapture{fingerprint, c})
@@ -193,7 +193,7 @@ func (api *StreamingAPI) syncCrewNativeMirror(ctx context.Context, claims *UserC
 	if err != nil {
 		return err
 	}
-	if c == nil || c.Muse == nil {
+	if c == nil || c.Native == nil {
 		return nil
 	}
 	raw, _ := json.Marshal(c)
@@ -217,14 +217,14 @@ func (api *StreamingAPI) syncCrewNativeMirror(ctx context.Context, claims *UserC
 		return err
 	}
 	if b.Editing == "local" {
-		if err = desktopCrewNativeSync(ctx, roots, connection, b, c.Muse, true); err != nil {
+		if err = desktopCrewNativeSync(ctx, roots, connection, b, c.Native, true); err != nil {
 			return failure(err)
 		}
 		if _, err = desktopCrewSyncCall(ctx, claims.UserID, &connection, b.PeerProjectID, crewSyncRequest{Action: "mirror-put", PairID: b.PairID, Conversation: c}); err != nil {
 			return failure(err)
 		}
 	} else {
-		if err = desktopCrewNativeSync(ctx, roots, connection, b, c.Muse, false); err != nil {
+		if err = desktopCrewNativeSync(ctx, roots, connection, b, c.Native, false); err != nil {
 			return failure(err)
 		}
 	}
