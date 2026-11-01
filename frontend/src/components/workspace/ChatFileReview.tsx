@@ -4,7 +4,7 @@ import { openChatFiles } from './chatFileNavigation'
 import { PRWatcherControls } from '../chat/PRWatcherControls'
 import type { ReplyFileChangesRef, ReplyFileGroup } from '../../utils/replyFileChanges'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { FolderOpen, RefreshCw } from 'lucide-react'
+import { AlertTriangle, FolderOpen, RefreshCw } from 'lucide-react'
 import { workspaceGitApi, type GitRepo } from '../../services/workspaceGit'
 import { GitReview } from './GitReview'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
@@ -121,6 +121,13 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     </>} />
     {bar || toolbar}
     <p className="border-b border-border px-3 py-1 text-xs text-muted-foreground">Saved project differences. Other chats or editors may contribute.</p>
+    {(result?.comparison?.skipped_count ?? 0) > 0 && <div role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs">
+      <p className="flex items-center gap-1.5"><AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-amber-500" />{result!.comparison!.skipped_count} file{result!.comparison!.skipped_count === 1 ? '' : 's'} not saved in this capture</p>
+      <p className="mt-1 text-muted-foreground">Their diffs and Revert are unavailable. The saved changes below are still available.</p>
+      <ul className="mt-1 max-h-24 overflow-y-auto text-muted-foreground">{result?.comparison?.snapshot.skipped?.map((path, index) => <li key={`${index}:${path}`} className="break-all">{shownFilePath(path)}</li>)}</ul>
+      {(result?.comparison?.skipped_count ?? 0) > (result?.comparison?.snapshot.skipped?.length ?? 0) && <p className="mt-1 text-muted-foreground">Showing {result?.comparison?.snapshot.skipped?.length ?? 0} of {result?.comparison?.skipped_count} skipped files.</p>}
+    </div>}
+    {result?.comparison?.note && <p role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs text-muted-foreground">{result.comparison.note}</p>}
     {reply && <ReplyFileChanges reference={reply} panel showFiles={false} />}
     {pullRequests.length > 0 && <div className="space-y-2 border-b border-border px-3 py-2 text-xs" aria-label="Pull requests in this chat">
       {pullRequests.map(group => <div key={group.root} className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -157,8 +164,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
         {!!result?.next_offset && <button type="button" disabled={loadingMore} className="p-2 text-xs underline" onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Show more files'}</button>}
         {result?.comparison && changes.length === 0 && <p className="p-2 text-sm">{reply ? 'No files changed in this reply.' : 'No changes since this review point.'}</p>}
       </div>
-      {(result?.comparison?.uncaptured_changes ?? 0) > 0 && <p role="status" className="p-3 text-xs text-muted-foreground">{result?.comparison?.uncaptured_changes} files could not be compared.</p>}
-      {result?.comparison?.note && <p className="px-3 py-2 text-xs text-muted-foreground">{result.comparison.note}</p>}
+      {!result?.comparison?.skipped_count && (result?.comparison?.uncaptured_changes ?? 0) > 0 && <p role="status" className="p-3 text-xs text-muted-foreground">{result?.comparison?.uncaptured_changes} files could not be compared.</p>}
     </div>
     {selected && through && <div ref={viewers} className={`min-h-0 flex-1 border-t border-border ${(inline || diffs.length > 1) ? 'overflow-y-auto' : ''}`}>
       {diffs.map(change => <ReplyFileViewer key={`${workspacePath}:${sessionId}:${baseline}:${through}:${change.key || change.path}`} embedded flow={inline || diffs.length > 1}

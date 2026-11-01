@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[], pr: false, canReview: true, gitVersions: false }))
+const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[], pr: false, canReview: true, gitVersions: false, skipped: [] as string[] }))
 const replies = [{ snapshot_id: 'first', end_sequence: 2 }, { snapshot_id: 'last', end_sequence: 4 }]
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
   if (options.params.op === 'chat_status') return { data: { history: { can_review: state.canReview }, groups: state.pr ? [{ kind: 'repo', root: 'app-wt', name: 'app-wt', github_repo: 'example/project', branch: 'feature', pr: { number: 7, state: 'open', url: 'https://github.com/example/project/pull/7' } }] : [] } }
@@ -16,7 +16,7 @@ vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: strin
     { path: 'app/same.ts', key: 'main-copy', status: 'M', checkout: { id: 'app', root: 'app', name: 'app', branch: 'main' } },
     { path: 'tools/same.ts', key: 'tools-copy', status: 'M', checkout: { id: 'tools', root: 'tools', name: 'tools', branch: 'main' } },
   ], snapshot: { status: 'complete' }, diff: `@@ -1 +1 @@\n-old\n+${options.params.change_key || 'list'}\n`, note: '', skipped_count: 0 } } }
-  return { data: { history: { recent_repos: state.recentRepos, replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: 'complete' }, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: 0 }, file_replies: ['last'] } }
+  return { data: { history: { recent_repos: state.recentRepos, replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: state.skipped.length ? 'partial' : 'complete', skipped: state.skipped }, uncaptured_changes: 0, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: state.skipped.length }, file_replies: ['last'] } }
 }), post: vi.fn(async () => { state.reviewed = true; return { data: {} } }) }, agentApi: { getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: 'current contents' } })) }, workspaceApi: { get: vi.fn() } }))
 vi.mock('../chat/ReplyFileChanges', () => ({ ReplyFileChanges: () => null }))
 vi.mock('../chat/PRWatcherControls', () => ({ PRWatcherControls: ({ group, sessionId }: { group: { root: string }; sessionId: string }) => <button data-worktree={group.root} data-session={sessionId}>Watch PR</button> }))
@@ -38,6 +38,22 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('explains skipped files above the diffs even when the uncaptured file did not change', async () => {
+    // PLAT-746-286: the menu warned, but an unchanged skipped file had no panel explanation.
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    state.skipped = ['tmp/example-tool']
+    try {
+      await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" reply={{ workspacePath: 'Crew/example', sessionId: 'chat-a', snapshotId: 'last', historyScope: 'project', checkoutId: 'project-files' }} onBrowse={() => undefined} />))
+      const warning = [...host.querySelectorAll('[role="status"]')].find(element => element.textContent?.includes('not saved in this capture'))!
+      expect(warning.textContent).toContain('1 file not saved')
+      expect(warning.textContent).toContain('tmp/example-tool')
+      expect(warning.textContent).toContain('Their diffs and Revert are unavailable')
+      expect(warning.compareDocumentPosition(host.querySelector('[aria-label="File versions"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(host.textContent).toContain('new second')
+    } finally { state.skipped = []; await act(async () => root.unmount()); host.remove() }
+  })
+
   it('reloads when two checkout selections share one saved capture', async () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)

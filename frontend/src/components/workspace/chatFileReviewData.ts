@@ -17,7 +17,7 @@ export type ReviewHistory = {
 }
 export type ReviewResult = {
   history: ReviewHistory
-  comparison?: { uncaptured_changes: number; changes: FileChange[]; diff?: string; truncated?: boolean; snapshot: { status: string }; note: string; skipped_count: number }
+  comparison?: { uncaptured_changes: number; changes: FileChange[]; diff?: string; truncated?: boolean; snapshot: { status: string; skipped?: string[] }; note: string; skipped_count: number }
   summary?: ReviewSummary; since_review?: ReviewSummary
   total_changes?: number; next_offset?: number
 }
