@@ -96,9 +96,9 @@ class LiveFeed {
         if (event === 'resync') {
           this.failures = 0
           this.setStatus('live')
-          // The first resync confirms the stream; later ones refetch anything
-          // missed while disconnected, using the normal authorized endpoints.
-          if (this.everConnected) this.notifyAll()
+          // Even the first connection may follow failed initial reads while the
+          // backend was starting. Every server resync invalidates panel snapshots.
+          this.notifyAll()
           this.everConnected = true
         } else if (event === 'change') {
           let notice: LiveFeedNotice

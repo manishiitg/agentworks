@@ -2,14 +2,20 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ vault: vi.fn(), bots: vi.fn(), schedules: vi.fn(), whatsapp: vi.fn(), github: vi.fn() }))
+const mocks = vi.hoisted(() => ({ vault: vi.fn(), bots: vi.fn(), schedules: vi.fn(), whatsapp: vi.fn(), github: vi.fn(), conditions: vi.fn(), triggers: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: { get: mocks.github }, agentApi: { getWhatsAppStatus: mocks.whatsapp } }))
 vi.mock('../../api/projectVault', () => ({ loadProjectVault: mocks.vault }))
 vi.mock('../../api/scheduler', () => ({ schedulerApi: { listJobs: mocks.schedules } }))
-vi.mock('../../api/conditionTriggers', () => ({ conditionTriggersApi: {} }))
-vi.mock('../../api/productWebhooks', () => ({ productWebhooksApi: {} }))
+vi.mock('../../api/conditionTriggers', () => ({ conditionTriggersApi: {list:mocks.conditions} }))
+vi.mock('../../api/productWebhooks', () => ({ productWebhooksApi: {list:mocks.triggers} }))
 vi.mock('../../components/integrations/ProductSlackPanel', () => ({ slackBotsApi: { list: mocks.bots }, slackBotName: (bot: any) => bot.identity?.name || bot.name }))
-vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
+type FeedStatus = 'connecting' | 'live' | 'offline'
+const feed = vi.hoisted(() => ({ status: 'live' as FeedStatus, statusListeners: new Set<(status: FeedStatus) => void>(), listeners: new Set<() => void>() }))
+vi.mock('../../services/liveFeed', () => ({ liveFeed: {
+ getStatus: () => feed.status,
+ onStatus: (callback: (status: FeedStatus) => void) => { feed.statusListeners.add(callback); return () => feed.statusListeners.delete(callback) },
+ subscribe: (_kinds: string[], _workflow: string | null, callback: () => void) => { feed.listeners.add(callback); return () => feed.listeners.delete(callback) },
+} }))
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -126,4 +132,58 @@ it('publishes ready sources while others wait, retains them on refresh, and clea
   await act(async()=>root.render(<Harness path="Crew/other" admitted={[]}/>))
   expect(value?.snapshot?.apps || []).toEqual([])
  } finally { await act(async()=>root.unmount()) }
+})
+
+
+// PLAT-746-291: frontend survives a backend restart; requests must recover without Retry.
+it('deduplicates outage errors and recovers on server resync without Retry', async () => {
+ vi.resetAllMocks()
+ vi.useFakeTimers()
+ Object.defineProperty(document, 'hidden', {configurable:true,value:false})
+ feed.status = 'offline'
+ const fail = () => {
+  for (const method of [mocks.vault,mocks.bots,mocks.github,mocks.whatsapp,mocks.schedules,mocks.conditions,mocks.triggers]) method.mockRejectedValue(new Error('Backend unavailable'))
+ }
+ const recover = () => {
+  mocks.vault.mockResolvedValue({vaults:[{items:[{id:'notes',name:'Notes',kind:'mcp',selected:true,status:'connected'}]}]})
+  mocks.bots.mockResolvedValue({bots:[]})
+  mocks.github.mockResolvedValue({data:{connected:true,login:'account',enabled:false}})
+  mocks.whatsapp.mockResolvedValue({connected:true})
+  mocks.schedules.mockResolvedValue({jobs:[]})
+  mocks.conditions.mockResolvedValue({triggers:[]})
+  mocks.triggers.mockResolvedValue({triggers:[]})
+ }
+ const status = (next: FeedStatus) => { feed.status=next; feed.statusListeners.forEach(callback=>callback(next)) }
+ fail()
+ let value: ReturnType<typeof useWorkspaceStatus> | undefined
+ function Harness() {
+  value=useWorkspaceStatus({scope:'account',workspacePath:'Crew/current',projectId:'current',admitted:['mcp:connected','mcp:slack-bot','mcp:github','mcp:computer-use','mcp:whatsapp','schedules:schedules','schedules:conditions','schedules:triggers']})
+  return null
+ }
+ const root=createRoot(document.createElement('div'))
+ try {
+  await act(async()=>root.render(<Harness/>))
+  expect(value?.snapshot?.errors).toHaveLength(6)
+  expect(value?.snapshot?.errors.filter(error=>error==='Some automations could not be loaded.')).toHaveLength(1)
+  recover()
+  // The server resync now invalidates snapshots even on first connection.
+  await act(async()=>{status('live'); feed.listeners.forEach(callback=>callback())})
+  expect(value?.snapshot?.errors).toEqual([])
+  expect(value?.snapshot?.apps?.some(row=>row.id==='github' && row.connected)).toBe(true)
+  expect(mocks.vault).toHaveBeenCalledTimes(2)
+  // Healthy live operation adds no background poll.
+  await act(async()=>vi.advanceTimersByTimeAsync(15_000))
+  expect(mocks.vault).toHaveBeenCalledTimes(2)
+
+  fail()
+  await act(async()=>{status('offline'); value?.refresh()})
+  expect(value?.snapshot?.errors).toHaveLength(6)
+  recover()
+  // Do not add a panel poll or focus/online recovery alongside the live feed.
+  await act(async()=>{window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); await vi.advanceTimersByTimeAsync(15_000)})
+  expect(mocks.vault).toHaveBeenCalledTimes(3)
+  await act(async()=>{status('live'); feed.listeners.forEach(callback=>callback())})
+  expect(value?.snapshot?.errors).toEqual([])
+  expect(mocks.vault).toHaveBeenCalledTimes(4)
+ } finally { await act(async()=>root.unmount()); vi.useRealTimers(); feed.status='live' }
 })

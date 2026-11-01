@@ -241,3 +241,14 @@ it.each([false, true])('keeps unresolved MCP status distinct from a failed check
   expect(host.textContent).not.toContain('0 connected')
  })
 })
+
+
+it('shows one status notice and one retry for a batch of failed services', async () => {
+ mocks.status.errors = ['Some automations could not be loaded.','Some automations could not be loaded.','Some automations could not be loaded.','GitHub status could not be checked.','Connections could not be loaded.']
+ await render('dev', async host => {
+  const notice = host.querySelector('[role="status"]')!
+  expect(notice.querySelectorAll('p')).toHaveLength(1)
+  expect([...notice.querySelectorAll('button')].filter(button=>button.textContent==='Retry')).toHaveLength(1)
+  for (const error of mocks.status.errors) expect(notice.textContent).not.toContain(error)
+ })
+})

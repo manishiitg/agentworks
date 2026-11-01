@@ -33,7 +33,7 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-it('opens one stream with header authentication, ignores the first resync, and routes notices by kind and workflow', async () => {
+it('opens one stream with header authentication, refetches on the first resync, and routes notices by kind and workflow', async () => {
   const { liveFeed } = await import('./liveFeed')
   const report = vi.fn()
   const plan = vi.fn()
@@ -52,8 +52,9 @@ it('opens one stream with header authentication, ignores the first resync, and r
   source.emit('resync', {})
   await vi.waitFor(() => expect(liveFeed.getStatus()).toBe('live'))
   expect(liveFeed.getStatus()).toBe('live')
-  expect(report).not.toHaveBeenCalled()
-  expect(header).not.toHaveBeenCalled()
+  expect(report).toHaveBeenCalledTimes(1)
+  expect(header).toHaveBeenCalledTimes(1)
+  report.mockClear(); header.mockClear(); plan.mockClear(); legacyCrewPlan.mockClear()
 
   source.emit('change', { kind: 'report', workflow: 'Workflow/other' })
   source.emit('change', { kind: 'plan', workflow: 'Workflow/other' })
