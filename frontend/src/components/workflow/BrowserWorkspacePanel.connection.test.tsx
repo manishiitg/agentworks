@@ -18,7 +18,7 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
   const root = createRoot(host)
   const clipboard = vi.fn()
   vi.stubGlobal('navigator', { userAgent: navigator.userAgent, clipboard: { writeText: clipboard } })
-  const browsers = [{ id: 'chrome-one', name: 'My Chrome', connected: true, enabled: true }, { id: 'edge-two', name: 'My Edge', connected: true, enabled: true }]
+  const browsers = [{ id: 'chrome-one', name: 'My Chrome', browser: 'Chrome', connected: true, enabled: true }, { id: 'edge-two', name: 'My Edge', browser: 'Edge', connected: true, enabled: true }]
   mocks.get.mockResolvedValue({ data: { selected: false, connected: false, account_connected: true, tabs: 0, browsers } })
   mocks.post.mockResolvedValue({ data: { selected: true, connected: true, account_connected: true, browser_id: 'chrome-one', tabs: 0, browsers, workspace: 'Crew/example-crew-one' } })
   try {
@@ -26,16 +26,16 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
     expect(host.textContent).not.toContain('Save browser choice')
     expect(host.querySelector('[role="dialog"]')).toBeNull()
     expect(mocks.post).not.toHaveBeenCalled()
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Change')!.click() })
+    expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Change')).toBe(false)
     const chrome = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('My Chrome'))!
     await act(async () => chrome.click())
     expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'connect', browser_id: 'chrome-one' }, expect.objectContaining({ params: { workspace_path: 'Crew/example-crew-one', profile_id: 'work' } }))
     expect(clipboard).not.toHaveBeenCalled()
     expect(host.textContent).toContain('Ask your agent to open a website.')
     expect(host.textContent).toContain('My Chrome')
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Change')!.click() })
+    expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Change')).toBe(false)
     expect(host.textContent).not.toContain('Install the extension')
-    const manage = [...host.querySelectorAll('button')].find(button => button.textContent === 'Connect another browser')!
+    const manage = [...host.querySelectorAll('button')].find(button => button.textContent === 'Add browser')!
     expect(manage).toBeTruthy()
     await act(async () => manage.click())
     // PLAT-746-275: setup belongs to this pane, never a separate portal/dialog.
@@ -78,13 +78,14 @@ it('shows the backend update step before a browser can connect', async () => {
 it('applies direct browser selection immediately and retains the saved browser on failure', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   mocks.post.mockReset()
-  const status = { mode: 'extension', selected: true, connected: true, browser_id: 'chrome', tabs: 0, allowed_modes: ['extension', 'cdp'], browsers: [{ id: 'chrome', name: 'Chrome', connected: true, enabled: true }] }
+  const status = { mode: 'extension', selected: true, connected: true, browser_id: 'chrome', tabs: 0, allowed_modes: ['extension', 'cdp'], browsers: [{ id: 'chrome', name: 'Chrome', browser: 'Chrome', connected: true, enabled: true }] }
   mocks.get.mockResolvedValue({ data: status })
   mocks.post.mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValueOnce({ data: { ...status, mode: 'cdp', selected: false, connected: false } })
   const host = document.createElement('div'), root = createRoot(host), changed = vi.fn()
   try {
     await act(async () => root.render(<BrowserWorkspacePanel workspacePath="Crew/example" profileId="work" browserMode="extension" onBrowserModeChange={changed} cdpPort={9222} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} />))
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Change')!.click() })
+    expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Change')).toBe(false)
+    await act(async () => { (host.querySelector('[aria-label="Options for Chrome"]') as HTMLButtonElement).click() })
     await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))!.click() })
     expect(changed).not.toHaveBeenCalled()
     expect(host.querySelector('[aria-label="Choose browser"]')).toBeTruthy()
@@ -92,7 +93,7 @@ it('applies direct browser selection immediately and retains the saved browser o
     await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))!.click() })
     expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'workspace', mode: 'cdp', port: 9222 }, expect.anything())
     expect(changed).toHaveBeenCalledWith('cdp')
-    expect(host.querySelector('[aria-label="Choose browser"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Choose browser"]')).toBeTruthy()
   } finally { await act(async () => root.unmount()) }
 })
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Copy, Download, MoreHorizontal, X } from 'lucide-react'
+import { Check, Copy, Download, MoreHorizontal, Plus, X } from 'lucide-react'
 import api from '../services/api'
 import { Button } from './ui/Button'
 import ModalPortal from './ui/ModalPortal'
@@ -15,6 +15,13 @@ export interface SavedBrowserConnection {
 interface PairingFailure { reason: string; message: string; extension_version?: string; at: number }
 export function openBrowserConnections() { window.dispatchEvent(new Event('open-browser-connections')) }
 
+export interface WorkspaceBrowserChoice {
+  label: string
+  selected: boolean
+  secondary: boolean
+  onSelect: () => boolean | void | Promise<boolean | void>
+}
+
 interface BrowserConnectionsProps {
   open: boolean
   onClose: () => void
@@ -26,7 +33,7 @@ export default function BrowserConnectionsDialog(props: BrowserConnectionsProps)
 }
 
 // The Browser pane and account dialog share the same account controls and requests.
-export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = true, selectedBrowserId, startSetup = false }: BrowserConnectionsProps & { inline?: boolean; selectedBrowserId?: string; startSetup?: boolean }) {
+export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = true, selectedBrowserId, startSetup = false, workspaceBrowser }: BrowserConnectionsProps & { inline?: boolean; selectedBrowserId?: string; startSetup?: boolean; workspaceBrowser?: WorkspaceBrowserChoice }) {
   const [browsers, setBrowsers] = useState<SavedBrowserConnection[]>([])
   const [code, setCode] = useState('')
   const [setupOpen, setSetupOpen] = useState(!inline || startSetup)
@@ -75,18 +82,28 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
   const finish = async (browserId: string) => {
     if (!onConnected) { onClose(); return }
     setBusy(true)
-    try { if (await onConnected(browserId)) onClose(); else setError('Could not select this browser. Try again.') }
+    try { if (await onConnected(browserId)) { setSetupOpen(false); setCode(''); onClose() } else setError('Could not select this browser. Try again.') }
     catch { setError('Could not select this browser. Try again.') }
     finally { setBusy(false) }
   }
 
+  const selectWorkspace = async () => {
+    setBusy(true)
+    try { if (await workspaceBrowser?.onSelect() !== false) { setSetupOpen(false); setCode('') } }
+    catch { setError('Could not change this project’s browser. Try again.') }
+    finally { setBusy(false) }
+  }
+  const workspaceChoice = workspaceBrowser && <Button size="sm" variant="ghost" className="w-full justify-between" disabled={busy} onClick={() => { void selectWorkspace() }}>{workspaceBrowser.label}{workspaceBrowser.selected && <Check aria-label="Selected" className="h-3.5 w-3.5" />}</Button>
+  const chromeBrowser = browsers.find(browser => browser.browser === 'Chrome')
   const savedBrowsers = <ul className={inline ? 'space-y-0.5' : 'space-y-2'} aria-label="Saved browsers">{browsers.map(browser => <li key={browser.id} className={inline ? 'flex min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-muted/40' : 'rounded-md border border-border p-3'}>
     {inline ? <>
       {onConnected && browser.enabled && browser.connected ? <button type="button" aria-label={`Use ${browser.name}`} disabled={busy || selectedBrowserId === browser.id} className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1.5 text-left text-xs focus-visible:outline focus-visible:outline-2 disabled:cursor-default" onClick={() => { void finish(browser.id) }}><span className="truncate">{browser.name}</span>{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" className="h-3.5 w-3.5 shrink-0" />}</button> : <span className="min-w-0 flex-1 truncate px-1 py-1.5 text-xs">{browser.name}{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" className="ml-2 inline h-3.5 w-3.5" />}</span>}
-      {(!browser.enabled || !browser.connected) && <Button size="xs" variant="ghost" disabled={busy} aria-label={`Connect ${browser.name}`} onClick={() => { setStep('connect'); setSetupOpen(true) }}>Connect</Button>}
+      {browser.enabled && !browser.connected && <span className="text-xs text-muted-foreground">Open {browser.name} to reconnect</span>}
+      {!browser.enabled && <Button size="xs" variant="ghost" disabled={busy} aria-label={`Connect ${browser.name}`} onClick={() => { setStep('connect'); setSetupOpen(true) }}>Connect</Button>}
       <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label={`Options for ${browser.name}`} panelClassName="w-48 !p-1">
         {close => <div className="space-y-1">
           <details className="text-xs"><summary className="cursor-pointer rounded px-2 py-1.5 hover:bg-muted">Connection details</summary><div className="space-y-1 px-2 pb-2 text-muted-foreground"><p>{!browser.enabled ? 'Disconnected' : browser.connected ? 'Connected' : 'Offline'}</p><p>{browser.version ? `Extension ${browser.version}` : 'Extension version unknown'}</p>{extensionVersionOlder(browser.version, latestVersion) && <p>Update available: {latestVersion}</p>}</div></details>
+          {workspaceBrowser?.secondary && chromeBrowser?.id === browser.id && workspaceChoice}
           {browser.enabled && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect(browser.id) }}>Disconnect</Button>}
         </div>}
       </IconPopover>
@@ -99,7 +116,8 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
 
   const content = <div className={inline ? 'space-y-3' : 'space-y-4 p-4'}>
     {inline && savedBrowsers}
-    {inline && !setupOpen && <Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}>Connect another browser</Button>}
+    {inline && !workspaceBrowser?.secondary && workspaceChoice}
+    {inline && !setupOpen && <div className="flex items-center justify-between gap-1"><Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Add browser</Button>{workspaceBrowser?.secondary && !chromeBrowser && <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label="Browser options" panelClassName="w-48 !p-1">{workspaceChoice}</IconPopover>}</div>}
     {setupOpen && <div className={inline ? 'space-y-3 border-t border-border pt-3' : 'space-y-3'} aria-label="Connect browser">
           <p className="text-xs text-muted-foreground">{step === 'install' ? '1. Install extension' : '2. Connect'}</p>
           {step === 'install' ? <div className="space-y-3">
