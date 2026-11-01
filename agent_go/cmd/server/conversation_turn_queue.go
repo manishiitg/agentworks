@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -718,6 +719,10 @@ var retainedCLIAtPrompt = func(api *StreamingAPI, sessionID string) bool {
 	provider := llmproviders.Provider(retainedCodingAgentProvider(snapshot))
 	if !live || provider == "" {
 		return false
+	}
+	// A Claude terminal running the AgentWorks mod says itself whether a turn runs.
+	if idle, known := claudecode.ClaudeModIdle(snapshot.TmuxSession); known {
+		return idle
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), terminalTmuxActionTimeout)
 	defer cancel()
