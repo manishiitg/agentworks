@@ -227,13 +227,14 @@ it('opens automation setup before any jobs exist and keeps native destination gu
 })
 
 // PLAT-746-289: a partial snapshot is not evidence of zero MCP connections.
-it('keeps MCP status unknown while a different connection source is ready', async () => {
+it.each([false, true])('keeps unresolved MCP status distinct from a failed check (failed=%s)', async failed => {
  mocks.status.loaded = ['mcp:github']
+ mocks.status.errors = failed ? ['Connections could not be loaded.'] : []
  mocks.status.apps = [{id:'github',label:'GitHub',detail:'chosen-account · Connected',connected:true,destination:'mcp:github'}]
  await render('dev', async host => {
   expect(host.querySelector('[aria-label="GitHub · chosen-account · Connected"]')).not.toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
-  expect(host.textContent).toContain('MCPsChecking…')
+  expect(host.textContent).toContain(failed ? 'MCPsUnavailable' : 'MCPsChecking…')
   expect(host.textContent).not.toContain('0 connected')
   const manage = [...host.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!
   await act(async () => manage.click())
