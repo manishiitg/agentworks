@@ -10,6 +10,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 func TestBrowserConnectionsKeepAccountCodeOutOfProjectTokens(t *testing.T) {
@@ -24,9 +25,8 @@ func TestBrowserConnectionsKeepAccountCodeOutOfProjectTokens(t *testing.T) {
 	claims := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"builder:chat", "workflows:read", "files:read", "runs:execute"}, WorkflowIDs: []string{"invoices"}}}
 	call := func(args map[string]any) *httptest.ResponseRecorder {
 		t.Helper()
-		action := externalArg(args, "action")
-		delete(args, "action")
-		raw, _ := json.Marshal(map[string]any{"name": "browser_connections__" + action, "arguments": args})
+		name, input := platformtools.Invocation("browser_connections", args)
+		raw, _ := json.Marshal(map[string]any{"name": name, "arguments": input})
 		w := httptest.NewRecorder()
 		f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(raw), claims, nil))
 		return w

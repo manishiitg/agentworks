@@ -770,10 +770,16 @@ func isGmailSetupBrowserRequest(r *http.Request) bool {
 		(r.URL.Path == "/api/oauth/callback" || r.URL.Path == "/api/human-feedback/gmail/auth/callback")
 }
 
-// Chrome cannot send the app JWT with its outbound WebSocket. The agent API
-// authenticates the exact connection route with a single-use pairing frame.
+// Extension setup and its one-use handoff exchange cannot carry the app JWT.
+// The agent API validates the handoff or relay credential on these exact routes.
 func isChromeExtensionBrowserRequest(r *http.Request) bool {
-	return r.Method == http.MethodGet && r.URL.Path == "/api/browser/extension/connect"
+	if r.URL.RawPath != "" {
+		return false
+	}
+	if r.Method == http.MethodGet {
+		return r.URL.Path == "/api/browser/extension/connect" || r.URL.Path == "/api/browser/extension/setup"
+	}
+	return r.Method == http.MethodPost && (r.URL.Path == "/api/browser/extension/pairing/peek" || r.URL.Path == "/api/browser/extension/pairing/redeem")
 }
 
 // The MCP Apps child loads without cookies or a bearer. It serves only an
