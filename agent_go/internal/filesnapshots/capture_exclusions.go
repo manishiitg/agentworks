@@ -1,33 +1,43 @@
 package filesnapshots
 
 import (
+	"os"
 	"strconv"
 	"strings"
 )
 
-// The per-file size limit is an intentional capture policy, not a failed
-// comparison. Use saved evidence, never today's file or its name/extension.
-// Unknown/read failures and within-limit budget omissions still need notice.
+// Classify this path from saved size/type evidence, never another file's
+// counters or today's filesystem. Unknown/read and budget failures still warn.
 func sizeOnlyOmission(record Record, path string) bool {
-	known := false
-	for _, side := range []struct {
-		state string
-		stats CaptureStats
-	}{{record.BeforeSkippedState[path], record.BeforeCapture}, {record.AfterSkippedState[path], record.AfterCapture}} {
-		if side.state == "" {
-			// Non-regular paths have no fingerprint and are counted as size
-			// skips too. An unknown side must not hide that actual failure.
-			if side.stats.ReadSkipped > 0 || side.stats.SizeSkipped > 0 {
-				return false
-			}
+	known := 0
+	for _, state := range []string{record.BeforeSkippedState[path], record.AfterSkippedState[path]} {
+		if state == "" {
 			continue
 		}
-		size, _, ok := strings.Cut(side.state, ":")
-		n, err := strconv.ParseInt(size, 10, 64)
-		if !ok || err != nil || n <= MaxFileBytes {
+		parts := strings.SplitN(state, ":", 3)
+		if len(parts) != 3 {
 			return false
 		}
-		known = true
+		size, err := strconv.ParseInt(parts[0], 10, 64)
+		mode, modeErr := strconv.ParseUint(parts[2], 10, 32)
+		if err != nil || modeErr != nil || size <= MaxFileBytes || !os.FileMode(mode).IsRegular() {
+			return false
+		}
+		known++
 	}
-	return known
+	if known == 2 {
+		return true
+	}
+	if known != 1 {
+		return false
+	}
+	// Begin and Finish append one entry per skipped boundary. A second entry
+	// with no fingerprint is an unknown failure, not a successful/absent side.
+	omissions := 0
+	for _, skipped := range record.Skipped {
+		if skipped == path {
+			omissions++
+		}
+	}
+	return omissions == 1
 }

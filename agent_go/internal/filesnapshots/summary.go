@@ -37,7 +37,7 @@ func (s Store) SavedSummary(ctx context.Context, id string, allow func(string) b
 	if err != nil {
 		return SavedChangeSummary{}, err
 	}
-	revision := digest("summary-actionable-failures-v5\x00" + string(raw))
+	revision := digest("summary-actionable-failures-v6\x00" + string(raw))
 	dir := filepath.Join(s.dir(), "summaries")
 	name := filepath.Join(dir, id+".json")
 	var saved cachedChangeSummary
