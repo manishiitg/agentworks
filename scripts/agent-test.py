@@ -47,10 +47,11 @@ CHECKS = {
            "echo NAMES: $(env | cut -d= -f1 | sort | tr '\\n' ' ')\n"
            "echo TMUX: $(tmux show-environment -g 2>/dev/null | cut -d= -f1 | tr '\\n' ' ')\n"
            # 401 = refused; 000 = not reachable from the sandbox. Anything else: it took a command with no token.
-           "[ -n \"{port}\" ] && echo WS_NOAUTH=$(curl -s -m 5 -o /dev/null -w '%{{http_code}}' -X POST -H 'Content-Type: application/json' -d '{{}}' http://127.0.0.1:{port}/api/execute)\n",
+           "echo WS_NOAUTH=$(curl -s -m 5 -o /dev/null -w '%{{http_code}}' -X POST -H 'Content-Type: application/json' -d '{{}}' http://127.0.0.1:{port}/api/execute)\n",
            lambda out: [f"{name} visible" for name in FORBIDDEN_ENV if re.search(r"(^|[\s-])" + name + r"(\s|$)", out)]
                        + [f"workspace service answered {code} to a request without its token"
-                          for code in re.findall(r"WS_NOAUTH=(\d{3})", out) if code not in ("401", "000")]),
+                          for code in re.findall(r"WS_NOAUTH=(\d{3})", out) if code not in ("401", "000")]
+                       + ([] if re.search(r"WS_NOAUTH=\d{3}", out) else ["the request without the token did not run"])),
     "S2": ("No way out of the sandbox: the account's service manager, the AI program's own environment, company login files "
            "(872-84, 872-89, 872-92)",
            "systemd-run --user --quiet --pipe true >/dev/null 2>&1 && echo ESCAPE_SYSTEMD\n"
@@ -208,6 +209,10 @@ def main():
     unknown = [sid for sid in ids if sid not in CHECKS and sid not in HAPPY]
     if unknown:
         print(f"AGENT-TEST: unknown scenario {', '.join(unknown)}; known: {', '.join([*CHECKS, *HAPPY])}")
+        return 2
+    if "S1" in ids and not args.workspace_port:
+        # Without it S1 cannot check that the workspace service refuses a request without its token.
+        print("AGENT-TEST: S1 needs --workspace-port (SMOKE_WORKSPACE_PORT in the server's smoke.env)")
         return 2
     tally = {"PASS": 0, "FAIL": 0, "NOT RUN": 0}
 
