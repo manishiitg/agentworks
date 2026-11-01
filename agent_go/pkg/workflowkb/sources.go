@@ -15,7 +15,13 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
+// ManifestAuthority resolves server-owned audience after decoding editable metadata.
+// Installed once by the server; every attachment read and runtime grant uses it.
+var ManifestAuthority func(workspace string, manifest Manifest) (Manifest, error)
+
 type Manifest struct {
+	Everyone bool `json:"-"` // trusted audience; never decoded from product files
+
 	KnowledgebaseMode string `json:"knowledgebase_mode"`
 	ID                string `json:"id"`
 	Label             string `json:"label"`
@@ -64,6 +70,9 @@ func ReadManifest(root, workspace string) (Manifest, error) {
 		return m, err
 	}
 	err = json.Unmarshal(raw, &m)
+	if err == nil && ManifestAuthority != nil {
+		return ManifestAuthority(workspace, m)
+	}
 	return m, err
 }
 
@@ -81,10 +90,16 @@ func owners(m Manifest) []string {
 // have no interactive user, and consumer outputs are visible to its readers.
 // This also makes raw JSON references fail closed after ownership changes.
 func AudienceCanRead(consumer, source Manifest) bool {
+	if source.Everyone {
+		return true
+	}
 	allowed := owners(source)
 	if len(allowed) == 0 {
 		return true
 	} // legacy, account-visible source
+	if consumer.Everyone {
+		return false
+	}
 	audience := append([]string{}, owners(consumer)...)
 	if len(audience) == 0 {
 		return false

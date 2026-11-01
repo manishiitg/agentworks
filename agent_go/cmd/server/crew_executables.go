@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
+
 	"github.com/google/uuid"
 )
 
@@ -241,4 +243,42 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(binding)
+}
+
+// PLAT-746-265: KB authorization also reads manifests directly from disk.
+// Resolve both consumers and sources through the same trusted parent audience.
+func init() { workflowkb.ManifestAuthority = crewExecutableKnowledgeAudience }
+
+func crewExecutableKnowledgeAudience(root string, manifest workflowkb.Manifest) (workflowkb.Manifest, error) {
+	binding, err := findCrewExecutable(root)
+	if err != nil || binding == nil {
+		return manifest, err
+	}
+	if manifest.ID != binding.ID {
+		return manifest, fmt.Errorf("knowledge executable identity does not match its Crew")
+	}
+	id, ok := projectIdentityOf(binding.CrewRoot)
+	if !ok {
+		return manifest, fmt.Errorf("knowledge Crew is unavailable")
+	}
+	record, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
+	if !found || record.OwnerID == "" {
+		return manifest, fmt.Errorf("knowledge Crew owner is unavailable")
+	}
+	manifest.CreatedBy = record.OwnerID
+	// Keep source-specific writer opt-in; only audience/ownership are inherited.
+	if manifest.Access == nil {
+		manifest.Access = &struct {
+			Owners           []string `json:"owners"`
+			Readers          []string `json:"readers"`
+			AllowedKBWriters []string `json:"allowed_kb_writers"`
+		}{}
+	}
+	manifest.Access.Owners = append([]string{record.OwnerID}, record.CoOwners...)
+	manifest.Access.Readers = nil
+	if projectSharingEnabled() {
+		manifest.Access.Readers = append([]string{}, record.RunPeople...)
+	}
+	manifest.Everyone = crewSharedWithOthers(binding.CrewRoot)
+	return manifest, nil
 }

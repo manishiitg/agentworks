@@ -7,6 +7,7 @@ import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 
 vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn(), relayReleases: vi.fn() } }))
+vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: vi.fn(() => true) }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: vi.fn(() => 'http://localhost:8000'), getAuthToken: () => '' }))
@@ -61,10 +62,32 @@ it('shows the durable Flow endpoint without the continuing ask function', async 
   expect(host.querySelector('[data-testid="workflow-function-review_pr"]')?.textContent).not.toContain('groups default')
 })
 
+it('keeps reader API instructions visible while restricting authoring actions', async () => {
+  vi.mocked(useCanWriteWorkflow).mockReturnValue(false)
+  const host = await mount(vi.fn(), true)
+  expect(host.textContent).toContain('External API request')
+  expect(host.textContent).not.toContain('Publish in chat')
+  expect(host.textContent).not.toContain('Pause')
+})
+
 it('shows a broken active release instead of claiming draft only', async () => {
   vi.mocked(workflowWebhooksApi.relayReleases).mockResolvedValue({ active_version: 'v2', active_error: 'invalid metadata', releases: [{ version: 'v2', workspace_path: 'Workflow/.relay_releases/test/v2', hash: '', published_at: '', functions: [], output_step_id: '', file_count: 0, error: 'invalid metadata' }] })
   const host = await mount(undefined, true)
   expect(host.textContent).toContain('Unavailable v2')
   expect(host.textContent).toContain('v2 (unavailable)')
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('invalid metadata')
+})
+
+// PLAT-746-265: changing the destination preserves the saved function;
+// Run people have no authoring control for the owner's chats.
+it('saves the chosen chat without changing the callable function', async () => {
+  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [fn], groups: ['default'], routes: [], chat_choices: [{ id: 'main', label: 'Main chat' }, { id: 'reporting', label: 'Reporting' }] })
+  const host = await mount()
+  const select = host.querySelector('select[aria-label="Chat for review_pr"]') as HTMLSelectElement
+  expect(select.value).toBe('main')
+  await act(async () => { select.value = 'reporting'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(workflowWebhooksApi.save).toHaveBeenCalledWith(expect.objectContaining({ chat_id: 'reporting', function: fn.function, kind: 'function', workspace_path: 'Workflow/gate' }), fn.id)
+  vi.mocked(useCanWriteWorkflow).mockReturnValue(false)
+  const reader = await mount()
+  expect(reader.querySelector('select[aria-label="Chat for review_pr"]')).toBeNull()
 })

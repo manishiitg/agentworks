@@ -3034,6 +3034,7 @@ export interface WorkflowOwnership {
 }
 
 export interface WorkflowScheduleEntry {
+  chat_id?: string
   id: string
   name: string
   description?: string
