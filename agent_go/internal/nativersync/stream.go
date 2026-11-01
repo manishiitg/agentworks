@@ -99,11 +99,11 @@ func Binary() (string, error) {
 			continue
 		}
 		var major, minor, patch int
-		if _, e = fmt.Sscanf(string(raw), "rsync version %d.%d.%d", &major, &minor, &patch); e == nil && (major > 3 || major == 3 && minor >= 4) {
+		if _, e = fmt.Sscanf(string(raw), "rsync version %d.%d.%d", &major, &minor, &patch); e == nil && (major > 3 || major == 3 && (minor > 5 || minor == 5 && patch >= 1)) {
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("native session sync needs the AgentWorks rsync helper (version 3.4 or newer)")
+	return "", fmt.Errorf("native session sync needs the AgentWorks rsync helper (version 3.5.1 or newer)")
 }
 
 // Command confines both sender and receiver independently of rsync's path

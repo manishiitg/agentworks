@@ -25,6 +25,7 @@ const crewHandoffHistoryLimit = 32 << 20
 // handles too; the destination renders the canonical message history instead.
 type crewHandoffConversation struct {
 	ConversationID string                       `json:"conversation_id"`
+	ModelID        string                       `json:"model_id,omitempty"`
 	History        []llmtypes.MessageContent    `json:"conversation_history"`
 	Muse           *musecli.NativeSessionBundle `json:"muse,omitempty"`
 	Notice         string                       `json:"-"`
@@ -72,7 +73,7 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 	if doc.UserID != claims.UserID {
 		return nil, fmt.Errorf("only your own main conversation can move with this Crew")
 	}
-	out := &crewHandoffConversation{ConversationID: conversation.ConversationID, History: doc.History}
+	out := &crewHandoffConversation{ConversationID: conversation.ConversationID, ModelID: conversation.ModelID, History: doc.History}
 	if candidate, captureErr := api.captureCrewMuse(ctx, claims, roots, conversation, doc.Runtime); captureErr != nil {
 		log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=archive native_unavailable=%q", roots.ID, captureErr)
 	} else {
@@ -133,6 +134,22 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		return fmt.Errorf("the destination main conversation is unavailable")
 	}
 	current.handoffAgentToolsMode = destinationToolsMode
+	nativeCandidate := in.Muse
+	// Use the destination's own admitted account for the source AI program.
+	// A new paired Crew may otherwise inherit an unrelated company default.
+	if in.Muse != nil {
+		identity := doc.Agents[key]
+		if chosen, reason := api.crewMuseDestination(ctx, claims, roots, current, identity, in.ModelID); chosen != nil {
+			current.Provider, current.ModelID, current.ConnectionID = "muse-cli", chosen.ModelID, chosen.ConnectionID
+			if doc.Agents == nil {
+				doc.Agents = map[string]ProductAgentIdentity{}
+			}
+			doc.Agents[key] = *chosen
+		} else {
+			nativeCandidate = nil
+			in.Notice = reason
+		}
+	}
 	// A retried file receipt must not replace turns already made after import.
 	if current.SessionID == session && current.ConversationID == in.ConversationID {
 		in.Notice = "Your main conversation is available on the destination computer."
@@ -148,15 +165,15 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		"username": chatHistoryUsername(claims.UserID, ""), "agent_mode": "multi-agent",
 		"conversation_history": in.History, "updated_at": now.Format(time.RFC3339),
 	}
-	if in.Muse != nil {
-		nativeLock := crewNativeLock(roots, in.Muse.SessionID)
+	if nativeCandidate != nil {
+		nativeLock := crewNativeLock(roots, nativeCandidate.SessionID)
 		nativeLock.Lock()
 		defer nativeLock.Unlock()
-		if err := bindCrewMuseStage(roots, in.Muse); err != nil {
+		if err := bindCrewMuseStage(roots, nativeCandidate); err != nil {
 			return err
 		}
 	}
-	if runtime, nativeErr := api.importCrewMuse(ctx, claims, roots, current, session, in.Muse); nativeErr != nil {
+	if runtime, nativeErr := api.importCrewMuse(ctx, claims, roots, current, session, nativeCandidate); nativeErr != nil {
 		log.Printf("[CREW_HANDOFF] project=%s phase=import mode=archive native_unavailable=%q", roots.ID, nativeErr)
 		if strings.Contains(nativeErr.Error(), "both copies were kept") {
 			in.Notice = "Muse's native history changed on both computers. Both copies were kept; the next reply will continue from saved conversation history."

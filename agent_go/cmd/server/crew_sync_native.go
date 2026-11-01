@@ -326,7 +326,8 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 		if resp != nil {
 			resp.Body.Close()
 		}
-		return fmt.Errorf("native session sync could not connect: %w", err)
+		log.Printf("[NATIVE_SYNC] project=%s phase=connect error=%q", roots.ID, err)
+		return fmt.Errorf("the server could not sync this conversation; check the connection and update AgentWorks on both computers, then try again")
 	}
 	defer conn.Close()
 	conn.SetReadLimit(1 << 20)
