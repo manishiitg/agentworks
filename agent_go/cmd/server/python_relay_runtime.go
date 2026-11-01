@@ -34,6 +34,7 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 		return fmt.Errorf("Flow manifest unavailable during execution")
 	}
 	readPaths := []string{sctx.WorkspacePath}
+	var blockedWrites []string
 	if isDBOSRelay(manifest) {
 		python := strings.TrimSpace(os.Getenv("RELAY_DBOS_PYTHON"))
 		if !filepath.IsAbs(python) || filepath.Base(filepath.Dir(python)) != "bin" {
@@ -42,11 +43,16 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 		// Only the platform-configured interpreter and its packages are readable.
 		// Keep its virtual environment outside app-private state; slots retain
 		// their normal filesystem isolation and cannot write this runtime.
-		readPaths = append(readPaths, filepath.Dir(filepath.Dir(python)))
+		runtimeRoot := filepath.Dir(filepath.Dir(python))
+		readPaths = append(readPaths, runtimeRoot)
+		// Host read grants require the matching write prohibition too. Without
+		// it the desktop host-path check rejects an interpreter under /Users.
+		blockedWrites = append(blockedWrites, runtimeRoot)
 	}
 	common.SetSessionWorkflowPath(sessionID, draft)
 	common.SetSessionWorkingDir(sessionID, sctx.WorkspacePath)
 	common.SetSessionFolderGuard(sessionID, readPaths, []string{runPath})
+	common.SetSessionFolderGuardBlockedWritePaths(sessionID, blockedWrites)
 	blocked := []string{path.Join(sctx.WorkspacePath, "db"), path.Join(sctx.WorkspacePath, "knowledgebase"), path.Join(sctx.WorkspacePath, "learnings"), path.Join(sctx.WorkspacePath, "secrets")}
 	common.SetSessionFolderGuardBlockedPaths(sessionID, blocked)
 	common.SetSessionSandbox(sessionID, true, false)
