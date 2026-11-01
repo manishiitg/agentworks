@@ -19,6 +19,7 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"reader","username":"reader","can_create":false}]}`)
+	// Keep the manifest and caller ID equal to the server registry identity.
 	registerTestCrew(t, "project-a", "owner", true)
 
 	registry := agentprofiles.NewRegistry()
@@ -46,17 +47,17 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 		return nil
 	}
 
-	crewProduct := `{"schema_version":1,"product":"work","id":"project-a","title":"project-a","session_id":"sess-1"}`
+	crewProduct := `{"schema_version":1,"product":"work","id":"crew-project-a","title":"project-a","session_id":"sess-1"}`
 	files[crewWorkflowTestCrewPath+"/product.json"] = crewProduct
-	crewRuntime := `{"schema_version":1,"product":"work","id":"project-a","workflow_context_paths":["Workflow/test"]}`
+	crewRuntime := `{"schema_version":1,"product":"work","id":"crew-project-a","workflow_context_paths":["Workflow/test"]}`
 
 	manifest := NewWorkflowManifest("Hook target")
 	manifest.CreatedBy = "owner"
 	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
 	manifest.Schedules = []WorkflowSchedule{
-		{ID: "trig-crew-on", Name: "Crew bound", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}},
+		{ID: "trig-crew-on", Name: "Crew bound", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "crew-project-a", ProfileID: "work"}},
 		// Reuse takes the caller's first stored binding (stored sorted by ID), so the paused one sorts after trig-crew-on.
-		{ID: "trig-crew-paused", Name: "Crew disabled", ScheduleType: "webhook", Enabled: false, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}},
+		{ID: "trig-crew-paused", Name: "Crew disabled", ScheduleType: "webhook", Enabled: false, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "crew-project-a", ProfileID: "work"}},
 		{ID: "trig-other", Name: "Other crew", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "other", ProfileID: "work"}},
 	}
 	raw, err := json.Marshal(manifest)
@@ -184,7 +185,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	crew := triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}
+	crew := triggerCaller{Type: triggerCallerCrew, ID: "crew-project-a", ProfileID: "work"}
 	reused, err := crewWorkflowTriggerBinding(ctx, api, "Workflow/test", manifest, crew)
 	if err != nil {
 		t.Fatalf("reuse failed: %v", err)
@@ -200,7 +201,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	mock.files[manifestPath("Workflow/plain")] = string(plainRaw)
 	mock.files["Workflow/plain/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`
 	mock.files["Workflow/plain/variables/variables.json"] = `{"variables":[],"groups":[{"name":"default"}]}`
-	mock.files[crewWorkflowTestCrewPath+"/workflow.json"] = `{"schema_version":1,"product":"work","id":"project-a","workflow_context_paths":["Workflow/test","Workflow/plain"]}`
+	mock.files[crewWorkflowTestCrewPath+"/workflow.json"] = `{"schema_version":1,"product":"work","id":"crew-project-a","workflow_context_paths":["Workflow/test","Workflow/plain"]}`
 	createdManifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/plain")
 	if err != nil {
 		t.Fatal(err)
@@ -217,8 +218,31 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 		t.Fatalf("binding not persisted: %+v", saved.Schedules)
 	}
 	binding := saved.Schedules[0]
-	if !isInternalTriggerKind(binding.Kind) || binding.Caller == nil || binding.Caller.ID != "project-a" || binding.Webhook == nil || binding.Webhook.EncryptedSecret != "" {
+	if !isInternalTriggerKind(binding.Kind) || binding.Caller == nil || binding.Caller.ID != "crew-project-a" || binding.Webhook == nil || binding.Webhook.EncryptedSecret != "" {
 		t.Fatalf("binding is not secretless internal: %+v", binding)
+	}
+	// An owned child without variables is one ungrouped run, not a request
+	// for a nonexistent "default" input set. Standalone defaults above stay.
+	child := crewExecutableBinding{ID: "ungrouped", CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/ungrouped", Kind: "workflow"}
+	if err := registerCrewExecutable(child); err != nil {
+		t.Fatal(err)
+	}
+	ungrouped := NewWorkflowManifest("Ungrouped")
+	ungrouped.ID = child.ID
+	if err := WriteWorkflowManifest(ctx, child.Root, ungrouped); err != nil {
+		t.Fatal(err)
+	}
+	mock.files[child.Root+"/planning/plan.json"] = mock.files["Workflow/plain/planning/plan.json"]
+	loaded, found, err := ReadWorkflowManifest(ctx, child.Root)
+	if err != nil || !found {
+		t.Fatal("child manifest unavailable", err)
+	}
+	if _, err := crewWorkflowTriggerBinding(ctx, api, child.Root, loaded, crew); err != nil {
+		t.Fatalf("Crew child cannot run without input sets: %v", err)
+	}
+	loaded, _, err = ReadWorkflowManifest(ctx, child.Root)
+	if err != nil || len(loaded.Schedules) != 1 || loaded.Schedules[0].GroupNames != nil {
+		t.Fatalf("Crew child lost automatic inputs: %+v %v", loaded, err)
 	}
 	deniedCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "reader"})
 	if _, err := crewWorkflowTriggerBinding(deniedCtx, api, "Workflow/plain", createdManifest, crew); err == nil || !strings.Contains(err.Error(), "access denied") {

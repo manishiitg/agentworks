@@ -41,7 +41,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		return crew, record
 	}
 	crew, chat := create("Reports")
-	_, foreign := create("Other")
+	foreignCrew, foreign := create("Other")
 	if err := writeFileToWorkspace(ctx, crew.WorkspacePath+"/PROJECT_INSTRUCTIONS.md", "Cite the sources"); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +74,45 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	rawPlan, _ := json.Marshal(plan.OrphanSteps[0])
 	if !strings.Contains(string(rawPlan), `"crew_agent":"`+chat.ConversationKey+`"`) {
 		t.Fatal("saved specialist lost the selected agent")
+	}
+	// PLAT-746-265: the chat authoring tool uses the same validated workspace
+	// writers, scoped to this Crew's children rather than shell folder grants.
+	reg := &recordingRegistrar{}
+	if err := api.registerCrewExecutableFileTools(reg, "owner", crew.WorkspacePath); err != nil {
+		t.Fatal(err)
+	}
+	edit := reg.tools["crew_workflow_files"].exec
+	listed, err := edit(ctx, map[string]interface{}{"action": "list"})
+	if err != nil || !strings.Contains(listed, child.Root) || !strings.Contains(listed, chat.ConversationKey) {
+		t.Fatalf("own children and agents unavailable: %s %v", listed, err)
+	}
+	if _, err := edit(ctx, map[string]interface{}{"action": "write", "workspace_path": child.Root, "file": "code/report/main.py", "content": "print('report')"}); err != nil {
+		t.Fatal(err)
+	}
+	read, err := edit(ctx, map[string]interface{}{"action": "read", "workspace_path": child.Root, "file": "code/report/main.py"})
+	if err != nil || !strings.Contains(read, "print('report')") {
+		t.Fatalf("saved definition unavailable: %s %v", read, err)
+	}
+	if _, err := edit(ctx, map[string]interface{}{"action": "write", "workspace_path": child.Root, "file": "planning/plan.json", "content": `{"steps":[],"orphan_steps":[{"type":"agent","id":"report","title":"Report","description":"Write a report","prompt_contract":"description-first-v1","crew_agent":"` + chat.ConversationKey + `"}]}`}); err != nil {
+		t.Fatal(err)
+	}
+	foreignChild := crewExecutableBinding{ID: "foreign-child", CrewID: foreignCrew.CrewID, CrewRoot: foreignCrew.WorkspacePath, Root: "Workflow/foreign-child", Kind: "workflow"}
+	if err := registerCrewExecutable(foreignChild); err != nil {
+		t.Fatal(err)
+	}
+	for _, denied := range []struct{ root, file, reason string }{
+		{foreignChild.Root, "code/report/main.py", "this Crew's own list"},
+		{child.Root, "workflow.json", "definition file"},
+		{child.Root, "runs/iteration-0/logs/log.txt", "definition file"},
+		{child.Root, "code/../../chat_history/private.json", "definition file"},
+	} {
+		if _, err := edit(ctx, map[string]interface{}{"action": "write", "workspace_path": denied.root, "file": denied.file, "content": "forbidden"}); err == nil || !strings.Contains(err.Error(), denied.reason) {
+			t.Fatalf("unexpected refusal for %s/%s: %v", denied.root, denied.file, err)
+		}
+	}
+	strangerCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger", Username: "stranger"})
+	if _, err := edit(strangerCtx, map[string]interface{}{"action": "list"}); err == nil || !strings.Contains(err.Error(), "owners") {
+		t.Fatalf("foreign principal could edit Crew: %v", err)
 	}
 	runner := newCrewStepRunner(svc, "owner")
 	configuration, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, chat.ConversationKey)

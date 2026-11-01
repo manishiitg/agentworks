@@ -1011,6 +1011,10 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 		// Crew Run-mode readers never trigger other Crews or workflows.
 		if !readOnly {
+			gate.Declare("crew_workflow_files")
+			if err := api.registerCrewExecutableFileTools(registrar, userID, workspacePath); err != nil {
+				return err
+			}
 			// Typed functions (PLAT-357): generated per-function tools for the
 			// Crews/workflows tagged in this message or attached to the Crew.
 			functionReq := QueryRequest{SelectedFolder: workspacePath}
