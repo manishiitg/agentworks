@@ -24,6 +24,8 @@ import {
   type ProviderSetupSession,
 } from '../../services/llm-config-api'
 import { formatTokens } from '../../utils/formatTokens'
+import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { desktopRequest } from '../../services/desktopConnections'
 
 // Providers with a browser login the server can sign out (the CLI's own logout).
 const SIGN_OUT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'])
@@ -131,6 +133,11 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [underlyingProvider, setUnderlyingProvider] = useState('google')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  // Connected servers, when this page shows the Mac app's own accounts: each own account can also be added there.
+  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
+  const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
+  useEffect(() => { if (onThisMac && manage) void useConnectedWorkStore.getState().refresh() }, [onThisMac, manage])
   useEffect(() => {
     let cancelled = false
     setError(null)
@@ -317,6 +324,20 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       </p>
     )
   }
+  // A key goes from this Mac's backend straight to your private account on the server; a browser login is signed in there.
+  const addToServer = async (record: ProviderConnection, server: { id: string; name: string }) => {
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const result = await desktopRequest<{ status: 'copied' | 'sign_in' | 'exists'; server_url: string }>(`/${encodeURIComponent(server.id)}/provider-accounts`, 'POST', { account_id: record.id })
+      if (result.status === 'sign_in') {
+        setNotice(`Added to ${server.name} as your private account. Sign in to it there, in the browser window that opened.`)
+        window.electronAPI?.openExternal?.(result.server_url)
+      } else setNotice(result.status === 'exists' ? `Already on ${server.name}.` : `Added to ${server.name} as your private account.`)
+    } catch (addError) { setError(addError instanceof Error ? addError.message : 'Could not add the account.') }
+    finally { setBusy(false) }
+  }
+  const serverItems = (record: ProviderConnection) => onThisMac && manage && record.can_manage
+    ? servers.map(server => ({ label: `Also use on ${server.name}`, onSelect: () => void addToServer(record, server) })) : []
   const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login')
   // The terminal is where a person signs in by hand and checks usage (/usage); there is no
   // separate usage check.
@@ -373,6 +394,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               ...(canManage && manage ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
               ...(own ? modelsItem({ ...record, can_manage: true }) : []),
               ...(own && personalAllowed ? [{ label: keyService ? 'Rename or replace key' : 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
+              ...(own ? serverItems(record) : []),
               ...(canManage ? [{ label: 'Remove', danger: true, onSelect: () => void remove(record) }] : []),
             ]} />
           </div>
@@ -420,6 +442,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 ...(canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
                 ...(record.availability_editable ? [{ label: 'Who can use it', onSelect: () => setAvailabilityDraft(availability?.available_to ?? 'all') }] : []),
                 ...modelsItem(record),
+                ...serverItems(record),
                 ...(manage ? [{ label: 'Limits', onSelect: () => setLimitsDraft(limitsDraft ? null : { daily: record.token_limits?.daily ? String(record.token_limits.daily) : '', weekly: record.token_limits?.weekly ? String(record.token_limits.weekly) : '' }) }] : []),
               ]} />
             </div>
@@ -503,6 +526,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const addButton = !disabled && personalAllowed && !adding && (
     <button disabled={busy} type="button" className={secondaryButtonClass} onClick={openAdd}><Plus className="h-3.5 w-3.5" /> {provider === 'pi-cli' ? 'Add a model key' : 'Add my account'}</button>
   )
+  const noticeLine = notice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{notice}</p>
   const errorLine = error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
 
   if (manage) {
@@ -526,6 +550,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           </div>}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
           {group('Other people\'s accounts', connections.filter(record => accountRelation(record) === 'admin_view'))}
+          {noticeLine}
           {errorLine}
           <ConfirmationDialog
             isOpen={confirmSharedLogin !== null}
@@ -577,6 +602,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
 
       {!formOnly && !selectionOnly && <ul className="mt-4 divide-y divide-gray-200 dark:divide-gray-700">{own.map(userRow)}</ul>}
       {addForm}
+      {noticeLine}
       {errorLine}
     </section>
   )
