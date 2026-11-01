@@ -34,8 +34,8 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
   )
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-        <section role="dialog" aria-modal="true" aria-labelledby="local-setup-title" className="w-full max-w-2xl rounded-2xl border border-border bg-background p-5 shadow-xl sm:p-6">
+      <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-background p-4 sm:p-8">
+        <section aria-labelledby="local-setup-title" className="w-full max-w-2xl p-5 sm:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 id="local-setup-title" className="text-lg font-semibold">Set up AgentWorks on this Mac</h2>
@@ -88,7 +88,7 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
             </div>
             <div className="mt-5 flex justify-between gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setStep(1)}>Back</Button>
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>Done for now</Button>
+              <Button type="button" size="sm" onClick={onClose}>Get started<ArrowRight className="ml-1.5 h-4 w-4" /></Button>
             </div>
           </div>}
         </section>
