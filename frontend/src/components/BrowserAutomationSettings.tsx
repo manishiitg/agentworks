@@ -1,28 +1,10 @@
-import React from 'react'
-import {
-  Check,
-  ChevronDown,
-  Copy,
-  Download,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-} from 'lucide-react'
-
-import {
-  chromeCdpInstallCommand,
-  chromeCdpLaunchCommand,
-  chromeCdpVerifyCommand,
-  chromeCdpZipUrl,
-} from '../utils/cdpSetup'
+import { useEffect, useState } from 'react'
+import { Check, Copy, Download, Loader2 } from 'lucide-react'
+import { chromeCdpInstallCommand, chromeCdpLaunchCommand, chromeCdpZipUrl } from '../utils/cdpSetup'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
-export type BrowserAutomationMode = 'none' | 'extension' | 'headless' | 'cdp' | undefined
-
 interface BrowserAutomationSettingsProps {
-  browserMode: BrowserAutomationMode
-  onBrowserModeChange: (mode: BrowserAutomationMode) => void
   cdpPort?: number
   onCdpPortChange?: (port: number) => void
   cdpConnected: boolean | null
@@ -30,189 +12,38 @@ interface BrowserAutomationSettingsProps {
   cdpChecking: boolean
   onCheckCdpConnection: (port: number) => void
   readOnly?: boolean
-  inline?: boolean
-  scopeNoun?: 'workflow' | 'project'
 }
 
-interface CommandBlockProps {
-  command: string
-  label: string
-}
+export type BrowserAutomationMode = 'none' | 'extension' | 'headless' | 'cdp' | undefined
 
-const CommandBlock: React.FC<CommandBlockProps> = ({ command, label }) => {
-  const [copied, setCopied] = React.useState(false)
-
-  const copyCommand = async () => {
-    try {
-      await navigator.clipboard.writeText(command)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1600)
-    } catch {
-      setCopied(false)
-    }
+export default function BrowserAutomationSettings({ cdpPort = 9222, onCdpPortChange, cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false }: BrowserAutomationSettingsProps) {
+  const [copied, setCopied] = useState(false)
+  const isMac = navigator.platform?.includes('Mac')
+  const command = isMac ? chromeCdpInstallCommand(cdpPort) : chromeCdpLaunchCommand(cdpPort, navigator.platform)
+  useEffect(() => { setCopied(false) }, [command])
+  // Only the explicitly opened setup checks for the installer completing.
+  useEffect(() => {
+    if (cdpConnected || cdpChecking || readOnly) return
+    const timer = window.setTimeout(() => onCheckCdpConnection(cdpPort), 3000)
+    return () => window.clearTimeout(timer)
+  }, [cdpConnected, cdpChecking, cdpPort, onCheckCdpConnection, readOnly])
+  async function copyCommand() {
+    try { await navigator.clipboard.writeText(command); setCopied(true) } catch { setCopied(false) }
   }
-
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{label}</span>
-        <Button
-          type="button"
-          variant="link"
-          size="sm"
-          onClick={copyCommand}
-          aria-label={`Copy ${label.toLowerCase()}`}
-        >
-          {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-          {copied ? 'Copied' : 'Copy'}
-        </Button>
-      </div>
-      <div className="w-full min-w-0 max-w-full overflow-x-auto rounded-md border border-gray-200 bg-gray-950 dark:border-gray-700">
-        <pre className="w-max min-w-full whitespace-pre px-3 py-2.5 pr-8 text-[11px] leading-relaxed text-cyan-300"><code>{command}</code></pre>
-      </div>
+  return <section className="space-y-3 rounded-md border border-border p-3" aria-label="Chrome Direct setup">
+    <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">Set up Chrome Direct</h3><span role="status" className="text-xs text-muted-foreground">{cdpChecking ? 'Checking…' : cdpConnected ? 'Ready' : 'Not connected'}</span></div>
+    <p className="text-xs text-muted-foreground">{isMac ? 'Run the installer once. It opens Chrome with a separate profile.' : 'Launch Chrome with a separate profile using this command.'}</p>
+    <pre className="overflow-x-auto rounded bg-muted/40 p-2 text-[11px]"><code>{command}</code></pre>
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="outline" onClick={() => void copyCommand()}>{copied ? <Check /> : <Copy />}{copied ? 'Copied' : isMac ? 'Copy install command' : 'Copy launch command'}</Button>
+      {isMac && <Button size="sm" variant="outline" asChild><a href={chromeCdpZipUrl} download="Chrome-CDP-macOS.zip" target="_blank" rel="noopener noreferrer"><Download />Download app</a></Button>}
+      <Button size="sm" variant="ghost" disabled={cdpChecking || readOnly} onClick={() => onCheckCdpConnection(cdpPort)}>{cdpChecking && <Loader2 className="animate-spin" />}Check connection</Button>
     </div>
-  )
+    {cdpError && cdpConnected === false && <p role="alert" className="text-xs text-destructive">{cdpError}</p>}
+    <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Connection details</summary><div className="space-y-2 pt-2">
+      {onCdpPortChange && <label className="flex items-center gap-2">Port<Input className="w-24" type="number" min={1} max={65535} aria-label="Chrome CDP port" value={cdpPort} disabled={readOnly} onChange={event => onCdpPortChange(Number(event.target.value) || 9222)} /></label>}
+      <p className="text-muted-foreground">Chrome must stay open on this computer. Each port uses its own profile.</p>
+      {isMac && <p className="text-muted-foreground">The installer updates and signs the launcher locally, clears quarantine and checks the port. macOS may ask you to allow the app.</p>}
+    </div></details>
+  </section>
 }
-
-const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
-  browserMode,
-  cdpPort = 9222,
-  onCdpPortChange,
-  cdpConnected,
-  cdpError,
-  cdpChecking,
-  onCheckCdpConnection,
-  readOnly = false,
-  inline = false,
-}) => {
-  const platform = typeof navigator !== 'undefined' ? navigator.platform : undefined
-  const isMac = platform?.includes('Mac')
-  const usesCdp = browserMode === 'cdp'
-
-  const connectionLabel = cdpChecking
-    ? 'Checking'
-    : cdpConnected === true
-      ? 'Connected'
-      : cdpConnected === false
-        ? 'Not connected'
-        : 'Not checked'
-
-  const connectionStyle = cdpChecking
-    ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-    : cdpConnected === true
-      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-      : cdpConnected === false
-        ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'
-        : 'border-gray-500/20 bg-gray-500/10 text-gray-500 dark:text-gray-400'
-
-  return (
-    <section className="space-y-3" aria-labelledby="browser-automation-heading">
-
-      {usesCdp && (
-        <details open={inline || undefined} className="overflow-hidden rounded-lg border border-border">
-          <summary className={inline ? 'hidden' : 'cursor-pointer px-3 py-2 text-sm'}>Connection details</summary>
-          <div className="space-y-3 p-3 sm:p-4">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Local Chrome connection</h4>
-                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  This mode requires Chrome to remain reachable on the saved port.
-                </p>
-              </div>
-              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium ${connectionStyle}`}>
-                {cdpChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
-                {connectionLabel}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              {onCdpPortChange && <label className="block sm:w-40">
-                <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Chrome CDP port</span>
-                <Input
-                  type="number"
-                  value={cdpPort}
-                  disabled={readOnly}
-                  onChange={(event) => onCdpPortChange(parseInt(event.target.value, 10) || 9222)}
-                  min={1}
-                  max={65535}
-                  aria-label="Chrome CDP port"
-                />
-              </label>}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onCheckCdpConnection(cdpPort)}
-                disabled={cdpChecking}
-              >
-                {cdpChecking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Check now
-              </Button>
-            </div>
-
-            {cdpConnected === false && (
-              <p className="text-xs text-red-600 dark:text-red-300">
-                Chrome is not reachable on port {cdpPort}.{cdpError ? ` ${cdpError}` : ''}
-              </p>
-            )}
-
-          </div>
-
-          <details className="group min-w-0 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/70">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800/60 sm:px-4 [&::-webkit-details-marker]:hidden">
-              <span>Need to install or launch Chrome with CDP?</span>
-              <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="grid min-w-0 gap-5 border-t border-gray-200 p-3 dark:border-gray-700 sm:p-4 2xl:grid-cols-2">
-              {isMac && (
-                <div className="min-w-0 space-y-3">
-                  <div>
-                    <h5 className="text-xs font-semibold text-gray-800 dark:text-gray-100">Recommended on macOS</h5>
-                    <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                      The installer updates the app, clears quarantine, signs it locally, opens it, and verifies port {cdpPort}.
-                    </p>
-                  </div>
-                  <CommandBlock label="Install or update" command={chromeCdpInstallCommand(cdpPort)} />
-                  <a
-                    href={chromeCdpZipUrl}
-                    download="Chrome-CDP-macOS.zip"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(event) => event.stopPropagation()}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Download Chrome CDP.app
-                  </a>
-                  <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                    Manual install: unzip, move the app to Applications, then open it. If macOS blocks it, allow it in Privacy &amp; Security or run <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[11px] dark:bg-gray-800">xattr -c /Applications/Chrome\ CDP.app</code>.
-                  </p>
-                </div>
-              )}
-
-              <div className="min-w-0 space-y-3">
-                <div>
-                  <h5 className="text-xs font-semibold text-gray-800 dark:text-gray-100">Launch manually</h5>
-                  <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                    Uses a dedicated profile. A different port automatically gets a different profile for independent logins.
-                  </p>
-                </div>
-                <CommandBlock label="Launch Chrome" command={chromeCdpLaunchCommand(cdpPort, platform)} />
-                <CommandBlock label="Verify the port" command={chromeCdpVerifyCommand(cdpPort)} />
-                <a
-                  href="https://github.com/manishiitg/coding-agent-loop#chrome-cdp-browser"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-cyan-700 hover:text-cyan-600 dark:text-cyan-400"
-                >
-                  Full browser setup guide <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
-            </div>
-          </details>
-        </details>
-      )}
-    </section>
-  )
-}
-
-export default BrowserAutomationSettings

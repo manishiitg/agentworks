@@ -1,9 +1,10 @@
+import { useState } from 'react'
 import { ChromeExtensionConnection, useChromeExtensionConnection } from './ChromeExtensionConnection'
 import { Button } from '../ui/Button'
-import { Monitor, Loader2 } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 import BrowserAutomationSettings, { type BrowserAutomationMode } from '../BrowserAutomationSettings'
 import WorkflowLiveBrowser, { type BrowserEmptyStateActions } from './WorkflowLiveBrowser'
-import { WorkspaceViewHeader } from './WorkspaceViewHeader'
+import { BrowserScriptSetup } from './BrowserScriptSetup'
 
 interface BrowserWorkspacePanelProps {
   workspacePath: string | null
@@ -23,45 +24,28 @@ interface BrowserWorkspacePanelProps {
   profileId?: string
 }
 
-/** One inline project choice; account pairing remains reusable across projects. */
-export function BrowserWorkspacePanel({
-  workspacePath, browserMode, onBrowserModeChange, cdpPort, onCdpPortChange,
-  cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false,
-  dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId,
-}: BrowserWorkspacePanelProps) {
+/** Browser configuration and observing a running session are separate actions. */
+export function BrowserWorkspacePanel({ workspacePath, browserMode, onBrowserModeChange, cdpPort = 9222, onCdpPortChange, cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false, dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId }: BrowserWorkspacePanelProps) {
+  const [cdpSetupOpen, setCdpSetupOpen] = useState(false)
   const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
-  const extensionAvailable = ['work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
-  const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !extensionAvailable)
+  const configurable = ['work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
+  const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !configurable)
   const displayMode = connection.status.mode || browserMode
-  const directMode = connection.status.allowed_modes?.find(mode => mode !== 'extension')
-  const directLabel = directMode === 'cdp' ? 'Local Chrome · Direct' : 'In-app browser'
-  const useWorkspaceBrowser = async () => {
-    if (!directMode) return
-    if (!await connection.selectWorkspace(directMode, cdpPort)) return false
-    onBrowserModeChange(directMode)
-    return true
+  const modes = connection.status.allowed_modes || []
+  const selected = (mode: 'cdp' | 'headless') => !connection.status.selected && displayMode === mode
+  async function useBrowser(mode: 'cdp' | 'headless') {
+    if (!await connection.selectWorkspace(mode, cdpPort)) return
+    onBrowserModeChange(mode)
   }
-  const controls = !readOnly && workspacePath ? <div className="space-y-3">
-    {extensionAvailable && <ChromeExtensionConnection key={`${extensionProfile}:${workspacePath}`} connection={connection} workspaceBrowser={directMode ? { label: directLabel, secondary: directMode === 'cdp', selected: !connection.status.selected && displayMode === directMode, onSelect: useWorkspaceBrowser } : undefined} />}
-    {directMode === 'cdp' && displayMode === 'cdp' && !connection.status.selected && <details className="mt-2 text-xs">
-      <summary className="cursor-pointer text-muted-foreground">Connection details</summary>
-      <div className="pt-3"><BrowserAutomationSettings inline browserMode={displayMode} onBrowserModeChange={onBrowserModeChange} cdpPort={cdpPort} onCdpPortChange={onCdpPortChange} cdpConnected={cdpConnected} cdpError={cdpError} cdpChecking={cdpChecking} onCheckCdpConnection={onCheckCdpConnection} readOnly={readOnly || connection.busy} scopeNoun={scopeNoun} />{onSave && (dirty || saving) && <Button size="sm" disabled={saving} onClick={onSave}>{saving ? 'Saving…' : 'Apply connection settings'}</Button>}</div>
-    </details>}
-  </div> : null
-  const hasSavedBrowser = connection.status.browsers?.some(browser => browser.enabled)
-  const emptyBrowser = !readOnly && workspacePath ? ({ startBrowser, startingBrowser, canStart }: BrowserEmptyStateActions) => <div className="space-y-4 text-center" aria-label="Open a browser">
-    <p className="text-sm text-muted-foreground">{displayMode === 'headless' || displayMode === 'cdp' ? 'Ask your agent to open a website.' : hasSavedBrowser ? 'Choose a browser above.' : 'Add a browser above to start.'}</p>
-    {canStart && (displayMode === 'headless' || displayMode === 'cdp') && <Button type="button" disabled={startingBrowser || connection.busy} onClick={() => { void startBrowser() }} className="gap-2">
-      {startingBrowser ? <Loader2 className="h-4 w-4 animate-spin" /> : <Monitor className="h-4 w-4" />}
-      {startingBrowser ? 'Opening browser…' : 'Open browser'}
-    </Button>}
-  </div> : undefined
-  const extensionView = !readOnly && (connection.status.selected || displayMode === 'extension' || displayMode === 'none')
+  const overview = configurable ? (actions: BrowserEmptyStateActions) => <>
+    {connection.loading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Checking browser connections…</p> : <ChromeExtensionConnection key={`${extensionProfile}:${workspacePath}`} connection={connection} additionalBrowsers={<div className="space-y-1">
+      {modes.includes('cdp') && <div>
+        <div className="flex min-w-0 items-center gap-2 rounded px-2 py-1.5 text-xs"><span className="flex min-w-0 flex-1 items-center gap-2">Chrome Direct{selected('cdp') && <Check className="h-3.5 w-3.5" aria-label="Selected" />}</span><Button size="xs" variant="ghost" onClick={() => setCdpSetupOpen(value => !value)} aria-expanded={cdpSetupOpen}>{cdpConnected ? 'Details' : 'Set up'}</Button>{cdpConnected && <Button size="xs" variant="ghost" aria-label={selected('cdp') ? 'Open Chrome Direct' : 'Use Chrome Direct'} disabled={connection.busy || actions.startingBrowser || !actions.canStart} onClick={() => { if (selected('cdp')) void actions.startBrowser(); else void useBrowser('cdp') }}>{selected('cdp') ? 'Open' : 'Use'}</Button>}</div>
+        {cdpSetupOpen && <div className="mt-2 space-y-2"><BrowserAutomationSettings cdpPort={cdpPort} onCdpPortChange={onCdpPortChange} cdpConnected={cdpConnected} cdpError={cdpError} cdpChecking={cdpChecking} onCheckCdpConnection={onCheckCdpConnection} readOnly={connection.busy} />{onSave && (dirty || saving) && <Button size="sm" disabled={saving} onClick={onSave}>{saving ? 'Saving…' : 'Apply connection settings'}</Button>}</div>}
+      </div>}
+      {modes.includes('headless') && <div className="flex min-w-0 items-center gap-2 rounded px-2 py-1.5 text-xs"><span className="flex min-w-0 flex-1 items-center gap-2">Private browser{selected('headless') && <Check className="h-3.5 w-3.5" aria-label="Selected" />}</span><Button size="xs" variant="ghost" aria-label={selected('headless') ? 'Open private browser' : 'Use private browser'} disabled={connection.busy || actions.startingBrowser || !actions.canStart} onClick={() => { if (selected('headless')) void actions.startBrowser(); else void useBrowser('headless') }}>{actions.startingBrowser ? 'Opening…' : selected('headless') ? 'Open' : 'Use'}</Button></div>}
+    </div>} />}
+  </> : undefined
 
-  return <div className="relative flex h-full min-h-0 flex-1 flex-col">
-    {connection.loading ? <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Checking browser connection…</div> : extensionView ? <>
-      <WorkspaceViewHeader icon={Monitor} title="Browser" />
-      <div className="min-h-0 flex-1 overflow-y-auto p-4" aria-label="Browser content">{controls}</div>
-    </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} emptyContent={emptyBrowser} browserSelection={controls && <div className="max-h-[40vh] shrink-0 overflow-y-auto border-b border-border px-3 py-2">{controls}</div>} />}
-  </div>
+  return <div className="flex h-full min-h-0 flex-1 flex-col"><WorkflowLiveBrowser key={workspacePath} workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} overview={overview} overviewFooter={configurable ? <BrowserScriptSetup /> : undefined} /></div>
 }
