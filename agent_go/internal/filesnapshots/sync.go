@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
@@ -48,7 +49,7 @@ func (s Store) syncBase(ctx context.Context, pair string) (string, error) {
 	return base, s.command(ctx, "update-ref", syncRef(pair, "baseline"), base).Run()
 }
 
-func (s Store) EncodeSync(ctx context.Context, pair string, snapshot *crewsync.Snapshot) error {
+func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots, snapshot *crewsync.Snapshot) error {
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return err
@@ -58,30 +59,90 @@ func (s Store) EncodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 	if err != nil {
 		return err
 	}
-	var input bytes.Buffer
-	fmt.Fprintf(&input, "commit %s\ncommitter AgentWorks <sync@example.com> 0 +0000\ndata 4\nsync\nfrom %s\ndeleteall\n", syncRef(pair, "pending"), base)
-	keys := make([]string, 0, len(snapshot.Contents))
-	for key := range snapshot.Contents {
-		keys = append(keys, key)
+	raw, err := s.command(ctx, "ls-tree", "-r", "--name-only", "-z", base).Output()
+	if err != nil {
+		return err
+	}
+	existing := map[string]bool{}
+	for _, key := range strings.Split(string(raw), "\x00") {
+		if key != "" {
+			existing[key] = true
+		}
+	}
+	omitted := map[string]bool{}
+	for _, key := range snapshot.Omitted {
+		omitted[key] = true
+	}
+	changes := map[string]crewsync.Change{}
+	for _, change := range snapshot.Changes {
+		changes[change.Path] = change
+	}
+	keys := make([]string, 0, len(snapshot.Files))
+	for key := range snapshot.Files {
+		if !omitted[key] {
+			keys = append(keys, key)
+		}
 	}
 	sort.Strings(keys)
-	for _, key := range keys {
-		if !crewsync.Allowed(key, false) {
-			return fmt.Errorf("invalid sync path")
-		}
-		mode := "100644"
-		if snapshot.Files[key].Executable {
-			mode = "100755"
-		}
-		data := snapshot.Contents[key]
-		fmt.Fprintf(&input, "M %s inline %s\ndata %d\n", mode, strconv.Quote(key), len(data))
-		input.Write(data)
-		input.WriteByte('\n')
-	}
-	input.WriteString("\ndone\n")
+	reader, writer := io.Pipe()
 	cmd := s.command(ctx, "fast-import", "--quiet", "--force")
-	cmd.Stdin = &input
-	if err = cmd.Run(); err != nil {
+	cmd.Stdin = reader
+	written := make(chan error, 1)
+	go func() {
+		write := func() error {
+			if _, err := fmt.Fprintf(writer, "commit %s\ncommitter AgentWorks <sync@example.com> 0 +0000\ndata 4\nsync\nfrom %s\n", syncRef(pair, "pending"), base); err != nil {
+				return err
+			}
+			for key := range existing {
+				if _, ok := snapshot.Files[key]; !ok || omitted[key] {
+					if _, err := fmt.Fprintf(writer, "D %s\n", strconv.Quote(key)); err != nil {
+						return err
+					}
+				}
+			}
+			for _, key := range keys {
+				if !crewsync.Allowed(key, false) {
+					return fmt.Errorf("invalid sync path")
+				}
+				change, changed := changes[key]
+				if !changed && existing[key] {
+					continue
+				}
+				data := change.Data
+				if !changed {
+					var err error
+					data, err = crewsync.ReadContent(roots, key, snapshot.Files[key])
+					if err != nil {
+						return err
+					}
+				}
+				mode := "100644"
+				if snapshot.Files[key].Executable {
+					mode = "100755"
+				}
+				if _, err := fmt.Fprintf(writer, "M %s inline %s\ndata %d\n", mode, strconv.Quote(key), len(data)); err != nil {
+					return err
+				}
+				if _, err := writer.Write(data); err != nil {
+					return err
+				}
+				if _, err := io.WriteString(writer, "\n"); err != nil {
+					return err
+				}
+			}
+			_, err := io.WriteString(writer, "\ndone\n")
+			return err
+		}
+		err := write()
+		_ = writer.CloseWithError(err)
+		written <- err
+	}()
+	err = cmd.Run()
+	_ = reader.Close()
+	if writeErr := <-written; writeErr != nil {
+		return writeErr
+	}
+	if err != nil {
 		return fmt.Errorf("capture project snapshot: %w", err)
 	}
 	head, err := s.command(ctx, "rev-parse", syncRef(pair, "pending")).Output()
@@ -109,7 +170,6 @@ func (s Store) EncodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 		return err
 	}
 	snapshot.Content = &crewsync.ContentSnapshot{Base: base, Head: strings.TrimSpace(string(head)), Bundle: data}
-	snapshot.Contents = nil
 	for i := range snapshot.Changes {
 		snapshot.Changes[i].Data = nil
 	}
