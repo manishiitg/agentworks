@@ -133,7 +133,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [underlyingProvider, setUnderlyingProvider] = useState('google')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  // The result of "Also use on <server>", shown under the account it was for.
+  const [notice, setNotice] = useState<{ id: string; text: string; signInUrl?: string } | null>(null)
   // Connected servers, when this page shows the Mac app's own accounts: each own account can also be added there.
   const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
   const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
@@ -330,9 +331,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     try {
       const result = await desktopRequest<{ status: 'copied' | 'sign_in' | 'exists'; server_url: string }>(`/${encodeURIComponent(server.id)}/provider-accounts`, 'POST', { account_id: record.id })
       if (result.status === 'sign_in') {
-        setNotice(`Added to ${server.name} as your private account. Sign in to it there, in the browser window that opened.`)
+        setNotice({ id: record.id, text: `Added to ${server.name} as your private account. Next: sign in to it on ${server.name}.`, signInUrl: result.server_url })
         window.electronAPI?.openExternal?.(result.server_url)
-      } else setNotice(result.status === 'exists' ? `Already on ${server.name}.` : `Added to ${server.name} as your private account.`)
+      } else setNotice({ id: record.id, text: result.status === 'exists' ? `Already on ${server.name} as your private account.` : `Added to ${server.name} as your private account. It is ready to use there.` })
     } catch (addError) { setError(addError instanceof Error ? addError.message : 'Could not add the account.') }
     finally { setBusy(false) }
   }
@@ -399,6 +400,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             ]} />
           </div>
         )}
+        {noticeFor(record)}
         {sharingEditor(record)}
         {modelsEditor(record)}
         {keyModelsEditor(record)}
@@ -448,6 +450,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             </div>
           )}
         </div>
+        {noticeFor(record)}
         {availabilityDraft !== null && record.availability_editable && (
           <form className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }} onKeyDown={event => { if (event.key === 'Escape') setAvailabilityDraft(null) }}>
             <AvailabilityFields value={availabilityDraft} onChange={setAvailabilityDraft} disabled={busy} />
@@ -526,7 +529,12 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const addButton = !disabled && personalAllowed && !adding && (
     <button disabled={busy} type="button" className={secondaryButtonClass} onClick={openAdd}><Plus className="h-3.5 w-3.5" /> {provider === 'pi-cli' ? 'Add a model key' : 'Add my account'}</button>
   )
-  const noticeLine = notice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{notice}</p>
+  const noticeFor = (record: ProviderConnection) => notice?.id === record.id && (
+    <p role="status" className="mt-3 flex w-full flex-wrap items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+      <span>{notice.text}</span>
+      {notice.signInUrl && <button type="button" className="font-medium underline" onClick={() => window.electronAPI?.openExternal?.(notice.signInUrl!)}>Open sign-in</button>}
+    </p>
+  )
   const errorLine = error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
 
   if (manage) {
@@ -550,7 +558,6 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           </div>}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
           {group('Other people\'s accounts', connections.filter(record => accountRelation(record) === 'admin_view'))}
-          {noticeLine}
           {errorLine}
           <ConfirmationDialog
             isOpen={confirmSharedLogin !== null}
@@ -602,7 +609,6 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
 
       {!formOnly && !selectionOnly && <ul className="mt-4 divide-y divide-gray-200 dark:divide-gray-700">{own.map(userRow)}</ul>}
       {addForm}
-      {noticeLine}
       {errorLine}
     </section>
   )
