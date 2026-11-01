@@ -151,6 +151,9 @@ type idleCompactRun struct {
 	stopped bool
 	cancel  context.CancelFunc
 	manual  bool // "Compact now" from the tab's model menu, not the idle sweep
+	// startTerminal: the same internal turn starts the chat's Claude Code terminal
+	// instead of compacting (the person turned "Native Claude Code terminal" on).
+	startTerminal bool
 }
 
 func newIdleCompactRun() *idleCompactRun { return &idleCompactRun{done: make(chan struct{})} }
@@ -449,6 +452,14 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 		run.finish(llmtypes.IdleCompactResult{Reason: llmtypes.IdleCompactReasonFailed}, context.DeadlineExceeded)
 	}
 	result, runErr := run.result, run.err
+	if run.startTerminal {
+		if runErr != nil {
+			log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=start result=failed reason=%q", sessionID, owner, runErr.Error())
+		} else {
+			log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=start result=started", sessionID, owner)
+		}
+		return
+	}
 	action, reason := "compacted", result.Reason
 	if runErr != nil {
 		action, reason = "failed", runErr.Error()
@@ -558,6 +569,19 @@ func (api *StreamingAPI) compactIdleTurn(ctx context.Context, sessionID string, 
 	defer cancel()
 	if !run.begin(cancel) {
 		run.finish(llmtypes.IdleCompactResult{Reason: "person_message"}, nil)
+		return
+	}
+	if run.startTerminal {
+		// Built exactly as for the next message (its tools registered first), so the terminal starts on the
+		// same conversation with everything the chat offers; the next message goes to it.
+		handle, err := mcpagent.StartAgentTransportSession(compactCtx, agent)
+		if err == nil && handle != nil && strings.TrimSpace(handle.TmuxSession) != "" {
+			runtime := &ChatHistoryAgentRuntime{Provider: strings.TrimSpace(handle.Provider)}
+			if _, started, reason := api.materializeRestoredTmuxTerminal(compactCtx, sessionID, runtime, handle.TmuxSession); !started {
+				log.Printf("[CLAUDE_TERMINAL] session=%s terminal started but not shown: %s", sessionID, reason)
+			}
+		}
+		run.finish(llmtypes.IdleCompactResult{Reason: "terminal_started"}, err)
 		return
 	}
 	if api.eventStore != nil {
