@@ -79,6 +79,8 @@ func TestOptionalInputSetsDoNotEnableUnselectedWork(t *testing.T) {
 		{"unknown without groups", nil, []string{"missing"}, 0, true},
 		{"partly unknown", manifest, []string{"one", "missing"}, 0, true},
 		{"explicit selection", manifest, []string{"two"}, 1, false},
+		{"reserved run folder", &VariablesManifest{Groups: []VariableGroup{{Name: " Execution! ", Enabled: true}}}, nil, 0, true},
+		{"private run folder", &VariablesManifest{Groups: []VariableGroup{{Name: ".temporary", Enabled: true}}}, nil, 0, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

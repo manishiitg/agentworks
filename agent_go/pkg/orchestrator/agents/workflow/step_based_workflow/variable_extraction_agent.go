@@ -255,12 +255,22 @@ func readVariablesFromFile(ctx context.Context, workspacePath string, readFile f
 	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
 		return nil, fmt.Errorf("failed to parse variables.json: %w", err)
 	}
+	for _, group := range manifest.Groups {
+		if err := ValidateInputSetName(group.Name); err != nil {
+			return nil, err
+		}
+	}
 
 	return &manifest, nil
 }
 
 // writeVariablesToFile writes VariablesManifest to variables.json in the workspace using BaseOrchestrator's WriteWorkspaceFile
 func writeVariablesToFile(ctx context.Context, workspacePath string, manifest *VariablesManifest, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error, logger loggerv2.Logger) error {
+	for _, group := range manifest.Groups {
+		if err := ValidateInputSetName(group.Name); err != nil {
+			return err
+		}
+	}
 	// Use relative path only - WriteWorkspaceFile auto-prepends workspacePath
 	variablesPath := filepath.Join("variables", "variables.json")
 

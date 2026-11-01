@@ -284,6 +284,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) determineBaseIterationFolder() string
 // - Removes multiple consecutive dashes
 // - Falls back to empty string if result is invalid
 func (hcpo *StepBasedWorkflowOrchestrator) sanitizeNameForFolder(name string) string {
+	return inputSetFolderName(name)
+}
+
+func inputSetFolderName(name string) string {
 	if name == "" {
 		return ""
 	}
