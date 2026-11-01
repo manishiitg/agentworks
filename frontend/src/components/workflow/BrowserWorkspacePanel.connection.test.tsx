@@ -93,6 +93,8 @@ it('applies direct browser selection immediately and retains the saved browser o
     await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))!.click() })
     expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'workspace', mode: 'cdp', port: 9222 }, expect.anything())
     expect(changed).toHaveBeenCalledWith('cdp')
+    // The active direct connection stays identifiable after leaving secondary options.
+    expect([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))?.querySelector('[aria-label="Selected"]')).toBeTruthy()
     expect(host.querySelector('[aria-label="Choose browser"]')).toBeTruthy()
   } finally { await act(async () => root.unmount()) }
 })
