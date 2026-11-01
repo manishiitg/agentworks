@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -202,23 +203,23 @@ func serverCursorSession(ctx context.Context) (string, error) {
 	return cursorSession.token, nil
 }
 
-// cursorRelayAllowed are the Cursor calls an agent needs: its agent service, conversation streaming, and Cursor's
-// read-only lookups. Account changes, team settings and sign-in are not relayed.
+// cursorRelayMethods are the exact Cursor calls an agent turn makes (seen live 1 Nov 2026), and nothing else: every
+// Mac user shares the server's Cursor identity, so any call that lists or reads stored conversations, cloud agents
+// or account history would show one person's Cursor chats to another. Refusals are logged; grow the list from them.
+var cursorRelayMethods = map[string]bool{
+	"agent.v1.AgentService/RunSSE":                    true,
+	"aiserver.v1.BidiService/BidiAppend":              true,
+	"aiserver.v1.DashboardService/GetUserPrivacyMode": true,
+}
+
+var cursorRelayPathShape = regexp.MustCompile(`^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*/[A-Za-z0-9_]+$`)
+
 func cursorRelayAllowed(path string) bool {
-	switch {
-	case strings.HasPrefix(path, "agent.v1."):
-		return true
-	case strings.HasPrefix(path, "aiserver.v1.DashboardService/"):
-		method := strings.TrimPrefix(path, "aiserver.v1.DashboardService/")
-		return strings.HasPrefix(method, "Get")
-	case strings.HasPrefix(path, "aiserver.v1."):
-		return true
-	}
-	return false
+	return cursorRelayPathShape.MatchString(path) && cursorRelayMethods[path]
 }
 
 // relayHopHeaders are not passed through a relay.
-var relayHopHeaders = map[string]bool{"Authorization": true, "Host": true, "Connection": true, "Content-Length": true, "Keep-Alive": true, "Proxy-Connection": true, "Te": true, "Trailer": true, "Transfer-Encoding": true, "Upgrade": true, "X-Agentworks-Desktop": true, "Cookie": true}
+var relayHopHeaders = map[string]bool{"Authorization": true, "Host": true, "Connection": true, "Content-Length": true, "Keep-Alive": true, "Proxy-Connection": true, "Te": true, "Trailer": true, "Transfer-Encoding": true, "Upgrade": true, "X-Agentworks-Desktop": true, "Cookie": true, "Set-Cookie": true}
 
 func copyRelayHeaders(to http.Header, from http.Header) {
 	for name, values := range from {
