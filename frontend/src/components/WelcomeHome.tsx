@@ -25,6 +25,7 @@ import api from '../services/api'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
 import { ServerIdentityIcon } from './workspace/ServerIdentityIcon'
 import { serverIconColors } from '../utils/connectedWorkPresentation'
+import { LocalSetup, LOCAL_SETUP_SEEN_KEY } from './LocalSetup'
 
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
@@ -150,6 +151,14 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
     if (!studioCreation || !openQuickNavigation(studioCreation)) return
     useCommandDialogStore.getState().requestProductCreate('work', 'studio')
   }
+  // The new-user setup belongs to the Mac app's own view: it opens once on the first visit there, then from Home.
+  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
+  const [setupOpen, setSetupOpen] = useState(() => onThisMac && !isGuideRemembered(LOCAL_SETUP_SEEN_KEY))
+  const closeSetup = useCallback(() => { rememberGuide(LOCAL_SETUP_SEEN_KEY); setSetupOpen(false) }, [])
+  const startProject = () => {
+    if (!studioCreation || !openQuickNavigation(studioCreation)) return
+    useCommandDialogStore.getState().requestProductCreate('work')
+  }
 
   return (
     <main aria-label="Home"
@@ -239,6 +248,12 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
           </div>
           <Button type="button" variant="outline" onClick={openMcpSetup} className="shrink-0">Connect your AI app<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
         </section>
+
+        {onThisMac && <section aria-labelledby="welcome-setup" className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-dashed border-primary/40 p-5 sm:flex-row sm:items-center">
+          <div><h2 id="welcome-setup" className="text-sm font-semibold">Start new-user setup</h2><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">See what someone gets on first install: the AI programs on this Mac, then a new project or a folder you already have. Nothing you have is reset.</p></div>
+          <Button type="button" onClick={() => setSetupOpen(true)} className="shrink-0">Start setup</Button>
+        </section>}
+        {setupOpen && <LocalSetup onClose={closeSetup} onStartProject={startProject} />}
 
       </div>
     </main>
