@@ -76,15 +76,24 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 					return fail("Reconnect this project's server to finish bringing its conversation back, then send again.")
 				}
 				forwardCrewHandoffNotice(w, response.body.Bytes())
+				return resume()
 			}
-			return resume()
+			// Rebind only a return this request observed. An ordinary local
+			// send must keep the browser's stale-conversation protection.
+			if observed.Editing == "server" || observed.PendingAction == "local" {
+				return resume()
+			}
+			return false
 		}
 		b, e = updateCrewSyncEditing(r.Context(), roots, observed, "server")
 		if e != nil {
 			return fail(e.Error())
 		}
 		if b.Editing == "local" && b.PendingAction == "" {
-			return resume()
+			if observed.Editing == "server" || observed.PendingAction == "local" {
+				return resume()
+			}
+			return false
 		}
 		response := api.runInternalCrewHandoff(r.Context(), claims, roots.ID, b.ConnectionID, "local")
 		if response.status >= 400 {
