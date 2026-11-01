@@ -250,11 +250,14 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		api.markChatFilesReviewed(w, r, sessionID, store, history, id)
 		return
 	}
-	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" && op != "reply_card" && op != "chat_status" {
+	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" && op != "reply_card" && op != "chat_status" && op != "snapshot_turn" {
 		externalError(w, 400, "invalid_action", "Choose a saved file comparison.")
 		return
 	}
 	if op == "snapshots" {
+		if project {
+			api.decorateProjectHistory(r, root, &history)
+		}
 		externalJSON(w, history)
 		return
 	}
@@ -368,6 +371,14 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	comparison.Record.ExecutionID = ""
+	if op == "snapshot_turn" {
+		if !project || id == "" || len(comparison.Changes) == 0 {
+			externalError(w, 404, "source_unavailable", "Choose a saved project change you can read.")
+			return
+		}
+		api.serveProjectSnapshotTurn(w, r, root, id)
+		return
+	}
 	if outsideGit {
 		kept := comparison.Changes[:0]
 		for _, change := range comparison.Changes {

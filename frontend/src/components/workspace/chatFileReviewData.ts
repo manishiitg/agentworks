@@ -4,7 +4,8 @@ import type { ReplyFileChange } from '../../utils/replyFileChanges'
 
 export type FileChange = ReplyFileChange
 export type ReviewSummary = { files: number; added: number; removed: number }
-export type ProjectCapture = ReviewSummary & { snapshot_id: string; at: string; branch?: string; note?: string }
+export type ProjectCaptureSource = { label: string; agent_name?: string; can_open: boolean }
+export type ProjectCapture = ReviewSummary & { snapshot_id: string; at: string; branch?: string; note?: string; source?: ProjectCaptureSource }
 export type ProjectCheckout = { working_tree?: 'clean' | 'dirty'; id: string; root: string; name: string; captures: ProjectCapture[] }
 export type ReviewHistory = {
   scope?: 'project'

@@ -117,6 +117,7 @@ func OpenSQLiteEventJournal(path string) (*SQLiteEventJournal, error) {
 			session_id TEXT PRIMARY KEY,
 			last_sequence INTEGER NOT NULL
 		)`,
+		`CREATE INDEX IF NOT EXISTS structured_chat_event_id ON structured_chat_events(event_id)`,
 		`CREATE TABLE IF NOT EXISTS structured_chat_migrations (
 			session_id TEXT PRIMARY KEY,
 			migrated_at TEXT NOT NULL

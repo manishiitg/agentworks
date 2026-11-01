@@ -290,7 +290,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	case "list_crew_snapshots", "compare_crew_snapshot", "review_crew_snapshot", "undo_crew_reply":
 		r = r.Clone(r.Context())
 		q := r.URL.Query()
-		for _, key := range []string{"session_id", "through_snapshot_id", "baseline_snapshot_id", "review_id", "line", "offset", "change_key", "history_scope", "checkout_id"} {
+		for _, key := range []string{"session_id", "through_snapshot_id", "baseline_snapshot_id", "review_id", "line", "offset", "change_key", "history_scope", "checkout_id", "after_sequence"} {
 			if value := str(key); value != "" {
 				q.Set(key, value)
 			}
@@ -313,6 +313,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		if name == "compare_crew_snapshot" {
 			op = "snapshot_compare"
+			if str("view") == "turn" {
+				op = "snapshot_turn"
+			}
 			if str("group_by") == "repository" {
 				// One reply's changes grouped by Git checkout, with branch and pull request status.
 				op = "snapshot_groups"
