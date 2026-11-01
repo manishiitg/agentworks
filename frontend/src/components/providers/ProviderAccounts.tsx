@@ -25,7 +25,7 @@ import {
 } from '../../services/llm-config-api'
 import { formatTokens } from '../../utils/formatTokens'
 import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
-import { desktopRequest } from '../../services/desktopConnections'
+import { desktopRequest, type DesktopConnection } from '../../services/desktopConnections'
 
 // Providers with a browser login the server can sign out (the CLI's own logout).
 const SIGN_OUT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'])
@@ -326,19 +326,22 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     )
   }
   // A key goes from this Mac's backend straight to your private account on the server; a browser login is signed in there.
-  const addToServer = async (record: ProviderConnection, server: { id: string; name: string }) => {
+  // A server login can be another person than the one signed in on that server's website: name it everywhere.
+  const signedInAs = (server: DesktopConnection) => server.user?.email || server.user?.username || ''
+  const addToServer = async (record: ProviderConnection, server: DesktopConnection) => {
+    const who = signedInAs(server) ? ` for ${signedInAs(server)}` : ''
     setBusy(true); setError(null); setNotice(null)
     try {
       const result = await desktopRequest<{ status: 'copied' | 'sign_in' | 'exists'; server_url: string }>(`/${encodeURIComponent(server.id)}/provider-accounts`, 'POST', { account_id: record.id })
       if (result.status === 'sign_in') {
-        setNotice({ id: record.id, text: `Added to ${server.name} as your private account. Next: sign in to it on ${server.name}.`, signInUrl: result.server_url })
+        setNotice({ id: record.id, text: `Added to ${server.name} as a private account${who}. Next: sign in to it on ${server.name}.`, signInUrl: result.server_url })
         window.electronAPI?.openExternal?.(result.server_url)
-      } else setNotice({ id: record.id, text: result.status === 'exists' ? `Already on ${server.name} as your private account.` : `Added to ${server.name} as your private account. It is ready to use there.` })
+      } else setNotice({ id: record.id, text: result.status === 'exists' ? `Already on ${server.name} as a private account${who}.` : `Added to ${server.name} as a private account${who}. It is ready to use there.` })
     } catch (addError) { setError(addError instanceof Error ? addError.message : 'Could not add the account.') }
     finally { setBusy(false) }
   }
   const serverItems = (record: ProviderConnection) => onThisMac && manage && record.can_manage
-    ? servers.map(server => ({ label: `Also use on ${server.name}`, onSelect: () => void addToServer(record, server) })) : []
+    ? servers.map(server => ({ label: `Also use on ${server.name}${signedInAs(server) ? ` (as ${signedInAs(server)})` : ''}`, onSelect: () => void addToServer(record, server) })) : []
   const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login')
   // The terminal is where a person signs in by hand and checks usage (/usage); there is no
   // separate usage check.
