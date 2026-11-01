@@ -22,6 +22,10 @@ export function WorkspaceDashboardMenu({ documents, onSelect, createTarget }: {
       {group.rows.map(document => <WorkspaceContextRow key={document.path} icon={group.icon} hint={document.title} onClick={() => onSelect(document.path)}>{reportDocumentLabel(document, documents)}</WorkspaceContextRow>)}
     </div>)}
     {!documents.length && <WorkspaceContextRow icon={LayoutDashboard} onClick={() => onSelect()}>Open dashboards</WorkspaceContextRow>}
-    {createTarget && <div className="px-1 pt-2"><DashboardCreateDraftButton target={createTarget} motion compact/></div>}
+    {createTarget && <div role="group" aria-label="Create dashboard content" className="flex items-center gap-1 px-1 pt-2">
+      <DashboardCreateDraftButton target={createTarget} compact/>
+      <DashboardCreateDraftButton target={createTarget} kind="motion" compact/>
+      <DashboardCreateDraftButton target={createTarget} kind="artifact" compact/>
+    </div>}
   </WorkspaceCompactGroup>
 }

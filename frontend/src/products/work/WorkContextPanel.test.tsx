@@ -125,6 +125,7 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
   await act(async()=>root.render(<WorkContextPanel workspacePath="Crew/example" panels={[]} onOpen={mocks.open}/>))
   expect(host.textContent).not.toContain('Overview'); expect(host.textContent).not.toContain('Project brief')
   expect(host.textContent).not.toContain('Manage integrations')
+  expect(host.querySelector('[aria-label="Automations"]')).toBeNull()
  } finally { await act(async()=>root.unmount()) }
 })
 it('keeps every starter destination in the admitted All tools inventory and Run mode limited to dashboard', () => {
@@ -186,5 +187,25 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
  mocks.share = { can_share:false, mode:'private', people:[], unknown_emails:[] }
  await render('cowork', async host => {
   expect(host.querySelector('footer')?.textContent).not.toContain('Access & sharing')
+ })
+})
+
+
+it('opens automation setup before any jobs exist and keeps native destination guards', async () => {
+ await render('cowork', async host => {
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Automations"]')!.click())
+  const section = host.querySelector('[aria-label="Automations"]')!.closest('section')!
+  await act(async () => [...section.querySelectorAll('button')].find(node => node.textContent === 'Manage automations')!.click())
+  expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.target).not.toHaveBeenCalled()
+  for (const [label,target] of [['Schedules','schedules'],['Watchers','conditions'],['Webhooks','triggers'],['Functions','functions'],['Email inbox','email']]) {
+   const row = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!
+   await act(async () => row.click())
+   expect(mocks.target).toHaveBeenLastCalledWith('workshop', target)
+   expect(mocks.open).toHaveBeenLastCalledWith('schedules')
+  }
+  const staleRow = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Schedules')!
+  mocks.open.mockClear(); mocks.server = 'another-server'
+  await act(async () => staleRow.click())
+  expect(mocks.open).not.toHaveBeenCalled()
  })
 })

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, RefreshCw } from 'lucide-react'
+import { CalendarClock, ChevronRight, RefreshCw, Settings2 } from 'lucide-react'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -57,8 +57,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const byId = new Map(inventory.map(item => [item.id, item]))
   const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
-  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' }>()
-  const showMenu = (view: 'full' | 'integrations') => {
+  const automationItems = inventory.filter(item => item.view === 'schedules')
+  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' }>()
+  const showMenu = (view: 'full' | 'integrations' | 'automations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
   }
@@ -84,8 +85,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
       return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{item.label}</Row>
     }
-    return <WorkspaceContextCard title={menu.view === 'integrations' ? 'Integrations' : 'Full menu'} onBack={() => setMenu(undefined)}>
-      {menu.view === 'integrations' ? <div className="space-y-0.5">{integrations.map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
+    return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations', automations: 'Automations' }[menu.view]} onBack={() => setMenu(undefined)}>
+      {menu.view !== 'full' ? <div className="space-y-0.5">{(menu.view === 'integrations' ? integrations : automationItems).map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
         const items = inventory.filter(item => item.group === group)
         if (!items.length) return null
         const subgroups = [...new Set(items.flatMap(item => item.subgroup ? [item.subgroup] : []))]
@@ -104,8 +105,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {mode === 'dev' && changes}
     {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} workspacePath={workspacePath} profileId={profileId} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={(snapshot?.apps || []).filter(item => byId.has(item.destination))} loading={!snapshot} unavailable={snapshot?.errors.includes('Connections could not be loaded.') === true} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
-    {automations.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={`${automations.length}${nextAutomation ? ` · ${nextAutomation.detail}` : ''}`}>
+    {automationItems.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={automations.length ? `${automations.length}${nextAutomation ? ` · ${nextAutomation.detail}` : ''}` : undefined}>
       {automations.map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || CalendarClock} hint={byId.get(item.destination)?.label} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}
+      <Row icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={() => showMenu('automations')}>Manage automations</Row>
     </WorkspaceCompactGroup>}
     {snapshot?.errors.length ? <div className="space-y-1 px-1 text-xs text-muted-foreground">{snapshot.errors.map(error => <p key={error}>{error}</p>)}<button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
