@@ -320,8 +320,8 @@ func projectCrewMacEvents(raw []byte, local, paired string) ([]byte, error) {
 		"session:" + local:       "session:" + paired,
 		local + ":main:" + local: paired + ":main:" + paired,
 	}
-	var project func(map[string]json.RawMessage, int) bool
-	project = func(record map[string]json.RawMessage, depth int) bool {
+	var project func(map[string]json.RawMessage, int, string) bool
+	project = func(record map[string]json.RawMessage, depth int, opaqueExecution string) bool {
 		for _, key := range []string{"session_id", "execution_id", "parent_execution_id", "terminal_id", "terminal_owner_id"} {
 			value, exists := record[key]
 			if !exists {
@@ -335,6 +335,9 @@ func projectCrewMacEvents(raw []byte, local, paired string) ([]byte, error) {
 				continue
 			}
 			replacement, ok := identities[id]
+			if !ok && key == "execution_id" && id == opaqueExecution {
+				continue
+			}
 			if !ok || key == "session_id" && id != local {
 				return false
 			}
@@ -343,7 +346,7 @@ func projectCrewMacEvents(raw []byte, local, paired string) ([]byte, error) {
 		if depth > 0 {
 			var nested map[string]json.RawMessage
 			if json.Unmarshal(record["data"], &nested) == nil && nested != nil {
-				if !project(nested, depth-1) {
+				if !project(nested, depth-1, opaqueExecution) {
 					return false
 				}
 				record["data"], _ = json.Marshal(nested)
@@ -352,9 +355,24 @@ func projectCrewMacEvents(raw []byte, local, paired string) ([]byte, error) {
 		return true
 	}
 	kept := make([]map[string]json.RawMessage, 0, len(rows))
+	readID := func(row map[string]json.RawMessage, key string) string {
+		var value string
+		_ = json.Unmarshal(row[key], &value)
+		return value
+	}
 	for _, row := range rows {
-		var session string
-		if json.Unmarshal(row["session_id"], &session) == nil && session == local && project(row, 2) {
+		if readID(row, "session_id") != local {
+			continue
+		}
+		opaqueExecution := ""
+		// File-change cards use a per-turn ID. Its exact main-session anchors
+		// prove ownership; preserve that opaque ID, never infer a new route.
+		if readID(row, "parent_execution_id") == "main:"+local &&
+			readID(row, "terminal_owner_id") == "main:"+local &&
+			readID(row, "terminal_id") == local+":main:"+local {
+			opaqueExecution = readID(row, "execution_id")
+		}
+		if project(row, 2, opaqueExecution) {
 			kept = append(kept, row)
 		}
 	}

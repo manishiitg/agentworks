@@ -35,6 +35,12 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 		return false
 	}
 	fail := func(message string) bool { externalError(w, 409, "session_sync_unavailable", message); return true }
+	resume := func() bool {
+		if err := api.bindCrewHandoffContinuation(r, roots.ID); err != nil {
+			return fail(err.Error())
+		}
+		return false
+	}
 	if IsLocalMode() {
 		if b.Side != "local" {
 			return false
@@ -70,8 +76,7 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 			return true
 		}
 		forwardCrewHandoffNotice(w, response.body.Bytes())
-		r.Header.Del("X-Session-ID")
-		return false
+		return resume()
 	}
 	if b.Side != "server" || b.Editing != "local" {
 		return false
@@ -81,8 +86,7 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 	result := api.callCrewMac(r, project, crewChatCall{Operation: "handoff", ConversationID: main.ConversationID})
 	if result.Status < 300 {
 		forwardCrewHandoffNotice(w, result.Body)
-		r.Header.Del("X-Session-ID")
-		return false
+		return resume()
 	}
 	if result.Status != 503 && result.Status != 504 {
 		writeCrewChatResult(w, result)
@@ -92,9 +96,19 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 	if e != nil {
 		return fail(e.Error())
 	}
-	r.Header.Del("X-Session-ID")
 	w.Header().Set("X-AgentWorks-Sync-Notice", out.ConversationNotice)
-	return false
+	return resume()
+}
+
+// Keep the browser's explicit-continuation check, but bind it to the canonical
+// destination session the admitted handoff just installed, not the old address.
+func (api *StreamingAPI) bindCrewHandoffContinuation(r *http.Request, project string) error {
+	current, err := api.crewHandoffMain(r.Context(), GetUserFromContext(r.Context()), project)
+	if err != nil {
+		return err
+	}
+	r.Header.Set("X-Session-ID", current.SessionID)
+	return nil
 }
 
 func (api *StreamingAPI) runInternalCrewHandoff(ctx context.Context, claims *UserClaims, project, connection, action string) *internalResponseCapture {
