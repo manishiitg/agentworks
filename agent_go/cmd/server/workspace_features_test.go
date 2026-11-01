@@ -7,6 +7,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -205,5 +206,53 @@ func TestWorkspaceCodeDeletionUsesItsNativeOrigin(t *testing.T) {
 				t.Fatal("another origin was deleted")
 			}
 		})
+	}
+}
+
+// The location preview is gated like creation, shows virtual server paths,
+// and must not create or inspect a caller-chosen folder.
+func TestProjectCreationLocationKeepsAccessAndDoesNotCreate(t *testing.T) {
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	filesBefore := len(f.Mock.files)
+	request := func(ctx context.Context) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/agent-profiles/work/projects/location?name=Release+notes&root_path=/unrelated", nil).WithContext(ctx)
+		req = mux.SetURLVars(req, map[string]string{"id": "work"})
+		rec := httptest.NewRecorder()
+		f.API.handleProjectCreationLocation(rec, req)
+		return rec
+	}
+	for _, local := range []bool{false, true} {
+		t.Setenv("LOCAL_MODE", fmt.Sprint(local))
+		rec := request(f.Ctx(fixtureUserA))
+		var out struct {
+			Folder    string `json:"folder"`
+			CanChoose bool   `json:"can_choose_folder"`
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &out) != nil {
+			t.Fatalf("location: %d %s", rec.Code, rec.Body.String())
+		}
+		want := "Crew/release-notes-…"
+		if local {
+			want = filepath.Join(f.Docs, want)
+		}
+		if out.Folder != want || out.CanChoose != local {
+			t.Fatalf("location %q %v; want %q %v", out.Folder, out.CanChoose, want, local)
+		}
+	}
+	t.Setenv("LOCAL_MODE", "false")
+	if rec := request(context.Background()); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unsigned caller: %d", rec.Code)
+	}
+	if rec := request(f.Ctx(fixtureUserC)); rec.Code != http.StatusForbidden {
+		t.Fatalf("unadmitted caller: %d", rec.Code)
+	}
+	ctx := f.Ctx(fixtureUserA)
+	claims := *GetUserFromContext(ctx)
+	claims.AccessToken = &accesstokens.Token{Scopes: []string{"crews:write"}, CrewIDs: []string{"existing"}}
+	if rec := request(context.WithValue(ctx, UserContextKey, &claims)); rec.Code != http.StatusForbidden {
+		t.Fatalf("bounded token: %d", rec.Code)
+	}
+	if len(f.Mock.files) != filesBefore {
+		t.Fatal("location lookup wrote workspace files")
 	}
 }

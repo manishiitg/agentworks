@@ -77,7 +77,7 @@ export const CREW_STARTER_TYPES = [
 ] as const
 
 export type CrewStarterType = typeof CREW_STARTER_TYPES[number]['id']
-export type CrewOnboarding = { type?: CrewStarterType; openSharing: boolean }
+export type CrewOnboarding = { type?: CrewStarterType }
 
 export function crewStarterShortcuts(type?: CrewStarterType): string[] {
   return CREW_STARTER_TYPES.find(item => item.id === type)?.shortcuts.map(item => item.id) || []

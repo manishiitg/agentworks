@@ -1,13 +1,11 @@
 import { quickNavigationItems, openQuickNavigation } from '../utils/quickNavigation'
-import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { HomeAgentModel } from './HomeAgentModel'
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, LayoutDashboard, Settings2 } from 'lucide-react'
+import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, Plus, Settings2 } from 'lucide-react'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
-import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { isGuideRemembered, rememberGuide } from '../utils/onboarding'
 import { getRuntimeAppName, runtimeBrandingConfig } from '../runtime-branding'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
@@ -19,7 +17,6 @@ import { OPEN_HOME_EVENT } from '../utils/homeNavigation'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
 import { AgentWorksIcon } from './ui/AgentWorksIdentity'
-import { HomeUseCases } from './HomeUseCases'
 import { HomeRecentWork } from './HomeRecentWork'
 import { Button } from './ui/Button'
 import api from '../services/api'
@@ -33,12 +30,6 @@ import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
 const WORK_PRODUCT_ORDER: ProductSurface[] = ['work', 'agentworks', 'relays']
-const SERVICE_ORDER: ProductSurface[] = ['knowledgebase', 'mcp-gateway', 'bullpen']
-const SERVICE_DESCRIPTIONS: Partial<Record<ProductSurface, string>> = {
-  knowledgebase: 'Knowledge your agents can reuse',
-  'mcp-gateway': 'Your connected tools and credentials',
-  bullpen: 'Connect agents to work together',
-}
 
 export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   // Single-product accounts go straight to their workspace; Getting started can still open this page.
@@ -119,16 +110,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const branding = runtimeBrandingConfig()
   const appName = getRuntimeAppName(branding) || 'AgentWorks'
   const workProducts = WORK_PRODUCT_ORDER.flatMap(id => products.filter(product => product.id === id))
-  const services = products.filter(product => !WORK_PRODUCT_ORDER.includes(product.id))
-    .sort((a, b) => {
-      const rank = (id: ProductSurface) => SERVICE_ORDER.includes(id) ? SERVICE_ORDER.indexOf(id) : SERVICE_ORDER.length
-      return rank(a.id) - rank(b.id)
-    })
-  const openProduct = (surface: ProductSurface) => {
-    if (!navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).includes(surface)) return
-    openProductWorkspace(surface)
-    leaveHome()
-  }
+  const createItem = quickNavigationItems(user, 'work', multiUser).find(item => item.action === 'create' && item.surface === 'work')
   // The server makes the person's own AgentWorks on first use, sends the message into its main chat and says which
   // Crew it is; the reply streams there.
   const askAgentWorks = async (event: FormEvent) => {
@@ -170,7 +152,11 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
           <h1 id="home-heading" className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">What would you like to get done?</h1>
 
           {currentConnection && <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">{currentConnection.id !== 'local' && <ServerIdentityIcon connectionId={currentConnection.id} hidden className={`h-3 w-3 ${serverIconColors(connections)[currentConnection.server]}`} />}New work starts on {currentConnection.name}</p>}
-          <div className="mt-5">{workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks">
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-medium">Talk to AgentWorks</h2>
+            {createItem && <Button type="button" onClick={() => openQuickNavigation(createItem)}><Plus className="mr-2 h-4 w-4" aria-hidden="true" />New project</Button>}
+          </div>
+          <div className="mt-3">{workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks">
             <form onSubmit={askAgentWorks} className="rounded-2xl border border-border bg-muted/20 p-3 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/20 sm:p-4">
               <div ref={setVoiceBanner} className="relative" />
               <label htmlFor="welcome-agentworks-message" className="sr-only">Tell AgentWorks what you want to get done</label>
@@ -178,7 +164,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
                 onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (micState.current === 'recording') mic.current?.stopDictation(); else if (micState.current === 'idle') event.currentTarget.form?.requestSubmit() } }}
                 placeholder="Ask AgentWorks to coordinate your agents or help you get work done" className="block w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50" />
               <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="flex min-w-0 items-center gap-2"><AgentWorksIcon /><span className="text-xs font-medium">AgentWorks<span className="ml-2 hidden font-normal text-muted-foreground sm:inline">Your agent manager</span></span></span>
+                <span className="flex min-w-0 items-center gap-2"><AgentWorksIcon /><span className="text-xs font-medium">AgentWorks<span className="ml-2 hidden font-normal text-muted-foreground sm:inline">Your agent</span></span></span>
                 <span className="flex shrink-0 items-center gap-2">
                   {voiceAvailable && !setupOpen && <MicButton key={scope} ref={mic} profileId="" bannerHost={voiceBanner} shortcutEnabled={false} disabled={agentWorksSending}
                     onStateChange={state => { if (isChatIdentityCurrent(voiceIdentity)) { micState.current = state; setVoiceState(state) } }}
@@ -196,25 +182,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
         </section>
 
         {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} />}
-
-        {quickNavigationItems(user, 'work', multiUser).some(item => item.action === 'create' && item.surface === 'work') && <HomeUseCases key={`cases:${scope}`} products={workProducts.map(product => product.id)} onChoose={type => { const creation = quickNavigationItems(user, 'work', multiUser).find(item => item.action === 'create' && item.surface === 'work'); if (!creation || !openQuickNavigation(creation)) return; useCommandDialogStore.getState().requestProductCreate('work', type) }} />}
-
-        <section aria-labelledby="welcome-services">
-          <h2 id="welcome-services" className="text-xs font-medium text-muted-foreground">Tools that work across your projects</h2>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Shared services">
-            <a href="/dashboards" onClick={followAppLink} aria-label="Open Dashboards" className="flex min-w-0 items-center gap-3 rounded-xl border border-border p-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <LayoutDashboard className="h-7 w-7 shrink-0" aria-hidden="true" />
-              <span className="min-w-0"><span className="block text-sm font-semibold">Dashboards</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Your dashboards and those shared with you</span></span>
-            </a>
-            {services.map(product => {
-              const Icon = product.icon
-              return <button key={product.id} type="button" aria-label={`Open ${product.label}`} onClick={() => openProduct(product.id)} className="flex min-w-0 items-center gap-3 rounded-xl border border-border p-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <Icon className="h-7 w-7 shrink-0" title="" />
-                <span className="min-w-0"><span className="block text-sm font-semibold">{product.label}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{SERVICE_DESCRIPTIONS[product.id] || product.description}</span></span>
-              </button>
-            })}
-          </div>
-        </section>
 
         <section aria-labelledby="welcome-tools" className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-primary/20 bg-primary/[0.04] p-5 sm:flex-row sm:items-center sm:p-6">
           <div className="flex items-start gap-3">

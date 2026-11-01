@@ -17,12 +17,11 @@ vi.mock('./HomeAgentModel', () => ({ HomeAgentModel: () => <span>Runs on Test mo
 vi.mock('../voice/MicButton', () => ({ MicButton: ({ onText }: { onText: (text: string, autoSubmit: boolean) => void }) => <button type="button" aria-label="Dictate" onClick={() => onText('spoken words', false)}>Mic</button> }))
 const readiness = vi.hoisted(() => ({ crewReady: false }))
 
-import { WelcomeHome, WELCOME_HOME_DISMISSED_KEY } from './WelcomeHome'
+import { WelcomeHome } from './WelcomeHome'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useAppStore } from '../stores/useAppStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
-import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import api from '../services/api'
 import { productRoutePath } from '../utils/productRoutes'
@@ -99,67 +98,19 @@ describe('WelcomeHome', () => {
     expect(api.post).not.toHaveBeenCalled()
   })
 
-  it('shows only permitted products and remembers dismissal', async () => {
-    configure(['work', 'mcp-gateway'])
-    const host = await renderWelcome()
-    expect(host.textContent).toContain('Acme Agents')
-    expect(host.querySelector('[aria-label="Direct product creation"]')).toBeNull()
-    expect(host.textContent).not.toContain('Goals')
-    await act(async () => button(host, 'Open Vault').click())
-    expect(openProductWorkspace).toHaveBeenCalledWith('mcp-gateway')
-    expect(window.localStorage.getItem(WELCOME_HOME_DISMISSED_KEY)).toBe('true')
-    expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
-    const returning = await renderWelcome()
-    expect(returning.querySelector('main[aria-label="Home"]')).toBeNull()
-  })
-
-  it('offers Crew use cases without separate product creation cards', async () => {
+  it('opens a new project without sending to AgentWorks and honors creation permission', async () => {
     configure()
-    useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { work: true } } as never })
     const host = await renderWelcome()
-    expect(host.querySelector('[aria-label="Direct product creation"]')).toBeNull()
-    expect(host.querySelector('[aria-label="Use cases"]')?.textContent).not.toContain('Studio')
-    expect(host.querySelector('[aria-label="Use cases"]')?.textContent).not.toContain('Goals')
-  })
-
-  it('opens the selected Crew wizard without sending a message', async () => {
-    configure()
-    useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { work: true } } as never })
-    const host = await renderWelcome()
-    const code = [...host.querySelectorAll<HTMLButtonElement>('[aria-label="Use cases"] button')].find(item => item.textContent?.includes('Code'))!
-    await act(async () => code.click())
+    expect([...host.querySelectorAll('button')].some(item => item.textContent?.trim() === 'New project')).toBe(false)
+    expect(host.querySelector('[aria-label="Use cases"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Shared services"]')).toBeNull()
+    await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { work: true } } as never }))
+    await act(async () => button(host, 'New project').click())
     expect(useCommandDialogStore.getState().productCreateSurface).toBe('work')
-    expect(useCommandDialogStore.getState().productCreateIntent).toBe('code')
+    expect(useCommandDialogStore.getState().productCreateIntent).toBeNull()
     expect(api.post).not.toHaveBeenCalled()
-  })
-
-  it('keeps existing work in Recent work and removes Open from creation cards', async () => {
-    configure()
-    const host = await renderWelcome()
     expect(host.textContent).toContain('Recent work')
-    expect(host.querySelector('[aria-label="Direct product creation"] [aria-label^="Open"]')).toBeNull()
-  })
-
-  it('shows permitted shared tools without a disclosure and preserves other services', async () => {
-    configure(['work', 'mcp-gateway', 'bullpen', 'llm-gateway'])
-    const host = await renderWelcome()
-    const services = host.querySelector('[aria-label="Shared services"]')!
-    expect(services.closest('details')).toBeNull()
-    expect(services.textContent).toContain('Vault')
-    expect(services.textContent).toContain('AgentBridge')
-    expect(services.textContent).toContain('LLM Gateway')
-    expect(services.textContent).not.toContain('Brain')
-    await act(async () => button(host, 'Open Vault').click())
-    expect(openProductWorkspace).toHaveBeenCalledWith('mcp-gateway')
-  })
-
-  it('shows shared tools even for accounts without workspace products', async () => {
-    configure(['mcp-gateway', 'knowledgebase'])
-    const host = await renderWelcome()
-    expect(host.querySelector('[data-welcome-product]')).toBeNull()
-    const services = host.querySelector('[aria-label="Shared services"]')!
-    expect(services.textContent!.indexOf('Brain')).toBeLessThan(services.textContent!.indexOf('Vault'))
-    expect(host.querySelector('a[href="/agentbridge/connect"]')).toBeNull()
+    expect(window.location.pathname).toBe('/home')
   })
 
   it('uses the account card and app setup without duplicate footer links', async () => {
@@ -227,12 +178,13 @@ describe('WelcomeHome', () => {
     expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
   })
 
-  it('updates visible choices when permissions change while open', async () => {
+  it('removes project creation when the account loses access', async () => {
     configure()
+    useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { work: true } } as never })
     const host = await renderWelcome()
+    expect(button(host, 'New project')).toBeDefined()
     await act(async () => useAuthStore.setState({ user: { allowed_products: ['knowledgebase'] } as never }))
-    expect(host.querySelector('[data-welcome-product]')).toBeNull()
-    expect(host.querySelectorAll('[aria-label="Shared services"] button')).toHaveLength(1)
-    expect(button(host, 'Open Brain')).toBeDefined()
+    expect([...host.querySelectorAll('button')].some(item => item.textContent?.trim() === 'New project')).toBe(false)
+    expect(host.querySelector('#welcome-agentworks-message')).toBeNull()
   })
 })
