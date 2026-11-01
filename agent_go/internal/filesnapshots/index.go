@@ -423,12 +423,11 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 			w.c.remove = append(w.c.remove, w.path)
 		}
 	}
-	// Metadata is evidence of an observed change, not a captured blob. Keep it
-	// only for skipped regular files; unreadable/non-regular paths stay unknown.
+	// Metadata records size/type evidence, never captured bytes. Preserve
+	// non-regular types too so policy size exclusions cannot hide them. Read
+	// failures without usable metadata remain unknown.
 	rememberSkipped := func(path string, info os.FileInfo) {
-		if info.Mode().IsRegular() {
-			skippedState[path] = fmt.Sprintf("%d:%d:%d", info.Size(), info.ModTime().UnixNano(), info.Mode())
-		}
+		skippedState[path] = fmt.Sprintf("%d:%d:%d", info.Size(), info.ModTime().UnixNano(), info.Mode())
 	}
 	// Concurrent deletes are ordinary working-tree changes. An unreadable path
 	// is omitted on both sides of the comparison, never shown as a deletion.

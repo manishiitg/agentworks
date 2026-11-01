@@ -490,6 +490,36 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 	if err != nil || granted.SkippedCount != 0 || len(granted.Record.Skipped) != 0 {
 		t.Fatalf("skipped response exposed denied paths/count: %v %+v", err, granted)
 	}
+	// PR603: an existing oversized asset must not make another asset's
+	// creation/deletion look like a failure through capture-wide counters.
+	for _, change := range []string{"create-large", "delete-large"} {
+		if _, err := s.Begin(t.Context(), change); err != nil {
+			t.Fatal(err)
+		}
+		other := filepath.Join(s.Root, "new-large.bin")
+		if change == "create-large" {
+			if err := os.WriteFile(other, nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Truncate(other, MaxFileBytes+1); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.Remove(other); err != nil {
+			t.Fatal(err)
+		}
+		record, err := s.Finish(t.Context(), change)
+		if err != nil {
+			t.Fatal(err)
+		}
+		comparison, err := s.Compare(t.Context(), record.ID, "", func(string) bool { return true })
+		if err != nil || comparison.SkippedCount != 0 || comparison.UncapturedChanges != 0 || len(comparison.Changes) != 0 {
+			t.Fatalf("unrelated oversized file raised warning for %s: %v %+v", change, err, comparison)
+		}
+		summary, err := s.SavedSummary(t.Context(), record.ID, func(string) bool { return true })
+		if err != nil || summary.Incomplete {
+			t.Fatalf("unrelated size exclusion marked %s incomplete: %v %+v", change, err, summary)
+		}
+	}
 	// Size-only exclusions stay quiet when changed too; raw capture evidence
 	// remains saved so they never masquerade as captured bytes or deletions.
 	if _, err := s.Begin(t.Context(), "changed-skipped"); err != nil {
