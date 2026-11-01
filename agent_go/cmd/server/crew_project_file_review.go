@@ -37,6 +37,9 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 	// Store.List is newest first. Each entry is an exact saved comparison, not
 	// a folder-wide diff stitched across overlapping turns or Git switches.
 	for i, record := range records {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
 		if record.Status != "complete" && record.Status != "partial" {
 			continue
 		}
@@ -46,10 +49,17 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 			out.Replies = append(out.Replies, ref)
 			continue
 		}
-		comparison, err := store.CompareSaved(ctx, []string{record.ID}, "", "", allow)
+		summary, err := store.SavedSummary(ctx, record.ID, allow)
 		if err != nil {
+			if ctx.Err() != nil {
+				return out, ctx.Err()
+			}
 			out.Note = "Some saved comparisons are unavailable."
 			continue
+		}
+		comparison := filesnapshots.Comparison{Changes: summary.Changes}
+		if summary.Incomplete {
+			comparison.Note = "Some files could not be captured or compared."
 		}
 		groups := map[string][]filesnapshots.Change{}
 		labels := map[string]*filesnapshots.CheckoutLabel{}
@@ -116,6 +126,9 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 	out.Available = len(out.Replies) > 0
 	if !out.Available && out.Note == "" {
 		out.Note = "No saved project changes yet."
+	}
+	if err := ctx.Err(); err != nil {
+		return out, err
 	}
 	return out, nil
 }

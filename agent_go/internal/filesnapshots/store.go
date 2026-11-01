@@ -698,6 +698,7 @@ func (s Store) prune(ctx context.Context) {
 		cmd.Stdin = bytes.NewReader(refs)
 		_ = cmd.Run()
 		_ = os.Remove(filepath.Join(s.dir(), "turns", r.ID+".json"))
+		_ = os.Remove(filepath.Join(s.dir(), "summaries", r.ID+".json"))
 		removed = true
 	}
 	if removed {

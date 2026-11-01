@@ -471,6 +471,11 @@ func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
 	if err != nil || len(h.Checkouts) != 1 || h.Checkouts[0].Root != "tools" {
 		t.Fatalf("project list bypassed path grant: %v %+v", err, h)
 	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := projectFileReviewHistory(canceled, store, "Crew/example", func(string) bool { return true }, true); err == nil {
+		t.Fatal("canceled listing returned a successful truncated history")
+	}
 	// Project-file visibility must not expose a private source chat, even when
 	// the project owner reads history without any runtime session_id.
 	api, _ := newDurableChatAPI(t, "private-chat", "alice")
@@ -494,6 +499,14 @@ func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
 		w := httptest.NewRecorder()
 		api.serveChatFileReview(w, req, crewroot.Roots{Virtual: "Crew/example", Files: store.Root}, "", "snapshots", "", "", store, func(string) bool { return true })
+		if user == "alice" {
+			canceledReq := req.WithContext(context.WithValue(canceled, UserContextKey, &UserClaims{UserID: user}))
+			failure := httptest.NewRecorder()
+			api.serveChatFileReview(failure, canceledReq, crewroot.Roots{Virtual: "Crew/example", Files: store.Root}, "", "snapshots", "", "", store, func(string) bool { return true })
+			if failure.Code != 503 {
+				t.Fatalf("canceled history silently succeeded: %d %s", failure.Code, failure.Body.String())
+			}
+		}
 		if user == "alice" {
 			if w.Code != 200 || strings.Contains(w.Body.String(), "private-chat") || strings.Contains(w.Body.String(), "chat-0-turn") {
 				t.Fatalf("project history leaked private chat: %d %s", w.Code, w.Body.String())
