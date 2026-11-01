@@ -3,6 +3,7 @@ import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
 import ConversationsOverview from './ConversationsOverview'
+import { ProvidersOverview, ServersOverview } from './ProvidersOverview'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -14,7 +15,6 @@ import {
   DollarSign,
   KeyRound,
   MessageSquare,
-  Plus,
   Server,
   Loader2,
   RefreshCw,
@@ -24,7 +24,6 @@ import {
 } from 'lucide-react'
 import ModalPortal from '../ui/ModalPortal'
 import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
-import { openConnectedServers } from '../workspace/ConnectedServersMenuItem'
 import {
   llmConfigService,
   type ProviderManifestEntry,
@@ -137,7 +136,8 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
-  const [view, setView] = useState<'provider' | 'costs' | 'chats'>('provider')
+  // On the Mac app the page opens on the overview of this Mac and its servers; a server's website opens a program.
+  const [view, setView] = useState<'overview' | 'servers' | 'provider' | 'costs' | 'chats'>(() => window.electronAPI?.getDesktopConnection?.() === 'local' && !initialProviderId && !new URLSearchParams(window.location.search).get('provider') ? 'overview' : 'provider')
   // "Use your own model key" opens Pi's add flow (PLAT-717).
   const [keyRequest, setKeyRequest] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -152,7 +152,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   // On the Mac app: the servers it is connected to, managed here next to the AI accounts they lend.
   const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
   const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
-  useEffect(() => { if (!canReview) setView('provider') }, [canReview])
+  useEffect(() => { if (!canReview) setView(current => current === 'costs' || current === 'chats' ? 'provider' : current) }, [canReview])
   const canRunGuidedSetup = !isMultiUserMode || isAdmin
 
   const refresh = useCallback(async () => {
@@ -314,6 +314,20 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   <Loader2 className="h-4 w-4 animate-spin" /> Checking the server…
                 </div>
               ) : (
+                onThisMac ? (
+                  <div className="flex gap-1.5 overflow-x-auto md:flex-col md:overflow-x-visible">
+                    {([{ id: 'overview', label: 'Overview', icon: Cpu }, { id: 'servers', label: 'Servers', icon: Server }] as const).map(item => (
+                      <button type="button" key={item.id} onClick={() => setView(item.id)} aria-pressed={view === item.id || (item.id === 'overview' && view === 'provider')}
+                        className={`min-w-[10rem] rounded-lg border px-2.5 py-2 text-left transition-colors md:min-w-0 ${view === item.id || (item.id === 'overview' && view === 'provider') ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800' : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'}`}>
+                        <div className="flex min-h-6 items-center gap-2">
+                          <item.icon aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{item.label}</span>
+                          {item.id === 'servers' && servers.length > 0 && <span className="text-xs text-gray-400">{servers.length}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) :
                 <div data-tour="providers-list" className="flex gap-1.5 overflow-x-auto md:flex-col md:overflow-x-visible">
                   {orderedProviders.map(provider => (
                     <button
@@ -338,23 +352,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   ))}
                 </div>
               )}
-              {onThisMac && <>
-                <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Servers</div>
-                {servers.map(server => (
-                  <button type="button" key={server.id} onClick={() => openConnectedServers('', server.id)}
-                    className="mt-1.5 w-full rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70">
-                    <div className="flex min-h-6 items-center gap-2">
-                      <Server aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{server.name}</span>
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                    </div>
-                  </button>
-                ))}
-                <button type="button" onClick={() => openConnectedServers()}
-                  className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2.5 py-2 text-left text-sm text-gray-600 hover:bg-white dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/70">
-                  <span className="flex items-center gap-2"><Plus aria-hidden="true" className="h-4 w-4" />{servers.length ? 'Manage servers' : 'Connect a server'}</span>
-                </button>
-              </>}
               {canReview && <>
                 <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Review</div>
                 {([{ id: 'costs', label: 'Costs', icon: DollarSign }, { id: 'chats', label: 'Conversations', icon: MessageSquare }] as const).map(item => (
@@ -373,6 +370,8 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
             </aside>
 
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
+              {view === 'overview' && <ProvidersOverview providers={orderedProviders} onOpen={id => { setSelectedId(id); setView('provider') }} />}
+              {view === 'servers' && <ServersOverview providers={orderedProviders} />}
               {canReview && view === 'costs' && <CostsOverview />}
               {canReview && view === 'chats' && <ConversationsOverview />}
               {selectedProvider && <ConfirmationDialog
@@ -404,6 +403,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                       </div>
                     </section>
                   )}
+                  {onThisMac && <button type="button" onClick={() => setView('overview')} className="mb-3 text-xs font-medium text-violet-600 hover:underline dark:text-violet-400">← Overview</button>}
                   <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
