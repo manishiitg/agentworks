@@ -850,9 +850,47 @@ func TestChromeExtensionGatewayExemptionIsExact(t *testing.T) {
 		{"POST", "/api/browser/extension/connect", false},
 		{"GET", "/api/browser/extension", false},
 		{"GET", "/api/browser/extension/connect/other", false},
+		{"GET", "/api/browser/extension/setup", true},
+		{"POST", "/api/browser/extension/setup", false},
+		{"POST", "/api/browser/extension/pairing/peek", true},
+		{"POST", "/api/browser/extension/pairing/redeem", true},
+		{"GET", "/api/browser/extension/pairing/peek", false},
+		{"GET", "/api/browser/extension/pairing/redeem", false},
+		{"POST", "/api/browser/extension/pairing/redeem/other", false},
+		{"HEAD", "/api/browser/extension/setup", false},
+		{"OPTIONS", "/api/browser/extension/pairing/redeem", false},
+		{"GET", "/api/browser/extension/setup/", false},
+		{"GET", "/api/browser/extension//setup", false},
+		{"GET", "/api/browser/extension/%73etup", false},
+		{"POST", "/api/browser/extension/pairing%2Fredeem", false},
+		{"GET", "/api/browser/extension/setup/../extension", false},
+		{"GET", "/api/account/browsers", false},
 	} {
 		if got := isChromeExtensionBrowserRequest(httptest.NewRequest(item.method, item.path, nil)); got != item.allowed {
 			t.Fatalf("%s %s: %v", item.method, item.path, got)
+		}
+		// PLAT-746-283: check the actual proxy with and without the SSO front gate.
+		for _, sso := range []bool{false, true} {
+			calls := 0
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Header.Get("X-User-ID") != "" {
+					t.Error("untrusted identity reached public pairing handler")
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			g := &gateway{agent: proxyFor(upstream.URL), ssoOnly: sso}
+			req := httptest.NewRequest(item.method, item.path, nil)
+			req.Header.Set("X-User-ID", "untrusted")
+			rec := httptest.NewRecorder()
+			g.ServeHTTP(rec, req)
+			upstream.Close()
+			if item.allowed && (rec.Code != http.StatusNoContent || calls != 1) {
+				t.Fatalf("%s %s sso=%v did not reach handoff handler: %d", item.method, item.path, sso, rec.Code)
+			}
+			if !item.allowed && (rec.Code != http.StatusUnauthorized || calls != 0) {
+				t.Fatalf("%s %s sso=%v escaped gateway: %d", item.method, item.path, sso, rec.Code)
+			}
 		}
 	}
 }
