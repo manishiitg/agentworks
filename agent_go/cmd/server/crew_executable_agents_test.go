@@ -54,6 +54,21 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if err := WriteWorkflowManifest(ctx, child.Root, m); err != nil {
 		t.Fatal(err)
 	}
+	if err := writeFileToWorkspace(ctx, userProductAccessFilePath(), `{"owner":{"products":["work"]},"stranger":{"products":["work"]}}`); err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct {
+		user   string
+		status int
+	}{{"owner", http.StatusOK}, {"stranger", http.StatusNotFound}} {
+		request := httptest.NewRequest(http.MethodGet, "/api/workflow/step-inspections?workspace_path=Workflow%2Fchild", nil)
+		request = request.WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: check.user, Username: check.user}))
+		reply := httptest.NewRecorder()
+		(&StreamingAPI{projectActions: svc}).handleWorkspaceStepInspections(reply, request)
+		if reply.Code != check.status {
+			t.Fatalf("Work-only inspection user=%s: %d %s", check.user, reply.Code, reply.Body)
+		}
+	}
 	files.files["chat_history/"+chat.SessionID+".json"] = `{"messages":[{"text":"PERSONAL_HISTORY_MUST_NOT_BE_IMPORTED"}]}`
 	// Exercise the editor's actual write API for a reusable specialist as well
 	// as the runtime resolver. Neither path may accept another Crew as authority.
