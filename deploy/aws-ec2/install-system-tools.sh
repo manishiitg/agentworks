@@ -32,7 +32,7 @@ fi
 read -r -d '' REMOTE <<'REMOTE_SCRIPT' || true
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y -q git unzip curl ca-certificates >/dev/null
+apt-get install -y -q git unzip curl ca-certificates build-essential gawk >/dev/null
 
 # AWS CLI v2, system-wide. Credentials come from the instance role via IMDS.
 if ! test -x /usr/local/bin/aws; then

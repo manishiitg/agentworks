@@ -11,6 +11,10 @@ if [[ -x "$prefix/bin/rsync" ]]; then
   installed="$("$prefix/bin/rsync" --version)"
   if [[ "${installed%%$'\n'*}" == *"version $version "* ]]; then exit 0; fi
 fi
+# It is built from source: the host needs a C compiler, make and awk (EC2 hosts get them from install-system-tools.sh).
+for tool in cc make awk; do
+  command -v "$tool" >/dev/null || { echo "rsync helper needs $tool on this host; run install-system-tools.sh (or install build-essential and gawk) as root" >&2; exit 1; }
+done
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 # samba.org is the home; the project's GitHub release carries the same file (same checksum) when it is down.
