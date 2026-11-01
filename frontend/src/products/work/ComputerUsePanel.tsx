@@ -8,6 +8,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 
 export type ComputerUseStatus = {
   enabled: boolean; installed: boolean; active: boolean; version: string; platform: string
+  permission_setup_note?: string
   permissions?: { data?: { accessibility?: { state?: string }; screen_recording?: { state?: string } } }
 }
 export const computerUseURL = (projectId: string) => `/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/computer-use`
@@ -66,6 +67,7 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
       <div className="flex items-center gap-3"><MonitorCog aria-hidden="true" className="h-5 w-5 text-muted-foreground"/><div className="min-w-0 flex-1"><p className="font-medium">This computer</p><p role="status" className="text-xs text-muted-foreground">{status.active ? 'Desktop action running' : !status.installed ? 'Needs setup' : !ready ? 'Needs permission' : status.enabled ? 'Ready' : 'Off for this Crew'}</p></div>
         {status.installed && <button type="button" role="switch" aria-label="Enable computer use" aria-checked={status.enabled} disabled={busy} onClick={() => void run(status.enabled ? 'disable' : 'enable')} className={`relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:opacity-50 ${status.enabled ? 'bg-primary' : 'bg-muted'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-foreground transition-transform ${status.enabled ? 'left-5' : 'left-1'}`}/></button>}
       </div>
+      {status.permission_setup_note && <p className="text-xs text-muted-foreground">{status.permission_setup_note}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {!status.installed && <Button type="button" disabled={busy} onClick={() => void run('install')}>{busy ? 'Installing…' : 'Install computer use'}</Button>}
         {status.installed && status.platform === 'darwin' && <Button type="button" variant="outline" disabled={busy} onClick={() => void run('permissions')}>Open permission settings</Button>}

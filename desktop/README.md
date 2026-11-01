@@ -9,6 +9,12 @@ configured separately in the app. Source development still uses
 `../run_agentworks` and Vite hot reload. The optional npm launcher delegates its
 `dev` command to that same script. See [local installer testing](../packages/app/README.md).
 
+For Computer use permissions in source development, macOS shows the app as
+Electron. Choose **Later** if asked to quit, then stop and restart
+`./run_agentworks`. macOS **Quit & Reopen** can open Electron's welcome screen
+without the development arguments; quitting also stops the launcher's services.
+The packaged AgentWorks app has its own bundle and startup entry point.
+
 Before packaging a release, run `bash scripts/build-desktop-helpers.sh` from
 the repository root on the target Mac architecture. CI does this before
 electron-builder. Publish each DMG with its `.sha256` file. An existing app is
