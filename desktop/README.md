@@ -9,8 +9,12 @@ configured separately in the app. Source development still uses
 `../run_agentworks` and Vite hot reload. The optional npm launcher delegates its
 `dev` command to that same script. See [local installer testing](../packages/app/README.md).
 
-For Computer use permissions in source development, macOS shows the app as
-Electron. Choose **Later** if asked to quit, then stop and restart
+For Computer use permissions in source development, macOS can attribute the
+helper to the app that started the session. When running `./run_agentworks` from
+Terminal, allow **Terminal** in Screen Recording, even if the native guide shows
+Electron. Other launchers need their own permission. The guide guesses from the
+nearest app bundle, which can differ from macOS's responsible application.
+Choose **Later** if asked to quit, then stop and restart
 `./run_agentworks`. macOS **Quit & Reopen** can open Electron's welcome screen
 without the development arguments; quitting also stops the launcher's services.
 The packaged AgentWorks app has its own bundle and startup entry point.

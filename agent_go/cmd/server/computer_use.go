@@ -26,7 +26,7 @@ const computerUseVersion = "1.0.2"
 // generic app bundle. A packaged AgentWorks.app has its own entry point.
 func computerUsePermissionSetupNote() string {
 	if runtime.GOOS == "darwin" && os.Getenv("DEV_URL") != "" {
-		return "In development macOS shows this app as Electron. Choose Later if asked to quit, then stop and restart ./run_agentworks."
+		return "Started from Terminal? Allow Terminal in macOS Screen Recording, even if the guide shows Electron. Other launchers need their own permission. Choose Later if asked to quit, then stop and restart ./run_agentworks."
 	}
 	return ""
 }
