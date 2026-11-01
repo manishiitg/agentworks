@@ -29,12 +29,21 @@ type Change struct {
 	Path   string `json:"path"`
 	Before *File  `json:"before,omitempty"`
 	After  *File  `json:"after,omitempty"`
-	Data   []byte `json:"data,omitempty"`
+	Data   []byte `json:"-"`
 }
+type ContentSnapshot struct {
+	Base   string `json:"base"`
+	Head   string `json:"head"`
+	Bundle []byte `json:"bundle,omitempty"`
+}
+
 type Snapshot struct {
-	Git     *GitSnapshot `json:"git,omitempty"`
-	Files   Manifest     `json:"files"`
-	Changes []Change     `json:"changes"`
+	Content  *ContentSnapshot  `json:"content,omitempty"`
+	Contents map[string][]byte `json:"-"`
+	Omitted  []string          `json:"omitted,omitempty"`
+	Git      *GitSnapshot      `json:"git,omitempty"`
+	Files    Manifest          `json:"files"`
+	Changes  []Change          `json:"changes"`
 }
 
 // Both send and receive use this policy. Project ignore rules are additionally
@@ -85,7 +94,7 @@ func readFile(root, rel string) ([]byte, File, error) {
 // Capture sends only changed bytes. Expected fingerprints are retained for
 // every deletion/replacement so edits outside AgentWorks are never overwritten.
 func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snapshot, error) {
-	out := Snapshot{Files: Manifest{}, Changes: []Change{}}
+	out := Snapshot{Contents: map[string][]byte{}, Files: Manifest{}, Changes: []Change{}}
 	var total int64
 	ignoredFiles := map[string]bool{}
 	areas := []struct{ name, root string }{{"files", roots.Files}, {"resources", roots.Resources}}
@@ -135,6 +144,7 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 				return fmt.Errorf("project exceeds 256 MiB or 10,000 files; exclude generated files before syncing")
 			}
 			out.Files[key] = file
+			out.Contents[key] = data
 			before, exists := previous[key]
 			if !exists || before != file {
 				change := Change{Path: key, After: &file, Data: data}
@@ -155,6 +165,7 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 			// included again, its unchanged destination is still a valid base.
 			if ignoredFiles[key] {
 				out.Files[key] = before
+				out.Omitted = append(out.Omitted, key)
 				continue
 			}
 			// If exclusions changed, leave the old copy alone rather than sending

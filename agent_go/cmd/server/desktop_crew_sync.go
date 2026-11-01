@@ -14,7 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
+
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -116,7 +116,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	fail := func(err error) { externalError(w, 409, "sync_unavailable", err.Error()) }
 	if input.Action == "status" {
-		out := crewSyncReply{ProjectID: roots.ID, Binding: binding}
+		out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)}
 		if binding != nil {
 			remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "status"})
 			if e != nil {
@@ -206,6 +206,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(e)
 				return
 			}
+			if input.Action == "update" && !crewSnapshotChanged(snapshot) {
+				externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)})
+				return
+			}
 			next := "local"
 			if input.Action == "server" {
 				next = "server"
@@ -231,48 +235,68 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			fail(fmt.Errorf("server did not confirm this transfer; retry it"))
 			return
 		}
-		if e = saveCrewSyncSnapshot(roots.ID, *transfer.Snapshot); e != nil {
+		if e = saveCrewSyncSnapshot(roots, *transfer.Snapshot); e != nil {
 			fail(e)
 			return
 		}
 		binding.Editing = remote.Binding.Editing
 		binding.PendingAction = ""
-	case "local":
-		if binding.PendingAction != "" && binding.PendingAction != "local" {
+	case "local", "download":
+		if binding.PendingAction != "" && binding.PendingAction != input.Action {
 			fail(fmt.Errorf("finish the interrupted transfer first"))
 			return
 		}
-		if err := api.crewSyncIdle(roots); err != nil {
-			fail(err)
-			return
+		if input.Action == "local" {
+			if err := api.crewSyncIdle(roots); err != nil {
+				fail(err)
+				return
+			}
 		}
-		binding.PendingAction = "local"
+		binding.PendingAction = input.Action
 		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 			fail(err)
 			return
 		}
-		remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "pull", PairID: binding.PairID})
-		if e != nil {
-			fail(e)
-			return
+		action := "pull"
+		if input.Action == "download" {
+			action = "download"
 		}
-		if remote.Snapshot == nil {
-			fail(fmt.Errorf("server did not return the project changes"))
-			return
+		for {
+			remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: action, PairID: binding.PairID})
+			if e != nil {
+				fail(e)
+				return
+			}
+			if remote.Snapshot == nil {
+				if input.Action == "download" {
+					binding.PendingAction = ""
+					_ = crewroot.WriteSync(roots.ID, *binding)
+					externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
+					return
+				}
+				fail(fmt.Errorf("server did not return the project changes"))
+				return
+			}
+			if err = applyCrewSyncSnapshot(r.Context(), roots, binding.PairID, remote.Snapshot); err != nil {
+				fail(err)
+				return
+			}
+			if err = saveCrewSyncSnapshot(roots, *remote.Snapshot); err != nil {
+				fail(err)
+				return
+			}
+			if _, err = call(binding.PeerProjectID, crewSyncRequest{Action: "ack", PairID: binding.PairID, TransferID: remote.TransferID}); err != nil {
+				fail(err)
+				return
+			}
+			if input.Action == "local" && remote.Binding != nil && remote.Binding.Editing != "local" {
+				continue
+			}
+			break
 		}
-		if err = crewsync.Apply(r.Context(), roots, *remote.Snapshot); err != nil {
-			fail(err)
-			return
+		if input.Action == "local" {
+			binding.Editing = "local"
 		}
-		if err = saveCrewSyncSnapshot(roots.ID, *remote.Snapshot); err != nil {
-			fail(err)
-			return
-		}
-		if _, err = call(binding.PeerProjectID, crewSyncRequest{Action: "ack", PairID: binding.PairID, Snapshot: &crewsync.Snapshot{Files: remote.Snapshot.Files, Git: remote.Snapshot.Git}}); err != nil {
-			fail(err)
-			return
-		}
-		binding.Editing = "local"
 		binding.PendingAction = ""
 	default:
 		fail(fmt.Errorf("choose Update server, Work on server, or Work on this Mac"))
@@ -286,5 +310,5 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	if p, e := crewSyncManifestPath(roots.ID); e == nil {
 		_ = os.Remove(p + ".pending")
 	}
-	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
+	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)})
 }

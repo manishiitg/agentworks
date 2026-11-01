@@ -7,8 +7,8 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 
-type Binding = { side: 'local' | 'server'; editing: 'local' | 'server'; connection_id?: string; peer_project_id: string; peer_server?: string; updated_at?: string; pending_action?: 'update' | 'server' | 'local' }
-type Status = { project_id: string; binding: Binding | null }
+type Binding = { side: 'local' | 'server'; editing: 'local' | 'server'; connection_id?: string; peer_project_id: string; peer_server?: string; updated_at?: string; pending_action?: 'update' | 'server' | 'local' | 'download' }
+type Status = { project_id: string; binding: Binding | null; auto?: { state: string; message?: string; checked_at?: string } }
 
 export function CrewSyncPanel({ projectId }: { projectId: string }) {
   const connections = useConnectedWorkStore(state => state.connections)
@@ -29,7 +29,7 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
       .catch(() => { if (!abort.signal.aborted && isChatIdentityCurrent(identity)) setError('Could not load project sync. Check the connection and try again.') })
     return () => abort.abort()
   }, [projectId, local, reload])
-  const run = async (action: 'update' | 'server' | 'local') => {
+  const run = async (action: 'update' | 'server' | 'local' | 'download') => {
     const identity = captureChatIdentity()
     const current = () => isChatIdentityCurrent(identity) && currentProject.current === projectId
     setBusy(true); setError('')
@@ -45,6 +45,16 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
       }
     } finally { if (current()) setBusy(false) }
   }
+  useEffect(() => {
+    if (!status?.binding) return
+    const identity = captureChatIdentity(), abort = new AbortController()
+    const timer = window.setInterval(() => {
+      void api.get<Status>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true })
+        .then(({ data }) => { if (!abort.signal.aborted && isChatIdentityCurrent(identity)) setStatus(data) })
+        .catch(() => {})
+    }, 3000)
+    return () => { window.clearInterval(timer); abort.abort() }
+  }, [projectId, status?.binding?.peer_project_id])
   const binding = status?.binding
   return <section aria-label="Project sync" className="max-w-xl space-y-4 text-sm">
     <p>Use this Crew from the website or your phone. While editing on your Mac, its main chat continues the same local agent and conversation. Keep AgentWorks open on your Mac.</p>
@@ -53,7 +63,8 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
     {binding && <div className="space-y-1 rounded-lg border border-border p-3">
       <p className="font-medium">Editing on {binding.editing === 'local' ? 'your Mac' : 'the server'}</p>
       {binding.updated_at && <p className="text-muted-foreground">Last synced {new Date(binding.updated_at).toLocaleString()}</p>}
-      <p className="text-muted-foreground">Your main chat follows the editing location. Files on the server show the last sync; Update server sends your latest local files. Switching to the server uses its separate conversation and agent.</p>
+      <p role="status">{status.auto?.state === 'syncing' ? 'Syncing…' : status.auto?.state === 'synced' ? 'Up to date' : status.auto?.message || 'Files sync automatically while AgentWorks is open on your Mac.'}</p>
+      <p className="text-muted-foreground">Saved file changes sync automatically from the editing computer. Switching waits for the latest changes. Switching to the server uses its separate conversation and agent.</p>
     </div>}
     {local ? <>
       {!binding && <label className="block space-y-2"><span>Server</span><select aria-label="Sync server" value={connection} onChange={event => setConnection(event.target.value)} className="w-full rounded-md border border-border bg-background p-2">
@@ -64,13 +75,13 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
       <div className="flex flex-wrap gap-2">
         {binding?.pending_action && <Button disabled={busy} onClick={() => void run(binding.pending_action!)}>{busy ? 'Finishing transfer…' : 'Finish interrupted transfer'}</Button>}
         {!binding?.pending_action && binding?.editing !== 'server' && <>
-          <Button disabled={!status || !connection || busy} onClick={() => void run('update')}>{busy ? 'Syncing…' : binding ? 'Update server' : 'Make available on server'}</Button>
+          <Button disabled={!status || !connection || busy} onClick={() => void run('update')}>{busy ? 'Syncing…' : binding ? 'Sync now' : 'Make available on server'}</Button>
           {binding && <Button variant="outline" disabled={busy} onClick={() => void run('server')}>Work on server</Button>}
         </>}
         {!binding?.pending_action && binding?.editing === 'server' && <Button disabled={busy} onClick={() => void run('local')}>{busy ? 'Bringing changes back…' : 'Work on this Mac'}</Button>}
       </div>
       {binding?.peer_server && <a className="inline-block underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">Open server Crew</a>}
       <p className="text-xs text-muted-foreground">Starts Only me. Logins, private chats and platform records stay on their own computer. Current Git branch, history and staged changes travel with the files. Other branches and Git logins stay put. Edits outside AgentWorks are checked before replacement.</p>
-    </> : <p className="text-muted-foreground">{binding ? 'Use this Crew’s local Mac app to sync files or move editing between computers.' : 'Open a local project in the Mac app and choose this server to set up sync.'}</p>}
+    </> : <p className="text-muted-foreground">{binding ? 'Keep AgentWorks open on your Mac for automatic file sync. Use the Mac app to move editing between computers.' : 'Open a local project in the Mac app and choose this server to set up sync.'}</p>}
   </section>
 }

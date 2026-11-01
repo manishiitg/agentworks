@@ -203,11 +203,24 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("retry: %d %s", w.Code, w.Body.String())
 			}
 			checkWrite(local.FilesPath()+"/note.txt", 409)
+			if w := call("download", "owner", true); w.Code != 200 {
+				t.Fatalf("background return: %d %s", w.Code, w.Body.String())
+			}
+			mirror, _ := crewroot.ReadSync(local.ID)
+			if mirror.Editing != "server" {
+				t.Fatal("background copy moved editing")
+			}
+			mirrored, _ := os.ReadFile(filepath.Join(local.Files, "note.txt"))
+			if string(mirrored) != "server work after handoff" {
+				t.Fatal("server edit did not reach Mac")
+			}
+			write(serverRoots.Files, "note.txt", "latest server work")
+
 			if w := call("local", "owner", true); w.Code != 200 {
 				t.Fatalf("return: %d %s", w.Code, w.Body.String())
 			}
 			raw, err := os.ReadFile(filepath.Join(local.Files, "note.txt"))
-			if err != nil || string(raw) != "server work after handoff" {
+			if err != nil || string(raw) != "latest server work" {
 				t.Fatalf("returned file: %q %v", raw, err)
 			}
 			checkWrite(local.FilesPath()+"/new.txt", 200)

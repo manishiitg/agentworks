@@ -209,6 +209,7 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		if err != nil || !found || roots.Files != snapshot.store.Root || roots.Private != snapshot.store.Private {
 			return
 		}
+		defer wakeCrewSync(roots.ID)
 		if errors.Is(snapshot.beforeErr, filesnapshots.ErrWarming) {
 			api.publishCrewSnapshotUnavailable(snapshot, "setting_up")
 			return
