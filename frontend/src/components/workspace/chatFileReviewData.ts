@@ -26,5 +26,5 @@ const reviewChanged = 'chat-file-review-changed'
 export function useReviewRevision() {
   const [revision, refresh] = useState(0)
   useEffect(() => { const update = () => refresh(value => value + 1); window.addEventListener(reviewChanged, update); return () => window.removeEventListener(reviewChanged, update) }, [])
-  return [revision, () => refresh(value => value + 1)] as const
+  return [revision, () => window.dispatchEvent(new Event(reviewChanged))] as const
 }
