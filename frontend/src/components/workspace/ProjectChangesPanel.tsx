@@ -6,9 +6,9 @@ import { reviewEndpoint, useReviewRevision, type ReviewHistory } from './chatFil
 
 // History selects an exact saved capture within a real checkout. It never
 // combines overlapping turns into an invented net diff or attributes authorship.
-export function ProjectChangesPanel({ workspacePath, sessionId, tabId, onBrowse }: { workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }) {
+export function ProjectChangesPanel({ workspacePath, sessionId, tabId, onBrowse, initialCheckoutId = '' }: { initialCheckoutId?: string; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }) {
   const [history, setHistory] = useState<ReviewHistory | null>(null)
-  const [checkoutId, setCheckoutId] = useState('')
+  const [checkoutId, setCheckoutId] = useState(initialCheckoutId)
   const [snapshotId, setSnapshotId] = useState('')
   const [error, setError] = useState('')
   const [revision, refresh] = useReviewRevision()

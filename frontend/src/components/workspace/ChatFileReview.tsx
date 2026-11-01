@@ -22,7 +22,7 @@ const startedFrom = (message?: { text: string; at?: string }) => {
 
 const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-type ReviewProps = { projectHistory?: boolean; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
+type ReviewProps = { projectHistory?: boolean; initialCheckoutId?: string; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
 
 /** Mounted with an account/server/chat key by its owner. A folder holding Git
  * repositories is reviewed with Git (Uncommitted or Branch / PR); any other
@@ -110,7 +110,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   return <section className="flex h-full min-h-0 flex-col" aria-label={reply ? "Changes in this reply" : "Changes in this chat"}>
     {/* One header: the Files panel's, with this view's name and icon actions (owner, 2026-10-29). */}
     <WorkspaceViewHeader title="Files" subtitle={reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
-      {reply && <button type="button" className="text-xs underline" onClick={() => openChatFiles(sessionId)}>Project history</button>}
+      {reply && <button type="button" className="text-xs underline" onClick={() => reply?.checkoutId ? openChatFiles(sessionId, undefined, reply.checkoutId) : openChatFiles(sessionId)}>Project history</button>}
       {!reply && !allChat && !!result?.history.reviews?.length && <select aria-label="Review history" title="Review history" value={reviewId} onChange={event => setReviewId(event.target.value)}
         className="max-w-40 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground">
         <option value="">Since your last review</option>
