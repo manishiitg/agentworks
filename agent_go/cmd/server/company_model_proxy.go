@@ -35,9 +35,18 @@ var companyProxyPaths = map[string]bool{"responses": true, "models": true}
 // companyProxyClient streams replies for as long as a turn runs.
 var companyProxyClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
+// The proxy settings are read once and removed from this process's environment, so the AI programs it starts never
+// see where the proxy and its key are.
+var companyProxyURL, companyProxyKeyFile = takeEnv("AGENTWORKS_MODEL_PROXY_URL"), takeEnv("AGENTWORKS_MODEL_PROXY_KEY_FILE")
+
+func takeEnv(name string) string {
+	value := strings.TrimSpace(os.Getenv(name))
+	_ = os.Unsetenv(name)
+	return value
+}
+
 func companyModelProxyUpstream() (string, string, bool) {
-	base := strings.TrimRight(strings.TrimSpace(os.Getenv("AGENTWORKS_MODEL_PROXY_URL")), "/")
-	file := strings.TrimSpace(os.Getenv("AGENTWORKS_MODEL_PROXY_KEY_FILE"))
+	base, file := strings.TrimRight(companyProxyURL, "/"), companyProxyKeyFile
 	if base == "" || file == "" {
 		return "", "", false
 	}
