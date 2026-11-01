@@ -6,7 +6,7 @@ import { getApiBaseUrl, getAuthToken } from '../services/api'
 import type { VoiceEngineStatus } from '../services/api-types'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 
-/** Same vocabulary as SparkQuill's composer (learning-app/src/voice/useMicDictation.ts). */
+/** Shared dictation states for chat composers. */
 export type MicState = 'idle' | 'preparing' | 'recording' | 'transcribing'
 
 export type MicButtonHandle = {
@@ -33,8 +33,7 @@ interface MicButtonProps {
   shortcutEnabled?: boolean
   disabled?: boolean
   /** Called at the moment a recording stops; true sends the transcript right
-   * away instead of leaving it for the user to send (SparkQuill's opt-in
-   * voice auto-send). A function, not a plain boolean, so a Settings toggle
+   * away instead of leaving it for the user to send. A function, not a plain boolean, so a Settings toggle
    * flipped mid-recording is read fresh at stop time, not from render-time
    * props. Omit to never auto-send. */
   autoSubmitOnStop?: () => boolean
@@ -43,7 +42,7 @@ interface MicButtonProps {
 type SetupPhase = 'unknown' | 'needed' | 'offer' | 'downloading' | 'ready' | 'failed'
 
 /**
- * Push-to-talk mic for the chat composer — SparkQuill's mic, on the shared
+ * Push-to-talk mic for the chat composer, on the shared
  * AgentWorks engine (frontend/shared/voice/useVoiceDictation.ts →
  * /api/voice/stream → agent_go/pkg/voicestt), with the same UX:
  *
@@ -53,14 +52,14 @@ type SetupPhase = 'unknown' | 'needed' | 'offer' | 'downloading' | 'ready' | 'fa
  *   between updates, as any live captioning does);
  * - click / ⌥ tap / Enter while recording = stop; the committed text lands
  *   in the composer for the user to review and send. AgentWorks never
- *   passes autoSubmitOnStop, so it is always sent by hand there; SparkQuill
- *   passes it wired to its own opt-in Settings toggle;
+ *   passes autoSubmitOnStop, so it is always sent by hand there; other callers
+ *   may opt into auto-send;
  * - "Starting — getting voice ready…" covers opening the mic and a cold
  *   engine load, so an impatient re-click can't begin a second session;
  * - errors (nearly always a denied mic permission) show in place, dismiss on
  *   click.
  *
- * One addition SparkQuill puts in Settings instead: the engine's model is a
+ * The engine's model is a
  * one-time ~690MB download on the server, so the first click offers that
  * explicitly and shows progress from GET /api/voice/status, rather than the
  * first click silently waiting on it (60+ seconds looking broken, caught live).

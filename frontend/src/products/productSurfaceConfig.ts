@@ -1,11 +1,11 @@
 import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
-export const PRODUCT_SURFACES = ['agentworks', 'relays', 'sparkquill', 'work', 'mcp-gateway', 'llm-gateway', 'knowledgebase', 'bullpen'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'relays', 'work', 'mcp-gateway', 'llm-gateway', 'knowledgebase', 'bullpen'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
 export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
   agentworks: 'Goals', relays: 'Flows',
-  sparkquill: 'SparkQuill', work: 'Crew', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain', bullpen: 'AgentBridge',
+  work: 'Crew', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain', bullpen: 'AgentBridge',
 }
 
 type ProductRuntimeConfig = {

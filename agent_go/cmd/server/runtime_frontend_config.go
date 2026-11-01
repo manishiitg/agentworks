@@ -15,8 +15,7 @@ import (
 // script every frontend page loads before anything else (runtime-config.js,
 // registered in runServer). apiBaseUrl/workspaceApiBaseUrl are always
 // present; cdpEnabled advertises the deployment-level browser capability; the
-// product-surface and branding keys can be overridden via env — see
-// docs/design/sparkquill_desktop_on_platform_plan.md P0. A plain AgentWorks
+// product-surface and branding keys can be overridden via env. A plain AgentWorks
 // server retains its shared products. Local launchers select workflows and Crew
 // unless source development explicitly opts into server products; a shell or
 // deployment running a different product (e.g. SparkQuill) sets

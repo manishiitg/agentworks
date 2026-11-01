@@ -23,7 +23,7 @@ describe('product surface deployment configuration', () => {
   it('excludes shared server products from local installations despite stale configuration', () => {
     vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: {
       deploymentMode: 'local',
-      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway', 'sparkquill', 'llm-gateway'],
+      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway', 'llm-gateway'],
       defaultProductSurface: 'knowledgebase', gatewayUrl: 'http://127.0.0.1:18745', gatewaySso: true,
     } })
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
@@ -97,32 +97,32 @@ describe('product surface deployment configuration', () => {
     expect(isEnabledProductSurface('mcp-gateway')).toBe(false)
   })
 
-  it('constrains the dedicated host to AgentWorks and SparkQuill', () => {
+  it('constrains the dedicated host to AgentWorks and Relays', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
-        defaultProductSurface: 'sparkquill',
-        enabledProductSurfaces: ['agentworks', 'sparkquill'],
+        defaultProductSurface: 'relays',
+        enabledProductSurfaces: ['agentworks', 'relays'],
       },
     })
 
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'sparkquill'])
-    expect(deploymentDefaultProductSurface()).toBe('sparkquill')
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays'])
+    expect(deploymentDefaultProductSurface()).toBe('relays')
     expect(isEnabledProductSurface('agentworks')).toBe(true)
     expect(isEnabledProductSurface('knowledgebase')).toBe(false)
     expect(isSingleProductDeployment()).toBe(false)
   })
 
-  it('lets the SparkQuill desktop pin itself to the one surface it ships', () => {
+  it('pins a dedicated host to its one enabled surface', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
-        defaultProductSurface: 'sparkquill',
-        enabledProductSurfaces: ['sparkquill'],
+        defaultProductSurface: 'relays',
+        enabledProductSurfaces: ['relays'],
         gatewaySso: true,
       },
     })
 
-    expect(enabledProductSurfaces()).toEqual(['sparkquill'])
-    expect(deploymentDefaultProductSurface()).toBe('sparkquill')
+    expect(enabledProductSurfaces()).toEqual(['relays'])
+    expect(deploymentDefaultProductSurface()).toBe('relays')
     expect(isEnabledProductSurface('agentworks')).toBe(false)
     expect(isSingleProductDeployment()).toBe(true)
     expect(hasGatewaySSO()).toBe(true)
@@ -197,14 +197,14 @@ describe('intersectAllowedProductSurfaces', () => {
     expect(intersectAllowedProductSurfaces(['knowledgebase'], [])).toEqual([])
   })
   it('passes the deployment list through unchanged when the user is unrestricted', () => {
-    expect(intersectAllowedProductSurfaces(['sparkquill', 'agentworks'], null)).toEqual(['sparkquill', 'agentworks'])
-    expect(intersectAllowedProductSurfaces(['sparkquill', 'agentworks'], undefined)).toEqual(['sparkquill', 'agentworks'])
+    expect(intersectAllowedProductSurfaces(['relays', 'agentworks'], null)).toEqual(['relays', 'agentworks'])
+    expect(intersectAllowedProductSurfaces(['relays', 'agentworks'], undefined)).toEqual(['relays', 'agentworks'])
     // An empty list is a read-only account with nothing enabled: no products.
-    expect(intersectAllowedProductSurfaces(['sparkquill', 'agentworks'], [])).toEqual([])
+    expect(intersectAllowedProductSurfaces(['relays', 'agentworks'], [])).toEqual([])
   })
 
   it('narrows to the explicit per-user allowlist, case-insensitively', () => {
-    expect(intersectAllowedProductSurfaces(['sparkquill', 'agentworks'], ['SparkQuill'])).toEqual(['sparkquill'])
+    expect(intersectAllowedProductSurfaces(['relays', 'agentworks'], ['Relays'])).toEqual(['relays'])
     expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['agentworks'])).toEqual(['agentworks'])
     expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['relays'])).toEqual(['relays'])
   })

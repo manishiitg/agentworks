@@ -27,7 +27,7 @@ import { productRoutePath } from '../utils/productRoutes'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
-const allProducts = ['work', 'agentworks', 'relays', 'knowledgebase', 'mcp-gateway', 'bullpen', 'llm-gateway', 'sparkquill']
+const allProducts = ['work', 'agentworks', 'relays', 'knowledgebase', 'mcp-gateway', 'bullpen', 'llm-gateway']
 function configure(allowed = allProducts) {
   window.__APP_RUNTIME_CONFIG__ = { appName: 'Acme Agents', gatewayUrl: 'http://localhost:18136', enabledProductSurfaces: allProducts } as never
   useAuthStore.setState({ user: { id: 'person', allowed_products: allowed, can_create: false } as never, isMultiUserMode: true })
@@ -80,12 +80,11 @@ describe('WelcomeHome', () => {
   })
 
   it('shows only permitted products and remembers dismissal', async () => {
-    configure(['work', 'mcp-gateway', 'sparkquill'])
+    configure(['work', 'mcp-gateway'])
     const host = await renderWelcome()
     expect(host.textContent).toContain('Acme Agents')
     expect(host.querySelectorAll('[data-welcome-product]')).toHaveLength(1)
     expect(host.textContent).not.toContain('Goals')
-    expect(host.textContent).not.toContain('SparkQuill')
     await act(async () => button(host, 'Open Vault').click())
     expect(openProductWorkspace).toHaveBeenCalledWith('mcp-gateway')
     expect(window.localStorage.getItem(WELCOME_HOME_DISMISSED_KEY)).toBe('true')

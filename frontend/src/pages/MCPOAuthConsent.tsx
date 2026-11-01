@@ -5,9 +5,6 @@ import { Button } from '../components/ui/Button'
 type Consent = { client_name: string; redirect_uri: string; scopes: string[]; project?: { id: string; title: string; kind: string; access: 'view' | 'use' } | null }
 
 const scopeDescriptions: Record<string, string> = {
-  'sparkquill:read': 'Read your family’s learning materials, activities and saved progress in SparkQuill',
-  'sparkquill:write': 'Create, update and upload learning files, finalize activities and hand them to your child. File edits use revision checks',
-  'sparkquill:run': 'Ask Quill to create or revise activities using your saved parent model, connected accounts and normal tools. Uses your AI budget',
   'vault:manage': 'Manage Vault MCP connections, groups, tool and regex permissions, and secret access as an administrator. Secret values are not returned',
   'vault:read': 'See Vault connections, tools, groups, who can reach what, the audit log, and run SQL that changes nothing',
   'vault:mcp': 'Use MCP tools allowed by your current Vault groups',
@@ -29,9 +26,6 @@ const scopeDescriptions: Record<string, string> = {
 
 // The page leads with a few plain lines, one per kind of access; the exact permissions sit behind "Show details".
 const scopeGroups: { summary: string; scopes: string[] }[] = [
-  { summary: 'Read your family’s SparkQuill learning content and progress', scopes: ['sparkquill:read'] },
-  { summary: 'Edit learning files and hand finished activities to your child', scopes: ['sparkquill:write'] },
-  { summary: 'Ask Quill to create or revise activities using your AI account', scopes: ['sparkquill:run'] },
   { summary: 'Manage Vault connections, groups and permissions (administrator)', scopes: ['vault:manage'] },
   { summary: 'See Vault setup, access and the audit log', scopes: ['vault:read'] },
   { summary: 'Use Vault MCP tools you are allowed to use', scopes: ['vault:mcp'] },
@@ -61,7 +55,6 @@ export function MCPOAuthConsent() {
       .catch(() => setError('This connection request has expired. Start again in your AI app.'))
   }, [request, consentAPI])
 
-  const sparkquill = consent?.scopes.some(scope => scope.startsWith('sparkquill:')) === true
 
   const decide = async (decision: 'approve' | 'deny') => {
     if (!consent || !request) return
@@ -84,11 +77,11 @@ export function MCPOAuthConsent() {
   return <main className="min-h-screen bg-background flex items-center justify-center p-4">
     <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Connect to {vault ? 'Vault' : sparkquill ? 'SparkQuill' : 'AgentWorks'}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{consent ? (sparkquill ? `${consent.client_name} wants access to your family’s SparkQuill learning workspace.` : consent.project ? `${consent.client_name} wants access to ${consent.project.title} only.` : vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.includes('vault:manage') ? `${consent.client_name} wants platform access, including Vault administration.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
+        <h1 className="text-xl font-semibold text-foreground">Connect to {vault ? 'Vault' : 'AgentWorks'}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{consent ? (consent.project ? `${consent.client_name} wants access to ${consent.project.title} only.` : vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.includes('vault:manage') ? `${consent.client_name} wants platform access, including Vault administration.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
       </div>
       {consent && <>
-        {vault || sparkquill
+        {vault
           ? <ul className="space-y-2 text-sm text-foreground">{scopeGroups.filter(group => group.scopes.some(scope => consent.scopes.includes(scope))).map(group => <li key={group.summary} className="rounded-md bg-muted p-3">{group.summary}</li>)}</ul>
           : consent.project ? <div className="rounded-md bg-muted p-3 text-sm text-foreground"><p className="font-medium">{consent.project.title} only</p><p className="mt-1">{consent.project.access === 'use' ? 'View and use this project within your current permissions.' : 'View this project within your current permissions.'} Other projects and project settings are excluded. Removing your project access ends this connection’s access.</p></div>
           : <p className="rounded-md bg-muted p-3 text-sm text-foreground">This app can do what you can do on the website, and nothing more. Your role on each Crew, workflow or project still decides what it may change.</p>}

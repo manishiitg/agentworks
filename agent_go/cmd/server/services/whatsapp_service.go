@@ -2655,7 +2655,7 @@ func (w *WhatsAppService) HandleMessage(ctx context.Context, msg *whatsappbot.Me
 		return
 	}
 	if media != nil && media.VoiceSetupNeeded {
-		if _, err := w.SendThreadMessage(ctx, ThreadID{Platform: "whatsapp", ChannelID: chatJID}, "🎙️ Voice notes need a one-time setup first — open SparkQuill on your computer and check Settings → Voice, then send this again."); err != nil {
+		if _, err := w.SendThreadMessage(ctx, ThreadID{Platform: "whatsapp", ChannelID: chatJID}, "🎙️ Voice transcription is not configured on this server. Ask its administrator to finish voice setup, then send this again."); err != nil {
 			log.Printf("[WHATSAPP] Failed to send voice-setup notice: %v", err)
 		}
 		return

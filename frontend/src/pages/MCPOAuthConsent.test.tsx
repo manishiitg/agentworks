@@ -111,14 +111,3 @@ it('shows a single project limit and its saved capabilities on consent', async (
     expect(host.textContent).not.toContain('View and use this project')
   } finally { await act(async () => root.unmount()) }
 })
-
-it('describes a SparkQuill-only connection and its file/creation permissions', async () => {
-  const view = await mount(['sparkquill:read', 'sparkquill:write', 'sparkquill:run'], [])
-  try {
-    expect(view.host.querySelector('h1')?.textContent).toBe('Connect to SparkQuill')
-    expect(view.host.textContent).toContain('your family’s SparkQuill learning workspace')
-    expect(view.host.textContent).toContain('File edits use revision checks')
-    expect(view.host.textContent).toContain('Uses your AI budget')
-    expect(view.host.textContent).not.toContain('access to your workflows')
-  } finally { await view.cleanup() }
-})

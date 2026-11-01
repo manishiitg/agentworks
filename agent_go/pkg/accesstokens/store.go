@@ -30,7 +30,7 @@ var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
 const MaxLocalPresets = 32
 
 var ErrLocalPresetLimit = errors.New("maximum 32 active local access tokens; revoke an unused local token before creating another")
-var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "crews:review", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect", "messages:read", "messages:send", "sparkquill:read", "sparkquill:write", "sparkquill:run"}
+var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "crews:review", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect", "messages:read", "messages:send"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -84,7 +84,7 @@ func PermanentExpiry() time.Time { return time.Date(9999, 12, 31, 23, 59, 59, 0,
 // adding replacement permissions. Existing connections retain their bounds.
 func CurrentScopes(scopes []string) []string {
 	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
-		return scope == "files:write" || scope == "dashboards:write" || scope == "plan:write"
+		return !slices.Contains(Scopes, scope)
 	})
 }
 
@@ -95,9 +95,6 @@ func (t Token) Allows(scope string) bool { return slices.Contains(t.Scopes, scop
 // user's other local agents or a service account owned by that user.
 func (t Token) KnowledgebaseAccess() bool {
 	return t.Allows("knowledgebase:read") || t.Allows("knowledgebase:write")
-}
-func (t Token) SparkQuillAccess() bool {
-	return t.Allows("sparkquill:read") || t.Allows("sparkquill:write") || t.Allows("sparkquill:run")
 }
 func (t Token) AllowsWorkflow(id string) bool {
 	return t.AllWorkflows || slices.Contains(t.WorkflowIDs, id)
@@ -177,20 +174,7 @@ func Validate(t Token, now time.Time) error {
 	if t.Allows("devices:connect") && len(t.Scopes) != 1 {
 		return errors.New("devices:connect must be approved separately from other permissions")
 	}
-	if t.SparkQuillAccess() {
-		if !t.Allows("sparkquill:read") {
-			return errors.New("sparkquill:read is required")
-		}
-		for _, scope := range t.Scopes {
-			if !strings.HasPrefix(scope, "sparkquill:") {
-				return errors.New("SparkQuill permissions cannot be mixed with platform permissions")
-			}
-		}
-		if t.AllWorkflows || len(t.WorkflowIDs) != 0 || t.AllCrews || len(t.CrewIDs) != 0 || t.KnowledgebaseIdentityID != "" || t.KnowledgebaseFolders != nil {
-			return errors.New("SparkQuill connections are bound to the family workspace")
-		}
-	}
-	if t.FileGuard != nil && !t.SparkQuillAccess() && !t.BuilderAccess() && !t.RelayBuilderAccess() && !t.Allows("crews:read") && !t.Allows("crews:write") {
+	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !t.Allows("crews:read") && !t.Allows("crews:write") {
 		return errors.New("file guards require Crew access or existing workflow or Flow authoring consent")
 	}
 	if err := t.FileGuard.Validate(); err != nil {
@@ -243,8 +227,6 @@ func Validate(t Token, now time.Time) error {
 			hasCrewScope = true
 		case strings.HasPrefix(s, "messages:") || s == "llm:use" || s == "crews:review" || s == "vault:read" || s == "vault:manage" || s == "users:manage" || s == "devices:connect":
 			// Bounded by the account (admin or Code reviewer), not by IDs.
-		case strings.HasPrefix(s, "sparkquill:"):
-			// Bound to this user's fixed SparkQuill family workspace.
 		case strings.HasPrefix(s, "knowledgebase:"):
 			// Bounded by current domain grants and optional folder caps.
 		default:
@@ -400,8 +382,8 @@ func (s *Store) Issue(ctx context.Context, t Token, now time.Time) (Token, strin
 	defer tx.Rollback()
 	// Preserve replacement semantics for existing workflow/Crew callers,
 	// while local presets and knowledge-base connections coexist.
-	if !t.LocalPreset && !t.KnowledgebaseAccess() && !t.SparkQuillAccess() && !t.Allows("devices:connect") {
-		if _, err := tx.ExecContext(ctx, `UPDATE access_tokens SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND local_preset=0 AND revoked_at IS NULL AND expires_at>? AND NOT EXISTS (SELECT 1 FROM json_each(access_tokens.scopes) WHERE value IN ('knowledgebase:read','knowledgebase:write','devices:connect','sparkquill:read','sparkquill:write','sparkquill:run'))`, now.Unix(), t.UserID, now.Unix()); err != nil {
+	if !t.LocalPreset && !t.KnowledgebaseAccess() && !t.Allows("devices:connect") {
+		if _, err := tx.ExecContext(ctx, `UPDATE access_tokens SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND local_preset=0 AND revoked_at IS NULL AND expires_at>? AND NOT EXISTS (SELECT 1 FROM json_each(access_tokens.scopes) WHERE value IN ('knowledgebase:read','knowledgebase:write','devices:connect'))`, now.Unix(), t.UserID, now.Unix()); err != nil {
 			return Token{}, "", err
 		}
 	}

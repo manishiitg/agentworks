@@ -3,11 +3,11 @@ package server
 import "testing"
 
 func TestRegisteredProductIDsExcludeRetiredProduct(t *testing.T) {
-	for _, configured := range []string{"dominion", "dominion,agentworks"} {
+	for _, configured := range []string{"dominion", "dominion,agentworks", "sparkquill", "sparkquill,agentworks"} {
 		t.Setenv("AGENT_PRODUCTS", configured)
 		products := registeredProductIDs()
 		for _, product := range products {
-			if product == "dominion" {
+			if product == "dominion" || product == "sparkquill" {
 				t.Fatalf("retired product is advertised: %v", products)
 			}
 		}
@@ -33,12 +33,6 @@ func TestProductEnabled(t *testing.T) {
 	// Vault and Brain are core: no allowlist turns them off.
 	if !productEnabled("mcp-gateway") || !productEnabled("knowledgebase") {
 		t.Fatal("Vault and Brain must be enabled whatever AGENT_PRODUCTS lists")
-	}
-	for _, own := range []string{"sparkquill", "sparkquill,work"} {
-		t.Setenv("AGENT_PRODUCTS", own)
-		if productEnabled("mcp-gateway") || productEnabled("knowledgebase") {
-			t.Fatalf("%s is its own product and keeps its allowlist", own)
-		}
 	}
 }
 

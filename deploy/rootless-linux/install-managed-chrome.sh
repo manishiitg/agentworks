@@ -4,7 +4,7 @@
 #
 #   install-managed-chrome.sh /srv/<product>
 #
-# - <app>/tools/chrome/current already exists (SparkQuill/RTS: a pinned Chrome for Testing): the launcher is installed into the
+# - <app>/tools/chrome/current already exists (Example product/RTS: a pinned Chrome for Testing): the launcher is installed into the
 #   directory `current` resolves to, next to that `chrome`.
 # - otherwise, a system Chrome (/opt/google/chrome/chrome, the .deb) gets <app>/tools/chrome/system/{chrome -> that, chrome-agentworks}
 #   and `current -> system`. The launcher runs the real `chrome` binary, never the /usr/bin/google-chrome shell script, which writes

@@ -19,7 +19,7 @@ func agentBridgeOnlyDeployment() bool {
 	if !productEnabled("bullpen") {
 		return false
 	}
-	for _, product := range []string{"agentworks", "work", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", "sparkquill"} {
+	for _, product := range []string{"agentworks", "work", "relays", "knowledgebase", "mcp-gateway", "llm-gateway"} {
 		if productEnabled(product) {
 			return false
 		}
@@ -164,9 +164,6 @@ func cliPersonScopes(user *UserClaims) []string {
 }
 
 func mcpOAuthAdvertisedScopes() []string {
-	if sparkquillOnlyDeployment() {
-		return slices.Clone(sparkquillScopes)
-	}
 	if agentBridgeOnlyDeployment() {
 		return []string{"messages:read", "messages:send"}
 	}

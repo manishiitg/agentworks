@@ -1273,7 +1273,7 @@ func (api *StreamingAPI) handleChangeOwnPassword(w http.ResponseWriter, r *http.
 // disables each product's "New ..." from it.
 func canCreateInProducts(acc UserAccess) map[string]bool {
 	out := map[string]bool{}
-	for _, product := range append(knownProductIDs(), "agentworks", "relays", "work", "sparkquill") {
+	for _, product := range append(knownProductIDs(), "agentworks", "relays", "work") {
 		out[product] = acc.CanCreateIn(product)
 	}
 	return out
@@ -1302,7 +1302,7 @@ func registeredProductIDs() []string {
 	if os.Getenv("CAPLAYER_SERVICE_URL") != "" && productEnabled("mcp-gateway") {
 		out = append(out, "mcp-gateway")
 	}
-	for _, id := range []string{"sparkquill", "work", "knowledgebase", "bullpen", "llm-gateway"} {
+	for _, id := range []string{"work", "knowledgebase", "bullpen", "llm-gateway"} {
 		if productEnabled(id) {
 			out = append(out, id)
 		}

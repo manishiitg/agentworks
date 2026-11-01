@@ -80,7 +80,7 @@ func Enabled(product string) bool {
 	if configured == "" {
 		return true
 	}
-	if !Contains(configured, "sparkquill") && (product == "mcp-gateway" || product == "knowledgebase") {
+	if product == "mcp-gateway" || product == "knowledgebase" {
 		return true
 	}
 	return Contains(configured, product)

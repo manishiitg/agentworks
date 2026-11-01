@@ -4,7 +4,6 @@ export type ProductRoute = { surface: ProductSurface; id?: string; view?: string
 export const PRODUCT_PATHS: Record<ProductSurface, string> = {
   agentworks: '/goals', relays: '/relays', work: '/crew',
   knowledgebase: '/brain', 'mcp-gateway': '/vault', 'llm-gateway': '/llm-gateway', bullpen: '/agentbridge',
-  sparkquill: '/sparkquill',
 }
 // The product was called Bullpen; its old address still opens it (and is shown as /agentbridge).
 export const PRODUCT_ROUTE_ALIASES: Record<string, ProductSurface> = { bullpen: 'bullpen', agentworks: 'agentworks', work: 'work', knowledgebase: 'knowledgebase', 'mcp-gateway': 'mcp-gateway' }

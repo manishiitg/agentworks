@@ -37,15 +37,8 @@ type Store struct {
 	mu   sync.Mutex
 }
 
-// DefaultRoot resolves the CLI-security store directory. It is hardcoded
-// under "AgentWorks" (not per-product) because the store's own policy is
-// shared across every AgentWorks-family desktop app on the machine by
-// design (decision 8, docs/design/sparkquill_desktop_on_platform_plan.md
-// A4) — a family that has approved a coding CLI's security profile for
-// AgentWorks does not need to re-approve it for SparkQuill. Set
-// AGENTWORKS_CLI_SECURITY_DIR to give a desktop instance its own root
-// instead (e.g. an isolated dev/test instance that must not read or write
-// the real one).
+// DefaultRoot resolves the machine-wide CLI-security store under AgentWorks.
+// AGENTWORKS_CLI_SECURITY_DIR gives an isolated desktop instance its own root.
 func DefaultRoot() (string, error) {
 	if override := strings.TrimSpace(os.Getenv("AGENTWORKS_CLI_SECURITY_DIR")); override != "" {
 		return filepath.Clean(override), nil

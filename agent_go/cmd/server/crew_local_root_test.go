@@ -152,7 +152,7 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 			t.Fatalf("caller namespace rewritten: %s %s %v", p, actual, err)
 		}
 	}
-	readCtx := context.WithValue(ctx, sparkquillFileGuardKey{}, guard)
+	readCtx := context.WithValue(ctx, externalFileGuardKey{}, guard)
 	result, err := externalFileRequest(readCtx, wf.Request{Root: logical, Operation: "read", Path: "_files/notes.txt"})
 	if err != nil || result.Content != "actual project file" || result.Path != "_files/notes.txt" {
 		t.Fatalf("MCP read: %+v %v", result, err)

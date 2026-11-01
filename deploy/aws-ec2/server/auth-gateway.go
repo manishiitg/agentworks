@@ -666,7 +666,7 @@ func (g *gateway) googleSSOCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.ToLower(strings.TrimSpace(result.User.Email))
 	if !g.ssoAllowedEmail[email] {
-		http.Error(w, "This account is not approved for SparkQuill", http.StatusForbidden)
+		http.Error(w, "This account is not approved for this application", http.StatusForbidden)
 		return
 	}
 	g.setSSOSessionCookie(w, time.Now().Add(ssoSessionDuration), email)
