@@ -45,7 +45,7 @@ type ScheduledJobResponse struct {
 	WorkflowLabel        string                   `json:"workflow_label,omitempty"`
 	PresetQueryID        string                   `json:"preset_query_id,omitempty"` // empty — kept for frontend compat
 	TriggerPayload       json.RawMessage          `json:"trigger_payload,omitempty"`
-	GroupNames           []string                 `json:"group_names,omitempty"`
+	GroupNames           []string                 `json:"group_names"`
 	RouteSelections      map[string]string        `json:"route_selections,omitempty"`
 	Mode                 string                   `json:"mode,omitempty"`
 	Messages             []string                 `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -118,7 +118,7 @@ type CreateScheduleRequest struct {
 	CalendarItems            []CalendarScheduleItem `json:"calendar_items,omitempty"`
 	Enabled                  bool                   `json:"enabled"`
 	TriggerPayload           json.RawMessage        `json:"trigger_payload,omitempty"`
-	GroupNames               []string               `json:"group_names,omitempty"`
+	GroupNames               []string               `json:"group_names"`
 	RouteSelections          map[string]string      `json:"route_selections,omitempty"`
 	Mode                     string                 `json:"mode,omitempty"`
 	Messages                 []string               `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -151,7 +151,7 @@ type UpdateScheduleRequest struct {
 	CalendarItems            []CalendarScheduleItem `json:"calendar_items,omitempty"`
 	Enabled                  *bool                  `json:"enabled,omitempty"`
 	TriggerPayload           json.RawMessage        `json:"trigger_payload,omitempty"`
-	GroupNames               []string               `json:"group_names,omitempty"`
+	GroupNames               []string               `json:"group_names"`
 	RouteSelections          map[string]string      `json:"route_selections,omitempty"`
 	Mode                     string                 `json:"mode,omitempty"`
 	Messages                 []string               `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -1311,7 +1311,7 @@ func getScheduledJobRunsHandler(svc *SchedulerService) http.HandlerFunc {
 			Status                   string              `json:"status"`
 			Error                    string              `json:"error,omitempty"`
 			DurationMs               *int64              `json:"duration_ms,omitempty"`
-			GroupNames               []string            `json:"group_names,omitempty"`
+			GroupNames               []string            `json:"group_names"`
 			StartedAt                time.Time           `json:"started_at"`
 			CompletedAt              *time.Time          `json:"completed_at,omitempty"`
 		}

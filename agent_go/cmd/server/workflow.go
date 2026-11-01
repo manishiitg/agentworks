@@ -824,7 +824,7 @@ type ExecutionOptions struct {
 	PlanChangeAction  string `json:"plan_change_action,omitempty"`  // "keep_old_progress" or "delete_old_progress"
 
 	// Variable group execution options (for batch execution with multiple groups)
-	EnabledGroupNames []string `json:"enabled_group_names,omitempty"` // Group names to execute (if empty, uses groups' enabled flags)
+	EnabledGroupNames []string `json:"enabled_group_names"` // nil uses configured enabled sets; an explicit empty slice selects no work
 
 	// Logging options
 	SaveValidationResponses bool `json:"save_validation_responses,omitempty"` // If true, save validation responses and execution logs to workspace (default: true)
@@ -1289,7 +1289,7 @@ type Variable struct {
 // VariablesManifest represents the variables.json structure
 type VariablesManifest struct {
 	Variables      []Variable      `json:"variables"`
-	Groups         []VariableGroup `json:"groups,omitempty"`
+	Groups         []VariableGroup `json:"groups"`
 	ExtractionDate string          `json:"extraction_date"`
 }
 

@@ -115,6 +115,8 @@ const (
 
 // WorkflowManifest is the top-level workflow.json structure that lives in each workspace.
 type WorkflowManifest struct {
+	crewExecutable *crewExecutableBinding // server-resolved; never decoded from workspace JSON
+
 	Team                         *WorkflowTeam                       `json:"team,omitempty"`
 	KnowledgebaseContractHistory json.RawMessage                     `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          []knowledgebase.Binding             `json:"shared_knowledgebase,omitempty"`
@@ -368,7 +370,7 @@ type WorkflowSchedule struct {
 	Enabled            bool                   `json:"enabled"`
 	TriggerPayload     json.RawMessage        `json:"trigger_payload,omitempty"`
 	CalendarItems      []CalendarScheduleItem `json:"calendar_items,omitempty"`
-	GroupNames         []string               `json:"group_names,omitempty"`
+	GroupNames         []string               `json:"group_names"`
 	// RouteSelections selects deterministic routing-step branches for the scheduled
 	// full workflow. It is the same shape accepted by run_full_workflow; keeping it
 	// as data prevents a schedule from becoming a second, free-text workflow.
@@ -754,10 +756,6 @@ func ValidateManifest(m *WorkflowManifest) error {
 		if scheduleTypeOrDefault(sched.ScheduleType) == "calendar" && len(sched.CalendarItems) == 0 {
 			return fmt.Errorf("schedules[%d].calendar_items is required for calendar schedules", i)
 		}
-		// group_names required for workflow/workshop modes, not for multi-agent
-		if m.Kind != "relay" && sched.Mode != "multi-agent" && len(normalizeScheduleGroupNames(sched.GroupNames)) == 0 {
-			return fmt.Errorf("schedules[%d].group_names is required", i)
-		}
 		if err := validateScheduleRuntimePolicy(sched); err != nil {
 			return fmt.Errorf("schedules[%d]: %w", i, err)
 		}
@@ -829,7 +827,10 @@ func workflowFolderAliasEnvKey(alias string) string {
 
 func normalizeScheduleGroupNames(groupNames []string) []string {
 	seen := make(map[string]struct{}, len(groupNames))
-	normalized := make([]string, 0, len(groupNames))
+	var normalized []string
+	if groupNames != nil {
+		normalized = make([]string, 0, len(groupNames))
+	}
 	for _, groupName := range groupNames {
 		trimmed := strings.TrimSpace(groupName)
 		if trimmed == "" {
@@ -846,16 +847,16 @@ func normalizeScheduleGroupNames(groupNames []string) []string {
 
 func validateScheduleGroupNamesForWorkspace(ctx context.Context, workspacePath string, groupNames []string) ([]string, error) {
 	normalized := normalizeScheduleGroupNames(groupNames)
-	if len(normalized) == 0 {
-		return nil, fmt.Errorf("group_names is required and must contain at least one group name")
-	}
 
 	content, exists, err := readFileFromWorkspace(ctx, workspacePath+"/variables/variables.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read variables.json: %w", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("variables/variables.json not found for %s", workspacePath)
+		if len(normalized) == 0 {
+			return normalized, nil
+		}
+		return nil, fmt.Errorf("no input sets are configured for %s", workspacePath)
 	}
 
 	var manifest VariablesManifest
@@ -863,7 +864,10 @@ func validateScheduleGroupNamesForWorkspace(ctx context.Context, workspacePath s
 		return nil, fmt.Errorf("failed to parse variables.json: %w", err)
 	}
 	if len(manifest.Groups) == 0 {
-		return nil, fmt.Errorf("workflow has no variable groups; schedules must specify at least one valid group name")
+		if len(normalized) == 0 {
+			return normalized, nil
+		}
+		return nil, fmt.Errorf("workflow has no saved input sets")
 	}
 
 	validGroups := make(map[string]struct{}, len(manifest.Groups))
@@ -960,6 +964,26 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		} else {
 			return nil, false, fmt.Errorf("failed to parse workflow.json: %w", err)
 		}
+	}
+
+	binding, bindErr := findCrewExecutable(workspacePath)
+	if bindErr != nil {
+		return nil, false, bindErr
+	}
+	if binding != nil {
+		expectedKind := ""
+		if binding.Kind == "relay" {
+			expectedKind = "relay"
+		}
+		if m.ID != binding.ID || m.Kind != expectedKind {
+			return nil, false, fmt.Errorf("executable identity does not match its registered Crew binding")
+		}
+		m.crewExecutable = binding
+		m.CreatedBy, _ = crewProjectOwnerID(binding.CrewRoot)
+		m.Access = &WorkflowAccess{Owners: append([]string{m.CreatedBy}, crewCoOwnerIDs(binding.CrewRoot)...)}
+		// Membership belongs to the Crew too; an editable per-workflow team
+		// cannot add an execution leader or contributors outside that authority.
+		m.Team = nil
 	}
 
 	if err := loadWorkflowEntryActions(ctx, workspacePath, &m); err != nil {

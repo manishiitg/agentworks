@@ -23,6 +23,12 @@ func TestRelayGrouplessChainAndResumeRealWorkspace(t *testing.T) {
 	if os.Getenv("RUN_RELAY_GROUPLESS_E2E") == "" {
 		t.Skip("set RUN_RELAY_GROUPLESS_E2E=1 for real workspace/Python execution")
 	}
+	for _, kind := range []string{"relay", "workflow", "workflow-no-inputs"} {
+		t.Run(kind, func(t *testing.T) { testGrouplessChainAndResume(t, kind) })
+	}
+}
+
+func testGrouplessChainAndResume(t *testing.T, kind string) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("LOCAL_MODE", "true")
@@ -53,18 +59,28 @@ func TestRelayGrouplessChainAndResumeRealWorkspace(t *testing.T) {
 		}
 	}
 	write("webhooks/deliveries/sample.json", `{}`)
-	write("workflow.json", `{"kind":"relay","code_layout_version":1}`)
-	write("variables/variables.json", `{"variables":[{"name":"INPUT","value":"{}"},{"name":"PREFIX","value":"Hello"}]}`)
+	manifest := `{"code_layout_version":1}`
+	if kind == "relay" {
+		manifest = `{"kind":"relay","code_layout_version":1}`
+	}
+	write("workflow.json", manifest)
+	if kind != "workflow-no-inputs" {
+		write("variables/variables.json", `{"variables":[{"name":"INPUT","value":"{}"},{"name":"PREFIX","value":"Hello"}]}`)
+	}
 	write("planning/plan.json", `{"steps":[{"type":"scripted","id":"first","title":"First","description":"Create greeting","script_only":true,"next_step_id":"second","context_output":"result.json"},{"type":"scripted","id":"second","title":"Second","description":"Return greeting","script_only":true,"context_dependencies":["result.json"]}]}`)
 	write("planning/step_config.json", `{"steps":[{"id":"first","agent_configs":{"lock_code":true}},{"id":"second","agent_configs":{"lock_code":true}}]}`)
+	relayDBCheck := ""
+	if kind == "relay" {
+		relayDBCheck = "assert os.environ.get(\"WORKFLOW_DB_ACCESS\") == \"none\""
+	}
 	write("code/first/main.py", `import json, os
 from pathlib import Path
 assert not os.environ.get('VAR_GROUP_NAME')
-assert os.environ.get('WORKFLOW_DB_ACCESS') == 'none'
+`+relayDBCheck+`
 out = Path(os.environ['STEP_OUTPUT_DIR'])
 assert not (out / 'result.json').exists(), 'completed step was replayed'
-value = json.loads(os.environ['VAR_INPUT'])
-(out / 'result.json').write_text(json.dumps({'greeting': os.environ['VAR_PREFIX'] + ' ' + value['name']}))
+value = json.loads(os.environ.get('VAR_INPUT', '{"name":"world"}'))
+(out / 'result.json').write_text(json.dumps({'greeting': os.environ.get('VAR_PREFIX', 'Hello') + ' ' + value['name']}))
 `)
 	write("code/second/main.py", "raise RuntimeError('intentional failure before resume')\n")
 	newController := func(folder, name, strategy string, resume int) *StepBasedWorkflowOrchestrator {
@@ -75,18 +91,22 @@ value = json.loads(os.environ['VAR_INPUT'])
 		}
 		c.WorkspaceClient = workspace.NewClient(server.URL)
 		c.SetWorkspaceEnvRef(map[string]string{})
-		c.SetExecutionOptions(&ExecutionOptions{SelectedRunFolder: folder, ExecutionStrategy: strategy, ResumeFromStep: resume, WebhookInputFile: workspacePath + "/webhooks/deliveries/sample.json", WebhookVariables: map[string]string{"INPUT": `{"name":"` + name + `"}`}})
+		values := map[string]string{"INPUT": `{"name":"` + name + `"}`}
+		if kind == "workflow-no-inputs" {
+			values = nil
+		}
+		c.SetExecutionOptions(&ExecutionOptions{SelectedRunFolder: folder, ExecutionStrategy: strategy, ResumeFromStep: resume, WebhookInputFile: workspacePath + "/webhooks/deliveries/sample.json", WebhookVariables: values})
 		return c
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	c := newController("relay-one", "Ada", ExecutionStrategyStartFromBeginningNoHuman, 0)
+	c := newController("iteration-1-hook", "Ada", ExecutionStrategyStartFromBeginningNoHuman, 0)
 	if _, err := c.CreateTodoList(ctx, "", workspacePath); err == nil {
 		t.Fatal("expected second step failure")
 	} else {
 		t.Logf("initial failure: %v", err)
 	}
-	firstPath := filepath.Join(docs, workspacePath, "runs/relay-one/execution/first/result.json")
+	firstPath := filepath.Join(docs, workspacePath, "runs/iteration-1-hook/execution/first/result.json")
 	before, err := os.Stat(firstPath)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +118,7 @@ source = Path(sys.argv[1])
 value = json.loads(source.read_text())
 (Path(os.environ['STEP_OUTPUT_DIR']) / 'result.json').write_text(json.dumps(value))
 `)
-	c = newController("relay-one", "Ada", ExecutionStrategyResumeFromStepNoHuman, 2)
+	c = newController("iteration-1-hook", "Ada", ExecutionStrategyResumeFromStepNoHuman, 2)
 	if _, err := c.CreateTodoList(ctx, "", workspacePath); err != nil {
 		t.Fatal(err)
 	}
@@ -106,22 +126,27 @@ value = json.loads(source.read_text())
 	if err != nil || !after.ModTime().Equal(before.ModTime()) {
 		t.Fatalf("resume changed completed output: %v", err)
 	}
-	// Builder node tests also use flat config and a run ID without a group.
-	c = newController("", "Lin", ExecutionStrategyStartFromBeginningNoHuman, 0)
-	c.SetWorkspacePath(workspacePath)
-	if _, err := c.ExecuteStepForWorkshop(ctx, "first", &WorkshopExecuteOptions{RunFolder: "relay-node", SavedScriptOnly: true}); err != nil {
-		t.Fatal(err)
+	if kind == "relay" {
+		// Builder node tests also use flat config and a run ID without a group.
+		c = newController("", "Lin", ExecutionStrategyStartFromBeginningNoHuman, 0)
+		c.SetWorkspacePath(workspacePath)
+		if _, err := c.ExecuteStepForWorkshop(ctx, "first", &WorkshopExecuteOptions{RunFolder: "iteration-3-hook", SavedScriptOnly: true}); err != nil {
+			t.Fatal(err)
+		}
+		rawNode, err := os.ReadFile(filepath.Join(docs, workspacePath, "runs/iteration-3-hook/execution/first/result.json"))
+		if err != nil || string(rawNode) != `{"greeting": "Hello Lin"}` {
+			t.Fatalf("node output: %s (%v)", rawNode, err)
+		}
 	}
-	rawNode, err := os.ReadFile(filepath.Join(docs, workspacePath, "runs/relay-node/execution/first/result.json"))
-	if err != nil || string(rawNode) != `{"greeting": "Hello Lin"}` {
-		t.Fatalf("node output: %s (%v)", rawNode, err)
-	}
-	for folder, name := range map[string]string{"relay-one": "Ada", "relay-two": "Grace"} {
-		if folder == "relay-two" {
+	for folder, name := range map[string]string{"iteration-1-hook": "Ada", "iteration-2-hook": "Grace"} {
+		if folder == "iteration-2-hook" {
 			c = newController(folder, name, ExecutionStrategyStartFromBeginningNoHuman, 0)
 			if _, err := c.CreateTodoList(ctx, "", workspacePath); err != nil {
 				t.Fatal(err)
 			}
+		}
+		if kind == "workflow-no-inputs" {
+			name = "world"
 		}
 		raw, err := os.ReadFile(filepath.Join(docs, workspacePath, "runs", folder, "execution/second/result.json"))
 		if err != nil {

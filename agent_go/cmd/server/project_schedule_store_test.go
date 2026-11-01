@@ -20,7 +20,7 @@ func TestCommonProjectScheduleStorePreservesWorkAndCaller(t *testing.T) {
 	record := projectactions.Schedule{ID: "daily", Name: "Daily", Project: projectactions.Project{Kind: "goal", ID: "example"},
 		When:   projectactions.When{Cron: "0 9 * * *", Timezone: "UTC", After: &projectactions.After{Schedules: []string{"collect"}, Outcome: "any_terminal", DelayMinutes: 5, Deadline: "12:00"}},
 		Action: projectactions.Action{Type: "message"}, RunAs: "owner", Enabled: false,
-		Input: json.RawMessage(`{"messages":["Collect evidence.","Check it.","Report it."],"routes":{"router":"report"}}`)}
+		Input: json.RawMessage(`{"messages":["Collect evidence.","Check it.","Report it."],"groups":[],"routes":{"router":"report"}}`)}
 	if err := writeProjectSchedules(ctx, root, []projectactions.Schedule{record}); err != nil {
 		t.Fatal(err)
 	}
@@ -41,6 +41,11 @@ func TestCommonProjectScheduleStorePreservesWorkAndCaller(t *testing.T) {
 	}
 	if err := loadWorkflowTimerActions(ctx, root, manifest); err != nil {
 		t.Fatal(err)
+	}
+	// PLAT-746-265: persistence must not turn "select no work" into the
+	// omitted selection that automatically chooses enabled input sets.
+	if manifest.Schedules[1].GroupNames == nil || len(manifest.Schedules[1].GroupNames) != 0 {
+		t.Fatal("empty selection became automatic selection")
 	}
 	manifest.Access.Owners = []string{"another-owner"}
 	if err := loadWorkflowTimerActions(ctx, root, manifest); err == nil {

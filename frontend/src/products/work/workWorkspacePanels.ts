@@ -22,7 +22,7 @@ export function workWorkspacePanels({
       .filter((item): item is ProductPanel<WorkWorkspaceView> => !!item)
   const views = cowork
     ? [
-        ...pick(['dashboard', 'browser', 'schedules', 'memory']),
+        ...pick(['dashboard', 'browser', 'schedules', 'memory', 'plan']),
         ...WORK_PANELS.ops.filter((item) => item.id === 'costs'),
       ]
     : WORK_PANELS.views
@@ -34,7 +34,7 @@ export function workWorkspacePanels({
       .filter((item) =>
         readOnly
           ? item.id === 'dashboard' && (!enabledPanels || enabledPanels.has('dashboard'))
-          : !enabledPanels || enabledPanels.has(item.id) || item.id === 'suggestions' || (item.id === 'memory' && enabledPanels.has('skills'))
+          : !enabledPanels || enabledPanels.has(item.id) || item.id === 'plan' || item.id === 'suggestions' || (item.id === 'memory' && enabledPanels.has('skills'))
       )
       .filter((item) => isWorkWorkspaceViewEnabled(item.id, undefined)),
     ops: ops

@@ -63,7 +63,7 @@ type ExecutionOptions struct {
 	PaceThresholdPercent int `json:"pace_threshold_percent,omitempty"`
 
 	// Variable group execution options (for batch execution with multiple groups)
-	EnabledGroupNames []string `json:"enabled_group_names,omitempty"` // Group names to execute (if empty, uses groups' enabled flags)
+	EnabledGroupNames []string `json:"enabled_group_names"` // nil selects enabled groups (or one ungrouped invocation); [] selects no work
 
 	// Operator instructions, keyed by step ID and scoped to that executable step.
 	HumanInputs map[string]string `json:"human_inputs,omitempty"`

@@ -31,7 +31,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Build', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)
   add('database', 'Build', 'Database', Database)
-  add('plan', 'Build', 'Plan', Route)
+  add('plan', 'Build', 'Workflows & programs', Route)
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {

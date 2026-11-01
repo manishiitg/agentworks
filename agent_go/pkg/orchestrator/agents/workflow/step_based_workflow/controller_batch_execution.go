@@ -26,80 +26,14 @@ type BatchExecutionResult struct {
 	FailedGroupNames    []string
 }
 
-// getEnabledGroupsForExecution returns the list of groups to execute.
-// Group selection is mandatory. Priority: ExecutionOptions.EnabledGroupNames > manifest enabled groups.
-func (hcpo *StepBasedWorkflowOrchestrator) getEnabledGroupsForExecution() []VariableGroup {
-	if hcpo.variablesManifest == nil {
-		hcpo.GetLogger().Error("❌ [GROUP SELECTION] variablesManifest is nil - group configuration is required", nil)
-		return nil
+// getEnabledGroupsForExecution resolves one invocation or explicitly selected input sets.
+// An unnamed item is transient execution state, never a persisted default group.
+func (hcpo *StepBasedWorkflowOrchestrator) getEnabledGroupsForExecution() ([]VariableGroup, error) {
+	var selected []string
+	if hcpo.executionOptions != nil {
+		selected = hcpo.executionOptions.EnabledGroupNames
 	}
-
-	// Log available groups in manifest for debugging
-	availableGroupNames := make([]string, len(hcpo.variablesManifest.Groups))
-	for i, g := range hcpo.variablesManifest.Groups {
-		availableGroupNames[i] = g.Name
-	}
-	hcpo.GetLogger().Info(fmt.Sprintf("🔍 [GROUP SELECTION] Available groups in manifest: %v", availableGroupNames))
-
-	// Check if ExecutionOptions specifies specific group names
-	if hcpo.executionOptions != nil && len(hcpo.executionOptions.EnabledGroupNames) > 0 {
-		// Use specified group names from ExecutionOptions
-		hcpo.GetLogger().Info(fmt.Sprintf("🔍 [GROUP SELECTION] Requested group names from execution options: %v", hcpo.executionOptions.EnabledGroupNames))
-		var groups []VariableGroup
-		var foundGroupNames []string
-		var missingGroupNames []string
-
-		for _, groupName := range hcpo.executionOptions.EnabledGroupNames {
-			found := false
-			for _, g := range hcpo.variablesManifest.Groups {
-				if g.Name == groupName {
-					groups = append(groups, g)
-					foundGroupNames = append(foundGroupNames, groupName)
-					hcpo.GetLogger().Info(fmt.Sprintf("✅ [GROUP SELECTION] Found group %s in manifest (enabled: %v)", groupName, g.Enabled))
-					found = true
-					break
-				}
-			}
-			if !found {
-				missingGroupNames = append(missingGroupNames, groupName)
-				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [GROUP SELECTION] Requested group %s not found in manifest", groupName))
-			}
-		}
-
-		if len(missingGroupNames) > 0 {
-			hcpo.GetLogger().Error(fmt.Sprintf("❌ [GROUP SELECTION] Some requested groups not found: %v (found: %v)", missingGroupNames, foundGroupNames), nil)
-		}
-
-		if len(groups) > 0 {
-			returnedGroupNames := make([]string, len(groups))
-			for i, g := range groups {
-				returnedGroupNames[i] = g.Name
-			}
-			hcpo.GetLogger().Info(fmt.Sprintf("✅ [GROUP SELECTION] Returning %d groups: %v", len(groups), returnedGroupNames))
-		} else {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [GROUP SELECTION] No groups found matching requested IDs"))
-		}
-
-		// If we found at least some groups, return them (even if some were missing)
-		if len(groups) > 0 {
-			return groups
-		}
-	}
-
-	// Fall back to manifest's enabled groups only when the manifest defines real groups.
-	if !hcpo.variablesManifest.HasGroups() {
-		hcpo.GetLogger().Error("❌ [GROUP SELECTION] No groups defined in variables manifest - group configuration is required", nil)
-		return nil
-	}
-
-	hcpo.GetLogger().Info(fmt.Sprintf("🔍 [GROUP SELECTION] No execution options or no matches found, using manifest's enabled groups"))
-	enabledGroups := hcpo.variablesManifest.GetEnabledGroups()
-	enabledGroupNames := make([]string, len(enabledGroups))
-	for i, g := range enabledGroups {
-		enabledGroupNames[i] = g.Name
-	}
-	hcpo.GetLogger().Info(fmt.Sprintf("✅ [GROUP SELECTION] Returning %d enabled groups from manifest: %v", len(enabledGroups), enabledGroupNames))
-	return enabledGroups
+	return ResolveExecutionInputs(hcpo.variablesManifest, selected)
 }
 
 // runBatchExecution executes the workflow for multiple variable groups sequentially
@@ -110,7 +44,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) runBatchExecution(
 	iteration int,
 	execCtx *ExecutionContext,
 ) (*BatchExecutionResult, error) {
-	enabledGroups := hcpo.getEnabledGroupsForExecution()
+	enabledGroups, err := hcpo.getEnabledGroupsForExecution()
+	if err != nil {
+		return nil, err
+	}
 	if opts := hcpo.GetExecutionOptions(); opts != nil && (opts.WebhookInputFile != "" || len(opts.WebhookVariables) > 0) {
 		enabledGroups = applyWebhookVariableOverrides(enabledGroups, opts.WebhookVariables)
 	}
@@ -118,70 +55,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) runBatchExecution(
 
 	if totalGroups == 0 {
 		return nil, fmt.Errorf("no enabled variable groups found for batch execution")
-	}
-
-	// Validate that all groups have valid Names
-	for i, group := range enabledGroups {
-		if group.Name == "" {
-			// PANIC for debugging: name is required for session ID and folder structure
-			panic(fmt.Sprintf("CRITICAL: Group at index %d has empty Name in runBatchExecution() - all groups must have valid names. Group values: %v", i, group.Values))
-		}
-	}
-
-	// Validate that returned groups match requested groups (if specified)
-	if hcpo.executionOptions != nil && len(hcpo.executionOptions.EnabledGroupNames) > 0 {
-		returnedGroupNames := make([]string, len(enabledGroups))
-		for i, g := range enabledGroups {
-			returnedGroupNames[i] = g.Name
-		}
-		requestedGroupNames := hcpo.executionOptions.EnabledGroupNames
-
-		// Check if all requested groups are present
-		requestedSet := make(map[string]bool)
-		for _, id := range requestedGroupNames {
-			requestedSet[id] = false
-		}
-		for _, id := range returnedGroupNames {
-			if _, exists := requestedSet[id]; exists {
-				requestedSet[id] = true
-			}
-		}
-
-		missing := make([]string, 0)
-		for id, found := range requestedSet {
-			if !found {
-				missing = append(missing, id)
-			}
-		}
-
-		if len(missing) > 0 {
-			hcpo.GetLogger().Error(fmt.Sprintf("❌ [BATCH EXECUTION] Requested groups not found in execution: %v (returned: %v)", missing, returnedGroupNames), nil)
-		} else {
-			hcpo.GetLogger().Info(fmt.Sprintf("✅ [BATCH EXECUTION] All requested groups found: %v", returnedGroupNames))
-		}
-
-		// Check for unexpected groups
-		returnedSet := make(map[string]bool)
-		for _, id := range returnedGroupNames {
-			returnedSet[id] = true
-		}
-		unexpected := make([]string, 0)
-		for _, id := range returnedGroupNames {
-			found := false
-			for _, reqID := range requestedGroupNames {
-				if id == reqID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				unexpected = append(unexpected, id)
-			}
-		}
-
-		if len(unexpected) > 0 {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [BATCH EXECUTION] Unexpected groups in execution (not requested): %v", unexpected))
-		}
 	}
 
 	enabledGroupNames := make([]string, len(enabledGroups))
@@ -450,8 +323,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) sanitizeDisplayNameForFolder(name str
 
 // createGroupRunFolder creates the run folder path for a specific group
 // Uses sanitized group name as folder name
-// ALWAYS uses nested structure (iteration-X/group) regardless of number of groups
+// Named input sets retain iteration-X/group; an ungrouped invocation uses iteration-X.
 func (hcpo *StepBasedWorkflowOrchestrator) createGroupRunFolder(baseIterationFolder, groupName string, totalGroups int) string {
+	if groupName == "" {
+		return baseIterationFolder
+	}
 	folderName := hcpo.sanitizeNameForFolder(groupName)
 	if folderName == "" {
 		folderName = groupName // fallback to raw name

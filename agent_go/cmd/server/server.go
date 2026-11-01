@@ -3130,6 +3130,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// directly; HTML pages read durable data through window.report.
 
 	apiRouter.HandleFunc("/workflow/publish/secret", requireWorkflowWriteAccess(api.handleGetWorkflowPublishSecret)).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/crew-executables", api.handleCrewExecutables).Methods("GET", "POST")
 	// Manifest-backed workflow API routes (file-backed workflow definitions)
 	apiRouter.HandleFunc("/workflows/manifests", api.handleListWorkflowManifests).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/knowledgebase-sources", api.handleWorkflowKnowledgebaseSources).Methods("GET", "OPTIONS")
@@ -12555,7 +12556,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 ) (*todo_creation_human.WorkshopConfig, error) {
 	// Extract enabled group names from execution options (toolbar selection)
 	var enabledGroupNames []string
-	if req.ExecutionOptions != nil && len(req.ExecutionOptions.EnabledGroupNames) > 0 {
+	if req.ExecutionOptions != nil {
 		enabledGroupNames = req.ExecutionOptions.EnabledGroupNames
 	}
 

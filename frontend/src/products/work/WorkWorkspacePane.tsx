@@ -37,7 +37,7 @@ import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { useProjectMode } from './codeLocalFiles'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
-import { WorkPlanPanel } from './WorkPlanPanel'
+import { CrewExecutablesPanel } from './CrewExecutablesPanel'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
@@ -356,16 +356,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {view === 'plan' && <WorkPlanPanel
-          workspacePath={workspacePath}
-          onCreatePlan={() => { void openWorkspacePaneChatWithDraft({
-            profileId: product.profileId,
-            conversationKey: projectId,
-            message: 'Help me create a plan for this project. Let us define the steps and save the plan in the project.',
-          }).catch(error => {
-            useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not open project chat.', 'error')
-          }) }}
-        />}
+        {view === 'plan' && <CrewExecutablesPanel key={projectId} projectId={projectId} />}
         {view === 'mcp' && <WorkIntegrationsPanel
           canEdit={canEditConnections}
           accessLoading={!shared && projectAccess?.key !== accessKey}
