@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, Bot, FolderOpen, Loader2, Plus } from 'lucide-react'
+import { ArrowRight, Bot, FolderOpen, Loader2, Plus, RefreshCw } from 'lucide-react'
 import ModalPortal from './ui/ModalPortal'
 import { Button } from './ui/Button'
 import { llmConfigService } from '../services/llm-config-api'
 import type { LLMDiscoveryCandidate } from '../services/api-types'
-import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 
 export const LOCAL_SETUP_SEEN_KEY = 'agentworks_local_setup_v1_seen'
 
@@ -24,21 +23,16 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
   const [step, setStep] = useState<1 | 2>(1)
   const [programs, setPrograms] = useState<LLMDiscoveryCandidate[] | null>(null)
   const [error, setError] = useState('')
+  const [check, setCheck] = useState(0)
   useEffect(() => {
     let cancelled = false
+    setError('')
+    setPrograms(null)
     llmConfigService.discoverLLMSetup()
       .then(result => { if (!cancelled) setPrograms(result.candidates.filter(item => item.kind === 'local_cli' && !item.deprecated)) })
       .catch(() => { if (!cancelled) setError('Could not check the AI programs on this Mac.') })
     return () => { cancelled = true }
-  }, [])
-  const openAccounts = () => { onClose(); openWorkspaceSettings('providers') }
-  const openProvider = (provider: string) => {
-    onClose()
-    const url = new URL('/settings/ai-accounts', window.location.origin)
-    url.searchParams.set('provider', provider)
-    window.history.pushState({ workspaceSettings: true }, '', url)
-    openWorkspaceSettings('providers')
-  }
+  }, [check])
   const start = () => { onClose(); onStartProject() }
   const stepPill = (n: 1 | 2, label: string) => (
     <span className={`rounded-full border px-2.5 py-1 text-xs ${step === n ? 'border-primary text-foreground' : 'border-border text-muted-foreground'}`}>{n} · {label}</span>
@@ -57,7 +51,7 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
 
           {step === 1 && <div className="mt-5">
             <h3 className="text-sm font-semibold">AI programs on this Mac</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">We looked for coding programs you already use. Signed-in ones work right away.</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">We found the coding programs on this Mac. To use another, install it and sign in on your Mac, then check again.</p>
             {error && <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-400">{error}</p>}
             {!programs && !error && <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Checking…</p>}
             {programs && <ul className="mt-3 space-y-2">
@@ -72,12 +66,11 @@ export function LocalSetup({ onClose, onStartProject }: { onClose: () => void; o
                     <span className="block text-sm font-medium">{program.label}</span>
                     <span className="block text-xs text-muted-foreground">{ready ? 'Ready' : installed ? 'Installed, not signed in' : 'Not installed'}</span>
                   </span>
-                  {!ready && <Button type="button" size="xs" variant="outline" onClick={() => openProvider(program.provider)}>{installed ? 'Sign in' : 'Set up'}</Button>}
                 </li>
               })}
             </ul>}
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">To use them on your company's server as well, open <button type="button" className="font-medium text-primary hover:underline" onClick={openAccounts}>AI accounts</button>: each account shows "Use it on your servers too".</p>
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-5 flex justify-between gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setCheck(value => value + 1)}><RefreshCw className="mr-1.5 h-4 w-4" />Check again</Button>
               <Button type="button" size="sm" onClick={() => setStep(2)}>Next<ArrowRight className="ml-1.5 h-4 w-4" /></Button>
             </div>
           </div>}
