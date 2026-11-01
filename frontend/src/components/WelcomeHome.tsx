@@ -104,6 +104,10 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
     operation.current++; setAgentWorksDraft(''); setAgentWorksError(''); setAgentWorksSending(false)
   }, [scope])
 
+  // The new-user setup belongs to the Mac app's own view: it opens once on the first visit there, then from Home.
+  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
+  const [setupOpen, setSetupOpen] = useState(() => onThisMac && !isGuideRemembered(LOCAL_SETUP_SEEN_KEY))
+  const closeSetup = useCallback(() => { rememberGuide(LOCAL_SETUP_SEEN_KEY); setSetupOpen(false) }, [])
   if (!open) return null
 
   const branding = runtimeBrandingConfig()
@@ -151,10 +155,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
     if (!studioCreation || !openQuickNavigation(studioCreation)) return
     useCommandDialogStore.getState().requestProductCreate('work', 'studio')
   }
-  // The new-user setup belongs to the Mac app's own view: it opens once on the first visit there, then from Home.
-  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
-  const [setupOpen, setSetupOpen] = useState(() => onThisMac && !isGuideRemembered(LOCAL_SETUP_SEEN_KEY))
-  const closeSetup = useCallback(() => { rememberGuide(LOCAL_SETUP_SEEN_KEY); setSetupOpen(false) }, [])
   const startProject = () => {
     if (!studioCreation || !openQuickNavigation(studioCreation)) return
     useCommandDialogStore.getState().requestProductCreate('work')
