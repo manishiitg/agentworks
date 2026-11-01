@@ -333,6 +333,10 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			// PLAT-856-442: a private-history symlink must not redirect the
 			// under-lock direct writer outside the admitted destination Crew.
 			stop()
+			// The watcher may have applied bytes before its receipt was cancelled.
+			if w := call("download", "owner", true); w.Code != 200 {
+				t.Fatalf("settle watcher receipt: %d %s", w.Code, w.Body.String())
+			}
 			builder := filepath.Join(local.Private, "builder")
 			if err := os.Rename(builder, builder+"-saved"); err != nil {
 				t.Fatal(err)
