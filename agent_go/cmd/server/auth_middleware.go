@@ -396,7 +396,8 @@ func shouldSkipAuth(path string) bool {
 		// random, server-held, single-use, and expires in 15 minutes — a
 		// callback with no valid state does nothing at all.
 		"/api/human-feedback/gmail/auth/callback",
-		"/api/downloads/", // Chrome CDP launcher zip (macOS)
+		"/api/downloads/",           // Chrome CDP launcher zip (macOS)
+		"/api/desktop-model-proxy/", // A program on the Mac; the handler checks loopback and the account's own key
 		mcpOAuthRegisterPath,
 		mcpOAuthAuthorizePath,
 		mcpOAuthTokenPath,

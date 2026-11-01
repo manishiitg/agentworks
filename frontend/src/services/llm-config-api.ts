@@ -46,6 +46,8 @@ export interface ProviderConnection {
   underlying_provider?: string
   /** Endpoint of a Pi account on the person's own OpenAI-compatible service. */
   base_url?: string
+  /** On the Mac: the connected server whose company login this account runs on. */
+  via_connection?: string
   owner_user_id?: string
   updated_at?: string
   sharing?: ProviderAccountSharing
