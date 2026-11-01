@@ -1,6 +1,19 @@
 package step_based_workflow
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// Input sets share the run directory with its own payload. Use the same folder
+// normalization as execution so names cannot collide after sanitization.
+func ValidateInputSetName(name string) error {
+	clean := inputSetFolderName(name)
+	if clean == "execution" || clean == "logs" || strings.HasPrefix(strings.TrimSpace(name), ".") {
+		return fmt.Errorf("input-set name %q is reserved for run files; choose a different name", name)
+	}
+	return nil
+}
 
 // ResolveExecutionInputs distinguishes omitted selection from an explicit empty
 // batch. PLAT-746-265: missing groups means one invocation, not missing setup;
@@ -25,6 +38,9 @@ func ResolveExecutionInputs(manifest *VariablesManifest, selected []string) ([]V
 	}
 	byName := map[string]VariableGroup{}
 	for _, group := range groups {
+		if err := ValidateInputSetName(group.Name); err != nil {
+			return nil, err
+		}
 		if group.Name == "" {
 			return nil, fmt.Errorf("saved input sets need a name")
 		}

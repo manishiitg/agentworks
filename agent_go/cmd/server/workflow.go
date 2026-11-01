@@ -518,10 +518,11 @@ func readProgressForFolder(ctx context.Context, stepsFilePath string) (*StepProg
 	return &progress, nil
 }
 
-// isHiddenRunSubfolder reports a dot-prefixed folder inside a run folder (.sandbox-cache, .tmp, .relay_dbos, .relay_ipc): the
-// run's own working files, never a run group. A step that writes more of the run folder must not turn the run into its subfolders.
-func isHiddenRunSubfolder(name string) bool {
-	return strings.HasPrefix(name[strings.LastIndex(name, "/")+1:], ".")
+// A run's payload and private working folders are never input sets. In an
+// ungrouped run execution/ and logs/ sit directly below the iteration root.
+func isRunInternalSubfolder(name string) bool {
+	base := name[strings.LastIndex(name, "/")+1:]
+	return strings.HasPrefix(base, ".") || base == "execution" || base == "logs"
 }
 
 // extractIterationFoldersFromTypedChildren extracts iteration folder names from typed WorkspaceFolderItem array
@@ -584,7 +585,7 @@ func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceF
 								}
 								// Check if this is a group subfolder (nested under iteration-X)
 								// Accepts both "group-X" format (backward compatibility) and display names (e.g., "production", "staging")
-								if groupName != "" && !isHiddenRunSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
+								if groupName != "" && !isRunInternalSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
 									// Any nested folder under iteration-X is considered a group folder
 									hasGroups = true
 									groupFolders = append(groupFolders, groupName)
@@ -696,7 +697,7 @@ func extractIterationFoldersFromChildren(children []interface{}, existingFolders
 										}
 										// Check if this is a group subfolder (nested under iteration-X)
 										// Accepts both "group-X" format (backward compatibility) and display names (e.g., "production", "staging")
-										if groupName != "" && !isHiddenRunSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
+										if groupName != "" && !isRunInternalSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
 											// Any nested folder under iteration-X is considered a group folder
 											hasGroups = true
 											groupFolders = append(groupFolders, groupName)
@@ -1452,6 +1453,12 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 	if err := json.NewDecoder(r.Body).Decode(&manifest); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
+	}
+	for _, group := range manifest.Groups {
+		if err := todo_creation_human.ValidateInputSetName(group.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	workflow, found, err := ReadWorkflowManifest(r.Context(), workspacePath)
