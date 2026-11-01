@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 // ChatFileHistory reads only saved reply references from the existing journal.
@@ -18,6 +19,7 @@ type ChatFileHistory struct {
 // ChatUserMessage is one message the person sent, for naming where a
 // comparison starts.
 type ChatUserMessage struct {
+	ID       string
 	Sequence int64
 	Text     string
 	At       string
@@ -40,11 +42,64 @@ func (es *EventStore) ChatUserMessageBetween(ctx context.Context, sessionID stri
 
 func (j *SQLiteEventJournal) ChatUserMessageBetween(ctx context.Context, sessionID string, after, through int64) (ChatUserMessage, error) {
 	var out ChatUserMessage
-	err := j.db.QueryRowContext(ctx, `SELECT sequence,
+	err := j.db.QueryRowContext(ctx, `SELECT COALESCE(json_extract(payload,'$.id'),''), sequence,
 		COALESCE(json_extract(payload,'$.data.data.content'), json_extract(payload,'$.data.data.message'), json_extract(payload,'$.data.data.data.content'), json_extract(payload,'$.data.data.data.message'), ''),
 		COALESCE(json_extract(payload,'$.timestamp'), '')
-		FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='user_message' AND sequence>? AND sequence<=? ORDER BY sequence LIMIT 1`, sessionID, after, through).Scan(&out.Sequence, &out.Text, &out.At)
+		FROM structured_chat_events WHERE session_id=? AND json_extract(payload,'$.type')='user_message' AND sequence>? AND sequence<=? ORDER BY sequence LIMIT 1`, sessionID, after, through).Scan(&out.ID, &out.Sequence, &out.Text, &out.At)
 	return out, err
+}
+
+// FileSnapshotReferences resolves exact saved boundaries, not timestamp matches.
+// Callers must authorize each returned session before reading its messages.
+func (es *EventStore) FileSnapshotReferences(ctx context.Context, workspace string, ids []string) (map[string]Event, error) {
+	es.mu.RLock()
+	j, ok := es.durableJournal.(interface {
+		FileSnapshotReferences(context.Context, string, []string) (map[string]Event, error)
+	})
+	es.mu.RUnlock()
+	if !ok {
+		return nil, errors.New("chat history unavailable")
+	}
+	return j.FileSnapshotReferences(ctx, workspace, ids)
+}
+
+func (j *SQLiteEventJournal) FileSnapshotReferences(ctx context.Context, workspace string, ids []string) (map[string]Event, error) {
+	out := map[string]Event{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := []any{workspace}
+	marks := make([]string, len(ids))
+	for i, id := range ids {
+		marks[i] = "?"
+		args = append(args, "file-snapshot:"+id)
+	}
+	rows, err := j.db.QueryContext(ctx, `SELECT payload FROM structured_chat_events WHERE json_extract(payload,'$.data.data.workspace_path')=? AND event_id IN (`+strings.Join(marks, ",")+`) ORDER BY sequence`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var e Event
+		if err := json.Unmarshal(raw, &e); err != nil {
+			return nil, err
+		}
+		var ref struct {
+			ID string `json:"snapshot_id"`
+		}
+		if e.Data == nil {
+			continue
+		}
+		data, _ := json.Marshal(e.Data.Data)
+		if e.Type == "reply_file_changes" && json.Unmarshal(data, &ref) == nil && ref.ID != "" {
+			out[ref.ID] = e
+		}
+	}
+	return out, rows.Err()
 }
 
 type chatFileHistoryReader interface {

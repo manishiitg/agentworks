@@ -416,6 +416,7 @@ func TestChatFileReviewOutsideGitScope(t *testing.T) {
 // PLAT-746-286: shared project history is independent of chat/runtime IDs,
 // keeps each checkout separate, and a commit-only turn does not duplicate edits.
 func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
 	ctx := t.Context()
 	store := filesnapshots.Store{Root: t.TempDir(), Private: t.TempDir()}
 	git := func(dir string, args ...string) {
@@ -478,7 +479,19 @@ func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
 	}
 	// Project-file visibility must not expose a private source chat, even when
 	// the project owner reads history without any runtime session_id.
-	api, _ := newDurableChatAPI(t, "private-chat", "alice")
+	api, journal := newDurableChatAPI(t, "private-chat", "alice")
+	journal.AddEvent("private-chat", storeevents.Event{ID: "source-message", Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("user_message", map[string]any{"content": "Check the inbox now"}))})
+	addSource := func(chat, execution, label, agent string, start, end int64) {
+		journal.AddEvent(chat, storeevents.Event{ID: "file-snapshot:" + filesnapshots.ID(execution), Type: "reply_file_changes", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("reply_file_changes", map[string]any{"snapshot_id": filesnapshots.ID(execution), "workspace_path": "Crew/example", "start_sequence": start, "end_sequence": end, "source_label": label, "source_agent": agent}))})
+	}
+	addSource("private-chat", "chat-0-turn", "Inbox check", "Inbox helper", 1, 2)
+	journal.AddEvent("private-chat", storeevents.Event{ID: "later-message", Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("user_message", map[string]any{"content": "A later unrelated turn"}))})
+	journal.SetSessionOwner("hidden-chat", "bob")
+	if err := journal.SetSessionPersistenceClass("hidden-chat", storeevents.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
+	journal.AddEvent("hidden-chat", storeevents.Event{ID: "hidden-message", Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("user_message", map[string]any{"content": "Another person's private prompt"}))})
+	addSource("hidden-chat", "chat-1-turn", "Private automation", "Private agent", 0, 1)
 	crewOwners.mu.Lock()
 	crewOwners.entries = map[string]crewOwnerEntry{}
 	crewOwners.read = func(_ context.Context, root string) string {
@@ -511,8 +524,33 @@ func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
 			if w.Code != 200 || strings.Contains(w.Body.String(), "private-chat") || strings.Contains(w.Body.String(), "chat-0-turn") {
 				t.Fatalf("project history leaked private chat: %d %s", w.Code, w.Body.String())
 			}
+			if !strings.Contains(w.Body.String(), `"label":"Inbox check"`) || !strings.Contains(w.Body.String(), `"agent_name":"Inbox helper"`) || strings.Contains(w.Body.String(), "Private automation") || strings.Contains(w.Body.String(), "Private agent") {
+				t.Fatalf("source labels bypassed chat access: %s", w.Body.String())
+			}
 		} else if w.Code != 403 {
 			t.Fatalf("project history owner guard bypassed: %d %s", w.Code, w.Body.String())
+		}
+	}
+	for _, check := range []struct {
+		execution string
+		allowed   bool
+	}{{"chat-0-turn", true}, {"chat-1-turn", false}} {
+		id := filesnapshots.ID(check.execution)
+		req := httptest.NewRequest("GET", "/?history_scope=project&snapshot_id="+id, nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "alice"}))
+		w := httptest.NewRecorder()
+		api.serveChatFileReview(w, req, crewroot.Roots{Virtual: "Crew/example", Files: store.Root}, "", "snapshot_turn", id, "", store, func(string) bool { return true })
+		if check.allowed {
+			if w.Code != 200 || !strings.Contains(w.Body.String(), "Check the inbox now") || strings.Contains(w.Body.String(), "A later unrelated turn") {
+				t.Fatalf("wrong original turn: %d %s", w.Code, w.Body.String())
+			}
+			denied := httptest.NewRecorder()
+			api.serveChatFileReview(denied, req, crewroot.Roots{Virtual: "Crew/example", Files: store.Root}, "", "snapshot_turn", id, "", store, func(string) bool { return false })
+			if denied.Code != 404 {
+				t.Fatalf("turn bypassed file grants: %d", denied.Code)
+			}
+		} else if w.Code != 404 || strings.Contains(w.Body.String(), "Another person's") {
+			t.Fatalf("turn bypassed private chat: %d %s", w.Code, w.Body.String())
 		}
 	}
 }

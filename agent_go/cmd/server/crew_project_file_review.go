@@ -13,7 +13,8 @@ type projectCapture struct {
 	At         time.Time `json:"at"`
 	Branch     string    `json:"branch,omitempty"`
 	chatReviewSummary
-	Note string `json:"note,omitempty"`
+	Note   string                `json:"note,omitempty"`
+	Source *projectCaptureSource `json:"source,omitempty"`
 }
 
 type projectCheckout struct {

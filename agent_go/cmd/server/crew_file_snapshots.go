@@ -65,10 +65,12 @@ type crewTurnSnapshot struct {
 	finish                       sync.Once
 	// The before-capture runs beside the send; record and beforeErr are set
 	// before beforeDone closes.
-	sentAt     time.Time
-	beforeDone chan struct{}
-	record     filesnapshots.Record
-	beforeErr  error
+	sentAt      time.Time
+	sourceLabel string
+	sourceAgent string
+	beforeDone  chan struct{}
+	record      filesnapshots.Record
+	beforeErr   error
 }
 
 // prepareCrewTurnSnapshot runs before provider delivery, outside native input
@@ -106,6 +108,14 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	}
 	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private}, root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID),
 		sentAt: time.Now(), beforeDone: make(chan struct{})}
+	if req.TriggeredBy != "" {
+		snapshot.sourceLabel = firstNonEmptyString(req.SessionTitle, req.TriggeredByLabel)
+	}
+	if api.eventStore != nil {
+		if owner := api.eventStore.GetSessionOwner(sessionID); owner != "" {
+			snapshot.sourceAgent = projectHistoryAgentNames(context.Background(), owner)[sessionID]
+		}
+	}
 	if _, loaded := api.crewTurnSnapshots.LoadOrStore(executionID, snapshot); loaded {
 		return
 	}
@@ -395,6 +405,7 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 		"snapshot_id": record.ID, "workspace_path": snapshot.root,
 		"execution_id": snapshot.executionID, "start_sequence": snapshot.startSequence, "end_sequence": end,
 	}
+	fields["source_label"], fields["source_agent"] = snapshot.sourceLabel, snapshot.sourceAgent
 	summaryStarted := time.Now()
 	summaryCtx, cancelSummary := context.WithTimeout(context.Background(), 5*time.Second)
 	summary, ok := replyFileSummary(summaryCtx, snapshot.store, roots, record.ID)
