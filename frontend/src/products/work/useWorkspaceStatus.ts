@@ -10,7 +10,7 @@ import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { computerUseURL, type ComputerUseStatus } from './ComputerUsePanel'
 
 export type WorkspaceStatusRow = { id: string; label: string; detail: string; destination: string; attention?: boolean; connected?: boolean; nextRunAt?: string }
-type Snapshot = { scope: string; apps?: WorkspaceStatusRow[]; automations?: WorkspaceStatusRow[]; errors: string[] }
+type Snapshot = { scope: string; apps?: WorkspaceStatusRow[]; automations?: WorkspaceStatusRow[]; errors: string[]; loaded: string[] }
 const accountState = (item: ProjectVaultItem) => item.status === 'connected' || item.status === 'online' ? 'Connected' : item.status === 'needs_attention' ? 'Needs attention' : item.status === 'offline' ? 'Offline' : 'Saved'
 export const nextSchedule = (enabled: boolean, next?: string) => !enabled ? 'Paused' : next && Number.isFinite(Date.parse(next)) ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(next)) : 'On'
 
@@ -30,14 +30,14 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
    loading = true
    // Keep same-scope results while refreshing; each source replaces only its own rows.
    const publish = (update: (previous: Snapshot) => Snapshot) => {
-    if (alive) setSnapshot(previous => update(previous?.scope === requestScope ? previous : { scope: requestScope, errors: [] }))
+    if (alive) setSnapshot(previous => update(previous?.scope === requestScope ? previous : { scope: requestScope, errors: [], loaded: [] }))
    }
    const apps = (destinations: string[], rows: WorkspaceStatusRow[]) => publish(previous => ({
-    ...previous,
+    ...previous, loaded: [...new Set([...previous.loaded, ...destinations])],
     apps: [...new Map([...(previous.apps || []).filter(row => !destinations.includes(row.destination)), ...rows].map(row => [row.id, row])).values()].sort((a, b) => a.label.localeCompare(b.label)),
    }))
    const automations = (destination: string, rows: WorkspaceStatusRow[]) => publish(previous => ({
-    ...previous, automations: [...(previous.automations || []).filter(row => row.destination !== destination), ...rows],
+    ...previous, loaded: [...new Set([...previous.loaded, destination])], automations: [...(previous.automations || []).filter(row => row.destination !== destination), ...rows],
    }))
    const error = (message: string) => publish(previous => ({ ...previous, errors: [...previous.errors, message] }))
    if (alive) setSnapshot(previous => previous?.scope === requestScope ? { ...previous, errors: [] } : undefined)

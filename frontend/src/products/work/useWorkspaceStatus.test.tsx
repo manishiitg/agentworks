@@ -84,6 +84,8 @@ it('publishes ready sources while others wait, retains them on refresh, and clea
   await act(async()=>root.render(<Harness/>))
   // Neither unresolved request can hold up the selected MCP result.
   expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['Notes'])
+  expect(value?.snapshot?.loaded).toContain('mcp:connected')
+  expect(value?.snapshot?.loaded).not.toContain('mcp:github')
   await act(async()=>github.resolve({data:{connected:true,login:'selected-account'}}))
   expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['GitHub','Notes'])
   await act(async()=>schedules.resolve({jobs:[]}))
@@ -111,13 +113,16 @@ it('publishes ready sources while others wait, retains them on refresh, and clea
   await act(async()=>value?.refresh())
   const newVault = pending<{vaults:{items:unknown[]}[]}>()
   mocks.vault.mockReturnValue(newVault.promise)
-  // A different folder cannot briefly display even same-account prior results.
-  await act(async()=>root.render(<Harness path="Crew/other" admitted={['mcp:connected']}/>))
-  expect(value?.snapshot).toBeUndefined()
+  mocks.github.mockResolvedValue({data:{connected:true,login:'new-project-account'}})
+  // A ready GitHub row cannot imply that the slower MCP inventory is empty.
+  await act(async()=>root.render(<Harness path="Crew/other" admitted={['mcp:connected','mcp:github']}/>))
+  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['GitHub'])
+  expect(value?.snapshot?.loaded).not.toContain('mcp:connected')
   await act(async()=>late.resolve({data:{connected:true,login:'old-project-account'}}))
   expect(host.textContent).not.toContain('old-project-account')
   await act(async()=>newVault.resolve({vaults:[{items:[{id:'new',name:'Other notes',kind:'mcp',selected:true,status:'connected'}]}]}))
-  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['Other notes'])
+  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['GitHub','Other notes'])
+  expect(value?.snapshot?.loaded).toContain('mcp:connected')
   await act(async()=>root.render(<Harness path="Crew/other" admitted={[]}/>))
   expect(value?.snapshot?.apps || []).toEqual([])
  } finally { await act(async()=>root.unmount()) }
