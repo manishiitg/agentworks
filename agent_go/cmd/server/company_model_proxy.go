@@ -1,11 +1,13 @@
 package server
 
 // Company AI accounts on the Mac (PLAT-856-441, part B): a person uses their server's AI login from the Mac app.
-// The login never leaves the server. The server's model proxy holds it (model_proxy_sidecar.go); the server passes a
-// person's requests to it when that person may use the server's account for the program. On the Mac, the program
-// runs locally (its tools and files stay on the Mac) and sends its model requests to the Mac's own backend, which
-// forwards them to the server over the saved connection. Muse takes the address with --base-url, Codex from
-// openai_base_url in the account's own config.
+// The login never leaves the server: it is the server's own key, its Cursor account (through the Cursor relay), or
+// a login held by the server's model proxy (model_proxy_sidecar.go), lent only while the admin's lend-<program>
+// switch is on. The server checks who may use it, the allowed models (moving a request to an allowed one) and the
+// limits, and records the usage. On the Mac, the program runs locally (its tools and files stay on the Mac) with a
+// placeholder login and sends its model requests to the Mac's own backend, which forwards them over the saved
+// connection: Claude Code via ANTHROPIC_BASE_URL, Codex via openai_base_url in the account's own config, Muse via
+// its endpoint setting, Cursor via CURSOR_BACKEND_URL.
 import (
 	"bytes"
 	"context"

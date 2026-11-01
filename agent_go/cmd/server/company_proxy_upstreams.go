@@ -105,21 +105,19 @@ func companyLendsDirectly(ctx context.Context, provider string) string {
 }
 
 // companyLendingLabel is what the admin card says the program is lent with, or "" when it is off.
+// The lend-<provider> file is the one on/off switch for every way of lending (a key, Cursor, the proxy's login).
 func companyLendingLabel(ctx context.Context, provider string) string {
+	if !lendingOn(provider) {
+		return ""
+	}
 	switch companyLendsDirectly(ctx, provider) {
 	case "key":
-		if !lendingOn(provider) {
-			return ""
-		}
 		if provider == "muse-cli" {
 			return "the server's Muse account"
 		}
 		return "the server's key"
 	case "cursor":
-		if lendingOn(provider) {
-			return "the server's Cursor account"
-		}
-		return ""
+		return "the server's Cursor account"
 	}
 	return modelProxySignedInAs(provider)
 }
@@ -127,6 +125,9 @@ func companyLendingLabel(ctx context.Context, provider string) string {
 // companyUpstream is where one request for a program goes and how it is signed: the provider itself with the
 // server's key, or the model proxy with its login.
 func companyUpstream(ctx context.Context, provider string) (base string, sign func(*http.Request), ok bool) {
+	if !lendingOn(provider) {
+		return "", nil, false
+	}
 	if companyLendsDirectly(ctx, provider) == "key" {
 		key := serverAccountKey(ctx, provider)
 		return companyKeyUpstreams[provider], func(req *http.Request) {

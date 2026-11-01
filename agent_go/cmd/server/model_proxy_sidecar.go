@@ -408,6 +408,11 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 				desktopJSONError(w, 502, err.Error())
 				return
 			}
+			// The same switch as a key: lending is on once this sign-in completes, and stays on if a key is added.
+			if err := os.WriteFile(lendFile(provider), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600); err != nil {
+				desktopJSONError(w, 500, "Could not turn it on.")
+				return
+			}
 		case "sign_out":
 			// A sign-in still waiting for approval is ended first, so approving its link later signs nothing in.
 			companyProxy.Lock()

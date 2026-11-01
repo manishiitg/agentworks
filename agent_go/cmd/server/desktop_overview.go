@@ -48,7 +48,8 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 	connections, _ := readDesktopConnections(owner)
 	desktopConnectionsMu.Unlock()
 
-	places := []overviewPlace{{ID: "local", Name: "This Mac", Reachable: true}}
+	// The connected servers only (the Servers page); this Mac's own logins are shown on each program's page.
+	places := []overviewPlace{}
 	cells := map[string]map[string]overviewCell{}
 	for _, provider := range providers {
 		cells[provider] = map[string]overviewCell{}
@@ -57,35 +58,6 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-
-	// This Mac: the Mac's own login or key for each program.
-	for _, provider := range providers {
-		wg.Add(1)
-		go func(provider string) {
-			defer wg.Done()
-			cell := overviewCell{State: "sign_in", Use: "Not signed in", Action: "sign_in"}
-			status, ok := providerAccountStatus{}, false
-			if entry, cached := cachedProviderAccountEntry("global:" + provider); cached && entry.configured != nil {
-				status, ok = providerAccountStatus{State: map[bool]string{true: "signed_in", false: "signed_out"}[*entry.configured], Identity: entry.identity}, true
-			} else if target, err := api.resolveProviderAccountTarget(ctx, "global:"+provider, provider); err == nil {
-				status, ok = checkProviderAccountStatus(ctx, target, false), true
-				rememberProviderAccountStatus("global:"+provider, status)
-			}
-			switch {
-			case ok && status.State == "signed_in":
-				cell = overviewCell{State: "ready", Use: "Your login", Detail: status.Identity}
-			case ok && strings.Contains(status.Detail, "not installed"):
-				cell = overviewCell{State: "absent", Detail: "Not installed"}
-			case provider == "pi-cli":
-				cell = overviewCell{State: "sign_in", Use: "No model key", Action: "add_key"}
-			case !ok:
-				cell = overviewCell{State: "sign_in", Use: "Not checked", Detail: "Open it to check"}
-			}
-			mu.Lock()
-			cells[provider]["local"] = cell
-			mu.Unlock()
-		}(provider)
-	}
 
 	// Each server: the company account it lends you, and your own account there.
 	for _, c := range connections {
