@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Copy, Download, MoreHorizontal, Plus, X } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Download, MoreHorizontal, Plus, X } from 'lucide-react'
 import api from '../services/api'
 import { Button } from './ui/Button'
 import ModalPortal from './ui/ModalPortal'
@@ -33,11 +33,10 @@ export default function BrowserConnectionsDialog(props: BrowserConnectionsProps)
 }
 
 // The Browser pane and account dialog share the same account controls and requests.
-export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = true, selectedBrowserId, startSetup = false, workspaceBrowser }: BrowserConnectionsProps & { inline?: boolean; selectedBrowserId?: string; startSetup?: boolean; workspaceBrowser?: WorkspaceBrowserChoice }) {
+export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = true, selectedBrowserId, startSetup = false, workspaceBrowser, tabTitles = [], tabCount = 0, projectStatus }: BrowserConnectionsProps & { inline?: boolean; selectedBrowserId?: string; startSetup?: boolean; workspaceBrowser?: WorkspaceBrowserChoice; tabTitles?: string[]; tabCount?: number; projectStatus?: string }) {
   const [browsers, setBrowsers] = useState<SavedBrowserConnection[]>([])
   const [code, setCode] = useState('')
   const [setupOpen, setSetupOpen] = useState(!inline || startSetup)
-  const [step, setStep] = useState<'install' | 'connect'>('install')
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -52,7 +51,7 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
     }
     catch { setError('Could not check your browsers. Try again shortly.') }
   }, [])
-  useEffect(() => { if (open) { void refresh(); setCode(''); setCopied(false); setStep('install'); setSetupOpen(!inline || startSetup) } }, [open, refresh, inline, startSetup])
+  useEffect(() => { if (open) { void refresh(); setCode(''); setCopied(false); setSetupOpen(!inline || startSetup) } }, [open, refresh, inline, startSetup])
   useLiveRefetch(() => { void refresh() }, { kinds: ['browser'], fallbackMs: 2500, safetyMs: 20_000, enabled: open })
   useEffect(() => {
     if (!open || inline) return
@@ -78,7 +77,7 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
     catch { setError('Could not disconnect this browser. Try again.') }
     finally { setBusy(false) }
   }
-  const availableBrowsers = code && !inline ? browsers.filter(browser => browser.connected && browser.enabled) : []
+  const availableBrowsers = code ? browsers.filter(browser => browser.connected && browser.enabled) : []
   const finish = async (browserId: string) => {
     if (!onConnected) { onClose(); return }
     setBusy(true)
@@ -95,11 +94,12 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
   }
   const workspaceChoice = workspaceBrowser && <Button size="sm" variant="ghost" className="w-full justify-between" disabled={busy} onClick={() => { void selectWorkspace() }}>{workspaceBrowser.label}{workspaceBrowser.selected && <Check aria-label="Selected" className="h-3.5 w-3.5" />}</Button>
   const chromeBrowser = browsers.find(browser => browser.browser === 'Chrome')
-  const savedBrowsers = <ul className={inline ? 'space-y-0.5' : 'space-y-2'} aria-label="Saved browsers">{browsers.map(browser => <li key={browser.id} className={inline ? 'flex min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-muted/40' : 'rounded-md border border-border p-3'}>
+  const savedBrowsers = <ul className={inline ? 'space-y-0.5' : 'space-y-2'} aria-label="Saved browsers">{browsers.map(browser => <li key={browser.id} className={inline ? 'min-w-0 rounded px-1 py-0.5' : 'rounded-md border border-border p-3'}>
     {inline ? <>
+      <div className="flex min-w-0 items-center gap-1 rounded hover:bg-muted/40">
       {onConnected && browser.enabled && browser.connected ? <button type="button" aria-label={`Use ${browser.name}`} disabled={busy || selectedBrowserId === browser.id} className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1.5 text-left text-xs focus-visible:outline focus-visible:outline-2 disabled:cursor-default" onClick={() => { void finish(browser.id) }}><span className="truncate">{browser.name}</span>{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" className="h-3.5 w-3.5 shrink-0" />}</button> : <span className="min-w-0 flex-1 truncate px-1 py-1.5 text-xs">{browser.name}{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" className="ml-2 inline h-3.5 w-3.5" />}</span>}
       {browser.enabled && !browser.connected && <span className="text-xs text-muted-foreground">Open {browser.name} to reconnect</span>}
-      {!browser.enabled && <Button size="xs" variant="ghost" disabled={busy} aria-label={`Connect ${browser.name}`} onClick={() => { setStep('connect'); setSetupOpen(true) }}>Connect</Button>}
+      {!browser.enabled && <Button size="xs" variant="ghost" disabled={busy} aria-label={`Connect ${browser.name}`} onClick={() => { setSetupOpen(true) }}>Connect</Button>}
       <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label={`Options for ${browser.name}`} panelClassName="w-48 !p-1">
         {close => <div className="space-y-1">
           <details className="text-xs"><summary className="cursor-pointer rounded px-2 py-1.5 hover:bg-muted">Connection details</summary><div className="space-y-1 px-2 pb-2 text-muted-foreground"><p>{!browser.enabled ? 'Disconnected' : browser.connected ? 'Connected' : 'Offline'}</p><p>{browser.version ? `Extension ${browser.version}` : 'Extension version unknown'}</p>{extensionVersionOlder(browser.version, latestVersion) && <p>Update available: {latestVersion}</p>}</div></details>
@@ -107,6 +107,9 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
           {browser.enabled && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect(browser.id) }}>Disconnect</Button>}
         </div>}
       </IconPopover>
+      </div>
+      {selectedBrowserId === browser.id && projectStatus && <p role="status" className="ml-1 mt-1 text-xs text-muted-foreground">{projectStatus}</p>}
+      {selectedBrowserId === browser.id && tabTitles.length > 0 && <details open className="ml-4 mt-1 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Open tabs ({tabCount || tabTitles.length})</summary><ul className="space-y-1 py-1" aria-label="Project browser tabs">{tabTitles.map((title, index) => <li key={index} title={title} className="truncate px-2 py-1">{title}</li>)}</ul></details>}
     </> : <>
       <div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{browser.name}</p><p className="text-xs text-muted-foreground">{!browser.enabled ? 'Disconnected' : browser.connected ? 'Connected' : 'Offline'}</p></div>{browser.enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => { void disconnect(browser.id) }}>Disconnect</Button>}</div>
       {extensionVersionOlder(browser.version, latestVersion) && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Update available: {latestVersion}</p>}
@@ -115,26 +118,22 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
   </li>)}</ul>
 
   const content = <div className={inline ? 'space-y-3' : 'space-y-4 p-4'}>
-    {inline && savedBrowsers}
-    {inline && (!workspaceBrowser?.secondary || workspaceBrowser.selected) && workspaceChoice}
-    {inline && !setupOpen && <div className="flex items-center justify-between gap-1"><Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Add browser</Button>{workspaceBrowser?.secondary && !workspaceBrowser.selected && !chromeBrowser && <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label="Browser options" panelClassName="w-48 !p-1">{workspaceChoice}</IconPopover>}</div>}
-    {setupOpen && <div className={inline ? 'space-y-3 border-t border-border pt-3' : 'space-y-3'} aria-label="Connect browser">
-          <p className="text-xs text-muted-foreground">{step === 'install' ? '1. Install extension' : '2. Connect'}</p>
-          {step === 'install' ? <div className="space-y-3">
-            <p className="text-sm">Add Browser Bridge to Chrome or Edge.</p>
-            <Button asChild variant="outline" size="sm"><a href={new URL('/api/downloads/chrome-extension.zip', base).href} download><Download />Download extension{latestVersion ? ` ${latestVersion}` : ''}</a></Button>
-            <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Installation steps</summary><p className="mt-2">Unzip the download. Open chrome://extensions or edge://extensions, enable Developer mode, choose Load unpacked and select the unzipped folder.</p></details>
-            <Button size="sm" onClick={() => setStep('connect')}>Extension installed · Next</Button>
-          </div> : <div className="space-y-3">
-            <p className="text-sm">Copy the code, open Browser Bridge in your browser, and paste it there.</p>
-            <Button size="sm" disabled={busy} onClick={() => { void connect() }}><Copy />{copied ? 'Code copied' : 'Copy connection code'}</Button>
-            {code && <><p role="status" className="text-xs text-muted-foreground">Choose Connect browser in the extension. Waiting for connection…</p><details open={!copied || undefined}><summary className="cursor-pointer text-xs text-muted-foreground">Copy manually</summary><textarea aria-label="Account browser connection code" readOnly value={code} onFocus={e => e.currentTarget.select()} className="mt-2 w-full rounded-md border border-border bg-muted/30 p-2 text-xs" rows={3} /></details></>}
-            {!!availableBrowsers.length && <div className="space-y-2"><p className="text-xs text-muted-foreground">Choose a browser to finish.</p>{availableBrowsers.map(browser => <Button key={browser.id} size="sm" disabled={busy} onClick={() => { void finish(browser.id) }}><Check />{onConnected ? `Use ${browser.name}` : `Done · ${browser.name}`}</Button>)}</div>}
-            <Button size="sm" variant="ghost" onClick={() => setStep('install')}>Back</Button>
-          </div>}
-    {inline && <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setCode('') }}>Cancel setup</Button>}
+    {!setupOpen && <>
+      {savedBrowsers}
+      {inline && (!workspaceBrowser?.secondary || workspaceBrowser.selected) && workspaceChoice}
+      <div className="flex items-center justify-between gap-1"><Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Add browser</Button>{inline && workspaceBrowser?.secondary && !workspaceBrowser.selected && !chromeBrowser && <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label="Browser options" panelClassName="w-48 !p-1">{workspaceChoice}</IconPopover>}</div>
+    </>}
+    {setupOpen && <div className="space-y-4" aria-label="Connect browser">
+      <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setCode(''); setCopied(false) }}><ArrowLeft className="h-3.5 w-3.5" />Back</Button>
+      <div className="space-y-1"><h3 className="text-sm font-medium">Connect browser</h3><p className="text-xs text-muted-foreground">Install Browser Bridge in Chrome or Edge, then paste the connection code into the extension.</p></div>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm"><a href={new URL('/api/downloads/chrome-extension.zip', base).href} download><Download />Download extension</a></Button>
+        <Button size="sm" disabled={busy} onClick={() => { void connect() }}><Copy />{copied ? 'Code copied' : 'Copy connection code'}</Button>
+      </div>
+      <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Installation help</summary><ol className="ml-4 mt-2 list-decimal space-y-2"><li>Download and unzip Browser Bridge.</li><li>Open chrome://extensions or edge://extensions, enable Developer mode, choose Load unpacked and select the unzipped folder.</li><li>Open Browser Bridge, paste the connection code and choose Connect browser.</li></ol></details>
+      {code && <><p role="status" className="text-xs text-muted-foreground">Paste the code into Browser Bridge and choose Connect browser.</p><details open={!copied || undefined}><summary className="cursor-pointer text-xs text-muted-foreground">Copy manually</summary><textarea aria-label="Account browser connection code" readOnly value={code} onFocus={event => event.currentTarget.select()} className="mt-2 w-full rounded-md border border-border bg-muted/30 p-2 text-xs" rows={3} /></details></>}
+      {!!availableBrowsers.length && <div className="space-y-2"><p className="text-xs text-muted-foreground">Choose a browser to finish.</p>{availableBrowsers.map(browser => <Button key={browser.id} size="sm" disabled={busy} onClick={() => { void finish(browser.id) }}><Check />{onConnected ? `Use ${browser.name}` : `Done · ${browser.name}`}</Button>)}</div>}
     </div>}
-    {!inline && !!browsers.length && <details className="space-y-2 border-t border-border pt-3"><summary className="cursor-pointer text-xs text-muted-foreground">Saved browsers</summary><div className="mt-2">{savedBrowsers}</div></details>}
         {pairingFailure && <div role="alert" className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm"><p className="font-medium">{pairingFailure.reason === 'extension_outdated' ? 'Update your browser extension' : 'Browser could not connect'}</p><p>{pairingFailure.message}</p>{pairingFailure.extension_version && <p className="text-xs text-muted-foreground">Installed extension: {pairingFailure.extension_version}{latestVersion ? ` · Download: ${latestVersion}` : ''}</p>}</div>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
   </div>

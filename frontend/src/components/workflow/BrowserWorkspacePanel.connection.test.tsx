@@ -20,7 +20,7 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
   vi.stubGlobal('navigator', { userAgent: navigator.userAgent, clipboard: { writeText: clipboard } })
   const browsers = [{ id: 'chrome-one', name: 'My Chrome', browser: 'Chrome', connected: true, enabled: true }, { id: 'edge-two', name: 'My Edge', browser: 'Edge', connected: true, enabled: true }]
   mocks.get.mockResolvedValue({ data: { selected: false, connected: false, account_connected: true, tabs: 0, browsers } })
-  mocks.post.mockResolvedValue({ data: { selected: true, connected: true, account_connected: true, browser_id: 'chrome-one', tabs: 0, browsers, workspace: 'Crew/example-crew-one' } })
+  mocks.post.mockResolvedValue({ data: { selected: true, connected: true, account_connected: true, browser_id: 'chrome-one', tabs: 1, tab_titles: ['Example page'], browsers, workspace: 'Crew/example-crew-one' } })
   try {
     await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Crew/example-crew-one" profileId="work" scopeNoun="project" browserMode="headless" onBrowserModeChange={vi.fn()} cdpPort={9222} onCdpPortChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
     expect(host.textContent).not.toContain('Save browser choice')
@@ -31,7 +31,11 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
     await act(async () => chrome.click())
     expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'connect', browser_id: 'chrome-one' }, expect.objectContaining({ params: { workspace_path: 'Crew/example-crew-one', profile_id: 'work' } }))
     expect(clipboard).not.toHaveBeenCalled()
-    expect(host.textContent).toContain('Ask your agent to open a website.')
+    // PLAT-746-281: tabs belong under their browser in the same panel body.
+    const tabs = host.querySelector('[aria-label="Project browser tabs"]')!
+    expect(tabs.textContent).toContain('Example page')
+    expect(tabs.closest('[aria-label="Saved browsers"]')).toBeTruthy()
+    expect(tabs.closest('[aria-label="Browser content"]')).toBeTruthy()
     expect(host.textContent).toContain('My Chrome')
     expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Change')).toBe(false)
     expect(host.textContent).not.toContain('Install the extension')
@@ -43,13 +47,16 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
     const setup = host.querySelector('[aria-label="Connect browser"]')!
     expect(setup).toBeTruthy()
     expect(setup.querySelector('a[download]')).toBeTruthy()
-    expect(host.querySelector('[aria-label="Saved browsers"]')?.textContent).toContain('My Edge')
+    expect(setup.closest('[aria-label="Browser content"]')).toBeTruthy()
+    expect(host.querySelector('[aria-label="Saved browsers"]')).toBeNull()
     expect(clipboard).not.toHaveBeenCalled()
-    await act(async () => { [...setup.querySelectorAll('button')].find(button => button.textContent?.includes('Next'))!.click() })
     mocks.post.mockResolvedValueOnce({ data: { token: 'test-connection-code' } })
     await act(async () => { [...setup.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
     expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
     expect(clipboard).toHaveBeenCalledOnce()
+    await act(async () => { [...setup.querySelectorAll('button')].find(button => button.textContent === 'Back')!.click() })
+    expect(host.querySelector('[aria-label="Project browser tabs"]')?.textContent).toContain('Example page')
+    expect(host.querySelector('textarea')).toBeNull()
     expect(document.querySelector('[role="dialog"]')).toBeNull()
   } finally {
     await act(async () => root.unmount())
