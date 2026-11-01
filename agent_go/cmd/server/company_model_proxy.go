@@ -507,16 +507,29 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 		return
 	}
 	// want[connection][program]: true offered, false not offered; absent when the server could not be asked.
+	// Every server and program is asked at once, and not tied to the page's request: leaving the page must not cut
+	// the check short (it then waited two minutes before asking again).
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 	want := map[string]map[string]bool{}
 	names := map[string]string{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for _, c := range connections {
 		want[c.ID], names[c.ID] = map[string]bool{}, c.Name
 		for provider := range companyProxyModels {
-			if offered, known := companyAccountOffered(ctx, c, provider); known {
-				want[c.ID][provider] = offered
-			}
+			wg.Add(1)
+			go func(c desktopConnection, provider string) {
+				defer wg.Done()
+				if offered, known := companyAccountOffered(ctx, c, provider); known {
+					mu.Lock()
+					want[c.ID][provider] = offered
+					mu.Unlock()
+				}
+			}(c, provider)
 		}
 	}
+	wg.Wait()
 	providerConnectionsMu.Lock()
 	defer providerConnectionsMu.Unlock()
 	records, err := loadProviderConnections(ctx)
