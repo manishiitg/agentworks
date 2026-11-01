@@ -3,8 +3,7 @@ import { Button } from '../ui/Button'
 import { Monitor, Loader2 } from 'lucide-react'
 import BrowserAutomationSettings, { type BrowserAutomationMode } from '../BrowserAutomationSettings'
 import WorkflowLiveBrowser, { type BrowserEmptyStateActions } from './WorkflowLiveBrowser'
-import BrowserConnectionsDialog from '../BrowserConnectionsDialog'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 
 interface BrowserWorkspacePanelProps {
@@ -31,7 +30,9 @@ export function BrowserWorkspacePanel({
   cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false,
   dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId,
 }: BrowserWorkspacePanelProps) {
-  const [setupOpen, setSetupOpen] = useState(false)
+  const [connectionsOpen, setConnectionsOpen] = useState(false)
+  const [startSetup, setStartSetup] = useState(false)
+  useEffect(() => { setConnectionsOpen(false); setStartSetup(false) }, [workspacePath, profileId])
   const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
   const extensionAvailable = ['work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
   const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !extensionAvailable)
@@ -45,7 +46,7 @@ export function BrowserWorkspacePanel({
     return true
   }
   const selection = !readOnly && workspacePath ? <div className="shrink-0 border-b border-border px-3 py-2">
-    {extensionAvailable && <ChromeExtensionConnection connection={connection} onConnectBrowser={() => setSetupOpen(true)} workspaceBrowser={directMode ? { label: directLabel, selected: !connection.status.selected && displayMode === directMode, onSelect: useWorkspaceBrowser } : undefined} />}
+    {extensionAvailable && <ChromeExtensionConnection connection={connection} expanded={connectionsOpen} onExpandedChange={open => { setConnectionsOpen(open); if (!open) setStartSetup(false) }} startSetup={startSetup} workspaceBrowser={directMode ? { label: directLabel, selected: !connection.status.selected && displayMode === directMode, onSelect: useWorkspaceBrowser } : undefined} />}
     {directMode === 'cdp' && displayMode === 'cdp' && !connection.status.selected && <details className="mt-2 text-xs">
       <summary className="cursor-pointer text-muted-foreground">Connection details</summary>
       <div className="pt-3"><BrowserAutomationSettings inline browserMode={displayMode} onBrowserModeChange={onBrowserModeChange} cdpPort={cdpPort} onCdpPortChange={onCdpPortChange} cdpConnected={cdpConnected} cdpError={cdpError} cdpChecking={cdpChecking} onCheckCdpConnection={onCheckCdpConnection} readOnly={readOnly || connection.busy} scopeNoun={scopeNoun} />{onSave && (dirty || saving) && <Button size="sm" disabled={saving} onClick={onSave}>{saving ? 'Saving…' : 'Apply connection settings'}</Button>}</div>
@@ -58,7 +59,7 @@ export function BrowserWorkspacePanel({
       {startingBrowser ? <Loader2 className="h-4 w-4 animate-spin" /> : <Monitor className="h-4 w-4" />}
       {startingBrowser ? 'Opening browser…' : 'Open browser'}
     </Button>}
-    {!hasSavedBrowser && <Button type="button" variant="outline" onClick={() => setSetupOpen(true)}>Connect browser</Button>}
+    {!hasSavedBrowser && <Button type="button" variant="outline" onClick={() => { setStartSetup(true); setConnectionsOpen(true) }}>Connect browser</Button>}
   </div> : undefined
   const selectedBrowser = connection.status.browsers?.find(browser => browser.id === connection.status.browser_id)
 
@@ -73,6 +74,5 @@ export function BrowserWorkspacePanel({
         </div>
       </div>
     </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} emptyContent={emptyBrowser} browserSelection={selection} />}
-    <BrowserConnectionsDialog open={setupOpen && !readOnly} onClose={() => setSetupOpen(false)} onConnected={connection.connect} />
   </div>
 }
