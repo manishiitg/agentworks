@@ -73,7 +73,14 @@ export function WorkModelsPanel({
     let cancelled = false
     setChatModelsLoading(true); setChatModelsReady(false); setChatModelError(''); setModelTarget(initialModelTarget === projectId || initialModelTarget?.startsWith(`${projectId}:chat:`) ? initialModelTarget : ''); setChatModels([]); setModelChats([])
     void Promise.resolve().then(() => Promise.all([agentApi.listAgentProfileChatModels(effectiveProfileId, projectId), agentApi.listAgentProfileSideChats(effectiveProfileId, projectId)])).then(([models, chats]) => {
-      if (!cancelled) { setChatModels(models); setModelChats(chats.filter(chat => !chat.agent_id)); setChatModelsReady(true) }
+      if (cancelled) return
+      setChatModels(models); setModelChats(chats.filter(chat => !chat.agent_id)); setChatModelsReady(true)
+      // The main chat's tab may carry the bare project id; the server keys the chat as <project>:chat:root-…,
+      // so open on that chat, not the Crew's model.
+      if (initialModelTarget === projectId) {
+        const mainKey = [...models.map(model => model.conversation_key), ...chats.map(chat => chat.conversation_key)].find(key => key?.startsWith(`${projectId}:chat:root-`))
+        if (mainKey) setModelTarget(mainKey)
+      }
     }).catch(() => { if (!cancelled) setChatModelError('Chat models could not be loaded. Reopen Models to retry.') })
       .finally(() => { if (!cancelled) setChatModelsLoading(false) })
     return () => { cancelled = true }
