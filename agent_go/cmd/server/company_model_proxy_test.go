@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
+	"errors"
 	"encoding/hex"
 	"testing"
 )
@@ -87,5 +88,13 @@ func TestAllowedSubstitute(t *testing.T) {
 	}
 	if got := allowedSubstitute("x", nil); got != "" {
 		t.Fatalf("nothing allowed -> %q", got)
+	}
+}
+
+// A used-up model with no other allowed model left (applyModelTokenLimit returns an error) was let through
+// unlimited (review finding 1); both outcomes of the limit check refuse.
+func TestModelLimitRefuses(t *testing.T) {
+	if !modelLimitRefuses(true, nil) || !modelLimitRefuses(false, errors.New("no other model")) || modelLimitRefuses(false, nil) {
+		t.Fatal("a used-up model must be refused whether or not another model is left")
 	}
 }
