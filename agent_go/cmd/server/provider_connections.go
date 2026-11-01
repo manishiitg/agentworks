@@ -302,6 +302,12 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 			if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "config.toml"), []byte(config), 0600); err != nil {
 				return nil, fmt.Errorf("cannot configure Codex for the company account")
 			}
+			// Codex's app server reads its key only from its login file (not CODEX_API_KEY), so the account's key is
+			// saved there the way `codex login --with-api-key` does; without it Codex sent no key ("Unknown account").
+			login, _ := json.Marshal(map[string]string{"auth_mode": "apikey", "OPENAI_API_KEY": record.Credential})
+			if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "auth.json"), login, 0600); err != nil {
+				return nil, fmt.Errorf("cannot configure Codex for the company account")
+			}
 		}
 	}
 	if record.Provider == "codex-cli" {
