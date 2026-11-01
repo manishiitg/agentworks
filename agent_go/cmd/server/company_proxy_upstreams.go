@@ -473,6 +473,23 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 		desktopJSONError(w, 403, err.Error())
 		return
 	}
+	if path == "aiserver.v1.BidiService/BidiAppend" {
+		// A run starts with a BidiAppend carrying the run request and its model: refuse a model the account does not
+		// allow this person here, on the server, whatever the Mac's own model list said (PLAT-856-474).
+		body, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
+		if err != nil {
+			desktopJSONError(w, 400, "Could not read the request.")
+			return
+		}
+		if model := cursorAppendModel(body); model != "" {
+			if err := checkAccountModel(withModelLimitPerson(r.Context(), caller), "cursor-cli", "global:cursor-cli", model); err != nil {
+				log.Printf("[MODEL_PROXY] %s cursor run refused: model %s not allowed", caller, model)
+				desktopJSONError(w, 403, err.Error())
+				return
+			}
+		}
+		r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(body)), int64(len(body))
+	}
 	session, err := serverCursorSession(r.Context())
 	if err != nil {
 		log.Printf("[MODEL_PROXY] cursor session unavailable: %v", err)
@@ -613,4 +630,34 @@ Cursor.models.list({ apiKey: key }).then(m => { process.stdout.write(JSON.string
 	}
 	cursorModelList.items, cursorModelList.at = items, time.Now()
 	return items, nil
+}
+
+// cursorAppendModel reads the model of a run request from a Cursor BidiAppend body: field 1 holds the client message
+// as hex; its run request (field 1) names the model in field 9, field 1. Empty when the append is not a run start.
+func cursorAppendModel(body []byte) string {
+	for _, outer := range protoFields(body) {
+		if outer.num != 1 || outer.wire != 2 {
+			continue
+		}
+		message, err := hex.DecodeString(string(outer.bytes))
+		if err != nil {
+			return ""
+		}
+		for _, run := range protoFields(message) {
+			if run.num != 1 || run.wire != 2 {
+				continue
+			}
+			for _, details := range protoFields(run.bytes) {
+				if details.num != 9 || details.wire != 2 {
+					continue
+				}
+				for _, id := range protoFields(details.bytes) {
+					if id.num == 1 && id.wire == 2 {
+						return strings.TrimSpace(string(id.bytes))
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
