@@ -114,7 +114,7 @@ func (api *StreamingAPI) selectProjectVaultItem(ctx context.Context, person, wor
 				operation = "use_shared"
 			}
 		}
-		settings["secrets"] = map[string]any{operation: []string{id}}
+		settings["secrets"] = map[string]any{operation: []any{id}}
 	case "mcp":
 		err = api.selectVaultServer(ctx, person, root, id, selected)
 	default:
