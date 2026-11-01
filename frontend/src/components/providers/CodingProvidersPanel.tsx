@@ -125,6 +125,10 @@ function ProviderListStatus({ provider }: { provider: ProviderManifestEntry }) {
   )
 }
 
+// Set when the Servers page is asked for before this page is open (openConnectedServers).
+let serversPageRequested = false
+if (typeof window !== 'undefined') window.addEventListener('show-servers-page', () => { serversPageRequested = true })
+
 export default function CodingProvidersPanel({ isOpen, onClose, embedded = false, allowedProviderIds, product, welcomeSetup = false, initialProviderId }: CodingProvidersPanelProps) {
   const welcomeBack = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -136,7 +140,13 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
-  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'chats'>('provider')
+  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'chats'>(() => serversPageRequested ? 'servers' : 'provider')
+  useEffect(() => {
+    serversPageRequested = false
+    const show = () => setView('servers')
+    window.addEventListener('show-servers-page', show)
+    return () => window.removeEventListener('show-servers-page', show)
+  }, [])
   // "Use your own model key" opens Pi's add flow (PLAT-717).
   const [keyRequest, setKeyRequest] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -407,7 +417,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-xl font-semibold text-gray-950 dark:text-white">{selectedProvider.display_name}</h2>
+                        <h2 className="text-xl font-semibold text-gray-950 dark:text-white">{codingProviderName(selectedProvider)}</h2>
                         <StatusBadge provider={selectedProvider} />
                       </div>
                       <CliVersionStatus provider={selectedProvider} />
