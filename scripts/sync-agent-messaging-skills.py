@@ -45,7 +45,6 @@ def main():
             # The UI is identical in the full and command-hook-free packages.
             for file in ("hooks/messages.js", "tests/messages.test.ts"):
                 expected_ui = (ROOT / "plugins/claude" / file).read_bytes()
-                expected_ui = expected_ui.replace(b"plugin:agentworks:agentworks-live", b"plugin:agentworks-tools:agentworks-live")
                 if file.endswith(".test.ts"):
                     expected_ui = expected_ui.replace(b"plugin: 'agentworks'", b"plugin: 'agentworks-tools'")
                 target_ui = ROOT / "plugins/claude-tools" / file

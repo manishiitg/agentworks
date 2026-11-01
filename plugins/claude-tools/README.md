@@ -4,12 +4,12 @@ Skills, the AgentWorks message tools, and a compact-message mod. No command hook
 run, so nothing shows as "blocked" in the chat. Install with
 `agentworks setup claude --no-hooks`.
 
-On Claude Code 2.1.287 or later, incoming AgentWorks messages show the sender,
-a short preview, **Expand**, and **Reply**. Reply opens a text field and uses
-the existing AgentWorks tool to reply in the original conversation and server.
-Sender ownership labels remain visible. The complete original message still
-reaches Claude, and Ctrl+O shows the native transcript with routing details.
-Failed replies keep their text and can be retried with the same submission ID.
+On Claude Code 2.1.287 or later, incoming AgentWorks messages show the agent,
+the person's server-provided name for a shared sender, and the network when
+provided, above a short preview. Ask Claude to "show the full message" or
+"reply to that agent"; Claude keeps the full original message and uses the
+existing AgentWorks tool. Ctrl+O shows the native transcript with routing details.
+The mod only changes the display, with no buttons, panes, commands or send calls.
 
 Update this plugin with `claude plugin marketplace update agentworks` and
 `claude plugin update agentworks-tools@agentworks`, then run `/reload-plugins`

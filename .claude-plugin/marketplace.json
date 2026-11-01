@@ -12,7 +12,7 @@
     {
       "name": "agentworks-tools",
       "source": "./plugins/claude-tools",
-      "description": "AgentWorks messaging tools with compact messages and Reply for Claude Code"
+      "description": "AgentWorks messaging tools with compact messages and sender labels for Claude Code"
     }
   ],
   "metadata": {
