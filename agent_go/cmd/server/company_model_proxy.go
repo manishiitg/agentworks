@@ -64,6 +64,14 @@ func copyProxyResponse(w http.ResponseWriter, resp *http.Response, tap io.Writer
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
+	if resp.StatusCode >= 400 {
+		// A refusal says why in its body; log the start of it (an error message, never a key) so a failing program
+		// is not blind.
+		head := make([]byte, 400)
+		n, _ := io.ReadFull(resp.Body, head)
+		log.Printf("[MODEL_PROXY] %s refused %d: %s", resp.Request.URL.Host, resp.StatusCode, strings.TrimSpace(string(head[:n])))
+		_, _ = w.Write(head[:n])
+	}
 	flusher, _ := w.(http.Flusher)
 	buf := make([]byte, 32<<10)
 	for {
@@ -254,10 +262,12 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 	}
 	body, model, err := readProxyRequest(r, provider)
 	if err != nil {
+		log.Printf("[MODEL_PROXY] %s %s request refused: %v", caller, provider, err)
 		desktopJSONError(w, 400, err.Error())
 		return
 	}
 	if err := checkAccountModel(withModelLimitPerson(r.Context(), caller), provider, account, model); err != nil {
+		log.Printf("[MODEL_PROXY] %s %s model refused: %v", caller, provider, err)
 		desktopJSONError(w, 400, err.Error())
 		return
 	}
