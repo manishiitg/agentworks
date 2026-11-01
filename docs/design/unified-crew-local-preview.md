@@ -67,3 +67,5 @@ Focused checks cover preserving the active Crew and unrelated workflow state, se
 The preview’s whole-plan file writes do not yet reuse the external Builder’s revision/conflict and plan-changelog contract. Concurrent edits can overwrite each other. This remains a recorded limitation, rather than a second revision system.
 
 Crew-owned whole-workflow runs now use the existing durable step recorder, as workshop runs already do. The whole run retains responsibility for the saved-chat outcome; recording a step does not schedule another model notification. Old runs without receipts continue to show their available logs.
+
+Workshop full-run and single-step tools now share the controller's input resolver: omitted inputs support an unnamed invocation, one enabled set can be selected automatically, several need a choice, and disabled/malformed inputs refuse. The real registered-tool regression executes Python through the workspace HTTP service in a saved schedule's run folder. Inspection derives its product requirement from the trusted parent binding, so Crew-only owners can inspect their own child work without Goal access.

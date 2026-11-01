@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
@@ -52,8 +51,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) beginScriptInspection(ctx context.Con
 		ctx = orchestrator.WithBackgroundTranscriptSession(ctx, hcpo.httpSessionID)
 	}
 	owner := currentWorkshopParentExecutionID(ctx)
+	if hcpo.BaseOrchestrator != nil && hcpo.GetLogger() != nil {
+		hcpo.GetLogger().Info(fmt.Sprintf("[INSPECTION] script step=%s parent=%s recorder=%t session=%s", step.GetID(), owner, hcpo.workshopExecutionNotifier != nil, hcpo.httpSessionID))
+	}
 	finish := func(string, error) {}
-	if hcpo.workshopExecutionNotifier != nil && (owner == "" || strings.HasPrefix(owner, "workflow-full-")) {
+	if hcpo.workshopExecutionNotifier != nil {
 		ctx, finish = hcpo.beginAgentExecution(ctx, step)
 	}
 	if owner = currentWorkshopParentExecutionID(ctx); owner != "" {
