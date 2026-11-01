@@ -176,7 +176,7 @@ func Server(ctx context.Context, stage string, sender bool, stream *Socket) erro
 	if err != nil {
 		return err
 	}
-	args := []string{"--server", "-tre.iLsfxCIvu", "--max-size=" + strconv.FormatInt(MaxBytes(), 10)}
+	args := []string{"--server", "-ctre.iLsfxCIvu", "--max-size=" + strconv.FormatInt(MaxBytes(), 10)}
 	if sender {
 		args = append(args, "--sender")
 	}
@@ -281,7 +281,7 @@ func Client(ctx context.Context, stage string, upload bool, stream *Socket) erro
 	if e = os.WriteFile(helper, []byte(script), 0700); e != nil {
 		return e
 	}
-	args := []string{"-rt", "--no-whole-file", "--protocol=31", "--max-size=" + strconv.FormatInt(MaxBytes(), 10), "-e", helper}
+	args := []string{"-rtc", "--no-whole-file", "--protocol=31", "--max-size=" + strconv.FormatInt(MaxBytes(), 10), "-e", helper}
 	if upload {
 		args = append(args, stage+"/", "peer:.")
 	} else {

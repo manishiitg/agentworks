@@ -39,6 +39,7 @@ func TestLargeJournalRoundtripUsesRsyncDeltas(t *testing.T) {
 	f.Close()
 	transfer := func(upload bool) (int64, int64) {
 		t.Helper()
+		started := time.Now()
 		result := make(chan error, 1)
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			conn, e := (&websocket.Upgrader{}).Upgrade(w, r, nil)
@@ -63,13 +64,22 @@ func TestLargeJournalRoundtripUsesRsyncDeltas(t *testing.T) {
 		if e = <-result; e != nil {
 			t.Fatal(e)
 		}
+		t.Logf("upload=%t sent=%d received=%d elapsed=%s", upload, stream.Sent, stream.Received, time.Since(started))
 		return stream.Sent, stream.Received
 	}
 	firstSent, _ := transfer(true)
+	completed := filepath.Join(t.TempDir(), "session.jsonl")
+	if e := os.Link(filepath.Join(destination, "session.jsonl"), completed); e != nil {
+		t.Fatal(e)
+	}
+	completedInfo, _ := os.Stat(completed)
 	f, _ = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
 	f.Write([]byte("new-local-turn\n"))
 	f.Close()
 	sent, received := transfer(true)
+	if info, e := os.Stat(completed); e != nil || info.Size() != completedInfo.Size() {
+		t.Fatal("next transfer changed the completed mirror")
+	}
 	if firstSent < 300<<20 || sent+received > 1<<20 {
 		t.Fatalf("not a delta: initial=%d update=%d+%d", firstSent, sent, received)
 	}

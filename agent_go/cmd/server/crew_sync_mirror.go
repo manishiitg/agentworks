@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 type crewNativeMirror struct {
@@ -37,6 +38,15 @@ func saveCrewNativeMirror(roots crewroot.Roots, c *crewHandoffConversation) erro
 	lock.Lock()
 	defer lock.Unlock()
 	if err := c.Muse.ValidateFiles(); err != nil {
+		return err
+	}
+	if old, err := readCrewNativeMirror(roots); err == nil {
+		if old.Conversation.Muse.SessionID == c.Muse.SessionID {
+			if err := musecli.NativeSessionAncestor(old.Conversation.Muse, c.Muse); err != nil {
+				return err
+			}
+		}
+	} else if !os.IsNotExist(err) {
 		return err
 	}
 	root := filepath.Join(roots.Private, "native-mirrors")
