@@ -59,3 +59,66 @@ it('combines selected accounts and the real bot regardless of response order, an
   expect(value?.snapshot?.apps?.some(item=>item.id==='whatsapp')).toBe(false)
  } finally { await act(async()=>root.unmount()) }
 })
+
+// PLAT-746-289: a slow GitHub or automation check must not hide ready connections.
+it('publishes ready sources while others wait, retains them on refresh, and clears them on a project or admission change', async () => {
+ vi.resetAllMocks()
+ const pending = <T,>() => {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(done => { resolve = done })
+  return { promise, resolve }
+ }
+ const github = pending<{data:{connected:boolean;login:string}}>()
+ const schedules = pending<{jobs:unknown[]}>()
+ mocks.github.mockReturnValue(github.promise)
+ mocks.schedules.mockReturnValue(schedules.promise)
+ mocks.vault.mockResolvedValue({vaults:[{items:[{id:'notes',name:'Notes',kind:'mcp',selected:true,status:'connected'}]}]})
+ let value: ReturnType<typeof useWorkspaceStatus> | undefined
+ const all = ['mcp:connected','mcp:github','schedules:schedules']
+ function Harness({ path = 'Crew/current', admitted = all }: {path?:string;admitted?:string[]}) {
+  value = useWorkspaceStatus({scope:'same-account',workspacePath:path,projectId:path,admitted})
+  return <pre>{JSON.stringify(value.snapshot)}</pre>
+ }
+ const host=document.createElement('div'); const root=createRoot(host)
+ try {
+  await act(async()=>root.render(<Harness/>))
+  // Neither unresolved request can hold up the selected MCP result.
+  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['Notes'])
+  await act(async()=>github.resolve({data:{connected:true,login:'selected-account'}}))
+  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['GitHub','Notes'])
+  await act(async()=>schedules.resolve({jobs:[]}))
+
+  const refreshingGithub = pending<{data:{connected:boolean;login?:string}}>()
+  const refreshingVault = pending<{vaults:{items:unknown[]}[]}>()
+  mocks.github.mockReturnValue(refreshingGithub.promise)
+  mocks.vault.mockReturnValue(refreshingVault.promise)
+  await act(async()=>value?.refresh())
+  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['GitHub','Notes'])
+  await act(async()=>refreshingGithub.resolve({data:{connected:false}}))
+  expect(value?.snapshot?.apps?.find(row=>row.id==='github')?.connected).toBe(false)
+  expect(value?.snapshot?.apps?.some(row=>row.label==='Notes')).toBe(true)
+  // An authoritative empty selection removes the previous source's rows.
+  await act(async()=>refreshingVault.resolve({vaults:[{items:[]}]}))
+  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['GitHub'])
+
+  mocks.github.mockRejectedValue(new Error('Temporary failure'))
+  await act(async()=>value?.refresh())
+  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['GitHub'])
+  expect(value?.snapshot?.errors).toContain('GitHub status could not be checked.')
+
+  const late = pending<{data:{connected:boolean;login:string}}>()
+  mocks.github.mockReturnValue(late.promise)
+  await act(async()=>value?.refresh())
+  const newVault = pending<{vaults:{items:unknown[]}[]}>()
+  mocks.vault.mockReturnValue(newVault.promise)
+  // A different folder cannot briefly display even same-account prior results.
+  await act(async()=>root.render(<Harness path="Crew/other" admitted={['mcp:connected']}/>))
+  expect(value?.snapshot).toBeUndefined()
+  await act(async()=>late.resolve({data:{connected:true,login:'old-project-account'}}))
+  expect(host.textContent).not.toContain('old-project-account')
+  await act(async()=>newVault.resolve({vaults:[{items:[{id:'new',name:'Other notes',kind:'mcp',selected:true,status:'connected'}]}]}))
+  expect(value?.snapshot?.apps?.map(row=>row.label)).toEqual(['Other notes'])
+  await act(async()=>root.render(<Harness path="Crew/other" admitted={[]}/>))
+  expect(value?.snapshot?.apps || []).toEqual([])
+ } finally { await act(async()=>root.unmount()) }
+})
