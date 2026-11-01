@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), open: vi.fn(() =>
 vi.mock('../../utils/signInWindow', () => ({ prepareSignInWindow: () => ({ open: mocks.open, close: vi.fn() }) }))
 vi.mock('../../services/api', () => ({ default: { defaults: {}, get: mocks.get, post: mocks.post }, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => null }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn() }))
-vi.mock('./WorkflowLiveBrowser', () => ({ default: ({ emptyContent, browserSelection }: { browserSelection?: React.ReactNode; emptyContent: React.ReactNode | ((actions: BrowserEmptyStateActions) => React.ReactNode) }) => <>{browserSelection}{typeof emptyContent === 'function' ? emptyContent({ startBrowser: vi.fn(), startingBrowser: false, canStart: true }) : emptyContent}</> }))
+vi.mock('./WorkflowLiveBrowser', () => ({ default: ({ overview, overviewFooter }: { overview?: (actions: BrowserEmptyStateActions) => React.ReactNode; overviewFooter?: React.ReactNode }) => <div aria-label="Browser content">{overview?.({ startBrowser: vi.fn(), startingBrowser: false, canStart: true })}{overviewFooter}</div> }))
 vi.mock('../../utils/runtimeCapabilities', () => ({ isBrowserCDPEnabled: () => false }))
 
 it('choosing Chrome in Crew reuses the account browser without copying another token', async () => {
@@ -92,18 +92,17 @@ it('applies direct browser selection immediately and retains the saved browser o
   mocks.post.mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValueOnce({ data: { ...status, mode: 'cdp', selected: false, connected: false } })
   const host = document.createElement('div'), root = createRoot(host), changed = vi.fn()
   try {
-    await act(async () => root.render(<BrowserWorkspacePanel workspacePath="Crew/example" profileId="work" browserMode="extension" onBrowserModeChange={changed} cdpPort={9222} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} />))
+    await act(async () => root.render(<BrowserWorkspacePanel workspacePath="Crew/example" profileId="work" browserMode="extension" onBrowserModeChange={changed} cdpPort={9222} cdpConnected={true} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} />))
     expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Change')).toBe(false)
-    await act(async () => { (host.querySelector('[aria-label="Options for Chrome"]') as HTMLButtonElement).click() })
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))!.click() })
+    await act(async () => { (host.querySelector('[aria-label="Use Chrome Direct"]') as HTMLButtonElement).click() })
     expect(changed).not.toHaveBeenCalled()
     expect(host.querySelector('[aria-label="Choose browser"]')).toBeTruthy()
     expect(host.querySelector('[role="alert"]')).toBeTruthy()
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))!.click() })
+    await act(async () => { (host.querySelector('[aria-label="Use Chrome Direct"]') as HTMLButtonElement).click() })
     expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'workspace', mode: 'cdp', port: 9222 }, expect.anything())
     expect(changed).toHaveBeenCalledWith('cdp')
     // The active direct connection stays identifiable after leaving secondary options.
-    expect([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))?.querySelector('[aria-label="Selected"]')).toBeTruthy()
+    expect(host.querySelector('[aria-label="Open Chrome Direct"]')).toBeTruthy()
     expect(host.querySelector('[aria-label="Choose browser"]')).toBeTruthy()
   } finally { await act(async () => root.unmount()) }
 })

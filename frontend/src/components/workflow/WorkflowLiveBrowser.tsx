@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BrowserChrome, browserIconButtonClass, browserActionButtonClass, type BrowserTab } from './BrowserChrome'
 import { useBrowserClipboard } from './useBrowserClipboard'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
-import { CheckCircle2, Circle, Copy, FolderOpen, Info, Loader2, Maximize2, Minimize2, Monitor, MoreHorizontal, RefreshCw, Square, X } from 'lucide-react'
+import { ArrowLeft, ChevronRight, CheckCircle2, Circle, Copy, FolderOpen, Info, Loader2, Maximize2, Minimize2, Monitor, MoreHorizontal, RefreshCw, Square, X } from 'lucide-react'
 import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -106,7 +106,10 @@ export type BrowserEmptyStateActions = {
   canStart: boolean
 }
 
-export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workflow', minimal = false, profileId, emptyContent, browserSelection }: { workspacePath: string | null; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; profileId?: string; browserSelection?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
+export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workflow', minimal = false, profileId, emptyContent, browserSelection, overview, overviewFooter }: { workspacePath: string | null; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; profileId?: string; browserSelection?: ReactNode; overview?: (actions: BrowserEmptyStateActions) => ReactNode; overviewFooter?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
+  const hasOverview = Boolean(overview)
+  const [overviewOpen, setOverviewOpen] = useState(hasOverview)
+  const viewerVisible = !hasOverview || !overviewOpen
   const [sessions, setSessions] = useState<BrowserSession[]>([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [startingBrowser, setStartingBrowser] = useState(false)
@@ -123,6 +126,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
       setSessions(current => current.some(item => item.browser_session === data.browser_session) ? current : [
         ...current, { browser_session: data.browser_session, workflow_session: 'workspace', label: 'Workspace browser' },
       ])
+      setOverviewOpen(false)
       selectedBrowser.current = data.browser_session
       setSession(data.browser_session)
       setSelection(data.browser_session)
@@ -230,7 +234,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
 
   useEffect(() => {
     setReplayURL('')
-    if (!sourceCompleted || recordingState !== 'ready' || !workspacePath) return
+    if (!viewerVisible || !sourceCompleted || recordingState !== 'ready' || !workspacePath) return
     const controller = new AbortController()
     let objectURL = ''
     void api.get<Blob>(`/api/browser/live/${encodeURIComponent(session)}/recording`, { params: { workspace_path: workspacePath }, responseType: 'blob', signal: controller.signal }).then(({ data }) => {
@@ -238,11 +242,12 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
       objectURL = URL.createObjectURL(data); setReplayURL(objectURL)
     }).catch(() => { if (!controller.signal.aborted) setError('Unable to load recording. It may have been deleted in another panel.') })
     return () => { controller.abort(); if (objectURL) URL.revokeObjectURL(objectURL) }
-  }, [session, workspacePath, sourceCompleted, recordingState])
+  }, [session, workspacePath, sourceCompleted, recordingState, viewerVisible])
 
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
+    setOverviewOpen(hasOverview)
     setSessions([])
     setSessionsLoaded(false)
     setSession('')
@@ -298,14 +303,14 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
     void poll()
     const timer = window.setInterval(() => { void poll() }, 1000)
     return () => { cancelled = true; controller.abort(); window.clearInterval(timer) }
-  }, [scopeNoun, workspacePath, minimal])
+  }, [scopeNoun, workspacePath, minimal, hasOverview])
 
   useEffect(() => {
     screencast.current = undefined
     setFrame(''); setTabs([]); setConnected(false); setInteractive(false); setError('')
     if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null }
     if (reconnectAttempt.current === 0) setLinkState('starting')
-    if (!session || !workspacePath || sourceCompleted) return
+    if (!viewerVisible || !session || !workspacePath || sourceCompleted) return
     setLastPlaywrightFrame(previous => previous?.workspace === workspacePath && previous.session === session ? previous : null)
     const url = new URL(`${getApiBaseUrl() || window.location.origin}/api/browser/live/${encodeURIComponent(session)}/stream`)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -402,7 +407,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
     }, 10000)
     return () => { disposed = true; window.clearInterval(heartbeat); ws.close(); if (socket.current === ws) socket.current = null }
-  }, [session, workspacePath, retry, sourceCompleted, profileId])
+  }, [session, workspacePath, retry, sourceCompleted, profileId, viewerVisible])
 
   // A different browser (or leaving the panel) starts a fresh retry budget.
   useEffect(() => {
@@ -436,7 +441,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
 
   useEffect(() => {
     setRecording({ recording: false })
-    if (!session || !workspacePath || readOnly) return
+    if (!viewerVisible || !session || !workspacePath || readOnly) return
     let cancelled = false
     const poll = async () => {
       try {
@@ -447,9 +452,10 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
     void poll()
     const timer = window.setInterval(() => { void poll() }, 10000)
     return () => { cancelled = true; window.clearInterval(timer) }
-  }, [session, workspacePath, readOnly])
+  }, [session, workspacePath, readOnly, viewerVisible])
 
   function chooseBrowser(choice: string) {
+    setOverviewOpen(false)
     selectedBrowser.current = choice
     setSelection(choice)
     try { sessionStorage.setItem(`browser-selection:${workspacePath}`, choice) } catch { /* Selection still works in memory. */ }
@@ -683,6 +689,23 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
                   )
   }
 
+  if (overview && overviewOpen) {
+    const live = sessions.filter(item => item.state !== 'completed')
+    const replays = sessions.filter(item => item.state === 'completed')
+    const sessionRows = (items: BrowserSession[]) => <ul className="space-y-1">{items.map(item => <li key={item.browser_session}><button type="button" className="flex w-full min-w-0 items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => chooseBrowser(item.browser_session)}><Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{item.label || (item.kind === 'playwright' ? 'Script browser' : 'Private browser')}</span><span className="shrink-0 text-muted-foreground">{item.state === 'completed' ? 'Replay' : 'Live'}</span><ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /></button></li>)}</ul>
+    return <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label="Browser workspace">
+      <WorkspaceViewHeader icon={Monitor} title="Browser" />
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" aria-label="Browser content">
+        {overview({ startBrowser, startingBrowser, canStart: canWrite })}
+        {!sessionsLoaded && <p role="status" className="text-xs text-muted-foreground">Checking browser sessions…</p>}
+        {!!live.length && <section aria-label="Running browser sessions"><h3 className="mb-1 text-xs font-medium text-muted-foreground">Running</h3>{sessionRows(live)}</section>}
+        {!!replays.length && <section aria-label="Browser replays"><h3 className="mb-1 text-xs font-medium text-muted-foreground">Replays</h3>{sessionRows(replays)}</section>}
+        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+        {overviewFooter}
+      </div>
+    </section>
+  }
+
   return (
     <section className={`live-browser flex min-h-0 flex-1 flex-col overflow-hidden bg-background ${expanded ? 'fixed inset-0 z-50' : 'relative'}`} aria-label={`Live ${scopeNoun} browser`}>
       <WorkspaceViewHeader
@@ -692,6 +715,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
           title="Browser"
           context={<>{browserPicker}<span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status" title={singleBrowserLabel}><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}</span>{lastAction}</>}
           actions={<>
+            {overview && <button type="button" className={tertiaryButtonClass} onClick={() => { setOverviewOpen(true); setExpanded(false); setMenuOpen(false) }}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Browsers</button>}
             {startToggle}
             {recordingIndicator}
             {pageSizeToggle}

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Download } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../ui/Button'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
-import { BrowserConnectionsPanel, type SavedBrowserConnection, type WorkspaceBrowserChoice } from '../BrowserConnectionsDialog'
+import { BrowserConnectionsPanel, type SavedBrowserConnection } from '../BrowserConnectionsDialog'
 export { extensionVersionOlder } from '../../utils/extensionVersion'
 
 export interface ChromeExtensionStatus {
@@ -69,12 +69,12 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
-export function ChromeExtensionConnection({ connection, workspaceBrowser }: { connection: ChromeExtensionController; workspaceBrowser?: WorkspaceBrowserChoice }) {
+export function ChromeExtensionConnection({ connection, additionalBrowsers }: { connection: ChromeExtensionController; additionalBrowsers?: ReactNode }) {
   const { status, error, connect, download } = connection
   const accountBrowser = status.browsers?.find(browser => browser.id === status.browser_id)
   const projectStatus = status.selected ? (status.connected ? (status.tabs ? undefined : 'Ask your agent to open a website.') : accountBrowser?.connected ? 'Connecting this browser…' : undefined) : undefined
   return <div className="space-y-3" aria-label="Choose browser">
-    <BrowserConnectionsPanel open onClose={() => {}} onConnected={connect} selectedBrowserId={status.selected ? status.browser_id : undefined} workspaceBrowser={workspaceBrowser} tabTitles={status.connected ? status.tab_titles : undefined} tabCount={status.tabs} projectStatus={projectStatus} />
+    <BrowserConnectionsPanel open onClose={() => {}} onConnected={connect} selectedBrowserId={status.selected ? status.browser_id : undefined} additionalBrowsers={additionalBrowsers} tabTitles={status.connected ? status.tab_titles : undefined} tabCount={status.tabs} projectStatus={projectStatus} />
     {status.update_needed && <ExtensionVersionLine status={status} download={download} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
