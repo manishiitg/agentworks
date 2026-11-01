@@ -173,7 +173,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   }, [panel, latest, lookUpPullRequests])
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []
-  const actions = checked?.actions ?? card?.actions ?? summary?.actions ?? []
+  const actions = (checked?.actions ?? card?.actions ?? summary?.actions ?? []).filter(action => !panel || action.id !== 'review')
   const checkoutOptions = [...new Map(groups.map(group => ({ id: group.checkout_id || (group.kind === 'crew_files' ? 'project-files' : ''), name: group.name })).filter(group => !!group.id).map(group => [group.id, group])).values()]
   const revertCheckoutId = reference.checkoutId || undoCheckoutId || checkoutOptions[0]?.id || ''
   const canEdit = (checked ?? card)?.can_edit === true

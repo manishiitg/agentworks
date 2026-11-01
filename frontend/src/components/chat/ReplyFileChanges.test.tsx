@@ -77,8 +77,7 @@ describe('reply card groups', () => {
     expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ tabId: 'tab1', message: 'commit prompt' })
     await act(async () => button(host, 'Push to a branch and open a PR')!.click())
     expect(vi.mocked(sendWorkspacePaneMessageToChat).mock.calls[1][0].message).toBe('push prompt')
-    await act(async () => button(host, 'Review changes')!.click())
-    expect(openChatFiles).toHaveBeenCalledWith('chat-a')
+    expect(button(host, 'Review changes')).toBeUndefined()
   })
   it('shows no card at all for a reply that changed 0 files', async () => {
     const host = await render(true, 0)
@@ -101,10 +100,10 @@ describe('reply card groups', () => {
     expect(host.textContent).toContain(state.undoError)
     state.undoError = ''
   })
-  it('a Run person sees only Review changes in the header, and no undo', async () => {
+  it('a Run person has no redundant review action in the opened panel, and no undo', async () => {
     const host = await render(false)
     expect(host.textContent).toContain('tts.py')
-    expect(rowLabels(host)).toEqual(['Review changes'])
+    expect(rowLabels(host)).toEqual([])
     expect(button(host, 'More actions')).toBeUndefined()
     expect(button(host, 'Revert these changes')).toBeUndefined()
     // PLAT-746-261: shared Run users cannot open the workspace Files panel.
@@ -119,11 +118,12 @@ describe('reply card groups', () => {
   it('retains the original action toolbar while file details open in the panel', async () => {
     const closed = await render(true, 2, undefined, true, false)
     expect(closed.querySelector('[aria-label="Project changes during this turn"]')).not.toBeNull()
+    expect(button(closed, 'Review changes')).toBeDefined()
     expect(button(closed, 'Revert these changes')).toBeUndefined()
     const latest = await render(true)
     expect(latest.textContent).toContain('2 files')
     expect(latest.textContent).toContain('+4')
-    expect(rowLabels(latest)).toEqual(['Review changes', 'Commit on the current branch', 'Push to a branch and open a PR', 'Check this change', 'Add button'])
+    expect(rowLabels(latest)).toEqual(['Commit on the current branch', 'Push to a branch and open a PR', 'Check this change', 'Add button'])
     expect(latest.querySelector('section > div:first-child [aria-hidden].w-px')).not.toBeNull()
     expect(button(latest, 'Revert these changes')).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
@@ -175,7 +175,7 @@ describe('reply card groups', () => {
   it('on a phone the row keeps the defaults and the person\'s buttons and Add move under More', async () => {
     state.phone = true; state.extraCommands = ['second', 'third']; state.nextStep = 'update_pr'
     const host = await render(true)
-    expect(rowLabels(host)).toEqual(['Review changes', 'Commit on the current branch', 'Push to a branch and open a PR', 'More actions'])
+    expect(rowLabels(host)).toEqual(['Commit on the current branch', 'Push to a branch and open a PR', 'More actions'])
     expect(host.querySelector('section > div:first-child [aria-hidden].w-px')).toBeNull()
     await openMore(host)
     expect(menuItems()).toEqual(['Update the pull request', 'check-this-change', 'second', 'third', 'Add button'])
