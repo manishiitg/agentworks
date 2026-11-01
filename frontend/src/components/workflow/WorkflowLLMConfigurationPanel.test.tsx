@@ -205,6 +205,9 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
       expect(host.textContent).not.toContain('OpenAI Codex CLI')
       expect(host.textContent).not.toContain('Needs setup')
       expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Test')).toBe(false)
+      // "Use" sits on each account: open the program to see its accounts.
+      expect(Array.from(host.querySelectorAll('button')).filter(button => button.textContent?.trim() === 'Use')).toHaveLength(0)
+      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Show Claude Code accounts"]')?.click())
       expect(Array.from(host.querySelectorAll('button')).filter(button => button.textContent?.trim() === 'Use')).toHaveLength(1)
       const setupButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Manage in Providers')
       expect(setupButton).toBeUndefined()
@@ -247,7 +250,7 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
       expect(host.textContent).toContain('Pi CLI')
       expect(host.textContent).toContain('Muse')
       expect(host.textContent).toContain('Antigravity CLI (Alpha)')
-      expect(Array.from(host.querySelectorAll('button')).filter(button => button.textContent?.trim() === 'Use')).toHaveLength(6)
+      expect(host.querySelectorAll('[aria-label^="Show "][aria-label$=" accounts"]')).toHaveLength(6)
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -360,7 +363,8 @@ describe('workflow account tree', () => {
     const root = createRoot(host); const persist = vi.fn()
     try {
       await act(async () => root.render(<WorkflowLLMConfigurationPanel workspacePath="/project" onChange={vi.fn()} onUseProvider={persist} />))
-      const use = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Use')
+      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Show Claude Code accounts"]')?.click())
+      const use = host.querySelector<HTMLButtonElement>('[aria-label="Use Claude Code account Team account"]')
       expect(use).toBeDefined()
       await act(async () => use?.click())
       expect(persist).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude-code', connection_id: 'shared' }))
