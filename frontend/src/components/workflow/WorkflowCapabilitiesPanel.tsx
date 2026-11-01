@@ -451,6 +451,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               <BrowserWorkspacePanel
                 profileId={relayMode ? 'relay' : 'workflow'}
                 workspacePath={workspacePath}
+                onSendToAgent={workspacePath ? message => sendWorkspacePaneMessageToChat({ workspacePath, message }) : undefined}
                 browserMode={capabilities.browser_mode as BrowserAutomationMode}
                 onBrowserModeChange={(browser_mode) => setCapabilities(current => ({ ...current, browser_mode }))}
                 cdpConnected={cdpConnected}
