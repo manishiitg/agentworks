@@ -36,6 +36,12 @@ export interface ServerAccountAvailability {
 export type ProviderAccountKind = 'installed' | 'admin' | 'user'
 export type ProviderAccountRelation = 'server' | 'own' | 'shared_with_you' | 'shared_with_workflow' | 'shared_with_crew' | 'admin_view'
 
+export interface MacAppLending {
+  available: boolean
+  signed_in_as?: string
+  signing_in?: { url: string; code?: string }
+}
+
 export interface ProviderConnection {
   id: string
   provider: string
@@ -438,6 +444,16 @@ export const llmConfigService = {
     if (workspacePath) query.set('workspace_path', workspacePath)
     const suffix = query.size > 0 ? `?${query.toString()}` : ''
     const response = await llmConfigApi.get(`/api/provider-connections/${encodeURIComponent(connectionId)}/status${suffix}`)
+    return response.data
+  },
+
+  /** "Use from the Mac app" for a program's admin-managed account (admins): the server's model proxy login. */
+  getMacAppLending: async (provider: string): Promise<MacAppLending> => {
+    const response = await llmConfigApi.get(`/api/model-proxy/${encodeURIComponent(provider)}/mac-app`)
+    return response.data
+  },
+  setMacAppLending: async (provider: string, action: 'sign_in' | 'sign_out'): Promise<MacAppLending> => {
+    const response = await llmConfigApi.post(`/api/model-proxy/${encodeURIComponent(provider)}/mac-app`, { action })
     return response.data
   },
 

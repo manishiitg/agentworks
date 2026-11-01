@@ -1,11 +1,11 @@
 package server
 
 // Company AI accounts on the Mac (PLAT-856-441, part B): a person uses their server's AI login from the Mac app.
-// The login never leaves the server. A model proxy on the server holds it (configured with
-// AGENTWORKS_MODEL_PROXY_URL and AGENTWORKS_MODEL_PROXY_KEY_FILE); the server passes a person's requests to it when
-// that person may use the server's account for the program. On the Mac, the program runs locally (its tools and
-// files stay on the Mac) and sends its model requests to the Mac's own backend, which forwards them to the server
-// over the saved connection. Muse only for now: it takes the address with --base-url.
+// The login never leaves the server. The server's model proxy holds it (model_proxy_sidecar.go); the server passes a
+// person's requests to it when that person may use the server's account for the program. On the Mac, the program
+// runs locally (its tools and files stay on the Mac) and sends its model requests to the Mac's own backend, which
+// forwards them to the server over the saved connection. Muse takes the address with --base-url, Codex from
+// openai_base_url in the account's own config.
 import (
 	"bytes"
 	"context"
@@ -18,8 +18,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -30,33 +28,13 @@ import (
 )
 
 // companyProxyModels is each program the server can lend through its model proxy, and the model names it may ask for.
-var companyProxyModels = map[string]string{"muse-cli": "muse-"}
+var companyProxyModels = map[string]string{"muse-cli": "muse-", "codex-cli": "gpt-"}
 
 // companyProxyPaths are the only proxy routes a program needs.
 var companyProxyPaths = map[string]bool{"responses": true, "models": true}
 
 // companyProxyClient streams replies for as long as a turn runs.
 var companyProxyClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-
-// The proxy settings are read once and removed from this process's environment, so the AI programs it starts never
-// see where the proxy and its key are.
-var companyProxyURL, companyProxyKeyFile = takeEnv("AGENTWORKS_MODEL_PROXY_URL"), takeEnv("AGENTWORKS_MODEL_PROXY_KEY_FILE")
-
-func takeEnv(name string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	_ = os.Unsetenv(name)
-	return value
-}
-
-func companyModelProxyUpstream() (string, string, bool) {
-	base, file := strings.TrimRight(companyProxyURL, "/"), companyProxyKeyFile
-	if base == "" || file == "" {
-		return "", "", false
-	}
-	raw, err := os.ReadFile(file)
-	key := strings.TrimSpace(string(raw))
-	return base, key, err == nil && key != ""
-}
 
 // copyProxyResponse passes a reply through as it arrives (streamed model output included). Everything written also
 // goes to tap, when given.
@@ -185,8 +163,12 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		return
 	}
 	provider, path := mux.Vars(r)["provider"], mux.Vars(r)["path"]
+	if _, offered := companyProxyModels[provider]; !offered || !providerEnabled(provider) || modelProxySignedInAs(provider) == "" {
+		desktopJSONError(w, 404, "This server does not offer its "+providerAccountProductName(provider)+" account for use on your Mac.")
+		return
+	}
 	base, key, configured := companyModelProxyUpstream()
-	if _, offered := companyProxyModels[provider]; !offered || !configured || !providerEnabled(provider) {
+	if !configured {
 		desktopJSONError(w, 404, "This server does not offer its "+providerAccountProductName(provider)+" account for use on your Mac.")
 		return
 	}
@@ -263,7 +245,7 @@ func (api *StreamingAPI) handleCompanyModelCatalog(w http.ResponseWriter, r *htt
 		return
 	}
 	provider := mux.Vars(r)["provider"]
-	if _, _, configured := companyModelProxyUpstream(); !configured || companyProxyCatalogs[provider] == "" {
+	if companyProxyCatalogs[provider] == "" || modelProxySignedInAs(provider) == "" {
 		desktopJSONError(w, 404, "Not found.")
 		return
 	}
@@ -271,8 +253,8 @@ func (api *StreamingAPI) handleCompanyModelCatalog(w http.ResponseWriter, r *htt
 		desktopJSONError(w, 403, err.Error())
 		return
 	}
-	raw, err := os.ReadFile(filepath.Join(filepath.Dir(companyProxyKeyFile), provider+"-catalog.json"))
-	if err != nil {
+	raw, err := modelProxyCatalog(r.Context(), provider)
+	if err != nil && raw == nil {
 		log.Printf("[MODEL_PROXY] %s catalog unavailable: %v", provider, err)
 		desktopJSONError(w, 503, "The server has no model list for this program yet.")
 		return

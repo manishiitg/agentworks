@@ -262,8 +262,17 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 			return nil, fmt.Errorf("cannot prepare provider connection storage")
 		}
 	}
-	if record.ViaConnection != "" && record.Provider == "muse-cli" {
-		keys.RuntimeEnvironment[llmtypes.MuseBaseURLKey] = companyAccountBaseURL(record)
+	if record.ViaConnection != "" {
+		switch record.Provider {
+		case "muse-cli":
+			keys.RuntimeEnvironment[llmtypes.MuseBaseURLKey] = companyAccountBaseURL(record)
+		case "codex-cli":
+			// Codex reads its address from its own config, which belongs to this account alone.
+			config := fmt.Sprintf("cli_auth_credentials_store = \"file\"\nopenai_base_url = %q\n", companyAccountBaseURL(record))
+			if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "config.toml"), []byte(config), 0600); err != nil {
+				return nil, fmt.Errorf("cannot configure Codex for the company account")
+			}
+		}
 	}
 	if record.Provider == "codex-cli" {
 		configPath := filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "config.toml")

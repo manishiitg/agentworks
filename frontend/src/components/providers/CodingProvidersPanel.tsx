@@ -211,7 +211,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   }, [providerOrder, providers])
 
   const selectedProvider = orderedProviders.find(provider => provider.id === selectedId) ?? orderedProviders[0]
-  const piAvailable = orderedProviders.some(provider => provider.id === 'pi-cli' && provider.runtime_available !== false)
   const openKeySetup = () => { setSelectedId('pi-cli'); setView('provider'); setKeyRequest(request => request + 1) }
   const guide = selectedProvider ? (CODING_PROVIDER_GUIDES[selectedProvider.id] ?? DEFAULT_CODING_PROVIDER_GUIDE) : undefined
 
@@ -339,12 +338,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   ))}
                 </div>
               )}
-              {piAvailable && (
-                <button type="button" onClick={openKeySetup} className="mt-3 hidden w-full rounded-lg border border-dashed border-violet-300 bg-violet-50/60 px-2.5 py-2 text-left hover:bg-violet-50 dark:border-violet-500/40 dark:bg-violet-500/5 dark:hover:bg-violet-500/10 md:block">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-violet-800 dark:text-violet-200"><KeyRound className="h-3.5 w-3.5" />Bring your own model key</span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-violet-700/80 dark:text-violet-300/80">OpenRouter, NVIDIA NIM, Groq, Google AI Studio… many free models.</span>
-                </button>
-              )}
               {onThisMac && <>
                 <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Servers</div>
                 {servers.map(server => (
@@ -410,11 +403,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                         </div>
                       </div>
                     </section>
-                  )}
-                  {piAvailable && selectedProvider.id !== 'pi-cli' && (
-                    <button type="button" onClick={openKeySetup} className="mb-4 flex w-full items-center gap-2 rounded-lg border border-dashed border-violet-300 px-3 py-2 text-left text-xs text-violet-800 hover:bg-violet-50 dark:border-violet-500/40 dark:text-violet-200 dark:hover:bg-violet-500/10 md:hidden">
-                      <KeyRound className="h-3.5 w-3.5 shrink-0" /><span><strong>Bring your own model key</strong>: OpenRouter, NVIDIA NIM, Groq, Google AI Studio… many free models.</span>
-                    </button>
                   )}
                   <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                     <div>

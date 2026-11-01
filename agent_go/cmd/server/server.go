@@ -2452,6 +2452,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/desktop-connections/{connection}/provider-accounts", api.handleDesktopProviderAccountStatus).Methods("GET")
 	apiRouter.HandleFunc("/model-proxy/{provider}/v1/{path}", api.handleCompanyModelProxy).Methods("GET", "POST")
 	apiRouter.HandleFunc("/model-proxy/{provider}/catalog", api.handleCompanyModelCatalog).Methods("GET")
+	apiRouter.HandleFunc("/model-proxy/{provider}/mac-app", api.handleModelProxyMacApp).Methods("GET", "POST")
 	for provider, path := range companyProxyCatalogs {
 		router.HandleFunc(path, api.handleDesktopModelCatalog(provider)).Methods("GET")
 	}
