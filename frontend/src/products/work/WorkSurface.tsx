@@ -633,11 +633,9 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     if (!allowSideChats) return
     let cancelled = false
     let busy = false
-    let pendingNativeKey: string | undefined
     let refreshRequested = false
-    const sync = async (nativeKey?: string) => {
-      if (nativeKey) pendingNativeKey = nativeKey
-      if (busy) { if (nativeKey) refreshRequested = true; return }
+    const sync = async () => {
+      if (busy) { refreshRequested = true; return }
       if (openingRef.current || document.visibilityState === 'hidden') return
       busy = true
       try {
@@ -694,10 +692,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         // transcript. ChatArea loads history only when that tab is selected.
         if (cancelled) return
         setListed(listed)
-        if (pendingNativeKey) {
-          const target = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileConversationKey === pendingNativeKey)
-          if (target) { activateTab(target.tabId); pendingNativeKey = undefined }
-        }
+
       } catch {
         // The list is a convenience; the next pass tries again.
       } finally {
@@ -709,17 +704,17 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     void sync()
     const timer = window.setInterval(() => { void sync() }, 15000)
     const onFocus = () => { void sync() }
-    const onNativeChat = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectId: string; conversationKey: string }>).detail
-      if (detail.projectId === projectId) void sync(detail.conversationKey)
+    const onHandoff = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string }>).detail
+      if (detail?.projectId === projectId) void sync()
     }
     window.addEventListener('focus', onFocus)
-    window.addEventListener('agentworks:local-chat-opened', onNativeChat)
+    window.addEventListener('agentworks:crew-handoff', onHandoff)
     return () => {
       cancelled = true
       window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
-      window.removeEventListener('agentworks:local-chat-opened', onNativeChat)
+      window.removeEventListener('agentworks:crew-handoff', onHandoff)
     }
   }, [allowSideChats, canonicalTabId, profileId, projectId])
   return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName}
