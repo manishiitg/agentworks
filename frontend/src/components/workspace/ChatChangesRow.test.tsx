@@ -43,7 +43,7 @@ it('keeps captured totals and exact checkout navigation when skipped files make 
   const root = createRoot(host); const onOpen = vi.fn()
   const warning = 'Some files could not be captured or compared.'
   const reply = await savedReply()
-  get.mockResolvedValue({ data: { ...reply.data, checkouts: reply.data.checkouts.map((checkout, index) => ({ ...checkout, captures: checkout.captures.map(capture => ({ ...capture, note: index === 0 ? warning : undefined })) })) } })
+  get.mockResolvedValue({ data: { ...reply.data, note: 'An older saved comparison is unavailable.', checkouts: reply.data.checkouts.map((checkout, index) => ({ ...checkout, captures: checkout.captures.map(capture => ({ ...capture, note: index === 0 ? warning : undefined })) })) } })
   try {
     await act(async () => root.render(<ChatChangesRow workspacePath="Crew/example" sessionId="chat-a" onOpen={onOpen} />))
     const rows = host.querySelectorAll<HTMLButtonElement>('button')
