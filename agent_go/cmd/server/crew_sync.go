@@ -24,21 +24,23 @@ import (
 )
 
 type crewSyncRequest struct {
-	SplitFiles bool               `json:"split_files,omitempty"`
-	TransferID string             `json:"transfer_id,omitempty"`
-	Action     string             `json:"action"`
-	PairID     string             `json:"pair_id,omitempty"`
-	SourceID   string             `json:"source_id,omitempty"`
-	Name       string             `json:"name,omitempty"`
-	Editing    string             `json:"editing,omitempty"`
-	Snapshot   *crewsync.Snapshot `json:"snapshot,omitempty"`
+	SplitFiles   bool                     `json:"split_files,omitempty"`
+	TransferID   string                   `json:"transfer_id,omitempty"`
+	Action       string                   `json:"action"`
+	PairID       string                   `json:"pair_id,omitempty"`
+	SourceID     string                   `json:"source_id,omitempty"`
+	Name         string                   `json:"name,omitempty"`
+	Editing      string                   `json:"editing,omitempty"`
+	Snapshot     *crewsync.Snapshot       `json:"snapshot,omitempty"`
+	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
 }
 type crewSyncReply struct {
-	TransferID string                `json:"transfer_id,omitempty"`
-	Auto       *crewAutoSyncStatus   `json:"auto,omitempty"`
-	ProjectID  string                `json:"project_id"`
-	Binding    *crewroot.SyncBinding `json:"binding"`
-	Snapshot   *crewsync.Snapshot    `json:"snapshot,omitempty"`
+	TransferID   string                   `json:"transfer_id,omitempty"`
+	Auto         *crewAutoSyncStatus      `json:"auto,omitempty"`
+	ProjectID    string                   `json:"project_id"`
+	Binding      *crewroot.SyncBinding    `json:"binding"`
+	Snapshot     *crewsync.Snapshot       `json:"snapshot,omitempty"`
+	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -191,12 +193,22 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if input.Editing != "local" && input.Editing != "server" {
 			return out, fmt.Errorf("choose where to work")
 		}
+		if input.Editing == "server" {
+			if err = validateCrewHandoffConversation(input.Conversation); err != nil {
+				return out, err
+			}
+		}
 		if err = applyCrewSyncSnapshot(ctx, roots, binding.PairID, input.Snapshot); err != nil {
 			return out, err
 		}
 		ensureSharedCrewFolderAccess(strings.TrimPrefix(roots.Virtual, "Crew/"), roots.Owner)
 		if err = saveCrewSyncSnapshot(roots, *input.Snapshot); err != nil {
 			return out, err
+		}
+		if input.Editing == "server" {
+			if err = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, input.TransferID, input.Conversation); err != nil {
+				return out, err
+			}
 		}
 		binding.Editing = input.Editing
 		binding.LastTransfer = input.TransferID
@@ -222,6 +234,10 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		if input.Action == "pull" {
 			if e := api.crewSyncIdle(roots); e != nil {
+				return out, e
+			}
+			out.Conversation, e = api.captureCrewHandoffConversation(ctx, claims, roots)
+			if e != nil {
 				return out, e
 			}
 			binding.Editing = "local"
