@@ -52,8 +52,15 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 		check, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		status, e := desktopCrewSyncCall(check, claims.UserID, &connection, b.PeerProjectID, crewSyncRequest{Action: "status", PairID: b.PairID})
 		cancel()
+		// A background return may have switched the server while this status
+		// request was in flight. Finish the Mac's admitted return before send.
+		latest, readErr := crewroot.ReadSync(roots.ID)
+		if readErr != nil || latest == nil || latest.PairID != b.PairID {
+			return fail("Reconnect this project's server to finish bringing its conversation back.")
+		}
+		b = latest
 		if e != nil {
-			if b.Editing == "local" {
+			if b.Editing == "local" && b.PendingAction != "local" {
 				return false
 			}
 			return fail("Connect to the internet to bring this conversation’s latest work back from the server.")
@@ -62,7 +69,14 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 			return fail("Reconnect this project's server.")
 		}
 		if status.Binding.Editing == "local" {
-			return false
+			if b.PendingAction == "local" {
+				response := api.runInternalCrewHandoff(r.Context(), claims, roots.ID, b.ConnectionID, "local")
+				if response.status >= 400 {
+					return fail("Reconnect this project's server to finish bringing its conversation back, then send again.")
+				}
+				forwardCrewHandoffNotice(w, response.body.Bytes())
+			}
+			return resume()
 		}
 		b.Editing = "server"
 		if e = crewroot.WriteSync(roots.ID, *b); e != nil {

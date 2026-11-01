@@ -350,12 +350,36 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("newer return was discarded: %+v %v", stillPending, err)
 			}
 
-			if w := call("local", "owner", true); w.Code != 200 {
-				t.Fatalf("return: %d %s", w.Code, w.Body.String())
+			// Server Editing is already local, but the Mac has not imported or
+			// acknowledged the return. A send must finish it before choosing a CLI.
+			pendingLocal, _ := crewroot.ReadSync(local.ID)
+			pendingLocal.PendingAction = "local"
+			pendingLocal.Editing = "local"
+			if err := crewroot.WriteSync(local.ID, *pendingLocal); err != nil {
+				t.Fatal(err)
+			}
+			send := httptest.NewRequest("POST", "/api/agent-profiles/work/query", nil).WithContext(ctx)
+			send.Header.Set("X-Session-ID", main.SessionID)
+			offline.Store(true)
+			blocked := httptest.NewRecorder()
+			if !api.ensureCrewNativeExecution(blocked, send, "work", local.ID) || blocked.Code != 409 {
+				t.Fatal("interrupted pending return allowed a stale offline send")
+			}
+			offline.Store(false)
+			gate := httptest.NewRecorder()
+			if api.ensureCrewNativeExecution(gate, send, "work", local.ID) {
+				t.Fatalf("pending return did not finish before send: %d %s", gate.Code, gate.Body.String())
 			}
 			returned, err := api.crewHandoffMain(ctx, owner, local.ID)
 			if err != nil || returned.ConversationID != main.ConversationID || returned.SessionID == main.SessionID || returned.SessionID == serverChat.SessionID {
 				t.Fatalf("return identity: %+v %v", returned, err)
+			}
+			if send.Header.Get("X-Session-ID") != returned.SessionID {
+				t.Fatal("send would run on stale session before pending import")
+			}
+			pendingLocal, _ = crewroot.ReadSync(local.ID)
+			if pendingLocal.PendingAction != "" {
+				t.Fatal("pending return was not acknowledged before send")
 			}
 			// PLAT-856-442: a background download queued before the return
 			// must not retry forever after editing is back on the Mac.
@@ -371,6 +395,11 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if settled.PendingAction != "" || settled.Editing != "local" {
 				t.Fatalf("obsolete download was not settled: %+v", settled)
 			}
+			offline.Store(true)
+			if api.ensureCrewNativeExecution(httptest.NewRecorder(), send, "work", local.ID) {
+				t.Fatal("completed local handoff blocked ordinary offline work")
+			}
+			offline.Store(false)
 			checkTranscript(returned, "server continued")
 			// A failed binding write leaves journal rows behind. Retrying the same
 			// transfer must finish without duplicates, including beyond the normal
