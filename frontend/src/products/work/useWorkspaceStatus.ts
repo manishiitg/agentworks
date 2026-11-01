@@ -39,7 +39,7 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
    const automations = (destination: string, rows: WorkspaceStatusRow[]) => publish(previous => ({
     ...previous, loaded: [...new Set([...previous.loaded, destination])], automations: [...(previous.automations || []).filter(row => row.destination !== destination), ...rows],
    }))
-   const error = (message: string) => publish(previous => ({ ...previous, errors: [...previous.errors, message] }))
+   const error = (message: string) => publish(previous => ({ ...previous, errors: [...new Set([...previous.errors, message])] }))
    if (alive) setSnapshot(previous => previous?.scope === requestScope ? { ...previous, errors: [] } : undefined)
    const jobs: Promise<void>[] = []
    if (has('mcp:connected') || has('mcp:gmail') || has('mcp:slack-account')) jobs.push(loadProjectVault(workspacePath).then(inventory => {
@@ -73,12 +73,10 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
    if (!jobs.length) publish(previous => previous)
   }
   void load()
-  const focus = () => { if (!document.hidden) void load() }
-  window.addEventListener('focus', focus)
   const githubChanged = () => { void load() }
   if (has('mcp:github')) window.addEventListener(githubConnectionChanged, githubChanged)
   if (has('mcp:computer-use')) window.addEventListener('computer-use-changed', githubChanged)
-  return () => { alive = false; window.removeEventListener('focus', focus); window.removeEventListener(githubConnectionChanged, githubChanged); window.removeEventListener('computer-use-changed', githubChanged) }
+  return () => { alive = false; window.removeEventListener(githubConnectionChanged, githubChanged); window.removeEventListener('computer-use-changed', githubChanged) }
  }, [scope, workspacePath, projectId, admission, requestScope, revision])
  return { snapshot: snapshot?.scope === requestScope ? snapshot : undefined, refresh: () => setRevision(value => value + 1) }
 }
