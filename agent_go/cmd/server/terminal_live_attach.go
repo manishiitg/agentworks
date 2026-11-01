@@ -2027,11 +2027,12 @@ func (api *StreamingAPI) liveAttachRawInput(ctx context.Context, tmuxSession str
 		}
 	}
 	// A Claude terminal running the AgentWorks mod reports its session switches,
-	// so every slash command may be typed there.
+	// so the session commands may be typed there too.
+	var extra []map[string]bool
 	if claudecode.ClaudeModRunsIn(tmuxSession) {
-		return api.liveAttachRawSend(ctx, tmuxSession, data, streams...)
+		extra = append(extra, claudeModSessionCommands)
 	}
-	switch decision, erase := terminalSlashGuard.decide(tmuxSession, data); decision {
+	switch decision, erase := terminalSlashGuard.decide(tmuxSession, data, extra...); decision {
 	case slashDrop:
 		liveAttachSlashNote(streams, "Pick a slash command by typing its full name")
 		return nil

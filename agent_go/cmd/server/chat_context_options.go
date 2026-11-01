@@ -75,6 +75,8 @@ type chatContextView struct {
 	Limits []chatUsageLimit `json:"limits,omitempty"`
 	// A switch is present only when this chat's model and provider offer it.
 	IdleCompaction *chatContextSwitch `json:"idle_compaction,omitempty"`
+	// ClaudeTerminal: on runs Claude Code as the native terminal, off as the chat view. Claude chats only.
+	ClaudeTerminal *chatContextSwitch `json:"claude_terminal,omitempty"`
 	CanCompact     bool               `json:"can_compact"`
 	CanFresh       bool               `json:"can_fresh"`
 	Hint           string             `json:"idle_compaction_hint,omitempty"`
@@ -415,6 +417,9 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 		view.IdleCompaction = &chatContextSwitch{On: !tab.Identity.IdleCompactionOff}
 		view.Hint = idleCompactHint()
 	}
+	if strings.EqualFold(strings.TrimSpace(subject.provider), string(llmproviders.ProviderClaudeCode)) {
+		view.ClaudeTerminal = &chatContextSwitch{On: tab.Identity.ClaudeTerminal}
+	}
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
 	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)
@@ -518,6 +523,7 @@ func (api *StreamingAPI) freshChat(ctx context.Context, owner string, tab chatCo
 type chatContextRequest struct {
 	SessionID      string `json:"session_id"`
 	IdleCompaction *bool  `json:"idle_compaction,omitempty"`
+	ClaudeTerminal *bool  `json:"claude_terminal,omitempty"`
 	Action         string `json:"action,omitempty"` // "compact" or "fresh"
 }
 
@@ -528,12 +534,24 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	if !found {
 		return http.StatusNotFound, map[string]any{"error": "Only this chat's owner can change its context options."}
 	}
-	if input.IdleCompaction != nil {
-		identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, *input.IdleCompaction, owner)
+	runtimeChanged := input.ClaudeTerminal != nil && *input.ClaudeTerminal != tab.Identity.ClaudeTerminal
+	if runtimeChanged {
+		// The running Claude keeps its transport until it is relaunched; switch between turns only.
+		if busy := api.chatContextBusy(owner, tab.Record.SessionID); busy != "" && !afterTurn {
+			return http.StatusConflict, map[string]any{"error": busy}
+		}
+	}
+	if input.IdleCompaction != nil || input.ClaudeTerminal != nil {
+		identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, chatContextChange{IdleCompaction: input.IdleCompaction, ClaudeTerminal: input.ClaudeTerminal}, owner)
 		if err != nil {
 			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
 		}
 		tab.Identity = identity
+	}
+	if runtimeChanged && !afterTurn {
+		// The next message launches Claude on the chosen transport and resumes the same conversation; a change
+		// made from inside a reply is relaunched by that next message (prepareProductConversationTurn).
+		retireProductCodingCLI(tab.Record.SessionID, "claude runtime changed")
 	}
 	status, message := http.StatusOK, ""
 	switch strings.TrimSpace(input.Action) {
@@ -579,27 +597,36 @@ func (api *StreamingAPI) handleChatContext(w http.ResponseWriter, r *http.Reques
 	writeAgentProfileJSON(w, status, out)
 }
 
-// chatContextArgs reads the idle_compaction field of a models/sessions tool call: a boolean, or "true"/"false"
-// text from callers that pass every argument as a string.
-func chatContextArgs(args map[string]any) (idleCompaction *bool, err error) {
-	value, exists := args["idle_compaction"]
-	if !exists || value == nil {
-		return nil, nil
-	}
-	switch v := value.(type) {
-	case bool:
-		return &v, nil
-	case string:
-		if strings.TrimSpace(v) == "" {
-			return nil, nil
+// chatContextArgs reads the switches of a models/sessions tool call (idle_compaction, claude_terminal): a
+// boolean, or "true"/"false" text from callers that pass every argument as a string.
+func chatContextArgs(args map[string]any) (chatContextRequest, error) {
+	var out chatContextRequest
+	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "claude_terminal": &out.ClaudeTerminal} {
+		value, exists := args[name]
+		if !exists || value == nil {
+			continue
 		}
-		parsed, perr := strconv.ParseBool(strings.TrimSpace(v))
-		if perr != nil {
-			return nil, fmt.Errorf("idle_compaction must be true or false")
+		switch v := value.(type) {
+		case bool:
+			*target = &v
+		case string:
+			if strings.TrimSpace(v) == "" {
+				continue
+			}
+			parsed, perr := strconv.ParseBool(strings.TrimSpace(v))
+			if perr != nil {
+				return out, fmt.Errorf("%s must be true or false", name)
+			}
+			*target = &parsed
+		default:
+			return out, fmt.Errorf("%s must be true or false", name)
 		}
-		return &parsed, nil
 	}
-	return nil, fmt.Errorf("idle_compaction must be true or false")
+	return out, nil
+}
+
+func (r chatContextRequest) changesSwitch() bool {
+	return r.IdleCompaction != nil || r.ClaudeTerminal != nil
 }
 
 // externalChatContext answers an MCP call that changes one of the caller's chats, with the same checks as the screen.

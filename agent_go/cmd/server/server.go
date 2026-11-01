@@ -964,8 +964,12 @@ type QueryRequest struct {
 	// RestartCodingCLI asks for the chat's coding CLI to be closed and relaunched when this
 	// message's turn starts: a product chat's runtime selection changed while a turn was running
 	// (PLAT-676). It is applied between turns, never mid-turn; the flag survives the turn queue.
-	RestartCodingCLI       bool `json:"restart_coding_cli,omitempty"`
-	KeepNativeSessionAlive bool `json:"keep_native_session_alive,omitempty"`
+	RestartCodingCLI bool `json:"restart_coding_cli,omitempty"`
+	// ClaudeCodeTransport is the chat's own choice for Claude Code: "tmux" (the native terminal, driven by the
+	// AgentWorks mod) or "sdk" (the chat view). Set by the server from the chat's saved choice; empty uses the
+	// server setting.
+	ClaudeCodeTransport    string `json:"-"`
+	KeepNativeSessionAlive bool   `json:"keep_native_session_alive,omitempty"`
 	// UserInteractiveContinuation promotes an observed schedule/bot conversation
 	// into an interactive chat without changing its session or native resume ID.
 	UserInteractiveContinuation bool `json:"user_interactive_continuation,omitempty"`
@@ -5897,7 +5901,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
 		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive, agyPersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
-		claudeCodeTransport := codingAgentClaudeCodeChatTransport(finalProvider)
+		claudeCodeTransport := codingAgentClaudeCodeChatTransport(finalProvider, req.ClaudeCodeTransport)
 		if forceStructuredCodingAgent {
 			// A structured coding CLI is a one-shot native JSON process. There is
 			// no persistent pane to retain, and preserving one would accidentally

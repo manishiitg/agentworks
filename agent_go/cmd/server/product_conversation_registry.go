@@ -112,6 +112,9 @@ type ProductAgentIdentity struct {
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	// IdleCompactionOff stops the idle sweep from compacting this chat; it is on unless the person turned it off.
 	IdleCompactionOff bool `json:"idle_compaction_off,omitempty"`
+	// ClaudeTerminal runs this chat's Claude Code as the native terminal (tmux, driven by the AgentWorks mod)
+	// instead of the chat view (Agent SDK). The person's choice per chat (owner, 2026-11-01, PLAT-872-96).
+	ClaudeTerminal bool `json:"claude_terminal,omitempty"`
 }
 
 const (
@@ -225,7 +228,13 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 }
 
 // setChatContextOptions saves a chat's "Auto-compact when idle" choice and logs the change with its actor.
-func (store productConversationRegistryStore) setChatContextOptions(ctx context.Context, userID, profileID, conversationKey string, idleCompaction bool, actor string) (ProductAgentIdentity, error) {
+// chatContextChange is the switches a chat's context options change; nil keeps one.
+type chatContextChange struct {
+	IdleCompaction *bool
+	ClaudeTerminal *bool
+}
+
+func (store productConversationRegistryStore) setChatContextOptions(ctx context.Context, userID, profileID, conversationKey string, change chatContextChange, actor string) (ProductAgentIdentity, error) {
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
@@ -242,7 +251,12 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
 	identity := document.Agents[entryKey]
-	identity.IdleCompactionOff = !idleCompaction
+	if change.IdleCompaction != nil {
+		identity.IdleCompactionOff = !*change.IdleCompaction
+	}
+	if change.ClaudeTerminal != nil {
+		identity.ClaudeTerminal = *change.ClaudeTerminal
+	}
 	identity.UpdatedBy = strings.TrimSpace(actor)
 	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	document.Agents[entryKey] = identity
@@ -250,7 +264,7 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[CHAT_CONTEXT] %s set chat %s idle_compaction=%t", identity.UpdatedBy, entryKey, !identity.IdleCompactionOff)
+	log.Printf("[CHAT_CONTEXT] %s set chat %s idle_compaction=%t claude_terminal=%t", identity.UpdatedBy, entryKey, !identity.IdleCompactionOff, identity.ClaudeTerminal)
 	return identity, nil
 }
 
