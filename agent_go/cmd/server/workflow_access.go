@@ -155,6 +155,9 @@ func effectiveWorkflowAccessMap(ctx context.Context, claims *UserClaims) (map[st
 
 func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) WorkflowAccessLevel {
 	if m != nil && m.crewExecutable != nil {
+		if level, ok := workflowAccessForBotRouteClaims(claims, m); ok {
+			return level
+		}
 		if claims == nil || userAccessForClaims(claims).Disabled {
 			return WorkflowAccessNone
 		}
@@ -268,6 +271,10 @@ func workflowAccessForBotRouteClaims(claims *UserClaims, m *WorkflowManifest) (W
 func workflowAccessForWorkspacePath(ctx context.Context, claims *UserClaims, workspacePath string) (WorkflowAccessLevel, *WorkflowManifest) {
 	manifest, exists, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil || !exists {
+		// A registered child never inherits the standalone account-tier fallback.
+		if binding, bindingErr := findCrewExecutable(workspacePath); bindingErr != nil || binding != nil {
+			return WorkflowAccessNone, nil
+		}
 		return workflowAccessForManifest(claims, nil), nil
 	}
 	return workflowAccessForManifest(claims, manifest), manifest

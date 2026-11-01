@@ -32,6 +32,8 @@ const scheduledBackgroundNoPollingInstruction = "After launching background work
 
 // ScheduleContext bundles everything needed to identify and execute a schedule.
 type ScheduleContext struct {
+	CrewExecutable *crewExecutableBinding
+
 	WorkspacePath string
 	WorkflowID    string
 	WorkflowLabel string
@@ -556,16 +558,17 @@ func (s *SchedulerService) discoverWorkflows(ctx context.Context) []discoveredWo
 // buildScheduleContext creates a ScheduleContext from a manifest and schedule.
 func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sched WorkflowSchedule) *ScheduleContext {
 	sctx := &ScheduleContext{
-		WorkspacePath: workspacePath,
-		WorkflowID:    manifest.ID,
-		WorkflowLabel: manifest.Label,
-		WorkflowKind:  manifest.Kind,
-		RelayRuntime:  manifest.RelayRuntime,
-		Schedule:      sched,
-		Capabilities:  lockedScheduleCapabilities(manifest.Capabilities),
-		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
+		CrewExecutable: manifest.crewExecutable,
+		WorkspacePath:  workspacePath,
+		WorkflowID:     manifest.ID,
+		WorkflowLabel:  manifest.Label,
+		WorkflowKind:   manifest.Kind,
+		RelayRuntime:   manifest.RelayRuntime,
+		Schedule:       sched,
+		Capabilities:   lockedScheduleCapabilities(manifest.Capabilities),
+		OwnerUserID:    workflowExecutionOwnerUserID(manifest),
 	}
-	if sched.RunAs != "" {
+	if manifest.crewExecutable == nil && sched.RunAs != "" {
 		sctx.OwnerUserID = sched.RunAs
 	}
 	if sched.ScheduleType != "webhook" && !scheduleAllowsParallel(sched) {
@@ -674,6 +677,9 @@ func (s *SchedulerService) Stop() {
 
 // LoadSchedule registers a schedule for wall-clock evaluation from a ScheduleContext.
 func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
+	if err := validateExecutableSchedule(context.Background(), sctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1302,6 +1308,9 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 	}
 
 	sctx := buildScheduleContext(workspacePath, manifest, *sched)
+	if err := validateExecutableSchedule(ctx, sctx); err != nil {
+		return "", err
+	}
 	sctx.TriggerSource = "manual"
 	if sched.ScheduleType == "webhook" {
 		if input == nil {
@@ -2684,7 +2693,41 @@ func scheduledWorkshopMessages(sctx *ScheduleContext) []string {
 
 // executeJob builds a session request from the manifest and runs it.
 // Returns (sessionID, runFolder, error).
-func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext, runID string) (string, string, error) {
+func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext, runID string) (sessionID, runFolder string, runErr error) {
+	if err := validateExecutableSchedule(ctx, sctx); err != nil {
+		return "", "", err
+	}
+	target, err := s.openCrewAutomationChat(ctx, sctx)
+	if err != nil {
+		return "", "", err
+	}
+	if target != nil {
+		if strings.TrimSpace(runID) == "" {
+			return "", "", fmt.Errorf("automation run identity is required")
+		}
+		if err := s.appendCrewAutomationMessage(ctx, sctx, target, runID, "started", ""); err != nil {
+			return "", "", err
+		}
+		sctx.OriginSessionID = target.SessionID
+		defer func() {
+			status, detail := "completed", ""
+			if runErr != nil {
+				status, detail = "failed", runErr.Error()
+			}
+			if runFolder != "" {
+				detail += fmt.Sprintf("\nRun files: `%s/runs/%s`", sctx.WorkspacePath, runFolder)
+				if sctx.WorkflowKind == "relay" && runErr == nil {
+					if result, found, e := readFileFromWorkspace(context.Background(), sctx.WorkspacePath+"/runs/"+runFolder+"/relay_result.json"); e == nil && found && len(result) <= 16000 {
+						detail += "\n\n" + result
+					}
+				}
+			}
+			if e := s.appendCrewAutomationMessage(context.Background(), sctx, target, runID, status, detail); e != nil {
+				s.logf(sctx, "[AUTOMATION_CHAT] result delivery failed run=%s: %v", runID, e)
+				runErr = errors.Join(runErr, fmt.Errorf("chat result delivery: %w", e))
+			}
+		}()
+	}
 
 	if sctx.WebhookInput != nil {
 		return s.executeWebhookJob(ctx, sctx, runID)
@@ -3464,7 +3507,7 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		execOpts["capacity_account_key"] = accountKey
 		execOpts["pace_threshold_percent"] = threshold
 	}
-	if sctx.WorkflowKind != "relay" && len(sctx.Schedule.GroupNames) > 0 {
+	if sctx.WorkflowKind != "relay" && sctx.Schedule.GroupNames != nil {
 		execOpts["enabled_group_names"] = sctx.Schedule.GroupNames
 	}
 	if mode := strings.TrimSpace(sctx.Schedule.ExecutionMode); mode != "" {

@@ -84,7 +84,7 @@ func workflowScheduleFromAction(record projectactions.Schedule) (WorkflowSchedul
 		CronExpression: record.When.Cron, Timezone: record.When.Timezone,
 		Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "queue_latest",
 		Messages: input.Messages, GroupNames: input.Groups, RouteSelections: input.Routes,
-		TriggerPayload: input.Payload, TeamAuthorizedBy: input.TeamAuthorizedBy,
+		ChatID: record.Action.Tab, TriggerPayload: input.Payload, TeamAuthorizedBy: input.TeamAuthorizedBy,
 		TeamPolicyRevision: input.TeamPolicyRevision, RunAs: record.RunAs}
 	if record.Action.Type == "message" {
 		s.WorkshopMode = "workshop"
@@ -120,11 +120,11 @@ func actionFromWorkflowSchedule(project projectactions.Project, caller string, s
 		return projectactions.Schedule{}, err
 	}
 	record := projectactions.Schedule{ID: s.ID, Name: s.Name, Project: project, Enabled: s.Enabled,
-		RunAs: caller, Input: raw, Action: projectactions.Action{Type: "run"},
+		RunAs: caller, Input: raw, Action: projectactions.Action{Type: "run", Tab: s.ChatID},
 		When: projectactions.When{Cron: s.CronExpression, Timezone: scheduleTimezoneOrDefault(s.Timezone)}}
 	if len(s.Messages) > 0 {
-		// Only a message schedule has a chat; a plan run always starts its own run.
-		record.Action = projectactions.Action{Type: "message", Tab: s.ChatKey, Conversation: s.Conversation}
+		// Message and saved-work actions both retain their destination chat.
+		record.Action = projectactions.Action{Type: "message", Tab: firstNonEmptyTrimmed(s.ChatID, s.ChatKey), Conversation: s.Conversation}
 	}
 	if s.RunAs != "" {
 		record.RunAs = s.RunAs
@@ -168,6 +168,9 @@ func loadWorkflowTimerActions(ctx context.Context, root string, manifest *Workfl
 	for _, record := range records {
 		if record.Project.ID != manifest.ID || record.Project.Kind != expectedKind {
 			return fmt.Errorf("schedule project does not match its Goal or Relay")
+		}
+		if manifest.crewExecutable != nil && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest)) {
+			return fmt.Errorf("schedule must run as its Crew owner")
 		}
 		owners := manifest.effectiveOwners()
 		if (len(owners) == 0 && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest))) ||

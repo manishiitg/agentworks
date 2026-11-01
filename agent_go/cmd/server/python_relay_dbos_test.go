@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -51,6 +52,10 @@ func testDBOSRelayServerRecovery(t *testing.T, native bool) {
 		t.Skip("set RELAY_DBOS_PYTHON for the real workspace recovery check")
 	}
 	docs := t.TempDir()
+	docs, canonicalErr := filepath.EvalSymlinks(docs)
+	if canonicalErr != nil {
+		t.Fatal(canonicalErr)
+	}
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("LOCAL_MODE", "true")
@@ -130,6 +135,23 @@ async def run(INPUT):
 	if err := WriteWorkflowManifest(ctx, draft, m); err != nil {
 		t.Fatal(err)
 	}
+	api := &StreamingAPI{}
+	if native {
+		registry := agentprofiles.NewRegistry()
+		registerWorkCrewProfile(t, registry)
+		api.projectActions = NewProjectActionDispatcher(api, registry)
+		created, e := api.projectActions.CreateCrewProject(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"}), CreateCrewRequest{UserID: "owner", WorkflowPath: draft, Title: "Program lab", IdempotencyKey: "program-chat", StepInstruction: "Record deterministic program outcomes", Purpose: "Record program runs in its chat"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		binding := crewExecutableBinding{ID: m.ID, CrewID: created.CrewID, CrewRoot: created.WorkspacePath, Root: draft, Kind: "relay"}
+		if e := registerCrewExecutable(binding); e != nil {
+			t.Fatal(e)
+		}
+		if e := WriteWorkflowManifest(ctx, draft, m); e != nil {
+			t.Fatal(e)
+		}
+	}
 	release, err := publishRelayRelease(ctx, draft)
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +162,7 @@ async def run(INPUT):
 		t.Fatal(err)
 	}
 	defer store.Close()
-	svc := NewSchedulerService(&StreamingAPI{})
+	svc := NewSchedulerService(api)
 	svc.stateStore = store
 	runID := "durable-server-run"
 	if err := store.BeginRun(ctx, schedulerstate.Run{RunID: runID, ScheduleID: "process", ScopeType: "workflow", ScopeID: published, LockKey: runID}); err != nil {
@@ -152,7 +174,64 @@ async def run(INPUT):
 	}
 	sctx := buildScheduleContext(published, m, m.Schedules[0])
 	sctx.WebhookInput = &WorkflowWebhookDelivery{RunID: runID, Variables: map[string]string{"INPUT": `{"value":"original"}`}, Payload: json.RawMessage(`{"function":"process","relay_caller":"owner"}`)}
-	if err := svc.executePythonRelay(ctx, sctx, runID, folder, "dbos-server-session"); err != nil {
+	if native {
+		if e := AppendScheduleRun(ctx, published, &ScheduleRunEntry{ID: runID, ScheduleID: "process", Status: "queued", StartedAt: time.Now()}); e != nil {
+			t.Fatal(e)
+		}
+		_, actualFolder, e := svc.executeJob(ctx, sctx, runID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		folder = actualFolder
+		target, e := svc.openCrewAutomationChat(ctx, sctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		again, e := svc.openCrewAutomationChat(ctx, sctx)
+		if e != nil || target.SessionID != again.SessionID {
+			t.Fatal("automation chat identity changed", e)
+		}
+		file, found, e := api.liveConversationPath("owner", target.SessionID, target.WorkspacePath)
+		if e != nil || !found {
+			t.Fatal("missing chat transcript", e)
+		}
+		saved, found, e := readFileFromWorkspace(ctx, file)
+		if e != nil || !found || !strings.Contains(saved, "durable-server-run:completed") || !strings.Contains(saved, "effects") {
+			t.Fatal("program result not in target chat", saved, e)
+		}
+		if e := svc.appendCrewAutomationMessage(ctx, sctx, target, runID, "completed", "repeat"); e != nil {
+			t.Fatal(e)
+		}
+		repeated, _, _ := readFileFromWorkspace(ctx, file)
+		if strings.Count(repeated, "durable-server-run:completed") != 1 {
+			t.Fatal("duplicate completion receipt")
+		}
+		// Selecting an existing side chat reuses that saved conversation. A deleted
+		// or foreign tab must not silently redirect the automation to Main.
+		profile, e := api.projectActions.registry.Resolve("work", 0, "owner")
+		if e != nil {
+			t.Fatal(e)
+		}
+		sideBinding, e := resolveProductConversationBinding(ctx, "owner", profile, sctx.CrewExecutable.CrewID+codeChatSideMarker+"reporting")
+		if e != nil {
+			t.Fatal(e)
+		}
+		side, e := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, sideBinding, "")
+		if e != nil {
+			t.Fatal(e)
+		}
+		sctx.Schedule.ChatID = "reporting"
+		selected, e := svc.openCrewAutomationChat(ctx, sctx)
+		if e != nil || selected.SessionID != side.SessionID || selected.SessionID == target.SessionID {
+			t.Fatal("wrong chat selected", e)
+		}
+		sctx.Schedule.ChatID = "missing"
+		if _, e := svc.openCrewAutomationChat(ctx, sctx); e == nil {
+			t.Fatal("missing chat fell back to main")
+		}
+		sctx.Schedule.ChatID = "main"
+
+	} else if err := svc.executePythonRelay(ctx, sctx, runID, folder, "dbos-server-session"); err != nil {
 		t.Fatal(err)
 	}
 	result, err := os.ReadFile(filepath.Join(docs, published, "runs", folder, "relay_result.json"))

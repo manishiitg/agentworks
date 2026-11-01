@@ -358,7 +358,8 @@ func runSummaryInstructionsOrDefault(c *WorkflowNotificationConfig) string {
 
 // WorkflowSchedule represents a clock or webhook trigger stored in the manifest.
 type WorkflowSchedule struct {
-	RunAs              string                 `json:"-"` // Server-bound caller from the common schedule record.
+	ChatID             string                 `json:"chat_id,omitempty"` // Crew-owned work always targets a saved chat; main is the default.
+	RunAs              string                 `json:"-"`                 // Server-bound caller from the common schedule record.
 	TeamAuthorizedBy   string                 `json:"team_authorized_by,omitempty"`
 	TeamPolicyRevision int                    `json:"team_policy_revision,omitempty"`
 	ID                 string                 `json:"id"`
@@ -847,6 +848,9 @@ func normalizeScheduleGroupNames(groupNames []string) []string {
 
 func validateScheduleGroupNamesForWorkspace(ctx context.Context, workspacePath string, groupNames []string) ([]string, error) {
 	normalized := normalizeScheduleGroupNames(groupNames)
+	if normalized != nil && len(normalized) == 0 {
+		return nil, fmt.Errorf("choose at least one input set, or omit the selection for automatic execution")
+	}
 
 	content, exists, err := readFileFromWorkspace(ctx, workspacePath+"/variables/variables.json")
 	if err != nil {
@@ -1299,6 +1303,9 @@ func manifestChangelogChange(path string, beforeOK, afterOK bool) step_based_wor
 
 // WriteWorkflowManifest validates and writes workflow.json to a workspace.
 func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *WorkflowManifest) error {
+	if err := prepareCrewExecutableSchedules(ctx, workspacePath, m); err != nil {
+		return err
+	}
 	// All team settings writers share the source-edit commit lock. A caller
 	// already holding it (team assignment/commit) passes trusted context.
 	if held, _ := ctx.Value(teamLockHeldKey{}).(string); held != workspacePath {
