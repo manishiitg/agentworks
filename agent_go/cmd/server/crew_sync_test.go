@@ -477,6 +477,8 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("history retry after removing symlink: %d %s", w.Code, w.Body.String())
 			}
 
+			checkCrewDependencySecretBoundary(t, api, ctx, owner, local, serverRoots)
+
 		})
 	}
 }

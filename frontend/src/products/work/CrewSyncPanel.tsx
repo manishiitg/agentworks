@@ -8,7 +8,8 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 
 type Binding = { mode?: 'continuous' | 'manual'; side: 'local' | 'server'; editing: 'local' | 'server'; connection_id?: string; peer_project_id: string; peer_server?: string; updated_at?: string; pending_action?: 'update' | 'server' | 'local' | 'download' }
-type Status = { project_id: string; binding: Binding | null; conversation_notice?: string; auto?: { state: string; message?: string; checked_at?: string } }
+type Readiness = { ready: boolean; message: string; items: { kind: string; name: string; state: string; message: string }[] }
+type Status = { runtime_readiness?: Readiness; project_id: string; binding: Binding | null; conversation_notice?: string; auto?: { state: string; message?: string; checked_at?: string } }
 
 export function CrewSyncPanel({ projectId }: { projectId: string }) {
   const connections = useConnectedWorkStore(state => state.connections)
@@ -62,15 +63,16 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
   }, [projectId, status?.binding?.peer_project_id])
   const binding = status?.binding
   return <section aria-label="Project sync" className="max-w-xl space-y-4 text-sm">
-    <p>Keep your project and its main conversation available on your Mac and server. With automatic sync, send a message where you want to work and the conversation continues there.</p>
+    <p>Keep your project, its selected Crew secrets and its main conversation available on your Mac and server. With automatic sync, send a message where you want to work and the conversation continues there.</p>
     {error && <div><p role="alert" className="text-destructive">{error}</p>{!status && <Button variant="link" onClick={() => setReload(value => value + 1)}>Try again</Button>}</div>}
     {!status && !error && <p role="status">Loading project sync…</p>}
     {binding && <div className="space-y-1 rounded-lg border border-border p-3">
       <p className="font-medium">Editing on {binding.editing === 'local' ? 'your Mac' : 'the server'}</p>
       {binding.updated_at && <p className="text-muted-foreground">Last synced {new Date(binding.updated_at).toLocaleString()}</p>}
       <p role="status">{status.auto?.state === 'syncing' ? 'Syncing…' : status.auto?.state === 'synced' ? 'Up to date' : status.auto?.message || 'Files sync automatically while AgentWorks is open on your Mac.'}</p>
-      <p className="text-muted-foreground">Muse keeps its native session when both computers have an available Muse account. Work saved after losing the connection may need syncing when you reconnect. Other chats stay on their computer.</p>
+      <p className="text-muted-foreground">Claude, Codex, Cursor and Muse can keep their native session when their account is available on both computers. Work saved after losing the connection may need syncing when you reconnect. Other chats stay on their computer.</p>
       {conversationNotice && <p role="status">{conversationNotice}</p>}
+      {status.runtime_readiness && <div className="space-y-1 border-t border-border pt-2"><p role="status">{status.runtime_readiness.message}</p>{status.runtime_readiness.items.filter(item => item.state !== 'ready').map(item => <p key={`${item.kind}:${item.name}`} className="text-muted-foreground">{item.message}</p>)}</div>}
     </div>}
     {local ? <>
       {!binding && <label className="block space-y-2"><span>Server</span><select aria-label="Sync server" value={connection} onChange={event => setConnection(event.target.value)} className="w-full rounded-md border border-border bg-background p-2">
@@ -90,7 +92,7 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
         {!binding?.pending_action && binding?.mode === 'manual' && binding?.editing === 'server' && <Button disabled={busy} onClick={() => void run('local')}>{busy ? 'Bringing changes back…' : 'Work on this Mac'}</Button>}
       </div>
       {binding?.peer_server && <a className="inline-block underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">Open server Crew</a>}
-      <p className="text-xs text-muted-foreground">Starts Only me. Each computer uses its own configured account. Logins and other private chats are not copied by sync. Current Git branch, history and staged changes travel with the files. Other branches and Git logins stay put.</p>
+      <p className="text-xs text-muted-foreground">Starts Only me. Each computer uses its configured AI account. Selected Crew-owned secrets are added securely to the server; existing server values are kept. Shared Vault connections must be available on the server. Browser logins and other private chats are not copied. Current Git branch, history and staged changes travel with the files. Other branches and Git logins stay put.</p>
     </> : <p className="text-muted-foreground">{binding ? 'Automatic sync keeps completed work available here. Send a message to continue on this server.' : 'Open a local project in the Mac app and choose this server to set up sync.'}</p>}
   </section>
 }

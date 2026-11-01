@@ -270,6 +270,17 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 		mirror := func() bool {
 			mirrorCtx, mirrorCancel := context.WithTimeout(ctx, 15*time.Minute)
 			defer mirrorCancel()
+			if b.Editing == "local" {
+				connection, e := desktopConnectionFor(claims.UserID, b.ConnectionID)
+				request, _ := http.NewRequestWithContext(context.WithValue(mirrorCtx, UserContextKey, claims), http.MethodPost, "http://localhost/", nil)
+				if e == nil {
+					_, e = api.prepareCrewDependencies(request, roots, b, connection, false)
+				}
+				if e != nil {
+					setCrewAutoStatus(id, "attention", "Crew connections could not be prepared. Open Project sync and retry.")
+					return false
+				}
+			}
 			if e := api.syncCrewNativeMirror(mirrorCtx, claims, roots, b); e != nil {
 				setCrewAutoStatus(id, "attention", e.Error())
 				return false

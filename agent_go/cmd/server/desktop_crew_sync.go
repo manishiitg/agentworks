@@ -85,7 +85,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 
 	fail := func(err error) { externalError(w, 409, "sync_unavailable", err.Error()) }
 	if input.Action == "status" {
-		out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)}
+		out := crewSyncReply{ProjectID: roots.ID, Binding: binding, RuntimeReadiness: readCrewDependencies(roots.ID), Auto: crewAutoStatus(roots.ID)}
 		if binding != nil {
 			remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "status"})
 			if e != nil {
@@ -101,6 +101,12 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if input.Action == "mode" && binding != nil {
+		if input.Mode == "continuous" {
+			if _, e := api.prepareCrewDependencies(r, roots, binding, connection, true); e != nil {
+				fail(e)
+				return
+			}
+		}
 		if _, err = call(binding.PeerProjectID, crewSyncRequest{Action: "mode", PairID: binding.PairID, Mode: input.Mode}); err != nil {
 			fail(err)
 			return
@@ -140,6 +146,12 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		binding = &crewroot.SyncBinding{SplitFiles: roots.SeparateFiles(), PairID: pair, Side: "local", Editing: "local", ConnectionID: connection.ID, PeerProjectID: remote.ProjectID, PeerServer: connection.Server}
 		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 			fail(err)
+			return
+		}
+	}
+	if input.Action == "update" || input.Action == "server" {
+		if _, e := api.prepareCrewDependencies(r, roots, binding, connection, allowPair); e != nil {
+			fail(e)
 			return
 		}
 	}
@@ -194,7 +206,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			if input.Action == "update" && !crewSnapshotChanged(snapshot) {
-				externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)})
+				externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, RuntimeReadiness: readCrewDependencies(roots.ID), Auto: crewAutoStatus(roots.ID)})
 				return
 			}
 			next := "local"
@@ -346,7 +358,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	if p, e := crewSyncManifestPath(roots.ID); e == nil {
 		_ = os.Remove(p + ".pending")
 	}
-	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID), ConversationNotice: conversationNotice})
+	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, RuntimeReadiness: readCrewDependencies(roots.ID), Auto: crewAutoStatus(roots.ID), ConversationNotice: conversationNotice})
 }
 
 func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktopConnection, project string, request crewSyncRequest) (crewSyncReply, error) {
