@@ -462,11 +462,14 @@ func restoredRuntimeCodingAgentTransport(runtime *ChatHistoryAgentRuntime) strin
 	if provider == "" {
 		return ""
 	}
-	// A native import keeps its validated runtime, even when the deployment's
-	// default differs. The destination checked availability before persisting it.
-	if runtime.NativeHandoff && runtime.AgentSessionHandle != nil {
-		if transport := strings.TrimSpace(runtime.AgentSessionHandle.Provider.Transport); transport != "" {
-			return transport
+	// Cursor's two imported stores have different native formats. Keep their
+	// compatible runtime after subsequent turns too; other journals use defaults.
+	if provider == "cursor-cli" && runtime.AgentSessionHandle != nil {
+		switch runtime.AgentSessionHandle.Provider.NativeFormat {
+		case "cursor-sdk-sqlite":
+			return "sdk"
+		case "cursor-cli-sqlite":
+			return "tmux"
 		}
 	}
 	contract, ok := llmproviders.GetCodingAgentProviderContract(llmproviders.Provider(provider), modelID)
