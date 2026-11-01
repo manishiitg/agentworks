@@ -14,6 +14,8 @@ import {
   DollarSign,
   KeyRound,
   MessageSquare,
+  Plus,
+  Server,
   Loader2,
   RefreshCw,
   Terminal,
@@ -21,6 +23,8 @@ import {
   X,
 } from 'lucide-react'
 import ModalPortal from '../ui/ModalPortal'
+import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { openConnectedServers } from '../workspace/ConnectedServersMenuItem'
 import {
   llmConfigService,
   type ProviderManifestEntry,
@@ -145,6 +149,9 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const canReview = useCanReviewCode()
+  // On the Mac app: the servers it is connected to, managed here next to the AI accounts they lend.
+  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
+  const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
   useEffect(() => { if (!canReview) setView('provider') }, [canReview])
   const canRunGuidedSetup = !isMultiUserMode || isAdmin
 
@@ -338,6 +345,23 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   <span className="mt-0.5 block text-[11px] leading-4 text-violet-700/80 dark:text-violet-300/80">OpenRouter, NVIDIA NIM, Groq, Google AI Studio… many free models.</span>
                 </button>
               )}
+              {onThisMac && <>
+                <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Servers</div>
+                {servers.map(server => (
+                  <button type="button" key={server.id} onClick={() => openConnectedServers('', server.id)}
+                    className="mt-1.5 w-full rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70">
+                    <div className="flex min-h-6 items-center gap-2">
+                      <Server aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{server.name}</span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                    </div>
+                  </button>
+                ))}
+                <button type="button" onClick={() => openConnectedServers()}
+                  className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2.5 py-2 text-left text-sm text-gray-600 hover:bg-white dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/70">
+                  <span className="flex items-center gap-2"><Plus aria-hidden="true" className="h-4 w-4" />{servers.length ? 'Manage servers' : 'Connect a server'}</span>
+                </button>
+              </>}
               {canReview && <>
                 <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Review</div>
                 {([{ id: 'costs', label: 'Costs', icon: DollarSign }, { id: 'chats', label: 'Conversations', icon: MessageSquare }] as const).map(item => (

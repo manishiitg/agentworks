@@ -8,11 +8,14 @@ import { isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 import ModalPortal from '../ui/ModalPortal'
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 
 export function openConnectedServers(server = '', connectionId?: string) {
   window.dispatchEvent(new CustomEvent('open-connected-servers', { detail: { server, connectionId } }))
 }
 
+// The menu row opens AI models & accounts, where the servers are listed next to the AI accounts they lend; the
+// connection dialog itself stays here and opens from there.
 export function ConnectedServersMenuItem() {
   return hasDesktopConnections() ? <ConnectedServersControl /> : null
 }
@@ -86,7 +89,7 @@ function ConnectedServersControl() {
   useEffect(() => { if (adding) void refresh() }, [adding, refresh])
   return <>
     <button type="button" role="menuitem" data-product-navigation-action aria-label="Connected servers"
-      onClick={() => { setSelectedConnection(null); setEditingIcon(null); setError(''); setShowConnectForm(false); setAdding(true) }}>
+      onClick={() => openWorkspaceSettings('providers')}>
       <Server className="h-4 w-4" /><span>Connected servers</span>
     </button>
     <ModalPortal><dialog ref={dialog} aria-labelledby="connect-server-title" aria-describedby="connect-server-description"
