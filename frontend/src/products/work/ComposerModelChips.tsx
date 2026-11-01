@@ -32,13 +32,14 @@ export function ChoiceItems({ title, choices, value, onPick }: { title?: string;
   </>
 }
 
-export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean }) {
+export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean }) {
+  const width = columns ? ' w-[min(560px,calc(100vw-24px))] max-h-[min(480px,var(--radix-dropdown-menu-content-available-height))]' : wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
     <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={chipClass}>
       <span className="min-w-0 truncate">{label}</span>
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
-    <Menu.Portal><Menu.Content side="top" align="start" sideOffset={8} collisionPadding={12} className={wide ? `${contentClass} w-[min(340px,calc(100vw-24px))]` : contentClass}>{children}</Menu.Content></Menu.Portal>
+    <Menu.Portal><Menu.Content side="top" align="start" sideOffset={8} collisionPadding={12} className={`${contentClass}${width}`}>{children}</Menu.Content></Menu.Portal>
   </Menu.Root>
 }
 
@@ -142,7 +143,9 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
 
   if (groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallback}</>
   const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
-  return <Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen}>
+  // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
+  return <Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen} columns={Boolean(sessionId)}>
+    <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
     <Menu.Sub>
       {subRow('Model', modelLabel)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={subContentClass}>
@@ -169,8 +172,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} />
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
-    {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
-    {sessionId && <ChatContextItems sessionId={sessionId} modelLabel={label} />}
     {companyServer
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
@@ -179,5 +180,9 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models</Menu.Item>
     <Menu.Item className={rowClass} onSelect={() => openWorkspaceSettings('providers')}><Cpu className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />AI models &amp; accounts</Menu.Item>
+    </div>
+    {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
+    {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} /></div>}
+    </div>
   </Chip>
 }
