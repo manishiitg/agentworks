@@ -66,7 +66,7 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, prov
 	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base, runtimeDir...)
 	policy.Mode = llmtypes.CLISecurityModeIsolated
 	policy.LandlockRunner = runner
-	policy.PrivateHome = filepath.Join(cliArtifactRoot(workingDir, runtimeDir...), security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+	policy.PrivateHome = cliPrivateHome(provider, workingDir, runtimeDir...)
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Landlock policy could not be attached (%v)", err))
 		return
@@ -82,6 +82,24 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, prov
 	log.Printf("[CLI_LANDLOCK] session %s: %s confined (reads %d, writes %d, private home under %s) person=%s home=%s", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), workingDir, personID, policy.PrivateHome)
 	// The paths themselves (folders, never file contents): the counts alone could not show what a chat can reach.
 	log.Printf("[CLI_LANDLOCK] session %s: reads=%v writes=%v blocked=%v blocked_writes=%v", sessionID, policy.WorkspaceReadPaths, policy.WorkspaceWritePaths, policy.BlockedPaths, policy.BlockedWritePaths)
+}
+
+// Keep native storage routing and actual launch on the same private home.
+func cliPrivateHome(provider, workingDir string, runtimeDir ...string) string {
+	return filepath.Join(cliArtifactRoot(workingDir, runtimeDir...), security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+}
+func cliNativeHomeEnvironment(provider, runtimeDir string) map[string]string {
+	decision, runner, _ := decideCLIConfinement(provider, runtimeDir)
+	policy := llmtypes.CLISecurityPolicy{Provider: provider, Mode: llmtypes.CLISecurityModeIsolated, PrivateHome: cliPrivateHome(provider, runtimeDir)}
+	switch decision {
+	case cliRunSeatbelt:
+		policy.Seatbelt = true
+	case cliRunConfined:
+		policy.LandlockRunner = runner
+	default:
+		return nil
+	}
+	return llmtypes.SandboxHomeEnvironment(&llmtypes.CallOptions{CLISecurity: &policy})
 }
 
 type cliRunDecision string
@@ -135,7 +153,7 @@ func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 	if len(runtimeDir) > 0 && runtimeDir[0] != "" {
 		policy.ProtectedRoots = append(policy.ProtectedRoots, workingDir)
 	}
-	policy.PrivateHome = filepath.Join(cliArtifactRoot(workingDir, runtimeDir...), security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+	policy.PrivateHome = cliPrivateHome(provider, workingDir, runtimeDir...)
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Seatbelt policy could not be attached (%v)", err))
 		return
