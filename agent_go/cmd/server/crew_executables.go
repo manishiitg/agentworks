@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -40,15 +41,17 @@ func crewExecutablesPath() (string, error) {
 	return filepath.Join(root, "ownership", "crew-executables"), nil
 }
 
-func crewExecutableKey(raw string) string {
+func crewExecutableWorkspace(raw string) string {
 	clean := filepath.ToSlash(filepath.Clean(strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/")))
 	if docs := strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH")); docs != "" && filepath.IsAbs(clean) {
 		if rel, err := filepath.Rel(docs, clean); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
 			clean = filepath.ToSlash(rel)
 		}
 	}
-	return workflowOwnerKey(path.Clean(strings.Trim(clean, "/")))
+	return path.Clean(strings.Trim(clean, "/"))
 }
+
+func crewExecutableKey(raw string) string { return workflowOwnerKey(crewExecutableWorkspace(raw)) }
 
 func crewExecutableFile(root string) (string, error) {
 	dir, err := crewExecutablesPath()
@@ -94,7 +97,15 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 }
 
 func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
-	root := crewExecutableKey(rawRoot)
+	workspace := crewExecutableWorkspace(rawRoot)
+	if strings.HasPrefix(workspace, "Workflow/.relay_releases/") {
+		draft, err := relayDraftWorkspaceForRelease(context.Background(), workspace)
+		if err != nil {
+			return nil, err
+		}
+		workspace = draft
+	}
+	root := crewExecutableKey(workspace)
 	if root == "" {
 		return nil, nil
 	}
