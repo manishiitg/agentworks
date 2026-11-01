@@ -234,7 +234,8 @@ func (es *EventStore) DeleteDurableChatSessions(sessionIDs []string) error {
 }
 
 // ImportDurableChatEvents seeds the canonical journal without publishing old
-// events to live subscribers. It is used only by the one-time JSON migration.
+// events to live subscribers. Callers register the destination's owner and
+// persistence class before importing a conversation archive.
 func (es *EventStore) ImportDurableChatEvents(sessionID string, imported []Event) error {
 	if es == nil || strings.TrimSpace(sessionID) == "" {
 		return nil

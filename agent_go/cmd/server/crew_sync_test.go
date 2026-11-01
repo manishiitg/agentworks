@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -55,14 +56,21 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			t.Setenv("WORKSPACE_API_URL", workspace.URL)
 			registry := agentprofiles.NewRegistry()
 			registerWorkCrewProfile(t, registry)
-			api := &StreamingAPI{agentProfiles: registry, activeSessions: map[string]*ActiveSessionInfo{}}
+			journal, err := events.OpenSQLiteEventJournal(filepath.Join(base, "events.sqlite"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			eventStore := events.NewEventStore(10)
+			t.Cleanup(eventStore.Stop)
+			eventStore.SetDurableJournal(journal)
+			api := &StreamingAPI{agentProfiles: registry, activeSessions: map[string]*ActiveSessionInfo{}, eventStore: eventStore, runtimeCoordinator: NewRuntimeCoordinator()}
 			owner := &UserClaims{UserID: "owner", Username: "owner"}
 			ctx := context.WithValue(t.Context(), UserContextKey, owner)
 			options := crewCreationOptions{}
 			if split {
 				options.LocalRoot = project
 			}
-			_, err := writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Example", "", "", "local-id", "Crew/local", nil, options)
+			_, err = writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Example", "", "", "local-id", "Crew/local", nil, options)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -221,6 +229,25 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				}
 			}
 			writeHistory(main, "Remember the project marker: blue lantern")
+			// PLAT-856-442: imported JSON alone returned 404 to the actual chat
+			// screen. The same events endpoint must show it only to its owner.
+			checkTranscript := func(record ProductConversationRecord, marker string) {
+				t.Helper()
+				for _, person := range []string{"owner", "other"} {
+					r := httptest.NewRequest("GET", "/api/sessions/"+record.SessionID+"/events?durable_chat=1&limit=40&view=compact&workspace_path="+record.WorkspacePath, nil)
+					r = mux.SetURLVars(r, map[string]string{"session_id": record.SessionID})
+					r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: person}))
+					w := httptest.NewRecorder()
+					api.handleGetSessionEvents(w, r)
+					if person == "other" {
+						if w.Code != 404 {
+							t.Fatalf("imported transcript exposed: %d %s", w.Code, w.Body.String())
+						}
+					} else if w.Code != 200 || !strings.Contains(w.Body.String(), marker) || strings.Contains(w.Body.String(), "do-not-transfer") {
+						t.Fatalf("imported transcript missing or contains source runtime: %d %s", w.Code, w.Body.String())
+					}
+				}
+			}
 			loseResponse = true
 			if w := call("server", "owner", true); w.Code != 409 {
 				t.Fatal("lost response not reported")
@@ -233,6 +260,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if err != nil || serverChat.ConversationID != main.ConversationID || serverChat.SessionID == main.SessionID {
 				t.Fatalf("handoff identity: %+v %v", serverChat, err)
 			}
+			checkTranscript(serverChat, "blue lantern")
 			target, found, err := resolveProductResumeTarget("owner", serverChat)
 			if err != nil || !found || target.Runtime != nil || len(target.History) == 0 {
 				t.Fatalf("archive continuation missing: %+v %v", target, err)
@@ -271,6 +299,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if err != nil || returned.ConversationID != main.ConversationID || returned.SessionID == main.SessionID || returned.SessionID == serverChat.SessionID {
 				t.Fatalf("return identity: %+v %v", returned, err)
 			}
+			checkTranscript(returned, "server continued")
 			saved, err = ReadChatHistoryConversation("owner", returned.SessionID, returned.WorkspacePath)
 			if err != nil || !bytes.Contains(saved, []byte("server continued")) || bytes.Contains(saved, []byte("do-not-transfer")) {
 				t.Fatalf("return lost conversation or copied runtime: %v", err)

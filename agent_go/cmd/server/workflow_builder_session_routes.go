@@ -771,6 +771,12 @@ func parseBuilderConversationUpdatedAt(value string) time.Time {
 }
 
 func builderConversationToRawEvents(log builderConversationLog) []json.RawMessage {
+	return builderConversationToRawEventsLimit(log, restoredBuilderConversationMessageLimit)
+}
+
+// A zero limit projects the complete archive for a durable import; ordinary
+// builder restores retain their bounded initial window.
+func builderConversationToRawEventsLimit(log builderConversationLog, limit int) []json.RawMessage {
 	sessionID := coalesceString(log.SessionID, fmt.Sprintf("builder-history-%d", time.Now().UnixNano()))
 	timestamp := parseBuilderConversationUpdatedAt(log.UpdatedAt)
 	if timestamp.IsZero() {
@@ -799,8 +805,8 @@ func builderConversationToRawEvents(log builderConversationLog) []json.RawMessag
 			text:          text,
 		})
 	}
-	if len(displayMessages) > restoredBuilderConversationMessageLimit {
-		displayMessages = displayMessages[len(displayMessages)-restoredBuilderConversationMessageLimit:]
+	if limit > 0 && len(displayMessages) > limit {
+		displayMessages = displayMessages[len(displayMessages)-limit:]
 	}
 
 	rawEvents := []json.RawMessage{}
