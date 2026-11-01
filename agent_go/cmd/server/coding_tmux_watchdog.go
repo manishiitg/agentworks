@@ -151,6 +151,12 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 			// A transient tmux command failure is not evidence of completion.
 			continue
 		}
+		// A Claude terminal running the AgentWorks mod reports a usage limit as
+		// the turn's own error; its screen is not read for one.
+		if claudecode.ClaudeModRunsIn(tmux) {
+			delete(streak, watchdogKey)
+			continue
+		}
 		captured := captureTmuxPanePlainForWatchdog(tmux)
 		evidence := codingWatchdogRateLimitEvidence(captured)
 		if evidence == "" {
