@@ -13,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
@@ -60,8 +62,32 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 	add := func(session, user, origin string) {
 		t.Helper()
 		api.activeSessions[session] = &ActiveSessionInfo{SessionID: session, WorkspacePath: "Workflow/example", UserID: user, TriggeredBy: origin}
-		step(session, "step-"+session, "conversation-turn-root", "workflow_step")
-		api.emitBackgroundAgentCompleted(session, "step-"+session, "Research", "completed", "PRIVATE RESULT", "", "1s")
+		if origin == "schedule" {
+			// PLAT-746-265: whole runs need the same durable recorder as
+			// workshop turns, without a second chat notification per step.
+			notifier := &workshopExecutionBgNotifier{api: api, sessionID: session, workspacePath: "Workflow/example", userID: user, suppressAutoNotification: true}
+			notifier.OnExecutionStart(stepworkflow.WorkshopExecutionStart{ID: "step-" + session, Name: "Research", Kind: "workflow_step", ParentExecutionID: "conversation-turn-root", Metadata: map[string]string{"step_id": "research", "run_folder": "iteration-0"}})
+			notifier.OnExecutionComplete("step-"+session, "Research", "PRIVATE RESULT", nil, nil)
+			select {
+			case message := <-api.bgAgentRegistry.GetNotificationChannel(session):
+				t.Fatalf("whole-run step queued another chat notification: %s", message)
+			default:
+			}
+		} else {
+			step(session, "step-"+session, "conversation-turn-root", "workflow_step")
+			api.emitBackgroundAgentCompleted(session, "step-"+session, "Research", "completed", "PRIVATE RESULT", "", "1s")
+		}
+		if origin == "schedule" {
+			// Script-only direct runs save a real parent request through the
+			// normal writer; the reader below clears all in-memory sessions.
+			parentPath := stableBuilderConversationLogPath(context.Background(), "Workflow/example", user, session)
+			api.persistChatConversationToPathWithTerminalSession(session, "", "workflow", user,
+				[]llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Run the saved work"}}}},
+				&ChatHistoryAgentRuntime{Kind: "workflow", WorkspacePath: "Workflow/example", WorkshopMode: "run"}, nil,
+				parentPath)
+			materializeWorkspaceFixtureFile(t, workspace, docs, parentPath)
+			return
+		}
 		directory := filepath.Join(docs, "Workflow/example/builder/conversation/2026-10-18")
 		if err := os.MkdirAll(directory, 0755); err != nil {
 			t.Fatal(err)

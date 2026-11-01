@@ -60,6 +60,18 @@ func goalScheduleChats(ctx context.Context, owner, presetID, workspace string) (
 // run_destination and chat_id a Crew schedule takes, plus "new". Nothing sent
 // leaves it unchanged. chat_id "" or "main" is the owner's main Builder chat.
 func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifest, workspace string, sched *WorkflowSchedule, destination string, chatID *string) error {
+	if manifest != nil && manifest.crewExecutable != nil {
+		if destination != "" && destination != runDestinationChat {
+			return fmt.Errorf("Crew automations always target a saved chat")
+		}
+		if chatID != nil {
+			sched.ChatID = strings.TrimSpace(*chatID)
+		}
+		if sched.ChatID == "" {
+			sched.ChatID = "main"
+		}
+		return validateExecutableSchedule(ctx, buildScheduleContext(workspace, manifest, *sched))
+	}
 	destination = strings.ToLower(strings.TrimSpace(destination))
 	if destination == "" && chatID == nil {
 		return nil
@@ -69,7 +81,7 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 	}
 	switch destination {
 	case runDestinationNew:
-		sched.ChatKey, sched.Conversation = "", ""
+		sched.ChatKey, sched.ChatID, sched.Conversation = "", "", ""
 		return nil
 	case runDestinationChat, runDestinationIsolated:
 	default:
@@ -79,7 +91,7 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 		return fmt.Errorf("only a schedule that sends messages can run in a chat; a plan run always starts a new run")
 	}
 	if destination == runDestinationIsolated {
-		sched.ChatKey, sched.Conversation = "", runDestinationIsolated
+		sched.ChatKey, sched.ChatID, sched.Conversation = "", "", runDestinationIsolated
 		return nil
 	}
 	owner := goalScheduleOwner(manifest, *sched)
@@ -89,7 +101,8 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 	}
 	if id == "" || id == "main" {
 		// The main chat is created on first use of the Builder; until then the schedule runs in a new conversation.
-		sched.ChatKey, sched.Conversation = crewOwnerDefaultChatKey(manifest.ID, owner), ""
+		sched.ChatKey = crewOwnerDefaultChatKey(manifest.ID, owner)
+		sched.ChatID, sched.Conversation = sched.ChatKey, ""
 		return nil
 	}
 	chats, err := goalScheduleChats(ctx, owner, manifest.ID, workspace)
@@ -98,7 +111,7 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 	}
 	for _, chat := range chats {
 		if chat.Key == manifest.ID+codeChatSideMarker+id {
-			sched.ChatKey, sched.Conversation = chat.Key, ""
+			sched.ChatKey, sched.ChatID, sched.Conversation = chat.Key, chat.Key, ""
 			return nil
 		}
 	}
@@ -108,6 +121,11 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 // goalScheduleDestinationView is what the Schedules screen and MCP show for a
 // Goal message schedule; nothing for other schedules.
 func goalScheduleDestinationView(manifest *WorkflowManifest, workspace string, sched WorkflowSchedule) (destination, chatKey, chatID string, choices []ScheduleRunDestination) {
+	if manifest != nil && manifest.crewExecutable != nil {
+		chatID = firstNonEmptyTrimmed(sched.ChatID, "main")
+		choices = crewExecutableChatChoices(manifest)
+		return runDestinationChat, "", chatID, choices
+	}
 	if manifest == nil || len(sched.Messages) == 0 || sched.ScheduleType == "webhook" || manifest.Kind == "relay" {
 		return "", "", "", nil
 	}

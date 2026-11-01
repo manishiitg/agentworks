@@ -1064,7 +1064,7 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 		}
 	}
 	for _, denied := range []string{
-		"attach_workflow_reference", "detach_workflow_reference",
+		"crew_workflow_files", "attach_workflow_reference", "detach_workflow_reference",
 		"create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule",
 		"create_project_trigger", "update_project_trigger", "delete_project_trigger",
 		"update_project_mcp_server_selection", "update_project_global_secret_selection", "update_project_skill_selection",

@@ -3130,6 +3130,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// directly; HTML pages read durable data through window.report.
 
 	apiRouter.HandleFunc("/workflow/publish/secret", requireWorkflowWriteAccess(api.handleGetWorkflowPublishSecret)).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/crew-executables", api.handleCrewExecutables).Methods("GET", "POST")
 	// Manifest-backed workflow API routes (file-backed workflow definitions)
 	apiRouter.HandleFunc("/workflows/manifests", api.handleListWorkflowManifests).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/knowledgebase-sources", api.handleWorkflowKnowledgebaseSources).Methods("GET", "OPTIONS")
@@ -5092,6 +5093,42 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Track HTTP session ID on the orchestrator so MCP sessions can be closed on stop
 		workflowOrchestrator.SetHTTPSessionID(sessionID)
+
+		// PLAT-746-265: whole runs bypass the workshop chat that normally
+		// registers each step's durable inspection owner. Reuse its recorder
+		// for Crew children; the run itself owns the saved-chat notification.
+		if child, bindingErr := findCrewExecutable(manifestWorkspacePath); bindingErr == nil && child != nil {
+			// A preset-only request has no selected_folder at initial session
+			// tracking. Durable logs/transcripts resolve their root from the
+			// session, so bind the server-resolved child before any step starts.
+			api.activeSessionsMux.Lock()
+			mismatchedWorkspace := false
+			if session := api.activeSessions[sessionID]; session != nil {
+				mismatchedWorkspace = session.WorkspacePath != "" && crewExecutableWorkspace(session.WorkspacePath) != crewExecutableWorkspace(manifestWorkspacePath)
+				if !mismatchedWorkspace {
+					session.WorkspacePath = manifestWorkspacePath
+				}
+			}
+			api.activeSessionsMux.Unlock()
+			if mismatchedWorkspace {
+				log.Printf("[CREW_EXECUTABLE] refused mismatched session workspace session=%s target=%s", sessionID, manifestWorkspacePath)
+				http.Error(w, "Open this workflow's own chat to run it.", http.StatusConflict)
+				return
+			}
+			// A script-only run has no model chat to persist its parent identity.
+			// Save the actual request through the normal conversation store so
+			// existing inspection ownership checks also work after restart.
+			api.persistChatConversationToPathWithTerminalSession(sessionID, "", "workflow", currentUserID,
+				[]llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: req.Query}}}},
+				&ChatHistoryAgentRuntime{Kind: "workflow", WorkspacePath: manifestWorkspacePath, WorkshopMode: "run"}, nil,
+				stableBuilderConversationLogPath(r.Context(), manifestWorkspacePath, currentUserID, sessionID))
+			workflowOrchestrator.SetWorkshopExecutionNotifier(&workshopExecutionBgNotifier{
+				api: api, sessionID: sessionID, workspacePath: manifestWorkspacePath,
+				presetQueryID: req.PresetQueryID, userID: currentUserID,
+				suppressAutoNotification: true,
+			})
+			log.Printf("[CREW_EXECUTABLE] inspection recording enabled workspace=%s session=%s", manifestWorkspacePath, sessionID)
+		}
 
 		// A server-owned run (scheduled, webhook, Slack: "schedule-…") registered its tools only in the global table, so a
 		// scripted step calling a tool through its bridge session (a registered child of this run) got whichever session
@@ -12555,7 +12592,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 ) (*todo_creation_human.WorkshopConfig, error) {
 	// Extract enabled group names from execution options (toolbar selection)
 	var enabledGroupNames []string
-	if req.ExecutionOptions != nil && len(req.ExecutionOptions.EnabledGroupNames) > 0 {
+	if req.ExecutionOptions != nil {
 		enabledGroupNames = req.ExecutionOptions.EnabledGroupNames
 	}
 

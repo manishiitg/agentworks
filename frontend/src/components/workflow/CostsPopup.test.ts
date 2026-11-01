@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest'
+// @vitest-environment happy-dom
+import { describe, expect, it, vi } from 'vitest'
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
+import { agentApi } from '../../services/api'
+import { useCostsData, type CostsData } from './costs/useCostsData'
 
 import type { ModelTokenUsage, TokenUsageFile } from '../../services/api-types'
 import {
@@ -116,4 +121,30 @@ describe('buildDailyStepCostsByDate', () => {
     expect(rows.find(row => row.stepID === 'unattributed-execution')?.totalCost).toBeCloseTo(0.75)
     expect(rows.reduce((sum, row) => sum + row.totalCost, 0)).toBeCloseTo(2)
   })
+})
+
+
+// PLAT-746-265: choosing one run must never label workspace totals as its cost.
+it('scopes embedded costs to the selected run and never substitutes another run', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  const costs = vi.spyOn(agentApi, 'getCosts').mockResolvedValue({
+    runs: [{ run_folder: 'selected', token_usage: tokenFile(1) }, { run_folder: 'unrelated', token_usage: tokenFile(99) }],
+    scoped_costs: { total: { total_cost_usd: 500 } },
+  } as Awaited<ReturnType<typeof agentApi.getCosts>>)
+  const logs = vi.spyOn(agentApi, 'getExecutionLogs').mockResolvedValue({ steps: {} } as Awaited<ReturnType<typeof agentApi.getExecutionLogs>>)
+  let data: CostsData | undefined
+  function Probe({ folder }: { folder: string }) {
+    data = useCostsData({ workspacePath: 'Workflow/child', selectedRunFolder: folder, runOnly: true })
+    return null
+  }
+  const root = createRoot(document.createElement('div'))
+  try {
+    await act(async () => root.render(createElement(Probe, { folder: 'selected' })))
+    expect(data!.runCosts.map(run => run.runFolder)).toEqual(['selected'])
+    expect(data!.aggregateSummary?.totalCost).toBeCloseTo(1)
+    expect(data!.scopedCosts).toBeNull()
+    await act(async () => root.render(createElement(Probe, { folder: 'missing' })))
+    expect(data!.runCosts).toEqual([])
+    expect(data!.overallSummary).toBeNull()
+  } finally { await act(async () => root.unmount()); costs.mockRestore(); logs.mockRestore() }
 })

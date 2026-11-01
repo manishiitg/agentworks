@@ -102,14 +102,14 @@ func TestScriptFullRunOwnsOneLifecycleBeforeDispatch(t *testing.T) {
 	notifier := &recordingExecutionNotifier{}
 	registry := NewWorkshopStepRegistry()
 	controller := &StepBasedWorkflowOrchestrator{httpSessionID: "chat", workshopExecutionNotifier: notifier, workshopStepRegistry: registry}
-	root := virtualtools.WithBackgroundAgentID(context.Background(), "workflow-full-example")
+	root := virtualtools.WithBackgroundAgentID(context.Background(), "query-example")
 	step := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "script", Title: "Script"}}
 	ctx, finish := controller.beginScriptInspection(root, step)
-	if len(notifier.starts) != 1 || notifier.starts[0].ParentExecutionID != "workflow-full-example" {
+	if len(notifier.starts) != 1 || notifier.starts[0].ParentExecutionID != "query-example" {
 		t.Fatal("script was not registered under its full run")
 	}
 	owner := currentWorkshopParentExecutionID(ctx)
-	if ctx.Value(scriptInspectionOwnerKey{}) != owner || owner == "workflow-full-example" {
+	if ctx.Value(scriptInspectionOwnerKey{}) != owner || owner == "query-example" {
 		t.Fatal("script scope did not bind the registered step")
 	}
 	again, secondFinish := controller.beginScriptInspection(ctx, step)

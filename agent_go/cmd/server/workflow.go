@@ -518,10 +518,11 @@ func readProgressForFolder(ctx context.Context, stepsFilePath string) (*StepProg
 	return &progress, nil
 }
 
-// isHiddenRunSubfolder reports a dot-prefixed folder inside a run folder (.sandbox-cache, .tmp, .relay_dbos, .relay_ipc): the
-// run's own working files, never a run group. A step that writes more of the run folder must not turn the run into its subfolders.
-func isHiddenRunSubfolder(name string) bool {
-	return strings.HasPrefix(name[strings.LastIndex(name, "/")+1:], ".")
+// A run's payload and private working folders are never input sets. In an
+// ungrouped run execution/ and logs/ sit directly below the iteration root.
+func isRunInternalSubfolder(name string) bool {
+	base := name[strings.LastIndex(name, "/")+1:]
+	return strings.HasPrefix(base, ".") || base == "execution" || base == "logs"
 }
 
 // extractIterationFoldersFromTypedChildren extracts iteration folder names from typed WorkspaceFolderItem array
@@ -584,7 +585,7 @@ func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceF
 								}
 								// Check if this is a group subfolder (nested under iteration-X)
 								// Accepts both "group-X" format (backward compatibility) and display names (e.g., "production", "staging")
-								if groupName != "" && !isHiddenRunSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
+								if groupName != "" && !isRunInternalSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
 									// Any nested folder under iteration-X is considered a group folder
 									hasGroups = true
 									groupFolders = append(groupFolders, groupName)
@@ -696,7 +697,7 @@ func extractIterationFoldersFromChildren(children []interface{}, existingFolders
 										}
 										// Check if this is a group subfolder (nested under iteration-X)
 										// Accepts both "group-X" format (backward compatibility) and display names (e.g., "production", "staging")
-										if groupName != "" && !isHiddenRunSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
+										if groupName != "" && !isRunInternalSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
 											// Any nested folder under iteration-X is considered a group folder
 											hasGroups = true
 											groupFolders = append(groupFolders, groupName)
@@ -824,7 +825,7 @@ type ExecutionOptions struct {
 	PlanChangeAction  string `json:"plan_change_action,omitempty"`  // "keep_old_progress" or "delete_old_progress"
 
 	// Variable group execution options (for batch execution with multiple groups)
-	EnabledGroupNames []string `json:"enabled_group_names,omitempty"` // Group names to execute (if empty, uses groups' enabled flags)
+	EnabledGroupNames []string `json:"enabled_group_names"` // nil uses configured enabled sets; an explicit empty slice selects no work
 
 	// Logging options
 	SaveValidationResponses bool `json:"save_validation_responses,omitempty"` // If true, save validation responses and execution logs to workspace (default: true)
@@ -1289,7 +1290,7 @@ type Variable struct {
 // VariablesManifest represents the variables.json structure
 type VariablesManifest struct {
 	Variables      []Variable      `json:"variables"`
-	Groups         []VariableGroup `json:"groups,omitempty"`
+	Groups         []VariableGroup `json:"groups"`
 	ExtractionDate string          `json:"extraction_date"`
 }
 
@@ -1452,6 +1453,12 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 	if err := json.NewDecoder(r.Body).Decode(&manifest); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
+	}
+	for _, group := range manifest.Groups {
+		if err := todo_creation_human.ValidateInputSetName(group.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	workflow, found, err := ReadWorkflowManifest(r.Context(), workspacePath)
@@ -2004,6 +2011,7 @@ type PlanStepUpdate struct {
 	NextStepID *string `json:"next_step_id,omitempty"`
 
 	// Agent step fields
+	CrewAgent        *string                                       `json:"crew_agent,omitempty"`
 	PredefinedRoutes *[]todo_creation_human.PlanOrchestrationRoute `json:"predefined_routes,omitempty"`
 	Items            *[]todo_creation_human.AgentItem              `json:"items,omitempty"`
 	ValidationSchema *todo_creation_human.ValidationSchema         `json:"validation_schema,omitempty"`
@@ -2360,6 +2368,11 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 
 	step, path := findStepInPlan(plan, stepID)
 	if step == nil {
+		// Saved specialists live in orphan_steps and are referenced by routes.
+		// Reuse the same updater against that slice rather than a second editor.
+		if len(plan.OrphanSteps) > 0 {
+			return updateStepInPlan(&todo_creation_human.PlanningResponse{Steps: plan.OrphanSteps}, stepID, updates)
+		}
 		return fmt.Errorf("step with ID %q not found", stepID)
 	}
 
@@ -2373,6 +2386,9 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 
 	case *todo_creation_human.AgentPlanStep:
 		updated := *s // Copy the step
+		if updates.CrewAgent != nil {
+			updated.CrewAgent = strings.TrimSpace(*updates.CrewAgent)
+		}
 		if updates.Title != nil {
 			updated.Title = *updates.Title
 		}
@@ -2553,6 +2569,9 @@ func (api *StreamingAPI) handleUpdatePlanStep(w http.ResponseWriter, r *http.Req
 
 	// Find updated step to return
 	updatedStep, _ := findStepInPlan(plan, req.StepID)
+	if updatedStep == nil {
+		updatedStep, _ = findStepInPlan(&todo_creation_human.PlanningResponse{Steps: plan.OrphanSteps}, req.StepID)
+	}
 	if updatedStep == nil {
 		http.Error(w, "Step not found after update", http.StatusInternalServerError)
 		return

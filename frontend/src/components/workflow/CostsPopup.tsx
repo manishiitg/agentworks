@@ -20,6 +20,7 @@ interface CostsPopupProps {
   startedAt?: string | null
   emptyHint?: string
   projectMode?: boolean
+  runOnly?: boolean
 }
 
 const CostsPopup: React.FC<CostsPopupProps> = ({
@@ -28,8 +29,9 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
   startedAt,
   emptyHint = 'Run the automation to see cost data here.',
   projectMode = false,
+  runOnly = false,
 }) => {
-  const data = useCostsData({ workspacePath, selectedRunFolder })
+  const data = useCostsData({ workspacePath, selectedRunFolder, runOnly })
   const {
     loading,
     error,

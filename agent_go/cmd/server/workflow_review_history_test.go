@@ -19,6 +19,9 @@ func TestSavedWorkflowReviewNeverHoldsExecution(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 	ws := serveContractGuardManifest(t, WorkflowContractCurrentVersion)
+	if err := writeFileToWorkspace(context.Background(), ws+"/variables/variables.json", `{"groups":[{"name":"one","enabled":true},{"name":"two","enabled":true}]}`); err != nil {
+		t.Fatal(err)
+	}
 	planning := filepath.Join(root, ws, "planning")
 	if err := os.MkdirAll(planning, 0755); err != nil {
 		t.Fatal(err)
@@ -55,7 +58,7 @@ func TestSavedWorkflowReviewNeverHoldsExecution(t *testing.T) {
 	for _, outcome := range []string{"unresolved", "incomplete", "running"} {
 		write("workflow_review.json", `{"version":1,"reviewed_revisions":["unchanged-plan"],"latest":{"revision":"unchanged-plan","outcome":"`+outcome+`","unresolved":[{"step_id":"step-a","reason":"The plan changed or a prior drift check remains unresolved"}]}}`)
 		out, err := run.exec(context.Background(), map[string]interface{}{})
-		if err != nil || !strings.Contains(out, "group_name is required") {
+		if err == nil || !strings.Contains(err.Error(), "group_name is required") {
 			t.Fatalf("real run executor intercepted by %s review: %q %v", outcome, out, err)
 		}
 		if latest := LatestWorkflowReview(ws); latest == nil || latest.Outcome != outcome {

@@ -370,6 +370,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		}
 	} else {
 		// First route call, or any standalone run: run the configured queue.
+		var resolveErr error
+		sequenceStep, resolveErr = hcpo.resolveCrewAgentStep(ctx, sequenceStep)
+		if resolveErr != nil {
+			return "", nil, resolveErr
+		}
 		session = &agentSequenceSession{
 			PromptContract: sequenceStep.PromptContract,
 			SystemRules:    sequenceStep.SystemRules,

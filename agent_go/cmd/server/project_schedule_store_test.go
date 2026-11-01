@@ -20,7 +20,7 @@ func TestCommonProjectScheduleStorePreservesWorkAndCaller(t *testing.T) {
 	record := projectactions.Schedule{ID: "daily", Name: "Daily", Project: projectactions.Project{Kind: "goal", ID: "example"},
 		When:   projectactions.When{Cron: "0 9 * * *", Timezone: "UTC", After: &projectactions.After{Schedules: []string{"collect"}, Outcome: "any_terminal", DelayMinutes: 5, Deadline: "12:00"}},
 		Action: projectactions.Action{Type: "message"}, RunAs: "owner", Enabled: false,
-		Input: json.RawMessage(`{"messages":["Collect evidence.","Check it.","Report it."],"routes":{"router":"report"}}`)}
+		Input: json.RawMessage(`{"messages":["Collect evidence.","Check it.","Report it."],"groups":[],"routes":{"router":"report"}}`)}
 	if err := writeProjectSchedules(ctx, root, []projectactions.Schedule{record}); err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +42,37 @@ func TestCommonProjectScheduleStorePreservesWorkAndCaller(t *testing.T) {
 	if err := loadWorkflowTimerActions(ctx, root, manifest); err != nil {
 		t.Fatal(err)
 	}
+	// PLAT-746-265: persistence must not turn "select no work" into the
+	// omitted selection that automatically chooses enabled input sets.
+	if manifest.Schedules[1].GroupNames == nil || len(manifest.Schedules[1].GroupNames) != 0 {
+		t.Fatal("empty selection became automatic selection")
+	}
+	// Saved-work actions retain a chat too, even with no message queue.
+	record.Action = projectactions.Action{Type: "run", Tab: "reporting"}
+	record.Input = json.RawMessage(`{"groups":null}`)
+	if err := writeProjectSchedules(ctx, root, []projectactions.Schedule{record}); err != nil {
+		t.Fatal(err)
+	}
+	if err := loadWorkflowTimerActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Schedules[1].ChatID != "reporting" {
+		t.Fatal("run lost target chat")
+	}
+	if err := saveWorkflowTimerActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := readProjectSchedules(ctx, root)
+	if err != nil || len(saved) != 1 || saved[0].Action.Tab != "reporting" {
+		t.Fatal("saved run lost chat", err)
+	}
 	manifest.Access.Owners = []string{"another-owner"}
 	if err := loadWorkflowTimerActions(ctx, root, manifest); err == nil {
 		t.Fatal("saved caller gained another owner's authority")
 	}
 	crewRoot := "Crew/example-example"
+	record.Input = json.RawMessage(`{"messages":["Collect evidence.","Check it.","Report it."]}`)
+	record.Action.Type = "message"
 	record.Project.Kind = "crew"
 	record.When.After = nil
 	record.Action.Tab, record.Action.Conversation = "example:chat:research", "isolated"
@@ -160,8 +186,8 @@ func TestProjectEntryFilesPreserveContractsAndEncryptedAuthentication(t *testing
 	ctx := context.Background()
 	root := "Workflow/example"
 	manifest := &WorkflowManifest{ID: "example", CreatedBy: "owner", Schedules: []WorkflowSchedule{
-		{ID: "typed-entry", Name: "Inspect", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, Function: &WorkflowFunctionSpec{Name: "inspect", Inputs: []WorkflowFunctionInput{{Name: "query", Type: "string", Required: true, Enum: []string{"one", "two"}}}, AllowedCallers: []triggerCaller{{Type: triggerCallerWorkflow, ID: "source"}}}, GroupNames: []string{"default", "other"}, RouteSelections: map[string]string{"router": "report"}, Webhook: &WorkflowWebhookConfig{StepID: "inspect-step"}},
-		{ID: "event", Name: "Event", Enabled: true, ScheduleType: "webhook", Webhook: &WorkflowWebhookConfig{AuthMode: "github", EncryptedSecret: "opaque-fixture", InputMode: "envelope", AllowedVariables: []string{"query"}}},
+		{ChatID: "reporting", ID: "typed-entry", Name: "Inspect", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, Function: &WorkflowFunctionSpec{Name: "inspect", Inputs: []WorkflowFunctionInput{{Name: "query", Type: "string", Required: true, Enum: []string{"one", "two"}}}, AllowedCallers: []triggerCaller{{Type: triggerCallerWorkflow, ID: "source"}}}, GroupNames: []string{"default", "other"}, RouteSelections: map[string]string{"router": "report"}, Webhook: &WorkflowWebhookConfig{StepID: "inspect-step"}},
+		{ChatID: "main", ID: "event", Name: "Event", Enabled: true, ScheduleType: "webhook", Webhook: &WorkflowWebhookConfig{AuthMode: "github", EncryptedSecret: "opaque-fixture", InputMode: "envelope", AllowedVariables: []string{"query"}}},
 	}}
 	if err := saveWorkflowEntryActions(ctx, root, manifest); err != nil {
 		t.Fatal(err)
@@ -174,7 +200,7 @@ func TestProjectEntryFilesPreserveContractsAndEncryptedAuthentication(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fn.ID != "typed-entry" || fn.Webhook.StepID != "inspect-step" || fn.RouteSelections["router"] != "report" || !workflowFunctionCallerAllowed(fn.Function, triggerCaller{Type: triggerCallerWorkflow, ID: "source"}) || workflowFunctionCallerAllowed(fn.Function, triggerCaller{Type: triggerCallerWorkflow, ID: "other"}) {
+	if fn.ChatID != "reporting" || fn.ID != "typed-entry" || fn.Webhook.StepID != "inspect-step" || fn.RouteSelections["router"] != "report" || !workflowFunctionCallerAllowed(fn.Function, triggerCaller{Type: triggerCallerWorkflow, ID: "source"}) || workflowFunctionCallerAllowed(fn.Function, triggerCaller{Type: triggerCallerWorkflow, ID: "other"}) {
 		t.Fatalf("function contract changed: %+v", fn)
 	}
 	if _, _, err := workflowFunctionArgs(*fn, map[string]interface{}{}); err == nil {

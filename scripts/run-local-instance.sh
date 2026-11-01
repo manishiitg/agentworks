@@ -10,6 +10,7 @@ INSTANCE_ID=""
 STATE_ROOT=""
 AGENT_PORT_VALUE=19743
 WORKSPACE_PORT_VALUE=19744
+GATEWAY_PORT_VALUE=19745
 FRONTEND_PORT_VALUE=52733
 ELECTRON_DEBUG_PORT_VALUE=19233
 # Isolated development is browser-only unless Electron is explicitly requested.
@@ -33,6 +34,7 @@ usage() {
         "  --state-root <absolute-path>    State directory (default: <repo>/.local/agentworks-instances/<id>)" \
         "  --agent-port <port>             Agent API port (default: 19743)" \
         "  --workspace-port <port>         Workspace API port (default: 19744)" \
+        "  --gateway-port <port>          Vault port (default: 19745)" \
         "  --frontend-port <port>          Frontend port (default: 52733)" \
         "  --electron-debug-port <port>    Electron CDP port (default: 19233)" \
         "  --app-name <name>               Browser/Electron page title" \
@@ -76,6 +78,11 @@ while [ "$#" -gt 0 ]; do
         --workspace-port)
             require_value "$1" "${2:-}"
             WORKSPACE_PORT_VALUE="$2"
+            shift 2
+            ;;
+        --gateway-port)
+            require_value "$1" "${2:-}"
+            GATEWAY_PORT_VALUE="$2"
             shift 2
             ;;
         --frontend-port)
@@ -164,8 +171,16 @@ validate_port() {
 
 validate_port "--agent-port" "$AGENT_PORT_VALUE"
 validate_port "--workspace-port" "$WORKSPACE_PORT_VALUE"
+validate_port "--gateway-port" "$GATEWAY_PORT_VALUE"
 validate_port "--frontend-port" "$FRONTEND_PORT_VALUE"
 validate_port "--electron-debug-port" "$ELECTRON_DEBUG_PORT_VALUE"
+
+for other_port in "$AGENT_PORT_VALUE" "$WORKSPACE_PORT_VALUE" "$FRONTEND_PORT_VALUE" "$ELECTRON_DEBUG_PORT_VALUE"; do
+    if [ "$GATEWAY_PORT_VALUE" = "$other_port" ]; then
+        echo "Error: every instance port must be unique" >&2
+        exit 2
+    fi
+done
 
 if [ "$AGENT_PORT_VALUE" = "$WORKSPACE_PORT_VALUE" ] || \
    [ "$AGENT_PORT_VALUE" = "$FRONTEND_PORT_VALUE" ] || \
@@ -225,6 +240,7 @@ print_configuration() {
         "AGENTWORKS_ISOLATE_WORKFLOW_CLI=${ISOLATE_WORKFLOW_CLI}" \
         "AGENT_PORT=${AGENT_PORT_VALUE}" \
         "WORKSPACE_PORT=${WORKSPACE_PORT_VALUE}" \
+        "GATEWAY_PORT=${GATEWAY_PORT_VALUE}" \
         "FRONTEND_PORT=${FRONTEND_PORT_VALUE}" \
         "ELECTRON_REMOTE_DEBUG_PORT=${ELECTRON_DEBUG_PORT_VALUE}" \
         "RUNLOOP_USER_DATA_DIR=${ELECTRON_DATA_DIR}" \
@@ -247,7 +263,7 @@ if [ "$DRY_RUN" = true ]; then
     exit 0
 fi
 
-for port in "$AGENT_PORT_VALUE" "$WORKSPACE_PORT_VALUE" "$FRONTEND_PORT_VALUE" "$ELECTRON_DEBUG_PORT_VALUE"; do
+for port in "$AGENT_PORT_VALUE" "$WORKSPACE_PORT_VALUE" "$GATEWAY_PORT_VALUE" "$FRONTEND_PORT_VALUE" "$ELECTRON_DEBUG_PORT_VALUE"; do
     if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
         echo "Error: port $port is already owned by another process; refusing to start" >&2
         exit 1
@@ -305,6 +321,7 @@ export AGENTWORKS_ELECTRON_RSS_LIMIT_MB="${AGENTWORKS_ELECTRON_RSS_LIMIT_MB:-307
 export AGENT_BROWSER_CONFIG="${BROWSER_DIR}/config.json"
 export AGENT_PORT="$AGENT_PORT_VALUE"
 export WORKSPACE_PORT="$WORKSPACE_PORT_VALUE"
+export GATEWAY_PORT="$GATEWAY_PORT_VALUE"
 export FRONTEND_PORT="$FRONTEND_PORT_VALUE"
 export ELECTRON_REMOTE_DEBUG_PORT="$ELECTRON_DEBUG_PORT_VALUE"
 export RUNLOOP_USER_DATA_DIR="$ELECTRON_DATA_DIR"

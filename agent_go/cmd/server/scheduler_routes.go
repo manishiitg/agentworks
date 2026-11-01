@@ -45,7 +45,7 @@ type ScheduledJobResponse struct {
 	WorkflowLabel        string                   `json:"workflow_label,omitempty"`
 	PresetQueryID        string                   `json:"preset_query_id,omitempty"` // empty — kept for frontend compat
 	TriggerPayload       json.RawMessage          `json:"trigger_payload,omitempty"`
-	GroupNames           []string                 `json:"group_names,omitempty"`
+	GroupNames           []string                 `json:"group_names"`
 	RouteSelections      map[string]string        `json:"route_selections,omitempty"`
 	Mode                 string                   `json:"mode,omitempty"`
 	Messages             []string                 `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -118,7 +118,7 @@ type CreateScheduleRequest struct {
 	CalendarItems            []CalendarScheduleItem `json:"calendar_items,omitempty"`
 	Enabled                  bool                   `json:"enabled"`
 	TriggerPayload           json.RawMessage        `json:"trigger_payload,omitempty"`
-	GroupNames               []string               `json:"group_names,omitempty"`
+	GroupNames               []string               `json:"group_names"`
 	RouteSelections          map[string]string      `json:"route_selections,omitempty"`
 	Mode                     string                 `json:"mode,omitempty"`
 	Messages                 []string               `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -151,7 +151,7 @@ type UpdateScheduleRequest struct {
 	CalendarItems            []CalendarScheduleItem `json:"calendar_items,omitempty"`
 	Enabled                  *bool                  `json:"enabled,omitempty"`
 	TriggerPayload           json.RawMessage        `json:"trigger_payload,omitempty"`
-	GroupNames               []string               `json:"group_names,omitempty"`
+	GroupNames               []string               `json:"group_names"`
 	RouteSelections          map[string]string      `json:"route_selections,omitempty"`
 	Mode                     string                 `json:"mode,omitempty"`
 	Messages                 []string               `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -246,6 +246,18 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		// Timer records do not store creation/update dates. The workflow dates
 		// describe a different object, so leave optional schedule dates absent.
 	}
+}
+
+// Run access to an automation never reveals the owner's private chat names.
+func buildJobResponseForCaller(r *http.Request, workspace string, manifest *WorkflowManifest, schedule WorkflowSchedule, state ScheduleRuntimeState, missed WorkflowScheduleMissedStatus) ScheduledJobResponse {
+	response := buildJobResponse(workspace, manifest, schedule, state, missed)
+	level := workflowAccessForManifest(GetUserFromContext(r.Context()), manifest)
+	if manifest.crewExecutable != nil && level != WorkflowAccessOwner && level != WorkflowAccessWrite {
+		response.RunDestinations = nil
+		response.ChatKey = ""
+		response.ChatID = ""
+	}
+	return response
 }
 
 func runtimeStateForScheduleResult(svc *SchedulerService, result *ScheduleSearchResult, scheduleID string) ScheduleRuntimeState {
@@ -563,7 +575,7 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 
 					state := svc.GetRuntimeStateForWorkflow(dw.WorkspacePath, sched.ID)
 					missed := missedResolver.get(dw.WorkspacePath, sched)
-					allJobs = append(allJobs, buildJobResponse(dw.WorkspacePath, dw.Manifest, sched, state, missed))
+					allJobs = append(allJobs, buildJobResponseForCaller(r, dw.WorkspacePath, dw.Manifest, sched, state, missed))
 				}
 			}
 		}
@@ -725,6 +737,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 
 		// Create new schedule
 		newSched := WorkflowSchedule{
+			ChatID:                   req.ChatID,
 			ID:                       uuid.New().String(),
 			Name:                     req.Name,
 			Description:              req.Description,
@@ -783,7 +796,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 
 		state := svc.GetRuntimeStateForWorkflow(req.WorkspacePath, newSched.ID)
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
-		resp := buildJobResponse(req.WorkspacePath, manifest, newSched, state, missedResolver.get(req.WorkspacePath, newSched))
+		resp := buildJobResponseForCaller(r, req.WorkspacePath, manifest, newSched, state, missedResolver.get(req.WorkspacePath, newSched))
 		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -815,7 +828,7 @@ func getScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		state := runtimeStateForScheduleResult(svc, result, id)
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
-		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
+		resp := buildJobResponseForCaller(r, result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
 		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1008,7 +1021,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 
 		state := svc.GetRuntimeStateForWorkflow(workspacePath, id)
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
-		resp := buildJobResponse(workspacePath, manifest, *sched, state, missedResolver.get(workspacePath, *sched))
+		resp := buildJobResponseForCaller(r, workspacePath, manifest, *sched, state, missedResolver.get(workspacePath, *sched))
 		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1086,7 +1099,7 @@ func enableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		state := svc.GetRuntimeStateForWorkflow(result.WorkspacePath, id)
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
-		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
+		resp := buildJobResponseForCaller(r, result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
 		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1131,7 +1144,7 @@ func disableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		svc.InvalidateWorkflowManifestCache()
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
-		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
+		resp := buildJobResponseForCaller(r, result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
 		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1246,7 +1259,7 @@ func stopScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		updatedState := runtimeStateForScheduleResult(svc, result, id)
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
-		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, updatedState, missedResolver.get(result.WorkspacePath, sched))
+		resp := buildJobResponseForCaller(r, result.WorkspacePath, result.Manifest, sched, updatedState, missedResolver.get(result.WorkspacePath, sched))
 		resp = withScheduleStatusText(r.Context(), resp)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1311,7 +1324,7 @@ func getScheduledJobRunsHandler(svc *SchedulerService) http.HandlerFunc {
 			Status                   string              `json:"status"`
 			Error                    string              `json:"error,omitempty"`
 			DurationMs               *int64              `json:"duration_ms,omitempty"`
-			GroupNames               []string            `json:"group_names,omitempty"`
+			GroupNames               []string            `json:"group_names"`
 			StartedAt                time.Time           `json:"started_at"`
 			CompletedAt              *time.Time          `json:"completed_at,omitempty"`
 		}

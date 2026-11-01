@@ -61,17 +61,18 @@ function JSONValue({ value }: { value: unknown }) {
 }
 
 /** Source comments describe the graph; Python and the run trace remain authoritative. */
-export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
+export default function RelayPythonView({ workspacePath, relayID, onBuild, scope }: {
   workspacePath: string | null
   relayID?: string | null
   onBuild: () => void
+  scope?: import('./canvas/workspaceViewData').EmbeddedWorkflowScope
 }) {
   const [tab, setTab] = useState<'graph' | 'calls' | 'source'>('graph')
   const panelTopic = tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Flow runs' : 'Flow code'
   const viewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   useEffect(() => {
-    if (viewTarget?.view === 'flow' && (viewTarget.target === 'graph' || viewTarget.target === 'calls' || viewTarget.target === 'source')) setTab(viewTarget.target)
-  }, [viewTarget])
+    if (!scope && viewTarget?.view === 'flow' && (viewTarget.target === 'graph' || viewTarget.target === 'calls' || viewTarget.target === 'source')) setTab(viewTarget.target)
+  }, [viewTarget, scope])
   const [runSource, setRunSource] = useState<string | null>(null)
   const [runSourceError, setRunSourceError] = useState('')
   const [runGraphOpen, setRunGraphOpen] = useState(false)
@@ -88,7 +89,8 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
   const [releases, setReleases] = useState<RelayReleasesResponse | null>(null)
   const [version, setVersion] = useState('draft')
   const [releaseError, setReleaseError] = useState('')
-  const selectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
+  const globalSelectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
+  const selectedRunFolder = scope ? scope.selectedRunFolder : globalSelectedRunFolder
   const refreshToken = useWorkflowStore(state => state.workspaceViewRefreshToken)
   const folder = runs.some(run => run.name === selectedRunFolder) ? selectedRunFolder : runs[0]?.name
   const sourceRequest = useRef(0)
@@ -226,7 +228,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
 
       {loadingSource ? <p className="p-6 text-sm text-muted-foreground">Loading source…</p> : sourceError ? <p role="alert" className="p-6 text-sm text-destructive">{sourceError}</p> : source === null ? <div className="m-auto max-w-md p-6 text-center"><h2 className="font-semibold">Build your Flow</h2><p className="mt-2 text-sm text-muted-foreground">Describe what your Flow should do in chat. The builder creates its implementation for you.</p><button type="button" onClick={onBuild} className="mt-4 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground">Build in chat</button></div> : <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-xs leading-6" aria-label="Flow Python source">{source}</pre>}
     </div> : <div id="relay-python-calls" role="tabpanel" className="min-h-0 flex-1 overflow-auto p-4">
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs"><label htmlFor="relay-python-version">Version</label><select id="relay-python-version" value={version} onChange={event => setVersion(event.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5"><option value="draft">Draft tests</option>{releases?.releases.map(release => <option key={release.version} value={release.version}>{release.version}{release.version === releases.active_version ? ' (active)' : ''}</option>)}</select><label htmlFor="relay-python-run">Run</label><select id="relay-python-run" value={folder ?? ''} onChange={event => useWorkflowStore.getState().setSelectedRunFolder(event.target.value || null)} className="max-w-full rounded-md border border-border bg-background px-2 py-1.5"><option value="" disabled>{runs.length ? 'Select a run' : 'No runs yet'}</option>{runs.map(run => <option key={run.name} value={run.name}>{run.name}{run.metadata?.status ? ` · ${run.metadata.status}` : ''}</option>)}</select>{trace && <span role="status" className="rounded bg-muted px-2 py-1">{trace.status}</span>}</div>
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs"><label htmlFor="relay-python-version">Version</label><select id="relay-python-version" value={version} onChange={event => setVersion(event.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5"><option value="draft">Draft tests</option>{releases?.releases.map(release => <option key={release.version} value={release.version}>{release.version}{release.version === releases.active_version ? ' (active)' : ''}</option>)}</select><label htmlFor="relay-python-run">Run</label><select id="relay-python-run" value={folder ?? ''} onChange={event => (scope?.setSelectedRunFolder ?? useWorkflowStore.getState().setSelectedRunFolder)(event.target.value || null)} className="max-w-full rounded-md border border-border bg-background px-2 py-1.5"><option value="" disabled>{runs.length ? 'Select a run' : 'No runs yet'}</option>{runs.map(run => <option key={run.name} value={run.name}>{run.name}{run.metadata?.status ? ` · ${run.metadata.status}` : ''}</option>)}</select>{trace && <span role="status" className="rounded bg-muted px-2 py-1">{trace.status}</span>}</div>
       {(releaseError || selectedRelease?.error || releases?.active_error) && <p role="alert" className="mb-3 text-sm text-destructive">{releaseError || selectedRelease?.error || releases?.active_error}</p>}
       {trace?.durability === 'dbos' && <p className="mb-3 text-xs text-muted-foreground" role="status">DBOS recovery enabled · Attempt {trace.attempt_number || 1} · {trace.calls.filter(call => call.checkpoint_reused).length} checkpoints reused</p>}
       <p className="mb-4 text-xs text-muted-foreground">Steps performed in this run. Expand a step to inspect its result and tool activity.</p>

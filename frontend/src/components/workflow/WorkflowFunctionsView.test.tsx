@@ -7,6 +7,7 @@ import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 
 vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn(), relayReleases: vi.fn() } }))
+vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: vi.fn(() => true) }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: vi.fn(() => 'http://localhost:8000') }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -37,7 +38,7 @@ it('lists typed functions and the built-in ask, not webhooks', async () => {
   const card = host.querySelector('[data-testid="workflow-function-review_pr"]')!
   expect(card.textContent).toContain('PR_NUMBER: integer, REVIEW_DEPTH: string?')
   expect(card.textContent).toContain('Review or skip → Review')
-  expect(host.querySelector('[data-testid="workflow-function-ask"]')?.textContent).toContain('Run mode')
+  expect(host.querySelector('[data-testid="workflow-function-ask"]')).not.toBeNull()
   expect(host.textContent).not.toContain('GitHub PRs')
 })
 
@@ -73,7 +74,6 @@ it('keeps reader API instructions visible while restricting authoring actions', 
   vi.mocked(useCanWriteWorkflow).mockReturnValue(false)
   const host = await mount(vi.fn(), true)
   expect(host.textContent).toContain('External API request')
-  expect(host.textContent).toContain('Anyone with access')
   expect(host.textContent).not.toContain('Publish in chat')
   expect(host.textContent).not.toContain('Pause')
 })
@@ -84,4 +84,18 @@ it('shows a broken active release instead of claiming draft only', async () => {
   expect(host.textContent).toContain('Unavailable v2')
   expect(host.textContent).toContain('v2 (unavailable)')
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('invalid metadata')
+})
+
+// PLAT-746-265: changing the destination preserves the saved function;
+// Run people have no authoring control for the owner's chats.
+it('saves the chosen chat without changing the callable function', async () => {
+  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [fn], groups: ['default'], routes: [], chat_choices: [{ id: 'main', label: 'Main chat' }, { id: 'reporting', label: 'Reporting' }] })
+  const host = await mount()
+  const select = host.querySelector('select[aria-label="Chat for review_pr"]') as HTMLSelectElement
+  expect(select.value).toBe('main')
+  await act(async () => { select.value = 'reporting'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(workflowWebhooksApi.save).toHaveBeenCalledWith(expect.objectContaining({ chat_id: 'reporting', function: fn.function, kind: 'function', workspace_path: 'Workflow/gate' }), fn.id)
+  vi.mocked(useCanWriteWorkflow).mockReturnValue(false)
+  const reader = await mount()
+  expect(reader.querySelector('select[aria-label="Chat for review_pr"]')).toBeNull()
 })

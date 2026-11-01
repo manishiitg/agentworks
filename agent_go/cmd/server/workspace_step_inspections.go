@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
 const workspaceInspectionPageSize = 20
@@ -57,8 +58,8 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 	if userID == "" {
 		userID = GetDefaultUserID()
 	}
-	if !valid || len(strings.Split(workspace, "/")) != 2 ||
-		(claims != nil && !userAllowedProduct(claims, "agentworks")) ||
+	if !valid || (len(strings.Split(workspace, "/")) != 2 && workflowtypes.RelayReleaseWorkspace(workspace) != workspace) ||
+		!workflowInspectionProductAllowed(claims, workspace) ||
 		!workspaceReadAllowed(r.Context(), claims, workspace, logicalPathIsDefaultUser, false) || !workflowStepInspectionWorkspace(r.Context(), workspace) {
 		http.Error(w, "Workspace not found", http.StatusNotFound)
 		return
@@ -230,4 +231,16 @@ func workspaceInspectionPlatform(value string) string {
 		return strings.ToLower(strings.TrimSpace(value))
 	}
 	return ""
+}
+
+func workflowInspectionProductAllowed(claims *UserClaims, workspace string) bool {
+	binding, err := findCrewExecutable(workspace)
+	if err != nil {
+		return false
+	}
+	product := "agentworks"
+	if binding != nil {
+		product = "work"
+	}
+	return claims == nil || userAllowedProduct(claims, product)
 }
