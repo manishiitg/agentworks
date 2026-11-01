@@ -358,15 +358,19 @@ func (api *StreamingAPI) handleDesktopCompanyAccount(w http.ResponseWriter, r *h
 		return
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		var refusal struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&refusal)
-		if refusal.Error == "" {
-			refusal.Error = c.Name + " does not offer this yet."
-		}
-		desktopJSON(w, map[string]string{"state": "unavailable", "reason": refusal.Error})
+	// Offered: the server lists the program's models. It offers it but not to you: its own refusal (403). Anything
+	// else (an older server answering with its web page, no proxy there) means it does not offer it, and is hidden.
+	var answer struct {
+		Error string            `json:"error"`
+		Data  []json.RawMessage `json:"data"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&answer)
+	if resp.StatusCode == http.StatusForbidden && answer.Error != "" {
+		desktopJSON(w, map[string]string{"state": "unavailable", "reason": answer.Error})
+		return
+	}
+	if resp.StatusCode != http.StatusOK || len(answer.Data) == 0 {
+		desktopJSON(w, map[string]string{"state": "not_offered"})
 		return
 	}
 	if r.Method != http.MethodPost {
