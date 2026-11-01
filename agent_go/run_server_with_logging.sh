@@ -116,6 +116,7 @@ print_usage() {
     printf '%s\n' 'Options:'
     printf '%s\n' '  --with-workspace              Start the local workspace service.'
     printf '%s\n' '  --with-frontend               Start the frontend and Electron app.'
+    printf '%s\n' '  --only-backend                Start only the backend and workspace (same as --with-workspace); run --only-frontend in another terminal.'
     printf '%s\n' '  --only-frontend               Start only the frontend and Electron app.'
     printf '%s\n' '  (default)                     All core products: Goals, Crew, Flows, Code, Brain, Vault, AgentBridge.'
     printf '%s\n' '  --only-gateway                Start the standalone server gateway for development (no local app).'
@@ -145,7 +146,7 @@ for arg in "$@"; do
         --background|-b)
             BACKGROUND_MODE=true
             ;;
-        --with-workspace)
+        --with-workspace|--only-backend)
             WITH_WORKSPACE=true
             ;;
         --with-frontend)
