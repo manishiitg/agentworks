@@ -895,6 +895,7 @@ func (s Store) CompareBoundaries(ctx context.Context, first, last, firstSide, fi
 	if err != nil {
 		return Comparison{}, err
 	}
+	beforeOmissions, afterOmissions := boundaryOmissions(before, firstSide == "before"), boundaryOmissions(after, false)
 	if firstSide == "after" {
 		before.Before = before.After
 		before.BeforeSkippedState = before.AfterSkippedState
@@ -910,8 +911,8 @@ func (s Store) CompareBoundaries(ctx context.Context, first, last, firstSide, fi
 	after.Before = before.Before
 	after.BeforeSkippedState = before.BeforeSkippedState
 	after.StartedAt = before.StartedAt
+	after.Skipped = append(beforeOmissions, afterOmissions...)
 	if first != last {
-		after.Skipped = append(after.Skipped, before.Skipped...)
 		after.Omitted = append(after.Omitted, before.Omitted...)
 	}
 	if before.Status == "partial" {

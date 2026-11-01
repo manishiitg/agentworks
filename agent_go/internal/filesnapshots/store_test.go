@@ -520,6 +520,35 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 			t.Fatalf("unrelated size exclusion marked %s incomplete: %v %+v", change, err, summary)
 		}
 	}
+	// PR604: net comparisons use only their selected boundaries, not both
+	// omissions from the first turn after this asset was deleted between turns.
+	if _, err := s.Begin(t.Context(), "net-size-first"); err != nil {
+		t.Fatal(err)
+	}
+	firstSize, err := s.Finish(t.Context(), "net-size-first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Begin(t.Context(), "net-size-last"); err != nil {
+		t.Fatal(err)
+	}
+	lastSize, err := s.Finish(t.Context(), "net-size-last")
+	if err != nil {
+		t.Fatal(err)
+	}
+	netSize, err := s.CompareBetween(t.Context(), firstSize.ID, lastSize.ID, "", func(string) bool { return true })
+	if err != nil || netSize.SkippedCount != 0 || netSize.UncapturedChanges != 0 || len(netSize.Changes) != 0 {
+		t.Fatalf("net boundaries reintroduced size warning: %v %+v", err, netSize)
+	}
+	if err := os.WriteFile(p, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(p, MaxFileBytes+1); err != nil {
+		t.Fatal(err)
+	}
 	// Size-only exclusions stay quiet when changed too; raw capture evidence
 	// remains saved so they never masquerade as captured bytes or deletions.
 	if _, err := s.Begin(t.Context(), "changed-skipped"); err != nil {
