@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,6 +27,7 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 }
 
 func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Request, allowPair bool) {
+	started := time.Now()
 	claims := GetUserFromContext(r.Context())
 	roots, err := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
 	if err != nil {
@@ -239,6 +241,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
+		log.Printf("[CREW_SYNC] project=%s pair=%s phase=receipt direction=upload bytes=%d paths=%d duration_ms=%d transfer=%s", roots.ID, binding.PairID, len(transfer.Snapshot.Content.Bundle), len(transfer.Snapshot.Changes), time.Since(started).Milliseconds(), transfer.TransferID)
 		binding.Editing = remote.Binding.Editing
 		binding.PendingAction = ""
 	case "local", "download":

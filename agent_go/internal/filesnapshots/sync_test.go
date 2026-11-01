@@ -51,7 +51,7 @@ func TestSyncBundlesPreserveReplicaEditsAndUndoHistory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = s.EncodeSync(t.Context(), "pair", &snap); err != nil {
+		if err = s.EncodeSync(t.Context(), "pair", r, &snap); err != nil {
 			t.Fatal(err)
 		}
 		raw, err := json.Marshal(snap)
@@ -76,8 +76,39 @@ func TestSyncBundlesPreserveReplicaEditsAndUndoHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Newly omitted content is removed from the wire tree, not the replica.
+	write(a.Files, ".gitignore", "note.txt\n")
+	omitted := capture(a, sa, first.Files)
+	if err := sb.DecodeSync(t.Context(), "pair", &omitted); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewsync.Apply(t.Context(), b, omitted); err != nil {
+		t.Fatal(err)
+	}
+	for _, store := range []Store{sa, sb} {
+		if err := store.AckSync(t.Context(), "pair", omitted.Content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if raw, _ := os.ReadFile(filepath.Join(b.Files, "note.txt")); string(raw) != "edited" {
+		t.Fatal("ignored replica was removed")
+	}
+	// Re-inclusion of unchanged bytes still needs to add the blob to the tree.
+	write(a.Files, ".gitignore", "")
+	included := capture(a, sa, omitted.Files)
+	if err := sb.DecodeSync(t.Context(), "pair", &included); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewsync.Apply(t.Context(), b, included); err != nil {
+		t.Fatal(err)
+	}
+	for _, store := range []Store{sa, sb} {
+		if err := store.AckSync(t.Context(), "pair", included.Content); err != nil {
+			t.Fatal(err)
+		}
+	}
 	write(b.Files, "note.txt", "server edit")
-	back := capture(b, sb, first.Files)
+	back := capture(b, sb, included.Files)
 	if err := sa.DecodeSync(t.Context(), "pair", &back); err != nil {
 		t.Fatal(err)
 	}

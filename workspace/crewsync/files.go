@@ -38,12 +38,11 @@ type ContentSnapshot struct {
 }
 
 type Snapshot struct {
-	Content  *ContentSnapshot  `json:"content,omitempty"`
-	Contents map[string][]byte `json:"-"`
-	Omitted  []string          `json:"omitted,omitempty"`
-	Git      *GitSnapshot      `json:"git,omitempty"`
-	Files    Manifest          `json:"files"`
-	Changes  []Change          `json:"changes"`
+	Content *ContentSnapshot `json:"content,omitempty"`
+	Omitted []string         `json:"omitted,omitempty"`
+	Git     *GitSnapshot     `json:"git,omitempty"`
+	Files   Manifest         `json:"files"`
+	Changes []Change         `json:"changes"`
 }
 
 // Both send and receive use this policy. Project ignore rules are additionally
@@ -94,7 +93,7 @@ func readFile(root, rel string) ([]byte, File, error) {
 // Capture sends only changed bytes. Expected fingerprints are retained for
 // every deletion/replacement so edits outside AgentWorks are never overwritten.
 func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snapshot, error) {
-	out := Snapshot{Contents: map[string][]byte{}, Files: Manifest{}, Changes: []Change{}}
+	out := Snapshot{Files: Manifest{}, Changes: []Change{}}
 	var total int64
 	ignoredFiles := map[string]bool{}
 	areas := []struct{ name, root string }{{"files", roots.Files}, {"resources", roots.Resources}}
@@ -144,7 +143,6 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 				return fmt.Errorf("project exceeds 256 MiB or 10,000 files; exclude generated files before syncing")
 			}
 			out.Files[key] = file
-			out.Contents[key] = data
 			before, exists := previous[key]
 			if !exists || before != file {
 				change := Change{Path: key, After: &file, Data: data}
@@ -192,7 +190,7 @@ func checkChange(roots crewroot.Roots, change Change) error {
 		if change.Before == nil || change.After == nil {
 			return nil
 		}
-		return fmt.Errorf("%s was removed here; keep or resolve your changes before syncing", change.Path)
+		return fmt.Errorf("%s was removed here; copy your version to another filename, then restore this path to its last synced contents and retry", change.Path)
 	}
 	if err != nil {
 		return err
@@ -202,7 +200,7 @@ func checkChange(roots crewroot.Roots, change Change) error {
 		return nil
 	}
 	if change.Before == nil || actual != *change.Before {
-		return fmt.Errorf("%s changed here; keep or resolve your changes before syncing", change.Path)
+		return fmt.Errorf("%s changed here; copy your version to another filename, then restore this path to its last synced contents and retry", change.Path)
 	}
 	return nil
 }
@@ -290,4 +288,24 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 		}
 	}
 	return nil
+}
+
+// ReadContent is used only when bootstrapping a sync baseline or re-including
+// an unchanged file. The rooted reader never follows a path outside this Crew.
+func ReadContent(roots crewroot.Roots, key string, expected File) ([]byte, error) {
+	root, rel, err := rootFor(roots, key)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = crewroot.ResolveContained(root, rel); err != nil {
+		return nil, err
+	}
+	data, actual, err := readFile(root, rel)
+	if err != nil {
+		return nil, err
+	}
+	if actual != expected {
+		return nil, fmt.Errorf("%s changed during capture; retry sync", key)
+	}
+	return data, nil
 }

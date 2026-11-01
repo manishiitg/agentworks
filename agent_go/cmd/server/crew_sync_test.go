@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
@@ -37,6 +39,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			project, _ = filepath.EvalSymlinks(project)
 			t.Setenv("WORKSPACE_DOCS_PATH", docs)
 			t.Setenv("LOCAL_MODE", "true")
+			t.Setenv("DEFAULT_USER_ID", "owner")
 			t.Setenv("MULTI_USER_MODE", "")
 			old := viper.Get("docs-dir")
 			viper.Set("docs-dir", docs)
@@ -85,7 +88,12 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("local resource listing: %d %s", listing.Code, listing.Body.String())
 			}
 			loseResponse := false
+			var offline atomic.Bool
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if offline.Load() {
+					w.WriteHeader(503)
+					return
+				}
 				if r.Header.Get("Authorization") != "Bearer saved-login" || r.Header.Get("X-AgentWorks-Desktop") != "" {
 					t.Error("credential boundary crossed")
 					w.WriteHeader(403)
@@ -224,6 +232,39 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("returned file: %q %v", raw, err)
 			}
 			checkWrite(local.FilesPath()+"/new.txt", 200)
+			// Exercise the actual watcher, saved-login HTTP and real files.
+			workerCtx, stop := context.WithCancel(t.Context())
+			done := make(chan struct{})
+			go func() { defer close(done); api.watchDesktopCrewSync(workerCtx, local.ID) }()
+			defer func() { stop(); <-done }()
+			awaitFile := func(root, name, want string) {
+				t.Helper()
+				deadline := time.Now().Add(15 * time.Second)
+				for time.Now().Before(deadline) {
+					data, _ := os.ReadFile(filepath.Join(root, name))
+					if string(data) == want {
+						return
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+				t.Fatalf("automatic copy missing %s; status=%+v", name, crewAutoStatus(local.ID))
+			}
+			write(local.Files, "automatic.txt", "saved locally")
+			awaitFile(serverRoots.Files, "automatic.txt", "saved locally")
+			offline.Store(true)
+			write(local.Files, "automatic.txt", "saved offline")
+			time.Sleep(3500 * time.Millisecond)
+			if data, _ := os.ReadFile(filepath.Join(local.Files, "automatic.txt")); string(data) != "saved offline" {
+				t.Fatal("offline local edit lost")
+			}
+			offline.Store(false)
+			awaitFile(serverRoots.Files, "automatic.txt", "saved offline")
+			if w := call("server", "owner", true); w.Code != 200 {
+				t.Fatalf("automatic handoff: %s", w.Body.String())
+			}
+			write(serverRoots.Files, "automatic.txt", "saved on server")
+			awaitFile(local.Files, "automatic.txt", "saved on server")
+
 		})
 	}
 }

@@ -324,7 +324,7 @@ func captureCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, previous
 	if binding == nil {
 		return snapshot, fmt.Errorf("pair this Crew before syncing")
 	}
-	err = (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).EncodeSync(ctx, binding.PairID, &snapshot)
+	err = (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).EncodeSync(ctx, binding.PairID, roots, &snapshot)
 	return snapshot, err
 }
 func saveCrewSyncSnapshot(roots crewroot.Roots, snapshot crewsync.Snapshot) error {
