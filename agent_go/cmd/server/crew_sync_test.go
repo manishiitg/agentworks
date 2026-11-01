@@ -19,7 +19,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 	"github.com/spf13/viper"
 )
 
@@ -520,8 +520,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err = os.WriteFile(sourcePath, row, 0600); err != nil {
 		t.Fatal(err)
 	}
-	mb, err := musecli.ExportNativeSession(sourceHome, id, source)
-	moved.Native = crewMuseBundle(mb, "structured")
+	moved.Native, err = sessiontransfer.ExportMuse(sourceHome, id, source, "structured")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,8 +552,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 		t.Fatal(err)
 	}
 	fork := moved
-	mb, err = musecli.ExportNativeSession(sourceHome, id, source)
-	fork.Native = crewMuseBundle(mb, "structured")
+	fork.Native, err = sessiontransfer.ExportMuse(sourceHome, id, source, "structured")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +578,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err != nil || dirErr != nil || !ok || runtime == nil || !runtime.NativeHandoff || runtime.ExternalSessionID != id || runtime.AgentSessionHandle.ConnectionID != "global:muse-cli" || runtime.AgentSessionHandle.Provider.WorkingDir != expectedDir {
 		t.Fatalf("native runtime: %+v %v", runtime, err)
 	}
-	home, private, err := api.crewMuseStore(ctx, owner, roots, imported)
+	home, private, err := api.crewProgramStore(ctx, owner, roots, imported, "structured", false)
 	if err != nil || !strings.HasPrefix(home, private+string(filepath.Separator)) {
 		t.Fatalf("shared Muse store: %s %s %v", home, private, err)
 	}
@@ -588,7 +586,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if data, err := os.ReadFile(path); err != nil || !bytes.Equal(data, row) {
 		t.Fatalf("private native journal: %v", err)
 	}
-	if _, _, err = api.crewMuseStore(ctx, &UserClaims{UserID: "other"}, roots, imported); err == nil {
+	if _, _, err = api.crewProgramStore(ctx, &UserClaims{UserID: "other"}, roots, imported, "structured", false); err == nil {
 		t.Fatal("other owner obtained a native store")
 	}
 	if err = os.Rename(home, home+"-saved"); err != nil {
@@ -597,7 +595,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err = os.Symlink(t.TempDir(), home); err != nil {
 		t.Fatal(err)
 	}
-	_, _, linkErr := api.crewMuseStore(ctx, owner, roots, imported)
+	_, _, linkErr := api.crewProgramStore(ctx, owner, roots, imported, "structured", false)
 	os.Remove(home)
 	os.Rename(home+"-saved", home)
 	if linkErr == nil {

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
@@ -18,34 +19,9 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/pathidentity"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
-
-func crewMuseBundle(b *musecli.NativeSessionBundle, transport string) *sessiontransfer.Bundle {
-	if b == nil {
-		return nil
-	}
-	if transport == "" {
-		transport = "structured"
-	}
-	out := &sessiontransfer.Bundle{Provider: "muse-cli", Format: "muse-jsonl", Transport: transport, SessionID: b.SessionID, Date: b.Date, Workspace: b.Workspace, Root: b.Root, Files: map[string]sessiontransfer.File{}}
-	for n, f := range b.Files {
-		out.Files[n] = sessiontransfer.File{Size: f.Size, SHA256: f.SHA256}
-	}
-	return out
-}
-func crewMuseJournal(b *sessiontransfer.Bundle) *musecli.NativeSessionBundle {
-	if b == nil {
-		return nil
-	}
-	out := &musecli.NativeSessionBundle{SessionID: b.SessionID, Date: b.Date, Workspace: b.Workspace, Root: b.Root, Files: map[string]musecli.NativeSessionFile{}}
-	for n, f := range b.Files {
-		out.Files[n] = musecli.NativeSessionFile{Size: f.Size, SHA256: f.SHA256}
-	}
-	return out
-}
 
 // Paths and account selection come from the destination's normal admission.
 // A packet's workspace is descriptive only and never selects a storage root.
@@ -53,15 +29,47 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 	if claims == nil || roots.Owner != claims.UserID || claims.UserID == "" {
 		return "", "", fmt.Errorf("only the project owner can move its native session")
 	}
-	if c.Provider == "muse-cli" {
-		return api.crewMuseStore(ctx, claims, roots, c)
-	}
 	runtimeDir, err = crewPrivateRuntimeDir(roots.Virtual, claims.UserID, c.SessionID, c.Provider, false)
 	if err == nil && runtimeDir == "" {
 		runtimeDir, err = crewCLIWorkingDir(roots.Virtual, claims.UserID, c.SessionID, c.Provider, false)
 	}
 	if err != nil || runtimeDir == "" {
 		return "", "", fmt.Errorf("the private agent runtime is unavailable")
+	}
+	if c.Provider == "muse-cli" {
+		if !cliPersonalMac() {
+			// The agent can write inside its runtime, so none of the journal-home
+			// components may redirect an application-side import to another home.
+			store = runtimeDir
+			for _, part := range []string{security.SandboxPersistentDirName, "cli-home", "muse-cli", ".local", "share"} {
+				store = filepath.Join(store, part)
+				info, e := os.Lstat(store)
+				if e != nil && !os.IsNotExist(e) {
+					return "", "", e
+				}
+				if e == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
+					return "", "", fmt.Errorf("the private Muse home contains a link or non-directory")
+				}
+			}
+			return store, runtimeDir, nil
+		}
+		id := strings.TrimSpace(c.ConnectionID)
+		if id != "" && !strings.HasPrefix(id, "global:") {
+			_, err = api.admitProviderAccount(ctx, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"}, "muse-cli", id)
+			if err != nil {
+				return "", "", err
+			}
+			home, e := providerConnectionHome(id)
+			return filepath.Join(home, ".local", "share"), runtimeDir, e
+		}
+		if store = strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); store == "" {
+			home, e := os.UserHomeDir()
+			if e != nil {
+				return "", "", e
+			}
+			store = filepath.Join(home, ".local", "share")
+		}
+		return store, runtimeDir, nil
 	}
 	id := strings.TrimSpace(c.ConnectionID)
 	if id == "" {
@@ -121,11 +129,7 @@ func (api *StreamingAPI) captureCrewNative(ctx context.Context, claims *UserClai
 		return nil, nil
 	}
 	h := runtime.AgentSessionHandle.Provider
-	if c.Provider == "muse-cli" {
-		b, e := api.captureCrewMuse(ctx, claims, roots, c, runtime)
-		return crewMuseBundle(b, h.Transport), e
-	}
-	if c.Provider != "claude-code" && c.Provider != "codex-cli" && c.Provider != "cursor-cli" {
+	if c.Provider != "claude-code" && c.Provider != "codex-cli" && c.Provider != "cursor-cli" && c.Provider != "muse-cli" {
 		return nil, nil
 	}
 	cwd, e := crewCLIWorkingDir(roots.Virtual, claims.UserID, c.SessionID, c.Provider, false)
@@ -154,6 +158,9 @@ func (api *StreamingAPI) captureCrewNative(ctx context.Context, claims *UserClai
 	return b, nil
 }
 func exportCrewProgram(store, cwd, id, provider, transport, out string, remember bool) (*sessiontransfer.Bundle, error) {
+	if provider == "muse-cli" {
+		return sessiontransfer.ExportMuse(store, id, cwd, transport)
+	}
 	if provider == "cursor-cli" {
 		if transport == "sdk" {
 			return sessiontransfer.ExportCursorSDK(store, cwd, id, out, remember)
@@ -217,13 +224,6 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 		return nil, fmt.Errorf("the destination agent is still working; retry after it finishes")
 	}
 	closeWorkflowPolicyCLI(current.SessionID, current.Provider, "resuming native session from other computer")
-	if b.Provider == "muse-cli" {
-		r, e := api.importCrewMuse(ctx, claims, roots, current, session, crewMuseJournal(b))
-		if r != nil {
-			r.AgentSessionHandle.Provider.Transport = b.Transport
-		}
-		return r, e
-	}
 	// Fresh Linux runtimes must not hide an offline branch in the prior runtime.
 	raw, readErr := ReadChatHistoryConversation(claims.UserID, current.SessionID, current.WorkspacePath)
 	if readErr != nil && !errors.Is(readErr, errChatHistoryConversationNotFound) {
@@ -285,6 +285,8 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 		return nil, e
 	}
 	switch b.Format {
+	case "muse-jsonl":
+		e = sessiontransfer.ImportMuse(store, cwd, b)
 	case "cursor-sdk-sqlite":
 		e = sessiontransfer.ImportCursorSDK(store, cwd, b)
 	case "cursor-cli-sqlite":
@@ -297,4 +299,44 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 	}
 	log.Printf("[CREW_HANDOFF] project=%s phase=import mode=native_candidate provider=%s transport=%s native_session=%s", roots.ID, b.Provider, b.Transport, b.SessionID)
 	return &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: b.Provider, ModelID: current.ModelID, ExternalSessionID: b.SessionID, ResumeSupported: true, WorkspacePath: current.WorkspacePath, NativeHandoff: true, AgentToolsMode: current.handoffAgentToolsMode, WorkshopMode: normalizeChatHistoryWorkshopMode(crewCLIMode(false)), AgentSessionHandle: &mcpagent.AgentSessionHandle{ConnectionID: current.ConnectionID, SessionID: session, OwnerID: session, Scope: "coding_agent", Provider: llmtypes.CodingProviderSessionHandle{Provider: b.Provider, Transport: b.Transport, NativeFormat: b.Format, NativeSessionID: b.SessionID, WorkingDir: cwd, RuntimeDir: runtimeDir, ProjectDirID: cwd, Model: current.ModelID}}}, nil
+}
+
+// Source IDs are not portable authority. Keep the destination-selected account
+// or use its admitted server account. Native packets never carry a login.
+func (api *StreamingAPI) crewNativeDestination(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, identity ProductAgentIdentity, sourceModel, provider string) (*ProductAgentIdentity, string) {
+	profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID)
+	if err != nil {
+		return nil, "This AI program is unavailable on this computer; continued from saved conversation history."
+	}
+	option, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, provider)
+	if !offered {
+		return nil, "This AI program is unavailable on this computer; continued from saved conversation history."
+	}
+	account := ""
+	if identity.Engine == option.ID {
+		account = identity.ConnectionID
+	} else if current.Provider == provider {
+		account = current.ConnectionID
+	} else if !IsLocalMode() {
+		account = "global:" + provider
+	} else {
+		return nil, "Choose an AI program account on this computer to resume its native session; continued from saved conversation history."
+	}
+	if _, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"}, provider, account); err != nil {
+		return nil, "This AI program is not available to this account on this computer; continued from saved conversation history."
+	}
+	model := strings.TrimSpace(sourceModel)
+	if model == "" && current.Provider == provider {
+		model = current.ModelID
+	}
+	if model == "" {
+		model = option.ModelID
+	}
+	if !providerOptionOffersModel(option, currentCodingAgentModel(provider, model)) || checkAccountModel(withModelLimitPerson(ctx, claims.UserID), provider, account, model) != nil {
+		return nil, "This AI model is unavailable on this computer; continued from saved conversation history."
+	}
+	identity.Engine, identity.ModelID, identity.ConnectionID, identity.ReasoningEffort = option.ID, model, account, ""
+	identity.UpdatedBy = claims.UserID
+	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	return &identity, ""
 }
