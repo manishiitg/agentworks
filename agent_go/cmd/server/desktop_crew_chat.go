@@ -358,6 +358,9 @@ func projectCrewMacEvents(raw []byte, local, paired string) ([]byte, error) {
 			kept = append(kept, row)
 		}
 	}
+	if len(rows) > 0 {
+		log.Printf("[CREW_CHAT_RELAY] phase=event_projection local_session=%s paired_session=%s kept=%d dropped=%d", local, paired, len(kept), len(rows)-len(kept))
+	}
 	envelope["session_id"], _ = json.Marshal(paired)
 	envelope["events"], _ = json.Marshal(kept)
 	return json.Marshal(envelope)
