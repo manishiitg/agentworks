@@ -76,18 +76,17 @@ export function SharedTokenUsageChip({ accountProvider, sessionId }: { accountPr
   )
 }
 
-/** The same limits as rows in a chat's model menu: "Today 3%" and "This week 13%" with their resets. */
-export function SharedTokenUsageItems({ accountProvider }: { accountProvider?: string | null }) {
-  const limits = chatTokenLimits(useSharedTokenUsage(), accountProvider)
+/** The same limits as rows in a chat's model menu: "Today 3M of 50M" and "This week 13M of 200M"; resets in the tooltip. */
+export function SharedTokenUsageItems({ accountProvider, serverConnection }: { accountProvider?: string | null; serverConnection?: string }) {
+  const limits = chatTokenLimits(useSharedTokenUsage(serverConnection), accountProvider)
   if (!limits) return null
   return <>
     <Menu.Separator className="my-1 h-px bg-border" />
-    <Menu.Label className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground">Shared account limits</Menu.Label>
+    <Menu.Label className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground">{serverConnection ? 'Company account limits' : 'Shared account limits'}</Menu.Label>
     {limits.rows.map(row => <div key={row.label} title={limits.detail.join('\n')} className="px-2.5 py-1 text-xs">
       <div className="flex items-center gap-2 tabular-nums">
         <span className="flex-1">{row.label}</span>
-        <span className={stateColor(row.percent >= 100 ? 'over' : row.percent >= 80 ? 'warning' : 'ok')}>{row.percent}%</span>
-        <span className="text-muted-foreground">resets {row.resets}</span>
+        <span className={stateColor(row.percent >= 100 ? 'over' : row.percent >= 80 ? 'warning' : 'ok')}>{formatTokens(row.used)} of {formatTokens(row.limit)}</span>
       </div>
     </div>)}
     {limits.shown.state === 'over' && <p className="px-2.5 pb-1 text-xs text-destructive">New messages on {limits.shown.scope} are paused; switch to another account.</p>}
@@ -108,19 +107,20 @@ export function SharedTokenUsageNotice({ className = '', accountProvider, inline
     return <p data-testid="account-limits" className={`${base} ${inline ? '' : 'border-border bg-muted/40'} text-muted-foreground ${className}`}>Your own account · not limited</p>
   }
   const shown = usage ? shownTokenFigures(usage, accountProvider) : null
-  const pct = (used: number, limit: number) => `${Math.min(999, Math.round((used / limit) * 100))}%`
   const limits: string[] = []
   const resets: string[] = []
+  // Tokens used of the limit, today and this week (owner: limits are tokens, no percentages or reset times here;
+  // the reset times stay in the tooltip).
   if (shown?.daily_limit) {
-    limits.push(`Day ${pct(shown.daily_used, shown.daily_limit)}`)
+    limits.push(`today ${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)}`)
     if (usage?.day_resets_at) resets.push(`day ${resetLabel(usage.day_resets_at, false)}`)
   }
   if (shown?.weekly_limit) {
-    limits.push(`Week ${pct(shown.weekly_used, shown.weekly_limit)}`)
+    limits.push(`this week ${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)}`)
     if (usage?.week_resets_at) resets.push(`week ${resetLabel(usage.week_resets_at, true)}`)
   }
   const text = limits.length
-    ? `${serverConnection ? 'Company account' : 'Shared account'} · limits: ${limits.join(' · ')}${resets.length ? ` (resets ${resets.join(', ')})` : ''}`
+    ? `${serverConnection ? 'Company account' : 'Shared account'} · ${limits.join(' · ')}`
     : `${serverConnection ? 'Company account' : 'Shared account'}${usage ? ' · no limit' : ''}`
   const state = limits.length ? shown?.state : 'ok'
   const tone = state === 'over'
@@ -129,6 +129,7 @@ export function SharedTokenUsageNotice({ className = '', accountProvider, inline
       ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
       : 'border-border bg-muted/40 text-muted-foreground'
   const detail: string[] = []
+  if (resets.length) detail.push(`Resets ${resets.join(', ')}`)
   if (usage?.counting_note) detail.push(usage.counting_note)
   if (shown?.daily_cache_read_tokens || shown?.weekly_cache_read_tokens) detail.push(`Raw cache reads: ${formatTokens(shown.daily_cache_read_tokens)} today; ${formatTokens(shown.weekly_cache_read_tokens)} this week`)
   if (shown?.daily_limit) detail.push(`Today: ${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)}`)

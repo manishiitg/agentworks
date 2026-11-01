@@ -1,3 +1,4 @@
+import { formatTokens } from '../../utils/formatTokens'
 // @vitest-environment happy-dom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -18,7 +19,7 @@ it('names the account kind and only the limits that exist', async () => {
   const root = createRoot(host)
   const text = () => host.querySelector('[data-testid="account-limits"]')?.textContent
   await act(async () => root.render(<SharedTokenUsageNotice accountProvider="muse-cli" />))
-  expect(text()).toBe('Shared account · limits: Day 32% · Week 70% (resets day 00:00 UTC, week Monday 00:00 UTC)')
+  expect(text()).toBe(`Shared account · today ${formatTokens(32)} of ${formatTokens(100)} · this week ${formatTokens(70)} of ${formatTokens(100)}`)
   await act(async () => root.render(<SharedTokenUsageNotice accountProvider="codex-cli" />))
   expect(text()).toBe('Shared account · no limit')
   await act(async () => root.render(<SharedTokenUsageNotice accountProvider={null} />))
