@@ -121,6 +121,7 @@ type webhookRouteOption struct {
 }
 
 type workflowWebhookResponse struct {
+	ChatID           string                          `json:"chat_id,omitempty"`
 	StepID           string                          `json:"step_id,omitempty"`
 	InputMode        string                          `json:"input_mode,omitempty"`
 	AllowedVariables []string                        `json:"allowed_variables,omitempty"`
@@ -140,6 +141,7 @@ type workflowWebhookResponse struct {
 }
 
 type workflowWebhookRequest struct {
+	ChatID           string                          `json:"chat_id,omitempty"`
 	StepID           *string                         `json:"step_id,omitempty"`
 	InputMode        string                          `json:"input_mode,omitempty"`
 	AllowedVariables []string                        `json:"allowed_variables,omitempty"`
@@ -230,7 +232,7 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 	if s.IsInternalTrigger() {
 		path = ""
 	}
-	out := workflowWebhookResponse{ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, GroupNames: s.GroupNames, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function}
+	out := workflowWebhookResponse{ChatID: s.ChatID, ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, GroupNames: s.GroupNames, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function}
 	if s.Webhook != nil {
 		out.StepID = s.Webhook.StepID
 		out.InputMode = s.Webhook.InputMode
@@ -488,7 +490,12 @@ func (s *SchedulerService) listWorkflowWebhooks(w http.ResponseWriter, r *http.R
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"triggers": hooks, "routes": routes, "groups": groups, "declared_variables": variableNames, "route_error": routeError, "steps": steps})
+	response := map[string]interface{}{"triggers": hooks, "routes": routes, "groups": groups, "declared_variables": variableNames, "route_error": routeError, "steps": steps}
+	level := workflowAccessForManifest(GetUserFromContext(r.Context()), manifest)
+	if level == WorkflowAccessOwner || level == WorkflowAccessWrite {
+		response["chat_choices"] = crewExecutableChatChoices(manifest)
+	}
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Request) {
@@ -674,7 +681,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 	} else {
 		caller = nil
 	}
-	sched := WorkflowSchedule{ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, GroupNames: groups, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller}
+	sched := WorkflowSchedule{ChatID: req.ChatID, ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, GroupNames: groups, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller}
 	if function {
 		sched.Function = spec
 	}

@@ -3,6 +3,7 @@ import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 
 export interface WorkflowAPITrigger {
+  chat_id?: string
   step_id?: string
   id: string
   name: string
@@ -48,6 +49,7 @@ export interface WebhookPayloadMappings {
 }
 
 export interface APITriggerOptions {
+  chat_choices?: { id: string; label: string }[]
   steps?: { step_id: string; title: string }[]
   triggers: WorkflowAPITrigger[]
   routes: { step_id: string; step_title: string; route_id: string; route_name: string }[]
@@ -74,6 +76,7 @@ export interface RelayReleasesResponse {
 
 export type APITriggerRequest = Pick<WorkflowAPITrigger, 'name' | 'enabled' | 'auth_mode' | 'route_selections' | 'group_names'> & {
   workspace_path: string
+  chat_id?: string
   step_id?: string
   payload_mappings?: WebhookPayloadMappings
   rotate_secret?: boolean

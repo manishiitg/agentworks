@@ -131,7 +131,7 @@ func workflowFunctionDefinition(schedule WorkflowSchedule) (projectFunctionDefin
 	if schedule.Webhook != nil {
 		step = schedule.Webhook.StepID
 	}
-	return projectFunctionDefinition{ID: schedule.ID, Name: schedule.Function.Name, Description: firstNonEmptyTrimmed(schedule.Function.Description, schedule.Name), Enabled: schedule.Enabled, Action: projectactions.Action{Type: "run", Step: step}, Input: input, InputSchema: workflowFunctionInputSchema(schedule), ResultSchema: workflowFunctionResultSchema(), AllowedCallers: schedule.Function.AllowedCallers}, nil
+	return projectFunctionDefinition{ID: schedule.ID, Name: schedule.Function.Name, Description: firstNonEmptyTrimmed(schedule.Function.Description, schedule.Name), Enabled: schedule.Enabled, Action: projectactions.Action{Type: "run", Step: step, Tab: schedule.ChatID}, Input: input, InputSchema: workflowFunctionInputSchema(schedule), ResultSchema: workflowFunctionResultSchema(), AllowedCallers: schedule.Function.AllowedCallers}, nil
 }
 
 func workflowFunctionExecutionView(fn projectFunctionDefinition) (WorkflowSchedule, error) {
@@ -180,7 +180,7 @@ func workflowFunctionExecutionView(fn projectFunctionDefinition) (WorkflowSchedu
 		}
 		spec.Inputs = append(spec.Inputs, parameter)
 	}
-	return WorkflowSchedule{ID: fn.ID, Name: firstNonEmptyTrimmed(fn.Description, fn.Name), Enabled: fn.Enabled, ScheduleType: "webhook", Kind: triggerKindFunction, Function: spec, Webhook: &WorkflowWebhookConfig{StepID: fn.Action.Step}, Mode: "workshop", WorkshopMode: "run", GroupNames: input.Groups, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
+	return WorkflowSchedule{ChatID: fn.Action.Tab, ID: fn.ID, Name: firstNonEmptyTrimmed(fn.Description, fn.Name), Enabled: fn.Enabled, ScheduleType: "webhook", Kind: triggerKindFunction, Function: spec, Webhook: &WorkflowWebhookConfig{StepID: fn.Action.Step}, Mode: "workshop", WorkshopMode: "run", GroupNames: input.Groups, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
 }
 
 func crewFunctionDefinition(root string, fn crewFunction) (projectFunctionDefinition, error) {
@@ -224,7 +224,7 @@ func workflowWebhookDefinition(project projectactions.Project, caller string, sc
 		return projectWebhookDefinition{}, fmt.Errorf("webhook %s has no authentication settings", schedule.ID)
 	}
 	cfg := schedule.Webhook
-	action := projectactions.Action{Type: "run", Step: cfg.StepID}
+	action := projectactions.Action{Type: "run", Step: cfg.StepID, Tab: schedule.ChatID}
 	if len(schedule.Messages) > 0 {
 		action.Type = "message"
 	}
@@ -240,7 +240,7 @@ func workflowWebhookExecutionView(record projectWebhookDefinition) (WorkflowSche
 	if record.Action.Type == "message" {
 		mode = "workshop"
 	}
-	return WorkflowSchedule{ID: record.ID, Name: record.Name, Enabled: record.Enabled, ScheduleType: "webhook", Mode: "workshop", WorkshopMode: mode, Webhook: webhookExecutionConfig(record), GroupNames: input.Groups, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, RunAs: record.RunAs, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
+	return WorkflowSchedule{ChatID: record.Action.Tab, ID: record.ID, Name: record.Name, Enabled: record.Enabled, ScheduleType: "webhook", Mode: "workshop", WorkshopMode: mode, Webhook: webhookExecutionConfig(record), GroupNames: input.Groups, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, RunAs: record.RunAs, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
 }
 
 func crewWebhookDefinition(project projectactions.Project, caller string, trigger productWebhookTrigger) (projectWebhookDefinition, error) {
@@ -275,7 +275,7 @@ func workflowBindingDefinition(schedule WorkflowSchedule) (projectFunctionDefini
 	if err != nil {
 		return projectFunctionDefinition{}, err
 	}
-	record := projectFunctionDefinition{ID: schedule.ID, Name: internalFunctionName(schedule.ID), Description: schedule.Name, Enabled: schedule.Enabled, Action: projectactions.Action{Type: "run"}, Input: input, InputSchema: map[string]interface{}{"type": "object"}, InputMapping: &projectWebhookInputMapping{}}
+	record := projectFunctionDefinition{ID: schedule.ID, Name: internalFunctionName(schedule.ID), Description: schedule.Name, Enabled: schedule.Enabled, Action: projectactions.Action{Type: "run", Tab: schedule.ChatID}, Input: input, InputSchema: map[string]interface{}{"type": "object"}, InputMapping: &projectWebhookInputMapping{}}
 	if schedule.Caller != nil {
 		record.AllowedCallers = []triggerCaller{*schedule.Caller}
 	}
@@ -336,6 +336,9 @@ func loadWorkflowEntryActions(ctx context.Context, root string, manifest *Workfl
 		}
 		if record.Project.ID != manifest.ID || record.Project.Kind != kind {
 			return fmt.Errorf("webhook project does not match its folder")
+		}
+		if manifest.crewExecutable != nil && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest)) {
+			return fmt.Errorf("webhook must run as its Crew owner")
 		}
 		owners := manifest.effectiveOwners()
 		if (len(owners) == 0 && (record.RunAs == "" || record.RunAs != workflowExecutionOwnerUserID(manifest))) || (len(owners) > 0 && !containsID(owners, record.RunAs)) {
