@@ -5094,6 +5094,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Track HTTP session ID on the orchestrator so MCP sessions can be closed on stop
 		workflowOrchestrator.SetHTTPSessionID(sessionID)
 
+		// PLAT-746-265: whole runs bypass the workshop chat that normally
+		// registers each step's durable inspection owner. Reuse its recorder
+		// for Crew children; the run itself owns the saved-chat notification.
+		if child, bindingErr := findCrewExecutable(manifestWorkspacePath); bindingErr == nil && child != nil {
+			workflowOrchestrator.SetWorkshopExecutionNotifier(&workshopExecutionBgNotifier{
+				api: api, sessionID: sessionID, workspacePath: manifestWorkspacePath,
+				presetQueryID: req.PresetQueryID, userID: currentUserID,
+				suppressAutoNotification: true,
+			})
+			log.Printf("[CREW_EXECUTABLE] inspection recording enabled workspace=%s session=%s", manifestWorkspacePath, sessionID)
+		}
+
 		// A server-owned run (scheduled, webhook, Slack: "schedule-…") registered its tools only in the global table, so a
 		// scripted step calling a tool through its bridge session (a registered child of this run) got whichever session
 		// wrote that table last; a Crew chat running at the same moment handed it its own executor and the ownership check
