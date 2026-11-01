@@ -5,6 +5,7 @@ import type { WorkspaceStatusRow } from '../../products/work/useWorkspaceStatus'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { WorkspaceCompactGroup } from './WorkspaceCompactGroup'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
+import { connectionSummary } from './workspaceConnectionStatus'
 
 function ConnectionIcon({ icon: Icon, hint, count, onClick }: {
   icon: LucideIcon; hint: string; count?: number; onClick: () => void
@@ -25,7 +26,7 @@ export function WorkspaceConnectionsMenu({ workspacePath, profileId, browserAllo
   const connectedMcps = mcps.filter(item => item.connected)
   const accounts = apps.filter(item => item.destination !== 'mcp:connected')
   const attention = mcps.filter(item => item.attention).length
-  const mcpDetail = loading ? 'Checking…' : unavailable ? 'Unavailable' : `${connectedMcps.length} connected${attention ? ` · ${attention} need attention` : ''}`
+  const mcpDetail = loading ? 'Checking…' : unavailable ? 'Unavailable' : connectionSummary(mcps, true)
   const mcpHint = `MCPs · ${mcpDetail}`
   const browserHint = `Browser · ${browser.name ? `${browser.name} · ` : ''}${browser.label}`
   const browserIcon = browser.name?.toLowerCase().includes('chrome') ? Chrome : Monitor
