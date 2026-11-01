@@ -495,7 +495,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         <div>
           <p className="font-medium text-gray-800 dark:text-gray-200">Use from the Mac app</p>
           <p className="mt-0.5 text-gray-500 dark:text-gray-400">{macApp.signed_in_as
-            ? <>On · signed in as {macApp.signed_in_as}. People it is available to see it in their Mac app; this account's limits apply and the usage counts here.</>
+            ? <>On · uses {macApp.signed_in_as}. People it is available to see it in their Mac app; this account's limits apply and the usage counts here.{provider === 'cursor-cli' && <> Everyone shares this Cursor account, so its Cursor privacy mode and indexing settings apply to their work; check them in Cursor's settings.</>}</>
             : <>Off. Turn it on to let people run {providerLabel || provider} on their own Mac with this account. You sign in once; it is a separate login from the one above.</>}</p>
         </div>
         {macApp.signed_in_as
