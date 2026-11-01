@@ -656,7 +656,9 @@ export default function WorkflowLLMConfigurationPanel({
       const available = !unavailable && !needsSetup && row.entry.runtime_available !== false && (account.scope === 'user' ? global?.personal_accounts_allowed !== false : Boolean(row.entry.usable))
       const relation = accountRelation(account)
       const keyService = 'underlying_provider' in account ? byokServiceOf(account) : undefined
-      const note = relation === 'own' ? `${keyService ? `Your ${keyService.label} key · ` : ''}${'sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private'}`
+      const company = 'via_connection' in account && Boolean(account.via_connection)
+      const note = company ? "Company account · the server's limits apply"
+        : relation === 'own' ? `${keyService ? `Your ${keyService.label} key · ` : ''}${'sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private'}`
         : relation === 'server' ? `Managed by admin${'identity' in account && account.identity ? ` · ${account.identity}` : ''}`
           : `Shared${'owner_name' in account && account.owner_name ? ` by ${account.owner_name}` : ''}`
       return <div key={account.id} className="flex flex-wrap items-center gap-2 py-2">
@@ -665,11 +667,11 @@ export default function WorkflowLLMConfigurationPanel({
         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{note}</span>
         {unavailable && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{NO_LONGER_AVAILABLE}</span>}
         {inUse && <span className="text-[10px] font-medium text-primary">In use</span>}
-        {inUse && accountUsage}
+        {inUse && !company && accountUsage}
         <span className="min-w-0 flex-1" />
         {needsSetup && !inUse
           ? <Button type="button" variant="outline" size="xs" disabled={readOnly} onClick={() => useLLMStore.getState().setShowLLMModal(true)} title={`${account.display_name} is not signed in yet: set it up on the Providers page`} aria-label={`Set up ${row.name} account ${account.display_name}`}>Set up</Button>
-          : <Button type="button" variant="outline" size="xs" disabled={readOnly || !available || inUse || rowUsing === row.id} onClick={() => void applyAccountToWorkflow(row, account.id)} title={unavailable ? NO_LONGER_AVAILABLE : !available ? 'Account needs setup or CLI is unavailable' : `Use ${account.display_name}`} aria-label={`Use ${row.name} account ${account.display_name}`}>{inUse ? 'Selected' : 'Use account'}</Button>}
+          : <Button type="button" variant="outline" size="xs" disabled={readOnly || !available || inUse || rowUsing === row.id} onClick={() => void applyAccountToWorkflow(row, account.id)} title={unavailable ? NO_LONGER_AVAILABLE : !available ? 'Account needs setup or CLI is unavailable' : `Use ${account.display_name}`} aria-label={`Use ${row.name} account ${account.display_name}`}>{inUse ? 'Selected' : 'Use'}</Button>}
       </div>
     }
     const showHeadings = listed.some(account => accountRelation(account) !== 'server' && accountRelation(account) !== 'own')
@@ -815,18 +817,8 @@ export default function WorkflowLLMConfigurationPanel({
               {statusActionText(status.label)}
             </span>
           )}
-          {connected && !selected ? (
-            <Button
-              type="button"
-              size="xs"
-              onClick={() => void applyRowToWorkflow(row)}
-              disabled={readOnly || !row.selectable || rowUsing === row.id}
-              title={readOnly ? disabledTitle : `Use ${row.name} for this ${scopeNoun}`}
-              className="shrink-0"
-            >
-              {rowUsing === row.id ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</> : 'Use'}
-            </Button>
-          ) : !connected ? (
+          {/* "Use" sits on each account (open the program); a program that is not set up links to its page. */}
+          {!connected ? (
             <Button
               type="button"
               variant="outline"

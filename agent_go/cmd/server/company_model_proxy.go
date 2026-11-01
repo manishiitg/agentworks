@@ -516,7 +516,7 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, c := range connections {
-		want[c.ID], names[c.ID] = map[string]bool{}, c.Name
+		want[c.ID], names[c.ID] = map[string]bool{}, friendlyServerName(c.Name, c.Server)
 		for provider := range companyProxyModels {
 			wg.Add(1)
 			go func(c desktopConnection, provider string) {
@@ -548,6 +548,9 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 				continue
 			}
 			have[record.ViaConnection+"/"+record.Provider] = true
+			if name := names[record.ViaConnection] + " · " + providerAccountProductName(record.Provider) + " (company)"; names[record.ViaConnection] != "" && record.DisplayName != name {
+				record.DisplayName, changed = name, true
+			}
 		}
 		next = append(next, record)
 	}
