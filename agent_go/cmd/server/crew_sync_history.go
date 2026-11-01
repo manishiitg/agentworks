@@ -116,6 +116,9 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	if err := validateCrewHandoffConversation(in); err != nil {
 		return err
 	}
+	if api.crewNativeTurnRunning(roots) {
+		return errCrewNativeDestinationBusy
+	}
 	in.Notice = "The next reply will continue from saved conversation history."
 	session := "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(claims.UserID+"/"+roots.ID+"/"+pair+"/"+transfer)).String()
 	store := defaultProductConversationRegistryStore()
@@ -174,6 +177,11 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		}
 	}
 	if runtime, nativeErr := api.importCrewNative(ctx, claims, roots, current, session, nativeCandidate); nativeErr != nil {
+		// Busy means retry this handoff, not replace the running conversation
+		// with an archive that starts a fresh native session.
+		if errors.Is(nativeErr, errCrewNativeDestinationBusy) {
+			return nativeErr
+		}
 		log.Printf("[CREW_HANDOFF] project=%s phase=import mode=archive native_unavailable=%q", roots.ID, nativeErr)
 		in.Notice = "The native session could not resume on this computer. The next reply will continue from saved conversation history."
 		if strings.Contains(nativeErr.Error(), "both copies were kept") {

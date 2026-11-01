@@ -201,6 +201,8 @@ func crewNativeRuntimeAvailable(ctx context.Context, b *sessiontransfer.Bundle) 
 	return nil
 }
 
+var errCrewNativeDestinationBusy = errors.New("the destination agent is still working; retry after it finishes")
+
 func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, session string, b *sessiontransfer.Bundle) (*ChatHistoryAgentRuntime, error) {
 	if b == nil {
 		return nil, nil
@@ -221,7 +223,7 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 		return nil, err
 	}
 	if api.crewNativeTurnRunning(roots) {
-		return nil, fmt.Errorf("the destination agent is still working; retry after it finishes")
+		return nil, errCrewNativeDestinationBusy
 	}
 	closeWorkflowPolicyCLI(current.SessionID, current.Provider, "resuming native session from other computer")
 	// Fresh Linux runtimes must not hide an offline branch in the prior runtime.
