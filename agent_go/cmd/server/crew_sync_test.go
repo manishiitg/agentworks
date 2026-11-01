@@ -47,7 +47,14 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			t.Cleanup(func() { viper.Set("docs-dir", old) })
 			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true}]}`)
 			files := gin.New()
-			files.PUT("/api/documents/*filepath", wh.UpdateDocument)
+			var failRegistryWrite atomic.Bool
+			files.PUT("/api/documents/*filepath", func(c *gin.Context) {
+				if strings.HasSuffix(c.Param("filepath"), "/"+productConversationRegistryFile) && failRegistryWrite.CompareAndSwap(true, false) {
+					c.String(500, "injected registry write failure")
+					return
+				}
+				wh.UpdateDocument(c)
+			})
 			files.GET("/api/documents/*filepath", wh.GetDocument)
 			files.GET("/api/documents", wh.ListDocuments)
 			files.POST("/api/folders", wh.CreateFolder)
@@ -300,6 +307,32 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("return identity: %+v %v", returned, err)
 			}
 			checkTranscript(returned, "server continued")
+			// A failed binding write leaves journal rows behind. Retrying the same
+			// transfer must finish without duplicates, including beyond the normal
+			// builder restore's twelve-message window.
+			replay, err := api.captureCrewHandoffConversation(ctx, owner, local, returned)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for len(replay.History) < 15 {
+				replay.History = append(replay.History, replay.History[0])
+			}
+			failRegistryWrite.Store(true)
+			if err = api.importCrewHandoffConversation(ctx, owner, local, "test-pair", "journal-retry", replay, returned); err == nil || !strings.Contains(err.Error(), "write product conversation registry") {
+				t.Fatalf("expected failure after journal import: %v", err)
+			}
+			if err = api.importCrewHandoffConversation(ctx, owner, local, "test-pair", "journal-retry", replay, returned); err != nil {
+				t.Fatal(err)
+			}
+			retried, err := api.crewHandoffMain(ctx, owner, local.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			page, err := eventStore.ReadDurableChatPage(retried.SessionID, events.DurableEventPageOptions{Limit: 100})
+			if err != nil || len(page.Events) != 15 {
+				t.Fatalf("journal retry duplicated or truncated dialogue: %d %v", len(page.Events), err)
+			}
+			checkTranscript(retried, "server continued")
 			saved, err = ReadChatHistoryConversation("owner", returned.SessionID, returned.WorkspacePath)
 			if err != nil || !bytes.Contains(saved, []byte("server continued")) || bytes.Contains(saved, []byte("do-not-transfer")) {
 				t.Fatalf("return lost conversation or copied runtime: %v", err)
