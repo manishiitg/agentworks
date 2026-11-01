@@ -26,6 +26,7 @@ beforeEach(() => {
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
+const accessDestinations = [['Local laptop','laptop'],['Project sync','sync'],['Linked projects & folders','folders'],['Chats from your computer','agents'],['AgentBridge','agentbridge']]
 const inventory = (features?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels: features, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
 async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => Promise<void>) {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -67,6 +68,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   mocks.open.mockClear(); mocks.target.mockClear()
   await act(async () => manage.click())
   expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.target).not.toHaveBeenCalled()
+  for (const [label] of accessDestinations) expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === label)).toBe(false)
   for (const [label, target] of [['Google apps','gmail'],['My Slack account','slack-account'],['GitHub','github'],['MCPs','connected'],['WhatsApp','whatsapp']]) {
    const row = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!
    expect(row.textContent).toContain(label === 'MCPs' ? '1 connected · 1 need attention' : 'Connected')
@@ -173,13 +175,22 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
    const share = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('Access & sharing'))!
    expect(share.textContent).toBe(`Access & sharing${detail}`)
    expect(footer.querySelector('button')).toBe(share)
+   mocks.open.mockClear(); mocks.target.mockClear()
    await act(async () => share.click())
+   expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.target).not.toHaveBeenCalled()
+   const sharingRow = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Sharing')!
+   if (mode === 'private') for (const [label,target] of accessDestinations) {
+    await act(async () => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!.click())
+    expect(mocks.target).toHaveBeenLastCalledWith('mcp',target)
+    expect(mocks.open).toHaveBeenLastCalledWith('mcp')
+   }
+   await act(async () => sharingRow.click())
    expect(mocks.target).toHaveBeenLastCalledWith('mcp','share')
    expect(mocks.open).toHaveBeenLastCalledWith('mcp')
    mocks.open.mockClear()
    const owner = mocks.user
    mocks.user = { ...owner, id:'another-user' }
-   await act(async () => share.click())
+   await act(async () => sharingRow.click())
    expect(mocks.open).not.toHaveBeenCalled()
    mocks.user = owner
   })
@@ -187,6 +198,11 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
  mocks.share = { can_share:false, mode:'private', people:[], unknown_emails:[] }
  await render('cowork', async host => {
   expect(host.querySelector('footer')?.textContent).not.toContain('Access & sharing')
+  await act(async () => [...host.querySelector('footer')!.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Access')!.click())
+  expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Sharing')).toBe(false)
+  expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Project sync')).toBe(false)
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Local laptop')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp','laptop')
  })
 })
 

@@ -35,22 +35,22 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
+    if (has('dashboard') && canShare) {
+      add('mcp', 'Share', 'Access & sharing', UsersRound, 'share')
+    }
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
-      add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.subgroup)
+      add('mcp', item.id === 'mcp:folders' ? 'Share' : 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.id === 'mcp:folders' ? 'Access' : item.subgroup)
     }
     if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
-    add('mcp', 'Integrations', 'Local laptop', Laptop, 'laptop')
+    add('mcp', 'Share', 'Local laptop', Laptop, 'laptop', 'Access')
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
-    if (canShare) add('mcp', 'Integrations', 'Project sync', Laptop, 'sync')
+    if (canShare) add('mcp', 'Share', 'Project sync', Laptop, 'sync', 'Access')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
-    if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
-    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
-    if (has('dashboard') && canShare) {
-      add('mcp', 'Share', 'Access & sharing', UsersRound, 'share')
-    }
+    if (projectId) add('mcp', 'Share', 'Chats from your computer', Laptop, 'agents', 'Access')
+    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Share', 'AgentBridge', Cable, 'agentbridge', 'Access')
   }
   add('suggestions', 'Share', 'Suggestions', Hand)
   add('identity', 'Setup', 'Instructions & identity', Settings, 'general')
@@ -58,7 +58,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
   add('costs', 'Setup', 'Costs & usage', DollarSign)
   add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')
-  const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:github', 'mcp:gmail', 'mcp:slack-account', 'mcp:laptop', 'mcp:computer-use', 'mcp:sync', 'mcp:brain', 'mcp:folders', 'mcp:agents', 'mcp:agentbridge']
+  const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:github', 'mcp:gmail', 'mcp:slack-account', 'mcp:computer-use', 'mcp:brain']
   return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
 }
 
