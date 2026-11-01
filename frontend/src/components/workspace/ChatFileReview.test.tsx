@@ -38,6 +38,18 @@ import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('reloads when two checkout selections share one saved capture', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    vi.mocked(api.get).mockClear()
+    const props = { workspacePath: 'Crew/example', sessionId: 'chat-a', tabId: 'exact', onBrowse: () => undefined }
+    try {
+      await act(async () => root.render(<ChatFileReview {...props} reply={{ workspacePath: props.workspacePath, sessionId: props.sessionId, snapshotId: 'same-capture', historyScope: 'project', checkoutId: 'main-checkout' }} />))
+      await act(async () => root.render(<ChatFileReview {...props} reply={{ workspacePath: props.workspacePath, sessionId: props.sessionId, snapshotId: 'same-capture', historyScope: 'project', checkoutId: 'feature-checkout' }} />))
+      expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ snapshot_id: 'same-capture', history_scope: 'project', checkout_id: 'feature-checkout', op: 'snapshot_compare' }) }))
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('keeps identical paths on saved branches and other checkouts bound to their exact diffs', async () => {
     // PLAT-746-264: choosing a filename must not open another branch’s copy.
     const host = document.createElement('div'); document.body.append(host)

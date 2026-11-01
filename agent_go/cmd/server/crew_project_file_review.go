@@ -61,6 +61,9 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 			groups[id] = append(groups[id], change)
 			labels[id] = change.Checkout
 		}
+		if comparison.Note != "" || record.Status == "partial" {
+			out.Note = "Some project changes could not be captured or compared."
+		}
 		if len(groups) == 0 {
 			continue
 		} // Commit/push alone is not a new file edit.
@@ -89,6 +92,12 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 			}
 			if label := labels[id]; label != nil {
 				capture.Branch = label.Branch
+				for _, change := range changes {
+					if change.Checkout != nil && change.Checkout.Branch != label.Branch {
+						capture.Branch = "Multiple branches"
+						break
+					}
+				}
 			}
 			out.Checkouts[index].Captures = append(out.Checkouts[index].Captures, capture)
 		}

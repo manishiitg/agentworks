@@ -290,6 +290,17 @@ func TestUndoReplyApplyRefusedWhileTurnRunning(t *testing.T) {
 	if code := call("alice", "GET", "snapshot_undo_preview"); code == 409 {
 		t.Fatal("preview must stay available while busy")
 	}
+	api.setSessionBusy("chat-a", false)
+	api.activeSessionsMux.Lock()
+	api.activeSessions = map[string]*ActiveSessionInfo{"other-chat": {WorkspacePath: root, Status: "running"}}
+	api.activeSessionsMux.Unlock()
+	req := httptest.NewRequest("POST", "/?session_id=chat-a&history_scope=project", nil)
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "alice"}))
+	w := httptest.NewRecorder()
+	api.serveCrewReplyUndo(w, req, root, "", "snapshot_undo", filesnapshots.ID("x"), store, all, all)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "agents in this Crew finish") {
+		t.Fatalf("project revert ignored another running chat: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestChatReviewRecentRepositoriesRespectsFileGrants(t *testing.T) {

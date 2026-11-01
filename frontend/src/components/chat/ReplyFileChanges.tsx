@@ -174,7 +174,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []
   const actions = checked?.actions ?? card?.actions ?? summary?.actions ?? []
-  const checkoutOptions = groups.map(group => ({ id: group.checkout_id || (group.kind === 'crew_files' ? 'project-files' : ''), name: group.name })).filter(group => !!group.id)
+  const checkoutOptions = [...new Map(groups.map(group => ({ id: group.checkout_id || (group.kind === 'crew_files' ? 'project-files' : ''), name: group.name })).filter(group => !!group.id).map(group => [group.id, group])).values()]
   const revertCheckoutId = reference.checkoutId || undoCheckoutId || checkoutOptions[0]?.id || ''
   const canEdit = (checked ?? card)?.can_edit === true
   const sharedViewer = (checked ?? card)?.can_edit === false
@@ -207,7 +207,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
       <div className="flex min-w-0 flex-1 items-center gap-2">
       {repoGroups.length > 1 ? checkoutSummary() : <>
       <div className="reply-toolbar-checkout-inline flex min-w-0 flex-1 items-center gap-2">
-      {repoGroups.map(group => <div key={group.root} className="flex min-w-0 flex-1 items-center gap-1">
+      {repoGroups.map(group => <div key={`${group.checkout_id || group.root}:${group.branch || ''}`} className="flex min-w-0 flex-1 items-center gap-1">
         <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}${group.working_tree === 'clean' ? ' · Working tree clean' : group.working_tree === 'dirty' ? ' · Uncommitted changes' : ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
         {group.pr?.state === 'connect_github' && canEdit && <IconButton label="Connect GitHub" hint="Use your saved account to see PR status." onClick={() => openProjectIntegrations('github', reference.sessionId)}><Github /></IconButton>}
         {group.pr?.state === 'unavailable' && <IconButton label="Retry PR status" hint="GitHub status could not be checked." onClick={() => setGitHubRevision(value => value + 1)}><Github /></IconButton>}
@@ -230,7 +230,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
     </div>
     {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
     {sharedViewer && sharedOpen && <div className="mt-2 rounded border border-border p-2" aria-label="Reply file names">
-      {groups.map(group => <div key={`${group.kind}:${group.root}`} className="space-y-1">
+      {groups.map(group => <div key={`${group.kind}:${group.root}:${group.branch || ''}`} className="space-y-1">
         <p className="text-muted-foreground">{group.name}</p>
         {!!group.pr?.number && group.pr.url && <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>}
         <ul>{group.files.map(file => <li key={file.path} className="break-all font-mono">{shownFilePath(file.path)}</li>)}</ul>
@@ -257,7 +257,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
       {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
       {isOpen && <div>
         {[...groups].sort((x, y) => Number(x.kind === 'crew_files') - Number(y.kind === 'crew_files')).map(group => (
-          <div key={`${group.kind}:${group.root}`} className="mt-3 border-t border-border pt-2 first:mt-2 first:border-0 first:pt-0">
+          <div key={`${group.kind}:${group.root}:${group.branch || ''}`} className="mt-3 border-t border-border pt-2 first:mt-2 first:border-0 first:pt-0">
             <div className="flex flex-wrap items-center gap-2">
               {group.kind === 'crew_files' ? <span className="text-xs text-muted-foreground">Crew files · not in Git</span> : <b>{group.name}</b>}
               {group.working_tree && <span className="text-xs text-muted-foreground" title="Current checkout status; saved diffs remain after commit or push.">{group.working_tree === 'clean' ? 'Working tree clean' : 'Uncommitted changes'}</span>}

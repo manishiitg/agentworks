@@ -28,7 +28,7 @@ export function ProjectChangesPanel({ workspacePath, sessionId, tabId, onBrowse 
     <p className="p-3 text-sm">{error || history?.note || (history ? 'No saved project changes yet.' : 'Loading…')}</p>
     {error && <button type="button" className="p-3 text-xs underline" onClick={refresh}>Retry</button>}
   </section>
-  const toolbar = <div className="flex min-w-0 gap-2 border-b border-border px-3 py-2">
+  const toolbar = <div className="flex min-w-0 gap-2 border-b border-border px-3 py-2" title={history?.note || undefined}>
     <select aria-label="Worktree" className={`${select} flex-1`} value={checkout.id} onChange={event => { setCheckoutId(event.target.value); setSnapshotId('') }}>
       {history!.checkouts!.map(item => <option key={item.id} value={item.id}>{item.name}{item.captures[0]?.branch ? ` · ${item.captures[0].branch}` : ''}</option>)}
     </select>
