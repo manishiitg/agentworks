@@ -362,7 +362,7 @@ export function selectWorkChatTabIds(
   }
 }
 
-function useWorkChatTab(
+export function useWorkChatTab(
   product: ProjectProductConfig,
   session: WorkSession | null,
   onLegacyRuntimeDiscovered: (selection: WorkRuntimeSelection) => void | Promise<void>,
@@ -381,6 +381,14 @@ function useWorkChatTab(
   sessionRef.current = session
   legacyRuntimeHandlerRef.current = onLegacyRuntimeDiscovered
   const projectId = session?.id
+  const [handoffRevision, setHandoffRevision] = useState(0)
+  useEffect(() => {
+    const onHandoff = (event: Event) => {
+      if ((event as CustomEvent<{ projectId: string }>).detail?.projectId === projectId) setHandoffRevision(value => value + 1)
+    }
+    window.addEventListener('agentworks:crew-handoff', onHandoff)
+    return () => window.removeEventListener('agentworks:crew-handoff', onHandoff)
+  }, [projectId])
   useWorkChatModels(product.profileId, projectId, session?.llmConfig, canonicalTabId)
 
   useEffect(() => {
@@ -471,7 +479,7 @@ function useWorkChatTab(
     }
     void prepare()
     return () => { cancelled = true }
-  }, [product, projectId])
+  }, [product, projectId, handoffRevision])
 
   // Manifest changes (identity, model, MCPs, or skills) update the existing
   // local tab in place. They must not restart the expensive conversation

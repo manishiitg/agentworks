@@ -37,7 +37,7 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
       const data = await desktopRequest<Status>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
       if (current()) {
         setStatus(data)
-        if (action === 'local') window.dispatchEvent(new CustomEvent('agentworks:local-chat-opened', { detail: { projectId } }))
+        if (action === 'local') window.dispatchEvent(new CustomEvent('agentworks:crew-handoff', { detail: { projectId } }))
       }
       void useConnectedWorkStore.getState().refresh()
     } catch (cause) {
