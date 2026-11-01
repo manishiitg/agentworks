@@ -103,7 +103,7 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
       <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label={`Options for ${browser.name}`} panelClassName="w-48 !p-1">
         {close => <div className="space-y-1">
           <details className="text-xs"><summary className="cursor-pointer rounded px-2 py-1.5 hover:bg-muted">Connection details</summary><div className="space-y-1 px-2 pb-2 text-muted-foreground"><p>{!browser.enabled ? 'Disconnected' : browser.connected ? 'Connected' : 'Offline'}</p><p>{browser.version ? `Extension ${browser.version}` : 'Extension version unknown'}</p>{extensionVersionOlder(browser.version, latestVersion) && <p>Update available: {latestVersion}</p>}</div></details>
-          {workspaceBrowser?.secondary && chromeBrowser?.id === browser.id && workspaceChoice}
+          {workspaceBrowser?.secondary && !workspaceBrowser.selected && chromeBrowser?.id === browser.id && workspaceChoice}
           {browser.enabled && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect(browser.id) }}>Disconnect</Button>}
         </div>}
       </IconPopover>
@@ -116,8 +116,8 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
 
   const content = <div className={inline ? 'space-y-3' : 'space-y-4 p-4'}>
     {inline && savedBrowsers}
-    {inline && !workspaceBrowser?.secondary && workspaceChoice}
-    {inline && !setupOpen && <div className="flex items-center justify-between gap-1"><Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Add browser</Button>{workspaceBrowser?.secondary && !chromeBrowser && <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label="Browser options" panelClassName="w-48 !p-1">{workspaceChoice}</IconPopover>}</div>}
+    {inline && (!workspaceBrowser?.secondary || workspaceBrowser.selected) && workspaceChoice}
+    {inline && !setupOpen && <div className="flex items-center justify-between gap-1"><Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Add browser</Button>{workspaceBrowser?.secondary && !workspaceBrowser.selected && !chromeBrowser && <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label="Browser options" panelClassName="w-48 !p-1">{workspaceChoice}</IconPopover>}</div>}
     {setupOpen && <div className={inline ? 'space-y-3 border-t border-border pt-3' : 'space-y-3'} aria-label="Connect browser">
           <p className="text-xs text-muted-foreground">{step === 'install' ? '1. Install extension' : '2. Connect'}</p>
           {step === 'install' ? <div className="space-y-3">
