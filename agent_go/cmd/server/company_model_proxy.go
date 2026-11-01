@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 )
 
 // companyProxyModels is each program the server can lend through its model proxy, and the model names it may ask for.
@@ -45,8 +46,9 @@ func companyModelProxyUpstream() (string, string, bool) {
 	return base, key, err == nil && key != ""
 }
 
-// copyProxyResponse passes a reply through as it arrives (streamed model output included).
-func copyProxyResponse(w http.ResponseWriter, resp *http.Response) {
+// copyProxyResponse passes a reply through as it arrives (streamed model output included). Everything written also
+// goes to tap, when given.
+func copyProxyResponse(w http.ResponseWriter, resp *http.Response, tap io.Writer) {
 	for _, name := range []string{"Content-Type", "Cache-Control"} {
 		if value := resp.Header.Get(name); value != "" {
 			w.Header().Set(name, value)
@@ -58,6 +60,9 @@ func copyProxyResponse(w http.ResponseWriter, resp *http.Response) {
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			if tap != nil {
+				_, _ = tap.Write(buf[:n])
+			}
 			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 				return
 			}
@@ -89,10 +94,82 @@ func readProxyRequest(r *http.Request, provider string) ([]byte, string, error) 
 	return body, request.Model, nil
 }
 
-// GET/POST /api/model-proxy/{provider}/v1/{path} — on the server: a person's model request on the server's account.
+// proxyUsage keeps the final usage of a Responses reply as it streams past: the whole body of a plain JSON reply, or
+// the "response.completed" event of a stream.
+type proxyUsage struct {
+	stream  bool
+	line    []byte
+	final   []byte
+	partial bool
+}
+
+func (u *proxyUsage) Write(p []byte) (int, error) {
+	if !u.stream {
+		if len(u.final)+len(p) <= 16<<20 {
+			u.final = append(u.final, p...)
+		} else {
+			u.partial = true
+		}
+		return len(p), nil
+	}
+	for _, b := range p {
+		if b != '\n' {
+			if len(u.line) < 16<<20 {
+				u.line = append(u.line, b)
+			}
+			continue
+		}
+		if data, ok := bytes.CutPrefix(u.line, []byte("data:")); ok && bytes.Contains(data, []byte(`"response.completed"`)) {
+			u.final = append([]byte(nil), bytes.TrimSpace(data)...)
+		}
+		u.line = u.line[:0]
+	}
+	return len(p), nil
+}
+
+// tokens reads input, output, reasoning and cached-input tokens from the reply's usage.
+func (u *proxyUsage) tokens() (input, output, reasoning, cached int, ok bool) {
+	var reply struct {
+		Response *struct {
+			Usage json.RawMessage `json:"usage"`
+		} `json:"response"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	if u.partial || json.Unmarshal(u.final, &reply) != nil {
+		return 0, 0, 0, 0, false
+	}
+	raw := reply.Usage
+	if reply.Response != nil {
+		raw = reply.Response.Usage
+	}
+	var usage struct {
+		Input   int `json:"input_tokens"`
+		Output  int `json:"output_tokens"`
+		Details struct {
+			Cached int `json:"cached_tokens"`
+		} `json:"input_tokens_details"`
+		OutputDetails struct {
+			Reasoning int `json:"reasoning_tokens"`
+		} `json:"output_tokens_details"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &usage) != nil {
+		return 0, 0, 0, 0, false
+	}
+	return usage.Input, usage.Output, usage.OutputDetails.Reasoning, usage.Details.Cached, true
+}
+
+// GET/POST /api/model-proxy/{provider}/v1/{path} — on the server: a person's model request on the server's account,
+// under the same rules as a chat on that account here: who may use it, its allowed models and the person's token
+// limits; the tokens are recorded to the person.
 func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.Request) {
 	caller, ok := requireSignedIn(w, r)
 	if !ok {
+		return
+	}
+	// Only a person's own sign-in (the Mac app's connection), never an access token such as an MCP or project token,
+	// which agents on this server hold.
+	if u := GetUserFromContext(r.Context()); u == nil || u.AccessToken != nil {
+		desktopJSONError(w, 403, "Use the Mac app's connection to this server.")
 		return
 	}
 	provider, path := mux.Vars(r)["provider"], mux.Vars(r)["path"]
@@ -105,12 +182,17 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		desktopJSONError(w, 404, "Not found.")
 		return
 	}
-	if !api.serverAccountAvailableToCaller(r.Context(), caller, provider) {
-		desktopJSONError(w, 403, "The server's "+providerAccountProductName(provider)+" account is not available to you. Ask an admin.")
+	account := "global:" + provider
+	if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: caller}, provider, account); err != nil {
+		desktopJSONError(w, 403, err.Error())
 		return
 	}
 	body, model, err := readProxyRequest(r, provider)
 	if err != nil {
+		desktopJSONError(w, 400, err.Error())
+		return
+	}
+	if err := checkAccountModel(withModelLimitPerson(r.Context(), caller), provider, account, model); err != nil {
 		desktopJSONError(w, 400, err.Error())
 		return
 	}
@@ -130,9 +212,25 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		return
 	}
 	defer resp.Body.Close()
-	copyProxyResponse(w, resp)
-	if model != "" {
-		log.Printf("[MODEL_PROXY] %s used the server's %s account: %s %s -> %d (%s)", caller, provider, model, path, resp.StatusCode, time.Since(started).Round(time.Millisecond))
+	usage := &proxyUsage{stream: strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream")}
+	copyProxyResponse(w, resp, usage)
+	if model == "" {
+		return
+	}
+	input, output, reasoning, cached, counted := usage.tokens()
+	log.Printf("[MODEL_PROXY] %s used the server's %s account from the Mac: %s %s -> %d (%s) tokens in=%d out=%d cached=%d counted=%v", caller, provider, model, path, resp.StatusCode, time.Since(started).Round(time.Millisecond), input, output, cached, counted)
+	if !counted || api.tokenLimitLedger() == nil {
+		return
+	}
+	entry := costledger.Entry{
+		Attribution: costledger.Attribution{AttributionVersion: costledger.AttributionVersion, ActorID: caller, Activity: "mac_app"},
+		EventID:     uuid.NewString(), Timestamp: time.Now().UTC(), UserID: caller, Scope: "chat", Component: "mac_company_account",
+		Provider: provider, ModelID: model, AccountID: account, LLMCallCount: 1, BillingBasis: "unpriced",
+		PromptTokens: input, CompletionTokens: output, ReasoningTokens: reasoning, CacheReadTokens: cached,
+		LLMGenerationDurationMS: time.Since(started).Milliseconds(),
+	}
+	if err := api.tokenLimitLedger().Append(entry); err != nil {
+		log.Printf("[COST_LEDGER] Mac use of the %s account by %s not recorded: %v", provider, caller, err)
 	}
 }
 
@@ -194,7 +292,7 @@ func (api *StreamingAPI) handleDesktopModelProxy(w http.ResponseWriter, r *http.
 		return
 	}
 	defer resp.Body.Close()
-	copyProxyResponse(w, resp)
+	copyProxyResponse(w, resp, nil)
 }
 
 // GET  /api/desktop-connections/{connection}/company-accounts?provider=<program>
