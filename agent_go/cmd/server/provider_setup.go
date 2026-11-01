@@ -63,7 +63,9 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 		// process almost always runs on a remote/headless server with no
 		// local browser of its own, where the plain flow can never complete.
 		"authenticate": {command: "codex", args: []string{"login", "--device-auth"}},
-		"inspect":      {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never"}},
+		// --no-daemon: Codex 0.166 starts a shared background server that the setup sandbox cannot track
+		// ("failed to record pid-managed app-server process"); this terminal needs none.
+		"inspect": {command: "codex", args: []string{"--no-daemon", "--sandbox", "read-only", "--ask-for-approval", "never"}},
 	},
 	"cursor-cli": {
 		"authenticate": {command: "cursor-agent", args: []string{"login"}},

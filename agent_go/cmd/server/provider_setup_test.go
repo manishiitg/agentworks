@@ -281,7 +281,7 @@ func TestProviderSetupAllowlistIncludesReviewedProviderActions(t *testing.T) {
 
 	inspect := map[string]providerSetupCommand{
 		"claude-code": {command: "claude", args: []string{"--tools", ""}},
-		"codex-cli":   {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never"}},
+		"codex-cli":   {command: "codex", args: []string{"--no-daemon", "--sandbox", "read-only", "--ask-for-approval", "never"}},
 		"cursor-cli":  {command: "cursor-agent", args: []string{"--mode", "ask", "--sandbox", "enabled"}},
 		"pi-cli":      {command: "pi"},
 		"muse-cli":    {command: "muse", args: []string{"--disable-shell", "--disable-write"}},
