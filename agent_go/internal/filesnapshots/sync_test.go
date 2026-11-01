@@ -98,18 +98,36 @@ func TestSyncBundlesPreserveReplicaEditsAndUndoHistory(t *testing.T) {
 	if err := sa.DecodeSync(t.Context(), "pair", &back); err != nil {
 		t.Fatal(err)
 	}
-	sa.prune(t.Context())
-	if err := sa.command(t.Context(), "gc", "--prune=now").Run(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := sa.syncBase(t.Context(), "pair"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := sa.Compare(t.Context(), ID("turn"), "note.txt", func(string) bool { return true }); err != nil {
 		t.Fatal(err)
 	}
-	if raw, err := sa.command(t.Context(), "for-each-ref", "--format=%(refname)", "refs/sync").Output(); err != nil || !strings.Contains(string(raw), "/baseline") {
-		t.Fatalf("sync baseline pruned: %s %v", raw, err)
+	write(a.Files, "note.txt", "edited")
+	if plan, err := sa.ApplyUndo(t.Context(), ID("turn"), func(string) bool { return true }, func(string) bool { return true }); err != nil || len(plan.Restore) != 1 {
+		t.Fatalf("undo after sync: %+v %v", plan, err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(a.Files, "note.txt")); string(data) != "baseline" {
+		t.Fatal("undo contents changed")
+	}
+	// Force actual turn pruning and view deletion, then its immediate GC.
+	record, err := sa.read(ID("turn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.StartedAt = time.Now().Add(-30 * 24 * time.Hour)
+	if err = sa.save(record); err != nil {
+		t.Fatal(err)
+	}
+	if err = sa.command(t.Context(), "update-ref", "refs/views/sync-test", record.After).Run(); err != nil {
+		t.Fatal(err)
+	}
+	sa.prune(t.Context())
+	if _, err = sa.read(ID("turn")); err == nil {
+		t.Fatal("test did not exercise turn pruning")
+	}
+	for _, name := range []string{"baseline", "pending", "incoming"} {
+		if err = sa.command(t.Context(), "cat-file", "-e", syncRef("pair", name)+"^{tree}").Run(); err != nil {
+			t.Fatalf("pruned sync %s: %v", name, err)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(b.Files, ".env")); !os.IsNotExist(err) {
 		t.Fatal("private file crossed sync")
