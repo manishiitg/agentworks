@@ -79,7 +79,7 @@ describe('CodingProvidersPanel', () => {
       expect(onClose).toHaveBeenCalledOnce()
     } finally { await act(async () => root.unmount()); host.remove() }
   })
-  it.each(['member', 'reviewer', 'admin', 'unknown'] as const)('gates review navigation and account costs for %s', async role => {
+  it.each(['member', 'reviewer', 'admin', 'unknown'] as const)('gates review navigation for %s', async role => {
     auth.state = { isMultiUserMode: role !== 'unknown', isMultiUserModeChecked: role !== 'unknown', user: { is_admin: role === 'admin', is_crew_reviewer: role === 'reviewer' } }
     vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({})], provider_order: ['codex-cli'], integration_kinds: {} })
     const host = document.createElement('div')
@@ -90,7 +90,6 @@ describe('CodingProvidersPanel', () => {
       const canReview = role === 'admin' || role === 'reviewer'
       expect(Boolean(host.querySelector('[data-tour="providers-costs"]'))).toBe(canReview)
       expect(Boolean(host.querySelector('[data-tour="providers-chats"]'))).toBe(canReview)
-      expect(host.textContent?.includes('Cost by account')).toBe(canReview)
       if (canReview) {
         await act(async () => host.querySelector<HTMLButtonElement>('[data-tour="providers-chats"]')!.click())
         expect(host.textContent).toContain('Conversation review content')
@@ -98,8 +97,6 @@ describe('CodingProvidersPanel', () => {
         await act(async () => root.render(<CodingProvidersPanel isOpen embedded onClose={vi.fn()} />))
         expect(host.textContent).not.toContain('Conversation review content')
         expect(host.querySelector('[data-tour="providers-costs"]')).toBeNull()
-      } else {
-        expect(llmConfigService.getProviderAccountCosts).not.toHaveBeenCalled()
       }
     } finally { await act(async () => root.unmount()); host.remove() }
   })

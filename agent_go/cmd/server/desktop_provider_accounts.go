@@ -71,6 +71,96 @@ func localAccountForServer(records []storedProviderConnection, stored *StoredPro
 	return desktopAccountToCopy{}, fmt.Errorf("Account not found.")
 }
 
+// remoteOwnAccounts lists the caller's own accounts on the connected server (metadata only, never values).
+func remoteOwnAccounts(r *http.Request, c desktopConnection) ([]providerAccountView, int, error) {
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, c.Server+"/api/provider-connections", nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := desktopHTTPClient().Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	var list struct {
+		Connections []providerAccountView `json:"connections"`
+	}
+	if resp.StatusCode == http.StatusOK {
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&list)
+	}
+	own := []providerAccountView{}
+	for _, view := range list.Connections {
+		if view.Relation == "own" {
+			own = append(own, view)
+		}
+	}
+	return own, resp.StatusCode, nil
+}
+
+// remoteMatch is the server account a local account was added as: same program and name.
+func remoteMatch(own []providerAccountView, account desktopAccountToCopy) *providerAccountView {
+	for i := range own {
+		if own[i].Provider == account.Provider && own[i].DisplayName == account.Name {
+			return &own[i]
+		}
+	}
+	return nil
+}
+
+// GET /api/desktop-connections/{connection}/provider-accounts?provider=<program>
+// -> {"accounts": {"<local account>": "ready" | "sign_in" | "missing"}, "signed_in_as": "..."}: where each of your
+// accounts on this Mac stands on that server, for the "On your servers" row.
+func (api *StreamingAPI) handleDesktopProviderAccountStatus(w http.ResponseWriter, r *http.Request) {
+	if !desktopConnectionGate(w, r) {
+		return
+	}
+	owner := GetUserFromContext(r.Context()).UserID
+	c, err := desktopConnectionFor(owner, mux.Vars(r)["connection"])
+	if err != nil {
+		desktopJSONError(w, 404, "Connection is unavailable. Connect to the server again.")
+		return
+	}
+	provider := r.URL.Query().Get("provider")
+	records, err := loadProviderConnections(r.Context())
+	if err != nil {
+		desktopJSONError(w, 500, "Cannot read your accounts.")
+		return
+	}
+	own, status, err := remoteOwnAccounts(r, c)
+	if err != nil {
+		desktopJSONError(w, 502, "Cannot reach this server.")
+		return
+	}
+	if status == http.StatusUnauthorized {
+		desktopJSONError(w, 401, "Sign in to this server again.")
+		return
+	}
+	stored, _ := LoadProviderKeys(r.Context())
+	ids := []string{"global:" + provider}
+	for _, record := range records {
+		if record.Provider == provider && record.OwnerUserID == owner {
+			ids = append(ids, record.ID)
+		}
+	}
+	accounts := map[string]string{}
+	for _, id := range ids {
+		account, err := localAccountForServer(records, stored, owner, id, currentUserIsAdmin(r))
+		if err != nil {
+			continue
+		}
+		switch match := remoteMatch(own, account); {
+		case match == nil:
+			accounts[id] = "missing"
+		case match.Configured != nil && !*match.Configured:
+			accounts[id] = "sign_in"
+		default:
+			accounts[id] = "ready"
+		}
+	}
+	desktopJSON(w, map[string]any{"accounts": accounts, "signed_in_as": c.User.Email})
+}
+
 // POST /api/desktop-connections/{connection}/provider-accounts {"account_id": "<local account>"}
 // -> {"status": "copied" | "sign_in" | "exists", "account_id": "<the account on the server>", "server_url": "..."}
 func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter, r *http.Request) {
@@ -118,25 +208,16 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 	// The server's AI accounts page, where a browser-login account is signed in.
 	signIn := c.Server + "/settings/ai-accounts"
 	// An account already added under the same name is not added again.
-	resp, err := call(http.MethodGet, nil)
+	own, status, err := remoteOwnAccounts(r, c)
 	if err != nil {
 		desktopJSONError(w, 502, "Cannot reach this server. Try again.")
 		return
 	}
-	var existing struct {
-		Connections []providerAccountView `json:"connections"`
-	}
-	status := resp.StatusCode
-	_ = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&existing)
-	resp.Body.Close()
 	if status == http.StatusUnauthorized {
 		desktopJSONError(w, 401, "Sign in to this server again, then retry.")
 		return
 	}
-	for _, view := range existing.Connections {
-		if view.Relation != "own" || view.Provider != account.Provider || view.DisplayName != account.Name {
-			continue
-		}
+	if view := remoteMatch(own, account); view != nil {
 		// Added before but not signed in there yet: the person still has to sign in, so say that, not "exists".
 		if view.Configured != nil && !*view.Configured {
 			desktopJSON(w, map[string]string{"status": "sign_in", "account_id": view.ID, "server_url": signIn})
@@ -161,7 +242,7 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 	if account.BaseURL != "" {
 		request["base_url"] = account.BaseURL
 	}
-	resp, err = call(http.MethodPost, request)
+	resp, err := call(http.MethodPost, request)
 	if err != nil {
 		desktopJSONError(w, 502, "Cannot reach this server. Try again.")
 		return
