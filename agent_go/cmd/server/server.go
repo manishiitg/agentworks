@@ -84,6 +84,7 @@ import (
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativereplies"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxcapture"
 	"github.com/spf13/cobra"
@@ -3007,6 +3008,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Start background cleanup goroutine to mark inactive sessions (10 minute timeout)
 	go api.cleanupInactiveSessions()
 	go api.runIdleCompactionSweeper()
+	musecli.SetMuseMSPReplyHandler(api.recordMuseWakeReply)
 	go api.watchScheduleSummaryForLiveFeed()
 	go api.warmLLMConfigCaches()
 	go preloadProviderAccountSettings()
