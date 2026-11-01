@@ -206,6 +206,12 @@ func envValue(env []string, name string) string {
 // real round trip for Claude Code.
 func checkProviderAccountStatus(ctx context.Context, target providerAccountTarget, verify bool) providerAccountStatus {
 	status := providerAccountStatus{State: "unknown", CheckedAt: time.Now().UTC()}
+	// A company account on the Mac runs on its server's login; the Mac holds only a placeholder, which the program's
+	// own status command would report as signed out. The server decides whether it is offered.
+	if target.Record != nil && target.Record.ViaConnection != "" {
+		status.State, status.Identity = "signed_in", "company account"
+		return status
+	}
 	switch target.Provider {
 	case "claude-code":
 		output, err := runProviderAccountCommand(ctx, target, providerStatusCommands["claude-code"], providerStatusTimeout)
