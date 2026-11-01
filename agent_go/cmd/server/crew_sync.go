@@ -203,9 +203,6 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if input.Conversation.Muse == nil {
 			return out, fmt.Errorf("native session sync is not ready for this conversation")
 		}
-		nativeLock := crewNativeLock(roots, input.Conversation.Muse.SessionID)
-		nativeLock.Lock()
-		defer nativeLock.Unlock()
 		if err = bindCrewMuseStage(roots, input.Conversation.Muse); err != nil {
 			return out, err
 		}
@@ -451,7 +448,7 @@ func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
 		if at != roots.Virtual && !strings.HasPrefix(at, roots.Virtual+"/") {
 			continue
 		}
-		if session.Status == "running" || session.Status == "paused" || session.HasRunningBackgroundAgents || session.HasRetainedTmuxSession {
+		if session.Status == "running" || session.Status == "paused" || session.HasRunningBackgroundAgents {
 			return fmt.Errorf("finish or stop this Crew's running chat and terminal before moving editing; after this reply, use Project sync")
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,24 +13,73 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 type crewNativeMirror struct {
+	Version      string                   `json:"version"`
 	TransferID   string                   `json:"transfer_id"`
 	CapturedAt   string                   `json:"captured_at"`
 	Conversation *crewHandoffConversation `json:"conversation"`
 }
 
+// rsync writes replacement files (never --inplace/--append). Hardlinks keep
+// the completed bytes available during the next transfer without another copy.
+// The manifest points to exactly one completed directory; partial updates never
+// become a resume source.
 func saveCrewNativeMirror(roots crewroot.Roots, c *crewHandoffConversation) error {
+	if c == nil || c.Muse == nil {
+		return fmt.Errorf("native mirror is incomplete")
+	}
+	lock := crewNativeLock(roots, c.Muse.SessionID)
+	lock.Lock()
+	defer lock.Unlock()
+	if err := c.Muse.ValidateFiles(); err != nil {
+		return err
+	}
+	root := filepath.Join(roots.Private, "native-mirrors")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		return err
+	}
+	version := uuid.NewString()
+	dir := filepath.Join(root, version)
+	if err := os.Mkdir(dir, 0700); err != nil {
+		return err
+	}
+	complete := false
+	defer func() {
+		if !complete {
+			os.RemoveAll(dir)
+		}
+	}()
+	for name := range c.Muse.Files {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return err
+		}
+		if err := os.Link(filepath.Join(c.Muse.Root, filepath.FromSlash(name)), path); err != nil {
+			return err
+		}
+	}
 	raw, err := json.Marshal(c)
 	if err != nil {
 		return err
 	}
 	hash := sha256.Sum256(raw)
-	mirror := crewNativeMirror{TransferID: "native-" + hex.EncodeToString(hash[:]), CapturedAt: time.Now().UTC().Format(time.RFC3339), Conversation: c}
-	return fsutil.WriteJSONAtomic(filepath.Join(roots.Private, "native-mirror.json"), mirror, 0600)
+	mirror := crewNativeMirror{Version: version, TransferID: "native-" + hex.EncodeToString(hash[:]), CapturedAt: time.Now().UTC().Format(time.RFC3339), Conversation: c}
+	if err = fsutil.WriteJSONAtomic(filepath.Join(roots.Private, "native-mirror.json"), mirror, 0600); err != nil {
+		return err
+	}
+	complete = true
+	entries, _ := os.ReadDir(root)
+	for _, entry := range entries {
+		if entry.Name() != version {
+			os.RemoveAll(filepath.Join(root, entry.Name()))
+		}
+	}
+	return nil
 }
 func readCrewNativeMirror(roots crewroot.Roots) (crewNativeMirror, error) {
 	var out crewNativeMirror
@@ -42,6 +92,13 @@ func readCrewNativeMirror(roots crewroot.Roots) (crewNativeMirror, error) {
 	}
 	if out.TransferID == "" || out.Conversation == nil || out.Conversation.Muse == nil {
 		return out, fmt.Errorf("native mirror is incomplete")
+	}
+	if _, err := uuid.Parse(out.Version); err != nil {
+		return out, fmt.Errorf("native mirror is incomplete")
+	}
+	out.Conversation.Muse.Root = filepath.Join(roots.Private, "native-mirrors", out.Version)
+	if err := out.Conversation.Muse.ValidateFiles(); err != nil {
+		return out, err
 	}
 	return out, validateCrewHandoffConversation(out.Conversation)
 }
@@ -74,8 +131,11 @@ type crewMirrorCapture struct {
 
 func (api *StreamingAPI) captureCrewMirror(ctx context.Context, claims *UserClaims, roots crewroot.Roots, main ProductConversationRecord) (*crewHandoffConversation, error) {
 	raw, err := ReadChatHistoryConversation(claims.UserID, main.SessionID, main.WorkspacePath)
-	if err != nil {
+	if errors.Is(err, errChatHistoryConversationNotFound) {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	sum := sha256.Sum256(raw)
 	fingerprint := main.SessionID + "/" + hex.EncodeToString(sum[:])

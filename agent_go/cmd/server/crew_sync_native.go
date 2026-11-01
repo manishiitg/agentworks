@@ -158,6 +158,11 @@ func bindCrewMuseStage(roots crewroot.Roots, b *musecli.NativeSessionBundle) err
 	if b == nil {
 		return nil
 	}
+	// Only an application-loaded complete mirror can set Root: it is excluded
+	// from JSON. Keep its immutable files instead of rebinding to live staging.
+	if b.Root != "" && crewroot.Within(filepath.Join(roots.Private, "native-mirrors"), b.Root) {
+		return b.ValidateFiles()
+	}
 	stage, err := crewNativeStage(roots, b)
 	if err != nil {
 		return err

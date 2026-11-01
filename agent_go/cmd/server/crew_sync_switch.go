@@ -31,7 +31,7 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 		return false
 	}
 	main, err := api.crewHandoffMain(r.Context(), claims, project)
-	if err != nil || main.ConversationKey != key {
+	if err != nil || (main.ConversationKey != key && key != project) {
 		return false
 	}
 	fail := func(message string) bool { externalError(w, 409, "session_sync_unavailable", message); return true }
@@ -50,7 +50,7 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 			if b.Editing == "local" {
 				return false
 			}
-			return fail("The server has this conversation. Reconnect to bring its latest work back.")
+			return fail("Connect to the internet to bring this conversation’s latest work back from the server.")
 		}
 		if status.Binding == nil || status.Binding.PairID != b.PairID {
 			return fail("Reconnect this project's server.")
