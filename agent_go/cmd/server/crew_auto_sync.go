@@ -118,16 +118,31 @@ func (api *StreamingAPI) startDesktopCrewSync() context.CancelFunc {
 	if !IsLocalMode() {
 		return cancel
 	}
+	done := make(chan struct{})
 	go func() {
-		workers := map[string]context.CancelFunc{}
+		defer close(done)
+		type worker struct {
+			stop context.CancelFunc
+			done chan struct{}
+		}
+		workers := map[string]worker{}
 		defer func() {
-			for _, stop := range workers {
-				stop()
+			for _, active := range workers {
+				active.stop()
+				<-active.done
 			}
 		}()
 		ticker := time.NewTicker(3 * time.Second)
 		defer ticker.Stop()
 		for {
+			for id, active := range workers {
+				select {
+				case <-active.done:
+					active.stop()
+					delete(workers, id)
+				default:
+				}
+			}
 			state, err := workflowCLIStateRoot()
 			if err == nil {
 				entries, _ := os.ReadDir(filepath.Join(state, "crew-sync"))
@@ -142,15 +157,20 @@ func (api *StreamingAPI) startDesktopCrewSync() context.CancelFunc {
 						continue
 					}
 					live[id] = true
-					if workers[id] == nil {
+					if _, running := workers[id]; !running {
 						child, stop := context.WithCancel(ctx)
-						workers[id] = stop
-						go api.watchDesktopCrewSync(child, id)
+						finished := make(chan struct{})
+						workers[id] = worker{stop, finished}
+						go func() {
+							defer close(finished)
+							api.watchDesktopCrewSync(child, id)
+						}()
 					}
 				}
-				for id, stop := range workers {
+				for id, active := range workers {
 					if !live[id] {
-						stop()
+						active.stop()
+						<-active.done
 						delete(workers, id)
 						crewAutoStates.Delete(id)
 					}
@@ -163,13 +183,18 @@ func (api *StreamingAPI) startDesktopCrewSync() context.CancelFunc {
 			}
 		}
 	}()
-	return cancel
+	return func() { cancel(); <-done }
 }
 
 func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 	claims := &UserClaims{UserID: GetDefaultUserID(), Username: GetDefaultUserID()}
 	roots, err := api.crewSyncRoots(ctx, claims, id)
 	if err != nil {
+		message := "Your Crew folder is unavailable. Reconnect its drive or restore the folder; sync will retry automatically."
+		if previous := crewAutoStatus(id); previous == nil || previous.Message != message {
+			log.Printf("[CREW_SYNC_AUTO] project=%s phase=root_unavailable retry=true reason=%q", id, err.Error())
+		}
+		setCrewAutoStatus(id, "attention", message)
 		return
 	}
 	// Watches make ordinary saves prompt; the timer recovers missed events,
