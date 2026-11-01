@@ -493,22 +493,25 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 // ANY /api/desktop-model-proxy/{account}/cursor/{path} — on the Mac: Cursor's own traffic from the company Cursor
 // account, presented with that account's placeholder login, forwarded to the server's relay over the connection.
 func (api *StreamingAPI) handleDesktopCursorRelay(w http.ResponseWriter, r *http.Request) {
-	// Cursor signs in through its key exchange even with a login file, presenting something other than that login
-	// (seen live 1 Nov 2026): answered here with the placeholder, so no sign-in ever reaches the server or Cursor.
-	// Only for a program on this Mac (loopback, no browser Origin) and an existing company Cursor account.
+	// Cursor on a Mac may sign in from the Keychain (the person's own Cursor login) rather than the account's
+	// placeholder file, so the Cursor path is admitted by place and account, not by the presented login: a program on
+	// this Mac (loopback, no browser Origin) addressing an existing company Cursor account, whose id is the secret.
+	// Whatever Cursor presents never leaves the Mac: the connection's sign-in replaces it, and the server swaps in its
+	// own Cursor session. Cursor's sign-in call is answered here with the placeholder and never forwarded.
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	records, loadErr := loadProviderConnections(r.Context())
+	record, found := companyAccountOnMac(records, mux.Vars(r)["account"])
+	if err != nil || !net.ParseIP(host).IsLoopback() || r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" || loadErr != nil || !found || record.Provider != "cursor-cli" {
+		desktopJSONError(w, 401, "Unknown account.")
+		return
+	}
 	if mux.Vars(r)["path"] == "auth/exchange_user_api_key" {
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		records, loadErr := loadProviderConnections(r.Context())
-		record, found := companyAccountOnMac(records, mux.Vars(r)["account"])
-		if err != nil || !net.ParseIP(host).IsLoopback() || r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" || loadErr != nil || !found || record.Provider != "cursor-cli" {
-			desktopJSONError(w, 401, "Unknown account.")
-			return
-		}
 		desktopJSON(w, map[string]string{"accessToken": record.Credential, "refreshToken": record.Credential})
 		return
 	}
-	_, c, ok := desktopCompanyCaller(w, r)
-	if !ok {
+	c, err := desktopConnectionFor(record.OwnerUserID, record.ViaConnection)
+	if err != nil {
+		desktopJSONError(w, 502, "The server connection is gone. Connect to the server again in the Mac app.")
 		return
 	}
 	target := c.Server + "/api/model-proxy/cursor-cli/relay/" + mux.Vars(r)["path"]

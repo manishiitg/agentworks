@@ -269,10 +269,12 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 		case "cursor-cli":
 			// The Cursor SDK talks to this Mac's backend and signs in with the placeholder login in the account home.
 			keys.RuntimeEnvironment[llmtypes.CursorBackendURLKey] = strings.TrimSuffix(companyAccountBaseURL(record), "/v1") + "/cursor"
+			// Cursor reads its login from ~/.cursor on a Mac and ~/.config/cursor on Linux.
 			login, _ := json.Marshal(map[string]string{"accessToken": record.Credential, "refreshToken": record.Credential})
-			dir := filepath.Join(keys.RuntimeEnvironment["XDG_CONFIG_HOME"], "cursor")
-			if os.MkdirAll(dir, 0700) != nil || os.WriteFile(filepath.Join(dir, "auth.json"), login, 0600) != nil {
-				return nil, fmt.Errorf("cannot configure Cursor for the company account")
+			for _, dir := range []string{filepath.Join(keys.RuntimeEnvironment["HOME"], ".cursor"), filepath.Join(keys.RuntimeEnvironment["XDG_CONFIG_HOME"], "cursor")} {
+				if os.MkdirAll(dir, 0700) != nil || os.WriteFile(filepath.Join(dir, "auth.json"), login, 0600) != nil {
+					return nil, fmt.Errorf("cannot configure Cursor for the company account")
+				}
 			}
 		case "claude-code":
 			// Claude Code adds /v1/messages itself.
