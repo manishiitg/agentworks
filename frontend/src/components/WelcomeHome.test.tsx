@@ -13,6 +13,7 @@ vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi
 vi.mock('./WelcomeAiReadiness', () => ({ default: ({ onSetup, crewReadyView }: { onSetup: () => void; crewReadyView?: unknown }) => readiness.crewReady ? crewReadyView : <button onClick={onSetup}>Review AI setup</button> }))
 vi.mock('../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../services/api')>(), default: { post: vi.fn() } }))
 vi.mock('./HomeRecentWork', () => ({ HomeRecentWork: () => <section>Recent work</section> }))
+vi.mock('./HomeAgentModel', () => ({ HomeAgentModel: () => <span>Runs on Test model</span> }))
 const readiness = vi.hoisted(() => ({ crewReady: false }))
 
 import { WelcomeHome, WELCOME_HOME_DISMISSED_KEY } from './WelcomeHome'
@@ -69,7 +70,7 @@ describe('WelcomeHome', () => {
     vi.spyOn(window.location, 'assign').mockImplementation(() => {})
     vi.mocked(api.post).mockResolvedValue({ data: { crew_id: 'crew-1' } })
     const box = ready.querySelector<HTMLTextAreaElement>('#welcome-agentworks-message')!
-    expect(box.placeholder).toBe('Tell AgentWorks what you want to get done')
+    expect(box.placeholder).toContain('coordinate your agents')
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, '  Plan my week  ')
       box.dispatchEvent(new Event('input', { bubbles: true }))
@@ -95,10 +96,22 @@ describe('WelcomeHome', () => {
 
   it('offers Crew use cases without separate product creation cards', async () => {
     configure()
+    useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { work: true } } as never })
     const host = await renderWelcome()
     expect(host.querySelector('[aria-label="Direct product creation"]')).toBeNull()
     expect(host.querySelector('[aria-label="Use cases"]')?.textContent).not.toContain('Studio')
     expect(host.querySelector('[aria-label="Use cases"]')?.textContent).not.toContain('Goals')
+  })
+
+  it('opens the selected Crew wizard without sending a message', async () => {
+    configure()
+    useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { work: true } } as never })
+    const host = await renderWelcome()
+    const code = [...host.querySelectorAll<HTMLButtonElement>('[aria-label="Use cases"] button')].find(item => item.textContent?.includes('Code'))!
+    await act(async () => code.click())
+    expect(useCommandDialogStore.getState().productCreateSurface).toBe('work')
+    expect(useCommandDialogStore.getState().productCreateIntent).toBe('code')
+    expect(api.post).not.toHaveBeenCalled()
   })
 
   it('keeps existing work in Recent work and removes Open from creation cards', async () => {

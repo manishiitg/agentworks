@@ -4,17 +4,18 @@ import type { ProductMode } from '../../platform/chat/productProjects'
 import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import { CREW_STARTER_TYPES, type CrewOnboarding, type CrewStarterType } from './crewStarterTypes'
 
-export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', studio = false, allowExistingFolder = false }: {
+export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', initialType, studio = false, allowExistingFolder = false }: {
   onClose: () => void
   onCreate: (title: string, purpose: string, runsOn: RunsOnSelection | undefined, mode: ProductMode, onboarding: CrewOnboarding, rootPath?: string) => void | Promise<void>
   submitting: boolean
   error: string | null
+  initialType?: CrewStarterType
   initialMode?: ProductMode
   studio?: boolean
   allowExistingFolder?: boolean
 }) {
   const [step, setStep] = useState(1)
-  const [type, setType] = useState<CrewStarterType | undefined>(initialMode === 'cowork' ? 'cowork' : undefined)
+  const [type, setType] = useState<CrewStarterType | undefined>(initialType ?? (initialMode === 'cowork' ? 'cowork' : undefined))
   const [title, setTitle] = useState('')
   const [rootPath, setRootPath] = useState('')
   const [folderError, setFolderError] = useState<string | null>(null)

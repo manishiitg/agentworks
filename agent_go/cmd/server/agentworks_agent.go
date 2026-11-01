@@ -65,9 +65,10 @@ func lockAgentWorks(userID string) func() {
 }
 
 type agentWorksCrew struct {
-	CrewID        string
-	WorkspacePath string
-	Created       bool
+	CrewID          string
+	WorkspacePath   string
+	ConversationKey string
+	Created         bool
 }
 
 func agentWorksMainSchedules() []productschedule.Schedule {
@@ -137,6 +138,7 @@ func (api *StreamingAPI) ensureAgentWorks(ctx context.Context, userID string) (a
 		return crew, fmt.Errorf("AgentWorks is unavailable: its reserved project is not marked as AgentWorks")
 	}
 	crew.WorkspacePath = binding.WorkspacePath
+	crew.ConversationKey = binding.ConversationKey
 	if !crew.Created {
 		missing := []string{}
 		for _, name := range agentWorksSpec().SelectedSkills {
@@ -588,7 +590,7 @@ func (api *StreamingAPI) handleOpenAgentWorks(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Your AgentWorks could not be opened: "+err.Error(), http.StatusConflict)
 		return
 	}
-	out := map[string]any{"crew_id": crew.CrewID, "name": agentWorksName, "created": crew.Created}
+	out := map[string]any{"crew_id": crew.CrewID, "conversation_key": crew.ConversationKey, "name": agentWorksName, "created": crew.Created}
 	if message != "" {
 		// The owner's main chat is addressed by the project id, as the app's main chat send does.
 		status, body := scheduleHandler(r, api.handleAgentProfileChatQuery, http.MethodPost, "/api/agent-profiles/"+crewProfileID+"/query", map[string]string{"id": crewProfileID}, nil, AgentProfileChatRequest{Message: message, ConversationKey: crew.CrewID})
