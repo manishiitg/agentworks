@@ -135,40 +135,39 @@ func (api *StreamingAPI) importCrewMuse(ctx context.Context, claims *UserClaims,
 	}, nil
 }
 
-// Model/account IDs on the source are not portable authority. Preserve a Muse
-// account selected here, or use this server's admitted Muse account when a new
-// paired Crew inherited another default program. Never copy a source login.
-func (api *StreamingAPI) crewMuseDestination(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, identity ProductAgentIdentity, sourceModel string) (*ProductAgentIdentity, string) {
+// Source IDs are not portable authority. Keep the destination-selected account
+// or use its admitted server account. Native packets never carry a login.
+func (api *StreamingAPI) crewNativeDestination(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, identity ProductAgentIdentity, sourceModel, provider string) (*ProductAgentIdentity, string) {
 	profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID)
 	if err != nil {
-		return nil, "Muse is unavailable on this computer; continued from saved conversation history."
+		return nil, "This AI program is unavailable on this computer; continued from saved conversation history."
 	}
-	option, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, "muse-cli")
+	option, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, provider)
 	if !offered {
-		return nil, "Muse is unavailable on this computer; continued from saved conversation history."
+		return nil, "This AI program is unavailable on this computer; continued from saved conversation history."
 	}
 	account := ""
 	if identity.Engine == option.ID {
 		account = identity.ConnectionID
-	} else if current.Provider == "muse-cli" {
+	} else if current.Provider == provider {
 		account = current.ConnectionID
 	} else if !IsLocalMode() {
-		account = "global:muse-cli"
+		account = "global:" + provider
 	} else {
-		return nil, "Choose a Muse account on this computer to resume its native session; continued from saved conversation history."
+		return nil, "Choose an AI program account on this computer to resume its native session; continued from saved conversation history."
 	}
-	if _, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"}, "muse-cli", account); err != nil {
-		return nil, "Muse is not available to this account on this computer; continued from saved conversation history."
+	if _, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"}, provider, account); err != nil {
+		return nil, "This AI program is not available to this account on this computer; continued from saved conversation history."
 	}
 	model := strings.TrimSpace(sourceModel)
-	if model == "" && current.Provider == "muse-cli" {
+	if model == "" && current.Provider == provider {
 		model = current.ModelID
 	}
 	if model == "" {
 		model = option.ModelID
 	}
-	if !providerOptionOffersModel(option, currentCodingAgentModel("muse-cli", model)) || checkAccountModel(withModelLimitPerson(ctx, claims.UserID), "muse-cli", account, model) != nil {
-		return nil, "This Muse model is unavailable on this computer; continued from saved conversation history."
+	if !providerOptionOffersModel(option, currentCodingAgentModel(provider, model)) || checkAccountModel(withModelLimitPerson(ctx, claims.UserID), provider, account, model) != nil {
+		return nil, "This AI model is unavailable on this computer; continued from saved conversation history."
 	}
 	identity.Engine, identity.ModelID, identity.ConnectionID, identity.ReasoningEffort = option.ID, model, account, ""
 	identity.UpdatedBy = claims.UserID

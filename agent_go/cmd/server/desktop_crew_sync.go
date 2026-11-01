@@ -221,9 +221,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 		}
-		if transfer.Conversation != nil && transfer.Conversation.Muse != nil {
-			b := transfer.Conversation.Muse
-			if err = bindCrewMuseStage(roots, b); err != nil {
+		if transfer.Conversation != nil && transfer.Conversation.Native != nil {
+			b := transfer.Conversation.Native
+			if err = bindCrewNativeStage(roots, b); err != nil {
 				fail(err)
 				return
 			}
@@ -309,8 +309,8 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			if movingLocal {
-				if remote.Conversation.Muse != nil {
-					if err = desktopCrewNativeSync(r.Context(), roots, connection, binding, remote.Conversation.Muse, false); err != nil {
+				if remote.Conversation.Native != nil {
+					if err = desktopCrewNativeSync(r.Context(), roots, connection, binding, remote.Conversation.Native, false); err != nil {
 						fail(err)
 						return
 					}

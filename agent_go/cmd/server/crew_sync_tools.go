@@ -55,7 +55,7 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 		return nil
 	}
 	gate.Declare("manage_crew_sync")
-	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "Inspect this Crew's server sync or explicitly update its server copy and move editing. Pair once in the Mac app's Project sync panel. action=status, update, server (Work on server), local (Work on this Mac). Uses only the owner's saved paired connection; no login or private chat transfer. Handoff requires existing project turns to finish first.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "update", "server", "local"}}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
+	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "Inspect this Crew's server sync or explicitly update its server copy and move editing. Pair once in the Mac app's Project sync panel. action=status, update, server (Work on server), local (Work on this Mac). Uses only the owner's saved paired connection; moves your own main conversation; logins stay on each computer. Handoff requires existing project turns to finish first.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "update", "server", "local"}}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller, err := api.interactiveLaptopOwner(ctx, claims, sessionID, root)
 		if err != nil {
 			return "", err

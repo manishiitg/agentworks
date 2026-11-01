@@ -200,10 +200,10 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if err = validateCrewHandoffConversation(input.Conversation); err != nil {
 			return out, err
 		}
-		if input.Conversation.Muse == nil {
+		if input.Conversation.Native == nil {
 			return out, fmt.Errorf("native session sync is not ready for this conversation")
 		}
-		if err = bindCrewMuseStage(roots, input.Conversation.Muse); err != nil {
+		if err = bindCrewNativeStage(roots, input.Conversation.Native); err != nil {
 			return out, err
 		}
 		if err = saveCrewNativeMirror(roots, input.Conversation); err != nil {

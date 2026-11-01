@@ -462,6 +462,13 @@ func restoredRuntimeCodingAgentTransport(runtime *ChatHistoryAgentRuntime) strin
 	if provider == "" {
 		return ""
 	}
+	// A native import keeps its validated runtime, even when the deployment's
+	// default differs. The destination checked availability before persisting it.
+	if runtime.NativeHandoff && runtime.AgentSessionHandle != nil {
+		if transport := strings.TrimSpace(runtime.AgentSessionHandle.Provider.Transport); transport != "" {
+			return transport
+		}
+	}
 	contract, ok := llmproviders.GetCodingAgentProviderContract(llmproviders.Provider(provider), modelID)
 	if !ok {
 		return ""
