@@ -30,7 +30,7 @@ import (
 )
 
 // companyKeyUpstreams is each program the server can pass straight to its provider when its account is a key.
-var companyKeyUpstreams = map[string]string{"claude-code": "https://api.anthropic.com/v1", "codex-cli": "https://api.openai.com/v1"}
+var companyKeyUpstreams = map[string]string{"claude-code": "https://api.anthropic.com/v1", "codex-cli": "https://api.openai.com/v1", "muse-cli": "https://api.meta.ai/v1"}
 
 const cursorBackend = "https://api2.cursor.sh"
 
@@ -51,6 +51,25 @@ func serverAccountKey(ctx context.Context, provider string) string {
 	for _, name := range serverAccountEnvNames[provider] {
 		if key := strings.TrimSpace(os.Getenv(name)); key != "" {
 			return key
+		}
+	}
+	if provider == "muse-cli" {
+		// The server's own Muse login keeps a Meta API key in its login record, kept current by Muse itself: read
+		// it each time, never refreshed here, so the server's login and the Mac's use never sign each other out.
+		home, _ := os.UserHomeDir()
+		configHome := os.Getenv("XDG_CONFIG_HOME")
+		if configHome == "" {
+			configHome = filepath.Join(home, ".config")
+		}
+		if raw, err := os.ReadFile(filepath.Join(configHome, "muse", "auth.json")); err == nil {
+			var record struct {
+				Providers map[string]struct {
+					APIKey string `json:"api_key"`
+				} `json:"providers"`
+			}
+			if json.Unmarshal(raw, &record) == nil {
+				return strings.TrimSpace(record.Providers["meta"].APIKey)
+			}
 		}
 	}
 	return ""
@@ -86,10 +105,13 @@ func companyLendsDirectly(ctx context.Context, provider string) string {
 func companyLendingLabel(ctx context.Context, provider string) string {
 	switch companyLendsDirectly(ctx, provider) {
 	case "key":
-		if lendingOn(provider) {
-			return "the server's key"
+		if !lendingOn(provider) {
+			return ""
 		}
-		return ""
+		if provider == "muse-cli" {
+			return "the server's Muse account"
+		}
+		return "the server's key"
 	case "cursor":
 		if lendingOn(provider) {
 			return "the server's Cursor account"

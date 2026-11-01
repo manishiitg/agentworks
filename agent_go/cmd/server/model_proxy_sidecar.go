@@ -295,9 +295,12 @@ func modelProxyCatalog(ctx context.Context, provider string) ([]byte, error) {
 		APIKey  string `json:"api_key"`
 		BaseURL string `json:"base_url"`
 	}
-	for _, file := range modelProxyLoginFiles(dir, provider) {
-		if raw, err := os.ReadFile(file); err == nil && json.Unmarshal(raw, &login) == nil && login.APIKey != "" {
-			break
+	// The server's own Muse key when Muse is lent with it, else the proxy's Muse login.
+	if login.APIKey = serverAccountKey(ctx, provider); login.APIKey == "" {
+		for _, file := range modelProxyLoginFiles(dir, provider) {
+			if raw, err := os.ReadFile(file); err == nil && json.Unmarshal(raw, &login) == nil && login.APIKey != "" {
+				break
+			}
 		}
 	}
 	if login.APIKey == "" {
