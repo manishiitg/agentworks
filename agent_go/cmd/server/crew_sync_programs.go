@@ -90,7 +90,7 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 		return
 	}
 	home := target.Home
-	if !cliPersonalMac() {
+	if !cliPersonalMac() || c.Provider == "codex-cli" {
 		home, err = sessiontransfer.PathDirectory(runtimeDir, security.SandboxPersistentDirName+"/cli-home/"+c.Provider, importing)
 		if err != nil {
 			return "", "", err
@@ -101,7 +101,7 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 		sub, key = ".codex", "CODEX_HOME"
 	}
 	store = filepath.Join(home, sub)
-	if !cliPersonalMac() {
+	if !cliPersonalMac() || c.Provider == "codex-cli" {
 		store, err = sessiontransfer.PathDirectory(home, sub, importing)
 		return
 	}
@@ -263,7 +263,7 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 					baseline, e = sessiontransfer.CursorCLIPath(priorStore, h.WorkingDir, b.SessionID)
 				}
 				if e == nil {
-					e = sessiontransfer.CheckSnapshotBaseline(baseline, previous)
+					e = sessiontransfer.CheckSnapshotReplacement(baseline, previous, b)
 				}
 			} else {
 				e = sessiontransfer.Ancestor(previous, b)
