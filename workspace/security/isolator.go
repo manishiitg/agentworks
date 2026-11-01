@@ -667,31 +667,28 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 		sb.WriteString(")\n\n")
 	}
 
-	workDir := canonicalPath(iso.WorkDir)
-	if workDir != "" {
-		// Deliberately still metadata-only here, unlike the default profile's
-		// equivalent grant: (literal dir) + file-read* turns out to also permit
-		// *listing* that directory's entries (verified empirically), and this
-		// chain runs all the way to "/" — upgrading it would expose the real
-		// filenames in the real home directory and above, which is exactly what
-		// StrictAllowlist exists to prevent. So getcwd() stays cosmetically
-		// broken here (a stat-only warning, not a functional block — real
-		// commands against allowed paths still work) in exchange for genuinely
-		// not leaking anything outside the allow-list.
-		sb.WriteString("; Directory metadata along the path to WorkDir, needed for getcwd()\n")
-		for dir := workDir; ; dir = filepath.Dir(dir) {
+	// Path resolution needs ancestor metadata for explicitly granted host
+	// paths too (for example a managed Python venv outside WorkDir). Metadata
+	// permits stat/readlink; it does not permit listing ancestors or reading
+	// their other files. Never upgrade these literal grants to file-read*.
+	metadataPaths := append([]string{iso.WorkDir}, iso.ReadPaths...)
+	metadataPaths = append(metadataPaths, iso.WritePaths...)
+	seenMetadata := map[string]bool{}
+	for _, entry := range metadataPaths {
+		if entry == "" {
+			continue
+		}
+		resolved, allowed := iso.sandboxAllowedPath(entry)
+		if !allowed {
+			continue
+		}
+		for dir := resolved; !seenMetadata[dir]; dir = filepath.Dir(dir) {
+			seenMetadata[dir] = true
 			sb.WriteString(fmt.Sprintf("(allow file-read-metadata (literal \"%s\"))\n", sandboxQuoted(dir)))
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-			sb.WriteString(fmt.Sprintf("(allow file-read-metadata (literal \"%s\"))\n", sandboxQuoted(dir)))
-			if dir == string(filepath.Separator) {
+			if filepath.Dir(dir) == dir {
 				break
 			}
 		}
-		sb.WriteString("\n")
 	}
 
 	if len(iso.ReadPaths) > 0 {

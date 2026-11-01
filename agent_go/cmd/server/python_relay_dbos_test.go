@@ -51,6 +51,7 @@ func testDBOSRelayServerRecovery(t *testing.T, native bool) {
 		t.Skip("set RELAY_DBOS_PYTHON for the real workspace recovery check")
 	}
 	docs := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("LOCAL_MODE", "true")
 	t.Setenv("MULTI_USER_MODE", "false")
@@ -83,8 +84,6 @@ func testDBOSRelayServerRecovery(t *testing.T, native bool) {
 			t.Fatal(err)
 		}
 	}
-	raw, _ := json.Marshal(m)
-	write("workflow.json", string(raw))
 	write("variables/variables.json", `{"variables":[{"name":"INPUT","type":"object","value":"{}"}]}`)
 	write("relay.py", `import os
 async def run(INPUT, ctx):
@@ -126,6 +125,11 @@ async def run(INPUT):
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
+	// Functions now live in the common project entry store; exercise the
+	// production writer rather than a retired schedules array in workflow.json.
+	if err := WriteWorkflowManifest(ctx, draft, m); err != nil {
+		t.Fatal(err)
+	}
 	release, err := publishRelayRelease(ctx, draft)
 	if err != nil {
 		t.Fatal(err)
@@ -174,8 +178,9 @@ async def run(INPUT):
 	// Re-entering with a disabled live function must fail before any checkpoint
 	// or completed result can bypass current invocation permission.
 	m.Schedules[0].Enabled = false
-	raw, _ = json.Marshal(m)
-	write("workflow.json", string(raw))
+	if err := WriteWorkflowManifest(ctx, draft, m); err != nil {
+		t.Fatal(err)
+	}
 	if err := svc.executePythonRelay(ctx, sctx, runID, folder, "dbos-revoked-session"); err == nil || !strings.Contains(err.Error(), "no longer allowed") {
 		t.Fatalf("revoked function admitted: %v", err)
 	}
