@@ -1,14 +1,19 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { normalizeWorkWorkspaceView, WorkChatTabs } from './WorkSurface'
+import { normalizeWorkWorkspaceView, WorkChatTabs, useWorkChatTab } from './WorkSurface'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { agentApi } from '../../services/api'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { routeView } from '../../utils/productRoutes'
+import { CREW_PRODUCT } from './projectProduct'
+import type { WorkSession } from './workSessions'
 import * as sessionRestore from '../../utils/sessionRestore'
+
+vi.mock('../../stores/useChatStore', async original => ({ ...await original<typeof import('../../stores/useChatStore')>(), waitForChatStoreHydration: async () => {} }))
 
 vi.mock('../../utils/chatDeliveryTelemetry', async original => ({ ...await original<typeof import('../../utils/chatDeliveryTelemetry')>(), recordTabReorderTelemetry: vi.fn() }))
 
@@ -205,5 +210,37 @@ describe('Crew native tab dragging', () => {
         expect(menu.querySelector('[aria-label="Move agent-0 earlier"]')).toBeNull()
       }
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }
+  })
+})
+
+
+describe('returning a project conversation to this computer', () => {
+  it('re-resolves the open main chat and selects the imported session without changing projects', async () => {
+    // PLAT-856-442 / PR521: refreshing side chats left the main tab on its old session.
+    const main = { tabId: 'handoff-main', sessionId: 'before-handoff', name: 'Chat', config: {}, metadata: {
+      mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: 'handoff-project',
+      agentProfileIsMainChat: true, agentProfileConversationKey: 'handoff-project:chat:main',
+    } } as ChatTab
+    useChatStore.setState({ chatTabs: { [main.tabId]: main }, activeTabId: main.tabId })
+    const resolve = vi.spyOn(agentApi, 'resolveAgentProfileConversation')
+      .mockResolvedValueOnce({ conversation_key: 'handoff-project:chat:main', conversation_id: 'same-conversation', session_id: 'before-handoff' })
+      .mockResolvedValue({ conversation_key: 'handoff-project:chat:main', conversation_id: 'same-conversation', session_id: 'after-handoff' })
+    const models = vi.spyOn(agentApi, 'getAgentProfileChatModelState').mockResolvedValue({ chat_models: [], effective_chat_models: [], can_open_models: true })
+    const project = { id: 'handoff-project', product: 'work', title: 'Example', workspacePath: 'Crew/example', selectedServers: [], selectedSkills: [], llmConfig: { schema_version: 2, mode: 'explicit', builder_llm: { provider: 'claude-code', model_id: 'example-model' } } } as unknown as WorkSession
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+    function Harness() { useWorkChatTab(CREW_PRODUCT, project, () => {}); return null }
+    const host = document.createElement('div'), root = createRoot(host)
+    try {
+      await act(async () => root.render(<QueryClientProvider client={client}><Harness /></QueryClientProvider>))
+      await vi.waitFor(() => expect(resolve).toHaveBeenCalledTimes(1))
+      await act(async () => { window.dispatchEvent(new CustomEvent('agentworks:crew-handoff', { detail: { projectId: project.id } })) })
+      await vi.waitFor(() => {
+        const state = useChatStore.getState(), active = state.chatTabs[state.activeTabId!]
+        expect(active?.sessionId).toBe('after-handoff')
+        expect(active?.metadata?.agentProfileConversationId).toBe('same-conversation')
+        expect(active?.metadata?.agentProfileIsMainChat).toBe(true)
+      })
+      expect(resolve).toHaveBeenCalledTimes(2)
+    } finally { await act(async () => root.unmount()); client.clear(); resolve.mockRestore(); models.mockRestore() }
   })
 })

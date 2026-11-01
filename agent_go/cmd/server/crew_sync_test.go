@@ -213,7 +213,8 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				data := map[string]any{"user_id": "owner", "session_id": record.SessionID,
 					"conversation_history": []map[string]any{{"Role": "human", "Parts": []map[string]any{{"Type": "text", "Text": text}}}},
 					"runtime":              map[string]any{"provider": "claude-code", "external_session_id": "do-not-transfer-native-session"},
-					"terminal_snapshots":   []string{"do-not-transfer-terminal"}}
+					"terminal_snapshots":   []string{"do-not-transfer-terminal"},
+					"ui_events":            []map[string]any{{"type": "streaming_chunk", "data": map[string]any{"type": "streaming_chunk", "content": "do-not-transfer-terminal-event", "metadata": map[string]any{"kind": "terminal", "tmux_session": "do-not-transfer-native-handle"}}}}}
 				raw, _ := json.Marshal(data)
 				if err := writeRawFileToWorkspace(ctx, p, string(raw)); err != nil {
 					t.Fatal(err)
