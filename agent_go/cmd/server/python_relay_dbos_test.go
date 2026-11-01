@@ -172,7 +172,20 @@ async def run(INPUT):
 	if err != nil {
 		t.Fatal(err)
 	}
-	sctx := buildScheduleContext(published, m, m.Schedules[0])
+	// Production dispatch reloads the frozen manifest. Never pass the draft's
+	// in-memory Crew binding into a published run and mask release resolution.
+	publishedManifest, found, err := ReadWorkflowManifest(ctx, published)
+	if err != nil || !found {
+		t.Fatal("published manifest unavailable", err)
+	}
+	if native && publishedManifest.crewExecutable == nil {
+		t.Fatal("published program lost its Crew binding")
+	}
+	publishedFunction, err := findWorkflowFunctionTrigger(publishedManifest, "process")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sctx := buildScheduleContext(published, publishedManifest, *publishedFunction)
 	sctx.WebhookInput = &WorkflowWebhookDelivery{RunID: runID, Variables: map[string]string{"INPUT": `{"value":"original"}`}, Payload: json.RawMessage(`{"function":"process","relay_caller":"owner"}`)}
 	if native {
 		if e := AppendScheduleRun(ctx, published, &ScheduleRunEntry{ID: runID, ScheduleID: "process", Status: "queued", StartedAt: time.Now()}); e != nil {
