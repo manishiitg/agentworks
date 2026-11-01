@@ -27,10 +27,17 @@ func TestChromeExtensionProjectSelectsSavedAccountBrowser(t *testing.T) {
 		f.API.handleBrowserExtension(w, r)
 		return w
 	}
-	account := call(fixtureUserA, http.MethodPost, "/", `{"action":"copy"}`)
+	account := call(fixtureUserA, http.MethodPost, "/", `{"action":"pair"}`)
+	var link struct{ Handoff string }
+	if account.Code != 200 || json.Unmarshal(account.Body.Bytes(), &link) != nil || link.Handoff == "" {
+		t.Fatal("account handoff failed")
+	}
+	redeem := httptest.NewRecorder()
+	body, _ := json.Marshal(map[string]string{"handoff": link.Handoff})
+	f.API.handleBrowserPairingExchange(redeem, httptest.NewRequest(http.MethodPost, browserPairingRedeemPath, strings.NewReader(string(body))))
 	var pair struct{ Token string }
-	if account.Code != 200 || json.Unmarshal(account.Body.Bytes(), &pair) != nil || pair.Token == "" {
-		t.Fatal("account pairing failed")
+	if redeem.Code != 200 || json.Unmarshal(redeem.Body.Bytes(), &pair) != nil || pair.Token == "" {
+		t.Fatal("account handoff redemption failed")
 	}
 	server := httptest.NewServer(http.HandlerFunc(f.API.handleBrowserExtensionConnect))
 	defer server.Close()

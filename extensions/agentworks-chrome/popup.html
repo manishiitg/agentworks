@@ -7,10 +7,9 @@
     <p id="error" class="error" role="alert" hidden></p>
     <section id="setup">
       <h2>Connect to your AgentWorks account</h2>
-      <p class="muted">In AgentWorks, open your <strong>Account → Browser connections</strong> and copy your connection code.</p>
-      <label for="pairing">Paste your connection code</label>
-      <textarea id="pairing" rows="3" spellcheck="false" autocomplete="off" placeholder="Copy connection in AgentWorks, then paste here"></textarea>
-      <button id="connect" class="primary" disabled>Connect browser</button>
+      <p id="pairing-help" class="muted">In AgentWorks, choose <strong>Connect browser</strong>, then open Browser Bridge on the setup tab.</p>
+      <p id="pairing-account" class="muted" role="status"></p>
+      <button id="connect" class="primary" disabled>Continue</button>
       <p class="hint">Connect this browser once. It reconnects automatically when AgentWorks restarts. Share an existing tab only when you choose to.</p>
     </section>
     <section id="controls" hidden>

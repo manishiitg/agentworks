@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Check, Copy, Download, MoreHorizontal, Plus, X } from 'lucide-react'
+import { ArrowLeft, Check, ExternalLink, Download, MoreHorizontal, Plus, X } from 'lucide-react'
 import api from '../services/api'
 import { Button } from './ui/Button'
 import ModalPortal from './ui/ModalPortal'
@@ -7,6 +7,7 @@ import IconPopover from './ui/IconPopover'
 import { TooltipProvider } from './ui/tooltip'
 import { useLiveRefetch } from '../hooks/useLiveRefetch'
 import { getRuntimeAppName, runtimeBrandingConfig } from '../runtime-branding'
+import { prepareSignInWindow } from '../utils/signInWindow'
 import { extensionVersionOlder } from '../utils/extensionVersion'
 
 export interface SavedBrowserConnection {
@@ -35,9 +36,8 @@ export default function BrowserConnectionsDialog(props: BrowserConnectionsProps)
 // The Browser pane and account dialog share the same account controls and requests.
 export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = true, selectedBrowserId, startSetup = false, workspaceBrowser, tabTitles = [], tabCount = 0, projectStatus }: BrowserConnectionsProps & { inline?: boolean; selectedBrowserId?: string; startSetup?: boolean; workspaceBrowser?: WorkspaceBrowserChoice; tabTitles?: string[]; tabCount?: number; projectStatus?: string }) {
   const [browsers, setBrowsers] = useState<SavedBrowserConnection[]>([])
-  const [code, setCode] = useState('')
+  const [pairingStarted, setPairingStarted] = useState(false)
   const [setupOpen, setSetupOpen] = useState(!inline || startSetup)
-  const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [latestVersion, setLatestVersion] = useState('')
@@ -51,7 +51,7 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
     }
     catch { setError('Could not check your browsers. Try again shortly.') }
   }, [])
-  useEffect(() => { if (open) { void refresh(); setCode(''); setCopied(false); setSetupOpen(!inline || startSetup) } }, [open, refresh, inline, startSetup])
+  useEffect(() => { if (open) { void refresh(); setPairingStarted(false); setSetupOpen(!inline || startSetup) } }, [open, refresh, inline, startSetup])
   useLiveRefetch(() => { void refresh() }, { kinds: ['browser'], fallbackMs: 2500, safetyMs: 20_000, enabled: open })
   useEffect(() => {
     if (!open || inline) return
@@ -60,15 +60,16 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
   }, [open, onClose, inline])
   if (!open) return null
   const connect = async () => {
-    setBusy(true); setError(''); setCopied(false)
+    const browserWindow = prepareSignInWindow()
+    setBusy(true); setError('')
     try {
-      const { data } = await api.post('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
+      const { data } = await api.post('/api/browser/extension', { action: 'pair' }, { skipSessionContext: true })
+      const url = new URL('/api/browser/extension/setup', base)
+      url.hash = new URLSearchParams({ handoff: data.handoff }).toString()
+      if (!browserWindow.open(url.href)) throw new Error('Browser window blocked')
       setPairingFailure(null)
-      const url = new URL('/api/browser/extension/connect', base); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      const value = JSON.stringify({ url: url.href, token: data.token, brand: getRuntimeAppName(runtimeBrandingConfig()) || 'AgentWorks' })
-      setCode(value)
-      try { await navigator.clipboard.writeText(value); setCopied(true) } catch { /* Manual copy remains available. */ }
-    } catch { setError('Could not prepare your browser connection. Try again.') }
+      setPairingStarted(true)
+    } catch { browserWindow.close(); setError('Could not open the connection. Allow a new browser tab, then try again.') }
     finally { setBusy(false) }
   }
   const disconnect = async (id: string) => {
@@ -77,18 +78,18 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
     catch { setError('Could not disconnect this browser. Try again.') }
     finally { setBusy(false) }
   }
-  const availableBrowsers = code ? browsers.filter(browser => browser.connected && browser.enabled) : []
+  const availableBrowsers = pairingStarted ? browsers.filter(browser => browser.connected && browser.enabled) : []
   const finish = async (browserId: string) => {
     if (!onConnected) { onClose(); return }
     setBusy(true)
-    try { if (await onConnected(browserId)) { setSetupOpen(false); setCode(''); onClose() } else setError('Could not select this browser. Try again.') }
+    try { if (await onConnected(browserId)) { setSetupOpen(false); setPairingStarted(false); onClose() } else setError('Could not select this browser. Try again.') }
     catch { setError('Could not select this browser. Try again.') }
     finally { setBusy(false) }
   }
 
   const selectWorkspace = async () => {
     setBusy(true)
-    try { if (await workspaceBrowser?.onSelect() !== false) { setSetupOpen(false); setCode('') } }
+    try { if (await workspaceBrowser?.onSelect() !== false) { setSetupOpen(false); setPairingStarted(false) } }
     catch { setError('Could not change this project’s browser. Try again.') }
     finally { setBusy(false) }
   }
@@ -124,14 +125,14 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
       <div className="flex items-center justify-between gap-1"><Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Add browser</Button>{inline && workspaceBrowser?.secondary && !workspaceBrowser.selected && !chromeBrowser && <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label="Browser options" panelClassName="w-48 !p-1">{workspaceChoice}</IconPopover>}</div>
     </>}
     {setupOpen && <div className="space-y-4" aria-label="Connect browser">
-      <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setCode(''); setCopied(false) }}><ArrowLeft className="h-3.5 w-3.5" />Back</Button>
-      <div className="space-y-1"><h3 className="text-sm font-medium">Connect browser</h3><p className="text-xs text-muted-foreground">Install Browser Bridge in Chrome or Edge, then paste the connection code into the extension.</p></div>
+      <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setPairingStarted(false) }}><ArrowLeft className="h-3.5 w-3.5" />Back</Button>
+      <div className="space-y-1"><h3 className="text-sm font-medium">Connect browser</h3><p className="text-xs text-muted-foreground">Install Browser Bridge in Chrome or Edge, then connect this browser.</p></div>
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm"><a href={new URL('/api/downloads/chrome-extension.zip', base).href} download><Download />Download extension</a></Button>
-        <Button size="sm" disabled={busy} onClick={() => { void connect() }}><Copy />{copied ? 'Code copied' : 'Copy connection code'}</Button>
+        <Button size="sm" disabled={busy} onClick={() => { void connect() }}><ExternalLink />Connect browser</Button>
       </div>
-      <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Installation help</summary><ol className="ml-4 mt-2 list-decimal space-y-2"><li>Download and unzip Browser Bridge.</li><li>Open chrome://extensions or edge://extensions, enable Developer mode, choose Load unpacked and select the unzipped folder.</li><li>Open Browser Bridge, paste the connection code and choose Connect browser.</li></ol></details>
-      {code && <><p role="status" className="text-xs text-muted-foreground">Paste the code into Browser Bridge and choose Connect browser.</p><details open={!copied || undefined}><summary className="cursor-pointer text-xs text-muted-foreground">Copy manually</summary><textarea aria-label="Account browser connection code" readOnly value={code} onFocus={event => event.currentTarget.select()} className="mt-2 w-full rounded-md border border-border bg-muted/30 p-2 text-xs" rows={3} /></details></>}
+      <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Installation help</summary><ol className="ml-4 mt-2 list-decimal space-y-2"><li>Download and unzip Browser Bridge.</li><li>Open chrome://extensions or edge://extensions, enable Developer mode, choose Load unpacked and select the unzipped folder.</li><li>Choose Connect browser here, then open Browser Bridge on its setup tab. Check the account and server and choose Connect browser in the extension.</li></ol></details>
+      {pairingStarted && <p role="status" className="text-xs text-muted-foreground">Open Browser Bridge on the setup tab to finish. Then choose your browser below.</p>}
       {!!availableBrowsers.length && <div className="space-y-2"><p className="text-xs text-muted-foreground">Choose a browser to finish.</p>{availableBrowsers.map(browser => <Button key={browser.id} size="sm" disabled={busy} onClick={() => { void finish(browser.id) }}><Check />{onConnected ? `Use ${browser.name}` : `Done · ${browser.name}`}</Button>)}</div>}
     </div>}
         {pairingFailure && <div role="alert" className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm"><p className="font-medium">{pairingFailure.reason === 'extension_outdated' ? 'Update your browser extension' : 'Browser could not connect'}</p><p>{pairingFailure.message}</p>{pairingFailure.extension_version && <p className="text-xs text-muted-foreground">Installed extension: {pairingFailure.extension_version}{latestVersion ? ` · Download: ${latestVersion}` : ''}</p>}</div>}

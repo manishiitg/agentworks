@@ -100,8 +100,8 @@ Tracking: PLAT-542.
 
 1. Open **Browser → Connections** (or Account → Browser connections). Download the extension ZIP and unzip it.
 2. In Chrome, open `chrome://extensions` (in Edge, `edge://extensions`), enable **Developer mode**, choose **Load unpacked**, and select the unzipped folder.
-3. Copy the account connection into the extension popup and choose **Connect browser**. This connects Chrome or Edge to your account once.
-4. In a Crew or Goal's Browser panel, choose that saved browser and click **Use browser**. The project receives its own tabs; connecting the account alone does not select it for every project or adopt a personal tab.
+3. Choose **Connect browser** in AgentWorks. On the setup tab that opens, open Browser Bridge from the browser toolbar. Allow this server if prompted, check the account and server shown, then choose **Connect browser**. No connection code or clipboard access is needed.
+4. In the project’s Browser panel, choose the connected browser by name. The project receives its own tabs; connecting the account alone does not select it for every project or adopt a personal tab.
 5. Ask the existing chat to work in Chrome. `agent_browser(command="status")` reports extension mode. Use ordinary browser commands without `--cdp`.
 6. To use an already-open page, choose the project and **Share this tab** in the extension. Protected pages and tabs belonging to another project remain unshared.
 7. Use the same inline project picker to choose **Workspace browser** instead. It streams here; saved Chrome and Edge tabs stay on the person's computer. Connections manages account setup, while the project picker only selects where to browse.
@@ -136,11 +136,11 @@ or rejected explicitly.
 
 Personal Chrome and Edge connections belong to the account. Each project explicitly selects a saved browser. Account availability and project readiness are separate: a connected account with no project selection shows **Choose browser**; an online selected browser preparing its project connection shows **Connecting this project**; a disconnected selected browser shows **Browser offline**.
 
-The project management endpoint accepts `connect` with an explicit `browser_id` and `disconnect`. Its response contains status, never a pairing credential. Pair/copy/reset actions exist only at account scope, without a workspace parameter; project-scoped external tokens cannot obtain the general account credential. Account pairing stays in Connections.
+The project management endpoint accepts `connect` with an explicit `browser_id` and `disconnect`. Its response contains status, never a pairing credential. Account-only `pair` creates a 256-bit, five-minute, one-use handoff. The setup URL carries it in the fragment. The extension previews its account identity and redeems it at that same HTTPS origin (HTTP loopback for development). The server stores only its hash and consumes it atomically. Peek/redeem have no browser CORS grant and are rate-limited. Project-scoped external tokens cannot issue handoffs or obtain the general account credential. Account pairing stays in Connections.
 
 Selection registers the server-derived project scope and checks product access, project ownership and write access. The socket rechecks authority on connection and every heartbeat. Workflow selection requires AgentWorks product access and owner/editor access to an existing workflow root; Relay manifests remain excluded. Each collaborator selects their own account browser. No browser is automatically selected because it is used in another project.
 
-The private credential survives restarts in the existing 0600 file. Account reset rotates it and closes that account's connections; project disconnect removes only that project's selection. Browser connection credentials must never appear in logs or project status responses.
+The private credential survives restarts in the existing 0600 file. Disconnect browser revokes that browser; project disconnect removes only that project’s selection. Browser connection credentials must never appear in logs or project status responses.
 
 A live binding is private to `(account identity, server-derived browser workspace
 identity)`. Each project has its own target/session maps, diagnostics and groups.

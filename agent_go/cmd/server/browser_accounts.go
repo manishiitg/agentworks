@@ -32,13 +32,9 @@ func (api *StreamingAPI) handleAccountBrowsers(w http.ResponseWriter, r *http.Re
 			return
 		}
 		switch req.Action {
-		case "pair", "copy", "reset":
-			token, err := browserrelay.Default.PairAccount(claims.UserID, req.Action == "reset")
-			if err != nil {
-				http.Error(w, "Could not prepare the browser connection. Try again.", 503)
-				return
-			}
-			json.NewEncoder(w).Encode(map[string]any{"token": token})
+		case "pair":
+			handoff := browserrelay.Default.BeginAccountPairing(claims.UserID, firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID))
+			json.NewEncoder(w).Encode(map[string]any{"handoff": handoff})
 			return
 		case "disconnect":
 			if err := browserrelay.Default.DisconnectBrowser(claims.UserID, req.BrowserID); err != nil {

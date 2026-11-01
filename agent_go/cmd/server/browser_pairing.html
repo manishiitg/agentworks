@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Connect browser · AgentWorks</title><style>
+:root{color-scheme:light dark;font:16px/1.55 system-ui,sans-serif}body{margin:0;padding:40px 24px}main{max-width:480px;margin:12vh auto}h1{font-size:26px;line-height:1.25}p{opacity:.75}li{margin:14px 0}a{color:inherit}small{opacity:.65}
+</style></head><body><main>
+{{if eq . "connected"}}<h1>Browser connected</h1><p>Return to AgentWorks and choose this browser in your project.</p>
+{{else if eq . "connecting"}}<h1>Connecting your browser</h1><p>Browser Bridge will reconnect automatically. Return to AgentWorks to check its status.</p>
+{{else if eq . "expired"}}<h1>Open a new connection</h1><p>This link expired or was already used. Return to AgentWorks and choose Connect browser again.</p>
+{{else}}<h1>Connect this browser</h1><ol><li>Open <strong>Browser Bridge</strong> from your browser’s Extensions menu.</li><li>Check the account and server, then choose <strong>Connect browser</strong>.</li></ol><p>No connection code needed. Keep this tab open until connected.</p><details><summary>Extension not installed?</summary><p><a href="/api/downloads/chrome-extension.zip" download>Download Browser Bridge</a>, unzip it and load the folder from chrome://extensions or edge://extensions using Developer mode → Load unpacked.</p></details>{{end}}
+</main></body></html>

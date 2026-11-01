@@ -778,7 +778,7 @@ const openExternalUrl = makeOpenExternalUrl(shell);
 
 // IPC Handler for opening external URLs
 ipcMain.on('open-external', (event, url) => {
-  console.log('[main] Received open-external request for:', url);
+  // External sign-in and browser-connection links may contain one-use credentials.
   openExternalUrl(url, 'ipc');
 });
 

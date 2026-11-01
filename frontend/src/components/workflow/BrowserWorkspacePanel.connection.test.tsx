@@ -6,7 +6,8 @@ import { TooltipProvider } from '../ui/tooltip'
 import { BrowserWorkspacePanel } from './BrowserWorkspacePanel'
 import type { BrowserEmptyStateActions } from './WorkflowLiveBrowser'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), open: vi.fn(() => true) }))
+vi.mock('../../utils/signInWindow', () => ({ prepareSignInWindow: () => ({ open: mocks.open, close: vi.fn() }) }))
 vi.mock('../../services/api', () => ({ default: { defaults: {}, get: mocks.get, post: mocks.post }, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => null }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn() }))
 vi.mock('./WorkflowLiveBrowser', () => ({ default: ({ emptyContent, browserSelection }: { browserSelection?: React.ReactNode; emptyContent: React.ReactNode | ((actions: BrowserEmptyStateActions) => React.ReactNode) }) => <>{browserSelection}{typeof emptyContent === 'function' ? emptyContent({ startBrowser: vi.fn(), startingBrowser: false, canStart: true }) : emptyContent}</> }))
@@ -50,10 +51,11 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
     expect(setup.closest('[aria-label="Browser content"]')).toBeTruthy()
     expect(host.querySelector('[aria-label="Saved browsers"]')).toBeNull()
     expect(clipboard).not.toHaveBeenCalled()
-    mocks.post.mockResolvedValueOnce({ data: { token: 'test-connection-code' } })
-    await act(async () => { [...setup.querySelectorAll('button')].find(button => button.textContent === 'Copy connection code')!.click() })
-    expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
-    expect(clipboard).toHaveBeenCalledOnce()
+    mocks.post.mockResolvedValueOnce({ data: { handoff: 'a'.repeat(43) } })
+    await act(async () => { [...setup.querySelectorAll('button')].find(button => button.textContent === 'Connect browser')!.click() })
+    expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'pair' }, { skipSessionContext: true })
+    expect(clipboard).not.toHaveBeenCalled()
+    expect(mocks.open).toHaveBeenCalledWith(expect.stringContaining('/api/browser/extension/setup#handoff='))
     await act(async () => { [...setup.querySelectorAll('button')].find(button => button.textContent === 'Back')!.click() })
     expect(host.querySelector('[aria-label="Project browser tabs"]')?.textContent).toContain('Example page')
     expect(host.querySelector('textarea')).toBeNull()

@@ -370,9 +370,9 @@ func headerOnlyEventStream(path string) bool {
 
 // shouldSkipAuth returns true for paths that don't require authentication
 func shouldSkipAuth(path string) bool {
-	if path == browserExtensionConnectPath {
+	if path == browserExtensionConnectPath || path == browserPairingSetupPath || path == browserPairingPeekPath || path == browserPairingRedeemPath {
 		return true
-	} // Single-use pairing credential, verified in the first WebSocket frame.
+	} // WebSocket validates its relay credential; HTTP exchange validates a one-use handoff.
 	if path == vaultMCPPath || path == vaultOAuthPrefix+"/register" || path == vaultOAuthPrefix+"/authorize" || path == vaultOAuthPrefix+"/token" {
 		return true // handlers enforce PKCE or a resource-bound Vault token
 	}

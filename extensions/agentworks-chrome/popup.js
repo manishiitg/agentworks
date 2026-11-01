@@ -1,13 +1,15 @@
+import { setupConnection } from './pairing.js';
 const $ = id => document.getElementById(id);
 let busy = false;
+let setup = null, preview = null;
 let current = { connected: false, tabs: [] };
 document.querySelector('.subtitle').textContent = `Browser connection · v${chrome.runtime.getManifest().version}`;
 function updateButtons() {
   for (const button of document.querySelectorAll('button')) button.disabled = busy;
   for(const id of ['share','newtab','group'])$(id).disabled=busy || !current.projectConnected;
-  $('connect').disabled = busy || !$('pairing').value.trim();
+  $('connect').disabled = busy || !setup;
   $('group').disabled = busy || !current.projectConnected || !current.tabs.length;
-  $('connect').textContent = busy && !current.connected ? 'Connecting…' : 'Connect browser';
+  $('connect').textContent = busy ? 'Connecting…' : preview ? 'Connect browser' : 'Continue';
 }
 async function run(request) {
   const result = await chrome.runtime.sendMessage(request);
@@ -45,16 +47,28 @@ async function action(fn) {
   try { await fn(); } catch (error) { showError(error.message); }
   finally { busy = false; updateButtons(); }
 }
-$('pairing').oninput = updateButtons;
+async function previewConnection() {
+ const result = await chrome.runtime.sendMessage({ action:'pairing-preview', tabId:setup.tabId, setupURL:setup.url });
+ if (!result?.ok) throw new Error(result?.error || 'Could not check this connection.');
+ preview = result.setup;
+ $('pairing-account').textContent = `Connect this browser to ${preview.account} on ${preview.origin}`;
+ $('pairing-help').textContent = 'Check that this is your account and server.';
+ updateButtons();
+}
+async function inspectSetupTab() {
+ const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+ try { setup = {...setupConnection(tab?.url || ''),tabId:tab.id}; } catch { return; }
+ $('pairing-account').textContent = `Server: ${setup.origin}`;
+ if (await chrome.permissions.contains({origins:[setup.permission]})) await previewConnection();
+}
 $('connect').onclick = () => action(async () => {
-  const raw = $('pairing').value.trim();
-  let pairing, url;
-  try {
-    pairing = JSON.parse(raw); url = new URL(pairing.url);
-    if (url.pathname !== '/api/browser/extension/connect' || url.search || url.hash || url.username || url.password || typeof pairing.token !== 'string' || pairing.token.length < 32 || (url.protocol !== 'wss:' && !(url.protocol === 'ws:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) throw new Error();
-  } catch { throw new Error('In AgentWorks, open your account menu → Browser connections → Copy connection code. Paste the full code here, then choose Connect browser.'); }
-  if (!await chrome.permissions.request({ origins: [`${url.protocol === 'wss:' ? 'https:' : 'http:'}//${url.host}/*`] })) throw new Error('Platform connection permission was declined.');
-  await run({ action: 'connect', pairing: raw }); $('pairing').value = '';
+ if (!setup) throw new Error('Open the connection tab from AgentWorks first.');
+ if (!preview) {
+  if (!await chrome.permissions.request({origins:[setup.permission]})) throw new Error('Browser connection permission was declined.');
+  await previewConnection();
+  return;
+ }
+ await run({action:'pairing-connect',tabId:setup.tabId,setupURL:setup.url,accountId:preview.account_id});
 });
 $('share').onclick = () => action(async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -66,6 +80,6 @@ $('group').onclick = () => action(() => run({ action: 'group' }));
 $('project').onchange = () => action(() => run({action:'select-project',scope:$('project').value}));
 $('stop-all').onclick = () => action(() => run({action:'stop-all'}));
 $('stop').onclick = () => action(() => run({ action: 'stop' }));
-void action(() => run({ action: 'state' }));
+void action(async () => { await run({action:'state'}); if (!current.remembered) await inspectSetupTab(); });
 // Reflect Stop, closed tabs and connection loss while the popup remains open.
 setInterval(() => { if (!busy) void run({ action: 'state' }).catch(error => showError(error.message)); }, 1500);

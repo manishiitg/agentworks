@@ -35,7 +35,7 @@ func TestBrowserConnectionsKeepAccountCodeOutOfProjectTokens(t *testing.T) {
 	if w := call(map[string]any{"action": "select", "workflow_id": "secret", "browser_id": "11111111-1111-4111-8111-111111111111"}); w.Code != 403 {
 		t.Fatalf("project grant escaped: %d %s", w.Code, w.Body)
 	}
-	r := httptest.NewRequest(http.MethodPost, "/api/browser/extension", strings.NewReader(`{"action":"copy"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, claims))
+	r := httptest.NewRequest(http.MethodPost, "/api/browser/extension", strings.NewReader(`{"action":"pair"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, claims))
 	w := httptest.NewRecorder()
 	f.api.handleBrowserExtension(w, r)
 	if w.Code != 403 || strings.Contains(w.Body.String(), token) {
