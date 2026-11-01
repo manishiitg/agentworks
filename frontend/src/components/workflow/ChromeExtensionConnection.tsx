@@ -82,11 +82,12 @@ export function ChromeExtensionConnection({ connection, additionalBrowsers }: { 
 
 function ExtensionVersionLine({ status, download }: { status: ChromeExtensionStatus; download: string }) {
   const installed = status.extension_version
+  const browser = status.browsers?.find(browser => browser.id === status.browser_id)
   const outdated = status.update_needed === true
   const updateURL = status.update_url ? new URL(status.update_url, download).href : download
   if (!outdated) return null
   return <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
-    <p className="font-medium text-amber-700 dark:text-amber-300">Browser Bridge{installed ? ` ${installed}` : ''} · update available</p>
+    <p className="font-medium text-amber-700 dark:text-amber-300">{browser ? `${browser.name} · ` : ''}Update Browser Bridge{installed ? `: ${installed}` : ''}{status.latest_extension_version ? ` → ${status.latest_extension_version}` : ''}</p>
     <p className="mt-1 leading-relaxed text-muted-foreground">Download it, unzip it over your Browser Bridge folder, then press Reload on Browser Bridge in your browser’s Extensions page.</p>
     <Button asChild size="xs" variant="outline" className="mt-2"><a href={updateURL} download><Download />Download Browser Bridge</a></Button>
   </div>
