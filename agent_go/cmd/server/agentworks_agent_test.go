@@ -44,7 +44,7 @@ func (f *multiUserFixture) agentWorksCrews() int {
 func TestAgentWorksEnsureKeepsOneAgentAndThePersonsPause(t *testing.T) {
 	f := newAgentWorksFixture(t)
 	first, err := f.API.ensureAgentWorks(context.Background(), fixtureUserA)
-	if err != nil || !first.Created || first.CrewID != agentWorksCrewID(fixtureUserA) {
+	if err != nil || !first.Created || first.CrewID != agentWorksCrewID(fixtureUserA) || first.ConversationKey == "" {
 		t.Fatalf("first ensure = %+v, %v", first, err)
 	}
 	jobID := projectScheduleJobID(crewProfileID, first.CrewID, "aw-morning")
@@ -53,7 +53,7 @@ func TestAgentWorksEnsureKeepsOneAgentAndThePersonsPause(t *testing.T) {
 		t.Fatalf("the owned Goal should have added the morning roll-up: %v", err)
 	}
 	second, err := f.API.ensureAgentWorks(context.Background(), fixtureUserA)
-	if err != nil || second.Created || second.CrewID != first.CrewID {
+	if err != nil || second.Created || second.CrewID != first.CrewID || second.ConversationKey != first.ConversationKey {
 		t.Fatalf("second ensure = %+v, %v", second, err)
 	}
 	if got := f.agentWorksCrews(); got != 1 {

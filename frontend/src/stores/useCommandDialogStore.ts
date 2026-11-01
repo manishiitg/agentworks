@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import type { CrewStarterType } from '../products/work/crewStarterTypes'
+export type ProductCreateIntent = 'studio' | CrewStarterType
 
 export type ProductCreateSurface = 'agentworks' | 'relays' | 'work'
 
@@ -7,8 +9,8 @@ export type DialogName = 'skillImport' | 'mcpDetails' | 'mcpConfig' | 'models' |
 interface CommandDialogState {
   /** Retained until the destination product mounts and opens its existing form. */
   productCreateSurface: ProductCreateSurface | null
-  productCreateIntent: 'studio' | null
-  requestProductCreate: (surface: ProductCreateSurface | null, intent?: 'studio') => void
+  productCreateIntent: ProductCreateIntent | null
+  requestProductCreate: (surface: ProductCreateSurface | null, intent?: ProductCreateIntent) => void
   consumeProductCreate: (surface: ProductCreateSurface) => boolean
   showSkillImport: boolean
   showMCPDetails: boolean

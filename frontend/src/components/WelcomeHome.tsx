@@ -1,6 +1,9 @@
+import { quickNavigationItems, openQuickNavigation } from '../utils/quickNavigation'
+import { useCommandDialogStore } from '../stores/useCommandDialogStore'
+import { HomeAgentModel } from './HomeAgentModel'
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, LayoutDashboard } from 'lucide-react'
+import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, LayoutDashboard, Settings2 } from 'lucide-react'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
@@ -15,7 +18,7 @@ import { followAppLink, openAppProduct } from '../utils/appNavigation'
 import { OPEN_HOME_EVENT } from '../utils/homeNavigation'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
-import { AgentWorksIcon, AGENTWORKS_SUBTITLE } from './ui/AgentWorksIdentity'
+import { AgentWorksIcon } from './ui/AgentWorksIdentity'
 import { HomeUseCases } from './HomeUseCases'
 import { HomeRecentWork } from './HomeRecentWork'
 import { Button } from './ui/Button'
@@ -40,6 +43,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const [open, setOpen] = useState(() => window.location.pathname === '/home' || (autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1))
   const sidebarWidth = useProductNavigationToolbarStore(state => state.sidebarWidth)
   const user = useAuthStore(state => state.user)
+  const multiUser = useAuthStore(state => state.isMultiUserMode)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const connections = useConnectedWorkStore(connectedLocations)
   const currentConnection = hasDesktopConnections() && connections.length > 1 ? connections.find(connection => connection.id === server) : undefined
@@ -152,27 +156,30 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
 
         <section aria-labelledby="home-heading" className="mx-auto w-full max-w-3xl pt-3 sm:pt-5">
           <h1 id="home-heading" className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">What would you like to get done?</h1>
-          <p className="mx-auto mt-2 max-w-xl text-center text-sm leading-6 text-muted-foreground">Start something new, automate a task, or pick up where you left off.</p>
+
           {currentConnection && <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">{currentConnection.id !== 'local' && <ServerIdentityIcon connectionId={currentConnection.id} hidden className={`h-3 w-3 ${serverIconColors(connections)[currentConnection.server]}`} />}New work starts on {currentConnection.name}</p>}
           <div className="mt-5">{workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks">
             <form onSubmit={askAgentWorks} className="rounded-2xl border border-border bg-muted/20 p-3 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/20 sm:p-4">
               <label htmlFor="welcome-agentworks-message" className="sr-only">Tell AgentWorks what you want to get done</label>
               <textarea ref={prompt} autoFocus={focusPrompt} id="welcome-agentworks-message" value={agentWorksDraft} onChange={event => setAgentWorksDraft(event.target.value)} maxLength={20000} rows={3} disabled={agentWorksSending}
                 onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }}
-                placeholder="Tell AgentWorks what you want to get done" className="block w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50" />
+                placeholder="Ask AgentWorks to coordinate your agents or help you get work done" className="block w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50" />
               <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="flex min-w-0 items-center gap-2"><AgentWorksIcon /><span className="text-xs font-medium">AgentWorks<span className="ml-2 hidden font-normal text-muted-foreground sm:inline">{AGENTWORKS_SUBTITLE}</span></span></span>
+                <span className="flex min-w-0 items-center gap-2"><AgentWorksIcon /><span className="text-xs font-medium">AgentWorks<span className="ml-2 hidden font-normal text-muted-foreground sm:inline">Your agent manager</span></span></span>
                 <button type="submit" aria-label="Send to AgentWorks" title="Send to AgentWorks" disabled={agentWorksSending || !agentWorksDraft.trim()} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{agentWorksSending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowUp aria-hidden="true" className="h-4 w-4" />}</button>
               </div>
               {agentWorksError && <p role="alert" className="mt-2 text-xs text-destructive">{agentWorksError}</p>}
             </form>
-            <button type="button" onClick={openProviders} className="mt-2 rounded-md px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Manage AI accounts</button>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/40 px-3 py-2">
+              <HomeAgentModel key={scope} />
+              <Button type="button" size="sm" variant="outline" onClick={openProviders}><Settings2 className="mr-2 h-4 w-4" />AI accounts</Button>
+            </div>
           </section>} />}</div>
         </section>
 
         {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} />}
 
-        {workProducts.length > 0 && <HomeUseCases key={`cases:${scope}`} products={workProducts.map(product => product.id)} onChoose={message => { setAgentWorksDraft(message); setFocusPrompt(true); requestAnimationFrame(() => prompt.current?.focus()) }} />}
+        {quickNavigationItems(user, 'work', multiUser).some(item => item.action === 'create' && item.surface === 'work') && <HomeUseCases key={`cases:${scope}`} products={workProducts.map(product => product.id)} onChoose={type => { const creation = quickNavigationItems(user, 'work', multiUser).find(item => item.action === 'create' && item.surface === 'work'); if (!creation || !openQuickNavigation(creation)) return; useCommandDialogStore.getState().requestProductCreate('work', type) }} />}
 
         <section aria-labelledby="welcome-services">
           <h2 id="welcome-services" className="text-xs font-medium text-muted-foreground">Tools that work across your projects</h2>
