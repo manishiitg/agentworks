@@ -266,6 +266,14 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 		switch record.Provider {
 		case "muse-cli":
 			keys.RuntimeEnvironment[llmtypes.MuseBaseURLKey] = companyAccountBaseURL(record)
+		case "cursor-cli":
+			// The Cursor SDK talks to this Mac's backend and signs in with the placeholder login in the account home.
+			keys.RuntimeEnvironment[llmtypes.CursorBackendURLKey] = strings.TrimSuffix(companyAccountBaseURL(record), "/v1") + "/cursor"
+			login, _ := json.Marshal(map[string]string{"accessToken": record.Credential, "refreshToken": record.Credential})
+			dir := filepath.Join(keys.RuntimeEnvironment["XDG_CONFIG_HOME"], "cursor")
+			if os.MkdirAll(dir, 0700) != nil || os.WriteFile(filepath.Join(dir, "auth.json"), login, 0600) != nil {
+				return nil, fmt.Errorf("cannot configure Cursor for the company account")
+			}
 		case "claude-code":
 			// Claude Code adds /v1/messages itself.
 			keys.RuntimeEnvironment[llmtypes.AnthropicBaseURLKey] = strings.TrimSuffix(companyAccountBaseURL(record), "/v1")
