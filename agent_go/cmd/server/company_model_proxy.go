@@ -8,6 +8,7 @@ package server
 // over the saved connection. Muse only for now: it takes the address with --base-url.
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
@@ -19,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -304,90 +306,113 @@ func (api *StreamingAPI) handleDesktopModelProxy(w http.ResponseWriter, r *http.
 	copyProxyResponse(w, resp, nil)
 }
 
-// GET  /api/desktop-connections/{connection}/company-accounts?provider=<program>
-//
-//	-> {"state": "added" | "available" | "unavailable" | "not_offered", "account_id", "reason"}
-//
-// POST /api/desktop-connections/{connection}/company-accounts {"provider"} -> adds "<server> · <program> (company)"
-// to this Mac's accounts: the program runs here on the server's login.
-func (api *StreamingAPI) handleDesktopCompanyAccount(w http.ResponseWriter, r *http.Request) {
-	if !desktopConnectionGate(w, r) {
-		return
-	}
-	owner := GetUserFromContext(r.Context()).UserID
-	c, err := desktopConnectionFor(owner, mux.Vars(r)["connection"])
+// companyAccountOffered asks a connected server whether it lends its account for the program to this person: it lists
+// the program's models. known is false when the server could not be asked (offline): nothing changes then. An older
+// server answers unknown addresses with its web page, which is "not offered".
+func companyAccountOffered(ctx context.Context, c desktopConnection, provider string) (offered, known bool) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Server+"/api/model-proxy/"+provider+"/v1/models", nil)
 	if err != nil {
-		desktopJSONError(w, 404, "Connection is unavailable. Connect to the server again.")
-		return
-	}
-	provider := r.URL.Query().Get("provider")
-	if r.Method == http.MethodPost {
-		var input struct {
-			Provider string `json:"provider"`
-		}
-		_ = json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&input)
-		provider = input.Provider
-	}
-	if _, offered := companyProxyModels[provider]; !offered {
-		desktopJSON(w, map[string]string{"state": "not_offered"})
-		return
-	}
-	providerConnectionsMu.Lock()
-	defer providerConnectionsMu.Unlock()
-	records, err := loadProviderConnections(r.Context())
-	if err != nil {
-		desktopJSONError(w, 500, "Cannot read your accounts.")
-		return
-	}
-	for _, record := range records {
-		if record.OwnerUserID == owner && record.Provider == provider && record.ViaConnection == c.ID {
-			desktopJSON(w, map[string]string{"state": "added", "account_id": record.ID})
-			return
-		}
-	}
-	// The server decides: it answers only when it lends this program's account and this person may use it.
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, c.Server+"/api/model-proxy/"+provider+"/v1/models", nil)
-	if err != nil {
-		desktopJSONError(w, 500, "Cannot reach the server.")
-		return
+		return false, false
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	resp, err := desktopHTTPClient().Do(req)
 	if err != nil {
-		desktopJSON(w, map[string]string{"state": "unavailable", "reason": "Cannot reach " + c.Name + "."})
-		return
+		return false, false
 	}
 	defer resp.Body.Close()
-	// Offered: the server lists the program's models. It offers it but not to you: its own refusal (403). Anything
-	// else (an older server answering with its web page, no proxy there) means it does not offer it, and is hidden.
 	var answer struct {
-		Error string            `json:"error"`
-		Data  []json.RawMessage `json:"data"`
+		Data []json.RawMessage `json:"data"`
 	}
 	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&answer)
-	if resp.StatusCode == http.StatusForbidden && answer.Error != "" {
-		desktopJSON(w, map[string]string{"state": "unavailable", "reason": answer.Error})
+	return resp.StatusCode == http.StatusOK && len(answer.Data) > 0, true
+}
+
+// companySync remembers when each person's company accounts were last matched with their servers.
+var companySync = struct {
+	sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
+
+// forgetCompanySync makes the next account list ask the servers again (a server was connected or removed).
+func forgetCompanySync(owner string) {
+	companySync.Lock()
+	delete(companySync.at, owner)
+	companySync.Unlock()
+}
+
+// syncCompanyAccounts, on the Mac, keeps "<server> · <program> (company)" in the person's accounts for every connected
+// server that lends that program's account to them, and removes it when the server stops or the connection is gone.
+// Connecting to a server is all it takes: the account then shows wherever accounts are picked, Crews included.
+func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) {
+	if desktopBootstrapHost == "" {
 		return
 	}
-	if resp.StatusCode != http.StatusOK || len(answer.Data) == 0 {
-		desktopJSON(w, map[string]string{"state": "not_offered"})
+	companySync.Lock()
+	if time.Since(companySync.at[owner]) < 2*time.Minute {
+		companySync.Unlock()
 		return
 	}
-	if r.Method != http.MethodPost {
-		desktopJSON(w, map[string]string{"state": "available"})
+	companySync.at[owner] = time.Now()
+	companySync.Unlock()
+	desktopConnectionsMu.Lock()
+	connections, err := readDesktopConnections(owner)
+	desktopConnectionsMu.Unlock()
+	if err != nil {
 		return
 	}
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		desktopJSONError(w, 500, "Cannot add the account.")
+	// want[connection][program]: true offered, false not offered; absent when the server could not be asked.
+	want := map[string]map[string]bool{}
+	names := map[string]string{}
+	for _, c := range connections {
+		want[c.ID], names[c.ID] = map[string]bool{}, c.Name
+		for provider := range companyProxyModels {
+			if offered, known := companyAccountOffered(ctx, c, provider); known {
+				want[c.ID][provider] = offered
+			}
+		}
+	}
+	providerConnectionsMu.Lock()
+	defer providerConnectionsMu.Unlock()
+	records, err := loadProviderConnections(ctx)
+	if err != nil {
 		return
 	}
-	record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: provider, DisplayName: c.Name + " · " + providerAccountProductName(provider) + " (company)",
-		OwnerUserID: owner, Scope: "user", AuthMethod: "api_key", UpdatedAt: time.Now().UTC(), ViaConnection: c.ID}, Credential: hex.EncodeToString(secret)}
-	if err := saveProviderConnections(r.Context(), append(records, record)); err != nil {
-		desktopJSONError(w, 500, "Cannot save the account.")
-		return
+	next := make([]storedProviderConnection, 0, len(records))
+	have := map[string]bool{}
+	changed := false
+	for _, record := range records {
+		if record.ViaConnection != "" && record.OwnerUserID == owner {
+			offered, known := want[record.ViaConnection][record.Provider]
+			if _, connected := want[record.ViaConnection]; !connected || (known && !offered) {
+				log.Printf("[DESKTOP_ACCOUNT] %s: company %s account %s removed (connection %s gone or no longer lends it)", owner, record.Provider, record.ID, record.ViaConnection)
+				changed = true
+				continue
+			}
+			have[record.ViaConnection+"/"+record.Provider] = true
+		}
+		next = append(next, record)
 	}
-	log.Printf("[DESKTOP_ACCOUNT] %s added the company %s account of connection %s as %s", owner, provider, c.ID, record.ID)
-	desktopJSON(w, map[string]string{"state": "added", "account_id": record.ID})
+	for id, programs := range want {
+		for provider, offered := range programs {
+			if !offered || have[id+"/"+provider] {
+				continue
+			}
+			secret := make([]byte, 32)
+			if _, err := rand.Read(secret); err != nil {
+				return
+			}
+			record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: provider, DisplayName: names[id] + " · " + providerAccountProductName(provider) + " (company)",
+				OwnerUserID: owner, Scope: "user", AuthMethod: "api_key", UpdatedAt: time.Now().UTC(), ViaConnection: id}, Credential: hex.EncodeToString(secret)}
+			next = append(next, record)
+			changed = true
+			log.Printf("[DESKTOP_ACCOUNT] %s: company %s account of connection %s added as %s", owner, provider, id, record.ID)
+		}
+	}
+	if changed {
+		if err := saveProviderConnections(ctx, next); err != nil {
+			log.Printf("[DESKTOP_ACCOUNT] %s: company accounts not saved: %v", owner, err)
+		}
+	}
 }
