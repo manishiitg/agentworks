@@ -16,6 +16,11 @@ import (
 func (api *StreamingAPI) authorizeDurableChatRead(r *http.Request, sessionID, workspacePath string) (int, string) {
 	currentUserID := GetUserIDFromContext(r.Context())
 	activeSession, existsInActive := api.getActiveSession(sessionID)
+	// A partially rehydrated runtime is not ownership evidence. Use the
+	// recorded durable owner until its in-memory identity has been restored.
+	if existsInActive && strings.TrimSpace(activeSession.UserID) == "" {
+		existsInActive = false
+	}
 	if existsInActive && activeSession.UserID != "" && activeSession.UserID != currentUserID && !api.crewSessionTabView(r, sessionID) {
 		return http.StatusNotFound, "Session not found or access denied"
 	}

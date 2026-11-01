@@ -492,6 +492,7 @@ func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
 	}
 	journal.AddEvent("hidden-chat", storeevents.Event{ID: "hidden-message", Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("user_message", map[string]any{"content": "Another person's private prompt"}))})
 	addSource("hidden-chat", "chat-1-turn", "Private automation", "Private agent", 0, 1)
+	api.activeSessions = map[string]*ActiveSessionInfo{"hidden-chat": {SessionID: "hidden-chat", UserID: "bob"}}
 	crewOwners.mu.Lock()
 	crewOwners.entries = map[string]crewOwnerEntry{}
 	crewOwners.read = func(_ context.Context, root string) string {
@@ -551,6 +552,14 @@ func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
 			}
 		} else if w.Code != 404 || strings.Contains(w.Body.String(), "Another person's") {
 			t.Fatalf("turn bypassed private chat: %d %s", w.Code, w.Body.String())
+		}
+		if !check.allowed {
+			api.activeSessions["hidden-chat"].UserID = ""
+			unknown := httptest.NewRecorder()
+			api.serveChatFileReview(unknown, req, crewroot.Roots{Virtual: "Crew/example", Files: store.Root}, "", "snapshot_turn", id, "", store, func(string) bool { return true })
+			if unknown.Code != 404 {
+				t.Fatalf("partly restored runtime bypassed durable ownership: %d %s", unknown.Code, unknown.Body.String())
+			}
 		}
 	}
 }
