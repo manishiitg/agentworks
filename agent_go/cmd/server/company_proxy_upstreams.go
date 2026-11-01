@@ -626,10 +626,21 @@ func serverCursorModels(ctx context.Context) ([]json.RawMessage, error) {
 	if cursorModelList.items != nil && time.Since(cursorModelList.at) < 5*time.Minute {
 		return cursorModelList.items, nil
 	}
+	// The SDK sits next to the cursor-agent install, beside the bin folder on the path (not the versioned folder
+	// that bin entry links to).
 	sdk := strings.TrimSpace(os.Getenv("CURSOR_SDK_PATH"))
 	if sdk == "" {
 		if agent, err := exec.LookPath("cursor-agent"); err == nil {
-			sdk = filepath.Join(filepath.Dir(agent), "..", "lib", "node_modules", "@cursor", "sdk")
+			candidates := []string{filepath.Join(filepath.Dir(agent), "..", "lib", "node_modules", "@cursor", "sdk")}
+			if resolved, err := filepath.EvalSymlinks(agent); err == nil {
+				candidates = append(candidates, filepath.Join(filepath.Dir(resolved), "..", "lib", "node_modules", "@cursor", "sdk"))
+			}
+			for _, candidate := range candidates {
+				if _, err := os.Stat(candidate); err == nil {
+					sdk = candidate
+					break
+				}
+			}
 		}
 	}
 	if sdk == "" {
@@ -638,15 +649,20 @@ func serverCursorModels(ctx context.Context) ([]json.RawMessage, error) {
 	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	script := `const { Cursor } = require(process.argv[1]); const key = process.env.CURSOR_API_KEY || undefined;
-Cursor.models.list({ apiKey: key }).then(m => { process.stdout.write(JSON.stringify(m)); process.exit(0) }).catch(e => { process.stderr.write(String(e && e.message || e)); process.exit(1) })`
+Cursor.models.list({ apiKey: key }).then(m => { process.stdout.write(JSON.stringify(m), () => process.exit(0)) }).catch(e => { process.stderr.write(String(e && e.message || e), () => process.exit(1)) })`
 	cmd := exec.CommandContext(runCtx, "node", "-e", script, sdk)
 	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("CURSOR_API_KEY")...)
 	if key := serverAccountKey(ctx, "cursor-cli"); key != "" {
 		cmd.Env = append(cmd.Env, "CURSOR_API_KEY="+key)
 	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("listing Cursor models: %w", err)
+		return nil, fmt.Errorf("listing Cursor models with %s: %w: %s", sdk, err, strings.TrimSpace(stderr.String()))
+	}
+	if len(bytes.TrimSpace(out)) == 0 {
+		return nil, fmt.Errorf("listing Cursor models with %s: no answer: %s", sdk, strings.TrimSpace(stderr.String()))
 	}
 	var items []json.RawMessage
 	if err := json.Unmarshal(out, &items); err != nil {
