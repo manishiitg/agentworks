@@ -93,9 +93,39 @@ it.each(['dialog', 'panel'])('requires named browser confirmation when an old br
     expect(selected).not.toHaveBeenCalled()
     expect(closed).not.toHaveBeenCalled()
     expect(dialog.querySelector('[aria-label="Account browser connection code"]')).toBeTruthy()
-    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Use New Edge')!.click() })
+    await act(async () => { [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Use New Edge' || button.getAttribute('aria-label') === 'Use New Edge')!.click() })
     expect(selected).toHaveBeenCalledOnce()
     expect(selected).toHaveBeenCalledWith('new')
     expect(closed).toHaveBeenCalledOnce()
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals() }
+})
+
+// PLAT-746-279: reconnecting a saved browser starts setup without selecting it or preparing a code.
+it('keeps saved-browser reconnect and per-browser actions separate from project selection', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  mocks.post.mockClear()
+  const browsers = [
+    { id: 'chrome', name: 'Chrome', browser: 'Chrome', version: '0.5.0', connected: true, enabled: true },
+    { id: 'edge', name: 'Edge', browser: 'Edge', version: '0.5.0', connected: false, enabled: false },
+  ]
+  mocks.get.mockResolvedValue({ data: { browsers, latest_extension_version: '0.5.0' } })
+  const host = document.createElement('div'), root = createRoot(host), selected = vi.fn()
+  try {
+    await act(async () => root.render(<BrowserConnectionsPanel open selectedBrowserId="chrome" onClose={vi.fn()} onConnected={selected} />))
+    expect(host.querySelector('[aria-label="Selected"]')).toBeTruthy()
+    expect(host.querySelector('button[aria-label="Use Chrome"]')?.hasAttribute('disabled')).toBe(true)
+    expect(host.textContent).not.toContain('Connection details')
+    expect(host.textContent).not.toContain('Disconnect')
+    await act(async () => { (host.querySelector('[aria-label="Connect Edge"]') as HTMLButtonElement).click() })
+    expect(host.querySelector('[aria-label="Connect browser"]')).toBeTruthy()
+    expect(selected).not.toHaveBeenCalled()
+    expect(mocks.post).not.toHaveBeenCalled()
+    await act(async () => { (host.querySelector('[aria-label="Options for Chrome"]') as HTMLButtonElement).click() })
+    expect(host.textContent).toContain('Connection details')
+    const disconnect = [...host.querySelectorAll('button')].find(button => button.textContent === 'Disconnect')!
+    mocks.post.mockResolvedValueOnce({ data: {} })
+    await act(async () => disconnect.click())
+    expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'disconnect', browser_id: 'chrome' }, { skipSessionContext: true })
+    expect(selected).not.toHaveBeenCalled()
+  } finally { await act(async () => root.unmount()) }
 })

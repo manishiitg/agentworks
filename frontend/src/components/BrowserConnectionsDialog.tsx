@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Copy, Download, X } from 'lucide-react'
+import { Check, Copy, Download, MoreHorizontal, X } from 'lucide-react'
 import api from '../services/api'
 import { Button } from './ui/Button'
 import ModalPortal from './ui/ModalPortal'
+import IconPopover from './ui/IconPopover'
+import { TooltipProvider } from './ui/tooltip'
 import { useLiveRefetch } from '../hooks/useLiveRefetch'
 import { getRuntimeAppName, runtimeBrandingConfig } from '../runtime-branding'
 import { extensionVersionOlder } from '../utils/extensionVersion'
@@ -78,14 +80,21 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
     finally { setBusy(false) }
   }
 
-  const savedBrowsers = <ul className="space-y-2" aria-label="Saved browsers">{browsers.map(browser => <li key={browser.id} className="rounded-md border border-border p-3">
-    <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0"><p className="truncate text-sm font-medium">{browser.name}</p><p className="text-xs text-muted-foreground">{!browser.enabled ? 'Disconnected' : browser.connected ? 'Connected' : 'Offline'}</p></div>
-      {inline && onConnected && browser.enabled && (selectedBrowserId === browser.id ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" />Selected</span> : <Button size="sm" variant="outline" disabled={busy} onClick={() => { void finish(browser.id) }}>Use {browser.name}</Button>)}
-      {!inline && browser.enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => { void disconnect(browser.id) }}>Disconnect</Button>}
-    </div>
-    {extensionVersionOlder(browser.version, latestVersion) && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Update available: {latestVersion}</p>}
-    <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer">Connection details</summary><div className="mt-2 space-y-2"><p>{browser.version ? `Extension ${browser.version}` : 'Extension version unknown'}</p>{inline && browser.enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => { void disconnect(browser.id) }}>Disconnect</Button>}</div></details>
+  const savedBrowsers = <ul className={inline ? 'space-y-0.5' : 'space-y-2'} aria-label="Saved browsers">{browsers.map(browser => <li key={browser.id} className={inline ? 'flex min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-muted/40' : 'rounded-md border border-border p-3'}>
+    {inline ? <>
+      {onConnected && browser.enabled && browser.connected ? <button type="button" aria-label={`Use ${browser.name}`} disabled={busy || selectedBrowserId === browser.id} className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1.5 text-left text-xs focus-visible:outline focus-visible:outline-2 disabled:cursor-default" onClick={() => { void finish(browser.id) }}><span className="truncate">{browser.name}</span>{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" className="h-3.5 w-3.5 shrink-0" />}</button> : <span className="min-w-0 flex-1 truncate px-1 py-1.5 text-xs">{browser.name}{selectedBrowserId === browser.id && <Check role="img" aria-label="Selected" className="ml-2 inline h-3.5 w-3.5" />}</span>}
+      {(!browser.enabled || !browser.connected) && <Button size="xs" variant="ghost" disabled={busy} aria-label={`Connect ${browser.name}`} onClick={() => { setStep('connect'); setSetupOpen(true) }}>Connect</Button>}
+      <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label={`Options for ${browser.name}`} panelClassName="w-48 !p-1">
+        {close => <div className="space-y-1">
+          <details className="text-xs"><summary className="cursor-pointer rounded px-2 py-1.5 hover:bg-muted">Connection details</summary><div className="space-y-1 px-2 pb-2 text-muted-foreground"><p>{!browser.enabled ? 'Disconnected' : browser.connected ? 'Connected' : 'Offline'}</p><p>{browser.version ? `Extension ${browser.version}` : 'Extension version unknown'}</p>{extensionVersionOlder(browser.version, latestVersion) && <p>Update available: {latestVersion}</p>}</div></details>
+          {browser.enabled && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect(browser.id) }}>Disconnect</Button>}
+        </div>}
+      </IconPopover>
+    </> : <>
+      <div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{browser.name}</p><p className="text-xs text-muted-foreground">{!browser.enabled ? 'Disconnected' : browser.connected ? 'Connected' : 'Offline'}</p></div>{browser.enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => { void disconnect(browser.id) }}>Disconnect</Button>}</div>
+      {extensionVersionOlder(browser.version, latestVersion) && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Update available: {latestVersion}</p>}
+      <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer">Connection details</summary><div className="mt-2"><p>{browser.version ? `Extension ${browser.version}` : 'Extension version unknown'}</p></div></details>
+    </>}
   </li>)}</ul>
 
   const content = <div className={inline ? 'space-y-3' : 'space-y-4 p-4'}>
@@ -111,7 +120,7 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
         {pairingFailure && <div role="alert" className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm"><p className="font-medium">{pairingFailure.reason === 'extension_outdated' ? 'Update your browser extension' : 'Browser could not connect'}</p><p>{pairingFailure.message}</p>{pairingFailure.extension_version && <p className="text-xs text-muted-foreground">Installed extension: {pairingFailure.extension_version}{latestVersion ? ` · Download: ${latestVersion}` : ''}</p>}</div>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
   </div>
-  if (inline) return <section aria-label="Browser connections">{content}</section>
+  if (inline) return <TooltipProvider><section aria-label="Browser connections">{content}</section></TooltipProvider>
   return <ModalPortal><div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
     <section role="dialog" aria-modal="true" aria-labelledby="browser-connections-title" className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-border bg-background shadow-xl" onClick={event => event.stopPropagation()}>
       <header className="flex items-center justify-between border-b border-border p-4"><h2 id="browser-connections-title" className="text-lg font-semibold">Connect browser</h2><button onClick={onClose} aria-label="Close browser connections"><X className="h-4 w-4" /></button></header>
