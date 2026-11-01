@@ -181,6 +181,8 @@ esac
 # tool prefix, the same "always latest" policy as agent-browser. The one-time
 # root copy from install-system-tools.sh stays as a fallback.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS_DIR'" < "$REPO_ROOT/deploy/common/install-gog.sh"
+# Pinned rsync for native session sync (PLAT-856-442); lands in <tools>/bin, which the services' PATH already lists.
+"${SSH[@]}" "bash -s -- '$REMOTE_TOOLS_DIR'" < "$REPO_ROOT/deploy/common/install-rsync.sh"
 export PATH="$REMOTE_TOOLS_DIR/bin:$PATH"
 # Teaching needs CDP URL discovery and stable target IDs (agent-browser 0.38.2).
 # Upgrade only this service account's tool prefix; leave system tools intact.
