@@ -67,13 +67,28 @@ func relayDraftWorkspaceForRelease(ctx context.Context, workspace string) (strin
 	if len(parts) != 4 || !relayVersionPattern.MatchString(parts[3]) {
 		return "", errors.New("invalid Flow release workspace")
 	}
-	manifest, found, err := ReadWorkflowManifest(ctx, clean)
-	if err != nil || !found || manifest.Kind != "relay" {
+	// Read the frozen identity without the authoritative manifest reader: that
+	// reader itself resolves this release back to its live Crew binding.
+	raw, found, err := readFileFromWorkspace(ctx, manifestPath(clean))
+	var frozen WorkflowManifest
+	if err != nil || !found || json.Unmarshal([]byte(raw), &frozen) != nil || frozen.Kind != "relay" {
 		return "", errors.New("published Flow manifest unavailable")
 	}
-	draft, live, err := findWorkflowManifestByID(ctx, manifest.ID)
-	if err != nil || live == nil || live.Kind != "relay" || relayReleaseWorkspace(draft, parts[3]) != clean {
+	metadata, found, err := readFileFromWorkspace(ctx, path.Join(clean, "release.json"))
+	var release relayRelease
+	if err != nil || !found || json.Unmarshal([]byte(metadata), &release) != nil {
+		return "", errors.New("published Flow metadata unavailable")
+	}
+	draft := release.SourceWorkspace
+	if draft == "" || workflowOwnerKey(draft) != draft || release.Version != parts[3] || relayReleaseWorkspace(draft, parts[3]) != clean {
 		return "", errors.New("published Flow has no matching live identity")
+	}
+	live, found, err := ReadWorkflowManifest(ctx, draft)
+	if err != nil || !found || live.Kind != "relay" || live.ID != frozen.ID {
+		return "", errors.New("published Flow has no matching live identity")
+	}
+	if err := verifyRelayRelease(ctx, &release, clean); err != nil {
+		return "", err
 	}
 	return draft, nil
 }
