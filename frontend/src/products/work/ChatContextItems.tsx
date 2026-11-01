@@ -118,7 +118,7 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
     {/* The person's own display choice, saved on the server for all their chats and devices; off until turned on. */}
     <Menu.CheckboxItem className={menuRowClass} checked={preferences.showContextIndicator} disabled={!preferences.ready || preferences.save.isPending} onSelect={keepOpen}
       onCheckedChange={checked => preferences.save.mutate(checked === true, { onError: () => useChatStore.getState().addToast('Could not save that. Try again in a moment.', 'error') })}>
-      <span className="min-w-0 flex-1">Show in chat box</span>
+      <span className="min-w-0 flex-1">Show context use in the chat box</span>
       <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
     </Menu.CheckboxItem>
   </>
