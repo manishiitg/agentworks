@@ -432,6 +432,36 @@ func TestSkippedFilesAndUndeliveredTurnsHaveNoFalseDiff(t *testing.T) {
 	if err != nil || r.Status != "partial" || len(c.Changes) != 0 || len(c.Record.Skipped) != 0 || c.UncapturedChanges != 0 {
 		t.Fatalf("false deletion: %v %+v", err, c)
 	}
+	// PR601: an oversized regular file becoming a FIFO is an unknown-type
+	// failure, not another routine size exclusion. Exercise the real capture.
+	if fifo, err := exec.LookPath("mkfifo"); err == nil {
+		if _, err := s.Begin(t.Context(), "non-regular"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		if output, err := exec.Command(fifo, p).CombinedOutput(); err != nil {
+			t.Fatalf("mkfifo: %v %s", err, output)
+		}
+		record, err := s.Finish(t.Context(), "non-regular")
+		if err != nil {
+			t.Fatal(err)
+		}
+		comparison, err := s.Compare(t.Context(), record.ID, "", func(string) bool { return true })
+		if err != nil || comparison.SkippedCount != 1 || len(comparison.Changes) != 0 {
+			t.Fatalf("non-regular omission lost warning: %v %+v", err, comparison)
+		}
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Truncate(p, MaxFileBytes+1); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// PLAT-746-286: routine size exclusions do not become warnings, even
 	// when many temporary/binary assets are outside the capture limit.
 	for i := 0; i < 60; i++ {

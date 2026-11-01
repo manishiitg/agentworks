@@ -15,7 +15,9 @@ func sizeOnlyOmission(record Record, path string) bool {
 		stats CaptureStats
 	}{{record.BeforeSkippedState[path], record.BeforeCapture}, {record.AfterSkippedState[path], record.AfterCapture}} {
 		if side.state == "" {
-			if side.stats.ReadSkipped > 0 {
+			// Non-regular paths have no fingerprint and are counted as size
+			// skips too. An unknown side must not hide that actual failure.
+			if side.stats.ReadSkipped > 0 || side.stats.SizeSkipped > 0 {
 				return false
 			}
 			continue
