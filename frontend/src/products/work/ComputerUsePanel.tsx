@@ -62,7 +62,7 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
     { label: 'Screenshots', state: status?.permissions?.data?.screen_recording?.state },
   ]
   const ready = status?.installed && (status.platform !== 'darwin' || permissionRows.every(({ state }) => state === 'granted' || state === 'not_required'))
-  return <section aria-label="Computer use" className="max-w-xl space-y-4 text-sm">
+  return <section aria-label="Computer use" className="w-full min-w-0 space-y-4 text-sm">
     <p className="text-muted-foreground">Give this Crew control of this computer, including apps, Terminal and clipboard.</p>
     {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
     {!status && !error && <p role="status">Checking Computer use…</p>}
