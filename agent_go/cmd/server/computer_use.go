@@ -22,6 +22,15 @@ import (
 
 const computerUseVersion = "1.0.2"
 
+// Source Electron needs its launcher arguments; macOS relaunches only the
+// generic app bundle. A packaged AgentWorks.app has its own entry point.
+func computerUsePermissionSetupNote() string {
+	if runtime.GOOS == "darwin" && os.Getenv("DEV_URL") != "" {
+		return "In development macOS shows this app as Electron. Choose Later if asked to quit, then stop and restart ./run_agentworks."
+	}
+	return ""
+}
+
 // Desktop authority belongs to the OS user's own local installation. Neither
 // a hosted service nor a project/device/attached-agent credential inherits it.
 func computerUseAllowed(c *UserClaims) bool {
@@ -293,6 +302,9 @@ func (api *StreamingAPI) computerUseAction(ctx context.Context, c *UserClaims, r
 		active := computerUseHost.cancel != nil
 		computerUseHost.Unlock()
 		out := map[string]any{"enabled": settings.Enabled, "installed": installed == nil, "active": active, "version": computerUseVersion, "platform": runtime.GOOS}
+		if note := computerUsePermissionSetupNote(); note != "" {
+			out["permission_setup_note"] = note
+		}
 		if installed == nil {
 			permissions, err := computerUseExecute(ctx, "setup", []string{"permissions"})
 			if err == nil {
@@ -301,7 +313,14 @@ func (api *StreamingAPI) computerUseAction(ctx context.Context, c *UserClaims, r
 		}
 		return out, nil
 	case "permissions":
-		return computerUseExecute(ctx, "setup", []string{"permissions", "--guide"})
+		out, err := computerUseExecute(ctx, "setup", []string{"permissions", "--guide"})
+		if err != nil {
+			return nil, err
+		}
+		if note := computerUsePermissionSetupNote(); note != "" {
+			return map[string]any{"permissions": out, "permission_setup_note": note}, nil
+		}
+		return out, nil
 	case "guide":
 		args := []string{"skills", "get", "desktop"}
 		if in.Command != "" {
