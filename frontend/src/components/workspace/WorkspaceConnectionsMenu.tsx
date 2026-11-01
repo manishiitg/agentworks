@@ -26,7 +26,7 @@ export function WorkspaceConnectionsMenu({ workspacePath, profileId, browserAllo
   const connectedMcps = mcps.filter(item => item.connected)
   const accounts = apps.filter(item => item.destination !== 'mcp:connected')
   const attention = mcps.filter(item => item.attention).length
-  const mcpDetail = loading ? 'Checking…' : unavailable ? 'Unavailable' : connectionSummary(mcps, true)
+  const mcpDetail = unavailable ? 'Unavailable' : loading ? 'Checking…' : connectionSummary(mcps, true)
   const mcpHint = `MCPs · ${mcpDetail}`
   const browserHint = `Browser · ${browser.name ? `${browser.name} · ` : ''}${browser.label}`
   const browserIcon = browser.name?.toLowerCase().includes('chrome') ? Chrome : Monitor
