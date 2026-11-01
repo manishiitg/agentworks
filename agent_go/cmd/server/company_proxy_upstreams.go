@@ -481,12 +481,26 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 			desktopJSONError(w, 400, "Could not read the request.")
 			return
 		}
-		if model := cursorAppendModel(body); model != "" {
-			if err := checkAccountModel(withModelLimitPerson(r.Context(), caller), "cursor-cli", "global:cursor-cli", model); err != nil {
+		model, readable := cursorAppendModelRead(body, r.Header.Get("Content-Encoding"))
+		if !readable {
+			// A body this relay cannot read (compressed, or another shape) could carry any model: refuse it.
+			log.Printf("[MODEL_PROXY] %s cursor append refused: unreadable body (encoding %q)", caller, r.Header.Get("Content-Encoding"))
+			desktopJSONError(w, 400, "This request could not be checked.")
+			return
+		}
+		if model != "" {
+			person := withModelLimitPerson(r.Context(), caller)
+			if err := checkAccountModel(person, "cursor-cli", "global:cursor-cli", model); err != nil {
 				log.Printf("[MODEL_PROXY] %s cursor run refused: model %s not allowed", caller, model)
 				desktopJSONError(w, 403, err.Error())
 				return
 			}
+			allowed, _, _ := accountAllowedModels(person, "cursor-cli", "global:cursor-cli")
+			if _, capped, limitErr := applyModelTokenLimit(person, "cursor-cli", "global:cursor-cli", model, allowed); modelLimitRefuses(capped, limitErr) {
+				desktopJSONError(w, 429, "You have used your token limit for "+model+" on this account. Pick another model.")
+				return
+			}
+			rememberCursorRunModel(cursorAppendRequestID(body), model)
 		}
 		r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(body)), int64(len(body))
 	}
@@ -495,6 +509,11 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 		log.Printf("[MODEL_PROXY] cursor session unavailable: %v", err)
 		desktopJSONError(w, 502, err.Error())
 		return
+	}
+	var runBody []byte
+	if path == "agent.v1.AgentService/RunSSE" {
+		runBody, _ = io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(runBody)), int64(len(runBody))
 	}
 	target := cursorBackend + "/" + path
 	if r.URL.RawQuery != "" {
@@ -519,19 +538,23 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 		copyRelayResponse(w, resp, nil)
 		return
 	}
-	// An agent run: its usage is read from the end of the reply and recorded to the person.
+	// An agent run: its usage is read from the end of the reply and recorded to the person, with the model its run
+	// start named (so per-model limits count it).
+	runModel := takeCursorRunModel(runSSERequestID(runBody))
 	capture := &cursorRunCapture{}
 	copyRelayResponse(w, resp, capture)
 	input, output, cacheRead, cacheWrite, reasoning, counted := capture.input, capture.output, capture.cacheRead, capture.cacheWrite, capture.reasoning, capture.counted
-	log.Printf("[MODEL_PROXY] %s used the server's cursor-cli account from the Mac: run -> %d (%s) tokens in=%d out=%d cached=%d counted=%v", caller, resp.StatusCode, time.Since(started).Round(time.Millisecond), input, output, cacheRead, counted)
+	log.Printf("[MODEL_PROXY] %s used the server's cursor-cli account from the Mac: %s run -> %d (%s) tokens in=%d out=%d cached=%d counted=%v", caller, runModel, resp.StatusCode, time.Since(started).Round(time.Millisecond), input, output, cacheRead, counted)
 	if ledger := api.tokenLimitLedger(); ledger != nil {
-		_ = ledger.Append(costledger.Entry{
+		if err := ledger.Append(costledger.Entry{
 			Attribution: costledger.Attribution{AttributionVersion: costledger.AttributionVersion, ActorID: caller, Activity: "mac_app"},
 			EventID:     uuid.NewString(), Timestamp: time.Now().UTC(), UserID: caller, Scope: "chat", Component: "mac_company_account",
-			Provider: "cursor-cli", AccountID: "global:cursor-cli", LLMCallCount: 1, BillingBasis: "unpriced",
+			Provider: "cursor-cli", ModelID: runModel, AccountID: "global:cursor-cli", LLMCallCount: 1, BillingBasis: "unpriced",
 			PromptTokens: input, CompletionTokens: output, CacheReadTokens: cacheRead, CacheWriteTokens: cacheWrite, ReasoningTokens: reasoning,
 			LLMGenerationDurationMS: time.Since(started).Milliseconds(),
-		})
+		}); err != nil {
+			log.Printf("[COST_LEDGER] Mac use of the cursor-cli account by %s not recorded: %v", caller, err)
+		}
 	}
 }
 
@@ -660,4 +683,94 @@ func cursorAppendModel(body []byte) string {
 		}
 	}
 	return ""
+}
+
+// cursorAppendModelRead is cursorAppendModel for a body as it arrived: a gzip body is read uncompressed; readable is
+// false when the body cannot be decoded at all (then it is not checked, so it must be refused).
+func cursorAppendModelRead(body []byte, encoding string) (model string, readable bool) {
+	switch strings.ToLower(strings.TrimSpace(encoding)) {
+	case "", "identity":
+	case "gzip":
+		reader, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return "", false
+		}
+		plain, err := io.ReadAll(io.LimitReader(reader, 64<<20))
+		if err != nil {
+			return "", false
+		}
+		body = plain
+	default:
+		return "", false
+	}
+	for _, outer := range protoFields(body) {
+		if outer.num == 1 && outer.wire == 2 {
+			if _, err := hex.DecodeString(string(outer.bytes)); err != nil {
+				return "", false
+			}
+			return cursorAppendModel(body), true
+		}
+	}
+	return "", len(body) == 0
+}
+
+// cursorAppendRequestID is the run's request id in a BidiAppend (field 2, its field 1).
+func cursorAppendRequestID(body []byte) string {
+	for _, outer := range protoFields(body) {
+		if outer.num == 2 && outer.wire == 2 {
+			for _, id := range protoFields(outer.bytes) {
+				if id.num == 1 && id.wire == 2 {
+					return string(id.bytes)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// runSSERequestID is the request id a RunSSE call streams (a Connect frame around field 1).
+func runSSERequestID(body []byte) string {
+	if len(body) > 5 && (body[0] == 0 || body[0] == 1) {
+		body = body[5:]
+	}
+	for _, field := range protoFields(body) {
+		if field.num == 1 && field.wire == 2 {
+			return string(field.bytes)
+		}
+	}
+	return ""
+}
+
+// cursorRunModels links a run's start (BidiAppend, which names the model) to its reply (RunSSE, which carries the
+// usage), by request id; entries are taken once and expire.
+var cursorRunModels = struct {
+	sync.Mutex
+	byID map[string]cursorRunModel
+}{byID: map[string]cursorRunModel{}}
+
+type cursorRunModel struct {
+	model string
+	at    time.Time
+}
+
+func rememberCursorRunModel(id, model string) {
+	if id == "" {
+		return
+	}
+	cursorRunModels.Lock()
+	defer cursorRunModels.Unlock()
+	for key, entry := range cursorRunModels.byID {
+		if time.Since(entry.at) > time.Hour {
+			delete(cursorRunModels.byID, key)
+		}
+	}
+	cursorRunModels.byID[id] = cursorRunModel{model: model, at: time.Now()}
+}
+
+func takeCursorRunModel(id string) string {
+	cursorRunModels.Lock()
+	defer cursorRunModels.Unlock()
+	entry := cursorRunModels.byID[id]
+	delete(cursorRunModels.byID, id)
+	return entry.model
 }

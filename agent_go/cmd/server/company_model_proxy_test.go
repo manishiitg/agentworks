@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
-	"errors"
 	"encoding/hex"
+	"errors"
 	"testing"
 )
 
@@ -96,5 +96,29 @@ func TestAllowedSubstitute(t *testing.T) {
 func TestModelLimitRefuses(t *testing.T) {
 	if !modelLimitRefuses(true, nil) || !modelLimitRefuses(false, errors.New("no other model")) || modelLimitRefuses(false, nil) {
 		t.Fatal("a used-up model must be refused whether or not another model is left")
+	}
+}
+
+// A Cursor run's model is read from its start (review finding 3): a compressed start is read uncompressed, a body
+// that cannot be decoded is reported unreadable (and refused), and the request id links it to the run's usage.
+func TestCursorAppendModelRead(t *testing.T) {
+	field := func(num int, value []byte) []byte {
+		out := binary.AppendUvarint(nil, uint64(num<<3|2))
+		out = binary.AppendUvarint(out, uint64(len(value)))
+		return append(out, value...)
+	}
+	body := append(field(1, []byte(hex.EncodeToString(field(1, field(9, field(1, []byte("composer-2.5"))))))), field(2, field(1, []byte("run-1")))...)
+	var zipped bytes.Buffer
+	gz := gzip.NewWriter(&zipped)
+	_, _ = gz.Write(body)
+	_ = gz.Close()
+	if model, ok := cursorAppendModelRead(zipped.Bytes(), "gzip"); !ok || model != "composer-2.5" {
+		t.Fatalf("gzip body = %q %v", model, ok)
+	}
+	if _, ok := cursorAppendModelRead(field(1, []byte("not hex")), ""); ok {
+		t.Fatal("an undecodable body must be unreadable")
+	}
+	if id := cursorAppendRequestID(body); id != "run-1" {
+		t.Fatalf("request id = %q", id)
 	}
 }

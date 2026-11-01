@@ -112,7 +112,7 @@ func readProxyRequest(r *http.Request, provider string) ([]byte, string, error) 
 }
 
 // proxyUsage keeps the final usage of a Responses reply as it streams past: the whole body of a plain JSON reply, or
-// the "response.completed" event of a stream.
+// the "response.completed" (or "response.incomplete" / "response.failed") event of a stream.
 type proxyUsage struct {
 	stream       bool
 	line         []byte
@@ -153,7 +153,8 @@ func (u *proxyUsage) Write(p []byte) (int, error) {
 		}
 		if data, ok := bytes.CutPrefix(u.line, []byte("data:")); ok {
 			switch {
-			case bytes.Contains(data, []byte(`"response.completed"`)):
+			// A reply that ends incomplete or failed still used tokens and carries its usage the same way.
+			case bytes.Contains(data, []byte(`"response.completed"`)), bytes.Contains(data, []byte(`"response.incomplete"`)), bytes.Contains(data, []byte(`"response.failed"`)):
 				u.final = append([]byte(nil), bytes.TrimSpace(data)...)
 			case bytes.Contains(data, []byte(`"message_start"`)), bytes.Contains(data, []byte(`"message_delta"`)):
 				// Anthropic: input usage arrives with message_start, output usage with the last message_delta.
