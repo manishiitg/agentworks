@@ -471,7 +471,7 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		api.serveCrewReplyUndo(w, r, roots.Virtual, prefix, op, id, store, allow, allowWrite)
 		return
 	}
-	if r.URL.Query().Get("session_id") != "" {
+	if r.URL.Query().Get("session_id") != "" || r.URL.Query().Get("history_scope") == "project" {
 		api.serveChatFileReview(w, r, roots, prefix, op, id, file, store, allow)
 		return
 	}

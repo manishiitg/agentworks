@@ -376,3 +376,94 @@ func TestChatFileReviewOutsideGitScope(t *testing.T) {
 		t.Fatal("revoked path exposed")
 	}
 }
+
+// PLAT-746-286: shared project history is independent of chat/runtime IDs,
+// keeps each checkout separate, and a commit-only turn does not duplicate edits.
+func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
+	ctx := t.Context()
+	store := filesnapshots.Store{Root: t.TempDir(), Private: t.TempDir()}
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=Test", "-c", "user.email=test@example.com"}, args...)...)
+		cmd.Dir = filepath.Join(store.Root, dir)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	put := func(dir, text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(store.Root, dir, "same.txt"), []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, dir := range []string{"app", "tools"} {
+		if err := os.Mkdir(filepath.Join(store.Root, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+		git(dir, "init", "-qb", "main")
+		put(dir, "base\n")
+		git(dir, "add", ".")
+		git(dir, "commit", "-qm", "base")
+	}
+	for i, dir := range []string{"app", "tools"} {
+		execution := fmt.Sprintf("chat-%d-turn", i)
+		if _, err := store.Begin(ctx, execution); err != nil {
+			t.Fatal(err)
+		}
+		put(dir, "changed\n")
+		if _, err := store.Finish(ctx, execution); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.Begin(ctx, "commit-only"); err != nil {
+		t.Fatal(err)
+	}
+	git("app", "commit", "-qam", "save")
+	if _, err := store.Finish(ctx, "commit-only"); err != nil {
+		t.Fatal(err)
+	}
+	h, err := projectFileReviewHistory(ctx, store, "Crew/example", func(string) bool { return true }, true)
+	if err != nil || len(h.Checkouts) != 2 || len(h.Replies) != 2 {
+		t.Fatalf("project history: %v %+v", err, h)
+	}
+	for _, checkout := range h.Checkouts {
+		if len(checkout.Captures) != 1 || checkout.Captures[0].Files != 1 {
+			t.Fatalf("commit counted twice: %+v", checkout)
+		}
+	}
+	h, err = projectFileReviewHistory(ctx, store, "Crew/example", func(p string) bool { return strings.HasPrefix(p, "tools/") }, true)
+	if err != nil || len(h.Checkouts) != 1 || h.Checkouts[0].Root != "tools" {
+		t.Fatalf("project list bypassed path grant: %v %+v", err, h)
+	}
+	// Project-file visibility must not expose a private source chat, even when
+	// the project owner reads history without any runtime session_id.
+	api, _ := newDurableChatAPI(t, "private-chat", "alice")
+	crewOwners.mu.Lock()
+	crewOwners.entries = map[string]crewOwnerEntry{}
+	crewOwners.read = func(_ context.Context, root string) string {
+		if root == "Crew/example" {
+			return "alice"
+		}
+		return ""
+	}
+	crewOwners.mu.Unlock()
+	t.Cleanup(func() {
+		crewOwners.mu.Lock()
+		crewOwners.read = nil
+		crewOwners.entries = map[string]crewOwnerEntry{}
+		crewOwners.mu.Unlock()
+	})
+	for _, user := range []string{"alice", "bob"} {
+		req := httptest.NewRequest("GET", "/?history_scope=project", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
+		w := httptest.NewRecorder()
+		api.serveChatFileReview(w, req, crewroot.Roots{Virtual: "Crew/example", Files: store.Root}, "", "snapshots", "", "", store, func(string) bool { return true })
+		if user == "alice" {
+			if w.Code != 200 || strings.Contains(w.Body.String(), "private-chat") || strings.Contains(w.Body.String(), "chat-0-turn") {
+				t.Fatalf("project history leaked private chat: %d %s", w.Code, w.Body.String())
+			}
+		} else if w.Code != 403 {
+			t.Fatalf("project history owner guard bypassed: %d %s", w.Code, w.Body.String())
+		}
+	}
+}

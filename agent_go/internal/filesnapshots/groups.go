@@ -41,6 +41,8 @@ type Commit struct {
 
 // Group is one repository (or the non-Git Crew files) in a reply's changes.
 type Group struct {
+	WorkingTree string       `json:"working_tree,omitempty"`
+	CheckoutID  string       `json:"checkout_id,omitempty"`
 	Kind        string       `json:"kind"` // repo | crew_files
 	Root        string       `json:"root"` // Crew-relative checkout folder; "" for the Crew root
 	Name        string       `json:"name"`
@@ -181,12 +183,14 @@ func GroupChanges(ctx context.Context, root string, changes []Change, newRepos [
 		dir := roots[d]
 		g := repoGroup(ctx, root, dir, byRepo[d], allow)
 		if label := labels[d]; label != nil {
+			g.CheckoutID = label.ID
 			g.historical = historicalBranch(g, label)
 			gitdir, err := gitIn(ctx, root, filepath.Join(root, filepath.FromSlash(dir)), "rev-parse", "--absolute-git-dir").Output()
 			g.historical = g.historical || err != nil || digest(strings.TrimSpace(string(gitdir))) != label.ID
 			g.Name, g.Branch, g.GitHubRepo = label.Name, label.Branch, label.GitHubRepo
 			if g.historical {
 				g.dirty, g.unpushed, g.behind = false, 0, 0
+				g.WorkingTree = ""
 			}
 		}
 		for _, p := range newRepos {
@@ -233,6 +237,12 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 	}
 	files, ok := workingTreeEdits(ctx, root, abs, dir, allow)
 	g.dirty = ok && len(files) > 0
+	if ok {
+		g.WorkingTree = "clean"
+		if g.dirty {
+			g.WorkingTree = "dirty"
+		}
+	}
 	g.unpushed = gitCount(ctx, root, abs, "HEAD", "--not", "--remotes")
 	g.behind = gitCount(ctx, root, abs, "HEAD..@{upstream}")
 	// The card lists this reply's own changes, as saved.

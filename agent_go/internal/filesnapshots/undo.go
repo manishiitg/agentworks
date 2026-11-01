@@ -90,7 +90,7 @@ func currentBytes(root *os.Root, file string) (data []byte, exists, regular bool
 
 // evaluateUndo also returns r with the comparison's before and after (a new
 // checkout's baseline in place), which the writes must use.
-func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite func(string) bool) (UndoPlan, Record, error) {
+func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite func(string) bool, checkoutID ...string) (UndoPlan, Record, error) {
 	plan := UndoPlan{SnapshotID: r.ID, Restore: []UndoItem{}, Skipped: []UndoItem{}}
 	comparison, err := s.compare(ctx, r, "", allowRead)
 	if err != nil {
@@ -105,6 +105,9 @@ func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite
 	}
 	defer root.Close()
 	for _, change := range comparison.Changes {
+		if len(checkoutID) > 0 && !matchesCheckout(change.Checkout, checkoutID[0]) {
+			continue
+		}
 		item := UndoItem{Path: change.Path, Status: change.Status}
 		if r.foreignCheckout(change.Path) {
 			item.Reason = "git_context_changed"
@@ -218,7 +221,7 @@ func (s Store) evaluateUndo(ctx context.Context, r Record, allowRead, allowWrite
 
 // PlanUndo shows what undoing the reply would do, without writing anything.
 // allowRead is the snapshot reader's guard; allowWrite is the caller's write guard.
-func (s Store) PlanUndo(ctx context.Context, id string, allowRead, allowWrite func(string) bool) (UndoPlan, error) {
+func (s Store) PlanUndo(ctx context.Context, id string, allowRead, allowWrite func(string) bool, checkoutID ...string) (UndoPlan, error) {
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return UndoPlan{}, err
@@ -228,13 +231,13 @@ func (s Store) PlanUndo(ctx context.Context, id string, allowRead, allowWrite fu
 	if err != nil {
 		return UndoPlan{}, err
 	}
-	plan, _, err := s.evaluateUndo(ctx, r, allowRead, allowWrite)
+	plan, _, err := s.evaluateUndo(ctx, r, allowRead, allowWrite, checkoutID...)
 	return plan, err
 }
 
 // ApplyUndo re-checks every file at write time and restores only those still
 // exactly as the reply left them. Files changed since are reported, never overwritten.
-func (s Store) ApplyUndo(ctx context.Context, id string, allowRead, allowWrite func(string) bool) (UndoPlan, error) {
+func (s Store) ApplyUndo(ctx context.Context, id string, allowRead, allowWrite func(string) bool, checkoutID ...string) (UndoPlan, error) {
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return UndoPlan{}, err
@@ -244,7 +247,7 @@ func (s Store) ApplyUndo(ctx context.Context, id string, allowRead, allowWrite f
 	if err != nil {
 		return UndoPlan{}, err
 	}
-	plan, r, err := s.evaluateUndo(ctx, r, allowRead, allowWrite)
+	plan, r, err := s.evaluateUndo(ctx, r, allowRead, allowWrite, checkoutID...)
 	if err != nil {
 		return plan, err
 	}

@@ -94,10 +94,10 @@ describe('reply card groups', () => {
   })
   it('undo shows what comes back and what stays, then shows the server error text as is', async () => {
     const host = await render(true)
-    await act(async () => button(host, 'Undo this reply')!.click())
-    expect(host.textContent).toContain('put back 1 file (tts.py) and leave 1 file alone because a later reply changed them (x.py)')
+    await act(async () => button(host, 'Revert these changes')!.click())
+    expect(host.textContent).toContain('put back 1 file (tts.py) and leave 1 file alone because they changed later or cannot be restored (x.py)')
     state.undoError = 'Wait until this reply finishes, or press Stop, then Undo.'
-    await act(async () => button(host, 'Undo 1 file')!.click())
+    await act(async () => button(host, 'Revert 1 file')!.click())
     expect(host.textContent).toContain(state.undoError)
     state.undoError = ''
   })
@@ -106,32 +106,32 @@ describe('reply card groups', () => {
     expect(host.textContent).toContain('tts.py')
     expect(rowLabels(host)).toEqual(['Review changes'])
     expect(button(host, 'More actions')).toBeUndefined()
-    expect(button(host, 'Undo this reply')).toBeUndefined()
+    expect(button(host, 'Revert these changes')).toBeUndefined()
     // PLAT-746-261: shared Run users cannot open the workspace Files panel.
     // Preserve their existing filename inspection without opening that panel.
     const shared = await render(false, 2, undefined, true, false)
     vi.mocked(openReplyChanges).mockClear()
-    await act(async () => button(shared, 'Open 2 files changed in this reply')!.click())
+    await act(async () => button(shared, 'Open 2 files changed during this turn')!.click())
     expect(shared.querySelector('[aria-label="Reply file names"]')?.textContent).toContain('app/tts.py')
     expect(openReplyChanges).not.toHaveBeenCalled()
-    expect(button(shared, 'Undo this reply')).toBeUndefined()
+    expect(button(shared, 'Revert these changes')).toBeUndefined()
   })
   it('retains the original action toolbar while file details open in the panel', async () => {
     const closed = await render(true, 2, undefined, true, false)
-    expect(closed.querySelector('[aria-label="Reply changes"]')).not.toBeNull()
-    expect(button(closed, 'Undo this reply')).toBeUndefined()
+    expect(closed.querySelector('[aria-label="Project changes during this turn"]')).not.toBeNull()
+    expect(button(closed, 'Revert these changes')).toBeUndefined()
     const latest = await render(true)
     expect(latest.textContent).toContain('2 files')
     expect(latest.textContent).toContain('+4')
     expect(rowLabels(latest)).toEqual(['Review changes', 'Commit on the current branch', 'Push to a branch and open a PR', 'Check this change', 'Add button'])
     expect(latest.querySelector('section > div:first-child [aria-hidden].w-px')).not.toBeNull()
-    expect(button(latest, 'Undo this reply')).toBeDefined()
+    expect(button(latest, 'Revert these changes')).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
     const older = await render(true, 2, 'newer', true, false)
     expect(older.querySelector('a[aria-label*="PR #305"]')).not.toBeNull()
     expect(button(older, 'Check this change')).toBeDefined()
     // Undo lives only inside the opened card, under the file list.
-    expect(button(older, 'Undo this reply')).toBeUndefined()
+    expect(button(older, 'Revert these changes')).toBeUndefined()
   })
   it('opens the exact saved reply from the compact icon and keeps PR shortcuts visible without an inline file list', async () => {
     vi.mocked(api.get).mockClear()
@@ -140,7 +140,7 @@ describe('reply card groups', () => {
     expect(compact.textContent).not.toContain('tts.py')
     expect(compact.querySelector('a[title="Review comments"]')).not.toBeNull()
     expect(snapshotOps()).toEqual(['reply_card', 'reply_card+pr'])
-    await act(async () => button(compact, 'Open 2 files changed in this reply')!.click())
+    await act(async () => button(compact, 'Open 2 files changed during this turn')!.click())
     expect(openReplyChanges).toHaveBeenLastCalledWith(expect.objectContaining({ snapshotId: 's', sessionId: 'chat-a', workspacePath: 'Crew/x' }))
     expect(compact.textContent).not.toContain('tts.py')
     expect(button(compact, 'Commit on the current branch')).toBeDefined()
@@ -149,7 +149,7 @@ describe('reply card groups', () => {
     expect(openReplyChanges).toHaveBeenLastCalledWith(expect.objectContaining({ snapshotId: 's', sessionId: 'chat-a' }))
     const panel = await render(true)
     expect(panel.textContent).toContain('tts.py')
-    expect(button(panel, 'Undo this reply')).toBeDefined()
+    expect(button(panel, 'Revert these changes')).toBeDefined()
   })
   it('keeps multiple PR checkouts behind one reply-panel button instead of overlapping toolbar controls', async () => {
     state.extraRepo = true

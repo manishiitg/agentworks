@@ -29,11 +29,11 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:write") {
-		externalError(w, 403, "insufficient_scope", "Undoing a reply's file changes needs crews:write.")
+		externalError(w, 403, "insufficient_scope", "Reverting saved file changes needs crews:write.")
 		return
 	}
 	if !crewProjectOwnedByCaller(GetUserIDFromContext(r.Context()), root) {
-		externalError(w, 403, "forbidden", "Only the Crew's owner can undo a reply's file changes.")
+		externalError(w, 403, "forbidden", "Only the Crew's owner can revert saved file changes.")
 		return
 	}
 	if status, message := api.authorizeDurableChatRead(r, sessionID, root); status != 0 {
@@ -45,12 +45,18 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if apply && api.sessionTurnRunning(sessionID) {
-		externalError(w, http.StatusConflict, "turn_running", "Wait until this reply finishes, or press Stop, then Undo.")
+		externalError(w, http.StatusConflict, "turn_running", "Wait until this reply finishes, or press Stop, then revert these changes.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), crewSnapshotTimeout*2)
 	defer cancel()
-	history, err := api.chatFileReviewHistory(ctx, store, sessionID, root)
+	var history chatFileReview
+	var err error
+	if r.URL.Query().Get("history_scope") == "project" {
+		history, err = projectFileReviewHistory(ctx, store, root, allowRead, false)
+	} else {
+		history, err = api.chatFileReviewHistory(ctx, store, sessionID, root)
+	}
 	if err != nil {
 		externalError(w, 404, "not_found", "This chat has no saved file history.")
 		return
@@ -69,7 +75,7 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 		externalError(w, 404, "not_found", "This saved reply does not belong to this chat.")
 		return
 	}
-	plan, err := store.PlanUndo(ctx, id, allowRead, allowWrite)
+	plan, err := store.PlanUndo(ctx, id, allowRead, allowWrite, r.URL.Query().Get("checkout_id"))
 	if err != nil {
 		externalError(w, 404, "snapshot_unavailable", "This reply's saved files are unavailable, so it cannot be undone.")
 		return
@@ -81,7 +87,7 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 			externalError(w, 500, "undo_failed", "Could not save the current files before undoing. Nothing was changed.")
 			return
 		}
-		plan, err = store.ApplyUndo(ctx, id, allowRead, allowWrite)
+		plan, err = store.ApplyUndo(ctx, id, allowRead, allowWrite, r.URL.Query().Get("checkout_id"))
 		undoRecord, finishErr := store.Finish(ctx, undoExecution)
 		if err != nil {
 			externalError(w, 500, "undo_failed", "Undo could not finish. Check the files and try again.")

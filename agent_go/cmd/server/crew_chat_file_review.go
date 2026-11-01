@@ -54,6 +54,8 @@ func reviewSummary(comparison filesnapshots.Comparison) chatReviewSummary {
 }
 
 type chatFileReview struct {
+	Scope       string                  `json:"scope,omitempty"`
+	Checkouts   []projectCheckout       `json:"checkouts,omitempty"`
 	RecentRepos []string                `json:"recent_repos,omitempty"`
 	Reviews     []chatReviewPoint       `json:"reviews"`
 	Baseline    string                  `json:"baseline_snapshot_id"`
@@ -185,13 +187,20 @@ func (h chatFileReview) recentRepositories(prefix string, allow func(string) boo
 func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Request, roots crewroot.Roots, prefix, op, id, file string, store filesnapshots.Store, allow func(string) bool) {
 	root := roots.Virtual
 	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
-	if api.eventStore == nil {
+	project := r.URL.Query().Get("history_scope") == "project"
+	if project && !crewProjectOwnedByCaller(GetUserIDFromContext(r.Context()), root) {
+		externalError(w, 403, "forbidden", "Open project history in a Crew you own.")
+		return
+	}
+	if !project && api.eventStore == nil {
 		externalError(w, 404, "not_found", "This chat has no saved file history.")
 		return
 	}
-	if status, message := api.authorizeDurableChatRead(r, sessionID, root); status != 0 {
-		externalError(w, status, "not_found", message)
-		return
+	if !project {
+		if status, message := api.authorizeDurableChatRead(r, sessionID, root); status != 0 {
+			externalError(w, status, "not_found", message)
+			return
+		}
 	}
 	outsideGit := r.URL.Query().Get("group_kind") == "crew_files"
 	if kind := r.URL.Query().Get("group_kind"); kind != "" && (!outsideGit || (op != "snapshot_compare" && op != "snapshot_file")) {
@@ -204,7 +213,13 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), crewSnapshotTimeout)
 	defer cancel()
-	history, err := api.chatFileReviewHistory(ctx, store, sessionID, root)
+	var history chatFileReview
+	var err error
+	if project {
+		history, err = projectFileReviewHistory(ctx, store, root, allow, op == "snapshots" || id == "")
+	} else {
+		history, err = api.chatFileReviewHistory(ctx, store, sessionID, root)
+	}
 	if err != nil {
 		externalError(w, 404, "not_found", "This chat has no saved file history.")
 		return
@@ -215,9 +230,17 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 			log.Printf("[FILE_REVIEW] session=%s recent_repos=%d preferred_repo=%q", sessionID, len(history.RecentRepos), history.RecentRepos[0])
 		}
 	}
-	history.CanReview = api.crewSessionCanControl(r, sessionID)
+	if project {
+		history.CanReview = true
+	} else {
+		history.CanReview = api.crewSessionCanControl(r, sessionID)
+	}
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {
 		history.CanReview = false
+	}
+	if op == "snapshot_review" && project {
+		externalError(w, 400, "invalid_action", "Choose a saved project comparison to review.")
+		return
 	}
 	if op == "snapshot_review" {
 		api.markChatFilesReviewed(w, r, sessionID, store, history, id)
@@ -230,6 +253,17 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	if op == "snapshots" {
 		externalJSON(w, history)
 		return
+	}
+	if project && id == "" {
+		checkoutID := r.URL.Query().Get("checkout_id")
+		for _, checkout := range history.Checkouts {
+			if checkoutID == "" || checkout.ID == checkoutID {
+				if len(checkout.Captures) > 0 {
+					id = checkout.Captures[0].SnapshotID
+					break
+				}
+			}
+		}
 	}
 	first, last, side := history.First, history.Last, "before"
 	refs := map[string]chatSnapshotReference{}
@@ -315,7 +349,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 				ids = append(ids, ref.ID)
 			}
 		}
-		return store.CompareSaved(ctx, ids, file, key, compareAllow)
+		return store.CompareSaved(ctx, ids, file, key, compareAllow, r.URL.Query().Get("checkout_id"))
 	}
 	comparison, err := compare(first, last, side, file, r.URL.Query().Get("change_key"))
 	if err != nil {
@@ -394,7 +428,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	summary := reviewSummary(comparison)
 	var sinceReview *chatReviewSummary
-	if id != "" && id == history.Latest {
+	if !project && id != "" && id == history.Latest {
 		start, startSide := history.First, "before"
 		if len(history.Reviews) > 0 {
 			start, startSide = history.Reviews[len(history.Reviews)-1].ID, "after"
@@ -436,6 +470,9 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		comparison.Record.Skipped[i] = prefix + comparison.Record.Skipped[i]
 	}
 	history.Last = last
+	if project {
+		log.Printf("[FILE_REVIEW] scope=project checkout=%q snapshot=%s files=%d", r.URL.Query().Get("checkout_id"), last, total)
+	}
 	externalJSON(w, map[string]any{"history": history, "comparison": comparison, "summary": summary, "since_review": sinceReview, "total_changes": total, "next_offset": nextOffset})
 
 }

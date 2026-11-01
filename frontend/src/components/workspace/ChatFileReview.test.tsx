@@ -72,7 +72,7 @@ describe('Studio review comments', () => {
       const comparisons = vi.mocked(api.get).mock.calls.filter(([, options]) => options?.params?.op === 'snapshot_compare')
       expect(comparisons.every(([, options]) => options?.params?.snapshot_id === 'saved-reply')).toBe(true)
       expect(workspaceGitApi.status).not.toHaveBeenCalled()
-      await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'All chat changes')!.click())
+      await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Project history')!.click())
       expect(openChatFiles).toHaveBeenLastCalledWith('chat-a')
     } finally { state.fileCount = 2; state.reviewed = false; await act(async () => root.unmount()); host.remove(); vi.mocked(openChatFiles).mockClear() }
   })

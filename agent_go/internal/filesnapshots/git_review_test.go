@@ -236,3 +236,70 @@ func TestGitReviewIncomingResetAndMissingReflogDoNotInventChanges(t *testing.T) 
 		}
 	}
 }
+
+// PLAT-746-286: identical filenames in a repo, its linked worktree and a
+// nested repo must never share diffs or revert each other's saved edits.
+func TestCheckoutScopedHistoryAndRevert(t *testing.T) {
+	f := newCrew(t)
+	ctx := t.Context()
+	all := func(string) bool { return true }
+	f.repo("app", map[string]string{"same.txt": "base\n"})
+	f.git("app", "worktree", "add", "-q", "-b", "feature", "../feature")
+	f.repo("app/nested", map[string]string{"same.txt": "nested base\n"})
+	f.put("loose.txt", "loose base\n")
+	if _, err := f.s.Begin(ctx, "shared-turn"); err != nil {
+		t.Fatal(err)
+	}
+	f.put("app/same.txt", "main edit\n")
+	f.put("feature/same.txt", "feature edit\n")
+	f.put("app/nested/same.txt", "nested edit\n")
+	f.put("loose.txt", "loose edit\n")
+	r, err := f.s.Finish(ctx, "shared-turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(ctx, []string{r.ID}, "", "", all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	var foreign Change
+	for _, change := range c.Changes {
+		if change.Checkout != nil {
+			ids[change.Checkout.Root] = change.Checkout.ID
+			if change.Checkout.Root == "feature" {
+				foreign = change
+			}
+		}
+	}
+	if len(ids) != 3 || ids["app"] == ids["feature"] {
+		t.Fatalf("distinct checkout identities missing: %v", ids)
+	}
+	scoped, err := f.s.CompareSaved(ctx, []string{r.ID}, "", "", all, ids["app"])
+	if err != nil || len(scoped.Changes) != 1 || scoped.Changes[0].Path != "app/same.txt" {
+		t.Fatalf("mixed checkout comparison: %v %+v", err, scoped)
+	}
+	if _, err := f.s.CompareSaved(ctx, []string{r.ID}, foreign.Path, foreign.Key, all, ids["app"]); err == nil {
+		t.Fatal("foreign checkout key bypassed scope")
+	}
+	plan, err := f.s.ApplyUndo(ctx, r.ID, all, all, ids["app"])
+	if err != nil || len(plan.Restore) != 1 {
+		t.Fatalf("scoped revert: %v %+v", err, plan)
+	}
+	for file, want := range map[string]string{"app/same.txt": "base\n", "feature/same.txt": "feature edit\n", "app/nested/same.txt": "nested edit\n", "loose.txt": "loose edit\n"} {
+		b, err := os.ReadFile(filepath.Join(f.s.Root, file))
+		if err != nil || string(b) != want {
+			t.Fatalf("revert crossed checkout at %s: %q %v", file, b, err)
+		}
+	}
+	f.put("feature/same.txt", "later editor\n")
+	plan, err = f.s.ApplyUndo(ctx, r.ID, all, all, ids["feature"])
+	if err != nil || len(plan.Restore) != 0 || len(plan.Skipped) != 1 || plan.Skipped[0].Reason != "changed_later" {
+		t.Fatalf("later edit not preserved: %v %+v", err, plan)
+	}
+	f.git("app/nested", "checkout", "-qb", "other")
+	plan, err = f.s.ApplyUndo(ctx, r.ID, all, all, ids["app/nested"])
+	if err != nil || len(plan.Restore) != 0 || len(plan.Skipped) != 1 || plan.Skipped[0].Reason != "git_context_changed" {
+		t.Fatalf("branch boundary not preserved: %v %+v", err, plan)
+	}
+}
