@@ -232,14 +232,11 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if e != nil {
 			return out, fmt.Errorf("this session has not finished syncing yet; reconnect your Mac")
 		}
-		if main.Provider != "muse-cli" {
-			return out, fmt.Errorf("choose an available Muse account for this project on the server before continuing")
-		}
 		if e = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, mirror.TransferID, mirror.Conversation, main); e != nil {
 			return out, e
 		}
 		binding.Editing = "server"
-		out.ConversationNotice = "Continued from the last completed sync. Work after the Mac lost its connection may be missing."
+		out.ConversationNotice = "Continued from the last completed sync. Work after the Mac lost its connection may be missing. " + mirror.Conversation.Notice
 	case "push":
 		if input.TransferID == "" {
 			return out, fmt.Errorf("a sync transfer identity is required")

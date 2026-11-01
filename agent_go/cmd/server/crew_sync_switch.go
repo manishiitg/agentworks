@@ -69,6 +69,7 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 			w.Write(response.body.Bytes())
 			return true
 		}
+		forwardCrewHandoffNotice(w, response.body.Bytes())
 		r.Header.Del("X-Session-ID")
 		return false
 	}
@@ -79,6 +80,7 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 	// network attempt is not proof that an in-progress turn reached the mirror.
 	result := api.callCrewMac(r, project, crewChatCall{Operation: "handoff", ConversationID: main.ConversationID})
 	if result.Status < 300 {
+		forwardCrewHandoffNotice(w, result.Body)
 		r.Header.Del("X-Session-ID")
 		return false
 	}
@@ -103,4 +105,13 @@ func (api *StreamingAPI) runInternalCrewHandoff(ctx context.Context, claims *Use
 	response := &internalResponseCapture{}
 	api.runDesktopCrewSync(response, r, false)
 	return response
+}
+
+// Automatic sends use the same notice as the explicit sync response. A native
+// conflict can succeed as archive continuation and must remain visible.
+func forwardCrewHandoffNotice(w http.ResponseWriter, raw []byte) {
+	var reply crewSyncReply
+	if json.Unmarshal(raw, &reply) == nil && reply.ConversationNotice != "" {
+		w.Header().Set("X-AgentWorks-Sync-Notice", reply.ConversationNotice)
+	}
 }

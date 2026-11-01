@@ -63,7 +63,9 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			defer workspace.Close()
 			t.Setenv("WORKSPACE_API_URL", workspace.URL)
 			registry := agentprofiles.NewRegistry()
-			registerWorkCrewProfile(t, registry)
+			if err := registry.RegisterProfile(workCrewTestProfile([]agentprofiles.ProviderOption{{ID: "muse-cli", Label: "Muse", Provider: "muse-cli", ModelID: "muse-spark-1.3-contributor", Models: []string{"muse-spark-1.3-contributor"}}})); err != nil {
+				t.Fatal(err)
+			}
 			journal, err := events.OpenSQLiteEventJournal(filepath.Join(base, "events.sqlite"))
 			if err != nil {
 				t.Fatal(err)
@@ -450,8 +452,14 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 		t.Fatal(err)
 	}
 	key := productConversationRegistryEntryKey("work", current.ConversationKey)
-	current.Provider = "muse-cli"
-	current.ConnectionID = "global:muse-cli"
+	// PLAT-856-442: a new destination has not run a turn yet; its selected
+	// Muse account is in the agent identity, while the runtime still has Codex.
+	current.Provider = "codex-cli"
+	current.ConnectionID = "global:codex-cli"
+	if doc.Agents == nil {
+		doc.Agents = map[string]ProductAgentIdentity{}
+	}
+	doc.Agents[key] = ProductAgentIdentity{Engine: "muse-cli", ModelID: "muse-spark-1.3-contributor", ConnectionID: "global:muse-cli"}
 	doc.Entries[key] = current
 	if err = store.writeDocument(ctx, registry, doc); err != nil {
 		t.Fatal(err)
