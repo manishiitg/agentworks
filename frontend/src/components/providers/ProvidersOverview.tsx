@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Plus, RefreshCw, Server } from 'lucide-react'
+import { Loader2, Plus, Server } from 'lucide-react'
 import { desktopRequest } from '../../services/desktopConnections'
 import type { ProviderManifestEntry } from '../../services/llm-config-api'
 import { codingProviderName } from '../../utils/codingProviderName'
@@ -9,8 +9,6 @@ import { openConnectedServers } from '../workspace/ConnectedServersMenuItem'
 type OverviewCell = { state: 'ready' | 'sign_in' | 'off' | 'absent'; use?: string; detail?: string; action?: string }
 type OverviewPlace = { id: string; name: string; signed_in_as?: string; reachable: boolean }
 type Overview = { places: OverviewPlace[]; cells: Record<string, Record<string, OverviewCell>> }
-
-const ACTION_TEXT: Record<string, string> = { sign_in: 'Sign in', sign_in_there: 'Sign in there', add_mine: 'Add mine', add_key: 'Add a key' }
 
 function useOverview(providers: ProviderManifestEntry[]) {
   const [overview, setOverview] = useState<Overview | null>(null)
@@ -30,66 +28,7 @@ function useOverview(providers: ProviderManifestEntry[]) {
     window.addEventListener('provider-connections-changed', load)
     return () => window.removeEventListener('provider-connections-changed', load)
   }, [ids])
-  return { overview, error, loading, reload: load }
-}
-
-function CellBox({ cell, place, onOpen }: { cell?: OverviewCell; place: OverviewPlace; onOpen: () => void }) {
-  if (!cell || cell.state === 'absent') {
-    return <div className="flex h-full min-h-16 items-center rounded-xl border border-dashed border-gray-200 px-3 text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">{cell?.detail || `Not on ${place.name}`}</div>
-  }
-  const mark = cell.state === 'ready' ? <span className="text-emerald-500">✓</span> : cell.state === 'sign_in' ? <span className="text-amber-500">!</span> : <span className="text-gray-400">○</span>
-  return (
-    <button type="button" onClick={onOpen} className="h-full min-h-16 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-left transition-colors hover:border-violet-300 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-violet-500/50">
-      <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-gray-100">{mark}{cell.use}</span>
-      {cell.detail && <span className="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{cell.detail}</span>}
-      {cell.action && ACTION_TEXT[cell.action] && <span className="mt-1 block text-xs font-semibold text-violet-600 dark:text-violet-400">{ACTION_TEXT[cell.action]}</span>}
-    </button>
-  )
-}
-
-/** "Where your AI programs run": programs down the side, this Mac and each connected server across the top. */
-export function ProvidersOverview({ providers, onOpen }: { providers: ProviderManifestEntry[]; onOpen: (providerId: string) => void }) {
-  const { overview, error, loading, reload } = useOverview(providers)
-  const places = overview?.places ?? [{ id: 'local', name: 'This Mac', reachable: true }]
-  return (
-    <div>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-950 dark:text-white">Where your AI programs run</h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Each box says what a chat will use there. Click one to change it.</p>
-        </div>
-        <button type="button" onClick={reload} disabled={loading} aria-label="Refresh" className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-gray-800"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button>
-      </div>
-      {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
-      {!overview && loading && <p className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />Checking this Mac and your servers…</p>}
-      {overview && <div className="overflow-x-auto">
-        <table className="w-full border-separate border-spacing-1.5">
-          <thead>
-            <tr>
-              <th />
-              {places.map(place => (
-                <th key={place.id} className="min-w-40 px-2 pb-1 text-left align-bottom">
-                  <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{place.name}</span>
-                  <span className="block text-[11px] font-normal text-gray-400">{place.id === 'local' ? 'your laptop' : place.reachable ? (place.signed_in_as ? `as ${place.signed_in_as}` : '') : 'cannot reach'}</span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {providers.map(provider => (
-              <tr key={provider.id}>
-                <td className="whitespace-nowrap pr-3 text-sm font-medium text-gray-900 dark:text-gray-100">{codingProviderName(provider)}</td>
-                {places.map(place => (
-                  <td key={place.id} className="align-top"><CellBox cell={overview.cells[provider.id]?.[place.id]} place={place} onOpen={() => onOpen(provider.id)} /></td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>}
-      <p className="mt-4 max-w-3xl text-xs leading-5 text-gray-500 dark:text-gray-400">"Company" is the server's own account, lent by an admin: the login never leaves the server, its limits apply and the usage counts there. "Yours" is your own login or key.</p>
-    </div>
-  )
+  return { overview, error, loading }
 }
 
 /** The connected servers, one card each: who you are there and what each one gives you. */
