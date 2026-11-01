@@ -541,9 +541,10 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 	}
 	// An agent run: its usage is read from the end of the reply and recorded to the person, with the model its run
 	// start named (so per-model limits count it).
-	runModel := takeCursorRunModel(runSSERequestID(runBody))
+	// Cursor opens the reply stream before it sends the run start, so the model is looked up once the run is over.
 	capture := &cursorRunCapture{}
 	copyRelayResponse(w, resp, capture)
+	runModel := takeCursorRunModel(runSSERequestID(runBody))
 	input, output, cacheRead, cacheWrite, reasoning, counted := capture.input, capture.output, capture.cacheRead, capture.cacheWrite, capture.reasoning, capture.counted
 	log.Printf("[MODEL_PROXY] %s used the server's cursor-cli account from the Mac: %s run -> %d (%s) tokens in=%d out=%d cached=%d counted=%v", caller, runModel, resp.StatusCode, time.Since(started).Round(time.Millisecond), input, output, cacheRead, counted)
 	if ledger := api.tokenLimitLedger(); ledger != nil {
