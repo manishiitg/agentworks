@@ -39,9 +39,10 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
   const servers = (overview?.places ?? []).filter(place => place.id !== 'local')
   const name = (id: string) => codingProviderName(providers.find(provider => provider.id === id) ?? { id, display_name: id } as ProviderManifestEntry)
   const [actionError, setActionError] = useState('')
-  const disconnect = async (id: string, label: string) => {
-    if (!window.confirm(`Disconnect ${label}? Its company accounts leave this Mac. You can connect again any time.`)) return
-    setActionError('')
+  // Disconnect asks on the card itself (a browser confirm can be blocked in the app window).
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const disconnect = async (id: string) => {
+    setConfirming(null); setActionError('')
     try { await desktopRequest(`/${encodeURIComponent(id)}`, 'DELETE'); serversChanged() }
     catch (disconnectError) { setActionError(disconnectError instanceof Error ? disconnectError.message : 'Could not disconnect.') }
   }
@@ -66,7 +67,12 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
                 </div>
                 <div className="ml-auto flex gap-2">
                   <button type="button" onClick={() => void window.electronAPI?.openDesktopConnection?.(server.id, '/crew')} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs dark:border-gray-600">Open</button>
-                  <button type="button" onClick={() => void disconnect(server.id, server.name)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:text-red-600 dark:border-gray-600 dark:text-gray-300">Disconnect</button>
+                  {confirming === server.id
+                    ? <>
+                      <button type="button" onClick={() => void disconnect(server.id)} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500">Disconnect {server.name}</button>
+                      <button type="button" onClick={() => setConfirming(null)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs dark:border-gray-600">Cancel</button>
+                    </>
+                    : <button type="button" onClick={() => setConfirming(server.id)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:text-red-600 dark:border-gray-600 dark:text-gray-300">Disconnect</button>}
                 </div>
               </div>
               {on.length > 0 && <div className="mt-4 flex flex-wrap gap-2">
@@ -124,11 +130,11 @@ function ConnectServerForm() {
     finally { setBusy(false) }
   }
   return (
-    <form onSubmit={event => { event.preventDefault(); void connect() }} className="rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
+    <form noValidate onSubmit={event => { event.preventDefault(); if (server.trim()) void connect() }} className="rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
       <p className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100"><Plus className="h-4 w-4" />Connect a server</p>
       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Paste any link from your server's website, then sign in in your browser.</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <input required type="url" value={server} onChange={event => setServer(event.target.value)} placeholder="https://agents.example.com" disabled={busy || !!pending} aria-label="Server address"
+        <input type="url" value={server} onChange={event => setServer(event.target.value)} placeholder="https://agents.example.com" disabled={busy || !!pending} aria-label="Server address"
           className="min-w-64 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800" />
         <button disabled={busy || !!pending || !server.trim()} className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50">{pending ? 'Waiting for sign-in…' : busy ? 'Opening…' : 'Sign in with browser'}</button>
       </div>
