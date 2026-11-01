@@ -48,7 +48,11 @@ func TestLargeJournalRoundtripUsesRsyncDeltas(t *testing.T) {
 				return
 			}
 			defer conn.Close()
-			result <- Server(ctx, destination, !upload, &Socket{Conn: conn})
+			err := Server(ctx, destination, !upload, &Socket{Conn: conn})
+			if err == nil {
+				err = conn.WriteJSON(map[string]bool{"complete": true})
+			}
+			result <- err
 		}))
 		defer server.Close()
 		conn, _, e := websocket.DefaultDialer.DialContext(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
@@ -60,6 +64,13 @@ func TestLargeJournalRoundtripUsesRsyncDeltas(t *testing.T) {
 		if e = Client(ctx, source, upload, stream); e != nil {
 			conn.Close()
 			t.Fatalf("client: %v; server: %v", e, <-result)
+		}
+		// The rsync reader must finish before the next protocol phase reads.
+		var complete struct {
+			Complete bool `json:"complete"`
+		}
+		if e := conn.ReadJSON(&complete); e != nil || !complete.Complete {
+			t.Fatalf("rsync consumed the following control frame: %v", e)
 		}
 		if e = <-result; e != nil {
 			t.Fatal(e)

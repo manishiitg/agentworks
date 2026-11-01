@@ -190,6 +190,8 @@ func Server(ctx context.Context, stage string, sender bool, stream *Socket) erro
 }
 
 func run(ctx context.Context, cmd *exec.Cmd, stream *Socket, stage string) error {
+	stopCancellation := context.AfterFunc(ctx, func() { stream.Conn.Close() })
+	defer stopCancellation()
 	input, e := cmd.StdinPipe()
 	if e != nil {
 		return e
@@ -239,22 +241,36 @@ func run(ctx context.Context, cmd *exec.Cmd, stream *Socket, stage string) error
 			}
 		}
 	}()
-	go func() { io.Copy(input, stream); input.Close() }()
+	inputDone := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(input, stream)
+		input.Close()
+		inputDone <- err
+	}()
 	_, copyErr := io.Copy(stream, output)
+	if copyErr != nil {
+		stopProcess(cmd)
+	}
 	e = cmd.Wait()
 	stream.CloseWrite()
+	if copyErr != nil || e != nil {
+		stream.Conn.Close()
+	}
+	inputErr := <-inputDone
 	if copyErr != nil {
 		return copyErr
 	}
 	if e != nil {
 		return fmt.Errorf("rsync failed: %w: %s", e, stderr.String())
 	}
-	return nil
+	return inputErr
 }
 
 // Client uses a private Unix socket as rsync's remote-shell byte pipe. The
 // helper ignores all rsync-supplied argv; it cannot execute a remote command.
 func Client(ctx context.Context, stage string, upload bool, stream *Socket) error {
+	stopCancellation := context.AfterFunc(ctx, func() { stream.Conn.Close() })
+	defer stopCancellation()
 	var err error
 	stage, err = filepath.EvalSymlinks(stage)
 	if err != nil {
@@ -322,17 +338,31 @@ func Client(ctx context.Context, stage string, upload bool, stream *Socket) erro
 		return fmt.Errorf("rsync helper did not connect")
 	}
 	defer conn.Close()
-	go func() { io.Copy(conn, stream); conn.CloseWrite() }()
+	inputDone := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(conn, stream)
+		conn.CloseWrite()
+		inputDone <- err
+	}()
 	_, copyErr := io.Copy(stream, conn)
+	if copyErr != nil {
+		stopProcess(cmd)
+	}
 	stream.CloseWrite()
 	e = <-exited
+	if copyErr != nil || e != nil {
+		stream.Conn.Close()
+	}
+	// The caller reads the next control frame after Client returns. There must
+	// be no rsync reader left competing for that same websocket.
+	inputErr := <-inputDone
 	if copyErr != nil {
 		return copyErr
 	}
 	if e != nil {
 		return fmt.Errorf("rsync failed: %w: %s", e, stderr.String())
 	}
-	return nil
+	return inputErr
 }
 
 // RunPipe is an internal entry point in the app executable. Unlike platform
