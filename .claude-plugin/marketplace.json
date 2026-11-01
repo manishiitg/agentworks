@@ -12,7 +12,7 @@
     {
       "name": "agentworks-tools",
       "source": "./plugins/claude-tools",
-      "description": "AgentWorks messaging tools for Claude Code, no hooks: ask your agent to connect, share, message and ping"
+      "description": "AgentWorks messaging tools with compact messages and Reply for Claude Code"
     }
   ],
   "metadata": {
