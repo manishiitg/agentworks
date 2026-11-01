@@ -1,8 +1,11 @@
 package server
 
 import (
-	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"context"
 	"strings"
+
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 
@@ -105,6 +108,21 @@ func codingAgentTurnAttended(claims *UserClaims, req *QueryRequest, sessionID st
 
 // codingAgentClaudeCodeChatTransport is the transport a chat's Claude Code runs on: the chat's own choice, else
 // "" for the server's setting (the Agent SDK by default).
+// chatClaudeCodeTransport is the chat's own Claude choice, read from its saved tab: a turn reaches the query
+// path through JSON from several places (the chat route, schedules, agent messages, WhatsApp), so a value
+// carried on the request alone was lost and the chat ran on the SDK while its view showed the terminal.
+func chatClaudeCodeTransport(ctx context.Context, owner, sessionID, carried string) string {
+	for _, candidate := range []string{owner, productWorkspaceUserID(ctx)} {
+		if tab, found := chatContextTabForSession(ctx, candidate, sessionID); found {
+			if tab.Identity.ClaudeTerminal {
+				return llmproviders.ClaudeCodeTransportTmux
+			}
+			return llmproviders.ClaudeCodeTransportSDK
+		}
+	}
+	return carried
+}
+
 func codingAgentClaudeCodeChatTransport(provider, chosen string) string {
 	if strings.EqualFold(strings.TrimSpace(provider), string(llm.ProviderClaudeCode)) {
 		return strings.TrimSpace(chosen)
