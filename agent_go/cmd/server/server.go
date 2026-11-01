@@ -2434,6 +2434,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/desktop-connections/{connection}/provider-accounts", api.handleDesktopProviderAccountCopy).Methods("POST")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/provider-accounts", api.handleDesktopProviderAccountStatus).Methods("GET")
 	apiRouter.HandleFunc("/desktop-connections/overview", api.handleDesktopOverview).Methods("GET")
+	apiRouter.HandleFunc("/desktop-connections/{connection}/token-usage", api.handleDesktopTokenUsage).Methods("GET")
 	apiRouter.HandleFunc("/model-proxy/{provider}/v1/{path:.+}", api.handleCompanyModelProxy).Methods("GET", "POST")
 	apiRouter.HandleFunc("/model-proxy/{provider}/catalog", api.handleCompanyModelCatalog).Methods("GET")
 	apiRouter.HandleFunc("/model-proxy/{provider}/mac-app", api.handleModelProxyMacApp).Methods("GET", "POST")

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 // overviewCell is one box: State is ready, sign_in, off or absent; Use says what a chat will use there.
@@ -182,4 +184,32 @@ func friendlyServerName(name, server string) string {
 		}
 	}
 	return host
+}
+
+// GET /api/desktop-connections/{connection}/token-usage — your token usage and limits on a connected server, for a
+// company account from that server (its limits apply there).
+func (api *StreamingAPI) handleDesktopTokenUsage(w http.ResponseWriter, r *http.Request) {
+	if !desktopConnectionGate(w, r) {
+		return
+	}
+	c, err := desktopConnectionFor(GetUserFromContext(r.Context()).UserID, mux.Vars(r)["connection"])
+	if err != nil {
+		desktopJSONError(w, 404, "Connection is unavailable.")
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, c.Server+"/api/me/token-usage", nil)
+	if err != nil {
+		desktopJSONError(w, 500, "Cannot reach the server.")
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := desktopHTTPClient().Do(req)
+	if err != nil {
+		desktopJSONError(w, 502, "Cannot reach "+c.Name+".")
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, 1<<20))
 }
