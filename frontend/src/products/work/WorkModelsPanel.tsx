@@ -135,6 +135,8 @@ export function WorkModelsPanel({
     ? tab?.metadata?.agentProfileChatConnectionID || undefined
     : undefined
   const inUseConnectionId = selectedConnectionId || recordedConnectionId || ownDefaultConnectionId(accounts, selectedOption?.provider)
+  // A company account from a connected server counts on that server: its limits are shown from there.
+  const companyServer = accounts?.find(account => account.id === inUseConnectionId)?.via_connection
   const {
     workProviderIds, inUseAccount, keyService, cursorModels, cursorModelsError, cursorSelectionDisabled,
     defaultForOption, selectedAllowedModels, selectableModels, levelsForModel, effortForModel, effortForPick,
@@ -259,7 +261,9 @@ export function WorkModelsPanel({
           showModelsPerRole={false}
           configurationSource="agent_profile"
           product={effectiveAccountProduct}
-          accountUsage={<SharedTokenUsageNotice inline accountProvider={inUseConnectionId || accounts !== null ? sharedAccountProvider(inUseConnectionId, selectedOption?.provider) : undefined} />}
+          accountUsage={companyServer
+            ? <SharedTokenUsageNotice inline accountProvider={selectedOption?.provider} serverConnection={companyServer} />
+            : <SharedTokenUsageNotice inline accountProvider={inUseConnectionId || accounts !== null ? sharedAccountProvider(inUseConnectionId, selectedOption?.provider) : undefined} />}
         />
         <section
           className="mt-4 overflow-hidden rounded-xl border border-border bg-card"

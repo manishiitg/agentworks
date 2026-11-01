@@ -1,3 +1,4 @@
+import { desktopRequest } from '../../services/desktopConnections'
 import { useEffect, useState } from 'react'
 import { authApi, type SharedAccountTokenUsage } from '../../services/api'
 import { resetLabel, shownTokenFigures } from '../../utils/tokenLimits'
@@ -12,16 +13,20 @@ import { openChatContextMenuEvent } from '../../products/work/ChatContextItems'
  * cap when that is nearer. Amber from 80%, red at the limit, when new turns on
  * that account are refused.
  */
-function useSharedTokenUsage(): SharedAccountTokenUsage | null {
+function useSharedTokenUsage(serverConnection?: string): SharedAccountTokenUsage | null {
   const [usage, setUsage] = useState<SharedAccountTokenUsage | null>(null)
   useEffect(() => {
     let cancelled = false
-    // Through a promise so a missing client (older server, tests) is a quiet rejection.
-    const load = () => { void Promise.resolve().then(() => authApi.getMyTokenUsage()).then(next => { if (!cancelled) setUsage(next) }).catch(() => undefined) }
+    // Through a promise so a missing client (older server, tests) is a quiet rejection. A company account on the
+    // Mac counts on its server: that server's figures, fetched over the connection.
+    const fetchUsage = () => serverConnection
+      ? desktopRequest<SharedAccountTokenUsage>(`/${encodeURIComponent(serverConnection)}/token-usage`)
+      : authApi.getMyTokenUsage()
+    const load = () => { void Promise.resolve().then(fetchUsage).then(next => { if (!cancelled) setUsage(next) }).catch(() => undefined) }
     load()
     const timer = window.setInterval(load, 60_000)
     return () => { cancelled = true; window.clearInterval(timer) }
-  }, [])
+  }, [serverConnection])
   return usage
 }
 
@@ -94,8 +99,8 @@ export function SharedTokenUsageItems({ accountProvider }: { accountProvider?: s
  * Week 70% (resets …)" with only the limits that exist, "no limit" when none. accountProvider is the
  * shared account's provider (null: the person's own account; undefined: not known yet, nothing shown).
  */
-export function SharedTokenUsageNotice({ className = '', accountProvider, inline = false }: { className?: string; accountProvider?: string | null; inline?: boolean }) {
-  const usage = useSharedTokenUsage()
+export function SharedTokenUsageNotice({ className = '', accountProvider, inline = false, serverConnection }: { className?: string; accountProvider?: string | null; inline?: boolean; serverConnection?: string }) {
+  const usage = useSharedTokenUsage(serverConnection)
   if (accountProvider === undefined) return null
   const base = inline ? 'text-xs' : 'rounded-lg border px-3 py-2 text-xs'
   if (accountProvider === null) {
@@ -114,8 +119,8 @@ export function SharedTokenUsageNotice({ className = '', accountProvider, inline
     if (usage?.week_resets_at) resets.push(`week ${resetLabel(usage.week_resets_at, true)}`)
   }
   const text = limits.length
-    ? `Shared account · limits: ${limits.join(' · ')}${resets.length ? ` (resets ${resets.join(', ')})` : ''}`
-    : usage ? 'Shared account · no limit' : 'Shared account'
+    ? `${serverConnection ? 'Company account' : 'Shared account'} · limits: ${limits.join(' · ')}${resets.length ? ` (resets ${resets.join(', ')})` : ''}`
+    : `${serverConnection ? 'Company account' : 'Shared account'}${usage ? ' · no limit' : ''}`
   const state = limits.length ? shown?.state : 'ok'
   const tone = state === 'over'
     ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/25 dark:text-red-300'
