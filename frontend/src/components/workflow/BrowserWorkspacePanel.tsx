@@ -38,7 +38,7 @@ export function BrowserWorkspacePanel({
   const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !extensionAvailable)
   const displayMode = connection.status.mode || browserMode
   const directMode = connection.status.allowed_modes?.find(mode => mode !== 'extension')
-  const directLabel = directMode === 'cdp' ? 'Local Chrome · direct connection' : 'In-app browser'
+  const directLabel = directMode === 'cdp' ? 'Local Chrome · Direct' : 'In-app browser'
   const useWorkspaceBrowser = async () => {
     if (!directMode) return
     if (!await connection.selectWorkspace(directMode, cdpPort)) return false

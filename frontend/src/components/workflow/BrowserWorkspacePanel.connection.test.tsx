@@ -85,11 +85,11 @@ it('applies direct browser selection immediately and retains the saved browser o
   try {
     await act(async () => root.render(<BrowserWorkspacePanel workspacePath="Crew/example" profileId="work" browserMode="extension" onBrowserModeChange={changed} cdpPort={9222} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} />))
     await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Change')!.click() })
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('direct connection'))!.click() })
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))!.click() })
     expect(changed).not.toHaveBeenCalled()
     expect(host.querySelector('[aria-label="Choose browser"]')).toBeTruthy()
     expect(host.querySelector('[role="alert"]')).toBeTruthy()
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('direct connection'))!.click() })
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Local Chrome · Direct'))!.click() })
     expect(mocks.post).toHaveBeenLastCalledWith('/api/browser/extension', { action: 'workspace', mode: 'cdp', port: 9222 }, expect.anything())
     expect(changed).toHaveBeenCalledWith('cdp')
     expect(host.querySelector('[aria-label="Choose browser"]')).toBeNull()

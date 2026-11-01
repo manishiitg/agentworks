@@ -77,9 +77,9 @@ export function ChromeExtensionConnection({ connection, workspaceBrowser, expand
       <span className="min-w-0 truncate text-xs font-medium" title={status.selected ? `Uses your ${current}. Your sign-ins are available to this Crew.` : undefined}>{current || 'No browser selected'}</span>
       <Button size="sm" variant="ghost" aria-expanded={expanded} disabled={busy} onClick={() => onExpandedChange(!expanded)}>{busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <>Change<ChevronDown className="h-3 w-3" /></>}</Button>
     </div>
-    {expanded && <div className="max-h-[60vh] space-y-2 overflow-y-auto rounded-md border border-border p-2" aria-label="Choose browser">
+    {expanded && <div className="max-h-[60vh] space-y-1 overflow-y-auto border-t border-border pt-1" aria-label="Choose browser">
       <BrowserConnectionsPanel open onClose={() => onExpandedChange(false)} onConnected={connect} selectedBrowserId={status.selected ? status.browser_id : undefined} startSetup={startSetup} />
-      {workspaceBrowser && <button type="button" disabled={busy} className="flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => { void Promise.resolve(workspaceBrowser.onSelect()).then(saved => { if (saved !== false) onExpandedChange(false) }) }}>{workspaceBrowser.label}{workspaceBrowser.selected && <Check className="h-3 w-3" aria-label="Selected" />}</button>}
+      {workspaceBrowser && <button type="button" disabled={busy} className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => { void Promise.resolve(workspaceBrowser.onSelect()).then(saved => { if (saved !== false) onExpandedChange(false) }) }}>{workspaceBrowser.label}{workspaceBrowser.selected && <Check className="h-3 w-3" aria-label="Selected" />}</button>}
     </div>}
     {status.update_needed && <ExtensionVersionLine status={status} download={download} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
