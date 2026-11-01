@@ -267,9 +267,19 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		return
 	}
 	if err := checkAccountModel(withModelLimitPerson(r.Context(), caller), provider, account, model); err != nil {
-		log.Printf("[MODEL_PROXY] %s %s model refused: %v", caller, provider, err)
-		desktopJSONError(w, 400, err.Error())
-		return
+		// A program also asks for models nobody picked (Muse's background model, its model id without the
+		// contributor suffix, Claude's small model): like a chat on this server, the request moves to an allowed
+		// model instead of failing the whole turn. Only an allowed model ever runs.
+		allowed, _, _ := accountAllowedModels(withModelLimitPerson(r.Context(), caller), provider, account)
+		substitute := allowedSubstitute(model, allowed)
+		rewritten, rewriteErr := withProxyModel(body, substitute)
+		if substitute == "" || rewriteErr != nil {
+			log.Printf("[MODEL_PROXY] %s %s model refused: %v", caller, provider, err)
+			desktopJSONError(w, 400, err.Error())
+			return
+		}
+		log.Printf("[MODEL_PROXY] %s %s: %s is not allowed, using %s", caller, provider, model, substitute)
+		body, model = rewritten, substitute
 	}
 	// A model whose own token limit the person has used up is refused like on the server (a chat there is moved to
 	// another allowed model; here the program picked the model, so it is told to pick another).
@@ -644,4 +654,31 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 			log.Printf("[DESKTOP_ACCOUNT] %s: company accounts not saved: %v", owner, err)
 		}
 	}
+}
+
+// allowedSubstitute is the allowed model a request for another model moves to: one that names the requested model
+// (muse-spark-1.3 -> muse-spark-1.3-contributor), else the first allowed. Empty when nothing is allowed.
+func allowedSubstitute(model string, allowed []string) string {
+	for _, candidate := range allowed {
+		if candidate != "*" && strings.HasPrefix(candidate, model) {
+			return candidate
+		}
+	}
+	for _, candidate := range allowed {
+		if candidate != "*" && strings.TrimSpace(candidate) != "" {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// withProxyModel returns a JSON request body with its "model" replaced.
+func withProxyModel(body []byte, model string) ([]byte, error) {
+	var request map[string]json.RawMessage
+	if err := json.Unmarshal(body, &request); err != nil {
+		return nil, err
+	}
+	encoded, _ := json.Marshal(model)
+	request["model"] = encoded
+	return json.Marshal(request)
 }
