@@ -198,7 +198,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal("handoff under active turn")
 			}
 			delete(api.activeSessions, "busy")
-			// PLAT-856-441: the same logical conversation must survive both
+			// PLAT-856-442: the same logical conversation must survive both
 			// editing handoffs, without importing a native runtime or another tab.
 			main, err := api.crewHandoffMain(ctx, owner, local.ID)
 			if err != nil {
@@ -329,6 +329,33 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			write(serverRoots.Files, "automatic.txt", "saved on server")
 			awaitFile(local.Files, "automatic.txt", "saved on server")
+
+			// PLAT-856-442: a private-history symlink must not redirect the
+			// under-lock direct writer outside the admitted destination Crew.
+			stop()
+			builder := filepath.Join(local.Private, "builder")
+			if err := os.Rename(builder, builder+"-saved"); err != nil {
+				t.Fatal(err)
+			}
+			outside := t.TempDir()
+			if err := os.Symlink(outside, builder); err != nil {
+				t.Fatal(err)
+			}
+			if w := call("local", "owner", true); w.Code != 409 || !strings.Contains(w.Body.String(), "outside the Crew") {
+				t.Fatalf("history symlink accepted or wrong refusal: %d %s", w.Code, w.Body.String())
+			}
+			if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
+				t.Fatal("handoff wrote outside private storage")
+			}
+			if err := os.Remove(builder); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(builder+"-saved", builder); err != nil {
+				t.Fatal(err)
+			}
+			if w := call("local", "owner", true); w.Code != 200 {
+				t.Fatalf("history retry after removing symlink: %d %s", w.Code, w.Body.String())
+			}
 
 		})
 	}

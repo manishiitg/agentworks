@@ -54,6 +54,14 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		externalError(w, 400, "invalid_request", "Choose a sync action.")
 		return
 	}
+	var main ProductConversationRecord
+	if input.Action == "server" || input.Action == "local" {
+		main, err = api.crewHandoffMain(r.Context(), claims, roots.ID)
+		if err != nil {
+			externalError(w, 409, "sync_unavailable", err.Error())
+			return
+		}
+	}
 	unlock, err := wf.LockWorkspace(r.Context(), roots.Files)
 	if err != nil {
 		externalError(w, 409, "sync_unavailable", err.Error())
@@ -224,7 +232,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			}
 			transfer = crewSyncRequest{Action: "push", PairID: binding.PairID, Editing: next, Snapshot: &snapshot, TransferID: uuid.NewString()}
 			if input.Action == "server" {
-				transfer.Conversation, e = api.captureCrewHandoffConversation(r.Context(), claims, roots)
+				transfer.Conversation, e = api.captureCrewHandoffConversation(r.Context(), claims, roots, main)
 				if e != nil {
 					fail(e)
 					return
@@ -317,7 +325,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			if movingLocal {
-				if err = api.importCrewHandoffConversation(r.Context(), claims, roots, binding.PairID, remote.TransferID, remote.Conversation); err != nil {
+				if err = api.importCrewHandoffConversation(r.Context(), claims, roots, binding.PairID, remote.TransferID, remote.Conversation, main); err != nil {
 					fail(err)
 					return
 				}

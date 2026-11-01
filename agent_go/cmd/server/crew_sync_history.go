@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -37,11 +38,7 @@ func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims
 	return defaultProductConversationRegistryStore().resolveOrCreate(ctx, claims.UserID, profile, binding, "")
 }
 
-func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots) (*crewHandoffConversation, error) {
-	conversation, err := api.crewHandoffMain(ctx, claims, roots.ID)
-	if err != nil {
-		return nil, err
-	}
+func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, conversation ProductConversationRecord) (*crewHandoffConversation, error) {
 	data, err := ReadChatHistoryConversation(claims.UserID, conversation.SessionID, conversation.WorkspacePath)
 	if errors.Is(err, errChatHistoryConversationNotFound) {
 		return &crewHandoffConversation{ConversationID: conversation.ConversationID}, nil
@@ -93,12 +90,8 @@ func validateCrewHandoffConversation(in *crewHandoffConversation) error {
 // A new destination runtime session avoids reusing a stale in-memory/native
 // session on the return trip. The logical conversation ID stays unchanged.
 // Its ID is derived from the admitted pair and transfer, never a remote path.
-func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, pair, transfer string, in *crewHandoffConversation) error {
+func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, pair, transfer string, in *crewHandoffConversation, current ProductConversationRecord) error {
 	if err := validateCrewHandoffConversation(in); err != nil {
-		return err
-	}
-	current, err := api.crewHandoffMain(ctx, claims, roots.ID)
-	if err != nil {
 		return err
 	}
 	session := "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(claims.UserID+"/"+roots.ID+"/"+pair+"/"+transfer)).String()
@@ -127,7 +120,7 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	}
 	data := map[string]interface{}{
 		"session_id": session, "user_id": claims.UserID,
-		"username": chatHistoryUsername(claims.UserID, ""), "agent_mode": "simple",
+		"username": chatHistoryUsername(claims.UserID, ""), "agent_mode": "multi-agent",
 		"conversation_history": in.History, "updated_at": now.Format(time.RFC3339),
 	}
 	if len(in.UIEvents) > 0 {
@@ -137,13 +130,25 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	if err != nil {
 		return err
 	}
-	if err = writeRawFileToWorkspace(ctx, path, string(raw)); err != nil {
+	// The caller holds the Crew file lock. Going through workspace HTTP would
+	// acquire that same lock again, including for private builder records.
+	write := func(virtual, content string) error {
+		physical, bound, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), virtual)
+		if err != nil {
+			return err
+		}
+		if !bound || !crewroot.Within(roots.Private, physical) {
+			return fmt.Errorf("the destination's private conversation storage is unavailable")
+		}
+		return fsutil.WriteJSONAtomic(physical, json.RawMessage(content), 0600)
+	}
+	if err = write(path, string(raw)); err != nil {
 		return err
 	}
-	if err = writeChatHistoryResumeSnapshot(ctx, path, raw); err != nil {
+	if err = write(chatHistoryResumeSnapshotPath(path), string(boundChatHistoryResumeSnapshot(projectChatHistoryConversationForResumePage(raw, chatHistoryResumeSnapshotTurns, 0)))); err != nil {
 		return err
 	}
-	if err = updatePersistedChatHistoryIndex(claims.UserID, session, "simple", in.History, nil, path, int64(len(raw)), now, nil); err != nil {
+	if err = updatePersistedChatHistoryIndexWithWriter(claims.UserID, session, "multi-agent", in.History, len(in.History), nil, path, int64(len(raw)), now, nil, write); err != nil {
 		return err
 	}
 	rememberPreviousConversation(&doc, key, current)
