@@ -148,11 +148,28 @@ func (api *StreamingAPI) pollDesktopCrewChat(ctx context.Context, project string
 						e = fmt.Errorf("server returned no chat request")
 					}
 					if e == nil && call.ID != "" {
-						result := api.runDesktopCrewChat(ctx, project, b.PairID, call)
+						callCtx := ctx
+						stopCall := func() {}
+						if call.Operation == "handoff" {
+							callCtx, stopCall = context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute)
+						}
+						result := api.runDesktopCrewChat(callCtx, project, b.PairID, call)
+						stopCall()
 						// Refresh the saved login after a possible poll renewal.
 						_, current, fresh, check := api.desktopCrewChatBinding(ctx, project)
-						if check == nil && current.PairID == b.PairID {
-							reply, e := desktopCrewChatHTTP(ctx, claims.UserID, fresh, current, &result)
+						if call.Operation == "handoff" {
+							// The completed transfer intentionally changed Editing; its
+							// reply still belongs to the same owner and saved pair.
+							current, check = crewroot.ReadSync(project)
+							fresh, err = desktopConnectionFor(claims.UserID, b.ConnectionID)
+							if err != nil {
+								check = err
+							}
+						}
+						if check == nil && current != nil && current.PairID == b.PairID {
+							replyCtx, stopReply := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+							reply, e := desktopCrewChatHTTP(replyCtx, claims.UserID, fresh, current, &result)
+							stopReply()
 							if e == nil {
 								reply.Body.Close()
 							}
@@ -200,7 +217,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if err != nil {
 		return fail(409, err.Error())
 	}
-	if call.Operation != "resolve" && call.ConversationID != conversation.ConversationID {
+	if call.Operation != "resolve" && call.Operation != "handoff" && call.ConversationID != conversation.ConversationID {
 		return fail(409, "The main chat changed on your Mac. Reopen this Crew to continue it.")
 	}
 	// Neither a session, a workspace path, nor a provider/account choice is
@@ -211,6 +228,21 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	var handler http.HandlerFunc
 	method, path := http.MethodGet, "/api/sessions/"+conversation.SessionID
 	switch call.Operation {
+	case "handoff":
+		roots, e := api.crewSyncRoots(ctx, claims, project)
+		if e != nil {
+			return fail(403, e.Error())
+		}
+		if api.crewNativeTurnRunning(roots) {
+			return fail(409, "Let the current reply finish on your Mac, then send again.")
+		}
+		closeWorkflowPolicyCLI(conversation.SessionID, conversation.Provider, "moving native session to server")
+		capture := api.runInternalCrewHandoff(ctx, claims, project, b.ConnectionID, "server")
+		status := capture.status
+		if status == 0 {
+			status = 200
+		}
+		return crewChatResult{ID: call.ID, Status: status, Body: capture.body.Bytes()}
 	case "resolve":
 		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsMainChat: true, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider, ModelID: conversation.ModelID, ReasoningEffort: conversation.ReasoningEffort})
 		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=resolve session=%s conversation=%s request=%s", project, conversation.SessionID, conversation.ConversationID, call.ID)

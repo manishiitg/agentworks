@@ -41,9 +41,10 @@ type crewChatResult struct {
 	Body   json.RawMessage `json:"body"`
 }
 type crewChatPending struct {
-	call   crewChatCall
-	ctx    context.Context
-	result chan crewChatResult
+	call       crewChatCall
+	ctx        context.Context
+	result     chan crewChatResult
+	dispatched chan struct{}
 }
 type crewChatMailbox struct {
 	lastPoll time.Time
@@ -61,6 +62,10 @@ func crewChatWebsiteClaims(c *UserClaims) bool {
 }
 
 func (api *StreamingAPI) crewChatPair(r *http.Request, project, pair string) (*crewroot.SyncBinding, error) {
+	return api.crewChatPairState(r, project, pair, false)
+}
+
+func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string, completion bool) (*crewroot.SyncBinding, error) {
 	c := GetUserFromContext(r.Context())
 	if !crewChatWebsiteClaims(c) {
 		return nil, fmt.Errorf("Open this Crew using its owner's website sign-in.")
@@ -69,7 +74,7 @@ func (api *StreamingAPI) crewChatPair(r *http.Request, project, pair string) (*c
 		return nil, err
 	}
 	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
+	if err != nil || b == nil || b.Side != "server" || (!completion && b.Editing != "local") || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
 		return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
 	}
 	return b, nil
@@ -91,7 +96,7 @@ func crewChatBox(key string) *crewChatMailbox { // caller holds crewChatRelays
 // Knowing a pair ID never admits another person's otherwise-valid sign-in.
 func (api *StreamingAPI) handleCrewChatPoll(w http.ResponseWriter, r *http.Request) {
 	project, pair := mux.Vars(r)["project"], r.URL.Query().Get("pair")
-	b, err := api.crewChatPair(r, project, pair)
+	b, err := api.crewChatPairState(r, project, pair, r.Method == http.MethodPost)
 	if err != nil || pair == "" {
 		log.Printf("[CREW_CHAT_RELAY] poll refused owner=%s project=%s", GetUserIDFromContext(r.Context()), project)
 		externalError(w, 403, "mac_chat_forbidden", "This sign-in cannot connect that Crew's Mac conversation.")
@@ -111,6 +116,10 @@ func (api *StreamingAPI) handleCrewChatPoll(w http.ResponseWriter, r *http.Reque
 		crewChatRelays.Lock()
 		pending := box.pending[result.ID]
 		crewChatRelays.Unlock()
+		if b.Editing != "local" && (pending == nil || pending.call.Operation != "handoff") {
+			externalError(w, 403, "mac_chat_forbidden", "This reply is not for the active session transfer.")
+			return
+		}
 		if pending != nil {
 			select {
 			case pending.result <- result:
@@ -132,6 +141,9 @@ func (api *StreamingAPI) handleCrewChatPoll(w http.ResponseWriter, r *http.Reque
 				externalError(w, 403, "mac_chat_forbidden", err.Error())
 				return
 			}
+			if pending.dispatched != nil {
+				close(pending.dispatched)
+			}
 			externalJSON(w, pending.call)
 			return
 		case <-timer.C:
@@ -152,10 +164,14 @@ func (api *StreamingAPI) callCrewMac(r *http.Request, project string, call crewC
 	if err != nil {
 		return failure(403, err.Error())
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 55*time.Second)
+	timeout := 55 * time.Second
+	if call.Operation == "handoff" {
+		timeout = 15 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 	call.ID = uuid.NewString()
-	pending := &crewChatPending{call: call, ctx: ctx, result: make(chan crewChatResult, 1)}
+	pending := &crewChatPending{call: call, ctx: ctx, result: make(chan crewChatResult, 1), dispatched: make(chan struct{})}
 	key := crewChatMailboxKey(GetUserIDFromContext(r.Context()), project, b.PairID)
 	crewChatRelays.Lock()
 	box := crewChatBox(key)
@@ -169,12 +185,32 @@ func (api *StreamingAPI) callCrewMac(r *http.Request, project string, call crewC
 	select {
 	case box.queue <- pending:
 	case <-ctx.Done():
+		if call.Operation == "handoff" {
+			return failure(409, "The session transfer was interrupted. Reopen the Crew to check its progress.")
+		}
 		return failure(504, "Your Mac did not respond. Reopen the chat to check whether your message arrived before sending it again.")
+	}
+	if call.Operation == "handoff" {
+		// Only an undispatched request is safe to replace with the last mirror.
+		// Once the Mac starts flushing, wait for its result instead of activating
+		// a stale mirror while the real transfer is still running.
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-pending.dispatched:
+		case <-timer.C:
+			cancel()
+			return failure(409, "Your Mac has not started the transfer yet. Try again shortly.")
+		case <-ctx.Done():
+			return failure(409, "The session transfer was interrupted. Reopen the Crew to check its progress.")
+		}
 	}
 	select {
 	case result := <-pending.result:
-		if _, err := api.crewChatPair(r, project, b.PairID); err != nil {
-			return failure(403, err.Error())
+		if call.Operation != "handoff" {
+			if _, err := api.crewChatPair(r, project, b.PairID); err != nil {
+				return failure(403, err.Error())
+			}
 		}
 		if call.Operation == "send" || call.Operation == "resolve" {
 			log.Printf("[CREW_CHAT_RELAY] completed owner=%s project=%s operation=%s request=%s status=%d", GetUserIDFromContext(r.Context()), project, call.Operation, call.ID, result.Status)
@@ -190,6 +226,9 @@ func (api *StreamingAPI) callCrewMac(r *http.Request, project string, call crewC
 		}
 		return result
 	case <-ctx.Done():
+		if call.Operation == "handoff" {
+			return failure(409, "The session transfer was interrupted. Reopen the Crew to check its progress.")
+		}
 		return failure(504, "Your Mac did not respond. Reopen the chat to check whether your message arrived before sending it again.")
 	}
 }

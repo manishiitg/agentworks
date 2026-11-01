@@ -182,6 +182,7 @@ export interface CustomTierModel {
 }
 
 export interface AgentQueryResponse {
+  sync_notice?: string
   query_id: string
   // 'started' | 'workflow_started' | 'live_input_delivered' | 'accepted' | error states.
   // 'live_input_delivered' means the backend steered this message into an

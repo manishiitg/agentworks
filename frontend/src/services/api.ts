@@ -1189,7 +1189,7 @@ export const agentApi = {
       config,
     )
     assertChatIdentityCurrent(config.chatIdentityGeneration)
-    return response.data
+    return { ...response.data, sync_notice: response.headers['x-agentworks-sync-notice'] }
   },
 
   // The product's declaration (product.yaml as served): commands, tools with

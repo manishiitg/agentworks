@@ -357,6 +357,7 @@ fi
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/agent_go/scripts/install-slack-cli.sh"
 # gog (Gmail connector CLI), kept on the latest checksum-verified release.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-gog.sh"
+"${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-rsync.sh"
 case "${DEPLOY_REFRESH_TOOLS:-0}" in
   0|1) ;;
   *) echo 'DEPLOY_REFRESH_TOOLS must be 0 or 1' >&2; exit 1 ;;

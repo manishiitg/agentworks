@@ -7,8 +7,8 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 
-type Binding = { side: 'local' | 'server'; editing: 'local' | 'server'; connection_id?: string; peer_project_id: string; peer_server?: string; updated_at?: string; pending_action?: 'update' | 'server' | 'local' | 'download' }
-type Status = { project_id: string; binding: Binding | null; auto?: { state: string; message?: string; checked_at?: string } }
+type Binding = { mode?: 'continuous' | 'manual'; side: 'local' | 'server'; editing: 'local' | 'server'; connection_id?: string; peer_project_id: string; peer_server?: string; updated_at?: string; pending_action?: 'update' | 'server' | 'local' | 'download' }
+type Status = { project_id: string; binding: Binding | null; conversation_notice?: string; auto?: { state: string; message?: string; checked_at?: string } }
 
 export function CrewSyncPanel({ projectId }: { projectId: string }) {
   const connections = useConnectedWorkStore(state => state.connections)
@@ -20,23 +20,25 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
   const [connection, setConnection] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [conversationNotice, setConversationNotice] = useState('')
   useEffect(() => {
     const identity = captureChatIdentity(), abort = new AbortController()
-    setStatus(null); setError(''); setConnection(''); setBusy(false)
+    setStatus(null); setError(''); setConnection(''); setBusy(false); setConversationNotice('')
     if (local) void useConnectedWorkStore.getState().refresh()
     void api.get<Status>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true })
       .then(({ data }) => { if (!abort.signal.aborted && isChatIdentityCurrent(identity)) { setStatus(data); setConnection(data.binding?.connection_id || '') } })
       .catch(() => { if (!abort.signal.aborted && isChatIdentityCurrent(identity)) setError('Could not load project sync. Check the connection and try again.') })
     return () => abort.abort()
   }, [projectId, local, reload])
-  const run = async (action: 'update' | 'server' | 'local' | 'download') => {
+  const run = async (action: 'update' | 'server' | 'local' | 'download' | 'mode', mode?: 'continuous' | 'manual') => {
     const identity = captureChatIdentity()
     const current = () => isChatIdentityCurrent(identity) && currentProject.current === projectId
     setBusy(true); setError('')
     try {
-      const data = await desktopRequest<Status>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
+      const data = await desktopRequest<Status>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action, mode })
       if (current()) {
         setStatus(data)
+        setConversationNotice(data.conversation_notice || '')
         if (action === 'local') window.dispatchEvent(new CustomEvent('agentworks:crew-handoff', { detail: { projectId } }))
       }
       void useConnectedWorkStore.getState().refresh()
@@ -60,14 +62,15 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
   }, [projectId, status?.binding?.peer_project_id])
   const binding = status?.binding
   return <section aria-label="Project sync" className="max-w-xl space-y-4 text-sm">
-    <p>Use this Crew from the website or your phone. While editing on your Mac, its main chat continues the same local agent and conversation. Keep AgentWorks open on your Mac.</p>
+    <p>Keep your project and its main conversation available on your Mac and server. With automatic sync, send a message where you want to work and the conversation continues there.</p>
     {error && <div><p role="alert" className="text-destructive">{error}</p>{!status && <Button variant="link" onClick={() => setReload(value => value + 1)}>Try again</Button>}</div>}
     {!status && !error && <p role="status">Loading project sync…</p>}
     {binding && <div className="space-y-1 rounded-lg border border-border p-3">
       <p className="font-medium">Editing on {binding.editing === 'local' ? 'your Mac' : 'the server'}</p>
       {binding.updated_at && <p className="text-muted-foreground">Last synced {new Date(binding.updated_at).toLocaleString()}</p>}
       <p role="status">{status.auto?.state === 'syncing' ? 'Syncing…' : status.auto?.state === 'synced' ? 'Up to date' : status.auto?.message || 'Files sync automatically while AgentWorks is open on your Mac.'}</p>
-      <p className="text-muted-foreground">Saved files sync automatically from the editing computer. Switching carries your main chat's history with the latest files and starts a fresh agent session on the destination. Other chats stay on their computer.</p>
+      <p className="text-muted-foreground">Muse keeps its native session when both computers have an available Muse account. Work saved after losing the connection may need syncing when you reconnect. Other chats stay on their computer.</p>
+      {conversationNotice && <p role="status">{conversationNotice}</p>}
     </div>}
     {local ? <>
       {!binding && <label className="block space-y-2"><span>Server</span><select aria-label="Sync server" value={connection} onChange={event => setConnection(event.target.value)} className="w-full rounded-md border border-border bg-background p-2">
@@ -75,16 +78,19 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
         {connections.filter(item => item.id !== 'local').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select></label>}
       {!binding && <Button variant="link" className="h-auto p-0" onClick={() => openConnectedServers()}>Connect a server</Button>}
+      {binding && <label className="block space-y-2"><span>Sync</span><select aria-label="Sync mode" disabled={busy} value={binding.mode || 'continuous'} onChange={event => void run('mode', event.target.value as 'continuous' | 'manual')} className="w-full rounded-md border border-border bg-background p-2">
+        <option value="continuous">Keep in sync with server</option><option value="manual">Sync manually</option>
+      </select></label>}
       <div className="flex flex-wrap gap-2">
         {binding?.pending_action && <Button disabled={busy} onClick={() => void run(binding.pending_action!)}>{busy ? 'Finishing transfer…' : 'Finish interrupted transfer'}</Button>}
         {!binding?.pending_action && binding?.editing !== 'server' && <>
-          <Button disabled={!status || !connection || busy} onClick={() => void run('update')}>{busy ? 'Syncing…' : binding ? 'Sync now' : 'Make available on server'}</Button>
-          {binding && <Button variant="outline" disabled={busy} onClick={() => void run('server')}>Work on server</Button>}
+          <Button disabled={!status || !connection || busy} onClick={() => void run('update')}>{busy ? 'Syncing…' : binding ? 'Sync now' : 'Keep in sync with server'}</Button>
+          {binding?.mode === 'manual' && <Button variant="outline" disabled={busy} onClick={() => void run('server')}>Work on server</Button>}
         </>}
-        {!binding?.pending_action && binding?.editing === 'server' && <Button disabled={busy} onClick={() => void run('local')}>{busy ? 'Bringing changes back…' : 'Work on this Mac'}</Button>}
+        {!binding?.pending_action && binding?.mode === 'manual' && binding?.editing === 'server' && <Button disabled={busy} onClick={() => void run('local')}>{busy ? 'Bringing changes back…' : 'Work on this Mac'}</Button>}
       </div>
       {binding?.peer_server && <a className="inline-block underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">Open server Crew</a>}
-      <p className="text-xs text-muted-foreground">Starts Only me. Your main chat moves only when you switch computers; it uses the destination's model and account. Set up that account before moving. Logins and other private chats are not copied by file sync. Current Git branch, history and staged changes travel with the files. Other branches and Git logins stay put.</p>
-    </> : <p className="text-muted-foreground">{binding ? 'Keep AgentWorks open on your Mac for automatic file sync. Use the Mac app to move editing between computers.' : 'Open a local project in the Mac app and choose this server to set up sync.'}</p>}
+      <p className="text-xs text-muted-foreground">Starts Only me. Each computer uses its own configured account. Logins and other private chats are not copied by sync. Current Git branch, history and staged changes travel with the files. Other branches and Git logins stay put.</p>
+    </> : <p className="text-muted-foreground">{binding ? 'Automatic sync keeps completed work available here. Send a message to continue on this server.' : 'Open a local project in the Mac app and choose this server to set up sync.'}</p>}
   </section>
 }

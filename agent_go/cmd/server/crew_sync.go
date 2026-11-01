@@ -24,6 +24,7 @@ import (
 )
 
 type crewSyncRequest struct {
+	Mode         string                   `json:"mode,omitempty"`
 	SplitFiles   bool                     `json:"split_files,omitempty"`
 	TransferID   string                   `json:"transfer_id,omitempty"`
 	Action       string                   `json:"action"`
@@ -35,12 +36,13 @@ type crewSyncRequest struct {
 	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
 }
 type crewSyncReply struct {
-	TransferID   string                   `json:"transfer_id,omitempty"`
-	Auto         *crewAutoSyncStatus      `json:"auto,omitempty"`
-	ProjectID    string                   `json:"project_id"`
-	Binding      *crewroot.SyncBinding    `json:"binding"`
-	Snapshot     *crewsync.Snapshot       `json:"snapshot,omitempty"`
-	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
+	ConversationNotice string                   `json:"conversation_notice,omitempty"`
+	TransferID         string                   `json:"transfer_id,omitempty"`
+	Auto               *crewAutoSyncStatus      `json:"auto,omitempty"`
+	ProjectID          string                   `json:"project_id"`
+	Binding            *crewroot.SyncBinding    `json:"binding"`
+	Snapshot           *crewsync.Snapshot       `json:"snapshot,omitempty"`
+	Conversation       *crewHandoffConversation `json:"conversation,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -159,7 +161,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	// Main-chat initialization may write the project manifest through workspace
 	// HTTP. Complete it before taking the file lock used by that endpoint.
 	var main ProductConversationRecord
-	if input.Action == "pull" || (input.Action == "push" && input.Editing == "server") {
+	if input.Action == "mirror-get" || input.Action == "activate" || input.Action == "pull" || (input.Action == "push" && input.Editing == "server") {
 		main, err = api.crewHandoffMain(ctx, claims, roots.ID)
 		if err != nil {
 			return crewSyncReply{}, err
@@ -186,6 +188,61 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		return out, err
 	}
 	switch input.Action {
+	case "mode":
+		if input.Mode != "continuous" && input.Mode != "manual" {
+			return out, fmt.Errorf("choose automatic or manual sync")
+		}
+		binding.Mode = input.Mode
+	case "mirror-put":
+		if binding.Editing != "local" {
+			return out, fmt.Errorf("the server has newer work; bring it back first")
+		}
+		if err = validateCrewHandoffConversation(input.Conversation); err != nil {
+			return out, err
+		}
+		if input.Conversation.Muse == nil {
+			return out, fmt.Errorf("native session sync is not ready for this conversation")
+		}
+		nativeLock := crewNativeLock(roots, input.Conversation.Muse.SessionID)
+		nativeLock.Lock()
+		defer nativeLock.Unlock()
+		if err = bindCrewMuseStage(roots, input.Conversation.Muse); err != nil {
+			return out, err
+		}
+		if err = saveCrewNativeMirror(roots, input.Conversation); err != nil {
+			return out, err
+		}
+	case "mirror-get":
+		if binding.Editing != "server" {
+			return out, fmt.Errorf("work is on the Mac")
+		}
+		if api.crewNativeTurnRunning(roots) {
+			return out, nil
+		}
+		out.Conversation, err = api.captureCrewMirror(ctx, claims, roots, main)
+		if err != nil {
+			return out, err
+		}
+		return out, nil
+	case "activate":
+		if binding.Mode == "manual" {
+			return out, fmt.Errorf("send this project to the server from your Mac first")
+		}
+		if binding.Editing == "server" {
+			return out, nil
+		}
+		mirror, e := readCrewNativeMirror(roots)
+		if e != nil {
+			return out, fmt.Errorf("this session has not finished syncing yet; reconnect your Mac")
+		}
+		if main.Provider != "muse-cli" {
+			return out, fmt.Errorf("choose an available Muse account for this project on the server before continuing")
+		}
+		if e = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, mirror.TransferID, mirror.Conversation, main); e != nil {
+			return out, e
+		}
+		binding.Editing = "server"
+		out.ConversationNotice = "Continued from the last completed sync. Work after the Mac lost its connection may be missing."
 	case "push":
 		if input.TransferID == "" {
 			return out, fmt.Errorf("a sync transfer identity is required")
@@ -218,6 +275,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			if err = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, input.TransferID, input.Conversation, main); err != nil {
 				return out, err
 			}
+			out.ConversationNotice = input.Conversation.Notice
 		}
 		binding.Editing = input.Editing
 		binding.LastTransfer = input.TransferID
@@ -245,6 +303,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			if e := api.crewSyncIdle(roots); e != nil {
 				return out, e
 			}
+			closeWorkflowPolicyCLI(main.SessionID, main.Provider, "moving native session to Mac")
 			out.Conversation, e = api.captureCrewHandoffConversation(ctx, claims, roots, main)
 			if e != nil {
 				return out, e

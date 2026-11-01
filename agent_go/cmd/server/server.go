@@ -2442,6 +2442,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/auth/start", api.handleAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/callback", api.handleAuthCallback).Methods("GET")
 	apiRouter.HandleFunc("/crew-chat/{project}/poll", api.handleCrewChatPoll).Methods("GET", "POST")
+	apiRouter.HandleFunc("/crew-sync/{project}/native", api.handleCrewNativeSync).Methods("GET")
 	apiRouter.HandleFunc("/crew-sync/{project}", api.handleCrewSync).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/crew-sync/{project}", api.handleDesktopCrewSync).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections", api.handleDesktopConnections).Methods("GET", "POST")
@@ -8133,7 +8134,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					toolsWas, toolsNow = normalizeAgentToolsMode(previousTools), currentTools
 				}
 			}
-			definitionChanged := !codingProviderReloadsInstructionsOnResume(finalProvider) && chatPolicyRequiresReconnect(codingProvider, previousPolicy, policyKey, knownPolicy, savedRuntime)
+			definitionChanged := !codingProviderReloadsInstructionsOnResume(finalProvider) && (savedRuntime == nil || !savedRuntime.NativeHandoff) && chatPolicyRequiresReconnect(codingProvider, previousPolicy, policyKey, knownPolicy, savedRuntime)
 			currentDescription := currentPolicy.describe()
 			previousDescription := "unknown"
 			if was, ok := lastChatPolicyDescription.Load(sessionID); ok {
@@ -10543,7 +10544,7 @@ func (api *StreamingAPI) seedCodingAgentRuntimeFromRestoredConversation(sessionI
 			log.Printf("[CHAT_HISTORY] Agent tools mode changed for session %s (%s -> %s); starting a fresh native session with the recent dialogue", sessionID, normalizeAgentToolsMode(runtime.AgentToolsMode), normalizeAgentToolsMode(currentToolsMode))
 			return false
 		}
-		if !codingProviderReloadsInstructionsOnResume(provider) {
+		if !codingProviderReloadsInstructionsOnResume(provider) && !runtime.NativeHandoff {
 			log.Printf("[CHAT_HISTORY] Agent profile definition changed for session %s (changed: %s); %s cannot load new instructions into a resumed session, starting a fresh one with the conversation archive", sessionID, agentProfileKeyPartsChange(runtime.AgentProfileKeyParts, currentProfileKey), provider)
 			return false
 		}

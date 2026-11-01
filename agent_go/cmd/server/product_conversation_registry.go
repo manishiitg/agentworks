@@ -35,17 +35,19 @@ var (
 // AgentWorks history/runtime owner. They are intentionally separate so a
 // future runtime migration does not change the product conversation identity.
 type ProductConversationRecord struct {
-	IsMainChat      bool   `json:"-"`
-	ConnectionID    string `json:"connection_id,omitempty"`
-	ConversationID  string `json:"conversation_id"`
-	ConversationKey string `json:"conversation_key"`
-	ProfileID       string `json:"profile_id"`
-	ProfileVersion  int    `json:"profile_version"`
-	SessionID       string `json:"session_id"`
-	WorkspacePath   string `json:"workspace_path"`
-	ResourceID      string `json:"resource_id,omitempty"`
-	Title           string `json:"title,omitempty"`
-	Description     string `json:"description,omitempty"`
+	// Resolved before taking the Crew file lock; not persisted or imported.
+	handoffAgentToolsMode string
+	IsMainChat            bool   `json:"-"`
+	ConnectionID          string `json:"connection_id,omitempty"`
+	ConversationID        string `json:"conversation_id"`
+	ConversationKey       string `json:"conversation_key"`
+	ProfileID             string `json:"profile_id"`
+	ProfileVersion        int    `json:"profile_version"`
+	SessionID             string `json:"session_id"`
+	WorkspacePath         string `json:"workspace_path"`
+	ResourceID            string `json:"resource_id,omitempty"`
+	Title                 string `json:"title,omitempty"`
+	Description           string `json:"description,omitempty"`
 	// Provider is the coding-agent runtime the conversation most recently used.
 	// Changing it relaunches the retained CLI while the AgentWorks conversation
 	// history remains owned by this stable product session.
