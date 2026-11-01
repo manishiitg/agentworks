@@ -79,10 +79,34 @@ func TestGoalMessageScheduleRunsInOwnersTab(t *testing.T) {
 		session, _, _ := goalScheduleConversation(context.Background(), &ScheduleContext{WorkspacePath: "Workflow/demo", WorkflowID: "wf", OwnerUserID: "alice", Schedule: sched})
 		return session
 	}
-	message := projectactions.Schedule{ID: "s1", Input: []byte(`{"messages":["check the inbox"]}`), Action: projectactions.Action{Type: "message", Tab: aliceTab.ID}}
+	message := projectactions.Schedule{ID: "s1", Name: "Check messages", When: projectactions.When{Cron: "0 9 * * *", Timezone: "UTC"}, Input: []byte(`{"messages":["check the inbox"]}`), Action: projectactions.Action{Type: "message", Tab: aliceTab.ID}}
 	if got := fire(message); got != aliceTab.SessionID {
 		t.Fatalf("picked tab: session %q, want %q", got, aliceTab.SessionID)
 	}
+	// A decoded message carries ChatID and ChatKey. Changing its destination
+	// must persist the new selection, including clearing the old chat.
+	for _, destination := range []string{runDestinationNew, runDestinationChat, runDestinationIsolated} {
+		sched, err := workflowScheduleFromAction(message)
+		if err != nil {
+			t.Fatal(err)
+		}
+		main := "main"
+		if err := applyGoalScheduleDestination(as("alice"), &WorkflowManifest{ID: "wf", CreatedBy: "alice"}, "Workflow/demo", &sched, destination, &main); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := actionFromWorkflowSchedule(projectactions.Project{Kind: "goal", ID: "wf"}, "alice", sched)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := ""
+		if destination == runDestinationChat {
+			want = crewOwnerDefaultChatKey("wf", "alice")
+		}
+		if encoded.Action.Tab != want {
+			t.Fatalf("destination=%s kept old chat %q, want %q", destination, encoded.Action.Tab, want)
+		}
+	}
+
 	run := message
 	run.Input, run.Action.Type = []byte(`{}`), "run"
 	if got := fire(run); got != "" {

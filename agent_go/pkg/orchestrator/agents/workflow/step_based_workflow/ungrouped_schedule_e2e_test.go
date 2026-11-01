@@ -86,6 +86,36 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'ungro
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	session.UpdateEnabledGroupNames(ctx, []string{})
+	if out, err := draft.tools["run_full_workflow"].Execute(ctx, map[string]interface{}{}); err == nil || !strings.Contains(err.Error(), "no input sets selected") {
+		t.Fatalf("empty selection launched unnamed work: %s %v", out, err)
+	}
+	write("variables/variables.json", `{"groups":[{"name":"one","enabled":true}]}`)
+	session.UpdateEnabledGroupNames(ctx, []string{})
+	if out, err := draft.tools["run_full_workflow"].Execute(ctx, map[string]interface{}{}); err == nil || !strings.Contains(err.Error(), "no input sets selected") {
+		t.Fatalf("empty selection launched named work: %s %v", out, err)
+	}
+	fresh, err := NewWorkshopChatSession(ctx, &WorkshopConfig{Logger: loggerv2.NewNoop(), WorkspacePath: workflow, EnabledGroupNames: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Close()
+	freshTools := newWorkshopDefinitionDraft()
+	RegisterRunFullWorkflowTool(freshTools, fresh, loggerv2.NewNoop())
+	if out, err := freshTools.tools["run_full_workflow"].Execute(ctx, map[string]interface{}{}); err == nil || !strings.Contains(err.Error(), "no input sets selected") {
+		t.Fatalf("new session lost explicit empty selection: %s %v", out, err)
+	}
+	session.UpdateEnabledGroupNames(ctx, nil)
+	write("variables/variables.json", `{"groups":[{"name":"Production","enabled":true,"values":{"target":"A"}},{"name":"production","enabled":true,"values":{"target":"B"}}]}`)
+	group, err := session.controller.resolveWorkshopInputGroup(ctx, "production", nil)
+	if err != nil || group != "production" || session.controller.variablesManifest.GetVariableValues(group)["target"] != "B" {
+		t.Fatalf("exact name changed inputs: %s %v", group, err)
+	}
+	write("variables/variables.json", `{"groups":[{"name":"North East","enabled":true},{"name":"North-East","enabled":true}]}`)
+	if _, err := session.controller.resolveWorkshopInputGroup(ctx, "north-east", nil); err == nil || !strings.Contains(err.Error(), "matches several names") {
+		t.Fatal("ambiguous input alias was accepted")
+	}
+
 	for _, invalid := range []string{`{"groups":[{"name":"disabled","enabled":false}]}`, `{"groups":`} {
 		write("variables/variables.json", invalid)
 		if result, err := draft.tools["run_full_workflow"].Execute(ctx, map[string]interface{}{}); err == nil {

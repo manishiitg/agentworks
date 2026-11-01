@@ -29,7 +29,7 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
-	files := &mockWorkspaceAPI{files: map[string]string{"Workflow/executable/workflow.json": `{"id":"executable","label":"Example","created_by":"stranger","access":{"owners":["stranger"]},"team":{"leader_id":"stranger"}}`}}
+	files := &mockWorkspaceAPI{files: map[string]string{"Workflow/executable/workflow.json": `{"id":"executable","label":"Example","created_by":"stranger","access":{"owners":["stranger"],"allowed_kb_writers":["consumer"]},"team":{"leader_id":"stranger"}}`}}
 	host := httptest.NewServer(files)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
@@ -41,6 +41,9 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	}
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	if err := os.MkdirAll(filepath.Join(docs, binding.Root), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if resolved, err := findCrewExecutable(filepath.Join(docs, binding.Root)); err != nil || resolved == nil {
 		t.Fatalf("absolute binding: %v", err)
 	}
@@ -50,6 +53,24 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	}
 	if workflowOwner(binding.Root) != "owner" || manifest.CreatedBy != "owner" || manifest.Team != nil || workflowExecutionOwnerUserID(manifest) != "owner" {
 		t.Fatal("manifest overrode execution owner")
+	}
+	// Inheriting the parent audience must not erase a source owner's
+	// separate KB writer opt-in during an unrelated read/edit/save cycle.
+	// The spoofed team above tests read authority. Exercise the independent
+	// writer-grant save with a normal Crew child (which has no child team).
+	var saved map[string]interface{}
+	_ = json.Unmarshal([]byte(files.files[manifestPath(binding.Root)]), &saved)
+	delete(saved, "team")
+	baseline, _ := json.Marshal(saved)
+	files.files[manifestPath(binding.Root)] = string(baseline)
+	manifest.Label = "Renamed"
+	ownerCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	if err := WriteWorkflowManifest(ownerCtx, binding.Root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest, found, err = ReadWorkflowManifest(context.Background(), binding.Root)
+	if err != nil || !found || len(manifest.Access.AllowedKBWriters) != 1 || manifest.Access.AllowedKBWriters[0] != "consumer" {
+		t.Fatalf("KB writer lost after save: %+v %v", manifest, err)
 	}
 	listed := filterWorkflowManifestsForUser(&UserClaims{UserID: "owner", Username: "owner"}, []DiscoveredWorkflow{{WorkspacePath: binding.Root, Manifest: manifest}})
 	if len(listed) != 1 || listed[0].CrewID != binding.CrewID {

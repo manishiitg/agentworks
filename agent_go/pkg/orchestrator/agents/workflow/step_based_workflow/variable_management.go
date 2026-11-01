@@ -196,6 +196,9 @@ func SyncExactVariablesToWorkspaceEnv(bo *orchestrator.BaseOrchestrator, variabl
 // wins. With no selection, a single group is unambiguous and is auto-selected;
 // multiple groups remain unset until the user chooses one.
 func ResolveWorkshopVariableValues(manifest *VariablesManifest, enabledGroupNames []string) (map[string]string, string, bool) {
+	if enabledGroupNames != nil && len(enabledGroupNames) == 0 {
+		return nil, "", false
+	}
 	if manifest == nil || len(manifest.Groups) == 0 {
 		return nil, "", false
 	}
