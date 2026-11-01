@@ -149,7 +149,7 @@ func matchCrewConnection(want crewDependencyConnection, inventory projectVaultIn
 // An unrelated app status lookup does not make a removed dependency unknown.
 func crewDependencyInventoryUnavailable(inventory projectVaultInventory, kind string) bool {
 	for _, notice := range inventory.Notices {
-		if strings.HasPrefix(notice, "Vaults could not") ||
+		if ((kind == "mcp" || kind == "project_secret" || kind == "shared_secret") && strings.HasPrefix(notice, "Vaults could not")) ||
 			(kind == "mcp" && strings.HasPrefix(notice, "Project app access")) ||
 			((kind == "mcp" || kind == "shared_secret") && strings.HasPrefix(notice, "Shared Vault access")) ||
 			(kind == "google" && strings.HasPrefix(notice, "Google account status")) ||
