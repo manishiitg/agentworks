@@ -392,7 +392,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   }
   // "On your servers": one line under each of your accounts on this Mac, with what to do on each server.
   const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && !record.via_connection && servers.length > 0 && (
-    <div className="mt-3 w-full border-t border-gray-100 pt-3 pl-11 text-xs dark:border-gray-800">
+    <div className="mt-2 w-full pl-11 text-xs">
       <div className="flex flex-wrap items-center gap-2">
       <span className="text-gray-500 dark:text-gray-400">Servers:</span>
       {servers.map(server => {
@@ -519,7 +519,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const serverBlock = (record: ProviderConnection) => {
     const availability = record.availability
     return (
-      <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+      <div className={onThisMac ? '' : 'rounded-lg border border-gray-200 p-3 dark:border-gray-700'}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><ShieldCheck className="h-4 w-4" /></div>
@@ -636,7 +636,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     </form>
   )
   const addButton = !disabled && personalAllowed && !adding && (
-    <button disabled={busy} type="button" className={secondaryButtonClass} onClick={openAdd}><Plus className="h-3.5 w-3.5" /> {provider === 'pi-cli' ? 'Add a model key' : 'Add my account'}</button>
+    <button disabled={busy} type="button" className={onThisMac ? 'inline-flex items-center gap-1.5 text-sm font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400' : secondaryButtonClass} onClick={openAdd}><Plus className="h-3.5 w-3.5" /> {provider === 'pi-cli' ? 'Add a model key' : onThisMac ? 'Add another account' : 'Add my account'}</button>
   )
   const noticeFor = (record: ProviderConnection) => notice?.id === record.id && (
     <p role="status" className="mt-3 flex w-full flex-wrap items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -667,7 +667,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   if (manage) {
     return (
       <>
-        <section className="mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+        <section className={onThisMac ? 'mb-5' : 'mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700'}>
           {server && <div>
             {!onThisMac && <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{ADMIN_MANAGED_ACCOUNT_LABEL}</div>}
             {serverBlock(server)}
