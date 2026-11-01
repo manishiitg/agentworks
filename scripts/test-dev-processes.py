@@ -25,13 +25,14 @@ while :; do sleep 0.1; done
 ''')
             processes = []
 
-            def launch(name, ready):
+            def launch(name, ready, relative=False):
                 state = root / name
                 state.mkdir(exist_ok=True)
                 env = {**os.environ, 'HELPER': str(HELPER),
                        'DEV_STARTUP_LOG': str(state / 'startup'),
                        'READY': str(root / ready), 'CLEANED': str(root / (ready + '-cleaned'))}
-                process = subprocess.Popen(['/bin/bash', str(launcher)], env=env,
+                # The documented `./run_server_with_logging.sh` start runs the launcher by a relative path.
+                process = subprocess.Popen(['/bin/bash', './launcher.sh' if relative else str(launcher)], env=env, cwd=root,
                                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 processes.append(process)
                 deadline = time.monotonic() + 10
@@ -43,7 +44,7 @@ while :; do sleep 0.1; done
                 return process
 
             try:
-                first = launch('normal', 'first')
+                first = launch('normal', 'first', relative=True)
                 isolated = launch('isolated', 'isolated')
                 second = launch('normal', 'second')
                 self.assertEqual(first.wait(timeout=3), 0)
