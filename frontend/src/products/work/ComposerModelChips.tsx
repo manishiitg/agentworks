@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { BarChart3, Check, ChevronDown, ChevronRight, Cpu, Laptop, Server, Settings2 } from 'lucide-react'
-import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
+import { BarChart3, Check, ChevronDown, ChevronRight, Laptop, Server, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -36,8 +35,8 @@ export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange,
   const width = columns ? ' w-[min(560px,calc(100vw-24px))] max-h-[min(480px,var(--radix-dropdown-menu-content-available-height))]' : wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
     <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={chipClass}>
-      {tag === 'mac' && <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" />}
-      {tag === 'server' && <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
+      {tag === 'mac' && <Laptop className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
+      {tag === 'server' && <Server className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 truncate">{label}</span>
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
@@ -193,7 +192,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {separator}
     <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models</Menu.Item>
-    <Menu.Item className={rowClass} onSelect={() => openWorkspaceSettings('providers')}><Cpu className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />AI models &amp; accounts</Menu.Item>
     </div>
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
     {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} /></div>}
