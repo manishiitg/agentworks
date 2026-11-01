@@ -8,7 +8,7 @@ vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({
 import { WorkspaceDashboardMenu } from './WorkspaceDashboardMenu'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-it('groups by the saved label and opens a motion draft in the selected own chat', async () => {
+it('groups by the saved label and opens creation drafts only in the selected authoring chat', async () => {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host); const open = vi.fn()
  try {
   await act(async () => root.render(<WorkspaceDashboardMenu documents={[
@@ -24,7 +24,11 @@ it('groups by the saved label and opens a motion draft in the selected own chat'
   expect(host.querySelector('[aria-label="Artifacts"]')).toBeNull()
   await act(async () => [...motion.querySelectorAll('button')].find(b=>b.textContent==='Spending history')!.click())
   expect(open).toHaveBeenCalledWith('db/reports/b.html')
-  await act(async () => [...host.querySelectorAll('button')].find(b=>b.textContent==='Create motion dashboard')!.click())
-  expect(draft).toHaveBeenCalledWith(expect.objectContaining({ tabId:'own-tab', message:expect.stringContaining('motion dashboard') }))
+  for (const [label, kind] of [['Create dashboard','dashboard'],['Create motion dashboard','motion dashboard'],['Create artifact','artifact']]) {
+   await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.click())
+   expect(draft).toHaveBeenLastCalledWith(expect.objectContaining({ tabId:'own-tab', message:expect.stringContaining(kind) }))
+  }
+  await act(async () => root.render(<WorkspaceDashboardMenu documents={[]} onSelect={open} />))
+  expect(host.querySelector('[aria-label="Create dashboard content"]')).toBeNull()
  } finally { await act(async () => root.unmount()); host.remove() }
 })
