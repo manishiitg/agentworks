@@ -1207,7 +1207,8 @@ configure_local_product_profile
 # and persisted configuration as previous local runs.
 if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
     LOCAL_VAULT=true
-    VAULT_STATE_DIR="${GATEWAY_DIR}/var/platform"
+    VAULT_STATE_DIR="${AGENTWORKS_STATE_ROOT:+${AGENTWORKS_STATE_ROOT}/vault}"
+    VAULT_STATE_DIR="${VAULT_STATE_DIR:-${GATEWAY_DIR}/var/platform}"
     mkdir -p "$VAULT_STATE_DIR" && chmod 700 "$VAULT_STATE_DIR"
     # Vault's state used to live in var/. Its configuration database is encrypted
     # with this key, so an existing key must follow, or Vault refuses to start.
@@ -2367,20 +2368,10 @@ export AGENTWORKS_RSYNC_BIN="${SCRIPT_DIR}/.native-sync/bin/rsync"
 # test instance overwrote the shared ~/go/bin/mcpbridge).
 MCPBRIDGE_BIN_DIR="${SCRIPT_DIR}/.bin"
 mkdir -p "$MCPBRIDGE_BIN_DIR"
-echo "🔨 Building mcpbridge binary from local source..."
-(cd "${SCRIPT_DIR}/../../mcpagent" && GOBIN="$MCPBRIDGE_BIN_DIR" go install ./cmd/mcpbridge/) 2>&1
-if [ $? -eq 0 ]; then
-    dev_detail "✅ mcpbridge binary installed from local source: $MCPBRIDGE_BIN_DIR/mcpbridge"
-else
-    # Fallback to published module if local build fails
-    echo "⚠️  Local build failed, falling back to published release..."
-    GOWORK=off GOBIN="$MCPBRIDGE_BIN_DIR" go install github.com/manishiitg/mcpagent/cmd/mcpbridge@latest 2>&1
-    if [ $? -eq 0 ]; then
-        dev_detail "✅ mcpbridge binary installed from published release: $MCPBRIDGE_BIN_DIR/mcpbridge"
-    else
-        echo "⚠️  Failed to install mcpbridge (CLI provider MCP bridge will not work)"
-    fi
-fi
+# Use the pinned module from this checkout; never build in another agent's
+# mcpagent checkout or install an unreviewed @latest during isolated testing.
+echo "🔨 Building the pinned mcpbridge dependency..."
+GOWORK=off go build -o "$MCPBRIDGE_BIN_DIR/mcpbridge" github.com/manishiitg/mcpagent/cmd/mcpbridge || exit 1
 if [ -x "$MCPBRIDGE_BIN_DIR/mcpbridge" ]; then
     export MCP_BRIDGE_BINARY="$MCPBRIDGE_BIN_DIR/mcpbridge"
 fi
