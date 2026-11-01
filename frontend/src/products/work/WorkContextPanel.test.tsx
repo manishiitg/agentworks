@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
-const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), user: { id: 'owner', allowed_products: null as string[] | null }, server: 'local', share: { can_share:true, mode:'private', people:[] as { id:string }[], unknown_emails:[] as string[] }, browser: { connected:true, label:'Connected', name:'Chrome' }, documents: [] as { id: string; path: string; title: string; order: number; artifact?: boolean; motion?: boolean }[], status: { apps: [], automations: [], errors: [] } as any }))
+const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), user: { id: 'owner', allowed_products: null as string[] | null }, server: 'local', share: { can_share:true, mode:'private', people:[] as { id:string }[], unknown_emails:[] as string[] }, browser: { connected:true, label:'Connected', name:'Chrome' }, documents: [] as { id: string; path: string; title: string; order: number; artifact?: boolean; motion?: boolean }[], status: { apps: [], automations: [], errors: [], loaded: ['mcp:connected'] } as any }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
 vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: mocks.share }) }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: mocks.user }), { getState: () => ({ user: mocks.user }) }) }))
@@ -22,7 +22,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 beforeEach(() => {
  mocks.user = { id: 'owner', allowed_products: null }; mocks.server = 'local'; mocks.documents = []
  mocks.share = { can_share:true, mode:'private', people:[], unknown_emails:[] }
- mocks.status = { apps: [], automations: [], errors: [] }; mocks.browser = { connected:true, label:'Connected', name:'Chrome' }
+ mocks.status = { apps: [], automations: [], errors: [], loaded: ['mcp:connected'] }; mocks.browser = { connected:true, label:'Connected', name:'Chrome' }
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
@@ -223,5 +223,20 @@ it('opens automation setup before any jobs exist and keeps native destination gu
   mocks.open.mockClear(); mocks.server = 'another-server'
   await act(async () => staleRow.click())
   expect(mocks.open).not.toHaveBeenCalled()
+ })
+})
+
+// PLAT-746-289: a partial snapshot is not evidence of zero MCP connections.
+it('keeps MCP status unknown while a different connection source is ready', async () => {
+ mocks.status.loaded = ['mcp:github']
+ mocks.status.apps = [{id:'github',label:'GitHub',detail:'chosen-account · Connected',connected:true,destination:'mcp:github'}]
+ await render('dev', async host => {
+  expect(host.querySelector('[aria-label="GitHub · chosen-account · Connected"]')).not.toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
+  expect(host.textContent).toContain('MCPsChecking…')
+  expect(host.textContent).not.toContain('0 connected')
+  const manage = [...host.querySelectorAll('button')].find(node => node.textContent === 'Manage integrations')!
+  await act(async () => manage.click())
+  expect(host.textContent).not.toContain('0 connected')
  })
 })
