@@ -7,6 +7,8 @@ version. Existing project data and app/CLI sign-ins stay where they are.
 This package is prepared for npm distribution; it is not published by building
 or testing it. A combined desktop release with checksums must exist before
 advertising the public install command.
+Until a combined Mac release is available, use `--dmg` with `--sha256-file`
+to install a locally built app, as shown below.
 
 After publication, install and open the app with `npx @manishiitg/agentworks`.
 The app remains AgentWorks and its bundled CLI remains `agentworks`.
@@ -44,7 +46,9 @@ agentworks-app dev --repo /path/to/agentworks
 ```
 
 This delegates to `run_agentworks`, preserving its Vite hot reload, backend
-startup and flags. It suppresses automatic Git pulls. It does not install the
+startup and flags. Local development opens Electron by default; browser-only
+development is an explicit `--without-electron` option. It suppresses automatic
+Git pulls. It does not install the
 packaged app or change provider sign-ins. Source development still requires the
 development tools documented in `desktop/README.md`.
 
