@@ -119,6 +119,8 @@ func serveServerFirstFixture(t *testing.T) {
 	if !ok || !admin.OwnedByCaller || admin.OwnerID != "owner" {
 		t.Fatal("admin/co-owner setup must reach the actual-owner boundary")
 	}
+	lostPairResponse := false
+	refuseNextPair := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actor := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if actor != "owner" && actor != "other" && actor != "admin" {
@@ -127,6 +129,11 @@ func serveServerFirstFixture(t *testing.T) {
 		}
 		claims := &UserClaims{UserID: actor, Username: actor}
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+		if r.URL.Path == "/fixture/refuse-next" {
+			refuseNextPair = true
+			w.WriteHeader(204)
+			return
+		}
 		if r.URL.Path == "/fixture/state" {
 			all, _ := defaultProjectOwners().All()
 			b, _ := crewroot.ReadSync(project)
@@ -134,6 +141,30 @@ func serveServerFirstFixture(t *testing.T) {
 			return
 		}
 		r = mux.SetURLVars(r, map[string]string{"project": project})
+		if os.Getenv("AGENTWORKS_SERVER_FIRST_SPLIT") != "true" {
+			raw, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+			var input crewSyncRequest
+			_ = json.Unmarshal(raw, &input)
+			if input.Action == "pair" && refuseNextPair {
+				refuseNextPair = false
+				r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"}))
+				api.handleCrewSync(w, r)
+				return
+			}
+			if input.Action == "pair" && !lostPairResponse {
+				response := httptest.NewRecorder()
+				api.handleCrewSync(response, r)
+				if response.Code != 200 {
+					w.WriteHeader(response.Code)
+					_, _ = w.Write(response.Body.Bytes())
+					return
+				}
+				lostPairResponse = true
+				w.WriteHeader(502)
+				return
+			}
+		}
 		api.handleCrewSync(w, r)
 	}))
 	defer server.Close()
@@ -240,6 +271,27 @@ func TestCrewSyncServerFirstHTTPIdentityAndOwner(t *testing.T) {
 				t.Fatal("existing folder modified")
 			}
 			folder := filepath.Join(t.TempDir(), "local-project")
+			if !split {
+				request, _ := http.NewRequest(http.MethodPost, source.URL+"/fixture/refuse-next", nil)
+				request.Header.Set("Authorization", "Bearer owner")
+				response, err := http.DefaultClient.Do(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_ = response.Body.Close()
+				if denied := open(folder); denied.Code != 409 || !strings.Contains(denied.Body.String(), "owner") {
+					t.Fatalf("owner revoked before pairing: %d %s", denied.Code, denied.Body)
+				}
+				if receipt, err := crewroot.ReadSync(source.ProjectID); err != nil || receipt != nil {
+					t.Fatalf("definite refusal retained a new pairing receipt: %+v %v", receipt, err)
+				}
+				if failed := open(folder); failed.Code != 409 {
+					t.Fatalf("lost first pair response: %d %s", failed.Code, failed.Body)
+				}
+				if receipt, err := crewroot.ReadSync(source.ProjectID); err != nil || receipt == nil {
+					t.Fatalf("original Mac lost its pending pairing receipt: %+v %v", receipt, err)
+				}
+			}
 			w := open(folder)
 			if w.Code != 200 {
 				t.Fatalf("open existing server project %d: %s", w.Code, w.Body)
