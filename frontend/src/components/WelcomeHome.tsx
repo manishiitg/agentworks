@@ -156,8 +156,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             <h2 className="text-sm font-medium">Talk to AgentWorks</h2>
             {createItem && <Button type="button" onClick={() => openQuickNavigation(createItem)}><Plus className="mr-2 h-4 w-4" aria-hidden="true" />New project</Button>}
           </div>
-          <div className="mt-3">{workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks">
-            <form onSubmit={askAgentWorks} className="rounded-2xl border border-border bg-muted/20 p-3 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/20 sm:p-4">
+          <div className="mt-3">{workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks" className="rounded-2xl bg-muted/40">
+            <form onSubmit={askAgentWorks} className="rounded-2xl border border-border bg-background p-3 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/20 sm:p-4">
               <div ref={setVoiceBanner} className="relative" />
               <label htmlFor="welcome-agentworks-message" className="sr-only">Tell AgentWorks what you want to get done</label>
               <textarea ref={prompt} autoFocus={focusPrompt} id="welcome-agentworks-message" value={agentWorksDraft} onChange={event => setAgentWorksDraft(event.target.value)} maxLength={20000} rows={3} disabled={agentWorksSending}
@@ -174,8 +174,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
               </div>
               {agentWorksError && <p role="alert" className="mt-2 text-xs text-destructive">{agentWorksError}</p>}
             </form>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={openProviders}>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
+              <Button type="button" size="sm" variant="ghost" onClick={openProviders}>
                 <span aria-hidden="true" className="mr-2 inline-flex items-center -space-x-1.5">
                   {['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-6 w-6 place-items-center rounded-full bg-background ring-2 ring-background"><img src={`/provider-icons/${icon}`} alt="" className="h-4 w-4 object-contain" /></span>)}
                 </span>
