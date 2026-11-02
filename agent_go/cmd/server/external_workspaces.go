@@ -306,7 +306,10 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 					seenAt = lastSeen.UTC().Format(time.RFC3339)
 				}
 				item["location"] = "mac"
-				item["mac"] = map[string]any{"device_id": relay.MacID, "name": relay.MacName, "online": !lastSeen.IsZero() && time.Since(lastSeen) <= 40*time.Second, "last_seen": seenAt}
+				item["mac"] = map[string]any{"device_id": relay.MacID, "name": relay.MacName, "online": !lastSeen.IsZero() && time.Since(lastSeen) <= crewRelayDropAfter, "last_seen": seenAt}
+				if state := readCrewMacState(doc.ID); state != nil {
+					item["state"] = state
+				}
 			}
 			items = append(items, item)
 		}

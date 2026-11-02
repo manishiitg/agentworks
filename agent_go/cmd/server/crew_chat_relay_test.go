@@ -60,60 +60,78 @@ func TestCrewMacEventProjectionKeepsMainAndDropsForeignSessions(t *testing.T) {
 // just because the project is absent. An allowed owner roundtrip follows them.
 func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, pair string) {
 	t.Helper()
-	request := func(claims *UserClaims, suppliedPair string, body []byte) *http.Request {
-		r := httptest.NewRequest(http.MethodPost, "/api/crew-chat/"+project+"/poll?pair="+suppliedPair, bytes.NewReader(body))
-		r = r.WithContext(context.WithValue(t.Context(), UserContextKey, claims))
-		return mux.SetURLVars(r, map[string]string{"project": project})
+	request := func(claims *UserClaims, ctx context.Context) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/api/crew-relay/connect", nil)
+		return mux.SetURLVars(r.WithContext(context.WithValue(ctx, UserContextKey, claims)), map[string]string{"project": project})
 	}
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	other := &UserClaims{UserID: "other", Username: "other"}
 	for _, tc := range []struct {
 		name   string
 		claims *UserClaims
 		pair   string
-		want   int
 	}{
-		{"other valid login", &UserClaims{UserID: "other", Username: "other"}, pair, 403},
-		{"personal MCP token", crewWriter("owner"), pair, 403},
-		{"bot", &UserClaims{UserID: "owner", BotRouteGrant: "route"}, pair, 403},
-		{"wrong pair", owner, "wrong-pair", 403},
-		{"owner", owner, pair, 204},
+		{"other valid login", other, pair},
+		{"personal MCP token", crewWriter("owner"), pair},
+		{"bot", &UserClaims{UserID: "owner", BotRouteGrant: "route"}, pair},
+		{"wrong pair", owner, "wrong-pair"},
 	} {
-		w := httptest.NewRecorder()
-		api.handleCrewChatPoll(w, request(tc.claims, tc.pair, []byte(`{"id":"expired","status":200,"body":{}}`)))
-		if w.Code != tc.want {
-			t.Fatalf("%s: got %d want %d: %s", tc.name, w.Code, tc.want, w.Body.String())
+		if err := api.crewRelayAdmit(t.Context(), tc.claims, crewRelayCrew{Project: project, Pair: tc.pair}); err == nil {
+			t.Fatalf("%s: offered another person's or a wrong Crew", tc.name)
 		}
+	}
+	// Contract §8.5: another account's connection is never routed, and its events for my Crew are dropped.
+	otherSock, err := api.crewRelayRegister(t.Context(), other, crewRelayMessage{Type: "hello", DeviceID: "mac", Crews: []crewRelayCrew{{Project: project, Pair: pair}}}, func(crewRelayMessage) error { return nil }, nil)
+	if err == nil {
+		defer otherSock.unregister()
+		api.crewRelayHandle(t.Context(), otherSock, crewRelayMessage{Type: "event", Project: project, Conversation: "c", Seq: 5, Event: json.RawMessage(`{"events":[{}]}`)})
+	}
+	if replay, _, _, stop := crewRelayStreams.subscribe("owner", project, "c", 0); len(replay) != 0 {
+		stop()
+		t.Fatal("another account's event reached my Crew")
+	} else {
+		stop()
+	}
+	if crewMacSocketFor("owner", project, pair) != nil {
+		t.Fatal("another account's connection was routed for my Crew")
+	}
+	commands := make(chan crewRelayMessage, 8)
+	sock, err := api.crewRelayRegister(t.Context(), owner, crewRelayMessage{Type: "hello", DeviceID: "mac", Crews: []crewRelayCrew{{Project: project, Pair: pair}}}, func(m crewRelayMessage) error { commands <- m; return nil }, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	r := mux.SetURLVars(request(owner, pair, nil).WithContext(context.WithValue(ctx, UserContextKey, owner)), map[string]string{"project": project})
+	r := request(owner, ctx)
+	next := func() crewRelayMessage {
+		t.Helper()
+		select {
+		case m := <-commands:
+			if m.Type != "command" || m.Call == nil || m.Project != project {
+				t.Fatalf("unexpected message to the Mac: %+v", m)
+			}
+			return m
+		case <-ctx.Done():
+			t.Fatal("the Mac got no command")
+		}
+		return crewRelayMessage{}
+	}
 	result := make(chan crewChatResult, 1)
 	go func() { result <- api.callCrewMac(r, project, crewChatCall{Operation: "resolve"}) }()
-	poll := httptest.NewRecorder()
-	get := r.Clone(r.Context())
-	get.Method = http.MethodGet
-	api.handleCrewChatPoll(poll, get)
-	var call crewChatCall
-	if poll.Code != 200 || json.Unmarshal(poll.Body.Bytes(), &call) != nil || call.Operation != "resolve" {
-		t.Fatalf("poll: %d %s", poll.Code, poll.Body.String())
-	}
-	reply, _ := json.Marshal(crewChatResult{ID: call.ID, Status: 200, Body: json.RawMessage(`{"conversation_id":"local-conversation","session_id":"local-session"}`)})
-	w := httptest.NewRecorder()
-	api.handleCrewChatPoll(w, request(owner, pair, reply))
+	cmd := next()
+	api.crewRelayHandle(t.Context(), sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: cmd.Call.ID, Status: 200, Body: json.RawMessage(`{"conversation_id":"local-conversation","session_id":"local-session"}`)}})
 	got := <-result
 	if got.Status != 200 || !bytes.Contains(got.Body, []byte("local-conversation")) || !bytes.Contains(got.Body, []byte(crewChatSessionID(project, ""))) {
 		t.Fatalf("owner response lost local conversation: %+v", got)
 	}
 	t.Run("handoff completion remains admitted after editing moves to server", func(t *testing.T) {
-		// PLAT-856-442: the handoff changes Editing before the Mac posts its
-		// reply. Only that owner's pending handoff may complete in this state.
+		// PLAT-856-442: the handoff changes Editing before the Mac replies. Only
+		// that owner's pending handoff may complete in this state.
 		result := make(chan crewChatResult, 1)
 		go func() { result <- api.callCrewMac(r, project, crewChatCall{Operation: "handoff"}) }()
-		poll := httptest.NewRecorder()
-		api.handleCrewChatPoll(poll, get)
-		var call crewChatCall
-		if poll.Code != 200 || json.Unmarshal(poll.Body.Bytes(), &call) != nil || call.Operation != "handoff" {
-			t.Fatalf("handoff poll: %d %s", poll.Code, poll.Body.String())
+		cmd := next()
+		if cmd.Call.Operation != "handoff" {
+			t.Fatalf("handoff command: %+v", cmd.Call)
 		}
 		binding, e := crewroot.ReadSync(project)
 		if e != nil || binding == nil {
@@ -129,34 +147,22 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 				t.Fatal(e)
 			}
 		}()
-		body, _ := json.Marshal(crewChatResult{ID: call.ID, Status: 200, Body: json.RawMessage(`{"complete":true}`)})
-		for _, tc := range []struct {
-			who  *UserClaims
-			id   string
-			want int
-		}{
-			{&UserClaims{UserID: "other", Username: "other"}, call.ID, 403},
-			{owner, "unrelated", 403},
-			{owner, call.ID, 204},
-		} {
-			var reply crewChatResult
-			json.Unmarshal(body, &reply)
-			reply.ID = tc.id
-			raw, _ := json.Marshal(reply)
-			w := httptest.NewRecorder()
-			api.handleCrewChatPoll(w, request(tc.who, pair, raw))
-			if w.Code != tc.want {
-				t.Fatalf("handoff completion: got %d want %d: %s", w.Code, tc.want, w.Body.String())
-			}
+		done := json.RawMessage(`{"complete":true}`)
+		if otherSock != nil {
+			api.crewRelayHandle(t.Context(), otherSock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: cmd.Call.ID, Status: 200, Body: done}})
 		}
+		api.crewRelayHandle(t.Context(), sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: "unrelated", Status: 200, Body: done}})
+		select {
+		case early := <-result:
+			t.Fatalf("another login or an unrelated reply completed the handoff: %+v", early)
+		case <-time.After(100 * time.Millisecond):
+		}
+		api.crewRelayHandle(t.Context(), sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: cmd.Call.ID, Status: 200, Body: done}})
 		if got := <-result; got.Status != 200 {
 			t.Fatalf("completion lost: %d %s", got.Status, got.Body)
 		}
 	})
-	crewChatRelays.Lock()
-	box := crewChatRelays.boxes[crewChatMailboxKey("owner", project, pair)]
-	box.lastPoll = time.Time{}
-	crewChatRelays.Unlock()
+	sock.unregister()
 	if got := api.callCrewMac(r, project, crewChatCall{Operation: "send", Message: "hello"}); got.Status != 503 {
 		t.Fatalf("offline must refuse, never execute on server: %d", got.Status)
 	}
@@ -190,7 +196,7 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 			{"Relay", "relay", project, owner, false},
 		} {
 			w := httptest.NewRecorder()
-			if got := api.routeCrewMainChat(w, request(tc.claims, pair, nil), tc.profile, tc.key, crewChatCall{Operation: "resolve"}); got != tc.want {
+			if got := api.routeCrewMainChat(w, request(tc.claims, t.Context()), tc.profile, tc.key, crewChatCall{Operation: "resolve"}); got != tc.want {
 				t.Fatalf("%s: routed=%v want=%v: %s", tc.name, got, tc.want, w.Body.String())
 			}
 			if tc.want && w.Code != 503 {

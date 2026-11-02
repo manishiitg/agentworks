@@ -5,70 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
-
-// Reuse the desktop's saved website sign-in. No inbound port, CLI credential
-// export or second login is needed. Sleep/wake simply interrupts the next poll.
-func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
-	ctx, cancel := context.WithCancel(context.Background())
-	if !IsLocalMode() {
-		return cancel
-	}
-	go func() {
-		workers := map[string]context.CancelFunc{}
-		defer func() {
-			for _, stop := range workers {
-				stop()
-			}
-		}()
-		for {
-			state, err := workflowCLIStateRoot()
-			if err == nil {
-				entries, _ := os.ReadDir(filepath.Join(state, "crew-sync"))
-				live := map[string]bool{}
-				for _, entry := range entries {
-					if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-						continue
-					}
-					id := strings.TrimSuffix(entry.Name(), ".json")
-					binding, e := crewroot.ReadSync(id)
-					if e != nil || binding == nil || binding.Side != "local" || binding.Editing != "local" || binding.PendingAction != "" {
-						continue
-					}
-					live[id] = true
-					if workers[id] == nil {
-						child, stop := context.WithCancel(ctx)
-						workers[id] = stop
-						go api.pollDesktopCrewChat(child, id)
-					}
-				}
-				for id, stop := range workers {
-					if !live[id] {
-						stop()
-						delete(workers, id)
-					}
-				}
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-			}
-		}
-	}()
-	return cancel
-}
 
 func (api *StreamingAPI) desktopCrewChatBinding(ctx context.Context, project string) (*UserClaims, *crewroot.SyncBinding, desktopConnection, error) {
 	if !IsLocalMode() {
@@ -90,112 +33,6 @@ func (api *StreamingAPI) desktopCrewChatBinding(ctx context.Context, project str
 		return nil, nil, desktopConnection{}, fmt.Errorf("paired server sign-in is unavailable")
 	}
 	return claims, b, connection, nil
-}
-
-func desktopCrewChatHTTP(ctx context.Context, owner string, connection desktopConnection, b *crewroot.SyncBinding, result *crewChatResult) (*http.Response, error) {
-	method := http.MethodGet
-	var body io.Reader
-	if result != nil {
-		method = http.MethodPost
-		data, _ := json.Marshal(result)
-		body = bytes.NewReader(data)
-	}
-	r, err := http.NewRequestWithContext(ctx, method, connection.Server+"/api/crew-chat/"+url.PathEscape(b.PeerProjectID)+"/poll?pair="+url.QueryEscape(b.PairID), body)
-	if err != nil {
-		return nil, err
-	}
-	r.Header.Set("Authorization", "Bearer "+connection.Token)
-	r.Header.Set("Content-Type", "application/json")
-	client := desktopHTTPClient()
-	client.Timeout = 35 * time.Second
-	response, err := client.Do(r)
-	if err != nil {
-		return nil, err
-	}
-	if token := response.Header.Get("X-Renewed-Token"); token != "" {
-		desktopConnectionsMu.Lock()
-		records, e := readDesktopConnections(owner)
-		if e == nil {
-			for i := range records {
-				if records[i].ID == connection.ID && records[i].Token == connection.Token {
-					records[i].Token = token
-				}
-			}
-			e = writeDesktopConnections(owner, records)
-		}
-		desktopConnectionsMu.Unlock()
-		if e != nil {
-			response.Body.Close()
-			return nil, e
-		}
-	}
-	return response, nil
-}
-
-func (api *StreamingAPI) pollDesktopCrewChat(ctx context.Context, project string) {
-	lastState := ""
-	for ctx.Err() == nil {
-		claims, b, connection, err := api.desktopCrewChatBinding(ctx, project)
-		state := "unavailable"
-		if err == nil {
-			response, e := desktopCrewChatHTTP(ctx, claims.UserID, connection, b, nil)
-			if e == nil {
-				state = fmt.Sprintf("http-%d", response.StatusCode)
-				if response.StatusCode == 200 {
-					var call crewChatCall
-					e = json.NewDecoder(io.LimitReader(response.Body, maxAgentProfileRequestBytes)).Decode(&call)
-					response.Body.Close()
-					if e == nil && call.ID == "" {
-						e = fmt.Errorf("server returned no chat request")
-					}
-					if e == nil && call.ID != "" {
-						callCtx := ctx
-						stopCall := func() {}
-						if call.Operation == "handoff" {
-							callCtx, stopCall = context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute)
-						}
-						result := api.runDesktopCrewChat(callCtx, project, b.PairID, call)
-						stopCall()
-						// Refresh the saved login after a possible poll renewal.
-						_, current, fresh, check := api.desktopCrewChatBinding(ctx, project)
-						if call.Operation == "handoff" {
-							// The completed transfer intentionally changed Editing; its
-							// reply still belongs to the same owner and saved pair.
-							current, check = crewroot.ReadSync(project)
-							fresh, err = desktopConnectionFor(claims.UserID, b.ConnectionID)
-							if err != nil {
-								check = err
-							}
-						}
-						if check == nil && current != nil && current.PairID == b.PairID {
-							replyCtx, stopReply := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-							reply, e := desktopCrewChatHTTP(replyCtx, claims.UserID, fresh, current, &result)
-							stopReply()
-							if e == nil {
-								reply.Body.Close()
-							}
-						}
-					}
-				} else {
-					response.Body.Close()
-				}
-				if response.StatusCode == 204 || response.StatusCode == 200 && e == nil {
-					state = "connected"
-				}
-			}
-		}
-		if state != lastState {
-			log.Printf("[CREW_CHAT_RELAY] desktop project=%s state=%s", project, state)
-			lastState = state
-		}
-		if state != "connected" {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-			}
-		}
-	}
 }
 
 func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair string, call crewChatCall) crewChatResult {

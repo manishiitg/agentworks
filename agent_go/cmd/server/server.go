@@ -2429,7 +2429,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Multi-provider OAuth routes
 	apiRouter.HandleFunc("/auth/start", api.handleAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/auth/callback", api.handleAuthCallback).Methods("GET")
-	apiRouter.HandleFunc("/crew-chat/{project}/poll", api.handleCrewChatPoll).Methods("GET", "POST")
+	apiRouter.HandleFunc("/crew-relay/connect", api.handleCrewRelayConnect).Methods("GET")
 	apiRouter.HandleFunc("/crew-sync/{project}/native", api.handleCrewNativeSync).Methods("GET")
 	apiRouter.HandleFunc("/crew-sync/{project}/dependencies", api.handleCrewDependencies).Methods("POST")
 	apiRouter.HandleFunc("/crew-sync-capabilities", handleCrewSyncCapabilities).Methods("GET")
