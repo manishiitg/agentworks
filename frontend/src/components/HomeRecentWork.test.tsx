@@ -24,14 +24,14 @@ const refreshConnections = useConnectedWorkStore.getState().refresh
 afterEach(() => { cleanup(); vi.restoreAllMocks(); document.body.innerHTML = ''; delete window.__APP_RUNTIME_CONFIG__; delete window.electronAPI; useConnectedWorkStore.setState({ refresh: refreshConnections }) })
 const project = { workspace_id: 'work:notes', id: 'notes', profile_id: 'work' as const, owned_by_caller: true, mode: 'builder' as const, name: 'Research notes', workspace_path: 'Crew/notes' }
 const history = [{ session_id: 'note-chat', workspace_path: 'Crew/notes', updated_at: '2026-10-26T10:00:00Z' }, { session_id: 'goal-chat', workspace_path: 'Goals/reading', updated_at: '2026-10-26T11:00:00Z' }]
-async function mount() {
+async function mount(personalAgentId?: string) {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'agentworks', 'relays'] } as never
   useAuthStore.setState({ user: { id: 'alice', allowed_workflow_ids: ['reading'] } as never })
   useChatStore.setState({ chatTabs: {}, activeSessionsCache: [] })
   useGlobalPresetStore.setState({ workflowPresets: [{ id: 'reading', label: 'Reading target', createdAt: 1, selectedFolder: { filepath: 'Goals/reading' } }, { id: 'hidden', label: 'Not admitted', createdAt: 1, selectedFolder: { filepath: 'Goals/hidden' } }] as never })
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   cleanup = () => { act(() => root.unmount()); host.remove() }
-  await act(async () => root.render(<HomeRecentWork />))
+  await act(async () => root.render(<HomeRecentWork personalAgentId={personalAgentId} />))
   return host
 }
 it('groups admitted history by stable project identity and links to the actual project', async () => {
@@ -84,16 +84,17 @@ it('keeps connected Home visits scoped to admitted projects, accounts and server
   window.electronAPI = { getDesktopConnection: () => 'local', openDesktopConnection: open } as never
   localStorage.setItem('auth-storage', JSON.stringify({ state: { user: { id: 'alice' } } }))
   const scope = connectedWorkHistoryScope()
-  useProjectMenuHistoryStore.setState({ recent: { [scope]: [connectedProjectKey('remote', 'crew', 'same'), connectedProjectKey('local', 'goal', 'same'), connectedProjectKey('remote', 'crew', 'removed')] } })
+  useProjectMenuHistoryStore.setState({ recent: { [scope]: [connectedProjectKey('remote', 'crew', 'same'), connectedProjectKey('local', 'goal', 'same'), connectedProjectKey('remote', 'crew', 'removed'), connectedProjectKey('local', 'crew', 'manager')] } })
   useConnectedWorkStore.setState({ identity: captureChatIdentity(), loaded: true, error: '', refresh: async () => {}, connections: [
     { id: 'local', name: 'Local', server: '' }, { id: 'remote', name: 'Company', server: 'https://example.com' },
   ], inventory: {
-    local: { status: 'connected', projects: [{ id: 'same', name: 'Local goal', kind: 'goal' }] },
+    local: { status: 'connected', projects: [{ id: 'same', name: 'Local goal', kind: 'goal' }, { id: 'manager', name: 'Personal manager', kind: 'crew' }] },
     remote: { status: 'connected', projects: [{ id: 'same', name: 'Remote dashboard', kind: 'crew', mode: 'run', icon: '🚀' }, { id: 'unused', name: 'Never opened', kind: 'crew' }] },
   } })
-  const host = await mount()
+  const host = await mount('manager')
   expect(host.querySelectorAll('li')).toHaveLength(2)
   expect(host.textContent).not.toContain('Never opened')
+  expect(host.textContent).not.toContain('Personal manager')
   expect(host.textContent).toContain('🚀')
   expect(history).not.toHaveBeenCalled()
   const remote = host.querySelector<HTMLButtonElement>('[aria-label="Remote dashboard · Shared dashboard · Company"]')!
@@ -105,4 +106,16 @@ it('keeps connected Home visits scoped to admitted projects, accounts and server
   await act(async () => { invalidateChatIdentity(); useConnectedWorkStore.setState({ loaded: false }) })
   expect(host.textContent).not.toContain('Local goal')
   expect(host.textContent).toContain('Loading')
+})
+
+it('omits only the personal agent already shown above, including after a rename', async () => {
+  vi.spyOn(agentApi, 'listChatHistorySessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(agentApi, 'listWorkspaceNavigation').mockResolvedValue({ workspaces: [
+    { ...project, name: 'AgentWorks' },
+    { ...project, id: 'manager', workspace_id: 'work:manager', name: 'Renamed personal manager', workspace_path: 'Crew/manager' },
+  ] })
+  const host = await mount('manager')
+  expect(host.textContent).toContain('AgentWorks')
+  expect(host.textContent).not.toContain('Renamed personal manager')
+  expect(host.querySelectorAll('li')).toHaveLength(1)
 })
