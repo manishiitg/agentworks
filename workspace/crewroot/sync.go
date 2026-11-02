@@ -209,10 +209,7 @@ func SyncContentAllowed(key string, directory bool) bool {
 	if path.Base(rel) == ".gitignore" || path.Base(rel) == ".gitattributes" {
 		return true
 	}
-	if directory {
-		return !publication.ExcludedDirectory(rel)
-	}
-	return !publication.Excluded(rel)
+	return !publication.ExcludedFromSync(rel, directory)
 }
 
 var SyncRuntimeDirectories = []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"}

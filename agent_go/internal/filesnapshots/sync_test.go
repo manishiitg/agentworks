@@ -33,7 +33,7 @@ func TestSyncBundlesPreserveReplicaEditsAndUndoHistory(t *testing.T) {
 		}
 	}
 	write(a.Files, "note.txt", "baseline")
-	write(a.Files, ".env", "private")
+	write(a.Files, ".cache/token", "private")
 	// A private turn contains content that is absent from the sync tree.
 	if _, err := sa.Warm(time.Minute); err != nil {
 		// The private test store has no credentials. Show names/origins only
@@ -163,7 +163,7 @@ func TestSyncBundlesPreserveReplicaEditsAndUndoHistory(t *testing.T) {
 			t.Fatalf("pruned sync %s: %v", name, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(b.Files, ".env")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(b.Files, ".cache/token")); !os.IsNotExist(err) {
 		t.Fatal("private file crossed sync")
 	}
 }
