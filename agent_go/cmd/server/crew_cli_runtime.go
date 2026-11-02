@@ -206,13 +206,15 @@ func inSlotStateFolder(dir, slot string) bool {
 	return strings.HasPrefix(filepath.Clean(dir)+string(filepath.Separator), filepath.Clean(state)+string(filepath.Separator))
 }
 
-// slotRunsProvider reports whether provider's CLI runs as a person's slot (PLAT-872-86: Pi and Antigravity not yet).
+// slotRunsProvider reports whether provider's CLI runs as a person's slot (PLAT-872-86).
 func slotRunsProvider(provider string) bool {
 	// The launcher gives the slot the server's own login (a file or the environment) and Landlock keeps it out of
 	// every shell the CLI starts (PLAT-872-84, PLAT-872-86).
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "claude-code", "codex-cli", "cursor-cli", "muse-cli":
+	case "claude-code":
 		return true
+	// Codex, Cursor and Muse wait for their slot launch to be proven: Cursor's SDK launch as a slot exited 125
+	// at once on a live server (PLAT-872-86).
 	}
 	return false
 }
