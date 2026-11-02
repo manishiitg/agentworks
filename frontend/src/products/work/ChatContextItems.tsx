@@ -41,6 +41,30 @@ export const chatContextChangedEvent = 'agentworks:chat-context-changed'
 /** Sent by the chip in the chat box to open that chat's model menu. */
 export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 
+type ChatContextChange = { idle_compaction?: boolean; claude_terminal?: boolean; action?: 'compact' | 'fresh' }
+
+/**
+ * Sends one change to the server and shows its answer everywhere: the menu, the chip and the terminal icon
+ * all follow chatContextChangedEvent. Returns the server's new view, or null when it refused (a toast says why).
+ */
+export async function changeChatContext(sessionId: string, body: ChatContextChange): Promise<ChatContextView | null> {
+  try {
+    const result = await agentApi.setChatContext({ session_id: sessionId, ...body })
+    window.dispatchEvent(new CustomEvent(chatContextChangedEvent, { detail: result.context }))
+    if (body.claude_terminal !== undefined) {
+      // Show the chat the way it now runs; the terminal opens with the next message's launch.
+      const tab = Object.values(useChatStore.getState().chatTabs).find(candidate => candidate.sessionId === sessionId)
+      if (tab) useChatStore.getState().setTabViewMode(tab.tabId, body.claude_terminal ? 'terminal' : 'formatted')
+    }
+    if (result.message) useChatStore.getState().addToast(result.message, 'success')
+    return result.context
+  } catch (cause) {
+    const reason = (cause as { response?: { data?: { error?: string } } })?.response?.data?.error
+    useChatStore.getState().addToast(reason || 'That did not work. Try again in a moment.', 'error')
+    return null
+  }
+}
+
 /**
  * The "Context" group of a chat's model menu (PLAT-872-71): how full this chat is, its account's plan limits,
  * and the switches and actions the server offers for it. Everything comes from the server; a choice is sent
@@ -64,22 +88,12 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
   const offersSomething = Boolean(view.idle_compaction || view.claude_terminal || view.can_compact || view.can_fresh)
   if (!(used > 0) && !limits && !offersSomething) return null
 
-  const send = async (body: { idle_compaction?: boolean; claude_terminal?: boolean; action?: 'compact' | 'fresh' }) => {
+  const send = async (body: ChatContextChange) => {
     if (busy) return
     setBusy(true)
     try {
-      const result = await agentApi.setChatContext({ session_id: sessionId, ...body })
-      setView(result.context)
-      window.dispatchEvent(new CustomEvent(chatContextChangedEvent, { detail: result.context }))
-      if (body.claude_terminal !== undefined) {
-        // Show the chat the way it now runs; the terminal opens with the next message's launch.
-        const tab = Object.values(useChatStore.getState().chatTabs).find(candidate => candidate.sessionId === sessionId)
-        if (tab) useChatStore.getState().setTabViewMode(tab.tabId, body.claude_terminal ? 'terminal' : 'formatted')
-      }
-      if (result.message) useChatStore.getState().addToast(result.message, 'success')
-    } catch (cause) {
-      const reason = (cause as { response?: { data?: { error?: string } } })?.response?.data?.error
-      useChatStore.getState().addToast(reason || 'That did not work. Try again in a moment.', 'error')
+      const next = await changeChatContext(sessionId, body)
+      if (next) setView(next)
     } finally { setBusy(false) }
   }
   // Keep the menu open after a switch, so the person sees it change.

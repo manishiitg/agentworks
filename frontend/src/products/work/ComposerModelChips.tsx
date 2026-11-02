@@ -10,6 +10,7 @@ import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
 import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
+import ClaudeTerminalToggle from './ClaudeTerminalToggle'
 import ChatContextItems, { menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
@@ -153,7 +154,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
-  return <Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen} columns={Boolean(sessionId)} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
+  return <><Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen} columns={Boolean(sessionId)} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
     <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
     {sourceText && <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-[11px] text-muted-foreground">
       {sourceTag === 'Mac' ? <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" /> : <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
@@ -197,4 +198,5 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} /></div>}
     </div>
   </Chip>
+    {sessionId && <ClaudeTerminalToggle sessionId={sessionId} />}</>
 }
