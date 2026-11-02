@@ -1,6 +1,7 @@
 console.log('Cache bust: 2026-02-08-150000');
 import { needsYouDecisions } from '../utils/needsYouDecisions'
 import axios from 'axios'
+import type { CrewLocationFields } from '../components/workspace/macCrews'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../utils/chatIdentity'
 import { createRequestCoalescer } from './requestCoalescer'
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
@@ -1319,7 +1320,7 @@ export const agentApi = {
   },
 
   /** Minimal app navigation from the current canonical project inventory. */
-  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; icon?: string; owned_by_caller: boolean; owner_name?: string; mode: 'builder' | 'run'; workspace_path: string; aliases?: string[] }> }> => {
+  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; icon?: string; owned_by_caller: boolean; owner_name?: string; mode: 'builder' | 'run'; workspace_path: string; aliases?: string[] } & CrewLocationFields> }> => {
     const response = await api.post('/api/workspaces', { action: 'list', detail: 'navigation' })
     const result = response.data
     if (!Array.isArray(result.workspaces) || result.workspaces.some((item: { workspace_id?: string; id?: string; profile_id?: string; workspace_path?: string }) =>

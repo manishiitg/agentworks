@@ -80,3 +80,26 @@ it('keeps shared projects in the active server beside the owner navigation', asy
     await act(async () => root.unmount()); window.electronAPI = previous
   }
 })
+
+it('website lists Mac Crews under their Mac, greyed with their last state when the Mac is off (PLAT-856-509)', async () => {
+  const previous = window.electronAPI
+  window.electronAPI = undefined
+  const mac = { device_id: 'dev-1', name: 'MacBook Air', online: false, last_seen: '2026-11-02T10:00:00Z' }
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<DesktopConnections projects={[
+      { id: 'p1', name: 'Login fixes', kind: 'crew', owned_by_caller: true, location: 'mac', mac, state: { state: 'idle', at: '2026-11-02T09:00:00Z' } },
+      { id: 'p2', name: 'QA agent', kind: 'crew', owned_by_caller: true, location: 'server' },
+    ]} />))
+    const macGroup = host.querySelector('section[aria-label="On your Mac: MacBook Air"]')!
+    expect(macGroup.textContent).toContain('Login fixes')
+    expect(macGroup.textContent).toContain('Off · last seen')
+    expect(macGroup.textContent).toContain('Idle · last reply')
+    expect(macGroup.querySelector('.opacity-60')).not.toBeNull()
+    expect(macGroup.textContent).not.toContain('QA agent')
+    expect(host.textContent).toContain('On the server')
+  } finally {
+    await act(async () => root.unmount())
+    window.electronAPI = previous
+  }
+})
