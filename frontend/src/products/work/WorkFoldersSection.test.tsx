@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const folderApi = vi.hoisted(() => ({ listWorkFolders: vi.fn(), addWorkFolder: vi.fn(), deleteWorkFolder: vi.fn() }))
-vi.mock('../../services/api', () => ({ default: { get: vi.fn(async () => ({ data: { available: false } })) }, workFolderApi: folderApi }))
+vi.mock('../../services/api', () => ({ default: { get: vi.fn(async () => ({ data: { available: false } })) }, workFolderApi: folderApi, getApiBaseUrl: () => 'https://example.test' }))
 vi.mock('./workSessions', () => ({ loadWorkSessions: vi.fn(async () => []) }))
 vi.mock('./projectProduct', () => ({ useProjectProduct: () => ({}) }))
 vi.mock('./WorkModelsPanel', () => ({ WorkModelsPanel: () => null }))
