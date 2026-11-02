@@ -15,6 +15,12 @@ test('packaged server avoids voice dylibs below their macOS requirement', () => 
     assert.equal(old.binary, path.join(root, 'agent-server'));
     assert.match(old.voiceUnavailableReason, /15\.5\.0/);
     assert.equal(selectPackagedAgent(root, '15.5').binary, path.join(root, 'voice', 'agent-server'));
+    assert.equal(selectPackagedAgent(root, '26').binary, path.join(root, 'voice', 'agent-server'));
     assert.equal(selectPackagedAgent(root, '26.4').binary, path.join(root, 'voice', 'agent-server'));
+    assert.equal(selectPackagedAgent(root, '26 beta').binary, path.join(root, 'agent-server'));
+    fs.writeFileSync(path.join(root, 'voice', 'minimum-macos.json'), '{broken');
+    assert.equal(selectPackagedAgent(root, '26').binary, path.join(root, 'agent-server'));
+    fs.unlinkSync(path.join(root, 'voice', 'minimum-macos.json'));
+    assert.equal(selectPackagedAgent(root, '26').binary, path.join(root, 'agent-server'));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
