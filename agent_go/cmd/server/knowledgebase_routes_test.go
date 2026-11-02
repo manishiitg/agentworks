@@ -26,6 +26,15 @@ func knowledgebaseServerTest(t *testing.T) (*StreamingAPI, *knowledgebase.Servic
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Close the cached service before TempDir cleanup: Windows cannot delete its open database file.
+	t.Cleanup(func() {
+		knowledgebaseInstance.Lock()
+		defer knowledgebaseInstance.Unlock()
+		if knowledgebaseInstance.service == service {
+			_ = service.Close()
+			knowledgebaseInstance.service = nil
+		}
+	})
 	if err = knowledgebaseSyncIdentities(t.Context(), service); err != nil {
 		t.Fatal(err)
 	}

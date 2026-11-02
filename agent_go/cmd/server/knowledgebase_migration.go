@@ -667,14 +667,7 @@ func knowledgeMigrationRollback(ctx context.Context, service *knowledgebase.Serv
 	return r, nil
 }
 
-func knowledgeSyncDirectory(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return f.Sync()
-}
+func knowledgeSyncDirectory(path string) error { return syncDirectory(path) }
 
 // knowledgeConfigMatches reports whether the project's knowledge configuration is what the migration preview recorded.
 func knowledgeConfigMatches(project *knowledgeProject, original map[string]json.RawMessage) bool {

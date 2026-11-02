@@ -419,10 +419,5 @@ func writeBrainStarterOffers(file string, offered map[string]brainStarterOffer) 
 	if err := os.Rename(tmp, file); err != nil {
 		return err
 	}
-	dir, err := os.Open(filepath.Dir(file))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return syncDirectory(filepath.Dir(file))
 }
