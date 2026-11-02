@@ -43,6 +43,7 @@ server only copies and activates it after verifying its manifest (architecture, 
   DEPLOY_BUILD_TRANSPORT=auto|github|stream   how rts gets the build: RTS downloads it from the public builds repo on GitHub
                         (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
   DEPLOY_SHA_MCP_AGENT_BUILDER_GO / DEPLOY_SHA_MCPAGENT / DEPLOY_SHA_MULTI_LLM_PROVIDER_GO=<40-hex>   build that commit of the repository instead of main's head
+                        (without it, mcpagent and multi-llm-provider-go build at the commits agent_go/go.mod pins)
                         (it must already be on main); for a release that leaves out work still landing
   DEPLOY_REFRESH_TOOLS=1    refresh provider CLIs and agent-browser from vendors; normal deploys reuse healthy unchanged tools
   DEPLOY_SECURITY_CHECKS=full|basic   how thorough the slot self-test at the end of a deploy of a slot host is (default full): basic = a

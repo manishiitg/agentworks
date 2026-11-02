@@ -27,24 +27,47 @@ to_https_url() {
 }
 
 # Builds on the build host, printing the build's name on stdout (progress on stderr). Reuses the build of the same three revisions.
+# gomod_pinned_sha <app sha> <module repo>: the full commit agent_go/go.mod at that app commit pins for the module
+# (its pseudo-version suffix), so a release builds what the app was tested against, not whatever main moved on to.
+gomod_pinned_sha() {
+  local app="$1" repo="$2" module short full
+  case "$repo" in
+    mcpagent) module="github.com/manishiitg/mcpagent" ;;
+    multi-llm-provider-go) module="github.com/manishiitg/multi-llm-provider-go" ;;
+    *) return 1 ;;
+  esac
+  git -C "$REPO_ROOT" fetch -q origin "$app" 2>/dev/null || true
+  short="$(git -C "$REPO_ROOT" show "$app:agent_go/go.mod" 2>/dev/null | awk -v m="$module" '$1 == m && $2 ~ /-[0-9a-f]{12}$/ {n = split($2, p, "-"); print p[n]; exit}')"
+  [[ "$short" =~ ^[0-9a-f]{12}$ ]] || return 1
+  git -C "$(repo_dir "$repo")" fetch -q origin 2>/dev/null || true
+  full="$(git -C "$(repo_dir "$repo")" rev-parse -q --verify "$short^{commit}" 2>/dev/null)" || return 1
+  printf '%s\n' "$full"
+}
+
 build_release_remote() {
-  local branch="${DEPLOY_BRANCH:-main}" repo url sha args=() out name
+  local branch="${DEPLOY_BRANCH:-main}" repo url sha args=() out name app_sha="" source
   for repo in $BUILD_REPOS; do
     url="$(to_https_url "$(git -C "$(repo_dir "$repo")" remote get-url origin)")" || return 1
     # DEPLOY_SHA_<REPO> (REPO upper-case, - as _) builds that commit instead of the branch head, so a release can leave out work still landing on main.
     # It must already be on main of that repository.
     local pin_var="DEPLOY_SHA_$(printf '%s' "$repo" | tr 'a-z-' 'A-Z_')" pinned
     pinned="${!pin_var:-}"
+    source=""
     if [[ -n "$pinned" ]]; then
       [[ "$pinned" =~ ^[0-9a-f]{40}$ ]] || { echo "$pin_var must be a full 40-hex commit" >&2; return 1; }
       git -C "$(repo_dir "$repo")" merge-base --is-ancestor "$pinned" origin/main 2>/dev/null \
         || { echo "$pin_var ${pinned:0:10} is not an ancestor of origin/main of $repo; refusing." >&2; return 1; }
-      sha="$pinned"
+      sha="$pinned" source=" (pinned)"
+    elif [[ "$repo" != mcp-agent-builder-go ]] && sha="$(gomod_pinned_sha "$app_sha" "$repo")"; then
+      # The app's go.mod decides the dependency revisions; main's head of a dependency may be untested with this app.
+      source=" (agent_go/go.mod)"
     else
       sha="$(git ls-remote "$url" "refs/heads/$branch" | awk '{print $1}')"
+      [[ "$repo" == mcp-agent-builder-go ]] || source=" (branch head: go.mod pin not resolvable)"
     fi
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve $branch of $url" >&2; return 1; }
-    echo "  $repo $branch = ${sha:0:10}${pinned:+ (pinned)}" >&2
+    [[ "$repo" != mcp-agent-builder-go ]] || app_sha="$sha"
+    echo "  $repo $branch = ${sha:0:10}$source" >&2
     args+=(--source "$repo" "$url" "$sha")
   done
   [[ "${DEPLOY_FORCE_BUILD:-0}" != 1 ]] || args+=(--force)
