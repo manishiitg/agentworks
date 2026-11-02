@@ -48,8 +48,10 @@ func notifierApp() (string, error) {
 	return filepath.Join(home, "Applications", "AgentWorks.app"), nil
 }
 
-// notifierAddedNote is shown once, as the first notification after the app is created.
-const notifierAddedNote = "AgentWorks added a small notifier app so its notifications show its icon. Remove it any time by deleting ~/Applications/AgentWorks.app, or with agentworks setup notifications --remove."
+// notifierAddedNote is shown once, as the first notification after the app is
+// created. macOS asks the person to allow notifications over this note, so it
+// should arrive before any real ping (prepareNotifier), which the prompt would hide.
+const notifierAddedNote = "AgentWorks notifications are ready: you'll see one here when another agent pings you. If macOS asks, choose Allow. To remove this small notifier app: agentworks setup notifications --remove."
 
 // ensureNotifierApp builds the app once (or after an update of it); created
 // reports a fresh build, so the person can be told once.
@@ -181,8 +183,28 @@ func removeNotifierApp() (string, error) {
 	return "Removed " + app + " and will not add it again. AgentWorks notifications now use the plain macOS style. To get the icon back: agentworks setup notifications.", nil
 }
 
-// restoreNotifierApp lets the CLI add the app again (agentworks setup notifications).
+// restoreNotifierApp adds the app again now (agentworks setup notifications), so
+// macOS asks for permission before the next ping instead of over it.
 func restoreNotifierApp() (string, error) {
 	_ = os.Remove(notifierOff())
-	return "AgentWorks will add its small notifier app the next time it notifies you, so notifications show its icon.", nil
+	if prepareNotifier() {
+		return "AgentWorks added its notifier app and showed a test notification. If macOS asked, choose Allow so pings from other agents show.", nil
+	}
+	return "AgentWorks notifications are on. If you don't see them, allow AgentWorks in System Settings > Notifications.", nil
+}
+
+// prepareNotifier builds the notifier app before the first ping and, only when it
+// was just built, shows the ready note. macOS shows its one-time permission prompt
+// over that note; otherwise the prompt hid the first real ping (PLAT-856-503).
+// It reports whether the note was shown; an app the person removed stays removed.
+func prepareNotifier() bool {
+	notifierMu.Lock()
+	defer notifierMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	app, created, err := ensureNotifierApp(ctx)
+	if err != nil || !created {
+		return false
+	}
+	return showNotification(app, notifierAddedNote) == nil
 }

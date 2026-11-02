@@ -72,3 +72,6 @@ func removeNotifierApp() (string, error) {
 func restoreNotifierApp() (string, error) {
 	return "AgentWorks adds no notifier app on this system.", nil
 }
+
+// prepareNotifier: only macOS needs its notifier app prepared before a ping.
+func prepareNotifier() bool { return false }
