@@ -2,10 +2,10 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[], pr: false, canReview: true, gitVersions: false, skipped: [] as string[] }))
+const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[], pr: false, canReview: true, canEdit: true, prState: 'open', gitVersions: false, skipped: [] as string[] }))
 const replies = [{ snapshot_id: 'first', end_sequence: 2 }, { snapshot_id: 'last', end_sequence: 4 }]
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
-  if (options.params.op === 'chat_status') return { data: { history: { can_review: state.canReview }, groups: state.pr ? [{ kind: 'repo', root: 'app-wt', name: 'app-wt', github_repo: 'example/project', branch: 'feature', pr: { number: 7, state: 'open', url: 'https://github.com/example/project/pull/7' } }] : [] } }
+  if (options.params.op === 'chat_status') return { data: { history: { can_review: state.canReview }, can_edit: state.canEdit, groups: state.pr ? [{ kind: 'repo', root: 'app-wt', name: 'app-wt', github_repo: 'example/project', branch: 'feature', pr: state.prState === 'open' ? { number: 7, state: 'open', url: 'https://github.com/example/project/pull/7' } : { state: state.prState } }] : [] } }
   if (options.params.op === 'snapshots') return { data: { recent_repos: state.recentRepos } }
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
   if (state.gitVersions) return { data: { history: { replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: 'start', can_review: true }, comparison: { changes: [
@@ -26,10 +26,13 @@ vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat
 vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: () => ({}), assertChatIdentityCurrent: () => undefined }))
 vi.mock('../../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }))
 vi.mock('../FileContentViewer', () => ({ FileContentViewerBody: ({ source, editable }: { source: { fileContent: string }; editable: boolean }) => <pre data-testid="file-content" data-editable={String(Boolean(editable))}>{source.fileContent}</pre> }))
+vi.mock('../../utils/projectIntegrationNavigation', () => ({ openProjectIntegrations: vi.fn() }))
 vi.mock('./chatFileNavigation', () => ({ openChatFiles: vi.fn() }))
 vi.mock('./FileDiffView', () => ({ FileDiffView: () => null }))
 import api, { agentApi } from '../../services/api'
 import { openChatFiles } from './chatFileNavigation'
+import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { ReplyFileViewer } from './ReplyFileViewer'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { ChatFileReview } from './ChatFileReview'
@@ -170,10 +173,37 @@ describe('Studio review comments', () => {
       const watch = [...host.querySelectorAll('button')].find(item => item.textContent === 'Watch PR')!
       expect(watch.dataset).toMatchObject({ worktree: 'app-wt', session: 'chat-a' })
       expect(host.querySelector('a[href="https://github.com/example/project/pull/7"]')).not.toBeNull()
-      state.canReview = false
+      state.canEdit = false
       await act(async () => root.render(<ChatFileReview key="run" workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
       expect([...host.querySelectorAll('button')].some(item => item.textContent === 'Watch PR')).toBe(false)
-    } finally { state.pr = false; state.canReview = true; await act(async () => root.unmount()); host.remove() }
+    } finally { state.pr = false; state.canEdit = true; await act(async () => root.unmount()); host.remove() }
+  })
+
+  it('keeps connect and retry available before a PR number exists and refreshes after GitHub changes', async () => {
+    // PLAT-746-286: filtering on pr.number hid the connection the owner needed to discover the PR.
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    state.pr = true; state.prState = 'connect_github'
+    const button = (text: string) => [...host.querySelectorAll('button')].find(item => item.textContent === text)!
+    try {
+      await act(async () => root.render(<ChatFileReview allChat workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      await act(async () => button('Connect GitHub').click())
+      expect(openProjectIntegrations).toHaveBeenLastCalledWith('github', 'chat-a')
+      expect(button('Watch PR')).toBeUndefined()
+      state.prState = 'open'
+      await act(async () => window.dispatchEvent(new Event(githubConnectionChanged)))
+      expect(button('Watch PR')).toBeDefined()
+      state.prState = 'unavailable'
+      await act(async () => window.dispatchEvent(new Event(githubConnectionChanged)))
+      expect(button('Change GitHub account')).toBeDefined()
+      vi.mocked(api.get).mockClear()
+      await act(async () => button('Try again').click())
+      expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ session_id: 'chat-a', op: 'chat_status' }) }))
+      state.canEdit = false; state.prState = 'connect_github'
+      await act(async () => window.dispatchEvent(new Event(githubConnectionChanged)))
+      expect(button('Connect GitHub')).toBeUndefined()
+      expect(host.textContent).toContain('Ask the owner')
+    } finally { state.pr = false; state.prState = 'open'; state.canEdit = true; await act(async () => root.unmount()); host.remove() }
   })
 
   it('defaults Branch / PR to the server-ranked chat checkout and retains a manual choice', async () => {

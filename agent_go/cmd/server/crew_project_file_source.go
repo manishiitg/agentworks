@@ -70,7 +70,7 @@ func (api *StreamingAPI) readableProjectSource(r *http.Request, root string, eve
 	message, err := api.eventStore.ChatUserMessageBetween(r.Context(), event.SessionID, ref.Start, ref.End)
 	label := ref.Label
 	if label == "" {
-		label = message.Text
+		label = savedChatUserText(message.Text)
 	}
 	text := []rune(strings.Join(strings.Fields(label), " "))
 	if len(text) > 80 {
