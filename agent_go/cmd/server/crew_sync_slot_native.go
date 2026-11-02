@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/nativesession"
+	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
@@ -112,4 +116,62 @@ func exportCrewNativeProgram(ctx context.Context, owner, runtimeDir, store, cwd,
 		return crewSlotNativeTransfer(ctx, owner, slot, runtimeDir, id, transport, nil, out)
 	}
 	return exportCrewProgram(store, cwd, id, provider, transport, out, remember)
+}
+
+// carryClaudeTranscriptIntoSlot moves a Claude chat's native transcript from the app account's runtime folder into the
+// same runtime folder in the owner's slot, so a chat last used before it moved to the slot resumes natively instead of
+// starting a fresh session with a continuity notice (owner, 2 Nov: "native resume as much as possible"). It runs only
+// for the owner's own chat (the slot helper checks the account), only for app -> slot with the same runtime id, and
+// only before resume is decided; on any failure the old behaviour (fresh session + archive) stays.
+func (api *StreamingAPI) carryClaudeTranscriptIntoSlot(owner string, runtime *ChatHistoryAgentRuntime, agent *mcpagent.Agent) {
+	if runtime == nil || runtime.AgentSessionHandle == nil || agent == nil {
+		return
+	}
+	saved := runtime.AgentSessionHandle.Provider
+	current := mcpagent.SnapshotAgentSession(agent)
+	if current == nil || saved.Provider != "claude-code" || current.Provider.Provider != "claude-code" {
+		return
+	}
+	id := firstNonEmptyTrimmed(saved.NativeSessionID, runtime.ExternalSessionID)
+	oldDir, newDir := strings.TrimSpace(saved.WorkingDir), strings.TrimSpace(current.Provider.WorkingDir)
+	if id == "" || oldDir == "" || newDir == "" || filepath.Clean(oldDir) == filepath.Clean(newDir) || filepath.Base(oldDir) != filepath.Base(newDir) {
+		return
+	}
+	slot, ok := crewNativeSlot(owner, newDir, "claude-code")
+	if !ok || inSlotStateFolder(oldDir, slot) {
+		return
+	}
+	// The saved handle is stored data and the app account can read every person's app runtime: never read from the
+	// path it names. Recompute the one app-side folder this runtime id can have and require it exactly, so a
+	// tampered or stale handle cannot pull another person's transcript into this owner's slot.
+	appState, err := workflowCLIStateRoot()
+	if err != nil {
+		return
+	}
+	expected := filepath.Join(appState, "cli-runtimes", "v1", filepath.Base(newDir))
+	if filepath.Clean(oldDir) != filepath.Clean(expected) {
+		log.Printf("[SLOT_NATIVE] not carried into %s: session=%s: saved runtime %q is not this runtime's app folder", slot, id, oldDir)
+		return
+	}
+	oldDir = expected
+	out, err := os.MkdirTemp("", "native-slot-move-")
+	if err != nil {
+		return
+	}
+	defer os.RemoveAll(out)
+	b, err := sessiontransfer.ExportJSONL("claude-code", saved.Transport, filepath.Join(oldDir, security.SandboxPersistentDirName, "cli-home", "claude-code", ".claude"), oldDir, id, out)
+	if err != nil {
+		log.Printf("[SLOT_NATIVE] not carried into %s: session=%s: %v", slot, id, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if _, err = crewSlotNativeTransfer(ctx, owner, slot, newDir, id, saved.Transport, b, ""); err != nil {
+		log.Printf("[SLOT_NATIVE] not carried into %s: session=%s: %v", slot, id, err)
+		return
+	}
+	moved := *runtime.AgentSessionHandle
+	moved.Provider.WorkingDir = newDir
+	runtime.AgentSessionHandle = &moved
+	log.Printf("[SLOT_NATIVE] carried Claude session %s from the app runtime into %s; resuming natively", id, slot)
 }
