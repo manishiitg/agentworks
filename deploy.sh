@@ -399,6 +399,13 @@ echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOS
 # DEPLOY_DRAIN_SECONDS=300 to wait for turns again.
 "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=DRAIN_TIMEOUT_SECONDS='${DEPLOY_DRAIN_SECONDS:-0}' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${ACTIVATE_MEMORY_MAX:-6G} -p CPUQuota=${ACTIVATE_CPU_QUOTA:-300%} -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
 
+# The native session parser must run as its slot through the matching,
+# root-installed launcher/helper pair from this active release.
+if [[ "${SLOTS_ENABLED:-false}" == true && -n "${HOST_SETUP_USER:-}" ]]; then
+  echo "==> [$PRODUCT] Installing the active native session helper"
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT bash -s -- native-session" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+fi
+
 # The release is live and the services have re-exec'd under the standard profile: only now retire an older per-product profile
 # (it refuses while any service process still runs without the standard one).
 if [[ -n "${HOST_SETUP_USER:-}" ]]; then
