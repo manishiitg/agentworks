@@ -7,6 +7,8 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { laptopSettingsEndpoint } from '../../components/workspace/laptopAccess'
 import { Button } from '../../components/ui/Button'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
+import { ServerProjectLocalOpen } from './ServerProjectLocalOpen'
+import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 
 type Binding = { mode?: 'continuous' | 'manual' | 'off'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
@@ -28,7 +30,7 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
     if (!enabled || !projectId) return
     const abort = new AbortController(), options = { signal: abort.signal, skipSessionContext: true }
     const load = () => {
-      const request: Promise<CloudState> = crewCloudMode()
+      const request: Promise<CloudState> = crewCloudMode() && getRawActiveWorkspaceId() !== 'local' ? Promise.resolve('on') : crewCloudMode()
         ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => {
           if (!data.binding || data.binding.mode === 'off') return 'off'
           if (data.auto?.state === 'syncing') return 'syncing'
@@ -62,7 +64,14 @@ export function cloudStateIcon(Icon: LucideIcon, state?: CloudState): LucideIcon
 const tintedIcons = new Map<string, LucideIcon>()
 
 export function YourComputerPanel({ projectId, sessionId }: { projectId: string; sessionId?: string; canEdit: boolean }) {
-  return <div>{crewCloudMode() ? <CloudCard projectId={projectId} /> : <LaptopCard sessionId={sessionId} />}</div>
+  if (!crewCloudMode()) return <div><LaptopCard sessionId={sessionId} /></div>
+  // A Crew opened from a connected server is already in the cloud; the Mac app offers to open it here.
+  const connection = getRawActiveWorkspaceId()
+  if (connection !== 'local') return <section aria-label="Cloud" className="space-y-3 text-sm">
+    <p role="status" className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-500" />In the cloud</p>
+    <ServerProjectLocalOpen projectId={projectId} connection={connection} />
+  </section>
+  return <div><CloudCard projectId={projectId} /></div>
 }
 
 function Switch({ on, disabled, label, onChange }: { on: boolean; disabled?: boolean; label: string; onChange: () => void }) {
