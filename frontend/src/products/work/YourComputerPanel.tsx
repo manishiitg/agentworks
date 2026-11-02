@@ -47,7 +47,7 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
 }
 
 export function YourComputerPanel({ projectId, sessionId }: { projectId: string; sessionId?: string; canEdit: boolean }) {
-  return <div className="max-w-xl">{crewOnlineMode() ? <OnlineCard projectId={projectId} /> : <LaptopCard sessionId={sessionId} />}</div>
+  return <div>{crewOnlineMode() ? <OnlineCard projectId={projectId} /> : <LaptopCard sessionId={sessionId} />}</div>
 }
 
 function Switch({ on, disabled, label, onChange }: { on: boolean; disabled?: boolean; label: string; onChange: () => void }) {
