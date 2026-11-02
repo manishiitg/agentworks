@@ -78,7 +78,11 @@ func fingerprint(data []byte, executable bool) File {
 // CopyChecked bounds memory independently of the file size and verifies the
 // admitted bytes before returning. The caller owns the reader and destination.
 func CopyChecked(ctx context.Context, dst io.Writer, src io.Reader, expected File) error {
-	if expected.Size < 0 || expected.Size > SyncLimits(ctx).FileBytes {
+	return copyChecked(ctx, dst, src, expected, SyncLimits(ctx).FileBytes)
+}
+
+func copyChecked(ctx context.Context, dst io.Writer, src io.Reader, expected File, fileLimit int64) error {
+	if expected.Size < 0 || expected.Size > fileLimit {
 		return fmt.Errorf("project file exceeds sync limit")
 	}
 	h := sha256.New()
@@ -371,7 +375,7 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 						// Finish this validated file even if the request is canceled.
 						// A partial write matches neither retry baseline; honor
 						// cancellation between files, as the prior byte write did.
-						err = change.CopyTo(context.WithoutCancel(ctx), f)
+						err = change.copyTo(context.WithoutCancel(ctx), f, SyncLimits(ctx).FileBytes)
 					}
 					closeErr := f.Close()
 					if err == nil {
@@ -413,6 +417,10 @@ func CopyContent(ctx context.Context, dst io.Writer, roots crewroot.Roots, key s
 // DataPath is populated only by local capture or the verified bundle decoder;
 // it is never accepted from JSON metadata.
 func (c Change) CopyTo(ctx context.Context, dst io.Writer) error {
+	return c.copyTo(ctx, dst, SyncLimits(ctx).FileBytes)
+}
+
+func (c Change) copyTo(ctx context.Context, dst io.Writer, fileLimit int64) error {
 	if c.After == nil {
 		return fmt.Errorf("missing project file metadata")
 	}
@@ -421,5 +429,5 @@ func (c Change) CopyTo(ctx context.Context, dst io.Writer) error {
 		return err
 	}
 	defer f.Close()
-	return CopyChecked(ctx, dst, f, *c.After)
+	return copyChecked(ctx, dst, f, *c.After, fileLimit)
 }
