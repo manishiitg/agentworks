@@ -224,6 +224,23 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
     }
   }
 
+  // In the Mac app, pick a folder on this computer and attach it (read only or read & write).
+  const [addAccess, setAddAccess] = useState<'read_only' | 'read_write'>('read_only')
+  const [adding, setAdding] = useState(false)
+  const canPick = Boolean(window.electronAPI?.pickWorkflowFolder)
+  const add = async () => {
+    const path = await window.electronAPI?.pickWorkflowFolder?.()
+    if (!path) return
+    setAdding(true); setError('')
+    try {
+      const alias = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'folder'
+      await workFolderApi.addWorkFolder({ path, alias, access: addAccess })
+      await refresh()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not add the folder.')
+    } finally { setAdding(false) }
+  }
+
   const remove = async (folder: WorkFolderGrant) => {
     setError('')
     try {
@@ -252,6 +269,12 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
         count={`${folders.length} attached`}
       >
         {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={folders} onRemove={remove} />}
+        {canPick ? <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select aria-label="Access for the new folder" value={addAccess} disabled={adding} onChange={event => setAddAccess(event.target.value as 'read_only' | 'read_write')} className="h-8 rounded-md border border-border bg-background px-2 text-xs">
+            <option value="read_only">Read only</option><option value="read_write">Read &amp; write</option>
+          </select>
+          <button type="button" disabled={adding} onClick={() => void add()} className="h-8 rounded-md border border-border px-3 text-xs hover:bg-muted disabled:opacity-50">{adding ? 'Adding…' : 'Add folder'}</button>
+        </div> : <p className="mt-3 text-xs text-muted-foreground">Add folders from the AgentWorks Mac app.</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}
       </SettingsCard>
     </div>
