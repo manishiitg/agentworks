@@ -153,7 +153,10 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
 
           {currentConnection && <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">{currentConnection.id !== 'local' && <ServerIdentityIcon connectionId={currentConnection.id} hidden className={`h-3 w-3 ${serverIconColors(connections)[currentConnection.server]}`} />}New work starts on {currentConnection.name}</p>}
           <div className="mt-6 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-medium">Talk to AgentWorks</h2>
+            <div>
+              <h2 className="text-sm font-medium">Your agent manager</h2>
+              <p className="mt-1 text-xs text-muted-foreground">One chat to plan work, coordinate your projects, and check on your agents.</p>
+            </div>
             {createItem && <Button type="button" onClick={() => openQuickNavigation(createItem)}><Plus className="mr-2 h-4 w-4" aria-hidden="true" />New project</Button>}
           </div>
           <div className="mt-3">{workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks" className="rounded-2xl bg-muted/40">
@@ -162,9 +165,9 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
               <label htmlFor="welcome-agentworks-message" className="sr-only">Tell AgentWorks what you want to get done</label>
               <textarea ref={prompt} autoFocus={focusPrompt} id="welcome-agentworks-message" value={agentWorksDraft} onChange={event => setAgentWorksDraft(event.target.value)} maxLength={20000} rows={3} disabled={agentWorksSending}
                 onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (micState.current === 'recording') mic.current?.stopDictation(); else if (micState.current === 'idle') event.currentTarget.form?.requestSubmit() } }}
-                placeholder="Ask AgentWorks to coordinate your agents or help you get work done" className="block w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50" />
+                placeholder="What would you like help with?" className="block w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50" />
               <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="flex min-w-0 items-center gap-2"><AgentWorksIcon /><span className="text-xs font-medium">AgentWorks<span className="ml-2 hidden font-normal text-muted-foreground sm:inline">Your agent</span></span></span>
+                <span className="flex min-w-0 items-center gap-2"><AgentWorksIcon /><span className="text-xs font-medium">AgentWorks</span></span>
                 <span className="flex shrink-0 items-center gap-2">
                   {voiceAvailable && !setupOpen && <MicButton key={scope} ref={mic} profileId="" bannerHost={voiceBanner} shortcutEnabled={false} disabled={agentWorksSending}
                     onStateChange={state => { if (isChatIdentityCurrent(voiceIdentity)) { micState.current = state; setVoiceState(state) } }}

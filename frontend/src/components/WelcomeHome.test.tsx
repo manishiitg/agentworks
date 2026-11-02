@@ -72,7 +72,6 @@ describe('WelcomeHome', () => {
     vi.spyOn(window.location, 'assign').mockImplementation(() => {})
     vi.mocked(api.post).mockResolvedValue({ data: { crew_id: 'crew-1' } })
     const box = ready.querySelector<HTMLTextAreaElement>('#welcome-agentworks-message')!
-    expect(box.placeholder).toContain('coordinate your agents')
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, '  Plan my week  ')
       box.dispatchEvent(new Event('input', { bubbles: true }))
