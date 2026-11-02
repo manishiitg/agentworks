@@ -2432,6 +2432,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/crew-chat/{project}/poll", api.handleCrewChatPoll).Methods("GET", "POST")
 	apiRouter.HandleFunc("/crew-sync/{project}/native", api.handleCrewNativeSync).Methods("GET")
 	apiRouter.HandleFunc("/crew-sync/{project}/dependencies", api.handleCrewDependencies).Methods("POST")
+	apiRouter.HandleFunc("/crew-sync-capabilities", handleCrewSyncCapabilities).Methods("GET")
 	apiRouter.HandleFunc("/crew-sync/{project}", api.handleCrewSync).Methods("GET", "POST")
 	apiRouter.HandleFunc("/crew-cloud-laptop/{project}", api.handleCloudLaptopStatus).Methods("GET")
 	apiRouter.HandleFunc("/crew-cloud-apps/{project}", api.handleCloudApps).Methods("GET")
