@@ -11,7 +11,11 @@ magics = {bytes.fromhex(x) for x in (
     'feedface', 'cefaedfe', 'feedfacf', 'cffaedfe',
     'cafebabe', 'bebafeca', 'cafebabf', 'bfbafeca',
 )}
-for binary in Path(sys.argv[1]).rglob('*'):
+root = Path(sys.argv[1])
+for binary in root.rglob('*'):
+    # The optional speech server is selected separately before process startup.
+    if binary.relative_to(root).parts[0] == 'voice':
+        continue
     if not binary.is_file():
         continue
     with binary.open('rb') as stream:

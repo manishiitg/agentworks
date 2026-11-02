@@ -1,4 +1,4 @@
-//go:build !cgo
+//go:build !cgo || novoice
 
 package voicestt
 
@@ -7,7 +7,7 @@ import (
 )
 
 // ModelFiles describes the files used by the native recognizer. It remains
-// available in non-CGO builds so callers retain the same package API.
+// available in builds without speech so callers retain the same package API.
 type ModelFiles struct {
 	Encoder string
 	Decoder string
@@ -35,7 +35,7 @@ type Result struct {
 // otherwise rootless Linux deployment from starting. The HTTP route turns this
 // into a 503 only for profiles that opt into voice input.
 func NewEngine(string) (*Engine, error) {
-	return nil, fmt.Errorf("voicestt requires a CGO-enabled build with the sherpa-onnx native runtime")
+	return nil, fmt.Errorf("voice input is unavailable in this build")
 }
 
 func (*Engine) Close()                          {}

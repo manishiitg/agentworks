@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build cgo && !novoice
 
 // Package voicestt is the ONE AgentWorks speech-to-text engine. The agent
 // server (AgentWorks' composer and every product that declares
@@ -8,7 +8,7 @@
 // /api/voice/stream WebSocket (ServeStream), the same file decoding
 // (DecodeFile). No product bundles its own STT engine, model, or transport.
 //
-// It needs a CGO build; engine_nocgo.go is the stub for builds without one,
+// It needs a CGO build without the novoice tag; engine_nocgo.go supplies the stub,
 // and Available tells a UI which it got.
 //
 // Engine wraps sherpa-onnx-go (github.com/k2-fsa/sherpa-onnx-go), running

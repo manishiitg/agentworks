@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,7 +15,7 @@ import (
 // Every voice consumer uses this shape, so no product carries its own
 // notion of "installed" or "warm".
 type Status struct {
-	// Available is a build-time fact: false in a CGO_ENABLED=0 binary, where
+	// Available is a build-time fact: false in a binary built without speech, where
 	// nothing below can ever become true.
 	Available bool `json:"available"`
 	// Installed means every model file is on disk. Downloading is the
@@ -84,6 +85,9 @@ func (m *Manager) Status() Status {
 		ModelDir:      m.modelDir,
 		SizeMB:        ModelSizeMB,
 	}
+	if !Available {
+		st.Error = os.Getenv("AGENTWORKS_VOICE_UNAVAILABLE_REASON")
+	}
 	if m.lastErr != nil {
 		st.Error = m.lastErr.Error()
 	}
@@ -102,7 +106,7 @@ func (m *Manager) Ready() bool {
 // load; ctx bounds the wait.
 func (m *Manager) Engine(ctx context.Context) (*Engine, error) {
 	if !Available {
-		return nil, errors.New("voicestt requires a CGO-enabled build with the sherpa-onnx native runtime")
+		return nil, errors.New("voice input is unavailable in this build")
 	}
 	m.mu.Lock()
 	if m.engine != nil {
