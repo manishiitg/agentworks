@@ -60,14 +60,38 @@ func addToolsServer(ctx context.Context, o *options, provider string) string {
 		}
 		signIn = "In Claude Code type /mcp, pick " + serverName + " and approve it in the browser."
 	case "codex":
+		if e := codexHomeError(); e != nil {
+			return "The AgentWorks tools were not added to Codex: " + e.Error()
+		}
+		if codexManagedMarketplace(home) || !providerAvailable("codex") {
+			changed, e := editCodexSettings(codexHomeDir(home), o, func(doc map[string]any) error {
+				servers := codexSettingsTable(doc, "mcp_servers")
+				if entry, exists := servers[serverName]; exists {
+					if entry.(map[string]any)["url"] == url {
+						return nil
+					}
+					return fmt.Errorf("a different server is already named %s; rename it in Codex settings and run setup again", serverName)
+				}
+				servers[serverName] = map[string]any{"url": url}
+				return nil
+			})
+			if e != nil {
+				return "The AgentWorks tools were not added to Codex: " + e.Error()
+			}
+			if !changed {
+				return "The AgentWorks tools are already added to Codex (" + serverName + "); nothing changed."
+			}
+			signIn = "Restart Codex, then approve the AgentWorks sign-in in its MCP settings when asked."
+			break
+		}
 		exe := providerExecutable(provider)
 		if exec.CommandContext(ctx, exe, "mcp", "get", serverName).Run() == nil {
 			return "The AgentWorks tools are already added to Codex (" + serverName + "); nothing changed."
 		}
 		if out, e := exec.CommandContext(ctx, exe, "mcp", "add", serverName, "--url", url).CombinedOutput(); e != nil {
-			return "The AgentWorks tools were not added to Codex: " + strings.TrimSpace(string(out))
+			return "The AgentWorks tools were not added to Codex: " + pluginSetupError(provider, e, out).Error()
 		}
-		signIn = "Approve it in the browser with: codex mcp login " + serverName
+		signIn = "Restart Codex, then approve the AgentWorks sign-in in its MCP settings when asked."
 	case "pi":
 		if out, e := exec.CommandContext(ctx, "pi", "mcp", "list", "--json").Output(); e == nil && strings.Contains(string(out), url) {
 			return "The AgentWorks tools are already added to Pi; nothing changed."

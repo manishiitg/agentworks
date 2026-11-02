@@ -39,12 +39,7 @@ func codexExecutable(onPath func(string) bool) string {
 	if onPath("codex") {
 		return "codex"
 	}
-	if codexGOOS == "darwin" {
-		if info, err := os.Stat(codexAppBundleCLI); err == nil && info.Mode().IsRegular() && info.Mode()&0111 != 0 {
-			return codexAppBundleCLI
-		}
-	}
-	return ""
+	return desktopExecutable(codexDesktopPatterns(), codexGOOS)
 }
 
 // codexHomeDir is the profile Codex itself uses: CODEX_HOME when set, else ~/.codex.
@@ -89,6 +84,9 @@ func providerAvailable(provider string) bool {
 	if provider == "codex" {
 		return codexExecutable(onPath) != ""
 	}
+	if provider == "claude" {
+		return claudeExecutable(onPath) != ""
+	}
 	return onPath(provider)
 }
 
@@ -99,6 +97,11 @@ func providerExecutable(provider string) string {
 			return exe
 		}
 	}
+	if provider == "claude" {
+		if exe := claudeExecutable(func(n string) bool { _, err := exec.LookPath(n); return err == nil }); exe != "" {
+			return exe
+		}
+	}
 	return provider
 }
 
@@ -106,11 +109,11 @@ func providerExecutable(provider string) string {
 // home and which provider commands exist.
 func installedPluginUpdates(home string, onPath func(string) bool, read func(string) string) []pluginUpdate {
 	var out []pluginUpdate
-	if onPath("claude") && strings.Contains(read(filepath.Join(home, ".claude", "plugins", "installed_plugins.json")), "agentworks@agentworks") {
+	if claudeExecutable(onPath) != "" && strings.Contains(read(filepath.Join(home, ".claude", "plugins", "installed_plugins.json")), "agentworks@agentworks") {
 		out = append(out, pluginUpdate{Provider: "claude", Auto: [][]string{{"plugin", "marketplace", "update", "agentworks"}, {"plugin", "update", "agentworks@agentworks"}},
 			Manual: "claude plugin marketplace update agentworks && claude plugin update agentworks@agentworks, then reload Claude Code"})
 	}
-	if onPath("claude") && strings.Contains(read(filepath.Join(home, ".claude", "plugins", "installed_plugins.json")), "agentworks-tools@agentworks") {
+	if claudeExecutable(onPath) != "" && strings.Contains(read(filepath.Join(home, ".claude", "plugins", "installed_plugins.json")), "agentworks-tools@agentworks") {
 		out = append(out, pluginUpdate{Provider: "claude", Auto: [][]string{{"plugin", "marketplace", "update", "agentworks"}, {"plugin", "update", "agentworks-tools@agentworks"}},
 			Manual: "claude plugin marketplace update agentworks && claude plugin update agentworks-tools@agentworks, then reload Claude Code"})
 	}
@@ -364,6 +367,22 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 	if e := codexHomeError(); e != nil {
 		fmt.Fprintf(o.stderr, "Skipped the Codex plugin: %v.\n", e)
 	}
+	managedCodex := codexManagedMarketplace(home)
+	if managedCodex && o.setupAll {
+		doc, e := readCodexSettings(codexHomeDir(home))
+		if e == nil {
+			for _, name := range []string{"agentworks-codex", "agentworks-codex-tools"} {
+				if _, exists := codexSettingsTable(doc, "plugins")[name+"@agentworks"]; !exists {
+					continue
+				}
+				if e = installCodexDesktopPlugin(ctx, o, codexHomeDir(home), name); e != nil {
+					fmt.Fprintf(o.stderr, "Could not update the Codex desktop plugin: %v\n", e)
+				} else {
+					fmt.Fprintln(o.stderr, "Updated the Codex desktop plugin; kept its enabled/disabled and hook trust choices. Restart Codex to use it.")
+				}
+			}
+		}
+	}
 	old := oldMarketplaceProviders(home, read, func() string {
 		if !onPath("muse") {
 			return ""
@@ -372,9 +391,12 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 		return string(out)
 	})
 	for _, update := range installedPluginUpdates(home, onPath, read) {
+		if update.Provider == "codex" && managedCodex {
+			continue
+		}
 		if update.Provider == "claude" {
 			step, cancel := context.WithTimeout(ctx, 90*time.Second)
-			_, err := exec.CommandContext(step, "claude", update.Auto[0]...).CombinedOutput()
+			_, err := exec.CommandContext(step, providerExecutable("claude"), update.Auto[0]...).CombinedOutput()
 			cancel()
 			if err != nil {
 				fmt.Fprintln(o.stderr, "Could not check the Claude plugin; kept its installed hooks unchanged.")

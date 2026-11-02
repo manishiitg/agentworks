@@ -246,7 +246,9 @@ func runUpdate(o *options, check, force, switchSource bool) (resultErr error) {
 		return fmt.Errorf("CLI updated; computer connection needs attention: %w", err)
 	}
 	updateStep(progress, "Updating installed plugins...")
-	updateInstalledPlugins(context.Background(), o, switchSource)
+	pluginOptions := *o
+	pluginOptions.setupAll = true // this update was run by the person, not the background updater
+	updateInstalledPlugins(context.Background(), &pluginOptions, switchSource)
 	updateStep(progress, "AgentWorks update complete.")
 	return o.output(map[string]any{"previous": current, "current": release.Version, "path": target, "updated": true})
 }
