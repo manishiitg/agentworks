@@ -27,6 +27,7 @@ type SyncBinding struct {
 	PendingAction   string `json:"pending_action,omitempty"`
 	LastTransfer    string `json:"last_transfer,omitempty"`
 	MacName         string `json:"mac_name,omitempty"`
+	MacID           string `json:"mac_id,omitempty"` // the Mac's saved sign-in to this server, so the website groups a Mac's Crews
 	LastCompletedAt string `json:"last_completed_at,omitempty"`
 }
 

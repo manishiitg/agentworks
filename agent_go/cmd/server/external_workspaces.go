@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // The canonical action family reuses native project services. Origin IDs remain
@@ -280,11 +282,28 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 			if navigation && !binding.OwnedByCaller {
 				continue
 			}
+			// A Mac Crew's empty twin is its owner's alone: never listed for co-owners or Run people (PLAT-856-509).
+			relay, _ := crewroot.ReadSync(doc.ID)
+			if relay != nil && (relay.Side != "server" || relay.Mode != "relay") {
+				relay = nil
+			}
+			if relay != nil && binding.OwnerID != claims.UserID {
+				continue
+			}
 			seen[key] = true
 			item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "icon": doc.Identity.Icon, "owned_by_caller": binding.OwnerID == claims.UserID, "owner_name": strings.SplitN(logUsernameForUserID(binding.OwnerID), "@", 2)[0], "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
 			if navigation {
 				root := binding.Binding.WorkspacePath
 				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
+			}
+			item["location"] = "server"
+			if relay != nil {
+				lastSeen, seenAt := crewMacLastSeen(binding.OwnerID, doc.ID, relay.PairID), ""
+				if !lastSeen.IsZero() {
+					seenAt = lastSeen.UTC().Format(time.RFC3339)
+				}
+				item["location"] = "mac"
+				item["mac"] = map[string]any{"device_id": relay.MacID, "name": relay.MacName, "online": !lastSeen.IsZero() && time.Since(lastSeen) <= 40*time.Second, "last_seen": seenAt}
 			}
 			items = append(items, item)
 		}

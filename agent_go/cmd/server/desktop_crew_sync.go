@@ -98,6 +98,23 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, request)
 	}
 
+	// Picking a Crew's server (several connected) creates its empty twin there; a Crew has one server.
+	if input.Action == "relay" {
+		if binding == nil {
+			_, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, roots.ID)
+			if !ok {
+				externalError(w, 404, "sync_unavailable", "This Crew is unavailable.")
+				return
+			}
+			if err = api.createDesktopCrewRelayTwin(r.Context(), claims.UserID, connection, roots.ID, manifest.displayTitle()); err != nil {
+				externalError(w, 409, crewSyncErrorCode(err), err.Error())
+				return
+			}
+			binding, _ = crewroot.ReadSync(roots.ID)
+		}
+		externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
+		return
+	}
 	fail := func(err error) {
 		pair := ""
 		if binding != nil {
