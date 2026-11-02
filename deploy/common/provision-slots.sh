@@ -26,6 +26,11 @@ HOME_DIR="${APP_DIR:-/srv/$PRODUCT}"
 DOCS="${DOCS:-$HOME_DIR/data/docs}"
 SERVICE_HOME="${SERVICE_HOME:-$HOME_DIR/home}"
 SLOT_COUNT="${SLOT_COUNT:-50}"
+# Per-person cap on everything a slot runs (its AI turns and the apps it keeps running), set per server in
+# product.env: a ceiling, not a reservation (PLAT-856-506).
+SLOT_CPU_QUOTA="${SLOT_CPU_QUOTA:-200%}"
+SLOT_MEMORY_MAX="${SLOT_MEMORY_MAX:-8G}"
+SLOT_TASKS_MAX="${SLOT_TASKS_MAX:-2048}"
 # Products that share one host each get their own slot accounts, launcher, config, table and sudo rule, so a
 # product's service account is only ever in its own slot groups. The default prefix "slot" keeps the original
 # host-wide names (the first product on a host, server B's `agents`); any other prefix puts everything under
@@ -215,12 +220,19 @@ alloc_subid() {
 # see slot_docker), so a user can run containers without the platform's own Docker, which their account cannot
 # reach, and without seeing or stopping anyone else's containers. Each slot keeps its own images and volumes
 # under its home: mind the disk, and the memory (a running daemon is roughly 100-150 MB). Safe to run again.
-# One generous safety net per person, not a ration (owner, 2 Nov, PLAT-856-506): it catches runaway apps a
-# Crew left running. It applies to everything in the slot's own user session.
+# One safety net per person, not a ration (owner, 2 Nov, PLAT-856-506): it catches runaway apps a Crew left
+# running. It applies to everything in the slot's own user session.
 set_slot_limits() {
   local slot="$1" uid
   uid="$(id -u "$slot")" || return 0
-  systemctl set-property "user-${uid}.slice" CPUQuota=200% MemoryMax=8G TasksMax=2048 || echo "Could not set limits for $slot." >&2
+  systemctl set-property "user-${uid}.slice" CPUQuota="$SLOT_CPU_QUOTA" MemoryMax="$SLOT_MEMORY_MAX" TasksMax="$SLOT_TASKS_MAX" || echo "Could not set limits for $slot." >&2
+}
+
+# A slot in use keeps its own user session running, so apps it started outlive a platform restart.
+enable_slot_session() {
+  local slot="$1"
+  loginctl enable-linger "$slot" || echo "Could not keep a session for $slot." >&2
+  set_slot_limits "$slot"
 }
 
 enable_slot_docker() {
@@ -347,7 +359,7 @@ PY
   # The slot's own runtime and state areas are group-owned too (created at init).
   chown root:"$PRODUCT" "$TABLE"; chmod 0640 "$TABLE"
   echo "$user_id -> $slot (tree $tree is group $slot, closed to everyone else)"
-  set_slot_limits "$slot"
+  enable_slot_session "$slot"
   if [[ "$(slot_docker_enabled)" == true ]]; then enable_slot_docker "$slot"; fi
 }
 
