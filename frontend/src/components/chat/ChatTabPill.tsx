@@ -170,7 +170,13 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {!isBlank && (!productSurface || status !== 'ready' || isActive) && (status === 'busy'
           ? <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
-          : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} rounded-full ${isActive && status === 'ready' ? 'bg-red-400' : dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
+          : status === 'waiting'
+            // Waiting for the person (a question or an approval): a ring keeps pulsing so a stuck chat stands out.
+            ? <span className="relative grid h-3 w-3 place-items-center" title={dot.label} aria-label={dot.label} role="img">
+                <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-[hsl(var(--warning))] opacity-60" />
+                <span className="relative h-2.5 w-2.5 rounded-full bg-[hsl(var(--warning))]" />
+              </span>
+            : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} rounded-full ${isActive && status === 'ready' ? 'bg-red-400' : dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
       </span>
       {isRenaming ? (
         <input
