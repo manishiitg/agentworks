@@ -5,6 +5,15 @@ import { describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({ sessionId: 'chat-a', reviewed: false, fileCount: 2, recentRepos: [] as string[], pr: false, canReview: true, canEdit: true, prState: 'open', gitVersions: false, skipped: [] as string[] }))
 const replies = [{ snapshot_id: 'first', end_sequence: 2 }, { snapshot_id: 'last', end_sequence: 4 }]
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: string, options: { params: Record<string, unknown> }) => {
+  if (options.params.op === 'reply_card') return { data: { actions: [
+    { id: 'review', kind: 'builtin', label: 'Review changes', placement: 'row' },
+    ...(state.canEdit ? [
+      { id: 'push', kind: 'builtin', label: 'Push to a branch and open a PR', icon: 'octicon:git-pull-request', placement: 'row', prompt: 'Push the displayed chat files' },
+      { id: 'command:bookmark', kind: 'command', label: 'Save this change', placement: 'row', prompt: 'Save the displayed chat files' },
+      { id: 'add_button', kind: 'builtin', label: 'Add button', icon: 'plus', placement: 'row', prompt: 'Create a reusable button' },
+      { id: 'fix-checks:app', kind: 'fix', label: 'Fix failing checks', placement: 'more', prompt: 'Fix checks for the displayed files' },
+    ] : []),
+  ] } }
   if (options.params.op === 'chat_status') return { data: { history: { can_review: state.canReview }, can_edit: state.canEdit, groups: state.pr ? [{ kind: 'repo', root: 'app-wt', name: 'app-wt', github_repo: 'example/project', branch: 'feature', pr: state.prState === 'open' ? { number: 7, state: 'open', url: 'https://github.com/example/project/pull/7' } : { state: state.prState } }] : [] } }
   if (options.params.op === 'snapshots') return { data: { recent_repos: state.recentRepos } }
   if (options.params.line) return { data: { context: 'main.ts, saved after line 2: new' } }
@@ -18,11 +27,11 @@ vi.mock('../../services/api', () => ({ default: { get: vi.fn(async (_path: strin
   ], snapshot: { status: 'complete' }, diff: `@@ -1 +1 @@\n-old\n+${options.params.change_key || 'list'}\n`, note: '', skipped_count: 0 } } }
   return { data: { history: { recent_repos: state.recentRepos, replies, reviews: [], available: true, last_snapshot_id: 'last', latest_snapshot_id: 'last', baseline_snapshot_id: state.reviewed ? 'last' : 'start', can_review: true }, comparison: { changes: Array.from({ length: state.fileCount }, (_, index) => ({ path: index === 0 ? 'main.ts' : index === 1 ? 'second.ts' : `file-${index}.ts`, status: 'M', added: 1, removed: 1 })), snapshot: { status: state.skipped.length ? 'partial' : 'complete', skipped: state.skipped }, uncaptured_changes: 0, diff: options.params.file === 'second.ts' ? '@@ -1 +1 @@\n-old second\n+new second\n' : '@@ -1,2 +1,2 @@\n same\n-old\n+new\n', note: 'Saved boundaries', skipped_count: state.skipped.length }, file_replies: ['last'] } }
 }), post: vi.fn(async () => { state.reviewed = true; return { data: {} } }) }, agentApi: { getPlannerFileContent: vi.fn(async () => ({ success: true, data: { content: 'current contents' } })) }, workspaceApi: { get: vi.fn() } }))
-vi.mock('../chat/ReplyFileChanges', () => ({ ReplyFileChanges: () => null }))
+vi.mock('../chat/ReplyFileChanges', async importOriginal => ({ ...await importOriginal<typeof import('../chat/ReplyFileChanges')>(), ReplyFileChanges: () => null }))
 vi.mock('../chat/PRWatcherControls', () => ({ PRWatcherControls: ({ group, sessionId }: { group: { root: string }; sessionId: string }) => <button data-worktree={group.root} data-session={sessionId}>Watch PR</button> }))
 vi.mock('../../services/workspaceGit', () => ({ workspaceGitApi: { status: vi.fn(async () => []), diff: vi.fn(), branches: vi.fn(async () => []), branchCompare: vi.fn(async (_workspace: string, repo: string) => ({ branch: repo === 'app-wt' ? 'feature' : 'main', base: 'main', base_sha: 'abc1234', head_sha: 'def1234', unpushed: 0, files: [] })), branchDiff: vi.fn() } }))
-vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { exact: { sessionId: state.sessionId } } }) } }))
-vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn(async () => ({})) }))
+vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { exact: { tabId: 'exact', sessionId: state.sessionId } } }) } }))
+vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn(async () => ({})), openWorkspacePaneChatWithDraft: vi.fn(async () => ({})) }))
 vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: () => ({}), assertChatIdentityCurrent: () => undefined }))
 vi.mock('../../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }))
 vi.mock('../FileContentViewer', () => ({ FileContentViewerBody: ({ source, editable }: { source: { fileContent: string }; editable: boolean }) => <pre data-testid="file-content" data-editable={String(Boolean(editable))}>{source.fileContent}</pre> }))
@@ -34,13 +43,43 @@ import { openChatFiles } from './chatFileNavigation'
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { ReplyFileViewer } from './ReplyFileViewer'
-import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
+import { openWorkspacePaneChatWithDraft, sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { ChatFileReview } from './ChatFileReview'
 import { ReplyChangesPanel } from './ReplyChangesPanel'
 import { workspaceGitApi } from '../../services/workspaceGit'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('Studio review comments', () => {
+  it('uses the displayed chat span for the shared action toolbar and keeps owner actions server-decided', async () => {
+    // PLAT-746-286: All chat changes lacked the turn toolbar's custom, PR and More actions.
+    for (const owner of [true, false]) {
+      const host = document.createElement('div'); document.body.append(host)
+      const root = createRoot(host)
+      state.canEdit = owner
+      vi.mocked(api.get).mockClear(); vi.mocked(sendWorkspacePaneMessageToChat).mockClear()
+      try {
+        await act(async () => root.render(<ChatFileReview allChat workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+        expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ op: 'reply_card', session_id: 'chat-a', baseline_snapshot_id: 'start', through_snapshot_id: 'last', pull_requests: true }) }))
+        expect(host.querySelector('[aria-label="Review changes"]')).toBeNull()
+        const saved = host.querySelector<HTMLButtonElement>('[aria-label="Save this change"]')
+        expect(!!saved).toBe(owner)
+        expect(!!host.querySelector('[aria-label="Push to a branch and open a PR"]')).toBe(owner)
+        expect(!!host.querySelector('[aria-label="More actions"]')).toBe(owner)
+        if (owner) {
+          await act(async () => saved!.click())
+          expect(sendWorkspacePaneMessageToChat).toHaveBeenLastCalledWith({ tabId: 'exact', message: 'Save the displayed chat files' })
+          await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Add button"]')!.click())
+          expect(openWorkspacePaneChatWithDraft).toHaveBeenLastCalledWith({ tabId: 'exact', message: 'Create a reusable button' })
+          await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+          const fix = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Fix failing checks')!
+          expect(fix).toBeDefined()
+          await act(async () => fix.click())
+          expect(sendWorkspacePaneMessageToChat).toHaveBeenLastCalledWith({ tabId: 'exact', message: 'Fix checks for the displayed files' })
+        } else expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
+      } finally { state.canEdit = true; await act(async () => root.unmount()); host.remove() }
+    }
+  })
+
   it('explains skipped files above the diffs even when the uncaptured file did not change', async () => {
     // PLAT-746-286: the menu warned, but an unchanged skipped file had no panel explanation.
     const host = document.createElement('div'); document.body.append(host)
