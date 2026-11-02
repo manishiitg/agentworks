@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Target, Trash2 } from 'lucide-react'
+import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Target, Trash2, X } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { Button } from '../../components/ui/Button'
@@ -16,7 +16,7 @@ import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHead
 import { StatusBanner } from '../../components/workflow/bots/StatusBanner'
 import { productMode, type ProductIdentity } from '../../platform/chat/productProjects'
 import type { ProductIdentityPatch } from '../../platform/chat/productProjects'
-import { workFolderApi } from '../../services/api'
+import api, { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
@@ -228,6 +228,14 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   const [addAccess, setAddAccess] = useState<'read_only' | 'read_write'>('read_only')
   const [adding, setAdding] = useState(false)
   const canPick = Boolean(window.electronAPI?.pickWorkflowFolder)
+  // On the Mac, agents may use the Downloads folder by default; the person can remove it (every agent sandbox then blocks it).
+  const [downloads, setDownloads] = useState<{ available: boolean; removed?: boolean }>({ available: false })
+  useEffect(() => { void api.get<{ available: boolean; removed?: boolean }>('/api/work/mac-downloads').then(({ data }) => setDownloads(data)).catch(() => {}) }, [])
+  const setDownloadsRemoved = async (removed: boolean) => {
+    setError('')
+    try { const { data } = await api.put<{ available: boolean; removed?: boolean }>('/api/work/mac-downloads', { removed }); setDownloads(data) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not change Downloads access.') }
+  }
   const add = async () => {
     const path = await window.electronAPI?.pickWorkflowFolder?.()
     if (!path) return
@@ -268,12 +276,14 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
         description="Folders on your Mac that your Crews can open. Read only, or read & write. They stay on your Mac."
         count={`${folders.length} attached`}
       >
-        {/* On a person's own Mac the agent can already use their Downloads folder; show it so that is visible. */}
-        {canPick && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
+        {/* On a person's own Mac agents may use their Downloads folder by default; it can be removed and added back. */}
+        {downloads.available && !downloads.removed && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
           <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1"><p className="text-sm font-medium">Downloads</p><p className="text-xs text-muted-foreground">Your Mac's Downloads folder. Always available on this Mac.</p></div>
+          <div className="min-w-0 flex-1"><p className="text-sm font-medium">Downloads</p><p className="text-xs text-muted-foreground">Your Mac's Downloads folder. On by default.</p></div>
           <span className="shrink-0 text-xs text-muted-foreground">Read &amp; write</span>
+          <button type="button" aria-label="Remove Downloads" onClick={() => void setDownloadsRemoved(true)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
         </div>}
+        {downloads.available && downloads.removed && <button type="button" onClick={() => void setDownloadsRemoved(false)} className="mb-2 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Add Downloads back</button>}
         {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={folders} onRemove={remove} />}
         {canPick ? <div className="mt-3 flex flex-wrap items-center gap-2">
           <select aria-label="Access for the new folder" value={addAccess} disabled={adding} onChange={event => setAddAccess(event.target.value as 'read_only' | 'read_write')} className="h-8 rounded-md border border-border bg-background px-2 text-xs">
