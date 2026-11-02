@@ -39,7 +39,7 @@ func resolveUserPath(c *gin.Context, requestedPath string) (string, error) {
 	userID := getUserID(c)
 	// Gin wildcard routes include a leading slash; it is a virtual route,
 	// not an absolute host path. Normalize it before resolving a Crew binding.
-	requestedPath = strings.TrimPrefix(utils.SanitizeInputPath(requestedPath, docsDir), "/")
+	requestedPath = strings.TrimPrefix(filepath.ToSlash(utils.SanitizeInputPath(requestedPath, docsDir)), "/")
 	return utils.ResolveUserPath(docsDir, requestedPath, userID)
 }
 

@@ -81,6 +81,9 @@ func serveServerFirstFixture(t *testing.T) {
 		profile, profileErr := api.agentProfiles.Resolve("work", 0, "owner")
 		binding, bindingErr := resolveProductProjectBindingWithStore(ctx, "owner", profile, project, defaultProductProjectStore())
 		t.Logf("created project resolution: registry=%v profile=%v binding=%v path=%q", registryErr, profileErr, bindingErr, binding.WorkspacePath)
+		_, ownerErr := resolveCrewProjectBinding(ctx, "owner", profile, project, "")
+		_, manifestErr := readCrewProjectManifests(ctx, profile.ID, binding.WorkspacePath)
+		t.Logf("created project full resolution: owner=%v manifest=%v", ownerErr, manifestErr)
 		t.Fatal(err)
 	}
 	if os.Getenv("AGENTWORKS_SERVER_FIRST_SPLIT") == "true" {
