@@ -368,7 +368,10 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 						err = f.Chmod(targetMode)
 					}
 					if err == nil {
-						err = change.CopyTo(ctx, f)
+						// Finish this validated file even if the request is canceled.
+						// A partial write matches neither retry baseline; honor
+						// cancellation between files, as the prior byte write did.
+						err = change.CopyTo(context.WithoutCancel(ctx), f)
 					}
 					closeErr := f.Close()
 					if err == nil {
@@ -379,6 +382,9 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 		}
 		dir.Close()
 		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 	}
