@@ -39,7 +39,7 @@ still require the person's provider login or phone.
 | Shared Brain; Linked projects & folders | `panel-data`, `panel-access` |
 | Browser and saving a reusable browser procedure | `panel-settings` |
 | Slack bot; WhatsApp; MCP access for external AI apps | `panel-channels`, `panel-channels`, `panel-access` |
-| Connected agents (AgentBridge), Online or Laptop access | `panel-access`, `crew-agents` |
+| Connected agents (AgentBridge), Cloud or Laptop access | `panel-access`, `crew-agents` |
 | Instructions & identity; Models; Costs & usage; Terminal | `panel-settings`, `panel-settings`, `panel-settings`, `panel-settings` |
 
 ## Answering Ask AI and panel questions
