@@ -402,9 +402,9 @@ it('keeps a late file comparison on its original reply in both transcript views 
         : <TerminalEventTranscript terminal={null} events={events} />))
       try {
         await render(history)
-        expect(host.querySelector('[aria-label="Reply changes"]')).toBeNull()
+        expect(host.querySelector('[aria-label="Project changes during this turn"]')).toBeNull()
         await render([...history, late])
-        const card = host.querySelector('[aria-label="Reply changes"]')!
+        const card = host.querySelector('[aria-label="Project changes during this turn"]')!
         expect(card).not.toBeNull()
         const reply = clean ? card.closest('article') : card.closest('[data-testid="terminal-clear-event-first-reply"]')
         expect(reply?.textContent).toContain('First report is ready.')
@@ -425,9 +425,9 @@ it('keeps a late file comparison on its original reply in both transcript views 
             setProjectMode('snapshot-project', 'cowork')
           })
           await render([...history, late])
-          expect(host.querySelector('[aria-label="Reply changes"]')).not.toBeNull()
+          expect(host.querySelector('[aria-label="Project changes during this turn"]')).not.toBeNull()
           await act(async () => setProjectMode('snapshot-project', 'dev'))
-          expect(host.querySelector('[aria-label="Reply changes"]')).not.toBeNull()
+          expect(host.querySelector('[aria-label="Project changes during this turn"]')).not.toBeNull()
         } finally { await act(async () => useChatStore.setState({ chatTabs: priorTabs })) }
 
       } finally { await act(async () => root.unmount()); host.remove() }
