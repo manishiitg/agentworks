@@ -462,9 +462,21 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			if len(pending.Snapshot.Payloads) != 0 {
 				return pending, nil
 			}
-			if e = moveOldCrewTransfer(pendingPath, roots.ID); e != nil {
+			backup, e := moveOldCrewTransfer(pendingPath, roots.ID)
+			if e != nil {
 				return out, e
 			}
+			// A failed recapture must leave the outstanding return discoverable
+			// even when editing has already moved to the Mac.
+			defer func() {
+				if _, e := os.Stat(pendingPath); os.IsNotExist(e) {
+					if e = os.Rename(backup, pendingPath); e != nil {
+						log.Printf("[CREW_SYNC] project=%s old_pending=restore_failed", roots.ID)
+					} else {
+						log.Printf("[CREW_SYNC] project=%s old_pending=restored", roots.ID)
+					}
+				}
+			}()
 			movedOld = true
 			out.Conversation = pending.Conversation
 		} else if !os.IsNotExist(e) {

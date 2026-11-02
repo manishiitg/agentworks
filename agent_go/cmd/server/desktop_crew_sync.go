@@ -295,7 +295,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			if len(transfer.Snapshot.Payloads) == 0 {
-				if e = moveOldCrewTransfer(pendingPath, roots.ID); e != nil {
+				if _, e = moveOldCrewTransfer(pendingPath, roots.ID); e != nil {
 					fail(e)
 					return
 				}

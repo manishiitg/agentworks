@@ -685,6 +685,28 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			legacyReturn, _ := crewSyncManifestPath(serverRoots.ID)
 			legacyReturn += ".return"
 			legacyReturnBytes := oldTransfer(legacyReturn, pendingReturn)
+			// PR838 regression: if recapture fails after the rename, the next
+			// download must still find the return, including its conversation.
+			oversizePath := filepath.Join(serverRoots.Files, "upgrade-too-large.bin")
+			oversize, err := os.Create(oversizePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = oversize.Truncate(65 << 20); err != nil {
+				t.Fatal(err)
+			}
+			if err = oversize.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "download", PairID: serverBinding.PairID}); err == nil {
+				t.Fatal("oversize recapture unexpectedly succeeded")
+			}
+			if active, err := os.ReadFile(legacyReturn); err != nil || !bytes.Equal(active, legacyReturnBytes) {
+				t.Fatal("failed upgrade hid the pending return")
+			}
+			if err = os.Remove(oversizePath); err != nil {
+				t.Fatal(err)
+			}
 			upgradedReturn, err := api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "download", PairID: serverBinding.PairID})
 			if err != nil || upgradedReturn.Snapshot == nil || len(upgradedReturn.Snapshot.Payloads) == 0 || upgradedReturn.TransferID == pendingReturn.TransferID {
 				t.Fatalf("old return recapture failed: %v", err)
