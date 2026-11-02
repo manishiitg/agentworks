@@ -308,8 +308,17 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 		state = json.RawMessage(`{}`)
 	}
 	runRoot := path.Join(root, ".condition-runs", uuid.NewString())
+	// The check writes only its own scratch folder, under its own session, whoever starts it: a check
+	// started from a chat ran these writes under the chat's folder guard and was refused.
+	session := "condition-" + uuid.NewString()
+	common.SetSessionWorkflowPath(session, root)
+	common.SetSessionWorkingDir(session, runRoot)
+	common.SetSessionFolderGuard(session, []string{runRoot}, []string{runRoot})
+	common.SetSessionSandbox(session, true, false)
+	defer common.ClearSessionShellConfig(session)
+	guarded := context.WithValue(ctx, common.ChatSessionIDKey, session)
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(job.UserID), workspace.WithExtraEnv(env))
-	if err := client.CreateFolder(ctx, runRoot); err != nil {
+	if err := client.CreateFolder(guarded, runRoot); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -317,24 +326,18 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 			scheduleLogf("[CONDITION] scratch cleanup failed")
 		}
 	}()
-	inboxCursor, err := c.writeInboxSnapshot(ctx, job, cfg, state, runRoot)
+	inboxCursor, err := c.writeInboxSnapshot(ctx, guarded, job, cfg, state, runRoot)
 	if err != nil {
 		return nil, err
 	}
 	snapshot := path.Join(runRoot, "check.py")
-	if err := c.s.writeFile(ctx, snapshot, source); err != nil {
+	if err := c.s.writeFile(guarded, snapshot, source); err != nil {
 		return nil, err
 	}
-	if err := c.s.writeFile(ctx, path.Join(runRoot, "state.json"), string(state)); err != nil {
+	if err := c.s.writeFile(guarded, path.Join(runRoot, "state.json"), string(state)); err != nil {
 		return nil, err
 	}
-	session := "condition-" + uuid.NewString()
-	common.SetSessionWorkflowPath(session, root)
-	common.SetSessionWorkingDir(session, runRoot)
-	common.SetSessionFolderGuard(session, []string{runRoot}, []string{runRoot})
-	common.SetSessionSandbox(session, true, false)
-	defer common.ClearSessionShellConfig(session)
-	ctx = context.WithValue(ctx, common.ChatSessionIDKey, session)
+	ctx = guarded
 	timeout := 60
 	command := `env -i PATH="$PATH" LANG="${LANG:-C.UTF-8}"`
 	for _, name := range cfg.Secrets {

@@ -122,7 +122,7 @@ func (c *conditionService) readInboxSnapshot(ctx context.Context, job productSch
 	page.Messages = items
 	return page, nil
 }
-func (c *conditionService) writeInboxSnapshot(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config, state json.RawMessage, runRoot string) (int64, error) {
+func (c *conditionService) writeInboxSnapshot(ctx, writeCtx context.Context, job productScheduleJob, cfg conditiontrigger.Config, state json.RawMessage, runRoot string) (int64, error) {
 	if cfg.CheckMode != "inbox" {
 		return 0, nil
 	}
@@ -134,7 +134,7 @@ func (c *conditionService) writeInboxSnapshot(ctx context.Context, job productSc
 	if err != nil {
 		return 0, err
 	}
-	if err = c.s.writeFile(ctx, path.Join(runRoot, "inbox.json"), string(raw)); err != nil {
+	if err = c.s.writeFile(writeCtx, path.Join(runRoot, "inbox.json"), string(raw)); err != nil {
 		return 0, err
 	}
 	return page.NextCursor, nil
