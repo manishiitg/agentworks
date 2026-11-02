@@ -3,6 +3,8 @@
 package slots
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,9 +97,60 @@ func namespaceAttr() *syscall.SysProcAttr {
 // RunExec reads one request from stdin, validates it and runs the program, returning its exit
 // code. Output goes straight to stdout and stderr. It is what `slotctl exec` runs, as the slot.
 func RunExec(stdin io.Reader, stdout, stderr *os.File, cfg ExecConfig) int {
-	body, err := io.ReadAll(io.LimitReader(stdin, maxRequestBytes+1))
-	if err != nil || len(body) > maxRequestBytes {
+	decoder := json.NewDecoder(io.LimitReader(stdin, maxRequestBytes+1))
+	decoder.DisallowUnknownFields()
+	var request ExecRequest
+	if err := decoder.Decode(&request); err != nil {
 		fmt.Fprintln(stderr, "slotctl: could not read the request")
+		return 125
+	}
+	if request.NativeSession != nil {
+		me, err := user.Current()
+		if err != nil || os.Getuid() == 0 || me.Uid != fmt.Sprint(os.Getuid()) || len(request.Argv) != 0 || request.Cwd != "" || len(request.Env) != 0 || request.FD3 != "" || request.Userns {
+			fmt.Fprintln(stderr, "slotctl: native session requires its assigned OS account")
+			return 125
+		}
+		if _, err = request.NativeSession.NativeRuntime(cfg, me.Username); err != nil {
+			fmt.Fprintln(stderr, "slotctl:", err)
+			return 125
+		}
+		stream := bufio.NewReader(io.MultiReader(decoder.Buffered(), stdin))
+		if c, e := stream.ReadByte(); e != nil || c != '\n' {
+			fmt.Fprintln(stderr, "slotctl: invalid native header framing")
+			return 125
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			return 125
+		}
+		helper := filepath.Join(filepath.Dir(exe), "native-session")
+		info, err := os.Lstat(helper)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 {
+			fmt.Fprintln(stderr, "slotctl: native helper unavailable")
+			return 125
+		}
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || st.Uid != 0 {
+			fmt.Fprintln(stderr, "slotctl: native helper must be root-owned")
+			return 125
+		}
+		header, err := json.Marshal(request.NativeSession)
+		if err != nil {
+			return 125
+		}
+		cmd := exec.Command(helper)
+		cmd.Env = []string{"PATH=/usr/bin:/bin"}
+		cmd.Stdin = io.MultiReader(bytes.NewReader(append(header, '\n')), stream)
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		if err = cmd.Run(); err != nil {
+			fmt.Fprintln(stderr, "slotctl: native helper:", err)
+			return 125
+		}
+		return 0
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
 		return 125
 	}
 	return runBody(body, nil, stdout, stderr, cfg)

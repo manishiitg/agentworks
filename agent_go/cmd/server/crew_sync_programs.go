@@ -82,6 +82,11 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 	if err != nil {
 		return "", "", err
 	}
+	if _, ok := crewNativeSlot(claims.UserID, runtimeDir, c.Provider); ok {
+		// The slot helper owns creation and traversal of its private native home.
+		// Do not create app-owned 0700 components that would block that account.
+		return filepath.Join(runtimeDir, security.SandboxPersistentDirName, "cli-home", "claude-code", ".claude"), runtimeDir, nil
+	}
 	sandboxHome := cliNativeHomeEnvironment(c.Provider, runtimeDir)
 	nativeEnv := append([]string{}, target.Env...)
 	for key, value := range sandboxHome {
@@ -139,7 +144,7 @@ func (api *StreamingAPI) captureCrewNative(ctx context.Context, claims *UserClai
 	if runtime.Provider != c.Provider || h.Provider != c.Provider || h.NativeSessionID == "" || runtime.ExternalSessionID != h.NativeSessionID || !pathidentity.Same(h.WorkingDir, cwd) {
 		return nil, fmt.Errorf("the saved native identity does not match this conversation")
 	}
-	store, _, e := api.crewProgramStore(ctx, claims, roots, c, h.Transport, false)
+	store, runtimeDir, e := api.crewProgramStore(ctx, claims, roots, c, h.Transport, false)
 	if e != nil {
 		return nil, e
 	}
@@ -148,7 +153,7 @@ func (api *StreamingAPI) captureCrewNative(ctx context.Context, claims *UserClai
 		return nil, e
 	}
 	defer os.RemoveAll(out)
-	b, e := exportCrewProgram(store, cwd, h.NativeSessionID, h.Provider, h.Transport, out, true)
+	b, e := exportCrewNativeProgram(ctx, claims.UserID, runtimeDir, store, cwd, h.NativeSessionID, h.Provider, h.Transport, out, true)
 	if e != nil {
 		return nil, e
 	}
@@ -247,7 +252,7 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 			if h.Provider != b.Provider || (b.Provider == "cursor-cli" && h.Transport != b.Transport) {
 				return nil, fmt.Errorf("the saved native runtime differs on this computer")
 			}
-			priorStore, _, e := api.crewProgramStore(ctx, claims, roots, current, h.Transport, false)
+			priorStore, priorRuntime, e := api.crewProgramStore(ctx, claims, roots, current, h.Transport, false)
 			if e != nil {
 				return nil, e
 			}
@@ -256,7 +261,7 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 				return nil, e
 			}
 			defer os.RemoveAll(tmp)
-			previous, e := exportCrewProgram(priorStore, h.WorkingDir, b.SessionID, b.Provider, b.Transport, tmp, false)
+			previous, e := exportCrewNativeProgram(ctx, claims.UserID, priorRuntime, priorStore, h.WorkingDir, b.SessionID, b.Provider, b.Transport, tmp, false)
 			if e != nil {
 				return nil, e
 			}
@@ -286,15 +291,19 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 	if e != nil {
 		return nil, e
 	}
-	switch b.Format {
-	case "muse-jsonl":
-		e = sessiontransfer.ImportMuse(store, cwd, b)
-	case "cursor-sdk-sqlite":
-		e = sessiontransfer.ImportCursorSDK(store, cwd, b)
-	case "cursor-cli-sqlite":
-		e = sessiontransfer.ImportCursorCLI(store, cwd, b)
-	default:
-		e = sessiontransfer.ImportJSONL(store, cwd, b)
+	if slot, ok := crewNativeSlot(claims.UserID, runtimeDir, b.Provider); ok {
+		_, e = crewSlotNativeTransfer(ctx, claims.UserID, slot, runtimeDir, b.SessionID, b.Transport, b, "")
+	} else {
+		switch b.Format {
+		case "muse-jsonl":
+			e = sessiontransfer.ImportMuse(store, cwd, b)
+		case "cursor-sdk-sqlite":
+			e = sessiontransfer.ImportCursorSDK(store, cwd, b)
+		case "cursor-cli-sqlite":
+			e = sessiontransfer.ImportCursorCLI(store, cwd, b)
+		default:
+			e = sessiontransfer.ImportJSONL(store, cwd, b)
+		}
 	}
 	if e != nil {
 		return nil, e
@@ -319,7 +328,7 @@ func (api *StreamingAPI) crewNativeDestination(ctx context.Context, claims *User
 		account = identity.ConnectionID
 	} else if current.Provider == provider {
 		account = current.ConnectionID
-	} else if !IsLocalMode() {
+	} else if !IsLocalMode() || (identity.Engine == "" && current.Provider == "") {
 		account = "global:" + provider
 	} else {
 		return nil, "Choose an AI program account on this computer to resume its native session; continued from saved conversation history."

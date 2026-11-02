@@ -8,6 +8,7 @@ import (
 
 // ExecRequest is what the platform sends to `slotctl exec` on its standard input.
 type ExecRequest struct {
+	NativeSession *NativeSessionRequest `json:"native_session,omitempty"`
 	// Argv is the program and arguments. Argv[0] must be on slotctl's allow-list.
 	Argv []string `json:"argv"`
 	// Cwd is the working folder; it must lie inside slotctl's allowed folders.
