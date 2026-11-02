@@ -108,6 +108,75 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Windows installer (PLAT-874): unsigned per-user NSIS setup, uploaded as a
+  # build artifact only. It is not published to the release until the Windows
+  # app passes its acceptance test, so Mac releases are unaffected.
+  windows:
+    runs-on: windows-latest
+    env:
+      GOWORK: 'off'
+      # The frontend's npm scripts are POSIX shell (mkdir -p, cp).
+      npm_config_script_shell: 'C:\Program Files\Git\bin\bash.exe'
+    steps:
+      # Keep LF endings: generated files are compared byte for byte.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+      - name: Build frontend static assets
+        env:
+          VITE_DEPLOYMENT_MODE: local
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+          cd ..
+          rm -rf agent_go/static
+          mkdir -p agent_go/static
+          cp -R frontend/dist/. agent_go/static/
+      - name: Build Windows servers and CLI
+        run: |
+          OUT="$PWD/desktop/resources/win"
+          mkdir -p "$OUT/bin"
+          VERSION="$(node -p 'require("./desktop/package.json").version')"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VERSION="${GITHUB_REF#refs/tags/v}"; fi
+          BUILD="$(git rev-parse --short=12 HEAD)"
+          EPOCH="$(node -p 'require("./deploy/cli-release.json").compat_epoch')"
+          cd agent_go
+          go mod download
+          CGO_ENABLED=1 go build -tags novoice -o "$OUT/agent-server.exe" .
+          CGO_ENABLED=0 go build -ldflags "-s -w -X main.cliVersion=$VERSION -X main.cliBuild=$BUILD -X main.cliCompatEpoch=$EPOCH" -o "$OUT/bin/agentworks.exe" ./cmd/agentworks
+          CGO_ENABLED=0 go build -o "$OUT/bin/mcpbridge.exe" github.com/manishiitg/mcpagent/cmd/mcpbridge
+          cd ../workspace
+          go mod download
+          go build -o "$OUT/workspace-server.exe" .
+          "$OUT/bin/agentworks.exe" --version
+      - name: Package Windows installer
+        run: |
+          cd desktop
+          npm ci
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then npm pkg set version="${GITHUB_REF#refs/tags/v}"; fi
+          npx electron-builder --win nsis --x64 --publish never
+          cd dist
+          for asset in *.exe; do sha256sum "$asset" > "$asset.sha256"; done
+          ls -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AgentWorks-windows-x64
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
   # Publish only after BOTH architectures passed. A stable release must never
   # become visible to the installer with only one architecture uploaded.
   publish:

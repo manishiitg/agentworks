@@ -4,3 +4,4 @@ resources/agent-server
 resources/workspace-server
 resources/vault-server
 *.log
+resources/win/

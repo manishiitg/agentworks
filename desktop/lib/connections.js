@@ -61,13 +61,17 @@ function withoutDesktopBootstrap(env) {
 }
 function spawnWithBootstrap(bin, args, options, bootstrap) {
   const { spawn } = require('node:child_process');
+  // Windows: a Go child cannot open an inherited fd 3, so the same one
+  // startup message goes through its private stdin pipe instead.
+  const viaStdin = process.platform === 'win32';
   const child = spawn(bin, args, { ...options,
-    env: { ...withoutDesktopBootstrap(options.env), AGENTWORKS_BOOTSTRAP_FD: '3' },
-    stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+    env: { ...withoutDesktopBootstrap(options.env), AGENTWORKS_BOOTSTRAP_FD: viaStdin ? 'stdin' : '3' },
+    stdio: viaStdin ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe', 'pipe'],
   });
-  // fd 3 is private to this child; close it after the one startup message.
-  child.stdio[3].on('error', () => child.kill());
-  child.stdio[3].end(JSON.stringify(bootstrap) + '\n');
+  // The pipe is private to this child; close it after the one startup message.
+  const pipe = viaStdin ? child.stdin : child.stdio[3];
+  pipe.on('error', () => child.kill());
+  pipe.end(JSON.stringify(bootstrap) + '\n');
   return child;
 }
 module.exports = { isAppFrame, connectionRequest, installDesktopConnections, withoutDesktopBootstrap, spawnWithBootstrap };
