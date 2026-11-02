@@ -46,3 +46,30 @@ func TestToolsServerNameFollowsTheLogin(t *testing.T) {
 		t.Errorf("named login: %q", got)
 	}
 }
+
+// PLAT-856-500: in Codex a config server named "agentworks" hides the AgentWorks plugin's own
+// local server, so the tools server moves to its own name; only an entry of ours is moved.
+func TestCodexToolsServerLeavesThePluginNameFree(t *testing.T) {
+	url := "https://agents.example.com/api/external/v1/mcp"
+	doc := map[string]any{"mcp_servers": map[string]any{
+		"agentworks": map[string]any{"url": url},
+		"other":      map[string]any{"url": "https://other.example.com/mcp"},
+	}}
+	if err := mergeCodexToolsServer(doc, codexToolsServerName, url); err != nil {
+		t.Fatal(err)
+	}
+	servers := doc["mcp_servers"].(map[string]any)
+	if _, still := servers["agentworks"]; still || servers[codexToolsServerName].(map[string]any)["url"] != url || servers["other"] == nil {
+		t.Fatalf("our old entry must move and others stay: %v", servers)
+	}
+	if err := mergeCodexToolsServer(doc, codexToolsServerName, url); err != nil || len(servers) != 2 {
+		t.Fatalf("a second run must change nothing: %v %v", servers, err)
+	}
+	foreign := map[string]any{"mcp_servers": map[string]any{"agentworks": map[string]any{"url": "https://someone-else.example.com/mcp"}}}
+	if err := mergeCodexToolsServer(foreign, codexToolsServerName, url); err != nil {
+		t.Fatal(err)
+	}
+	if foreign["mcp_servers"].(map[string]any)["agentworks"].(map[string]any)["url"] != "https://someone-else.example.com/mcp" {
+		t.Fatal("an agentworks entry that isn't ours must never be moved or changed")
+	}
+}

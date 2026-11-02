@@ -64,33 +64,21 @@ func addToolsServer(ctx context.Context, o *options, provider string) (note stri
 		if e := codexHomeError(); e != nil {
 			return "The AgentWorks tools were not added to Codex: " + e.Error()
 		}
-		if codexManagedMarketplace(home) || !providerAvailable("codex") {
-			changed, e := editCodexSettings(codexHomeDir(home), o, func(doc map[string]any) error {
-				servers := codexSettingsTable(doc, "mcp_servers")
-				if entry, exists := servers[serverName]; exists {
-					if entry.(map[string]any)["url"] == url {
-						return nil
-					}
-					return fmt.Errorf("a different server is already named %s; rename it in Codex settings and run setup again", serverName)
-				}
-				servers[serverName] = map[string]any{"url": url}
-				return nil
-			})
-			if e != nil {
-				return "The AgentWorks tools were not added to Codex: " + e.Error()
-			}
-			if !changed {
-				return "The AgentWorks tools are already added to Codex (" + serverName + "); nothing changed."
-			}
-			signIn = "Restart Codex, then approve the AgentWorks sign-in in its MCP settings when asked."
-			break
+		// Codex gives the AgentWorks tools plugin's own local server the name "agentworks",
+		// and a config server with that name hides it, so the plugin's messaging tools never
+		// load (PLAT-856-500). The tools server takes "agentworks-server" here. Settings are
+		// edited directly (with a backup) so an earlier entry of ours can be moved safely.
+		if serverName == "agentworks" {
+			serverName = codexToolsServerName
 		}
-		exe := providerExecutable(provider)
-		if exec.CommandContext(ctx, exe, "mcp", "get", serverName).Run() == nil {
+		changed, e := editCodexSettings(codexHomeDir(home), o, func(doc map[string]any) error {
+			return mergeCodexToolsServer(doc, serverName, url)
+		})
+		if e != nil {
+			return "The AgentWorks tools were not added to Codex: " + e.Error()
+		}
+		if !changed {
 			return "The AgentWorks tools are already added to Codex (" + serverName + "); nothing changed."
-		}
-		if out, e := exec.CommandContext(ctx, exe, "mcp", "add", serverName, "--url", url).CombinedOutput(); e != nil {
-			return "The AgentWorks tools were not added to Codex: " + pluginSetupError(provider, e, out).Error()
 		}
 		signIn = "Restart Codex, then approve the AgentWorks sign-in in its MCP settings when asked."
 	case "pi":
@@ -208,4 +196,25 @@ func offerMuseApproval(ctx context.Context, o *options) {
 		return
 	}
 	fmt.Fprintln(o.stdout, "Approved. To undo: muse plugins remove agentworks-muse")
+}
+
+// codexToolsServerName is the Codex name of the default login's tools server; "agentworks"
+// belongs to the AgentWorks plugin's local server there.
+const codexToolsServerName = "agentworks-server"
+
+// mergeCodexToolsServer adds the tools server under name. An earlier "agentworks" entry that
+// points at this same URL is ours and moves to name; any other entry is left as it is.
+func mergeCodexToolsServer(doc map[string]any, name, url string) error {
+	servers := codexSettingsTable(doc, "mcp_servers")
+	if old, ok := servers["agentworks"].(map[string]any); ok && name != "agentworks" && old["url"] == url {
+		delete(servers, "agentworks")
+	}
+	if entry, exists := servers[name]; exists {
+		if e, ok := entry.(map[string]any); ok && e["url"] == url {
+			return nil
+		}
+		return fmt.Errorf("a different server is already named %s; rename it in Codex settings and run setup again", name)
+	}
+	servers[name] = map[string]any{"url": url}
+	return nil
 }
