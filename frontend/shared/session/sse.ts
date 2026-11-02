@@ -13,7 +13,21 @@ export interface SSECallbacks {
   onStatusUpdate: (msg: SSEStatusMessage) => void
   onError?: (error: Event) => void
   onOpen?: () => void
+  /** 'live' once frames flow; 'reconnecting' while a dropped stream is retried. */
+  onConnection?: (state: 'live' | 'reconnecting') => void
+  /** A sent message's server-side state (Mac Crews, PLAT-856-509). */
+  onMessageState?: (msg: SSEMessageState) => void
+  /** The cursor fell behind the server cache: replace the view, never append. */
+  onSnapshot?: (msg: SSESnapshot) => void
 }
+
+export type SSEMessageState = { submission_id: string; conversation?: string; state: 'sent' | 'received' | 'working' | 'failed'; at?: string; reason?: string }
+export type SSESnapshot = { conversation?: string; state?: { state: 'working' | 'idle' | 'waiting'; last_line?: string; at?: string }; last_seq: number; events: unknown[] }
+
+// A stream with no frame (the server ticks every few seconds) for this long is
+// treated as dropped, as phones often lose the socket without an error.
+const SILENCE_MS = 45_000
+const MAX_BACKOFF_MS = 30_000
 
 export interface SSELogger {
   debug(scope: string, ...args: unknown[]): void
@@ -46,6 +60,14 @@ export class SSEConnection {
   private closed = false
   private open = false
   private activityAt = Date.now()
+  private wake: (() => void) | null = null
+  private readonly onWake = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+    this.consecutiveErrors = 0
+    if (!this.open) { this.wake?.(); return }
+    // A visible tab after sleep may hold a dead socket: drop it if silent.
+    if (Date.now() - this.activityAt > SILENCE_MS) this.abort?.abort()
+  }
   private readonly opts: SSEOptions
   private readonly log: SSELogger
 
@@ -54,6 +76,8 @@ export class SSEConnection {
     this.sinceIndex = opts.sinceIndex
     this.maxConsecutiveErrors = opts.maxConsecutiveErrors ?? 5
     this.log = opts.log ?? silent
+    if (typeof window !== 'undefined') window.addEventListener('online', this.onWake)
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onWake)
     this.connect()
   }
 
@@ -82,6 +106,10 @@ export class SSEConnection {
     } catch (err) {
       this.log.error('SSE', 'Failed to parse event message:', err)
     }
+  }
+
+  private handleJSON(data: string, use: (msg: unknown) => void) {
+    try { use(JSON.parse(data)) } catch (err) { this.log.error('SSE', 'Failed to parse frame:', err) }
   }
 
   private handleStatusFrame(data: string) {
@@ -122,31 +150,52 @@ export class SSEConnection {
         this.activityAt = Date.now()
         this.log.debug('SSE', `Connected to session ${this.opts.sessionId}`)
         this.opts.callbacks.onOpen?.()
+        this.opts.callbacks.onConnection?.('live')
+        const watchdog = setInterval(() => { if (Date.now() - this.activityAt > SILENCE_MS) controller.abort() }, 5_000)
+        try {
         await readEventStream(res.body, controller.signal, ({ event, data, id }) => {
           this.activityAt = Date.now()
           if (event === 'event' || event === '') this.handleEventFrame(data, id)
           else if (event === 'status') this.handleStatusFrame(data)
+          else if (event === 'message_state') this.handleJSON(data, msg => this.opts.callbacks.onMessageState?.(msg as SSEMessageState))
+          else if (event === 'snapshot') this.handleJSON(data, msg => {
+            const snapshot = msg as SSESnapshot
+            if (Number.isFinite(snapshot.last_seq)) this.sinceIndex = snapshot.last_seq
+            this.opts.callbacks.onSnapshot?.(snapshot)
+          })
           else if (event === 'cursor' && id !== undefined) {
             const cursor = Number.parseInt(id, 10)
             if (!Number.isNaN(cursor)) this.sinceIndex = cursor
           }
         })
+        } finally { clearInterval(watchdog) }
         this.open = false
         if (this.closed) return
+        this.opts.callbacks.onConnection?.('reconnecting')
         // The server ended the stream; resume from the last id like EventSource would.
       } catch (err) {
         this.open = false
         if (this.closed) return
+        this.opts.callbacks.onConnection?.('reconnecting')
         if (!this.failure(new Event('error'))) return
         this.log.debug('SSE', `retrying after: ${err instanceof Error ? err.message : String(err)}`)
       }
-      await new Promise((r) => setTimeout(r, 1000 * Math.min(this.consecutiveErrors + 1, 5)))
+      // Back off 1 s, 2 s, 4 s … up to 30 s; coming online or back into view retries at once.
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(done, Math.min(1000 * 2 ** this.consecutiveErrors, MAX_BACKOFF_MS))
+        function done() { clearTimeout(timer); resolve() }
+        this.wake = done
+      })
+      this.wake = null
     }
   }
 
   /** Close the connection permanently. */
   close() {
     this.closed = true
+    if (typeof window !== 'undefined') window.removeEventListener('online', this.onWake)
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onWake)
+    this.wake?.()
     this.open = false
     if (this.abort) {
       this.abort.abort()
