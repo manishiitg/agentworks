@@ -7,6 +7,8 @@ ARCH="${1:?usage: verify-desktop-package.sh arm64|x64}"
 case "$ARCH" in arm64) CPU=arm64; PACK=mac-arm64 ;; x64) CPU=x86_64; PACK=mac ;; *) exit 1 ;; esac
 APP="$ROOT/desktop/dist/$PACK/AgentWorks.app"
 [ -d "$APP" ] || { echo "Missing packaged app: $APP" >&2; exit 1; }
+MINIMUM="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
+printf 'Packaged %s app requires macOS %s or later\n' "$ARCH" "$MINIMUM"
 while IFS= read -r -d '' binary; do
   if file -b "$binary" | grep -q 'Mach-O'; then
     lipo -verify_arch "$CPU" "$binary"

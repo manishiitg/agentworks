@@ -81,13 +81,14 @@ jobs:
         run: node --test packages/app/test/installer.test.mjs desktop/lib/updateInstaller.test.js
       - name: Package Mac app
         run: |
+          MAC_MINIMUM="$(python3 scripts/desktop-minimum-os.py desktop/resources)"
           cd desktop
           npm ci
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
             npm pkg set version="$VERSION"
           fi
-          npx electron-builder --mac --${{ matrix.arch }} --publish never
+          npx electron-builder --mac --${{ matrix.arch }} --publish never -c.mac.minimumSystemVersion="$MAC_MINIMUM"
           cd dist
           for asset in *.dmg *.zip; do shasum -a 256 "$asset" > "$asset.sha256"; done
       - name: Verify packaged native architecture and actual DMG installation

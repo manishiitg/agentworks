@@ -139,6 +139,14 @@ mkdir "$MOUNT"
 hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$MOUNT" "$DMG"
 mounted=true
 SOURCE="$MOUNT/AgentWorks.app"
+# The package records the highest native helper/library requirement, not only
+# Electron's floor. Refuse clearly before replacing any installed app.
+MINIMUM="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$SOURCE/Contents/Info.plist" 2>/dev/null || true)"
+if [[ "$MINIMUM" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+  CURRENT_OS="$(sw_vers -productVersion)"
+  os_number() { local major minor patch; IFS=. read -r major minor patch <<< "$1"; printf '%d%03d%03d' "$major" "${minor:-0}" "${patch:-0}"; }
+  [ "$(os_number "$CURRENT_OS")" -ge "$(os_number "$MINIMUM")" ] || die "This app needs macOS $MINIMUM or later; this Mac has $CURRENT_OS. Nothing was installed."
+fi
 for helper in agentworks mcpbridge tmux; do
   [ -x "$SOURCE/Contents/Resources/bin/$helper" ] || die "The release is missing $helper. Nothing was installed."
 done
