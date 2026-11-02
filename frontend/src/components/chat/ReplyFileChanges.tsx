@@ -1,7 +1,7 @@
 import { PRWatcherControls } from './PRWatcherControls'
 import { useEffect, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { ArrowDownToLine, GitBranch, Github, MessageSquare, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
+import { ArrowDownToLine, GitBranch, Github, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
 import api from '../../services/api'
 import { useReviewRevision, type ReviewResult } from '../workspace/chatFileReviewData'
 import { shownFilePath, type ReplyCardAction, type ReplyFileChangesRef, type ReplyFileGroup, type ReplyPullRequest } from '../../utils/replyFileChanges'
@@ -208,11 +208,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
         <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground" title={`${group.root} · ${group.branch || ''}${group.working_tree === 'clean' ? ' · Working tree clean' : group.working_tree === 'dirty' ? ' · Uncommitted changes' : ''}`}><GitBranch className="h-3 w-3 shrink-0" /><span className="truncate">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span></span>
         {group.pr?.state === 'connect_github' && canEdit && <IconButton label="Connect GitHub" hint="Use your saved account to see PR status." onClick={() => openProjectIntegrations('github', reference.sessionId)}><Github /></IconButton>}
         {group.pr?.state === 'unavailable' && <IconButton label="Retry PR status" hint="GitHub status could not be checked." onClick={() => setGitHubRevision(value => value + 1)}><Github /></IconButton>}
-        {!!group.pr?.number && group.pr.url && <>
-          <a className={iconButton} aria-label={prLine(group.pr)} title={prLine(group.pr)} href={group.pr.url} target="_blank" rel="noreferrer"><GitPullRequestIcon /></a>
-          <a className={iconButton} aria-label={`Review comments on PR #${group.pr.number}`} title="Review comments" href={`${group.pr.url}#discussion_bucket`} target="_blank" rel="noreferrer"><MessageSquare /></a>
-          {canEdit && <PRWatcherControls compact group={group} sessionId={reference.sessionId} />}
-        </>}
+        {!!group.pr?.number && group.pr.url && canEdit && <PRWatcherControls compact group={group} sessionId={reference.sessionId} />}
       </div>)}
       </div>
       {repoGroups.length > 0 && checkoutSummary(true)}

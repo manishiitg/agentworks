@@ -128,17 +128,18 @@ describe('reply card groups', () => {
     expect(button(latest, 'Revert these changes')).toBeDefined()
     expect(latest.textContent).toContain('PR #305')
     const older = await render(true, 2, 'newer', true, false)
-    expect(older.querySelector('a[aria-label*="PR #305"]')).not.toBeNull()
+    expect(older.querySelector('a[aria-label*="PR #305"]')).toBeNull()
     expect(button(older, 'Check this change')).toBeDefined()
     // Undo lives only inside the opened card, under the file list.
     expect(button(older, 'Revert these changes')).toBeUndefined()
   })
-  it('opens the exact saved reply from the compact icon and keeps PR shortcuts visible without an inline file list', async () => {
+  it('opens the exact saved reply without GitHub navigation links in the compact bar', async () => {
     vi.mocked(api.get).mockClear()
     const compact = await render(true, 2, 'newer', true, false)
     expect(compact.textContent).toContain('fix-tts')
     expect(compact.textContent).not.toContain('tts.py')
-    expect(compact.querySelector('a[title="Review comments"]')).not.toBeNull()
+    expect(compact.querySelector('a[title="Review comments"]')).toBeNull()
+    expect(compact.querySelector('a[aria-label*="PR #305"]')).toBeNull()
     expect(snapshotOps()).toEqual(['reply_card', 'reply_card+pr'])
     await act(async () => button(compact, 'Open 2 files changed during this turn')!.click())
     expect(openReplyChanges).toHaveBeenLastCalledWith(expect.objectContaining({ snapshotId: 's', sessionId: 'chat-a', workspacePath: 'Crew/x' }))
