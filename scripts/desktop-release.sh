@@ -314,15 +314,12 @@ gh api "repos/$REPO/releases?per_page=100" \
   done
 
 echo "==> Verifying assets"
-expected_assets=(
-  "latest-mac.yml"
-  "AgentWorks-$version-arm64-mac.zip"
-  "AgentWorks-$version-arm64-mac.zip.blockmap"
-  "AgentWorks-$version-arm64.dmg"
-  "AgentWorks-$version-arm64.dmg.sha256"
-  "AgentWorks-$version-arm64.dmg.blockmap"
-  "Runloop-$version-arm64.dmg"
-)
+expected_assets=("Runloop-$version-arm64.dmg")
+for arch in arm64 x64; do
+  for extension in dmg zip; do
+    expected_assets+=("AgentWorks-$version-$arch.$extension" "AgentWorks-$version-$arch.$extension.sha256")
+  done
+ done
 
 release_assets="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name')"
 for asset in "${expected_assets[@]}"; do
