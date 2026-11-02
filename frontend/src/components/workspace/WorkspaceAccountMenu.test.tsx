@@ -101,7 +101,7 @@ it('keeps local identity without password and sign-out actions', async () => {
   })
 })
 it.each([true, false])('shows the Mac download only on the website (desktop=%s)', async desktop => {
-  // PLAT-746-302: download metadata requests must never carry server/account credentials.
+  // PLAT-746-302: opening installation instructions must not start a download or network request.
   const fetchRelease = vi.fn(async () => ({ ok: true, json: async () => ({ tag_name: 'v1.2.3', assets: [{ name: 'AgentWorks-1.2.3-arm64.dmg', browser_download_url: 'https://example.invalid/untrusted' }] }) }))
   vi.stubGlobal('fetch', fetchRelease)
   if (desktop) window.electronAPI = { getDesktopConnection: () => 'local' } as never
@@ -112,9 +112,10 @@ it.each([true, false])('shows the Mac download only on the website (desktop=%s)'
       if (!button) return
       expect(fetchRelease).not.toHaveBeenCalled()
       await act(async () => button.click())
-      expect(fetchRelease).toHaveBeenCalledWith('https://api.github.com/repos/manishiitg/agentworks/releases/latest', expect.objectContaining({ credentials: 'omit' }))
+      expect(fetchRelease).not.toHaveBeenCalled()
       const panel = host.querySelector('[role="dialog"]')!
-      expect(panel.querySelector('a')?.href).toBe('https://github.com/manishiitg/agentworks/releases/download/v1.2.3/AgentWorks-1.2.3-arm64.dmg')
+      expect(panel.querySelector('a')).toBeNull()
+      expect(panel.querySelector('code')?.textContent).toBe('curl -fsSL https://raw.githubusercontent.com/manishiitg/agentworks/main/install.sh | bash')
       await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
       expect(host.querySelector('[role="dialog"]')).toBeNull()
       expect(document.activeElement).toBe(button)
