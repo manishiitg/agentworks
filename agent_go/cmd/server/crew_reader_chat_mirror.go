@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"path"
 	"strings"
@@ -32,7 +31,7 @@ func crewReaderConversationMirrorPath(readerID, crewFolder, sessionID string, t 
 	// One file per session (overwritten each turn): the source is the
 	// reader's full transcript, so dated copies would only duplicate it.
 	_ = t
-	return path.Join(crewRoot, crewSharedChatsDir, reader, fmt.Sprintf("session-%s-conversation.json", session)), true
+	return path.Join(crewRoot, crewSharedChatsDir, reader, chatHistoryConversationFileName(session)), true
 }
 
 // mirrorCrewReaderConversation copies a reader's just-saved conversation

@@ -303,10 +303,6 @@ func chatHistoryRoot(userID string) string {
 	return workspaceref.PhysicalPath(userID, "chat_history")
 }
 
-func chatHistoryConversationFileName(sessionID string) string {
-	return fmt.Sprintf("session-%s-conversation.json", sanitizeChatHistorySessionID(sessionID))
-}
-
 func chatHistoryConversationDate(t time.Time) string {
 	return t.Format("2006-01-02")
 }
@@ -1834,14 +1830,6 @@ func addLocalChatHistoryFile(filesBySession map[string]localChatHistoryFile, fil
 	}
 }
 
-func chatHistorySessionIDFromFileName(fileName string) string {
-	if !strings.HasPrefix(fileName, "session-") || !strings.HasSuffix(fileName, "-conversation.json") {
-		return ""
-	}
-	sessionID := strings.TrimSuffix(strings.TrimPrefix(fileName, "session-"), "-conversation.json")
-	return sanitizeChatHistorySessionID(sessionID)
-}
-
 func chatHistorySessionIDFromWorkspacePath(root, convPath string) (string, bool) {
 	root = strings.Trim(pathpkg.Clean(root), "/")
 	convPath = strings.Trim(pathpkg.Clean(filepath.ToSlash(convPath)), "/")
@@ -1980,7 +1968,7 @@ func listWorkflowBuilderHistoryFromDisk(userID, workflowPath string, readBudget 
 		if err != nil {
 			continue
 		}
-		sessionID := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(convPath), "session-"), "-conversation.json")
+		sessionID := chatHistorySessionIDFromFileName(filepath.Base(convPath))
 		if !chatHistorySessionMatchesKind(sessionID, kind) {
 			continue
 		}
@@ -3618,7 +3606,7 @@ func readWorkflowScopedChatHistoryConversationFromWorkspace(sessionID, workspace
 	}
 
 	ctx := context.Background()
-	fileName := fmt.Sprintf("session-%s-conversation.json", sessionID)
+	fileName := chatHistoryConversationFileName(sessionID)
 	candidatePaths := []string{
 		pathpkg.Join(workspacePath, "builder", fileName),
 	}
@@ -3685,7 +3673,7 @@ func readWorkflowScopedChatHistoryConversationDirect(sessionID, workspacePath st
 	if !ok {
 		return nil, false, nil
 	}
-	fileName := fmt.Sprintf("session-%s-conversation.json", sessionID)
+	fileName := chatHistoryConversationFileName(sessionID)
 
 	type candidate struct {
 		path    string
@@ -3725,7 +3713,7 @@ func findWorkflowScopedChatHistoryConversationPath(sessionID, workspacePath stri
 		return "", false, nil
 	}
 
-	fileName := fmt.Sprintf("session-%s-conversation.json", sessionID)
+	fileName := chatHistoryConversationFileName(sessionID)
 	if workflowDir, ok := resolveLocalWorkflowDir(workspacePath); ok {
 		type candidate struct {
 			path    string
@@ -3833,7 +3821,7 @@ func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, 
 		}
 		return result, nil
 	}
-	fileName := fmt.Sprintf("session-%s-conversation.json", sessionID)
+	fileName := chatHistoryConversationFileName(sessionID)
 	matches, err := workflowBuilderConversationFiles(workflowDir)
 	if err != nil {
 		return result, err

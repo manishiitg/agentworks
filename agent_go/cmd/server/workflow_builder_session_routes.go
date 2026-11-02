@@ -271,7 +271,7 @@ func workflowBuilderConversationLogPath(workspacePath, sessionID string, timesta
 		"builder",
 		"conversation",
 		timestamp.Format(workflowBuilderConversationDateLayout),
-		fmt.Sprintf("session-%s-conversation.json", sessionID),
+		chatHistoryConversationFileName(sessionID),
 	))
 }
 
@@ -304,7 +304,7 @@ func workflowBuilderOwnedConversationLogPath(workspacePath, userID, sessionID st
 		"users",
 		sanitizeUserIDForPath(userID),
 		timestamp.Format(workflowBuilderConversationDateLayout),
-		fmt.Sprintf("session-%s-conversation.json", sessionID),
+		chatHistoryConversationFileName(sessionID),
 	))
 }
 
@@ -435,11 +435,7 @@ func (api *StreamingAPI) restoreLatestBuilderConversation(ctx context.Context, p
 // builderConversationFileSessionID is the session id in a conversation log's
 // file name (session-<id>-conversation.json), or "" for any other name.
 func builderConversationFileSessionID(path string) string {
-	base := pathpkg.Base(path)
-	if !strings.HasPrefix(base, "session-") || !strings.HasSuffix(base, "-conversation.json") {
-		return ""
-	}
-	return strings.TrimSuffix(strings.TrimPrefix(base, "session-"), "-conversation.json")
+	return chatHistorySessionIDFromFileName(pathpkg.Base(path))
 }
 
 // builderConversationPathsNewestFirst orders conversation log paths by file

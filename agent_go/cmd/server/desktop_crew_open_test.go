@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +62,69 @@ func serverFirstEnvironment(t *testing.T) (*StreamingAPI, context.Context) {
 }
 
 type serverFirstFixture struct{ URL, ProjectID, ConversationID string }
+
+// PLAT-874: filenames may differ across operating systems; logical chat IDs
+// must survive a real workspace write, listing and read without collisions.
+func TestConversationFilenamesRoundTripThroughWorkspace(t *testing.T) {
+	api, ctx := serverFirstEnvironment(t)
+	project, err := api.createWorkspaceFromSpec(ctx, GetUserFromContext(ctx), "work", crewSpec{Name: "Filename test", Mode: "dev"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots, err := api.crewSyncRoots(ctx, GetUserFromContext(ctx), project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	ids := []string{"work:project:example", "work%3Aproject", "symbols<>:\"|?*\x01", "trailing.", "a b", "CON"}
+	want := make(map[string]bool, len(ids))
+	var folder string
+	for _, id := range ids {
+		p, ok := workProjectChatHistoryConversationPath("owner", roots.Virtual, id, now)
+		if !ok {
+			t.Fatal("private conversation path unavailable")
+		}
+		if runtime.GOOS != "windows" && filepath.Base(p) != "session-"+id+"-conversation.json" {
+			t.Fatal("Unix transcript filename changed")
+		}
+		raw, _ := json.Marshal(map[string]any{"user_id": "owner", "session_id": id})
+		if err := writeRawFileToWorkspace(ctx, p, string(raw)); err != nil {
+			t.Fatal(err)
+		}
+		folder = filepath.ToSlash(filepath.Dir(p))
+		want[id] = true
+	}
+	listing, found, err := listWorkspaceFolder(ctx, folder, 1)
+	if err != nil || !found {
+		t.Fatalf("list transcripts: found=%t err=%v", found, err)
+	}
+	var paths []string
+	collectWorkspaceFilePaths(listing, &paths)
+	for _, p := range paths {
+		id := chatHistorySessionIDFromFileName(filepath.Base(p))
+		if !want[id] {
+			t.Fatalf("unrecognized or colliding transcript: %q", id)
+		}
+		raw, found, err := readFileFromWorkspace(ctx, p)
+		var saved struct {
+			SessionID string `json:"session_id"`
+		}
+		if err != nil || !found || json.Unmarshal([]byte(raw), &saved) != nil || saved.SessionID != id {
+			t.Fatalf("logical ID changed: %q found=%t err=%v", id, found, err)
+		}
+		delete(want, id)
+	}
+	if len(want) != 0 {
+		t.Fatalf("transcripts missing from listing: %v", want)
+	}
+	if runtime.GOOS == "windows" {
+		for _, unsafe := range []string{"%2E%2E", "%2Foutside", "%5Coutside", "%20chat", "chat%20", "%broken"} {
+			if chatHistorySessionIDFromFileName("session-"+unsafe+"-conversation.json") != "" {
+				t.Fatal("decoded path or malformed filename admitted")
+			}
+		}
+	}
+}
 
 // This helper is a second real API process with its own files/state. The test
 // must not simulate both ends in one registry: server-first IDs are identical.
