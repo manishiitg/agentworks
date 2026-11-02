@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, Link2, MessageSquare, Share as ShareIcon, Users, X } from 'lucide-react'
+import { Bot, Link2, Share as ShareIcon, Users, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import api from '../../services/api'
 import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
@@ -22,10 +22,9 @@ const errorText = (cause: unknown, fallback: string) => {
   const data = (cause as { response?: { data?: { error?: { message?: string } | string; message?: string } } })?.response?.data
   return (typeof data?.error === 'string' ? data.error : data?.error?.message) || data?.message || fallback
 }
-export const ACCESS_CHAT_REQUEST = 'Help me change access to this project. Show who can build it, who can use it and which existing agents are shared, then ask what I want to change.'
 
 /** One Access overview. Changes use the project's visible chat and its existing server tools. */
-export function ShareDashboardButton({ workspacePath, documentPath, label = 'Share', variant = 'button', onOpen, onAsk, tabId }: {
+export function ShareDashboardButton({ workspacePath, documentPath, label = 'Share', variant = 'button', onOpen, tabId }: {
   /** The open dashboard or artifact; Copy link copies its link rather than the project's first dashboard. */
   workspacePath: string; documentPath?: string; label?: string; variant?: 'button' | 'row' | 'panel'; onOpen?: () => void
   onAsk?: (message: string) => void | Promise<unknown>; tabId?: string
@@ -38,11 +37,11 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const state = snapshot?.scope === scope ? snapshot.state : null
   const [ownerSnapshot, setOwnerSnapshot] = useState<{ scope: string; owners: OwnersState } | null>(null)
     const owners = ownerSnapshot?.scope === scope ? ownerSnapshot.owners : undefined
-  const [role, setRole] = useState<'use' | 'owner'>('use')
+  const [ownerEmail, setOwnerEmail] = useState('')
+  const [choosing, setChoosing] = useState(false)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [ownersError, setOwnersError] = useState('')
-  const [asking, setAsking] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
@@ -81,13 +80,6 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     document.addEventListener('keydown', escape)
     return () => document.removeEventListener('keydown', escape)
   }, [open, close])
-  const ask = async (message: string) => {
-    if (!onAsk || asking) return
-    setAsking(true); setError('')
-    try { await onAsk(message); if (!isPanel) close() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not open this project chat.') }
-    finally { setAsking(false) }
-  }
   if (!state) return isPanel ? <div className="text-sm">{error ? <p role="alert">{error} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p> : <p role="status" className="text-muted-foreground">Loading access…</p>}</div> : null
   if (!state.can_share) return isPanel ? <p className="text-sm text-muted-foreground">Ask a project owner to change access.</p> : null
   if (variant === 'row') return <Row icon={Users} detail={audience(state)} onClick={() => onOpen?.()}>{label}</Row>
@@ -128,61 +120,59 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       setNotice('Link copied. People still need access to open it.')
     } catch (cause) { setError(errorText(cause, 'Could not copy the link.')) }
   }
-  // Access for every product (owner 2026-10-27): one People list with Owner / Can use, and one company-wide choice. "Can use" people are
-  // the Run share's list; only the company-wide choice switches between everyone and named people, so removing one person
-  // never changes anyone else's access. Owner changes use the same server operation as the chat tool.
+  // Two groups (owner 2026-11-02): co-owners build and change it; people it is shared with use it (dashboard, chat,
+  // functions, their own AI apps over MCP). The share choice is Only me / Chosen people / Everyone; the server stores an
+  // empty named list as private, so Only me clears the named list. Owner changes use the same server operation as chat.
   const companyWide = state.mode === 'everyone'
-  // The server stores an empty named list as private.
   const shareList = (list: string[]) => putShare('people', list)
-  const refreshShare = async () => {
-    const { data } = await api.post<ShareState>('/api/dashboards', { workspace: workspacePath, action: 'share_status' })
-    setSnapshot({ scope, state: data })
+  const choice: 'private' | 'people' | 'everyone' = companyWide ? 'everyone' : state.mode === 'people' || choosing ? 'people' : 'private'
+  const addOwner = () => {
+    const value = ownerEmail.trim().toLowerCase()
+    if (!value) return
+    void run(async () => {
+      await changeOwners('owner_add', value)
+      const { data } = await api.post<ShareState>('/api/dashboards', { workspace: workspacePath, action: 'share_status' })
+      setSnapshot({ scope, state: data }); setOwnerEmail('')
+    })
+  }
+  const addPerson = () => {
+    const value = email.trim().toLowerCase()
+    if (!value) return
+    if (emails.includes(value)) { setEmail(''); return }
+    void run(() => shareList([...emails, value]))
   }
   const changeOwners = async (action: 'owner_add' | 'owner_remove', value: string) => {
     const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action, emails: [value] })
     setOwnerSnapshot({ scope, owners: data })
     if (data.note) setNotice(data.note)
   }
-  // Adding an owner also takes them off the Can use list on the server, so the share is re-read afterwards.
-  const makeOwner = async (value: string) => { await changeOwners('owner_add', value); await refreshShare() }
-  const makeUser = async (value: string) => {
-    await changeOwners('owner_remove', value)
-    if (!companyWide && !emails.includes(value)) await shareList([...emails, value])
-  }
-  const addPerson = () => {
-    const value = email.trim().toLowerCase()
-    if (!value) return
-    if (role === 'owner') { void run(async () => { await makeOwner(value); setEmail('') }); return }
-    if (companyWide) { setNotice('Everyone in the company can already use it.'); setEmail(''); return }
-    if (emails.includes(value)) { setEmail(''); return }
-    void run(() => shareList([...emails, value]))
-  }
-  const avatar = (person: Person) => <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">{who(person).slice(0, 2).toUpperCase()}</span>
-  const roleSelect = (person: Person, current: 'owner' | 'use') => person.email && owners?.can_manage
-    ? <select aria-label={`Access for ${who(person)}`} value={current} disabled={busy} onChange={event => { const value = person.email as string; void run(() => event.target.value === 'owner' ? makeOwner(value) : makeUser(value)) }} className="h-8 shrink-0 rounded-md border border-border bg-background px-1.5 text-xs">
-        <option value="owner">Owner</option><option value="use">Can chat & run</option>
-      </select>
-    : <span className="shrink-0 text-xs text-muted-foreground">{current === 'owner' ? 'Owner' : 'Can chat & run'}</span>
-  const removeButton = (person: Person, remove: (value: string) => Promise<void>) => person.email && owners?.can_manage !== false
+  const avatar = (person: Person) => <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">{who(person).slice(0, 2).toUpperCase()}</span>
+  const removeButton = (person: Person, remove: (value: string) => Promise<void>) => person.email
     ? <button type="button" aria-label={`Remove ${who(person)}`} disabled={busy} onClick={() => void run(() => remove(person.email as string))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
     : null
+  const emailForm = (value: string, setValue: (next: string) => void, submit: () => void, label: string) => <form onSubmit={event => { event.preventDefault(); submit() }} className="flex gap-2">
+    <input type="email" aria-label={label} placeholder="name@company.com" value={value} disabled={busy} onChange={event => setValue(event.target.value)} className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm" />
+    <button type="submit" disabled={busy || !value.trim()} className="h-9 rounded-md border border-border px-3 text-sm hover:bg-muted disabled:opacity-50">Add</button>
+  </form>
+  const choices = [['private', 'Only me'], ['people', 'Chosen people'], ['everyone', 'Everyone']] as const
   const peopleContent = <div className="space-y-6 text-sm">
-    <section aria-label="People" className="space-y-3">
-      <h3 className="font-semibold">People</h3>
-      <ul aria-label="People with access" className="space-y-2">
-        {owners?.owner && <li className="flex min-w-0 items-center gap-3">{avatar(owners.owner)}<span className="min-w-0 flex-1 truncate" title={who(owners.owner)}>{who(owners.owner)}</span><span className="shrink-0 text-xs text-muted-foreground">Owner (created this)</span></li>}
-        {(owners?.co_owners || []).map(person => <li key={`owner-${person.id}`} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{roleSelect(person, 'owner')}{removeButton(person, value => changeOwners('owner_remove', value))}</li>)}
-        {!companyWide && (state.people || []).map(person => <li key={`use-${person.id}`} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{roleSelect(person, 'use')}{removeButton(person, value => shareList(emails.filter(item => item !== value)))}</li>)}
-      </ul>
-      {ownersError && <p role="alert" className="text-xs text-destructive">{ownersError} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
-      <form onSubmit={event => { event.preventDefault(); addPerson() }} className="flex flex-wrap gap-2">
-        <input type="email" aria-label="Add a person by email" placeholder="Add a person by email" value={email} disabled={busy} onChange={event => setEmail(event.target.value)} className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm" />
-        <select aria-label="Access for the new person" value={role} disabled={busy} onChange={event => setRole(event.target.value as 'use' | 'owner')} className="h-9 rounded-md border border-border bg-background px-2 text-sm">
-          <option value="use">Can chat & run</option>{owners?.can_manage && <option value="owner">Owner</option>}
-        </select>
-        <button type="button" onClick={addPerson} disabled={busy || !email.trim()} className="h-9 rounded-md border border-border px-3 text-sm hover:bg-muted disabled:opacity-50">Add</button>
-      </form>
-      <p className="text-xs text-muted-foreground">Owner: builds and changes it. Can chat & run: chats with it, presses its buttons and sees its dashboard.</p>
+    <section aria-label="Shared with" className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">Shared with</h3>
+        <button type="button" onClick={() => void copyLink()} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs hover:bg-muted"><Link2 aria-hidden="true" className="h-3.5 w-3.5" />Copy dashboard link</button>
+      </div>
+      <div role="radiogroup" aria-label="Who it is shared with" className="inline-flex rounded-lg border border-border p-0.5">
+        {choices.map(([value, text]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy}
+          onClick={() => { setChoosing(value === 'people'); void run(() => value === 'everyone' ? putShare('everyone') : shareList(value === 'people' ? emails : [])) }}
+          className={`rounded-md px-3 py-1.5 text-xs ${choice === value ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{text}</button>)}
+      </div>
+      <p className="text-xs text-muted-foreground">{choice === 'everyone' ? 'Everyone at the company can use it.' : choice === 'people' ? 'These people can use it.' : 'Only you and co-owners can use it.'} Using means opening its dashboard, chatting with it and reaching it from their own AI apps.</p>
+      {choice === 'people' && <>
+        <ul aria-label="People it is shared with" className="space-y-2">
+          {(state.people || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{removeButton(person, value => shareList(emails.filter(item => item !== value)))}</li>)}
+        </ul>
+        {emailForm(email, setEmail, addPerson, 'Share with a person by email')}
+      </>}
     </section>
     {confirmation && <section role="region" aria-label="Create a dashboard to share" className="space-y-3 rounded-lg border border-border p-3">
       <h3 className="font-semibold">Create a dashboard for this Crew?</h3>
@@ -193,26 +183,23 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         <button type="button" disabled={busy} onClick={() => setPendingShare(undefined)} className="rounded-md border border-border px-3 py-2 text-xs hover:bg-muted">Cancel</button>
       </div>
     </section>}
-    <section aria-label="Who can open it" className="space-y-2 border-t border-border pt-4">
-      <label htmlFor="company-access" className="font-semibold">Who can open it</label>
-      <div className="flex flex-wrap items-center gap-2">
-        <select id="company-access" value={companyWide ? 'use' : 'none'} disabled={busy} onChange={event => void run(() => event.target.value === 'use' ? putShare('everyone') : shareList(emails))} className="h-9 min-w-0 rounded-md border border-border bg-background px-2 text-sm">
-          <option value="none">Only people added</option>
-          <option value="use">Everyone at the company</option>
-        </select>
-        <button type="button" onClick={() => void copyLink()} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"><Link2 aria-hidden="true" className="h-4 w-4" />Copy link</button>
-      </div>
-      <p className="text-xs text-muted-foreground">The link opens the dashboard as a user, also for you, so you can try it the way they will.</p>
+    <section aria-label="Co-owners" className="space-y-3 border-t border-border pt-4">
+      <div><h3 className="font-semibold">Co-owners</h3><p className="text-xs text-muted-foreground">Can build and change it, like you.</p></div>
+      <ul aria-label="Owners" className="space-y-2">
+        {owners?.owner && <li className="flex min-w-0 items-center gap-2">{avatar(owners.owner)}<span className="min-w-0 flex-1 truncate" title={who(owners.owner)}>{who(owners.owner)}</span><span className="shrink-0 text-xs text-muted-foreground">Created it</span></li>}
+        {(owners?.co_owners || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{owners?.can_manage && removeButton(person, value => changeOwners('owner_remove', value))}</li>)}
+      </ul>
+      {ownersError && <p role="alert" className="text-xs text-destructive">{ownersError} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
+      {owners?.can_manage && emailForm(ownerEmail, setOwnerEmail, addOwner, 'Add a co-owner by email')}
     </section>
     {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    <div className="space-y-1 border-t border-border pt-3">
-      {state.agents && <details><summary className="cursor-pointer py-1 text-sm">Agents others can message <span className="text-muted-foreground">({selected.length})</span></summary>
-        <div className="mt-2 space-y-2">{selected.map(agent => <div key={agent.chat_id} className="flex items-start gap-2.5"><Bot aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /><div className="min-w-0"><p className="break-words font-medium">{agent.name}</p>{agent.purpose && <p className="text-xs text-muted-foreground">{agent.purpose}</p>}</div></div>)}
-          {!selected.length && <p className="text-xs text-muted-foreground">None yet. Ask in chat to share one of this Crew's agents.</p>}</div></details>}
-      {!!state.accounts?.length && <details><summary className="cursor-pointer py-1 text-sm">Accounts used</summary><ul className="mt-2 space-y-2 text-xs">{state.accounts.map((account, i) => <li key={i}><span className="font-medium">{account.name}</span><span className="block text-muted-foreground">{account.use}</span></li>)}</ul></details>}
-      {onAsk && <button type="button" disabled={asking} onClick={() => void ask(ACCESS_CHAT_REQUEST)} className="inline-flex items-center gap-1.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"><MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />Or change access in chat</button>}
-    </div>
+    {(state.agents || !!state.accounts?.length) && <details className="border-t border-border pt-3 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Details</summary>
+      <div className="mt-2 space-y-3">
+        {state.agents && <div><p className="font-medium">Agents others can message ({selected.length})</p>{selected.map(agent => <div key={agent.chat_id} className="mt-1 flex items-start gap-2"><Bot aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span>{agent.name}{agent.purpose && <span className="block text-muted-foreground">{agent.purpose}</span>}</span></div>)}{!selected.length && <p className="text-muted-foreground">None yet. Ask in chat to share one of this Crew's agents.</p>}</div>}
+        {!!state.accounts?.length && <div><p className="font-medium">Accounts used</p><ul className="mt-1 space-y-1">{state.accounts.map((account, i) => <li key={i}>{account.name}<span className="block text-muted-foreground">{account.use}</span></li>)}</ul></div>}
+      </div>
+    </details>}
   </div>
   const content = peopleContent
   if (isPanel) return <div className="w-full max-w-2xl">{content}</div>
