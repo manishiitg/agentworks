@@ -20,7 +20,7 @@ vi.mock('../../components/workflow/WorkflowBotsPanel', () => ({ default: ({ fixe
 vi.mock('../../components/workflow/WorkflowEmailPanel', () => ({ default: () => <div data-content="gmail">Existing Google apps</div> }))
 vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
 vi.mock('./ComputerUsePanel', () => ({ ComputerUsePanel: () => <div data-content="computer-use">Local computer</div> }))
-vi.mock('./CrewPublishedAgents', () => ({ CrewPublishedAgents: () => <div data-content="agents">Chats from your computer</div> }))
+vi.mock('./CrewSyncPanel', () => ({ CrewSyncPanel: () => <div data-sync="">Project sync</div> }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }), useProjectMode: () => 'dev' }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
 vi.mock('../../components/integrations/ProjectIntegrationPanel', () => ({ INTEGRATION_LABELS: {github:'GitHub',connected:'MCPs',available:'Available MCPs',secrets:'Secrets',gmail:'Google apps','slack-account':'Slack account',laptop:'Local laptop'}, ProjectIntegrationPanel: ({section}: any) => <section data-content={section} data-integration-section={section}>Native integration</section> }))
@@ -48,7 +48,7 @@ it('opens familiar integration panels in the existing project workspace', async 
   expect(host.querySelector('header')?.textContent).toContain('MCPs')
   expect(host.querySelector('[data-content="connected"]')).not.toBeNull()
   expect(host.querySelector('nav, [aria-label="Integration sections"]')).toBeNull()
-  for (const target of ['brain', 'folders', 'whatsapp', 'cli', 'agents', 'agentbridge', 'connected']) {
+  for (const target of ['brain', 'folders', 'whatsapp', 'cli', 'agentbridge', 'connected']) {
     await act(async () => state.target(target))
     expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual([target])
   }
@@ -66,15 +66,27 @@ it('keeps bot channels and sharing separate from personal Vault accounts', async
 })
 it('retains feature and Builder access checks for direct targets', async () => {
   const host = await mount(CREW_PRODUCT, new Set(['secrets']), false)
-  for (const target of ['slack', 'slack-bot', 'whatsapp', 'agents']) await act(async () => state.target(target))
+  for (const target of ['slack', 'slack-bot', 'whatsapp']) await act(async () => state.target(target))
   expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual(['connected'])
 })
 
 it('opens each resource directly without a My Vault destination', async () => {
  const host = await mount()
- for (const target of ['connected','available','secrets','gmail','slack-account','laptop','github']) {
+ for (const target of ['connected','available','secrets','gmail','slack-account','github']) {
   await act(async () => state.target(target))
   expect(host.querySelector('[data-integration-section]')?.getAttribute('data-integration-section')).toBe(target)
+ }
+})
+
+// Sync and laptop tools are one "Your computer" page; old links to either still open it.
+it('opens sync and laptop tools together on Your computer', async () => {
+ const host = await mount()
+ for (const target of ['computer', 'sync', 'laptop', 'agents']) {
+  await act(async () => state.target('connected'))
+  await act(async () => state.target(target))
+  expect(host.querySelector('header')?.textContent).toContain('Your computer')
+  expect(host.querySelector('[data-sync]')).not.toBeNull()
+  expect(host.querySelector('[data-integration-section]')?.getAttribute('data-integration-section')).toBe('laptop')
  }
 })
 

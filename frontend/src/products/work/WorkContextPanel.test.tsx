@@ -26,7 +26,7 @@ beforeEach(() => {
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
-const accessDestinations = [['Local laptop','laptop'],['Project sync','sync'],['Linked projects & folders','folders'],['Chats from your computer','agents'],['AgentBridge','agentbridge']]
+const accessDestinations = [['Your computer','computer'],['Connected agents','agentbridge']]
 const inventory = (features?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels: features, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
 async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => Promise<void>) {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -202,9 +202,8 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
   expect(host.querySelector('footer')?.textContent).not.toContain('Access & sharing')
   await act(async () => [...host.querySelector('footer')!.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Access')!.click())
   expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Sharing')).toBe(false)
-  expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Project sync')).toBe(false)
-  await act(async () => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Local laptop')!.click())
-  expect(mocks.target).toHaveBeenLastCalledWith('mcp','laptop')
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Your computer')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp','computer')
  })
 })
 

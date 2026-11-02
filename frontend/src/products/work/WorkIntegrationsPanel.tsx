@@ -13,7 +13,6 @@ import { ShareDashboardButton } from '../../components/workflow/ShareDashboardBu
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { WorkFoldersSection } from './WorkIdentityPanel'
-import { CrewPublishedAgents } from './CrewPublishedAgents'
 import { useWorkspacePanelChatDraft } from '../../components/workspace/WorkspacePanelNavigation'
 import { ProjectAgentBridgePanel } from '../../components/workspace/ProjectAgentBridgePanel'
 import { useProjectProduct } from './projectProduct'
@@ -23,7 +22,7 @@ import { integrationProductAvailable } from '../../components/integrations/integ
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
 
-export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'slack' | 'whatsapp' | 'cli' | 'agents' | 'agentbridge' | 'sync' | 'computer-use'
+export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'slack' | 'whatsapp' | 'cli' | 'computer' | 'agentbridge' | 'computer-use'
 
 export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
   accessLoading?: boolean
@@ -45,28 +44,30 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   const projectMode = useProjectMode(sessionId ?? '')
   useWorkspaceViewTarget('mcp', target => {
     if (target === 'share') { setShareSection(true); return }
-    const next = target === 'slack-bot' ? 'slack' : target
+    // Sync and laptop tools share one "Your computer" page; their old names still open it.
+    const next = target === 'slack-bot' ? 'slack' : ['laptop', 'sync', 'agents'].includes(target) ? 'computer' : target
     if (next === 'computer-use' && (!canEdit || !isLocalDeployment())) return
     if (next === 'agentbridge' && !integrationProductAvailable('bullpen', allowedProducts)) return
-    if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts) || next === 'agents' && !canEdit) return
-    if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'laptop', 'github'].includes(next)) { setShareSection(false); setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
-    if (['apps', 'brain', 'folders', 'slack', 'whatsapp', 'cli', 'agents', 'agentbridge', 'sync', 'computer-use'].includes(next)) {
+    if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
+    if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setShareSection(false); setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
+    if (['apps', 'brain', 'folders', 'slack', 'whatsapp', 'cli', 'computer', 'agentbridge', 'computer-use'].includes(next)) {
       setShareSection(false); setTab(next as WorkIntegrationTab)
     }
   })
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', agents: 'Chats from your computer', agentbridge: 'AgentBridge', sync: 'Project sync', 'computer-use': 'Computer use' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', computer: 'Your computer', agentbridge: 'Connected agents', 'computer-use': 'Computer use' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <WorkspaceViewHeader icon={shareSection ? Users : tab === 'agentbridge' ? Cable : Server} title={shareSection ? 'Access' : labels[tab]} />
     <div data-ui-view-section={shareSection ? 'share' : tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={draft} /> : <>
-        {tab === 'sync' && canEdit && <CrewSyncPanel projectId={projectId} />}
+        {tab === 'computer' && <div className="space-y-8">
+          {canEdit && <section aria-label="Work from your Mac" className="space-y-2"><h3 className="text-sm font-semibold">Work on this Crew from your Mac</h3><CrewSyncPanel projectId={projectId} /></section>}
+          <section aria-label="Let this Crew use your computer" className="space-y-2"><h3 className="text-sm font-semibold">Let this Crew use your computer</h3><ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section="laptop" canEdit={canEdit} onAsk={draft} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} /></section>        </div>}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'agentbridge' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} />}
         {tab === 'apps' && <ProjectIntegrationPanel github={projectMode === 'dev'} workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
         {tab === 'folders' && <WorkFoldersSection workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
-        {tab === 'agents' && canEdit && <CrewPublishedAgents profileId={product.profileId} projectId={projectId} />}
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}
         {tab === 'slack' && <ProductSlackPanel workspacePath={workspacePath} noun="Crew" section="bot" tabId={tabId} />}
         {tab === 'whatsapp' && <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}

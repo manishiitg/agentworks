@@ -43,7 +43,7 @@ These are {{product}} views, not AgentWorks Workflow views:
 | `workshop` | Automations | Inspect `schedules`, `conditions` (Watchers), `triggers` (Webhooks) , `functions` or `email` (Incoming email). Only use advertised targets. |
 | `schedules` | Schedules | Inspect a scheduled caller or its advertised webhook target. |
 | `identity` | Settings | Inspect Instructions & identity. Models has its own menu entry; use the advertised Models view or target. |
-| `mcp` | Vault and project integrations | `vault` shows apps, accounts, secret names and computers used here. Other advertised targets include `brain`, `folders`, `slack`, `slack-bot`, `whatsapp`, `cli` (MCP access), `agents` (Chats from your computer), `share` (Access) and AgentBridge when offered. Read the matching panel skill. |
+| `mcp` | Vault and project integrations | `vault` shows apps, accounts, secret names and computers used here. Other advertised targets include `brain`, `folders`, `slack`, `slack-bot`, `whatsapp`, `cli` (MCP access), `computer` (Your computer: Mac sync and laptop tools), `share` (Access) and `agentbridge` (Connected agents) when offered. Read the matching panel skill. |
 | `llm` | Models | Open model settings when advertised. |
 | `folders` | Folders & workflows | Inspect admitted attached resources when advertised. |
 
