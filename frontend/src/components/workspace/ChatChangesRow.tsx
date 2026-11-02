@@ -36,7 +36,7 @@ function ChatChangesSummary({ workspacePath, sessionId, onOpen }: Props) {
   const comparison = result?.comparison
   const warning = comparison?.note || (comparison?.skipped_count ? 'Some files could not be saved.' : '') || (result?.history.start_message ? 'Earlier changes are no longer saved.' : '')
   return <div>
-    <WorkspaceContextRow icon={FileDiff} hint={`Saved changes across this chat’s replies. Other chats or editors using the same files may contribute.${warning ? ` ${warning}` : ''}`} onClick={onOpen} detail={error ? 'Unavailable' : !result ? 'Loading…' : <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums">
+    <WorkspaceContextRow icon={FileDiff} hint={`Saved changes across this chat’s replies. Other chats or editors using the same files may contribute.${warning ? ` ${warning}` : ''}`} onClick={() => onOpen()} detail={error ? 'Unavailable' : !result ? 'Loading…' : <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums">
       <span>{summary?.files ?? 0} file{summary?.files === 1 ? '' : 's'}</span><span className="text-diff-add">+{summary?.added ?? 0}</span><span className="text-diff-del">−{summary?.removed ?? 0}</span>
       {warning && <span role="img" aria-label={warning} title={warning} className="inline-flex shrink-0 text-amber-500"><AlertTriangle aria-hidden="true" className="h-3 w-3" /></span>}
     </span>}>Changes</WorkspaceContextRow>
