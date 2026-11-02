@@ -81,13 +81,23 @@ func prepareCrewGit(runtimeDir, project, provider, owner string) error {
 	// Owner-slot launches already receive Git trust plus disabled hooks and
 	// fsmonitor from Landlock. App-created 0700 homes here prevent that slot
 	// from importing its native journal before the first CLI launch (498).
-	if _, inSlot := crewNativeSlot(owner, runtimeDir, provider); inSlot {
+	if ownerRunsInSlot(owner, runtimeDir) {
 		return nil
 	}
 	if err := cliruntime.PrepareProjectGit(filepath.Clean(runtimeDir), cliHomeName(provider), project); err != nil {
 		return fmt.Errorf("cannot prepare Crew Git: %w", err)
 	}
 	return nil
+}
+
+// ownerRunsInSlot reports a runtime folder in the owner's slot state, whatever the program: its CLI runs as that slot,
+// so the platform must not make app-owned homes there (PLAT-872-86; native sync support is a separate question).
+func ownerRunsInSlot(owner, runtimeDir string) bool {
+	if cliHostOS != "linux" || strings.TrimSpace(owner) == "" {
+		return false
+	}
+	slot, enabled, err := slots.For(owner)
+	return err == nil && enabled && slot != "" && inSlotStateFolder(runtimeDir, slot)
 }
 
 func crewCLIWorkspaceInstructions(folder string) string {
@@ -201,8 +211,12 @@ func inSlotStateFolder(dir, slot string) bool {
 // ANTHROPIC_API_KEY) and never writes it out. Codex writes an API key into its home's auth.json, and Cursor and Muse
 // keep file logins, which the CLI's shells could read; they stay on the app account until that changes (PLAT-872-84).
 func slotLoginFromEnv(provider string) bool {
-	if !strings.EqualFold(strings.TrimSpace(provider), "claude-code") {
-		return false
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "claude-code":
+		return strings.TrimSpace(os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")) != "" || strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
+	case "codex-cli":
+		// Codex takes the server's key from CODEX_API_KEY, so no login file reaches the slot (PLAT-872-86).
+		return strings.TrimSpace(os.Getenv("CODEX_API_KEY")) != ""
 	}
-	return strings.TrimSpace(os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")) != "" || strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
+	return false
 }
