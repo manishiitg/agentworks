@@ -3,9 +3,11 @@ package crewsync
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
 // PLAT-856-387: a return sync must preserve edits outside AgentWorks and must
@@ -32,7 +34,10 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 		}
 	}
 	write(local.Files, "src/main.txt", "first")
-	write(local.Files, ".env", "private")
+	// Owner 2 Nov (PLAT-856-509): the owner's project secrets sync to their own server; publishing still skips them.
+	write(local.Files, ".env", "API_KEY=x")
+	write(local.Files, "keys/deploy.pem", "key")
+	write(local.Files, ".cache/token", "private")
 	write(local.Resources, "product.json", "private")
 	write(local.Resources, "skills/review/SKILL.md", "Review the changes")
 	outside := filepath.Join(t.TempDir(), "private.txt")
@@ -46,8 +51,13 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Files) != 2 {
+	if len(first.Files) != 4 {
 		t.Fatalf("unexpected files: %v", first.Files)
+	}
+	for _, key := range []string{"files/.env", "files/keys/deploy.pem"} {
+		if _, ok := first.Files[key]; !ok || !publication.Excluded(strings.TrimPrefix(key, "files/")) {
+			t.Fatalf("%s: synced=%v, publication must still exclude it", key, ok)
+		}
 	}
 	if err = Apply(t.Context(), server, first); err != nil {
 		t.Fatal(err)
@@ -102,7 +112,7 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	if raw, err := os.ReadFile(filepath.Join(server.Files, "src/main.txt")); err != nil || string(raw) != "edited while excluded" {
 		t.Fatalf("re-included file: %q %v", raw, err)
 	}
-	for _, bad := range []string{"files/../outside", "files/.env", "resources/product.json", "resources/_files/escape"} {
+	for _, bad := range []string{"files/../outside", "files/.cache/token", "resources/product.json", "resources/_files/escape"} {
 		data := []byte("x")
 		file := fingerprint(data, false)
 		if err = Apply(t.Context(), server, Snapshot{Files: Manifest{bad: file}, Changes: []Change{{Path: bad, After: &file, Data: data}}}); err == nil {

@@ -86,35 +86,60 @@ func runtimeSeedPath(p string) bool {
 }
 
 // Excluded is deliberately about paths, not secret-value scanning or rewriting chat.
-func Excluded(p string) bool          { return excluded(p, false) }
-func ExcludedDirectory(p string) bool { return excluded(p, true) }
-func excluded(p string, directory bool) bool {
+func Excluded(p string) bool          { return excluded(p, false, true) }
+func ExcludedDirectory(p string) bool { return excluded(p, true, true) }
+
+// Crew sync copies the owner's project to their own server, secret and
+// credential files included (owner, 2 Nov); only machine state stays out.
+func ExcludedFromSync(p string, directory bool) bool { return excluded(p, directory, false) }
+
+func credentialPart(parts []string, i int, directory bool) bool {
+	part := parts[i]
+	switch path.Ext(part) {
+	case ".pem", ".key", ".p12", ".pfx", ".kdbx", ".tfstate", ".env", ".ppk", ".jks", ".keystore", ".gpg", ".asc", ".tfvars":
+		return true
+	}
+	switch part {
+	case "credentials", "auth.json", "kubeconfig", ".htpasswd", ".netrc", ".pgpass", "secrets", "keys", "credentials.json", "token.json", "tokens.json":
+		return true
+	}
+	// Value/config filenames are excluded. Keep source modules such as
+	// secrets.go and credential_helpers.ts: names alone are not secret values.
+	if i == len(parts)-1 && !directory && (strings.Contains(part, "secret") || strings.Contains(part, "credential")) {
+		switch path.Ext(part) {
+		case "", ".json", ".yaml", ".yml", ".env", ".ini", ".conf", ".config", ".properties", ".txt", ".toml", ".cfg":
+			return true
+		}
+	}
+	return part == "id_rsa" || part == "id_dsa" || part == "id_ed25519" || part == "id_ecdsa" || strings.HasPrefix(part, "service-account") && strings.HasSuffix(part, ".json")
+}
+
+// Hidden files that hold a project's own secrets (.env, .env.local, .npmrc, ...).
+func hiddenCredentialFile(part string) bool {
+	switch part {
+	case ".env", ".htpasswd", ".netrc", ".pgpass", ".npmrc", ".pypirc":
+		return true
+	}
+	return strings.HasPrefix(part, ".env.")
+}
+
+func excluded(p string, directory, credentials bool) bool {
 	if _, err := CleanPath(p); err != nil {
 		return true
 	}
 	parts := strings.Split(strings.ToLower(p), "/")
 	for i, part := range parts {
-		switch path.Ext(part) {
-		case ".pem", ".key", ".p12", ".pfx", ".kdbx", ".tfstate", ".env", ".ppk", ".jks", ".keystore", ".gpg", ".asc", ".tfvars":
+		if credentials && credentialPart(parts, i, directory) {
 			return true
 		}
 		switch part {
-		case "credentials", "auth.json", "kubeconfig", ".htpasswd", ".netrc", ".pgpass", "node_modules", "__pycache__", "venv", "secrets", "keys", "builder", "chat_history", "browser-profile", "browser-data", "credentials.json", "token.json", "tokens.json":
-			return true
-		}
-		// Value/config filenames are excluded. Keep source modules such as
-		// secrets.go and credential_helpers.ts: names alone are not secret values.
-		if i == len(parts)-1 && !directory && (strings.Contains(part, "secret") || strings.Contains(part, "credential")) {
-			switch path.Ext(part) {
-			case "", ".json", ".yaml", ".yml", ".env", ".ini", ".conf", ".config", ".properties", ".txt", ".toml", ".cfg":
-				return true
-			}
-		}
-		key := part
-		if key == "id_rsa" || key == "id_dsa" || key == "id_ed25519" || key == "id_ecdsa" || strings.HasPrefix(part, "service-account") && strings.HasSuffix(part, ".json") {
+		case "node_modules", "__pycache__", "venv", "builder", "chat_history", "browser-profile", "browser-data":
 			return true
 		}
 		if !strings.HasPrefix(part, ".") {
+			continue
+		}
+		if !credentials && i == len(parts)-1 && !directory && hiddenCredentialFile(part) {
 			continue
 		}
 		// Hidden state is private by default. Only these project-content roots
