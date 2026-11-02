@@ -152,6 +152,8 @@ github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261102132504-1da55e029f20
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261102132504-1da55e029f20/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261102134153-520d500aca81 h1:RL9BP586ZgjxVqeqqvo29VTCGc1HNwHw3wgzFDJoYn0=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261102134153-520d500aca81/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261102140257-65dd79eb4414 h1:8saZ9zTsBHTqwd5HX1ZOWqj/dS+TJwZaDRd4gFi6kRM=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261102140257-65dd79eb4414/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
