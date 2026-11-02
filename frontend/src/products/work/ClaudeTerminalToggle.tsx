@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Terminal } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip'
 import { agentApi } from '../../services/api'
 import type { ChatContextView } from '../../services/api-types'
 import { changeChatContext, chatContextChangedEvent } from './ChatContextItems'
@@ -32,23 +33,31 @@ export default function ClaudeTerminalToggle({ sessionId, modelKey }: { sessionI
   }, [sessionId, modelKey])
 
   if (!offered) return null
-  const label = on ? 'Claude Code terminal is on. Click to turn it off.' : 'Run Claude Code in a terminal. Click to turn it on.'
+  const label = on
+    ? 'You are using the native Claude Code terminal. Click to go back to the normal chat.'
+    : 'Want the native Claude Code terminal experience? Click here to run this chat in Claude Code itself.'
   return (
-    <Button
-      type="button"
-      variant={on ? 'secondary' : 'ghost'}
-      size="icon"
-      disabled={busy}
-      aria-pressed={on}
-      aria-label={label}
-      title={label}
-      onClick={async () => {
-        setBusy(true)
-        try { await changeChatContext(sessionId, { claude_terminal: !on }) } finally { setBusy(false) }
-      }}
-      className="h-7 w-7 shrink-0 p-0"
-    >
-      <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
-    </Button>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant={on ? 'secondary' : 'ghost'}
+            size="icon"
+            disabled={busy}
+            aria-pressed={on}
+            aria-label={label}
+            onClick={async () => {
+              setBusy(true)
+              try { await changeChatContext(sessionId, { claude_terminal: !on }) } finally { setBusy(false) }
+            }}
+            className="h-7 w-7 shrink-0 p-0"
+          >
+            <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-64 text-xs">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
