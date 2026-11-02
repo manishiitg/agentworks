@@ -145,6 +145,7 @@ import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 import { useChatClaudeTerminal } from '../products/work/useChatClaudeTerminal'
+import { chatSendMessageEvent } from '../products/work/ChatContextItems'
 
 // The person's chat/terminal choice for this tab. Not remembered: every
 // Crew, Code or workflow opens in the chat view.
@@ -2260,6 +2261,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       }, 0)
     }
   }, [showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers])
+
+  // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
+  useEffect(() => {
+    const send = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; text?: string }>).detail
+      if (detail?.sessionId && detail.sessionId === tabSessionId && detail.text) void routeSubmit(detail.text)
+    }
+    window.addEventListener(chatSendMessageEvent, send)
+    return () => window.removeEventListener(chatSendMessageEvent, send)
+  }, [routeSubmit, tabSessionId])
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()

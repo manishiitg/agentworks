@@ -482,25 +482,28 @@ func (api *StreamingAPI) compactChatNow(owner string, tab chatContextTab, afterT
 // internal turn as "Compact now", built as for the next message, which starts Claude in the terminal instead of
 // compacting. A chat with no message since the server started has no turn to build from; its terminal starts
 // with the next message, as before.
-func (api *StreamingAPI) startClaudeTerminalNow(owner string, tab chatContextTab) string {
+// It reports needsStarter when the chat has no turn to start the terminal from (the screen then sends a short
+// message for the person); never for someone else's chat or one that is busy.
+func (api *StreamingAPI) startClaudeTerminalNow(owner string, tab chatContextTab) (message string, needsStarter bool) {
 	sessionID := tab.Record.SessionID
 	chat, _, refusal := chatCompactRefusal(sessionID)
 	if refusal != "" || chat.lastPerson.IsZero() {
 		log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=start result=deferred reason=%q", sessionID, owner, "no message to start from since the server started; the next message starts it")
-		return "The terminal starts with your next message."
+		// Only a chat with no conversation to start from gets the starter; a busy chat's next message starts it.
+		return "The terminal starts with your next message.", chat.lastPerson.IsZero() || (!chat.hasHandle && !chat.lastTurnEnd.Before(chat.lastPerson))
 	}
 	runAs := api.idleCompactOwner(sessionID, chat.personUser)
 	if runAs != strings.TrimSpace(owner) {
-		return "The terminal starts with the next message."
+		return "The terminal starts with the next message.", false
 	}
 	run := newIdleCompactRun()
 	run.manual, run.startTerminal = true, true
 	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
-		return "The terminal starts with your next message."
+		return "The terminal starts with your next message.", false
 	}
 	log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=start reason=switched_on", sessionID, owner)
 	go api.runIdleCompaction(sessionID, runAs, chat, 0, 0, run)
-	return "Starting Claude Code in the terminal."
+	return "Starting Claude Code in the terminal.", false
 }
 
 // compactChatAfterTurn waits (up to 15 minutes) for the chat's turns to end, then compacts it once.
@@ -582,9 +585,16 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 		// next message instead of showing a closed pane as this chat's terminal. A new pane shows again.
 		api.hideMainTerminals(tab.Record.SessionID)
 	}
-	status, message := http.StatusOK, ""
+	status, message, starter := http.StatusOK, "", ""
 	if runtimeChanged && !afterTurn && tab.Identity.ClaudeTerminal {
-		message = api.startClaudeTerminalNow(owner, tab)
+		var needsStarter bool
+		message, needsStarter = api.startClaudeTerminalNow(owner, tab)
+		if needsStarter {
+			// Nothing to start the terminal from yet (a new chat, or none since the server started): the
+			// screen sends this short message for the person, and that turn opens Claude in the terminal.
+			starter = claudeTerminalStarterMessage
+			message = ""
+		}
 	}
 	switch strings.TrimSpace(input.Action) {
 	case "":
@@ -601,8 +611,15 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	} else if message != "" {
 		out["message"] = message
 	}
+	if starter != "" {
+		out["starter_message"] = starter
+	}
 	return status, out
 }
+
+// claudeTerminalStarterMessage is sent for the person when they switch the terminal on and it has no turn to
+// start from, so the terminal opens at once instead of waiting for a message.
+const claudeTerminalStarterMessage = "Hi"
 
 // handleChatContext reads (GET ?session_id=) or changes (POST) the context options of the caller's own chat.
 func (api *StreamingAPI) handleChatContext(w http.ResponseWriter, r *http.Request) {
