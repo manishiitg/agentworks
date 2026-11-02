@@ -268,7 +268,7 @@ if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
   # the next deploy). The deploy's final check fails if any account still has none.
   if [[ "${SLOTS_ENABLED:-false}" == true ]]; then
     echo "==> [$PRODUCT] Giving every account its own Linux slot"
-    ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+    ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} SLOT_CPU_QUOTA=${SLOT_CPU_QUOTA:-200%} SLOT_MEMORY_MAX=${SLOT_MEMORY_MAX:-8G} SLOT_TASKS_MAX=${SLOT_TASKS_MAX:-2048} bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
   fi
 fi
 
