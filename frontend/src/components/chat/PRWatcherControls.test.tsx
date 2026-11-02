@@ -22,7 +22,7 @@ it('sends PR requirements to the original chat and retains existing watch status
   const root = createRoot(element)
   const button = (label: string) => element.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
   try {
-    await act(async () => root.render(<PRWatcherControls sessionId="original-chat" group={{ root: 'worktree-a', github_repo: 'example/project', pr: { state: 'open', number: 7 } }} />))
+    await act(async () => root.render(<PRWatcherControls compact sessionId="original-chat" group={{ root: 'worktree-a', github_repo: 'example/project', pr: { state: 'open', number: 7 } }} />))
     expect(element.querySelector('select')).toBeNull()
     await act(async () => button('Watch PR').click())
     expect(send).toHaveBeenLastCalledWith({ tabId: 'original', message: expect.stringContaining('https://github.com/example/project/pull/7') })
