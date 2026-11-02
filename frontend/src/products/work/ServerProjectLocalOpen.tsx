@@ -13,7 +13,7 @@ export function ProjectConnectionNotes({ project }: { project?: SourceProject })
   if (!apps.length && !secrets.length && !accounts.length) return null
   // Apps run on the server through list_server_apps / call_server_app (PLAT-856-493); nothing is copied to this Mac.
   return <div className="space-y-1 text-muted-foreground">
-    {apps.length > 0 && <p>{apps.join(', ')} keep working here: the agent uses them on the server, with the server's sign-ins.</p>}
+    {apps.length > 0 && <p>{apps.join(', ')}: apps this Crew has selected keep working here through the server, with the server's sign-ins.</p>}
     {secrets.length > 0 && <p>Secrets ({secrets.join(', ')}) stay on the server. A step that needs them runs there.</p>}
     {accounts.length > 0 && <p>Personal accounts ({accounts.join(', ')}) aren't available on this Mac yet.</p>}
   </div>
