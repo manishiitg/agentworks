@@ -5906,7 +5906,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
 		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive, agyPersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
-		claudeCodeTransport := codingAgentClaudeCodeChatTransport(finalProvider, chatClaudeCodeTransport(r.Context(), currentUserID, sessionID, req.ClaudeCodeTransport))
+		claudeCodeTransport := codingAgentClaudeCodeChatTransport(finalProvider, chatClaudeCodeTransport(streamCtx, currentUserID, sessionID, req.ClaudeCodeTransport))
 		if forceStructuredCodingAgent {
 			// A structured coding CLI is a one-shot native JSON process. There is
 			// no persistent pane to retain, and preserving one would accidentally
