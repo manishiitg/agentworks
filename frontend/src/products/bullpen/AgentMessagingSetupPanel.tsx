@@ -2,6 +2,7 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, Check, Copy, Laptop, MessageSquare } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { getApiBaseUrl } from '../../services/api'
+import { computerOS, windowsDefenderNote, windowsInstallCommand } from '../../utils/computerInstall'
 
 import { messagingGuides, type MessagingClient } from './agentMessagingSetup'
 import { AiAppPicker, isHostedAiApp, type AiApp } from '../../components/integrations/AiAppPicker'
@@ -54,7 +55,7 @@ export function AgentMessagingSetupPanel({ onOpenMcp, onBack }: { onOpenMcp?: ()
 }
 
 function CodingMessagingGuide({ clientID }: { clientID: MessagingClient }) {
-  const [platform, setPlatform] = useState<'unix' | 'windows'>('unix')
+  const [platform, setPlatform] = useState<'unix' | 'windows'>(() => computerOS() === 'windows' ? 'windows' : 'unix')
   const [codexMode, setCodexMode] = useState<'app' | 'cli'>('app')
   const [cursorMode, setCursorMode] = useState<'cli' | 'desktop'>('desktop')
   const guide = messagingGuides.find(item => item.id === clientID)!
@@ -64,7 +65,7 @@ function CodingMessagingGuide({ clientID }: { clientID: MessagingClient }) {
   const local = (() => { try { return ['localhost', '127.0.0.1', '::1'].includes(new URL(origin).hostname.replace(/^\[|\]$/g, '')) } catch { return false } })()
   const install = platform === 'unix'
     ? `curl -fsSL ${quote(`${origin}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${quote(origin)} --no-login`
-    : `& ([scriptblock]::Create((irm ${quote(`${origin}/api/downloads/cli/install-agentworks.ps1`)}))) -Server ${quote(origin)} -NoLogin`
+    : windowsInstallCommand(origin)
   return <section aria-label="Coding agent setup" className="space-y-4">
     {clientID === 'codex' && <div className="space-y-2"><h3 className="text-sm font-medium">How do you use Codex?</h3><div role="group" aria-label="Codex app or CLI" className="flex flex-wrap gap-2"><Button variant={codexMode === 'app' ? 'secondary' : 'outline'} size="sm" aria-pressed={codexMode === 'app'} onClick={() => setCodexMode('app')}>Codex app</Button><Button variant={codexMode === 'cli' ? 'secondary' : 'outline'} size="sm" aria-pressed={codexMode === 'cli'} onClick={() => setCodexMode('cli')}>Codex CLI</Button></div></div>}
     {clientID === 'cursor' && <div role="group" aria-label="Cursor mode" className="flex flex-wrap gap-2"><Button variant={cursorMode === 'desktop' ? 'secondary' : 'outline'} size="sm" aria-pressed={cursorMode === 'desktop'} onClick={() => setCursorMode('desktop')}>Cursor app</Button><Button variant={cursorMode === 'cli' ? 'secondary' : 'outline'} size="sm" aria-pressed={cursorMode === 'cli'} onClick={() => setCursorMode('cli')}>Cursor CLI</Button></div>}
@@ -77,7 +78,7 @@ function CodingMessagingGuide({ clientID }: { clientID: MessagingClient }) {
             <details className="text-xs leading-5 text-muted-foreground"><summary className="cursor-pointer text-primary">Tested versions</summary><p className="mt-2">{client.versions}</p></details>
           <h4 className="text-sm font-medium">Install or update</h4>
             {client.available && <><p className="text-xs leading-5 text-muted-foreground">Install the AgentWorks CLI first, or update it from a server that publishes the required messaging build.</p><div role="group" aria-label="Install platform" className="flex flex-wrap gap-1"><Button variant={platform === 'unix' ? 'secondary' : 'ghost'} size="sm" aria-pressed={platform === 'unix'} onClick={() => setPlatform('unix')}>macOS / Linux</Button><Button variant={platform === 'windows' ? 'secondary' : 'ghost'} size="sm" aria-pressed={platform === 'windows'} onClick={() => setPlatform('windows')}>Windows</Button></div><Command label="Install AgentWorks" text={install} /><Command label="Update AgentWorks CLI" text={`agentworks --server ${quote(origin)} update`} /><p className="text-xs leading-5 text-muted-foreground">The Windows installer does not establish provider IPC compatibility; check the requirements above.</p></>}
-            {platform === 'windows' && <p className="text-xs leading-5 text-muted-foreground">If Windows Defender blocks AgentWorks: open Windows Security › Virus &amp; threat protection › Protection history, open the agentworks.exe entry, choose Actions › Allow on device, then run <code>agentworks setup</code>.</p>}
+            {platform === 'windows' && <p className="text-xs leading-5 text-muted-foreground">{windowsDefenderNote}</p>}
             {client.installSteps && <ol aria-label="Install in the Codex app" className="list-decimal space-y-2 pl-5 text-xs leading-5 text-muted-foreground">{client.installSteps.map(text => <li key={text}>{text}</li>)}</ol>}
             {client.install.map(command => <Command key={command.label} {...command} />)}
             <p className="text-xs leading-5 text-muted-foreground">{client.installNote}</p>
