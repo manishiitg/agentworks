@@ -32,7 +32,7 @@ func gitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
 			cmd.Env = append(cmd.Env, item)
 		}
 	}
-	cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+	cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 	return cmd
 }
 

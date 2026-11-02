@@ -16,6 +16,7 @@ import (
 func TestDecideCLIConfinement(t *testing.T) {
 	origOS, origRunner, origSeatbelt := cliHostOS, cliLandlockRunner, cliSeatbeltAvailable
 	t.Cleanup(func() { cliHostOS, cliLandlockRunner, cliSeatbeltAvailable = origOS, origRunner, origSeatbelt })
+	t.Setenv("LOCAL_MODE", "true")
 	cliSeatbeltAvailable = func() bool { return true }
 	withLock := func() (string, bool) { return "/usr/lib/agentworks/landlock-run", true }
 	noLock := func() (string, bool) { return "", false }
@@ -29,6 +30,8 @@ func TestDecideCLIConfinement(t *testing.T) {
 		runner     func() (string, bool)
 		want       cliRunDecision
 	}{
+		{"personal local Windows, full CLI", "claude-code", "windows", "", "/w", noLock, cliRunPersonalWindows},
+		{"multi-user Windows stays bridge-only", "claude-code", "windows", "true", "/w", noLock, cliRunBridgeOnly},
 		{"own Mac, Claude: Seatbelt", "claude-code", "darwin", "", "/w", noLock, cliRunSeatbelt},
 		{"own Mac, Codex: Seatbelt", "codex-cli", "darwin", "", "/w", noLock, cliRunSeatbelt},
 		{"own Mac, Cursor: Seatbelt", "cursor-cli", "darwin", "", "/w", noLock, cliRunSeatbelt},
@@ -61,6 +64,12 @@ func TestDecideCLIConfinement(t *testing.T) {
 		if got == cliRunBridgeOnly && why == "" {
 			t.Errorf("%s: fell back without saying why", tc.name)
 		}
+	}
+	cliHostOS, cliLandlockRunner = "windows", noLock
+	t.Setenv("MULTI_USER_MODE", "")
+	t.Setenv("LOCAL_MODE", "false")
+	if got, _, _ := decideCLIConfinement("claude-code", "/w"); got != cliRunBridgeOnly {
+		t.Fatal("nonlocal Windows gained unsandboxed native execution")
 	}
 }
 

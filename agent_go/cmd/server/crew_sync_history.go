@@ -19,6 +19,14 @@ import (
 
 const crewHandoffHistoryLimit = 32 << 20
 
+func crewArchiveOnly(roots crewroot.Roots) bool {
+	if cliHostOS == "windows" {
+		return true
+	}
+	binding, err := crewroot.ReadSync(roots.ID)
+	return err == nil && binding != nil && binding.ArchiveOnly
+}
+
 // Only the main owner's current conversation travels with this handoff.
 // Runtime handles, account IDs, terminal snapshots and registry paths are not
 // portable authority. UI events can contain terminal panes and source-machine
@@ -132,6 +140,9 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		return fmt.Errorf("the destination main conversation is unavailable")
 	}
 	current.handoffAgentToolsMode = destinationToolsMode
+	if crewArchiveOnly(roots) {
+		in.Native = nil
+	}
 	nativeCandidate := in.Native
 	// Use the destination's own admitted account for the source AI program.
 	// A new paired Crew may otherwise inherit an unrelated company default.

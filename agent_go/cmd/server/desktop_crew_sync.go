@@ -45,7 +45,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !IsLocalMode() {
-		externalError(w, 403, "local_app_required", "Open the Crew in the local Mac app.")
+		externalError(w, 403, "local_app_required", "Open the Crew in the local AgentWorks app.")
 		return
 	}
 	connection, err := desktopConnectionFor(claims.UserID, mux.Vars(r)["connection"])
@@ -153,7 +153,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	if binding == nil {
 		if !allowPair {
-			fail(fmt.Errorf("open this Crew in the Mac app and choose a server in Project sync first"))
+			fail(fmt.Errorf("open this Crew in the AgentWorks app and choose a server in Project sync first"))
 			return
 		}
 		if input.Action != "update" && input.Action != "server" {
@@ -175,7 +175,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			fail(fmt.Errorf("server did not return the new Crew"))
 			return
 		}
-		binding = &crewroot.SyncBinding{SplitFiles: roots.SeparateFiles(), PairID: pair, Side: "local", Editing: "local", ConnectionID: connection.ID, PeerProjectID: remote.ProjectID, PeerServer: connection.Server}
+		binding = &crewroot.SyncBinding{ArchiveOnly: remote.Binding.ArchiveOnly, SplitFiles: roots.SeparateFiles(), PairID: pair, Side: "local", Editing: "local", ConnectionID: connection.ID, PeerProjectID: remote.ProjectID, PeerServer: connection.Server}
 		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 			fail(err)
 			return
@@ -223,7 +223,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			if remote.Binding == nil || remote.Binding.PairID != binding.PairID || remote.Binding.Editing != "local" {
-				fail(fmt.Errorf("editing is on the server; choose Work on this Mac to bring its changes back"))
+				fail(fmt.Errorf("editing is on the server; choose Work on this computer to bring its changes back"))
 				return
 			}
 			if input.Action == "server" {
@@ -379,7 +379,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		}
 		binding.PendingAction = ""
 	default:
-		fail(fmt.Errorf("choose Update server, Work on server, or Work on this Mac"))
+		fail(fmt.Errorf("choose Update server, Work on server, or Work on this computer"))
 		return
 	}
 	binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -395,6 +395,8 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 }
 
 func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktopConnection, project string, request crewSyncRequest) (crewSyncReply, error) {
+	// Windows phase 1 uses saved history and file bundles, never native journals.
+	request.ArchiveOnly = request.ArchiveOnly || cliHostOS == "windows"
 	data, _ := json.Marshal(request)
 	upstream, e := http.NewRequestWithContext(ctx, http.MethodPost, connection.Server+"/api/crew-sync/"+url.PathEscape(project), bytes.NewReader(data))
 	if e != nil {
@@ -443,5 +445,8 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 	}
 	var out crewSyncReply
 	e = json.NewDecoder(io.LimitReader(response.Body, 800<<20)).Decode(&out)
+	if e == nil && (request.ArchiveOnly || (out.Binding != nil && out.Binding.ArchiveOnly)) && out.Conversation != nil {
+		out.Conversation.Native = nil
+	}
 	return out, e
 }

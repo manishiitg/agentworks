@@ -47,9 +47,9 @@ func readCrewSourceProject(id string) *crewSyncProject {
 func crewAlreadyOnMac(binding *crewroot.SyncBinding) error {
 	name := strings.TrimSpace(binding.MacName)
 	if name == "" {
-		name = "another Mac"
+		name = "another computer"
 	}
-	return &crewSyncFailure{Code: crewPairInUseCode, Status: 409, Message: fmt.Sprintf("this project is already open on %s; use that Mac's existing copy or open the project on the server. Moving its pairing to another Mac is not available yet", name)}
+	return &crewSyncFailure{Code: crewPairInUseCode, Status: 409, Message: fmt.Sprintf("this project is already open on %s; use that computer's existing copy or open the project on the server. Moving its pairing to another computer is not available yet", name)}
 }
 
 func (api *StreamingAPI) crewSyncProject(ctx context.Context, claims *UserClaims, roots crewroot.Roots) (*crewSyncProject, error) {
@@ -105,7 +105,7 @@ func (api *StreamingAPI) handleDesktopCrewOpen(w http.ResponseWriter, r *http.Re
 		Folder string `json:"folder"`
 	}
 	if r.Method == http.MethodPost && json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&input) != nil {
-		externalError(w, 400, "invalid_request", "Choose an empty folder on this Mac.")
+		externalError(w, 400, "invalid_request", "Choose an empty folder on this computer.")
 		return
 	}
 	out, err := api.openServerCrewOnMac(r, mux.Vars(r)["connection"], mux.Vars(r)["project"], input.Folder, r.Method == http.MethodGet)
@@ -121,14 +121,14 @@ func (api *StreamingAPI) handleDesktopCrewOpen(w http.ResponseWriter, r *http.Re
 func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, project, folder string, inspect bool) (*crewLocalOpenReply, error) {
 	claims := GetUserFromContext(r.Context())
 	if !IsLocalMode() || !websiteDeviceClaims(claims) || !personalLaptopSettingsClaims(claims) {
-		return nil, fmt.Errorf("open AgentWorks on your Mac and use your own connected server")
+		return nil, fmt.Errorf("open AgentWorks on your computer and use your own connected server")
 	}
 	if _, err := uuid.Parse(project); err != nil {
 		return nil, fmt.Errorf("choose an existing project on your connected server")
 	}
 	connection, err := desktopConnectionFor(claims.UserID, connectionID)
 	if err != nil {
-		return nil, fmt.Errorf("connect to this project's server in the Mac app first")
+		return nil, fmt.Errorf("connect to this project's server in the AgentWorks app first")
 	}
 	remote, err := desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, crewSyncRequest{Action: "inspect"})
 	if err != nil {
@@ -156,7 +156,7 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 			continue
 		}
 		if record.OwnerID != claims.UserID {
-			return nil, fmt.Errorf("this project belongs to another account on this Mac")
+			return nil, fmt.Errorf("this project belongs to another account on this computer")
 		}
 		roots, e := api.crewSyncRoots(r.Context(), claims, project)
 		if e != nil {
@@ -164,14 +164,14 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 		}
 		binding, e := crewroot.ReadSync(project)
 		if e != nil || binding == nil || binding.Side != "local" || binding.ConnectionID != connection.ID || binding.PeerProjectID != project {
-			return nil, fmt.Errorf("a different project with this identity is already on this Mac; open its existing copy")
+			return nil, fmt.Errorf("a different project with this identity is already on this computer; open its existing copy")
 		}
 		out.Folder, out.Binding = roots.Files, binding
 		if remote.Binding == nil || remote.Binding.PairID != binding.PairID {
 			return nil, fmt.Errorf("the existing local copy no longer matches this server; reconnect its original project")
 		}
 		if binding.PendingAction != "" {
-			out.Notice = "Open Project sync on this Mac and choose Finish interrupted transfer before continuing."
+			out.Notice = "Open Project sync on this computer and choose Finish interrupted transfer before continuing."
 			return out, nil
 		}
 		if inspect || (binding.PendingAction == "" && readCrewSourceProject(project) != nil) {
@@ -193,7 +193,7 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 		return nil, crewAlreadyOnMac(remote.Binding)
 	}
 	if !existing && remote.Binding != nil && remote.Binding.Editing != "server" {
-		return nil, fmt.Errorf("work is on this project's original Mac; reconnect that copy before opening it here")
+		return nil, fmt.Errorf("work is on this project's original computer; reconnect that copy before opening it here")
 	}
 	if inspect {
 		return out, nil
@@ -217,12 +217,12 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 	pair := uuid.NewString()
 	if localPair != nil {
 		if localPair.Side != "local" || localPair.ConnectionID != connection.ID || localPair.PeerProjectID != project || localPair.PeerServer != connection.Server {
-			return nil, fmt.Errorf("use this Mac's existing project connection")
+			return nil, fmt.Errorf("use this computer's existing project connection")
 		}
 		pair = localPair.PairID
 	}
 	macName, _ := os.Hostname()
-	binding := crewroot.SyncBinding{PairID: pair, Side: "local", Editing: "server", ConnectionID: connection.ID, PeerProjectID: project, PeerServer: connection.Server, MacName: macName}
+	binding := crewroot.SyncBinding{ArchiveOnly: cliHostOS == "windows", PairID: pair, Side: "local", Editing: "server", ConnectionID: connection.ID, PeerProjectID: project, PeerServer: connection.Server, MacName: macName}
 	if localPair != nil {
 		binding = *localPair
 	}
@@ -230,7 +230,7 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 		binding.SplitFiles = remote.Binding.SplitFiles
 	}
 	// Save the admitted attempt before the RPC: a lost server response must
-	// remain retryable on this Mac without admitting a second Mac.
+	// remain retryable on this computer without admitting a second Mac.
 	if localPair == nil {
 		if err := crewroot.WriteSync(project, binding); err != nil {
 			return nil, err
@@ -252,6 +252,7 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 		return nil, fmt.Errorf("the server did not confirm this project's pair; retry")
 	}
 	binding.SplitFiles, binding.MacName = remote.Binding.SplitFiles, remote.Binding.MacName
+	binding.ArchiveOnly = remote.Binding.ArchiveOnly
 	// Resolve the original flat/split layout before writing local manifests.
 	if err := crewroot.WriteSync(project, binding); err != nil {
 		return nil, err

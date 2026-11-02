@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -142,8 +143,13 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 			if total > publication.MaxBytes || len(out.Files) >= publication.MaxFiles {
 				return fmt.Errorf("project exceeds 256 MiB or 10,000 files; exclude generated files before syncing")
 			}
-			out.Files[key] = file
 			before, exists := previous[key]
+			// NTFS does not represent the Unix execute bit. Keep its last synced
+			// value so editing a script on Windows does not make it non-executable.
+			if runtime.GOOS == "windows" && exists {
+				file.Executable = before.Executable
+			}
+			out.Files[key] = file
 			if !exists || before != file {
 				change := Change{Path: key, After: &file, Data: data}
 				if exists {
@@ -177,6 +183,13 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 	return out, nil
 }
 
+func sameFile(actual, expected File) bool {
+	if runtime.GOOS == "windows" {
+		actual.Executable = expected.Executable
+	}
+	return actual == expected
+}
+
 func checkChange(roots crewroot.Roots, change Change) error {
 	root, rel, err := rootFor(roots, change.Path)
 	if err != nil {
@@ -196,10 +209,10 @@ func checkChange(roots crewroot.Roots, change Change) error {
 		return err
 	}
 	// A retry after a partial transfer can safely accept an already-applied file.
-	if change.After != nil && actual == *change.After {
+	if change.After != nil && sameFile(actual, *change.After) {
 		return nil
 	}
-	if change.Before == nil || actual != *change.Before {
+	if change.Before == nil || !sameFile(actual, *change.Before) {
 		return fmt.Errorf("%s changed here; copy your version to another filename, then restore this path to its last synced contents and retry", change.Path)
 	}
 	return nil
@@ -265,7 +278,7 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 				if err == nil {
 					info, statErr := f.Stat()
 					err = statErr
-					if err == nil && (info.Mode()&0111 != 0) != change.After.Executable {
+					if err == nil && runtime.GOOS != "windows" && (info.Mode()&0111 != 0) != change.After.Executable {
 						targetMode := info.Mode().Perm() &^ 0111
 						if change.After.Executable {
 							targetMode |= 0110
@@ -304,7 +317,7 @@ func ReadContent(roots crewroot.Roots, key string, expected File) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	if actual != expected {
+	if !sameFile(actual, expected) {
 		return nil, fmt.Errorf("%s changed during capture; retry sync", key)
 	}
 	return data, nil
