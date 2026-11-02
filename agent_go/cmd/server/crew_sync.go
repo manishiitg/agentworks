@@ -452,17 +452,24 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		pendingPath += ".return"
 		var pending crewSyncReply
+		movedOld := false
 		if raw, e := os.ReadFile(pendingPath); e == nil {
 			if json.Unmarshal(raw, &pending) != nil || pending.Snapshot == nil {
 				return out, fmt.Errorf("pending sync is unavailable")
 			}
 			// Finish the unacknowledged background copy before changing editing.
-
-			return pending, nil
+			if len(pending.Snapshot.Payloads) != 0 {
+				return pending, nil
+			}
+			if e = moveOldCrewTransfer(pendingPath, roots.ID); e != nil {
+				return out, e
+			}
+			movedOld = true
+			out.Conversation = pending.Conversation
 		} else if !os.IsNotExist(e) {
 			return out, e
 		}
-		if binding.Editing != "server" && input.Action == "download" {
+		if binding.Editing != "server" && input.Action == "download" && !movedOld {
 			// PLAT-856-442: a download queued before a completed return is
 			// now empty. Any unacknowledged return was served above first.
 			return out, nil
@@ -481,7 +488,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 				return out, e
 			}
 		}
-		if input.Action == "download" && !crewSyncNeedsCapture(roots) {
+		if input.Action == "download" && !movedOld && !crewSyncNeedsCapture(roots) {
 			return out, nil
 		}
 		stamp := crewSyncStamp(roots)
@@ -490,7 +497,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if e != nil {
 			return out, e
 		}
-		if input.Action == "download" && !crewSnapshotChanged(snapshot) {
+		if input.Action == "download" && !movedOld && !crewSnapshotChanged(snapshot) {
 			crewSyncRememberScan(roots, stamp)
 			return out, nil
 		}
