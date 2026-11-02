@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -221,6 +222,12 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.Setpgid = true
+	// The program leaves the platform service's cgroup (moveToAppScope), so the service's stop no longer reaches it
+	// directly: it dies with slotctl instead, even if slotctl is killed outright. Its own detached children do not
+	// inherit this, so apps it left running survive (PLAT-856-506). Pdeathsig follows the forking OS thread, so the
+	// start stays on this locked thread.
+	cmd.SysProcAttr.Pdeathsig = syscall.SIGKILL
+	runtime.LockOSThread()
 	var policyWriter *os.File
 	if req.FD3 != "" {
 		reader, writer, perr := os.Pipe()
@@ -305,6 +312,9 @@ const BusctlPath = "/usr/bin/busctl"
 const (
 	appScopeMemoryMax = 4 << 30
 	appScopeTasksMax  = 512
+	// The slot's apps together, so leftovers cannot add up past this.
+	appSliceMemoryMax = 6 << 30
+	appSliceTasksMax  = 2048
 )
 
 // moveToAppScope puts a just-started slot program in its own scope in the slot's user manager
@@ -327,6 +337,15 @@ func moveToAppScope(pid int) {
 		"TasksMax", "t", strconv.Itoa(appScopeTasksMax),
 		"CollectMode", "s", "inactive-or-failed",
 		"0")
-	cmd.Env = []string{"XDG_RUNTIME_DIR=" + runtimeDir, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join(runtimeDir, "bus")}
-	_ = cmd.Run()
+	env := []string{"XDG_RUNTIME_DIR=" + runtimeDir, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join(runtimeDir, "bus")}
+	cmd.Env = env
+	if cmd.Run() != nil {
+		return
+	}
+	limit := exec.Command(BusctlPath, "--user", "--quiet", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+		"org.freedesktop.systemd1.Manager", "SetUnitProperties", "sba(sv)", "aw-apps.slice", "true", "2",
+		"MemoryMax", "t", strconv.Itoa(appSliceMemoryMax),
+		"TasksMax", "t", strconv.Itoa(appSliceTasksMax))
+	limit.Env = env
+	_ = limit.Run()
 }
