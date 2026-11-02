@@ -42,8 +42,8 @@ export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspace
       </span>}><span title={checkout.root || checkout.name} className="block min-w-0">
         {shown.length === 1
           ? <span className="flex min-w-0 items-center gap-1.5"><span>Changes</span><span className="truncate text-xs text-muted-foreground">{checkout.name}</span></span>
-          : <span className="block break-all">{checkout.name}</span>}
-        {(checkout.worktree_of || capture.branch) && <span className="block truncate text-xs text-muted-foreground">{[checkout.worktree_of && `worktree of ${checkout.worktree_of}`, capture.branch && `branch ${capture.branch}`].filter(Boolean).join(' · ')}</span>}
+          : <span className="block whitespace-normal break-all">{checkout.name}</span>}
+        {(checkout.worktree_of || capture.branch) && <span className="block whitespace-normal break-all text-xs text-muted-foreground">{[checkout.worktree_of && `worktree of ${checkout.worktree_of}`, capture.branch && `branch ${capture.branch}`].filter(Boolean).join(' · ')}</span>}
       </span></WorkspaceContextRow>
     }) : <WorkspaceContextRow icon={FileDiff} hint="Saved project changes, separated by worktree." onClick={() => onOpen()} detail={error ? 'Unavailable' : checkouts === null ? 'Loading…' : '0 files'}>Changes</WorkspaceContextRow>}
     {error && <p role="alert" className="px-1 text-xs text-muted-foreground">{error} <button type="button" className="underline hover:text-foreground" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
