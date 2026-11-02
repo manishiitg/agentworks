@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -54,7 +55,9 @@ func setupCodexPlugin(ctx context.Context, o *options, name string) error {
 	// machine without Git needs the same verified direct package, not another
 	// installation prerequisite.
 	_, gitErr := exec.LookPath("git")
-	if gitErr != nil || codexManagedMarketplace(home) || codexExecutable(func(n string) bool { _, e := exec.LookPath(n); return e == nil }) == "" {
+	// Windows always takes the verified direct package so the plugin's tool
+	// server command can be pinned to this CLI's own path (pinnedPluginCommand).
+	if runtime.GOOS == "windows" || gitErr != nil || codexManagedMarketplace(home) || codexExecutable(func(n string) bool { _, e := exec.LookPath(n); return e == nil }) == "" {
 		return installCodexDesktopPlugin(ctx, o, codexHomeDir(home), name)
 	}
 	// Preserve a person's disabled choice just as the normal updater does.
@@ -156,6 +159,11 @@ func installCodexDesktopBundle(o *options, profile, name string, bundle []byte, 
 		r.Close()
 		if e != nil {
 			return e
+		}
+		if command := pinnedPluginCommand(); command != "" && path.Base(rel) == ".mcp.json" {
+			if data, e = pinPluginMCPCommand(data, command); e != nil {
+				return e
+			}
 		}
 		if e = writeDesktopPluginFile(filepath.Join(stage, filepath.FromSlash(rel)), data); e != nil {
 			return e
@@ -292,4 +300,40 @@ func editCodexSettings(profile string, o *options, edit func(map[string]any) err
 		return false, err
 	}
 	return true, os.Rename(f.Name(), file)
+}
+
+// pinnedPluginCommand is the absolute path written into the Codex plugin's tool
+// server command on Windows. Codex starts that server from its own environment,
+// which keeps the PATH Explorer had when Codex launched, so a bare "agentworks"
+// is not found after a fresh install until the person signs out and back in
+// (PLAT-856-500). Every setup and person-run update re-pins it, so a moved CLI
+// is followed. Elsewhere the plugin keeps the plain command.
+var pinnedPluginCommand = func() string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return exe
+}
+
+// pinPluginMCPCommand sets the AgentWorks tool server's command, keeping its
+// arguments and every other field of the plugin's .mcp.json as published.
+func pinPluginMCPCommand(data []byte, command string) ([]byte, error) {
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, errors.New("Codex plugin archive has an invalid .mcp.json")
+	}
+	servers, _ := doc["mcpServers"].(map[string]any)
+	server, _ := servers["agentworks"].(map[string]any)
+	if server == nil {
+		return data, nil
+	}
+	server["command"] = command
+	return json.MarshalIndent(doc, "", "  ")
 }
