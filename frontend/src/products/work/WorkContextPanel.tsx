@@ -9,6 +9,7 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
+import { useYourComputerSummary } from './YourComputerPanel'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -61,6 +62,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' | 'access' }>()
+  const computerSummary = useYourComputerSummary(menu?.scope === scope && menu.view === 'access' && accessItems.some(item => item.id === 'mcp:computer'), projectId, profileId)
   const showMenu = (view: 'full' | 'integrations' | 'automations' | 'access') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
@@ -86,7 +88,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       const status = connectionSummary(connections, item.id === 'mcp:connected' && snapshot?.loaded.includes(item.id) === true && !snapshot.errors.includes('Connections could not be loaded.'))
       const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
       const sharingRow = menu.view === 'access' && item.id === 'mcp:share'
-      return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={sharingRow && sharing?.scope === scope ? sharing.detail : menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{sharingRow ? 'Sharing' : item.label}</Row>
+      return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={sharingRow && sharing?.scope === scope ? sharing.detail : menu.view === 'access' && item.id === 'mcp:computer' ? computerSummary : menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{sharingRow ? 'Sharing' : item.label}</Row>
     }
     return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations', automations: 'Automations', access: share?.label || 'Access' }[menu.view]} onBack={() => setMenu(undefined)}>
       {menu.view !== 'full' ? <div className="space-y-0.5">{(menu.view === 'integrations' ? integrations : menu.view === 'automations' ? automationItems : accessItems).map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {

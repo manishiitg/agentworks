@@ -11,6 +11,23 @@ import { useLocalFileDevices } from './codeLocalFiles'
 type SyncStatus = { binding: { connection_id?: string; peer_server?: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: string } | null; auto?: { state: string; message?: string } }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
+/** The one-line answer for the Access menu row, e.g. "Synced · Laptop off". */
+export function useYourComputerSummary(enabled: boolean, projectId?: string, profileId?: string) {
+  const [summary, setSummary] = useState<string>()
+  useEffect(() => {
+    setSummary(undefined)
+    if (!enabled || !projectId) return
+    const abort = new AbortController(), options = { signal: abort.signal, skipSessionContext: true }
+    const endpoint = laptopSettingsEndpoint(undefined, profileId, projectId)
+    void Promise.all([
+      api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => data.binding ? 'Synced' : 'Not synced').catch(() => ''),
+      endpoint ? api.get<LaptopSettings>(endpoint, options).then(({ data }) => data.device_id ? 'Laptop on' : 'Laptop off').catch(() => '') : Promise.resolve(''),
+    ]).then(parts => { if (!abort.signal.aborted) setSummary(parts.filter(Boolean).join(' · ') || undefined) })
+    return () => abort.abort()
+  }, [enabled, projectId, profileId])
+  return summary
+}
+
 /** Two plain answers first: is this Crew synced with a server, and what can it reach on your computer. Details fold away. */
 export function YourComputerPanel({ projectId, sessionId, canEdit }: { projectId: string; sessionId?: string; canEdit: boolean }) {
   return <div className="max-w-xl space-y-4">
