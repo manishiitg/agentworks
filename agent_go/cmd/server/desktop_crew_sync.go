@@ -401,12 +401,18 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(e)
 				return
 			}
-			latest, e := crewsync.Capture(r.Context(), roots, transfer.Snapshot.Files)
+			stageRoot, e := crewSyncStagingRoot(roots.ID)
 			if e != nil {
 				fail(e)
 				return
 			}
-			git, e := crewsync.CaptureGit(r.Context(), roots.Files, transfer.Snapshot.Git)
+			latest, e := crewsync.Capture(r.Context(), roots, transfer.Snapshot.Files, stageRoot)
+			defer latest.Close()
+			if e != nil {
+				fail(e)
+				return
+			}
+			git, e := crewsync.CaptureGit(r.Context(), roots.Files, transfer.Snapshot.Git, latest.StagingDir)
 			if e != nil {
 				fail(e)
 				return

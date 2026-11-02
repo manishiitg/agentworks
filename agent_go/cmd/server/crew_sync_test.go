@@ -1156,7 +1156,7 @@ func TestCrewSyncMigratesStagedGitBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	run(local, "add", "note.txt")
-	first, err := crewsync.CaptureGit(t.Context(), local, nil)
+	first, err := crewsync.CaptureGit(t.Context(), local, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1172,7 +1172,11 @@ func TestCrewSyncMigratesStagedGitBaseline(t *testing.T) {
 	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	legacy, err := json.Marshal(map[string]any{"head": first.Head, "branch": first.Branch, "index_patch": first.IndexPatch})
+	patch, err := os.ReadFile(first.IndexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := json.Marshal(map[string]any{"head": first.Head, "branch": first.Branch, "index_patch": patch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1184,7 +1188,7 @@ func TestCrewSyncMigratesStagedGitBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	run(local, "reset", "--mixed", "HEAD")
-	next, err := crewsync.CaptureGit(t.Context(), local, baseline)
+	next, err := crewsync.CaptureGit(t.Context(), local, baseline, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

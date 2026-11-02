@@ -88,16 +88,28 @@ func checkLocalCrewTransfer(id string, expected *crewroot.SyncBinding) error {
 	}
 	return nil
 }
-func crewPayloadData(s *crewsync.Snapshot) map[string]*[]byte {
-	out := map[string]*[]byte{}
+func crewPayloadPaths(s *crewsync.Snapshot) map[string]*string {
+	out := map[string]*string{}
 	if s.Content != nil {
-		out["content"] = nil
+		out["content"] = &s.Content.BundlePath
 	}
 	if s.Git != nil {
-		out["git"] = nil
-		out["index"] = &s.Git.IndexPatch
+		out["git"] = &s.Git.BundlePath
+		out["index"] = &s.Git.IndexPath
 	}
 	return out
+}
+
+func crewSyncStagingRoot(id string) (string, error) {
+	p, err := crewSyncManifestPath(id)
+	if err != nil {
+		return "", err
+	}
+	p += ".staging"
+	if err = agentworksclient.EnsurePrivateDirectory(p); err != nil {
+		return "", err
+	}
+	return p, nil
 }
 func crewCheckPayloadFile(path string, p crewsync.Payload) error {
 	info, e := os.Lstat(path)
@@ -122,8 +134,7 @@ func crewCheckPayloadFile(path string, p crewsync.Payload) error {
 	return nil
 }
 
-// Capture still uses bounded in-memory files in Phase 2. Only the capture/apply
-// phases see those bytes; persisted metadata and network requests never do.
+// Freeze private generated files without retaining their bytes in memory.
 func freezeCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snapshot) error {
 	dir, e := crewTransferDir(id, pair, transfer, direction)
 	if e != nil {
@@ -132,13 +143,7 @@ func freezeCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snapsh
 	if s.Payloads == nil {
 		s.Payloads = map[string]crewsync.Payload{}
 	}
-	paths := map[string]*string{}
-	if s.Content != nil {
-		paths["content"] = &s.Content.BundlePath
-	}
-	if s.Git != nil {
-		paths["git"] = &s.Git.BundlePath
-	}
+	paths := crewPayloadPaths(s)
 	for name, source := range paths {
 		if *source == "" {
 			continue
@@ -186,35 +191,6 @@ func freezeCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snapsh
 		*source = ""
 	}
 
-	for name, data := range crewPayloadData(s) {
-		if data == nil || len(*data) == 0 {
-			continue
-		}
-		hash := sha256.Sum256(*data)
-		p := crewsync.Payload{Hash: hex.EncodeToString(hash[:]), Size: int64(len(*data))}
-		if !crewPayloadAllowed(name, p) {
-			return fmt.Errorf("sync artifact exceeds transfer limit")
-		}
-		path := filepath.Join(dir, name)
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if os.IsExist(err) {
-			err = crewCheckPayloadFile(path, p)
-		} else if err == nil {
-			_, err = f.Write(*data)
-			if err == nil {
-				err = f.Sync()
-			}
-			closeErr := f.Close()
-			if err == nil {
-				err = closeErr
-			}
-		}
-		if err != nil {
-			return err
-		}
-		s.Payloads[name] = p
-		*data = nil
-	}
 	if _, ok := s.Payloads["content"]; !ok {
 		return fmt.Errorf("sync content artifact is missing")
 	}
@@ -225,7 +201,7 @@ func hydrateCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snaps
 	if e != nil {
 		return e
 	}
-	fields := crewPayloadData(s)
+	fields := crewPayloadPaths(s)
 	if _, ok := s.Payloads["content"]; !ok {
 		return fmt.Errorf("sync content artifact is missing; restart this transfer")
 	}
@@ -238,34 +214,14 @@ func hydrateCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snaps
 		if e = crewCheckPayloadFile(file, p); e != nil {
 			return e
 		}
-		switch name {
-		case "content":
-			s.Content.BundlePath = file
-		case "git":
-			s.Git.BundlePath = file
-		default:
-			*dst, e = os.ReadFile(file)
-			if e != nil {
-				return e
-			}
-		}
+		*dst = file
 	}
 	return nil
 }
 func dropCrewPayloadBytes(s *crewsync.Snapshot) {
 	if s != nil {
-		if s.Content != nil {
-			s.Content.BundlePath = ""
-		}
-		if s.Git != nil {
-			s.Git.BundlePath = ""
-		}
-	}
-	if s != nil {
-		for _, p := range crewPayloadData(s) {
-			if p != nil {
-				*p = nil
-			}
+		for _, path := range crewPayloadPaths(s) {
+			*path = ""
 		}
 	}
 }
@@ -274,13 +230,8 @@ func dropCrewPayloadBytes(s *crewsync.Snapshot) {
 // including no-change scans and capture failures. Frozen transfer artifacts
 // have already cleared these paths and remain until their receipt.
 func discardCapturedCrewPayloads(s *crewsync.Snapshot) {
-	paths := []*string{}
-	if s.Content != nil {
-		paths = append(paths, &s.Content.BundlePath)
-	}
-	if s.Git != nil {
-		paths = append(paths, &s.Git.BundlePath)
-	}
+	defer s.Close()
+	paths := crewPayloadPaths(s)
 	for _, path := range paths {
 		if *path != "" {
 			_ = os.Remove(*path)
@@ -339,7 +290,7 @@ func validateCrewPayloads(s *crewsync.Snapshot) error {
 	if _, ok := s.Payloads["content"]; !ok {
 		return fmt.Errorf("content artifact is missing")
 	}
-	fields := crewPayloadData(s)
+	fields := crewPayloadPaths(s)
 	for name, p := range s.Payloads {
 		if _, ok := fields[name]; !ok || !crewPayloadName(name) || !crewPayloadAllowed(name, p) {
 			return fmt.Errorf("invalid sync artifact descriptor")

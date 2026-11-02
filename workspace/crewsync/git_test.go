@@ -37,11 +37,11 @@ func TestGitHandoffPreservesHistoryAndStagedWork(t *testing.T) {
 	write(local, "note.txt", "unstaged")
 	left := crewroot.Roots{Files: local, Resources: local}
 	right := crewroot.Roots{Files: remote, Resources: remote}
-	first, err := Capture(t.Context(), left, nil)
+	first, err := Capture(t.Context(), left, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	first.Git, err = CaptureGit(t.Context(), local, nil)
+	first.Git, err = CaptureGit(t.Context(), local, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,11 +56,11 @@ func TestGitHandoffPreservesHistoryAndStagedWork(t *testing.T) {
 	}
 	write(remote, "server.txt", "server work")
 	run(remote, "add", "server.txt")
-	back, err := Capture(t.Context(), right, first.Files)
+	back, err := Capture(t.Context(), right, first.Files, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	back.Git, err = CaptureGit(t.Context(), remote, first.Git)
+	back.Git, err = CaptureGit(t.Context(), remote, first.Git, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,12 @@ func TestGitHandoffPreservesHistoryAndStagedWork(t *testing.T) {
 		t.Fatal("overwrote independently cleared staging")
 	}
 	restore := gitCommand(t.Context(), local, "apply", "--cached", "--binary", "-")
-	restore.Stdin = strings.NewReader(string(first.Git.IndexPatch))
+	patch, err := os.Open(first.Git.IndexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer patch.Close()
+	restore.Stdin = patch
 	if err := restore.Run(); err != nil {
 		t.Fatal(err)
 	}

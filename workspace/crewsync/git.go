@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,12 +22,12 @@ type GitSnapshot struct {
 	BeforeIndexHash string `json:"before_index_hash,omitempty"`
 	Branch          string `json:"branch,omitempty"`
 	BundlePath      string `json:"-"`
-	IndexPatch      []byte `json:"-"`
+	IndexPath       string `json:"-"`
 	IndexHash       string `json:"index_hash,omitempty"`
 }
 
 func gitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
-	base := []string{"-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "protocol.file.allow=always", "-C", root}
+	base := []string{"-c", "core.bigFileThreshold=16m", "-c", "pack.windowMemory=16m", "-c", "pack.deltaCacheSize=16m", "-c", "pack.threads=1", "-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "protocol.file.allow=always", "-C", root}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	for _, item := range os.Environ() {
 		if !strings.HasPrefix(item, "GIT_") {
@@ -37,7 +38,7 @@ func gitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
 	return cmd
 }
 
-func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSnapshot, error) {
+func CaptureGit(ctx context.Context, root string, previous *GitSnapshot, privateStageRoot string) (*GitSnapshot, error) {
 	if _, err := os.Lstat(filepath.Join(root, ".git")); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -55,9 +56,26 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 		return nil, nil
 	} // An unborn repository has files but no history yet.
 	branch, _ := gitCommand(ctx, root, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
-	patch, err := gitCommand(ctx, root, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv").Output()
+	if privateStageRoot == "" {
+		return nil, fmt.Errorf("private sync staging directory is required")
+	}
+	patch, err := os.CreateTemp(privateStageRoot, "index-")
 	if err != nil {
-		return nil, fmt.Errorf("cannot capture staged Git changes")
+		return nil, err
+	}
+	keepPatch := false
+	defer func() {
+		patch.Close()
+		if !keepPatch {
+			_ = os.Remove(patch.Name())
+		}
+	}()
+	indexHash, _, err := captureIndex(ctx, root, patch)
+	if err != nil {
+		return nil, err
+	}
+	if err = patch.Close(); err != nil {
+		return nil, err
 	}
 	before := ""
 	beforeIndex := ""
@@ -66,18 +84,16 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 		before = previous.Head
 		beforeIndex = previous.IndexHash
 		if beforeIndex == "" {
-			beforeIndex = gitPatchHash(previous.IndexPatch)
+			beforeIndex = gitPatchHash(nil)
 		}
 		beforeBranch = previous.Branch
 	}
-	out := &GitSnapshot{BeforeBranch: beforeBranch, BeforeIndexHash: beforeIndex, Head: strings.TrimSpace(string(head)), Before: before, Branch: strings.TrimSpace(string(branch)), IndexPatch: patch, IndexHash: gitPatchHash(patch)}
-	if len(patch) > 64<<20 {
-		return nil, fmt.Errorf("staged Git changes exceed 64 MiB")
-	}
+	out := &GitSnapshot{BeforeBranch: beforeBranch, BeforeIndexHash: beforeIndex, Head: strings.TrimSpace(string(head)), Before: before, Branch: strings.TrimSpace(string(branch)), IndexPath: patch.Name(), IndexHash: indexHash}
 	if out.Head == before {
+		keepPatch = true
 		return out, nil
 	}
-	tmp, err := os.MkdirTemp("", "agentworks-git-sync-")
+	tmp, err := os.MkdirTemp(privateStageRoot, "git-")
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +113,9 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 	if err = gitCommand(ctx, root, args...).Run(); err != nil {
 		return nil, fmt.Errorf("cannot bundle this Git branch")
 	}
+	if err = os.Chmod(archive, 0600); err != nil {
+		return nil, err
+	}
 	info, err := os.Stat(archive)
 	if err != nil {
 		return nil, err
@@ -106,6 +125,7 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 	}
 	out.BundlePath = archive
 	keep = true
+	keepPatch = true
 	return out, nil
 }
 
@@ -116,12 +136,55 @@ func gitPatchHash(data []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// Git writes its patch through a bounded pipe instead of buffering Output().
+// The bound still applies when Git reports a much larger binary staged file.
+type limitedWriter struct {
+	dst       io.Writer
+	remaining int64
+}
+
+func (w *limitedWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > w.remaining {
+		return 0, fmt.Errorf("staged Git changes exceed 64 MiB")
+	}
+	n, err := w.dst.Write(p)
+	w.remaining -= int64(n)
+	return n, err
+}
+func captureIndex(ctx context.Context, root string, dst io.Writer) (string, int64, error) {
+	h := sha256.New()
+	w := &limitedWriter{io.MultiWriter(dst, h), 64 << 20}
+	cmd := gitCommand(ctx, root, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv")
+	cmd.Stdout = w
+	if err := cmd.Run(); err != nil {
+		return "", 0, fmt.Errorf("cannot capture staged Git changes: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), (64 << 20) - w.remaining, nil
+}
+
 func CheckGit(ctx context.Context, root string, snapshot *GitSnapshot) error {
 	if snapshot == nil {
 		return nil
 	}
-	if !gitObjectID.MatchString(snapshot.Head) || snapshot.Before != "" && !gitObjectID.MatchString(snapshot.Before) || len(snapshot.IndexPatch) > 64<<20 {
+	if !gitObjectID.MatchString(snapshot.Head) || snapshot.Before != "" && !gitObjectID.MatchString(snapshot.Before) {
 		return fmt.Errorf("invalid Git snapshot")
+	}
+	if snapshot.IndexPath != "" {
+		info, err := os.Lstat(snapshot.IndexPath)
+		if err != nil || !info.Mode().IsRegular() || info.Size() > 64<<20 {
+			return fmt.Errorf("invalid Git index artifact")
+		}
+		f, err := os.Open(snapshot.IndexPath)
+		if err != nil {
+			return err
+		}
+		err = CopyChecked(ctx, io.Discard, f, File{Hash: snapshot.IndexHash, Size: info.Size()})
+		f.Close()
+		if err != nil {
+			return err
+		}
+	} else if snapshot.IndexHash != gitPatchHash(nil) {
+		return fmt.Errorf("Git index artifact is missing")
 	}
 	if snapshot.Branch != "" && gitCommand(ctx, root, "check-ref-format", "refs/heads/"+snapshot.Branch).Run() != nil {
 		return fmt.Errorf("invalid Git branch")
@@ -168,11 +231,11 @@ func CheckGit(ctx context.Context, root string, snapshot *GitSnapshot) error {
 	}
 	// Preserve independently staged changes, including changes with identical
 	// working-tree bytes. The transfer never silently resets an outside index.
-	patch, err := gitCommand(ctx, root, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv").Output()
+	patchHash, size, err := captureIndex(ctx, root, io.Discard)
 	if err != nil {
-		return fmt.Errorf("cannot inspect staged changes before syncing")
+		return err
 	}
-	if !(snapshot.BeforeIndexHash == "" && len(patch) == 0) && gitPatchHash(patch) != snapshot.BeforeIndexHash && string(patch) != string(snapshot.IndexPatch) {
+	if !(snapshot.BeforeIndexHash == "" && size == 0) && patchHash != snapshot.BeforeIndexHash && patchHash != snapshot.IndexHash {
 		return fmt.Errorf("staged changes exist here; keep or resolve them before syncing")
 	}
 	return nil
@@ -222,9 +285,14 @@ func ApplyGit(ctx context.Context, root string, snapshot *GitSnapshot) error {
 	if err := gitCommand(ctx, root, "read-tree", snapshot.Head).Run(); err != nil {
 		return fmt.Errorf("cannot restore the Git index")
 	}
-	if len(snapshot.IndexPatch) > 0 {
+	if snapshot.IndexPath != "" && snapshot.IndexHash != gitPatchHash(nil) {
 		cmd := gitCommand(ctx, root, "apply", "--cached", "--binary", "-")
-		cmd.Stdin = strings.NewReader(string(snapshot.IndexPatch))
+		f, err := os.Open(snapshot.IndexPath)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		cmd.Stdin = f
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("cannot restore staged Git changes")
 		}

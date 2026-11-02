@@ -50,7 +50,7 @@ func TestSyncBundlesPreserveReplicaEditsAndUndoHistory(t *testing.T) {
 	}
 	capture := func(r crewroot.Roots, s Store, previous crewsync.Manifest) crewsync.Snapshot {
 		t.Helper()
-		snap, err := crewsync.Capture(t.Context(), r, previous)
+		snap, err := crewsync.Capture(t.Context(), r, previous, t.TempDir())
 		if err != nil {
 			t.Fatal(err)
 		}

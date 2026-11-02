@@ -610,7 +610,11 @@ func readCrewSyncGit(id string) (*crewsync.GitSnapshot, error) {
 	return &state, nil
 }
 func captureCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, previous crewsync.Manifest) (crewsync.Snapshot, error) {
-	snapshot, err := crewsync.Capture(ctx, roots, previous)
+	stageRoot, err := crewSyncStagingRoot(roots.ID)
+	if err != nil {
+		return crewsync.Snapshot{}, err
+	}
+	snapshot, err := crewsync.Capture(ctx, roots, previous, stageRoot)
 	if err != nil {
 		return snapshot, err
 	}
@@ -618,7 +622,7 @@ func captureCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, previous
 	if err != nil {
 		return snapshot, err
 	}
-	snapshot.Git, err = crewsync.CaptureGit(ctx, roots.Files, prior)
+	snapshot.Git, err = crewsync.CaptureGit(ctx, roots.Files, prior, snapshot.StagingDir)
 	if err != nil {
 		return snapshot, err
 	}
@@ -681,6 +685,7 @@ func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair strin
 	defer func() {
 		log.Printf("[CREW_SYNC] project=%s pair=%s phase=apply bytes=%d paths=%d duration_ms=%d success=%t reason=%q", roots.ID, pair, size, len(snapshot.Changes), time.Since(started).Milliseconds(), err == nil, fmt.Sprint(err))
 	}()
+	defer snapshot.Close()
 	if err := (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).DecodeSync(ctx, pair, snapshot); err != nil {
 		return err
 	}
@@ -694,6 +699,5 @@ func crewSnapshotChanged(snapshot crewsync.Snapshot) bool {
 	if g == nil {
 		return false
 	}
-	hash := sha256.Sum256(g.IndexPatch)
-	return g.Head != g.Before || g.Branch != g.BeforeBranch || hex.EncodeToString(hash[:]) != g.BeforeIndexHash
+	return g.Head != g.Before || g.Branch != g.BeforeBranch || g.IndexHash != g.BeforeIndexHash
 }

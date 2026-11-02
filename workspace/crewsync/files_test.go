@@ -1,6 +1,7 @@
 package crewsync
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,7 +51,7 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(local.Files, "linked.txt")); err != nil {
 		t.Fatal(err)
 	}
-	first, err := Capture(t.Context(), local, nil)
+	first, err := Capture(t.Context(), local, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(server.Files, "src/main.txt", "server changed")
-	back, err := Capture(t.Context(), server, first.Files)
+	back, err := Capture(t.Context(), server, first.Files, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	}
 	// PLAT-856-423: excluding an existing file is not a request to delete its copy.
 	write(local.Files, ".gitignore", "src/main.txt\n")
-	excluded, err := Capture(t.Context(), local, back.Files)
+	excluded, err := Capture(t.Context(), local, back.Files, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +113,7 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	// PLAT-856-424: ignoring and later re-including work retains its sync base.
 	write(local.Files, "src/main.txt", "edited while excluded")
 	write(local.Files, ".gitignore", "")
-	included, err := Capture(t.Context(), local, excluded.Files)
+	included, err := Capture(t.Context(), local, excluded.Files, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +126,25 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	for _, bad := range []string{"files/../outside", "files/.cache/token", "resources/product.json", "resources/_files/escape"} {
 		data := []byte("x")
 		file := fingerprint(data, false)
-		if err = Apply(t.Context(), server, Snapshot{Files: Manifest{bad: file}, Changes: []Change{{Path: bad, After: &file, Data: data}}}); err == nil {
+		if err = Apply(t.Context(), server, Snapshot{Files: Manifest{bad: file}, Changes: []Change{{Path: bad, After: &file, DataPath: testDataPath(t, data)}}}); err == nil {
 			t.Fatalf("accepted %s", bad)
 		}
 	}
+}
+
+func testDataPath(t *testing.T, data []byte) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "content")
+	if err := os.WriteFile(p, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+func testChangeData(t *testing.T, c Change) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := c.CopyTo(t.Context(), &b); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
 }
