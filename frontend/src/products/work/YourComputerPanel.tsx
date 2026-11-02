@@ -32,7 +32,7 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
           if (!data.binding) return 'Off'
           if (data.auto?.state === 'syncing') return <span className="inline-flex items-center gap-1"><RefreshCw aria-hidden="true" className="h-3 w-3 animate-spin" />Syncing</span>
           if (data.binding.pending_action || (data.auto?.state && !['synced', 'idle'].includes(data.auto.state))) return <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><TriangleAlert className="h-3 w-3" />Check</span>
-          return <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="h-3 w-3" />On</span>
+          return <span className="inline-flex items-center gap-1 text-emerald-500/80 dark:text-emerald-300/80"><CheckCircle2 className="h-3 w-3" />On</span>
         })
         : api.get<LaptopSettings>(laptopSettingsEndpoint(undefined, profileId, projectId), options).then(({ data }) => data.device_id ? 'On' : 'Off')
       void request.then(value => { if (!abort.signal.aborted) setSummary(value) }).catch(() => {})
