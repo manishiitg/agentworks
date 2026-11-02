@@ -9,7 +9,7 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
-import { useYourComputerSummary } from './YourComputerPanel'
+import { cloudStateIcon, cloudStateLabel, useYourComputerSummary } from './YourComputerPanel'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -61,7 +61,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' }>()
-  const computerSummary = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:computer'), projectId, profileId)
+  const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:computer'), projectId, profileId)
   const showMenu = (view: 'full' | 'integrations' | 'automations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
@@ -104,7 +104,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
   const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={reply => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', reply ? `reply:${JSON.stringify(reply)}` : 'review-project'); onOpen('files') }}/> : null
   // Sharing, Cloud (or Laptop access) and Connected agents sit in the main menu, each with its one-line status.
-  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.icon} detail={item.id === 'mcp:share' ? (sharing?.scope === scope ? sharing.detail : undefined) : item.id === 'mcp:computer' ? computerSummary : undefined} onClick={() => open(item)}>{item.label}</Row>
+  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:computer' ? cloudStateIcon(item.icon, computerState) : item.icon} detail={item.id === 'mcp:share' ? (sharing?.scope === scope ? sharing.detail : undefined) : item.id === 'mcp:computer' && computerState ? cloudStateLabel[computerState] : undefined} onClick={() => open(item)}>{item.label}</Row>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(accessRow)}</div>}>
     {changes}
     {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
