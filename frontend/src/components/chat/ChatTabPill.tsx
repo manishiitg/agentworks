@@ -168,7 +168,8 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
-        {!isBlank && (!productSurface || status !== 'ready' || isActive) && (status === 'busy'
+        {/* No dot for an idle chat (owner, 2 Nov): only Working, Needs you, Completed and Failed show; red means Failed only. */}
+        {!isBlank && status !== 'ready' && (status === 'busy'
           ? <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
           : status === 'waiting'
             // Waiting for the person (a question or an approval): a ring keeps pulsing so a stuck chat stands out.
@@ -176,7 +177,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
                 <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-[hsl(var(--warning))] opacity-60" />
                 <span className="relative h-2.5 w-2.5 rounded-full bg-[hsl(var(--warning))]" />
               </span>
-            : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} rounded-full ${isActive && status === 'ready' ? 'bg-red-400' : dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
+            : <span className={`h-2 w-2 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
       </span>
       {isRenaming ? (
         <input

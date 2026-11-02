@@ -177,7 +177,7 @@ it.each([undefined, 'agentworks', 'relays', 'work', 'mcp-gateway'] as (ProductSu
       expect(host.textContent).not.toContain('Done')
     }
     await render()
-    expectSlot(surface ? null : 'Ready')
+    expectSlot(null)
     await render({ isStreaming: true })
     expectSlot('Working')
     await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, needs_user_input: true }] as never }) })
@@ -191,7 +191,7 @@ it.each([undefined, 'agentworks', 'relays', 'work', 'mcp-gateway'] as (ProductSu
     await render({ hasUnreadCompletion: true })
     expectSlot('Completed — open to mark as seen')
     await render()
-    expectSlot(surface ? null : 'Ready')
+    expectSlot(null)
   } finally {
     await act(async () => root.unmount())
     vi.useRealTimers()
