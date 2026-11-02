@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,6 +142,8 @@ func notifyWithIcon(text string) error {
 		return err
 	}
 	if created {
+		// macOS asks to allow notifications over this first one (PLAT-856-503).
+		log.Printf("[BRIDGE-PING] notifier app created at %s; macOS may ask to allow its notifications", app)
 		_ = showNotification(app, notifierAddedNote)
 	}
 	return showNotification(app, text)
@@ -206,5 +209,6 @@ func prepareNotifier() bool {
 	if err != nil || !created {
 		return false
 	}
+	log.Printf("[BRIDGE-PING] notifier app prepared at %s; macOS may ask to allow its notifications", app)
 	return showNotification(app, notifierAddedNote) == nil
 }
