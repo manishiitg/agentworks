@@ -165,3 +165,14 @@ func (api *StreamingAPI) existingCrewRelayTwin(ctx context.Context, claims *User
 func handleCrewSyncCapabilities(w http.ResponseWriter, r *http.Request) {
 	externalJSON(w, map[string]bool{"relay": true})
 }
+
+const macCrewShareBlocked = "This Crew runs on your Mac. To share its dashboard and Ask, move it to the server first: turn on Work with my Mac off in Cloud."
+
+// crewRelayTwin reports a server Crew that is only the empty twin of a Mac Crew.
+func crewRelayTwin(id string) bool {
+	if id == "" {
+		return false
+	}
+	b, err := crewroot.ReadSync(id)
+	return err == nil && b != nil && b.Side == "server" && b.Mode == "relay"
+}

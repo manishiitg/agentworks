@@ -57,6 +57,8 @@ type runShareState struct {
 	// CanShare tells the screen whether to offer sharing: only the project's owner can.
 	CanShare       bool `json:"can_share"`
 	NeedsDashboard bool `json:"needs_dashboard,omitempty"`
+	// ShareBlocked is the plain reason sharing is unavailable, shown as given.
+	ShareBlocked string `json:"share_blocked,omitempty"`
 	// Note says anything the owner should know about what the share did.
 	Note   string            `json:"note,omitempty"`
 	Agents []sharedCrewAgent `json:"agents,omitempty"`
@@ -331,6 +333,12 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		state runShareState
 		err   error
 	)
+	// A Mac Crew's empty twin is used only by its owner from the phone; sharing needs the Crew on the server (C3, PLAT-856-509).
+	macTwin := crewRelayTwin(target.ID)
+	if action == "share" && macTwin {
+		externalError(w, 409, "mac_crew", macCrewShareBlocked)
+		return
+	}
 	if action == "share" {
 		if !dashboardAuthoringAllowed(claims, &target) {
 			logDashboardShareRefusal(claims, target, mode, "authoring_scope", dashboardFailure(403, "sharing requires owner and project authoring consent"), nil)
@@ -357,7 +365,10 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		dashboardError(w, err)
 		return
 	}
-	state.CanShare = api.dashboardShareOwner(r.Context(), claims, target) && dashboardAuthoringAllowed(claims, &target)
+	state.CanShare = api.dashboardShareOwner(r.Context(), claims, target) && dashboardAuthoringAllowed(claims, &target) && !macTwin
+	if macTwin {
+		state.ShareBlocked = macCrewShareBlocked
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(state)
 }

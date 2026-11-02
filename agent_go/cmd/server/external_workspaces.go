@@ -185,7 +185,10 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			return
 		}
 		share, _ := api.readRunShare(r.Context(), claims, target)
-		share.CanShare = api.dashboardShareOwner(r.Context(), claims, target)
+		share.CanShare = api.dashboardShareOwner(r.Context(), claims, target) && !crewRelayTwin(target.ID)
+		if crewRelayTwin(target.ID) {
+			share.ShareBlocked = macCrewShareBlocked
+		}
 		panels := []string{"dashboard"}
 		if binding.OwnedByCaller {
 			panels = api.workspaceEffectivePanels(r.Context(), claims.UserID, manifest.Product, binding.Binding.WorkspacePath)
