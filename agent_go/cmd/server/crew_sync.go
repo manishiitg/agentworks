@@ -190,7 +190,11 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	var input crewSyncRequest
 	if r.Method == http.MethodGet {
 		input.Action = "status"
-	} else if json.NewDecoder(io.LimitReader(r.Body, 800<<20)).Decode(&input) != nil {
+	} else if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(15 * time.Minute)); err != nil {
+		// A Crew upload carries its files and takes longer than the server's 30-second read limit.
+		log.Printf("[CREW_SYNC] project=%s read deadline not extended: %v", mux.Vars(r)["project"], err)
+	}
+	if r.Method != http.MethodGet && json.NewDecoder(io.LimitReader(r.Body, 800<<20)).Decode(&input) != nil {
 		externalError(w, 400, "invalid_request", "Send a valid sync request.")
 		return
 	}
