@@ -104,6 +104,13 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 		} // Commit/push alone is not a new file edit.
 		out.Replies = append(out.Replies, ref)
 		for id, changes := range groups {
+			// A copy someone deleted (a removed worktree or clone) has nothing left to review or commit: leave it out
+			// rather than listing it from its saved history (owner, 2 Nov: deleted clones still showed).
+			if label := labels[id]; label != nil && label.Root != "" {
+				if _, err := os.Stat(filepath.Join(store.Root, filepath.FromSlash(label.Root))); os.IsNotExist(err) {
+					continue
+				}
+			}
 			index, ok := byCheckout[id]
 			if !ok {
 				checkout := projectCheckout{ID: id, Name: "Project files", Captures: []projectCapture{}}

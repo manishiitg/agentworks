@@ -116,7 +116,7 @@ describe('MainAgentTerminal sizing', () => {
     try {
       await act(async () => root.render(<MainAgentTerminal sessionId="session-1" onUnavailable={onUnavailable} />))
       await act(async () => Promise.resolve())
-      expect(host.textContent).toContain('only available to owners and editors')
+      expect(host.textContent).toContain('only available to owners')
       expect(host.querySelector('[data-testid="main-agent-terminal-not-started"]')).toBeNull()
       expect(onUnavailable).toHaveBeenCalledTimes(1)
     } finally {
