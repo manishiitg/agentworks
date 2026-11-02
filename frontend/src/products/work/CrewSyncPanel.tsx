@@ -6,10 +6,11 @@ import { desktopRequest } from '../../services/desktopConnections'
 import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { ServerProjectLocalOpen, ProjectConnectionNotes, type SourceProject } from './ServerProjectLocalOpen'
 
 type Binding = { mode?: 'continuous' | 'manual'; side: 'local' | 'server'; editing: 'local' | 'server'; connection_id?: string; peer_project_id: string; peer_server?: string; updated_at?: string; pending_action?: 'update' | 'server' | 'local' | 'download' }
 type Readiness = { ready: boolean; message: string; items: { kind: string; name: string; state: string; message: string }[] }
-type Status = { runtime_readiness?: Readiness; project_id: string; binding: Binding | null; conversation_notice?: string; auto?: { state: string; message?: string; checked_at?: string } }
+type Status = { source_project?: SourceProject; runtime_readiness?: Readiness; project_id: string; binding: Binding | null; conversation_notice?: string; auto?: { state: string; message?: string; checked_at?: string } }
 
 export function CrewSyncPanel({ projectId }: { projectId: string }) {
   const connections = useConnectedWorkStore(state => state.connections)
@@ -75,6 +76,7 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
       {status.runtime_readiness && <div className="space-y-1 border-t border-border pt-2"><p role="status">{status.runtime_readiness.message}</p>{status.runtime_readiness.items.filter(item => item.state !== 'ready').map(item => <p key={`${item.kind}:${item.name}`} className="text-muted-foreground">{item.message}</p>)}</div>}
     </div>}
     {local ? <>
+      <ProjectConnectionNotes project={status?.source_project} />
       {!binding && <label className="block space-y-2"><span>Server</span><select aria-label="Sync server" value={connection} onChange={event => setConnection(event.target.value)} className="w-full rounded-md border border-border bg-background p-2">
         <option value="">Choose a connected server</option>
         {connections.filter(item => item.id !== 'local').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -93,6 +95,6 @@ export function CrewSyncPanel({ projectId }: { projectId: string }) {
       </div>
       {binding?.peer_server && <a className="inline-block underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">Open server Crew</a>}
       <p className="text-xs text-muted-foreground">Starts Only me. Each computer uses its configured AI account. Selected Crew-owned secrets are added securely to the server; existing server values are kept. Shared Vault connections must be available on the server. Browser logins and other private chats are not copied. Current Git branch, history and staged changes travel with the files. Other branches and Git logins stay put.</p>
-    </> : <p className="text-muted-foreground">{binding ? 'Automatic sync keeps completed work available here. Send a message to continue on this server.' : 'Open a local project in the Mac app and choose this server to set up sync.'}</p>}
+    </> : hasDesktopConnections() && status ? <ServerProjectLocalOpen projectId={projectId} connection={getRawActiveWorkspaceId()} /> : <p className="text-muted-foreground">{binding ? 'Automatic sync keeps completed work available here. Send a message to continue on this server.' : 'Open this project in the AgentWorks Mac app to bring its files and main conversation onto your Mac.'}</p>}
   </section>
 }

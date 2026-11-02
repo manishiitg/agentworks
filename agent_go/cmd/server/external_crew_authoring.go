@@ -494,6 +494,7 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 type workspaceCreation struct {
 	ReservedID string
 	Role       string
+	Restore    bool
 }
 
 func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, creation workspaceCreation) (string, error) {
@@ -552,7 +553,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
 		return "", err
 	}
 	if spec.ChatInstructions != "" {
