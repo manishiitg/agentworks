@@ -163,7 +163,11 @@ def smoke(config, workspace, target, owners, limit, app=None):
     started = time.monotonic()
     chat_id = None
     try:
-        opened = call(config, "workspace", {"action": "open_chat", "workspace_id": workspace, "name": f"smoke {target['provider']}"})
+        try:
+            opened = call(config, "workspace", {"action": "open_chat", "workspace_id": workspace, "name": f"smoke {target['provider']}"})
+        except Exception:  # one retry for a first call that hung on a cold server
+            time.sleep(5)
+            opened = call(config, "workspace", {"action": "open_chat", "workspace_id": workspace, "name": f"smoke {target['provider']}"})
         chat_id = opened["chat_id"]
         choice = {"action": "set", "scope": "tab", "workspace_id": workspace, "chat_id": chat_id, "engine": target["provider"],
                   "connection_id": target["connection_id"]}
@@ -220,6 +224,20 @@ def main():
     if not os.path.isfile(config):
         print(f"SMOKE: could not run: no saved login {args.login!r} on this computer (agentworks login --name {args.login})")
         return 1
+    # Right after activation the first calls can hang until the gateway gives up (502 after ~58 s on four parallel
+    # calls, 2 Nov). Wait until a light call answers quickly before starting the providers at the same time.
+    deadline = time.monotonic() + 180
+    while True:
+        started = time.monotonic()
+        try:
+            call(config, "workspace", {"action": "chats", "workspace_id": args.workspace_id}, timeout=10)
+            if time.monotonic() - started < 5:
+                break
+        except Exception:
+            pass
+        if time.monotonic() > deadline:
+            break
+        time.sleep(5)
     try:
         chats = call(config, "workspace", {"action": "chats", "workspace_id": args.workspace_id})
         state = call(config, "workspace", {"action": "owners", "workspace_id": args.workspace_id})
