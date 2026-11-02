@@ -6,7 +6,6 @@ vi.mock('./RunsOnPicker', () => ({ RunsOnPicker: ({ saveAccount }: { saveAccount
 const location = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ agentApi: { getProjectCreationLocation: location } }))
 import { CreateCrewWizard } from './CreateCrewWizard'
-import { CREW_STARTER_TYPES } from './crewStarterTypes'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root
@@ -36,18 +35,20 @@ it('creates a blank project in one step with provider controls visible and no sh
   expect(document.activeElement?.id).toBe('crew-wizard-name')
   expect(host.querySelector('input[type="checkbox"]')).toBeNull()
   expect(host.querySelector('details')).toBeNull()
+  expect(host.querySelector('#crew-wizard-type')).toBeNull()
+  expect(host.querySelector<HTMLSelectElement>('#crew-wizard-mode')!.value).toBe('dev')
   expect(host.querySelector('[data-testid="provider-picker"]')?.textContent).toBe('when-needed')
   expect(host.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
   await input(host, '#crew-wizard-name', '  My project  ')
   await click(host, 'Create project')
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My project', '', undefined, 'dev', { type: undefined }, undefined)
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My project', '', undefined, 'dev', {}, undefined)
 })
-it('retains optional starter purpose and shortcuts without changing Crew runtime mode or access', async () => {
-  const { host, onCreate } = await render({ initialType: 'automation' })
-  expect(host.querySelector<HTMLSelectElement>('#crew-wizard-type')!.value).toBe('automation')
-  await input(host, '#crew-wizard-name', 'My helper')
-  await click(host, 'Create project')
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My helper', CREW_STARTER_TYPES.find(item => item.id === 'automation')!.purpose, undefined, 'dev', { type: 'automation' }, undefined)
+it('shows a retry instead of an empty folder for a malformed location response', async () => {
+  location.mockResolvedValue({ status: 'ok' })
+  const { host } = await render({ allowExistingFolder: true })
+  expect(host.querySelector('[aria-label="Project folder"]')?.textContent).toContain('Could not load')
+  expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Retry folder lookup')).toBe(true)
+  expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Change')).toBe(false)
 })
 it('keeps the entered name on errors, blocks duplicate submission and supports Escape', async () => {
   const { host, onClose, onCreate, update } = await render()
@@ -85,7 +86,7 @@ it('lets local creation change or restore the displayed default folder', async (
     expect(pick).toHaveBeenCalledOnce()
     expect(host.querySelector<HTMLInputElement>('#crew-wizard-folder')!.value).toBe('/Users/example/work')
     await click(host, 'Create project')
-    expect(onCreate).toHaveBeenCalledExactlyOnceWith('Existing work', '', undefined, 'dev', { type: undefined }, '/Users/example/work')
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith('Existing work', '', undefined, 'dev', {}, '/Users/example/work')
     await click(host, 'Use default folder')
     await click(host, 'Create project')
     expect(onCreate.mock.calls[1][5]).toBeUndefined()

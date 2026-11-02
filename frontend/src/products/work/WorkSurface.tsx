@@ -916,9 +916,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [projectConfigRefreshToken, refresh])
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  const [createMode, setCreateMode] = useState<ProductMode>('dev')
-  const [createStudio, setCreateStudio] = useState(false)
-  const [createStarter, setCreateStarter] = useState<import('./crewStarterTypes').CrewStarterType | undefined>()
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
@@ -1286,16 +1283,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       return
     }
     setCreateError(null)
-    setCreateStudio(false)
-    setCreateStarter(undefined)
-    setCreateMode('dev')
     setCreateOpen(true)
   }, [canCreateProjects, refuseCreate])
-  useProductCreateRequest('work', intent => {
-    openCreateProject()
-    if (canCreateProjects && intent === 'studio') { setCreateStudio(true); setCreateMode('cowork') }
-    else if (canCreateProjects && intent && intent !== 'studio') setCreateStarter(intent)
-  })
+  useProductCreateRequest('work', openCreateProject)
 
   const deleteProject = useCallback(async () => {
     if (!deleteCandidate || deletingProjectId) return
@@ -1347,9 +1337,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           onClose={() => { if (!creating) setCreateOpen(false) }}
           onCreate={(title, purpose, runsOn, mode, onboarding, rootPath) => createProject(title, purpose, undefined, runsOn, mode, onboarding, rootPath)}
           allowExistingFolder={isLocalDeployment() && getActiveWorkspaceProfile().type === 'local'}
-          initialMode={createMode}
-          studio={createStudio}
-          initialType={createStarter}
           submitting={creating}
           error={createError}
         />
