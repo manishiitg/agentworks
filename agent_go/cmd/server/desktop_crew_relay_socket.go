@@ -462,6 +462,11 @@ func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims
 		return fail(403, "This Crew is unavailable on your Mac.")
 	}
 	rel := strings.TrimPrefix(filepath.ToSlash(filepath.Clean("/"+call.Path)), "/")
+	// Reply cards name files relative to the Crew's files, with "_files/" in front when they live
+	// in a chosen folder (crew_file_snapshots.go); accept them exactly as the card gives them.
+	if roots.SeparateFiles() {
+		rel = strings.TrimPrefix(rel, crewroot.FilesSegment+"/")
+	}
 	if rel == "" || rel == "." {
 		return fail(400, "Choose a file.")
 	}

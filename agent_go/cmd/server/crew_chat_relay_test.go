@@ -269,7 +269,11 @@ func checkCrewRelaySocketEndToEnd(t *testing.T, api *StreamingAPI, project, pair
 		t.Fatal(err)
 	}
 	defer os.Remove(filepath.Join(local.Files, "escape.txt"))
-	for path, want := range map[string]int{"note.txt": 200, "../../outside.txt": 404, "escape.txt": 404} {
+	cardPath := "note.txt"
+	if local.SeparateFiles() {
+		cardPath = "_files/note.txt" // as the reply card names it
+	}
+	for path, want := range map[string]int{cardPath: 200, "../../outside.txt": 404, "escape.txt": 404} {
 		got := api.callCrewMac(request(t.Context(), "/"), project, crewChatCall{Operation: "file", ConversationID: conversation.ConversationID, Path: path})
 		if got.Status != want || want == 200 && !bytes.Contains(got.Body, []byte(base64.StdEncoding.EncodeToString([]byte("local work")))) || bytes.Contains(got.Body, []byte(base64.StdEncoding.EncodeToString([]byte("private")))) {
 			t.Fatalf("file %s: %d %s", path, got.Status, got.Body)
