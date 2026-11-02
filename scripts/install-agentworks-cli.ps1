@@ -1,6 +1,6 @@
 # install-agentworks.ps1 - install the AgentWorks CLI from your server on Windows and (optionally) sign in.
 #
-# Served at https://<server>/api/downloads/cli/install-agentworks.ps1 and shown prefilled in Crew settings > Laptop access.
+# Served at https://<server>/api/downloads/cli/install-agentworks.ps1 and shown prefilled in Your computer.
 #
 #   & ([scriptblock]::Create((irm 'https://<server>/api/downloads/cli/install-agentworks.ps1'))) -Server 'https://<server>' -NoLogin
 #
@@ -79,5 +79,9 @@ if (-not $bash) {
 if (-not $NoLogin) {
   Write-Host "Signing in to $Server ..."
   & $target login --server $Server
+  if ($LASTEXITCODE -ne 0) { throw 'Sign-in did not finish. AgentWorks is installed; run agentworks login, then agentworks setup to continue.' }
 }
-Write-Host 'Done. Open your Crew settings in AgentWorks and choose Laptop access to connect this computer.'
+Write-Host 'Setting up your installed AI apps ...'
+& $target setup --server $Server
+if ($LASTEXITCODE -ne 0) { Write-Warning 'App setup needs attention. Run agentworks setup to retry; AgentWorks is installed.' }
+Write-Host "Done. Restart the apps listed above. In AgentWorks, open Your computer to connect this computer's files and commands."

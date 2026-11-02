@@ -715,7 +715,7 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 			}
 			return errors.New("set up Codex first with agentworks setup codex --hooks, then restart Codex and connect this chat again")
 		}
-		return setupCodexPlugin(ctx, o, "agentworks-codex")
+		return setupCodexPluginVariant(ctx, o, "agentworks-codex")
 	}
 	// Existing cache + installation registry are required; a downloaded cache on
 	// its own is not an installed plugin. Never enable/trust hooks programmatically.
@@ -867,7 +867,9 @@ func providerHostAliveWith(provider, host string, ps func(env []string, args ...
 		if err != nil {
 			return false
 		}
-		conn, err := net.DialTimeout("unix", strings.TrimPrefix(remote, "desktop+unix://"), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		conn, err := dialCodexDesktop(ctx, remote)
 		if err != nil {
 			return false
 		}
@@ -964,7 +966,7 @@ func discoverLiveAgents(ctx context.Context, root string, o *options, only ...ag
 	}
 	// The database is only a candidate catalog. Every candidate must be confirmed
 	// by a running desktop owner supporting untrusted input before it is selectable.
-	remote := "desktop+unix://" + filepath.Join(home, ".codex", "ipc", "ipc.sock")
+	remote, _ := codexDesktopSocket()
 	desktopHost, _ := codexDesktopProcessHost(ctx, remote)
 	if desktopHost != "" && validateCodexRemote(remote) == nil {
 		candidates := codexProbeCandidates(localAttachedChats(local))

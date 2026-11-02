@@ -93,6 +93,7 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 		want         string
 	}{
 		{native: "desktop+unix:///example.sock", want: "codex_desktop"},
+		{native: "desktop+npipe://codex-ipc", want: "codex_desktop"},
 		{hook: "codex_hook", want: "codex_hook"},
 		{native: "desktop+unix:///example.sock", offline: true, want: "inbox"},
 	} {

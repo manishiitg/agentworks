@@ -2060,7 +2060,7 @@ func nativeCodexTransport(remote string) string {
 	if strings.HasPrefix(remote, "claude+session://") {
 		return "claude_session"
 	}
-	if strings.HasPrefix(remote, "desktop+unix://") {
+	if IsCodexDesktopRemote(remote) {
 		return "codex_desktop"
 	}
 	return "codex_queue"

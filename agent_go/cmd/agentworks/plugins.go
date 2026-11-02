@@ -772,6 +772,9 @@ func discoverNativeRemote(provider, session, hostKey string) string {
 		}
 	}
 	if provider == "codex" {
+		if runtime.GOOS == "windows" {
+			return refreshNativeRoute(provider, session, hostKey, "")
+		}
 		// Only a desktop provider ancestor can select its desktop IPC route.
 		pid := os.Getppid()
 		for i := 0; i < 8 && pid > 1; i++ {
@@ -817,6 +820,21 @@ func refreshNativeRoute(provider, session, hostKey, remote string) string {
 	}
 	if provider != "codex" {
 		return ""
+	}
+	if runtime.GOOS == "windows" {
+		recovering := remote == ""
+		if recovering {
+			remote, _ = codexDesktopSocket()
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if actual, err := codexDesktopProcessHost(ctx, remote); err != nil || actual != hostKey {
+			return ""
+		}
+		if recovering && !codexDesktopOwnerReady(ctx, remote, session) {
+			return ""
+		}
+		return remote
 	}
 	recovering := remote == ""
 	if recovering {
@@ -1204,6 +1222,9 @@ func claudeLauncherCommand(o *options) *cobra.Command {
 }
 
 func validateCodexRemote(remote string) error {
+	if runtime.GOOS == "windows" && remote == "desktop+npipe://codex-ipc" {
+		return nil // The connected handle is authenticated by dialCodexDesktop.
+	}
 	u, err := url.Parse(remote)
 	if u != nil && u.Scheme == "desktop+unix" {
 		u.Scheme = "unix"
@@ -1237,7 +1258,7 @@ func codexNativeOffer(ctx context.Context, remote string, out agentworksclient.L
 		mayHaveDelivered = true // The adapter classifies pre-delivery failures.
 		return claudeSessionOffer(ctx, remote, out)
 	}
-	if strings.HasPrefix(remote, "desktop+unix://") {
+	if agentworksclient.IsCodexDesktopRemote(remote) {
 		mayHaveDelivered = true
 		return codexDesktopOffer(ctx, remote, out)
 	}

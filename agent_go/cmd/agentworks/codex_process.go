@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -13,6 +14,9 @@ import (
 // Several desktop core processes can remain alive after an app restart. Bind
 // discovery to the core under the actual IPC server, which also launches MCP.
 func codexDesktopProcessHost(ctx context.Context, remote string) (string, error) {
+	if runtime.GOOS == "windows" {
+		return windowsCodexDesktopHost(ctx, remote)
+	}
 	if !strings.HasPrefix(remote, "desktop+unix://") {
 		return "", errors.New("native desktop socket required")
 	}

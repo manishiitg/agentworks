@@ -118,17 +118,22 @@ over MCP (Cowork, ChatGPT) send with `file_name` and `file_base64` on
 CLI: `agentworks bridge message send ... --file PATH`, and `get_file --inbox ID
 --file-id ID [--out DIR]`.
 
-Windows Codex setup uses hooks by default. AgentWorks checks for messages when
-Codex starts, when you send a prompt, and when a reply finishes. Messages that
-arrive while Codex is idle wait until then. Review the hooks in Codex once;
-installation does not trust them. Use `agentworks setup codex --no-hooks` for tools only.
+Codex desktop setup uses the tools-only plugin on Windows, macOS and Linux.
+Windows setup/update removes the previous full hook plugin; restart Codex to
+stop the loaded hooks and use the tools. Explicit `--hooks` remains available
+for a person who wants the full plugin (the Codex terminal CLI needs it).
+Messages use the existing desktop connection and exact saved chat. Windows idle
+delivery requires a real app check; installation alone is not delivery proof.
 
-`agentworks setup claude` and Codex setup on macOS/Linux install no hooks by default
-(nothing shows as "blocked"): skills and message tools only. For the full plugin
-with hooks, add `--hooks` (the Codex command line needs it). Without hooks you give up delivery at the end of
-a turn if the live connection drops, automatic reconnect after a restart (say
-"connect this chat" once) and the typed shortcuts. Use one install or the other.
-The Codex command line, Pi and Cursor keep their hooks.
+`agentworks setup claude` also installs tools only by default, keeping an
+existing enabled full plugin when one was chosen. A disabled full package in the
+cache is not a reason to reactivate its hooks. Pi and Cursor keep their own
+existing hook-based setup.
+
+The installer signs in and runs `agentworks setup` for installed AI apps. Each
+app gets its own result; a failure does not stop the others. Run `agentworks setup`
+again after installing another app, or choose one with `agentworks setup codex`
+(and the equivalent Claude, Cursor, Muse or Pi command).
 
 ## Set up an app once
 
