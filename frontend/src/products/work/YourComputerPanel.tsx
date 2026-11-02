@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/Button'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { useLocalFileDevices } from './codeLocalFiles'
 
-type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
+type Binding = { mode?: 'continuous' | 'manual' | 'off'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
 type SyncStatus = { binding: Binding | null; auto?: { state: string; message?: string } }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
@@ -29,7 +29,7 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
     const load = () => {
       const request: Promise<ReactNode> = crewCloudMode()
         ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => {
-          if (!data.binding) return 'Off'
+          if (!data.binding || data.binding.mode === 'off') return 'Off'
           if (data.auto?.state === 'syncing') return <span className="inline-flex items-center gap-1"><RefreshCw aria-hidden="true" className="h-3 w-3 animate-spin" />Syncing</span>
           if (data.binding.pending_action || (data.auto?.state && !['synced', 'idle'].includes(data.auto.state))) return <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><TriangleAlert className="h-3 w-3" />Check</span>
           return <span className="inline-flex items-center gap-1 text-emerald-500/80 dark:text-emerald-300/80"><CheckCircle2 className="h-3 w-3" />On</span>
@@ -69,12 +69,14 @@ function CloudCard({ projectId }: { projectId: string }) {
     const timer = window.setInterval(load, 5000)
     return () => { window.clearInterval(timer); abort.abort() }
   }, [projectId, reload])
-  const binding = status?.binding
+  // A paired Crew turned off keeps its pair (both copies stay); the switch reads the server's saved mode.
+  const paired = status?.binding
+  const binding = paired && paired.mode !== 'off' ? paired : null
   const network = networkName(binding, connections)
-  const target = binding?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
-  const run = async (action: 'update' | 'server' | 'local' | 'download') => {
+  const target = paired?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
+  const run = async (action: 'update' | 'server' | 'local' | 'download' | 'mode', mode?: 'continuous' | 'off') => {
     setBusy(true); setError('')
-    try { await desktopRequest(`/${encodeURIComponent(target)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action }) }
+    try { await desktopRequest(`/${encodeURIComponent(target)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', mode ? { action, mode } : { action }) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.') }
     finally { setBusy(false); setReload(value => value + 1) }
   }
@@ -89,10 +91,9 @@ function CloudCard({ projectId }: { projectId: string }) {
         </p>
         <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone. It works here or in the cloud, with this project’s folder and terminal on this Mac.' : 'Turn on to use this Crew from the website or your phone.'}</p>
       </div>
-      {/* Turning a Crew offline arrives with the server's stop-syncing step; until then the switch only turns it on. */}
-      <Switch on={Boolean(binding)} disabled={!status || busy || Boolean(binding) || !target} label="Cloud" onChange={() => void run('update')} />
+      <Switch on={Boolean(binding)} disabled={!status || busy || !target} label="Cloud" onChange={() => void (binding ? run('mode', 'off') : paired ? run('mode', 'continuous') : run('update'))} />
     </div>
-    {!binding && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => setChoice(event.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm">
+    {!paired && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => setChoice(event.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm">
       <option value="">Choose a network</option>
       {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
     </select>}
