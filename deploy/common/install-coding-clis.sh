@@ -21,6 +21,19 @@ umask 077
 exec 9>"$prefix/.coding-cli-install.lock"
 umask "$previous_umask"
 flock -w 300 9
+# The CLIs also run as each person's slot account (PLAT-872-86), so the installed programs must be readable and
+# runnable by every account: an npm or vendor install made with a private umask left Codex's package and Muse's
+# version marker owner-only ("codex.js is not accessible", "installed binary is missing"). Programs only; the
+# install state and any logins stay as they are. On every exit, failures included: a later step failing after
+# Codex was reinstalled once left it owner-only and broke Codex for every slot (2 Nov).
+open_programs_to_slots() {
+  chmod o+x "$prefix" || true # enter only: the install state inside stays private
+  local dir
+  for dir in "$prefix/bin" "$prefix/lib" "$prefix/node"; do
+    [[ ! -d "$dir" ]] || chmod -R o+rX "$dir" || true
+  done
+}
+trap open_programs_to_slots EXIT
 state="$prefix/.coding-cli-state"
 install -d -m 0700 "$state"
 policy="$(sha256sum "$script_dir/install-coding-clis.sh" "$script_dir/install-agy.sh" "$script_dir/coding-cli-state.py" "$sdk_installer" | cut -d ' ' -f 1 | sha256sum | cut -d ' ' -f 1)"
@@ -121,12 +134,4 @@ install_node_cli agent-browser agent-browser
 # Check the complete provider catalog even when no installer was called.
 for cli in "${CODING_CLI_BINARIES[@]}" agent-browser; do
   tool_version "$cli" >/dev/null || { echo "FATAL: $cli is unavailable" >&2; exit 1; }
-done
-# The CLIs also run as each person's slot account (PLAT-872-86), so the installed programs must be readable and
-# runnable by every account: an npm or vendor install made with a private umask left Codex's package and Muse's
-# version marker owner-only ("codex.js is not accessible", "installed binary is missing"). Programs only; the
-# install state and any logins stay as they are.
-chmod o+x "$prefix" # enter only: the install state inside stays private
-for dir in "$prefix/bin" "$prefix/lib" "$prefix/node"; do
-  [[ ! -d "$dir" ]] || chmod -R o+rX "$dir"
 done
