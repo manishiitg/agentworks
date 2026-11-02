@@ -8,9 +8,15 @@ export type SourceProject = { dependencies?: { kind: string; name: string }[] }
 type LocalProject = { project_id: string; folder: string; project: SourceProject; binding?: unknown }
 
 export function ProjectConnectionNotes({ project }: { project?: SourceProject }) {
-  const names = [...new Set(project?.dependencies?.map(item => item.name) || [])]
-  if (!names.length) return null
-  return <p className="text-muted-foreground">This project uses {names.join(', ')} on the server. Make these connections and secrets available on this Mac before using them locally. Server Vault values and logins are not copied.</p>
+  const of = (kinds: string[]) => [...new Set((project?.dependencies || []).filter(item => kinds.includes(item.kind)).map(item => item.name))]
+  const apps = of(['mcp']), secrets = of(['project_secret', 'shared_secret']), accounts = of(['google', 'slack'])
+  if (!apps.length && !secrets.length && !accounts.length) return null
+  // Apps run on the server through list_server_apps / call_server_app (PLAT-856-493); nothing is copied to this Mac.
+  return <div className="space-y-1 text-muted-foreground">
+    {apps.length > 0 && <p>{apps.join(', ')} keep working here: the agent uses them on the server, with the server's sign-ins.</p>}
+    {secrets.length > 0 && <p>Secrets ({secrets.join(', ')}) stay on the server. A step that needs them runs there.</p>}
+    {accounts.length > 0 && <p>Personal accounts ({accounts.join(', ')}) aren't available on this Mac yet.</p>}
+  </div>
 }
 
 export function ServerProjectLocalOpen({ projectId, connection }: { projectId: string; connection: string }) {
