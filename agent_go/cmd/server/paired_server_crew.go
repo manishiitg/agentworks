@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -32,8 +33,15 @@ func pairedServerCrewFor(userID, workspacePath string) (pairedServerCrew, bool, 
 		return pairedServerCrew{}, false, nil
 	}
 	roots, found, err := crewStorageRoots(workspacePath)
-	if err != nil || !found || roots.Owner != userID {
+	if err != nil || !found {
 		return pairedServerCrew{}, false, err
+	}
+	return pairedServerCrewForRoots(userID, roots)
+}
+
+func pairedServerCrewForRoots(userID string, roots crewroot.Roots) (pairedServerCrew, bool, error) {
+	if !IsLocalMode() || roots.Owner != userID {
+		return pairedServerCrew{}, false, nil
 	}
 	b, err := crewroot.ReadSync(roots.ID)
 	if err != nil || b == nil || b.Side != "local" || b.ConnectionID == "" || b.PeerProjectID == "" {
@@ -51,8 +59,13 @@ func pairedServerCrewFor(userID, workspacePath string) (pairedServerCrew, bool, 
 
 // mcp calls the server's Crew mcp tool for the paired Crew.
 func (p pairedServerCrew) mcp(ctx context.Context, args map[string]any) (map[string]any, error) {
+	return p.call(ctx, "mcp", args)
+}
+
+// call runs one of the server's Crew tools (mcp, settings) for the paired Crew as the signed-in person.
+func (p pairedServerCrew) call(ctx context.Context, tool string, args map[string]any) (map[string]any, error) {
 	args["crew_id"] = p.crewID
-	payload, err := json.Marshal(map[string]any{"name": "mcp", "arguments": args})
+	payload, err := json.Marshal(map[string]any{"name": tool, "arguments": args})
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +96,25 @@ func (p pairedServerCrew) mcp(ctx context.Context, args map[string]any) (map[str
 		return nil, fmt.Errorf("%s refused: %s", p.conn.Name, externalErrorMessage(body, res.Status))
 	}
 	return body, nil
+}
+
+// usableApps is the server Crew's own app selection: nil means all its Vault apps.
+func (p pairedServerCrew) usableApps(ctx context.Context) (map[string]bool, map[string]any, error) {
+	settings, err := p.call(ctx, "settings", map[string]any{"action": "get"})
+	if err != nil {
+		return nil, nil, err
+	}
+	if all, _ := settings["use_all_vault_apps"].(bool); all {
+		return nil, settings, nil
+	}
+	selected := map[string]bool{}
+	servers, _ := settings["mcp_servers"].([]any)
+	for _, name := range servers {
+		if text, ok := name.(string); ok {
+			selected[text] = true
+		}
+	}
+	return selected, settings, nil
 }
 
 // registerPairedServerAppTools adds the server Crew's apps to a paired Crew's
@@ -128,11 +160,16 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 					return "", err
 				}
 				if app == "" {
+					// Only apps this server Crew has selected can be called, so only those are listed.
+					usable, _, err := p.usableApps(ctx)
+					if err != nil {
+						return "", err
+					}
 					apps := []map[string]any{}
 					connections, _ := body["connections"].(map[string]any)
 					items, _ := connections["items"].([]any)
 					for _, item := range items {
-						if c, ok := item.(map[string]any); ok {
+						if c, ok := item.(map[string]any); ok && (usable == nil || usable[fmt.Sprint(c["name"])]) {
 							apps = append(apps, map[string]any{"app": c["name"], "label": c["label"], "kind": c["catalog"], "connected": c["connected"], "tools": c["cached_tool_count"]})
 						}
 					}
@@ -180,4 +217,64 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 		}
 	}
 	return nil
+}
+
+// handleCloudApps answers the Cloud page: the apps, secret names and accounts the
+// paired server Crew uses. Names and status only; values never leave the server.
+func (api *StreamingAPI) handleCloudApps(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	roots, err := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
+	if err != nil {
+		externalError(w, 403, "unavailable", err.Error())
+		return
+	}
+	p, paired, err := pairedServerCrewForRoots(claims.UserID, roots)
+	if err != nil || !paired {
+		externalJSON(w, map[string]any{"apps": []any{}, "secrets": []any{}, "accounts": []any{}})
+		return
+	}
+	usable, settings, err := p.usableApps(r.Context())
+	if err != nil {
+		externalError(w, 502, "server_unavailable", err.Error())
+		return
+	}
+	apps, secrets, accounts := []map[string]any{}, []string{}, []map[string]any{}
+	seen := map[string]bool{}
+	vault, _ := settings["vault"].(map[string]any)
+	groups, _ := vault["vaults"].([]any)
+	for _, group := range groups {
+		g, _ := group.(map[string]any)
+		items, _ := g["items"].([]any)
+		for _, raw := range items {
+			item, _ := raw.(map[string]any)
+			kind, _ := item["kind"].(string)
+			name := fmt.Sprint(item["name"])
+			selected, _ := item["selected"].(bool)
+			switch kind {
+			case "mcp":
+				if usable == nil || usable["vault_"+fmt.Sprint(item["id"])] {
+					apps = append(apps, map[string]any{"name": name, "status": item["status"]})
+				}
+			case "project_secret", "shared_secret":
+				if selected && !seen[name] {
+					seen[name] = true
+					secrets = append(secrets, name)
+				}
+			case "google", "slack":
+				if selected {
+					accounts = append(accounts, map[string]any{"name": name, "kind": kind})
+				}
+			}
+		}
+	}
+	if stored, ok := settings["secrets"].(map[string]any); ok {
+		names, _ := stored["stored"].([]any)
+		for _, name := range names {
+			if text := fmt.Sprint(name); !seen[text] {
+				seen[text] = true
+				secrets = append(secrets, text)
+			}
+		}
+	}
+	externalJSON(w, map[string]any{"apps": apps, "secrets": secrets, "accounts": accounts})
 }

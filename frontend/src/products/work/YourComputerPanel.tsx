@@ -89,11 +89,13 @@ function CloudCard({ projectId }: { projectId: string }) {
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
   const [laptop, setLaptop] = useState<{ state: string; message?: string }>()
+  const [cloudUses, setCloudUses] = useState<{ apps: { name: string; status?: string }[]; secrets: string[]; accounts: { name: string; kind: string }[] }>()
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
     const loadLaptop = () => void api.get<{ state: string; message?: string }>(`/api/crew-cloud-laptop/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setLaptop(data) }).catch(() => {})
     load(); loadLaptop()
+    void api.get<NonNullable<typeof cloudUses>>(`/api/crew-cloud-apps/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setCloudUses(data) }).catch(() => {})
     const timer = window.setInterval(() => { load(); loadLaptop() }, 5000)
     return () => { window.clearInterval(timer); abort.abort() }
   }, [projectId, reload])
@@ -130,6 +132,13 @@ function CloudCard({ projectId }: { projectId: string }) {
     {problem && !binding?.pending_action && !syncing && <div className="space-y-1">
       <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last update didn’t finish. Your work is kept.</span>{binding && <Button size="sm" variant="outline" onClick={() => void run('update')}>Try again</Button>}</div>
       <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Details</summary><p className="mt-1 break-all">{problem}</p></details>
+    </div>}
+    {binding && cloudUses && (cloudUses.apps.length + cloudUses.secrets.length + cloudUses.accounts.length > 0) && <div className="space-y-1 border-t border-border pt-3 text-xs">
+      <p className="font-medium">In the cloud this Crew uses</p>
+      {cloudUses.apps.length > 0 && <p><span className="text-muted-foreground">Apps: </span>{cloudUses.apps.map(app => app.name).join(', ')}</p>}
+      {cloudUses.secrets.length > 0 && <p><span className="text-muted-foreground">Secrets: </span>{cloudUses.secrets.join(', ')}</p>}
+      {cloudUses.accounts.length > 0 && <p><span className="text-muted-foreground">Accounts: </span>{cloudUses.accounts.map(account => account.name).join(', ')}</p>}
+      <p className="text-muted-foreground">They run on the server with its sign-ins. Secret values stay there.</p>
     </div>}
     {binding?.peer_server && <a className="inline-block text-xs underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">{network ? `Open on ${network}` : 'Open on the website'}</a>}
   </section>
