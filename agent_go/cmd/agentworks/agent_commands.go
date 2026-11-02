@@ -709,19 +709,28 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 		if !o.setupAll {
 			// Attaching a chat must not refresh its installed plugin. Setup and
 			// update are the person's explicit refresh operations.
-			if hooksPluginInstalled(provider) {
+			doc, e := readCodexSettings(codexHomeDir(home))
+			if e != nil {
+				return e
+			}
+			plugins := codexSettingsTable(doc, "plugins")
+			_, full := plugins["agentworks-codex@agentworks"]
+			_, tools := plugins["agentworks-codex-tools@agentworks"]
+			if full || tools {
 				return nil
 			}
-			return errors.New("set up Codex first with agentworks setup codex --hooks, then restart Codex and connect this chat again")
+			return errors.New("set up Codex first with agentworks setup codex, then restart Codex and connect this chat again")
 		}
 		return setupCodexPluginVariant(ctx, o, "agentworks-codex")
 	}
+	if o.setupAll {
+		return setupClaudePluginVariant(ctx, o, "agentworks")
+	}
 	// Existing cache + installation registry are required; a downloaded cache on
 	// its own is not an installed plugin. Never enable/trust hooks programmatically.
-	registry := filepath.Join(home, ".claude", "plugins", "installed_plugins.json")
-	marker := "agentworks@agentworks"
+	registry := filepath.Join(claudeProfileDir(home), "plugins", "installed_plugins.json")
 	// A project-scoped Claude install elsewhere is not an every-project setup.
-	if b, e := os.ReadFile(registry); e == nil && json.Valid(b) && strings.Contains(string(b), marker) && !(o.setupAll && provider == "claude") {
+	if b, e := os.ReadFile(registry); e == nil && json.Valid(b) && (strings.Contains(string(b), "agentworks@agentworks") || strings.Contains(string(b), "agentworks-tools@agentworks")) {
 		return nil
 	}
 	cwd, err := os.Getwd()
