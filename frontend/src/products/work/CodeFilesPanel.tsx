@@ -7,6 +7,7 @@ import api, { getApiBaseUrl } from '../../services/api'
 import { laptopSettingsEndpoint, laptopFoldersEndpoint } from '../../components/workspace/laptopAccess'
 import { useChatStore } from '../../stores/useChatStore'
 import { cliUpdateNeeded, localFileError, useLatestCliVersion, useLocalFileDevices, type LocalFileDevice } from './codeLocalFiles'
+import { computerOS, unixCliInstallCommand, windowsDefenderNote, windowsInstallCommand } from '../../utils/computerInstall'
 
 function shellQuote(value: string) { return `'${value.replace(/'/g, "'\\''")}'` }
 
@@ -41,36 +42,33 @@ function SetupStep({ number, title, children }: { number: number; title: string;
 
 // PowerShell single-quoted string: a quote inside is doubled.
 function psQuote(value: string) { return `'${value.replace(/'/g, "''")}'` }
-const looksLikeWindows = () => typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent || '')
-
 export function LaptopConnectionSetup({ connected }: { connected: boolean }) {
   const base = getApiBaseUrl() || window.location.origin
-  const [windows, setWindows] = useState(looksLikeWindows)
-  const installCommand = windows
-    ? `& ([scriptblock]::Create((irm ${psQuote(`${base}/api/downloads/cli/install-agentworks.ps1`)}))) -Server ${psQuote(base)} -NoLogin`
-    : `curl -fsSL ${shellQuote(`${base}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${shellQuote(base)} --no-login`
-  const startCommand = windows
-    ? `agentworks start --server ${psQuote(base)}`
-    : `agentworks start --server ${shellQuote(base)}`
+  const [platform, setPlatform] = useState(computerOS)
+  const windows = platform === 'windows'
+  const choices = platform === 'unknown' ? ['unix', 'windows'] : [windows ? 'windows' : 'unix']
   return <details className="group" open={!connected}>
     <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Terminal className="h-4 w-4 text-muted-foreground" />{connected ? 'Connect another computer' : 'Connect your computer'}<span className="ml-auto text-xs font-normal text-muted-foreground">macOS · Linux · Windows</span></summary>
     <div className="space-y-5 border-t border-border px-4 py-4">
       <div role="group" aria-label="Your computer" className="flex gap-1.5">
-        <Button size="sm" variant={windows ? 'ghost' : 'secondary'} aria-pressed={!windows} onClick={() => setWindows(false)}>macOS / Linux</Button>
-        <Button size="sm" variant={windows ? 'secondary' : 'ghost'} aria-pressed={windows} onClick={() => setWindows(true)}>Windows</Button>
+        <Button size="sm" variant={!windows && platform !== 'unknown' ? 'secondary' : 'ghost'} aria-pressed={!windows && platform !== 'unknown'} onClick={() => setPlatform('mac')}>macOS / Linux</Button>
+        <Button size="sm" variant={windows ? 'secondary' : 'ghost'} aria-pressed={windows} onClick={() => setPlatform('windows')}>Windows</Button>
       </div>
-      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer{windows ? ' in PowerShell' : ''}. Your model stays on this server; the CLI connects this computer. Choose folders in the project’s Local laptop settings. Already installed? Start at step 2.</p>
+      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer. Your model stays on this server; the CLI connects this computer. Already installed? Start at step 2.</p>
       <SetupStep number={1} title="Install the CLI">
-        <CopyCommand label="install command" command={installCommand} />
-        {windows && <p className="text-xs leading-5 text-muted-foreground">If Windows Defender blocks AgentWorks: open Windows Security › Virus &amp; threat protection › Protection history, open the agentworks.exe entry, choose Actions › Allow on device, then run <code>agentworks setup</code>.</p>}
-        <p className="text-xs text-muted-foreground">{windows ? 'Installs AgentWorks in %LOCALAPPDATA%\\agentworks and adds it to your PATH; no administrator rights. Running commands on your computer needs Git for Windows (git-scm.com). No model or server runs on your computer.' : 'Installs AgentWorks in ~/.local/bin. No model or server runs on your computer.'}</p>
+        {choices.map(choice => <div key={choice} className="space-y-2">
+          <p className="text-xs leading-5 text-muted-foreground">{choice === 'windows' ? 'Open PowerShell (not as administrator), paste this command, and press Enter.' : 'Open Terminal, paste this command, and press Enter.'}</p>
+          <CopyCommand label={`${choice === 'windows' ? 'Windows' : 'macOS / Linux'} install command`} command={choice === 'windows' ? windowsInstallCommand(base) : unixCliInstallCommand(base, true)} />
+          {choice === 'windows' && <p className="text-xs leading-5 text-muted-foreground">{windowsDefenderNote}</p>}
+          <p className="text-xs text-muted-foreground">{choice === 'windows' ? 'Installs AgentWorks in %LOCALAPPDATA%\\agentworks and adds it to your PATH. Running commands on your computer needs Git for Windows (git-scm.com).' : 'Installs AgentWorks in ~/.local/bin.'}</p>
+        </div>)}
       </SetupStep>
       <SetupStep number={2} title="Connect your computer once">
-        <CopyCommand label="start command" command={startCommand} />
+        {choices.map(choice => <CopyCommand key={choice} label={`${choice === 'windows' ? 'Windows' : 'macOS / Linux'} start command`} command={`agentworks start --server ${choice === 'windows' ? psQuote(base) : shellQuote(base)}`} />)}
         <p className="text-xs leading-5 text-muted-foreground">Run from any folder. Sign in with the same account you use here. AgentBridge and laptop access use the same CLI and saved login. No folder is shared automatically. It can stay connected in the background.</p>
       </SetupStep>
       <SetupStep number={3} title="Choose where to use it">
-        <p className="text-xs leading-5 text-muted-foreground">Open a Goal or Crew’s Local laptop panel, choose this computer, then set its folders to Read or Read &amp; write. Terminal commands have a separate switch. You can use the same computer in several projects. <code>agentworks status</code> checks the connection; <code>agentworks stop</code> stops laptop access and pauses AgentBridge messaging. Detaching one chat leaves the laptop connection available.</p>
+        <p className="text-xs leading-5 text-muted-foreground">Open Your computer, choose this computer for a Goal or Crew, then set its folders to Read or Read &amp; write. Terminal commands have a separate switch. You can use the same computer in several projects. <code>agentworks status</code> checks the connection; <code>agentworks stop</code> stops laptop access and pauses AgentBridge messaging. Detaching one chat leaves the laptop connection available.</p>
       </SetupStep>
     </div>
   </details>

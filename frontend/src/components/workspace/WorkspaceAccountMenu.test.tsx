@@ -100,14 +100,22 @@ it('keeps local identity without password and sign-out actions', async () => {
     expect(destination.textContent).not.toContain('Sign out')
   })
 })
-it.each([true, false])('shows the Mac download only on the website (desktop=%s)', async desktop => {
+it.each([
+  { desktop: true, userAgent: 'Macintosh', platforms: [] },
+  { desktop: false, userAgent: 'Macintosh', platforms: ['Mac'] },
+  { desktop: false, userAgent: 'Windows NT 10.0', platforms: ['Windows'] },
+  { desktop: false, userAgent: 'X11; Linux x86_64', platforms: ['Linux'] },
+  { desktop: false, userAgent: 'unknown', platforms: ['Mac', 'Windows'] },
+])('shows the matching terminal installer without downloading it ($userAgent, desktop=$desktop)', async ({ desktop, userAgent, platforms }) => {
   // PLAT-746-302: opening installation instructions must not start a download or network request.
   const fetchRelease = vi.fn(async () => ({ ok: true, json: async () => ({ tag_name: 'v1.2.3', assets: [{ name: 'AgentWorks-1.2.3-arm64.dmg', browser_download_url: 'https://example.invalid/untrusted' }] }) }))
   vi.stubGlobal('fetch', fetchRelease)
+  const userAgentSpy = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent)
+  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
   if (desktop) window.electronAPI = { getDesktopConnection: () => 'local' } as never
   try {
     await render(async host => {
-      const button = host.querySelector<HTMLButtonElement>('[aria-label="Get the Mac app"]')
+      const button = host.querySelector<HTMLButtonElement>('[aria-label="Get the app"]')
       expect(Boolean(button)).toBe(!desktop)
       if (!button) return
       expect(fetchRelease).not.toHaveBeenCalled()
@@ -115,10 +123,28 @@ it.each([true, false])('shows the Mac download only on the website (desktop=%s)'
       expect(fetchRelease).not.toHaveBeenCalled()
       const panel = host.querySelector('[role="dialog"]')!
       expect(panel.querySelector('a')).toBeNull()
-      expect(panel.querySelector('code')?.textContent).toBe('curl -fsSL https://raw.githubusercontent.com/manishiitg/agentworks/main/install.sh | bash')
+      const commands = [...panel.querySelectorAll('code')].map(node => node.textContent!)
+      expect(commands).toHaveLength(platforms.length)
+      for (const [index, platform] of platforms.entries()) {
+        const command = commands[index]
+        if (platform === 'Windows') {
+          expect(command).toContain('$env:AGENTWORKS_SERVER=')
+          expect(command).toContain('/api/downloads/cli/install-agentworks.ps1')
+          expect(command).toMatch(/; irm '.+' \| iex$/)
+          expect(panel.textContent).toContain('not as administrator')
+          expect(panel.textContent).toContain('Protection history')
+        } else if (platform === 'Mac') {
+          expect(command).toBe('curl -fsSL https://raw.githubusercontent.com/manishiitg/agentworks/main/install.sh | bash')
+        } else {
+          expect(command).toContain('/api/downloads/cli/install-agentworks.sh')
+        }
+        await act(async () => panel.querySelector<HTMLButtonElement>(`[aria-label="Copy ${platform} install command"]`)!.click())
+        expect(copy).toHaveBeenLastCalledWith(command)
+        expect(command).not.toMatch(/[\r\n]/) // the wrapped display must copy as one command
+      }
       await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
       expect(host.querySelector('[role="dialog"]')).toBeNull()
       expect(document.activeElement).toBe(button)
     }, false)
-  } finally { delete window.electronAPI; vi.unstubAllGlobals() }
+  } finally { delete window.electronAPI; userAgentSpy.mockRestore(); copy.mockRestore(); vi.unstubAllGlobals() }
 })
