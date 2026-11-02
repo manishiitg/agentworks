@@ -1,3 +1,4 @@
+import { dropFilesOnTerminal } from '../utils/terminalFileDrop'
 import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
 import { transcriptReadingKey } from './useTranscriptScroll'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -2350,6 +2351,8 @@ const LiveAttachXtermPaneInner: React.FC<{
       )}
       <div
         ref={mountRef}
+        onDragOver={event => { if (interactive && sessionId && event.dataTransfer?.types.includes('Files')) event.preventDefault() }}
+        onDrop={event => { if (!interactive || !sessionId || !event.dataTransfer?.files.length) return; event.preventDefault(); dropFilesOnTerminal(sessionId, Array.from(event.dataTransfer.files)) }}
         className="runloop-raw-xterm h-full w-full p-1.5 [&_.xterm]:h-full"
         style={{
           fontFamily: RAW_XTERM_FONT_FAMILY,

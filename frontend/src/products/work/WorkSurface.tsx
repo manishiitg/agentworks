@@ -20,7 +20,6 @@ import { openAppProduct } from '../../utils/appNavigation'
 import { REPORT_SELECTION_EVENT } from '../../components/workflow/reportDocuments'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
-import { TerminalFocusLayout } from '../../components/TerminalFocusLayout'
 import SchedulesPage from '../../components/SchedulesPage'
 import AdminPages from '../../components/AdminPages'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
@@ -1323,7 +1322,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   return (
     <ProjectProductProvider value={product}>
-    <TerminalFocusLayout tabId={tabId} enabled={!isShared && chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-full min-h-0 bg-background">
+    <div className="flex h-full min-h-0 bg-background">
       <UpdateProgressToast />
       <GlobalHumanFeedbackPrompt />
       <ModePresetBar
@@ -1464,7 +1463,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           )}
         </div>
       </div>
-    </TerminalFocusLayout>
+    </div>
     </ProjectProductProvider>
   )
 }

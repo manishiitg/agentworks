@@ -1,10 +1,9 @@
+import { TERMINAL_FILE_DROP_EVENT, type TerminalFileDrop } from '../utils/terminalFileDrop'
 import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
 import { ComposerActionsMenu } from './chat/ComposerActionsMenu'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
-import { NativeTerminalToolbar } from './NativeTerminalToolbar'
-import { useTerminalFocusMode } from './TerminalFocusLayout'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { composerModelLabel, getModelDisplayName, resolvePiModelGroup } from '../utils/llmDisplay'
@@ -432,7 +431,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   onNewChat,
 }) => {
   const isProductSurface = surfaceVariant === 'product'
-  const terminalFocus = useTerminalFocusMode()
   const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   // Store subscriptions
   const {
@@ -2672,6 +2670,17 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [])
 
+  // Files dropped on this chat's live terminal take the same upload, which pastes their paths into the terminal.
+  useEffect(() => {
+    if (!tabSessionId) return
+    const drop = (event: Event) => {
+      const detail = (event as CustomEvent<TerminalFileDrop>).detail
+      if (detail?.sessionId === tabSessionId) void uploadFilesToChat(detail.files)
+    }
+    window.addEventListener(TERMINAL_FILE_DROP_EVENT, drop)
+    return () => window.removeEventListener(TERMINAL_FILE_DROP_EVENT, drop)
+  }, [tabSessionId, uploadFilesToChat])
+
   const handleTextareaDrop = useCallback(async (event: React.DragEvent<HTMLTextAreaElement>) => {
     if (!event.dataTransfer?.files) return
     event.preventDefault()
@@ -2917,16 +2926,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   return (
     <TooltipProvider>
       <ChatComposerBand product={isProductSurface}>
-      {nativeTerminalTools && (
-        <NativeTerminalToolbar
-          className={inputPadX}
-          uploading={isUploadingFiles}
-          onAttach={openAttachmentPicker}
-          focused={terminalFocus.focused}
-          onToggleFocus={terminalFocus.available ? terminalFocus.toggle : undefined}
-          onReturnToChat={() => chooseViewMode(activeTabId!, 'formatted')}
-        />
-      )}
       {/* Preserve the chat draft while native terminal input owns all typing.
           Commands and uploads remain available through the terminal toolbar. */}
       <div id={terminalComposerId} hidden={nativeTerminalTools} data-testid="message-composer">
