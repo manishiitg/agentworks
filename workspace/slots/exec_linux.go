@@ -335,5 +335,16 @@ func moveToAppScope(pid int) {
 		"CollectMode", "s", "inactive-or-failed",
 		"0")
 	cmd.Env = []string{"XDG_RUNTIME_DIR=" + runtimeDir, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join(runtimeDir, "bus")}
-	_ = cmd.Run()
+	if cmd.Run() != nil {
+		return
+	}
+	// StartTransientUnit only queues the job: the move lands a moment later. A program started before then stayed in
+	// the platform service (seen live: slotctl in aw-app-<pid>.scope, Cursor's runner it started still in the
+	// service). Wait for the move, briefly.
+	self := fmt.Sprintf("/proc/%d/cgroup", pid)
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if data, err := os.ReadFile(self); err == nil && strings.Contains(string(data), "/"+unit) {
+			return
+		}
+	}
 }
