@@ -48,9 +48,9 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	// A Crew whose owner holds a slot runs its CLI as that slot (PLAT-872-84), from the slot's state folder
 	// (slot_state_root/<slot>: the platform's and that slot's only, outside the documents; tmux already routes a
 	// session started there to the slot's own server). Otherwise the app's private state, as before.
-	// A slot without its state folder on this host keeps the app account, and so does a CLI not yet moved to slots
-	// (see slotRunsProvider).
-	if slot, owner := crewOwnerSlot(folder); slot != "" && slotRunsProvider(provider, owner) {
+	// Every AI program runs there (owner 2 Nov: "slots should be default only", PLAT-872-86); a slot without its state
+	// folder on this host keeps the app account.
+	if slot, owner := crewOwnerSlot(folder); slot != "" {
 		if state, stateErr := slots.StateDirFor(slot); stateErr == nil {
 			if info, statErr := os.Stat(state); statErr == nil && info.IsDir() {
 				stateRoot = state
@@ -204,22 +204,4 @@ func inSlotStateFolder(dir, slot string) bool {
 		return false
 	}
 	return strings.HasPrefix(filepath.Clean(dir)+string(filepath.Separator), filepath.Clean(state)+string(filepath.Separator))
-}
-
-// slotRunsProvider reports whether provider's CLI runs as the Crew owner's slot. Claude does everywhere; another
-// program only on a server that lists it in AGENTWORKS_SLOT_PROGRAMS, as "cursor-cli" for every Crew owner or
-// "cursor-cli@<owner id>" for one owner while its slot launch is being proven there (PLAT-872-86: a first slot launch
-// of Codex, Cursor and Muse broke them for every tester on a live server).
-func slotRunsProvider(provider, owner string) bool {
-	provider = strings.ToLower(strings.TrimSpace(provider))
-	if provider == "claude-code" {
-		return true
-	}
-	for _, listed := range strings.Split(os.Getenv("AGENTWORKS_SLOT_PROGRAMS"), ",") {
-		program, only, scoped := strings.Cut(strings.TrimSpace(listed), "@")
-		if provider != "" && strings.ToLower(program) == provider && (!scoped || only == strings.TrimSpace(owner)) {
-			return true
-		}
-	}
-	return false
 }
