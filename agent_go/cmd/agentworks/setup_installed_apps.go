@@ -104,9 +104,6 @@ func setupCodexPluginVariant(ctx context.Context, o *options, name string) error
 	if err := codexHomeError(); err != nil {
 		return err
 	}
-	if runtime.GOOS != "windows" {
-		return setupCodexPlugin(ctx, o, name)
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -149,8 +146,8 @@ func removeCodexPluginVariant(profile string, o *options, name string) error {
 	return os.RemoveAll(filepath.Join(profile, "plugins", "cache", "agentworks", name))
 }
 
-func updateWindowsCodexTools(ctx context.Context, o *options) bool {
-	if runtime.GOOS != "windows" || !o.setupAll || codexHomeError() != nil {
+func updateCodexTools(ctx context.Context, o *options) bool {
+	if !o.setupAll || codexHomeError() != nil {
 		return false
 	}
 	home, err := os.UserHomeDir()

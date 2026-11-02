@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -28,25 +27,19 @@ func installToolsPlugin(ctx context.Context, o *options, provider string) (insta
 	case "claude":
 		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", "user"}, {"plugin", "install", "agentworks-tools@agentworks", "--scope", "user"}}
 		installed, remove = "the AgentWorks tools plugin (agentworks-tools@agentworks, no hooks) for your user in Claude Code (~/.claude)", "claude plugin uninstall agentworks-tools@agentworks --scope user"
-		if hooksPluginInstalled("claude") {
-			newSetupStyle(o.stdout).Say("Note: the full AgentWorks plugin (with hooks) is also installed. Remove it so the hooks stop: claude plugin uninstall agentworks@agentworks --scope user")
-		}
 	case "codex":
 		if e := codexHomeError(); e != nil {
 			return "", "", e
 		}
 		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins"}, {"plugin", "add", "agentworks-codex-tools@agentworks"}}
 		installed, remove = "the AgentWorks tools plugin (agentworks-codex-tools@agentworks, no hooks) in your Codex profile (~/.codex); it serves the Codex app (the Codex command line keeps the version with hooks)", "remove AgentWorks (tools only) in Codex Settings > Plugins, then restart Codex"
-		if raw, e := os.ReadFile(filepath.Join(codexHomeDir(home), "config.toml")); e == nil && strings.Contains(string(raw), "agentworks-codex@agentworks") && runtime.GOOS != "windows" {
-			newSetupStyle(o.stdout).Say("Note: the full AgentWorks plugin (with hooks) is also installed. Remove that copy in Codex Settings > Plugins so its hooks stop.")
-		}
 	default:
 		return "", "", errors.New("--no-hooks is available for Claude Code and the Codex app")
 	}
 	if provider == "codex" {
 		err = setupCodexPluginVariant(ctx, o, "agentworks-codex-tools")
 	} else {
-		err = runPluginSteps(ctx, o, provider, steps)
+		err = setupClaudePluginVariant(ctx, o, "agentworks-tools")
 	}
 	return installed, remove, err
 }

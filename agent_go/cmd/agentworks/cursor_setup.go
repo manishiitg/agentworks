@@ -105,13 +105,7 @@ func setupCommand(o *options) *cobra.Command {
 			if withHooks && noHooks {
 				return errors.New("choose --hooks or --no-hooks, not both")
 			}
-			keptHooks := false
 			if app.provider == "claude" || app.provider == "codex" {
-				// Running setup again (or an update that does) never removes hooks someone already has: with no flag, the
-				// full plugin stays when it is installed; --no-hooks is how to switch them off.
-				if !withHooks && !noHooks && !(app.provider == "codex" && runtime.GOOS == "windows") && hooksPluginInstalled(app.provider) {
-					withHooks, keptHooks = true, true
-				}
 				noHooks = !withHooks
 			}
 			if noHooks && (app.provider == "claude" || app.provider == "codex") {
@@ -138,9 +132,6 @@ func setupCommand(o *options) *cobra.Command {
 				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 			}
 			say(app.name + " is set up for AgentWorks: installed " + app.what + ". This applies to every project.")
-			if keptHooks {
-				say("Kept your hooks: the full AgentWorks plugin was already installed here. To switch them off, run agentworks setup " + app.provider + " --no-hooks.")
-			}
 			if line := addToolsServer(cmd.Context(), o, app.provider); line != "" {
 				say(line)
 			}
