@@ -1,4 +1,5 @@
 import { PRWatcherControls } from './PRWatcherControls'
+import { MacFileRow, isMacChatSession } from './MacFileView'
 import { useEffect, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowDownToLine, GitBranch, Github, MoreHorizontal, Plus, Undo2, Wrench, Zap } from 'lucide-react'
@@ -206,7 +207,9 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const checkoutOptions = [...new Map(groups.map(group => ({ id: group.checkout_id || (group.kind === 'crew_files' ? 'project-files' : ''), name: group.name })).filter(group => !!group.id).map(group => [group.id, group])).values()]
   const revertCheckoutId = reference.checkoutId || undoCheckoutId || checkoutOptions[0]?.id || ''
   const canEdit = (checked ?? card)?.can_edit === true
-  const sharedViewer = (checked ?? card)?.can_edit === false
+  // A Mac Crew's files live on the Mac: list them here and open each on tap.
+  const macChat = isMacChatSession(reference.sessionId)
+  const sharedViewer = macChat || (checked ?? card)?.can_edit === false
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
   const incomplete = checked?.note || card?.note || summary?.note
@@ -247,7 +250,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
       {groups.map(group => <div key={`${group.kind}:${group.root}:${group.branch || ''}`} className="space-y-1">
         <p className="text-muted-foreground">{group.name}</p>
         {!!group.pr?.number && group.pr.url && <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>}
-        <ul>{group.files.map(file => <li key={file.path} className="break-all font-mono">{shownFilePath(file.path)}</li>)}</ul>
+        <ul>{group.files.map(file => macChat ? <MacFileRow key={file.path} sessionId={reference.sessionId} path={file.path} label={shownFilePath(file.path)} /> : <li key={file.path} className="break-all font-mono">{shownFilePath(file.path)}</li>)}</ul>
         {group.more_count > 0 && <p className="text-muted-foreground">+ {group.more_count} more</p>}
       </div>)}
     </div>}
