@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
 )
 
@@ -195,13 +195,13 @@ func (s *Service) lock(ctx context.Context, try bool) (_ func(), resultErr error
 		return nil, err
 	}
 	for {
-		err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+		ok, err := filelock.TryLock(f)
+		if err != nil {
 			f.Close()
 			return nil, err
+		}
+		if ok {
+			break
 		}
 		if try {
 			f.Close()
@@ -214,7 +214,7 @@ func (s *Service) lock(ctx context.Context, try bool) (_ func(), resultErr error
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	return func() { unix.Flock(int(f.Fd()), unix.LOCK_UN); f.Close() }, nil
+	return func() { filelock.Unlock(f); f.Close() }, nil
 }
 func retryErr(code, msg string, n int) *Error {
 	return &Error{Code: code, Message: msg, Retryable: true, RetryAfter: &n}

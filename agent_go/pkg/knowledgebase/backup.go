@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/sys/unix"
 )
 
 type Snapshot struct {
@@ -122,14 +122,16 @@ func (s *Service) publicationLock() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	ok, err := filelock.TryLock(f)
+	if err != nil {
 		f.Close()
-		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
-			return nil, retryErr("BACKUP_BUSY", "Another publication is in progress.", 3)
-		}
 		return nil, err
 	}
-	return func() { unix.Flock(int(f.Fd()), unix.LOCK_UN); f.Close() }, nil
+	if !ok {
+		f.Close()
+		return nil, retryErr("BACKUP_BUSY", "Another publication is in progress.", 3)
+	}
+	return func() { filelock.Unlock(f); f.Close() }, nil
 }
 func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args ...string) (string, error) {
 	var err error
