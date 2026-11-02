@@ -14,7 +14,15 @@ import (
 
 // PLAT-856: a login_changed event followed by successful validation of the
 // existing lease must not silently leave that chat without a stream worker.
+// PLAT-856-273: neither may one refused stream (the server answers 403 for any
+// attachment lookup error); the chat then waited for its 25 s timer for days.
 func TestStreamReconnectsWhenLoginRecoveryKeepsExistingAttachment(t *testing.T) {
+	for _, refused := range []bool{false, true} {
+		t.Run(fmt.Sprintf("refused=%v", refused), func(t *testing.T) { testStreamReconnects(t, refused) })
+	}
+}
+
+func testStreamReconnects(t *testing.T, refused bool) {
 	var streams, validations atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/external/v1/agents/events" {
@@ -22,6 +30,12 @@ func TestStreamReconnectsWhenLoginRecoveryKeepsExistingAttachment(t *testing.T) 
 				t.Error("reconnect changed the attachment")
 			}
 			n := streams.Add(1)
+			if n == 1 && refused {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				fmt.Fprint(w, `{"error":{"code":"attachment_refused","message":"Exact attachment unavailable or access denied."}}`)
+				return
+			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			fmt.Fprint(w, "data: {\"type\":\"connected\",\"attachment_id\":\"lease\"}\n\n")
 			if n == 1 {
@@ -70,7 +84,11 @@ func TestStreamReconnectsWhenLoginRecoveryKeepsExistingAttachment(t *testing.T) 
 		ready, changed := s.streamOnline && s.latestSequence == 1, b.changed
 		b.mu.Unlock()
 		if ready {
-			if streams.Load() != 2 || validations.Load() != 1 {
+			wantValidations := int32(1)
+			if refused {
+				wantValidations = 0
+			}
+			if streams.Load() != 2 || validations.Load() != wantValidations {
 				t.Fatalf("streams=%d validations=%d", streams.Load(), validations.Load())
 			}
 			return
