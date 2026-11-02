@@ -1,4 +1,5 @@
 import { YourComputerPanel } from './YourComputerPanel'
+import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
 import { useProjectMode } from './codeLocalFiles'
 import { useState } from 'react'
 import { Cable, Server, Users } from 'lucide-react'
@@ -44,7 +45,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   const projectMode = useProjectMode(sessionId ?? '')
   useWorkspaceViewTarget('mcp', target => {
     if (target === 'share') { setShareSection(true); return }
-    // Sync and laptop tools share one "Your computer" page; their old names still open it.
+    // Sync and laptop tools share one page (Online in the Mac app, Laptop access on a server); old names still open it.
     const next = target === 'slack-bot' ? 'slack' : ['laptop', 'sync', 'agents'].includes(target) ? 'computer' : target
     if (next === 'computer-use' && (!canEdit || !isLocalDeployment())) return
     if (next === 'agentbridge' && !integrationProductAvailable('bullpen', allowedProducts)) return
@@ -54,7 +55,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
       setShareSection(false); setTab(next as WorkIntegrationTab)
     }
   })
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', computer: 'Your computer', agentbridge: 'Connected agents', 'computer-use': 'Computer use' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', computer: hasDesktopConnections() ? 'Online' : 'Laptop access', agentbridge: 'Connected agents', 'computer-use': 'Computer use' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <WorkspaceViewHeader icon={shareSection ? Users : tab === 'agentbridge' ? Cable : Server} title={shareSection ? 'Access' : labels[tab]} />

@@ -1,74 +1,100 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { CheckCircle2, CircleDashed, Folder, Laptop, RefreshCw, Terminal, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, CircleDashed, Folder, Laptop, Terminal, TriangleAlert } from 'lucide-react'
 import api from '../../services/api'
+import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
-import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { laptopSettingsEndpoint } from '../../components/workspace/laptopAccess'
-import { CrewSyncPanel } from './CrewSyncPanel'
+import { Button } from '../../components/ui/Button'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { useLocalFileDevices } from './codeLocalFiles'
 
-type SyncStatus = { binding: { connection_id?: string; peer_server?: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: string } | null; auto?: { state: string; message?: string } }
+type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
+type SyncStatus = { binding: Binding | null; auto?: { state: string; message?: string } }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
-/** The one-line answer for the Access menu row, e.g. "Synced · Laptop off". */
+/** In the Mac app a Crew is either online on a network or only on this Mac; on a server the page is its laptop access. */
+export const crewOnlineMode = () => hasDesktopConnections()
+const networkName = (binding: Binding | null | undefined, connections: { id: string; name: string }[]) =>
+  connections.find(item => item.id === binding?.connection_id)?.name || (binding?.peer_server ? binding.peer_server.replace(/^https?:\/\//, '') : '')
+
+/** The one-line answer for the main menu row: the network it is online on, or Off. */
 export function useYourComputerSummary(enabled: boolean, projectId?: string, profileId?: string) {
+  const connections = useConnectedWorkStore(state => state.connections)
   const [summary, setSummary] = useState<string>()
   useEffect(() => {
     setSummary(undefined)
     if (!enabled || !projectId) return
     const abort = new AbortController(), options = { signal: abort.signal, skipSessionContext: true }
-    const endpoint = laptopSettingsEndpoint(undefined, profileId, projectId)
-    void Promise.all([
-      api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => data.binding ? 'Synced' : 'Not synced').catch(() => ''),
-      endpoint ? api.get<LaptopSettings>(endpoint, options).then(({ data }) => data.device_id ? 'Laptop on' : 'Laptop off').catch(() => '') : Promise.resolve(''),
-    ]).then(parts => { if (!abort.signal.aborted) setSummary(parts.filter(Boolean).join(' · ') || undefined) })
+    const request = crewOnlineMode()
+      ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => data.binding ? networkName(data.binding, connections) || 'On' : 'Off')
+      : api.get<LaptopSettings>(laptopSettingsEndpoint(undefined, profileId, projectId), options).then(({ data }) => data.device_id ? 'On' : 'Off')
+    void request.then(value => { if (!abort.signal.aborted) setSummary(value) }).catch(() => {})
     return () => abort.abort()
-  }, [enabled, projectId, profileId])
+  }, [enabled, projectId, profileId, connections])
   return summary
 }
 
-/** Two plain answers first: is this Crew synced with a server, and what can it reach on your computer. Details fold away. */
-export function YourComputerPanel({ projectId, sessionId, canEdit }: { projectId: string; sessionId?: string; canEdit: boolean }) {
-  return <div className="max-w-xl space-y-4">
-    {canEdit && <SyncCard projectId={projectId} />}
-    <LaptopCard sessionId={sessionId} />
-  </div>
+export function YourComputerPanel({ projectId, sessionId }: { projectId: string; sessionId?: string; canEdit: boolean }) {
+  return <div className="max-w-xl">{crewOnlineMode() ? <OnlineCard projectId={projectId} /> : <LaptopCard sessionId={sessionId} />}</div>
 }
 
-function Card({ icon, title, status, tone, children, details }: { icon: ReactNode; title: string; status: string; tone: 'ok' | 'off' | 'warn'; children?: ReactNode; details: ReactNode }) {
-  const mark = tone === 'ok' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : tone === 'warn' ? <TriangleAlert className="h-4 w-4 text-amber-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />
-  return <section aria-label={title} className="rounded-lg border border-border">
-    <div className="space-y-2 p-4">
-      <div className="flex items-center gap-2 text-sm font-semibold">{icon}{title}</div>
-      <p role="status" className="flex items-center gap-2 text-sm">{mark}{status}</p>
-      {children}
-    </div>
-    <details className="border-t border-border">
-      <summary className="cursor-pointer px-4 py-2 text-xs text-muted-foreground">Change</summary>
-      <div className="px-4 pb-4">{details}</div>
-    </details>
-  </section>
+function Switch({ on, disabled, label, onChange }: { on: boolean; disabled?: boolean; label: string; onChange: () => void }) {
+  return <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={onChange}
+    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}>
+    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
+  </button>
 }
 
-function SyncCard({ projectId }: { projectId: string }) {
-  const connections = useConnectedWorkStore(state => state.connections)
+function OnlineCard({ projectId }: { projectId: string }) {
+  const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
+  const [choice, setChoice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
     load()
     const timer = window.setInterval(load, 5000)
     return () => { window.clearInterval(timer); abort.abort() }
-  }, [projectId])
+  }, [projectId, reload])
   const binding = status?.binding
-  const server = connections.find(item => item.id === binding?.connection_id)?.name || (binding?.peer_server ? new URL(binding.peer_server).hostname : 'a server')
-  const problem = status?.auto?.state && !['syncing', 'synced', 'idle'].includes(status.auto.state) ? status.auto.message : ''
-  const summary = !status ? 'Checking…' : !binding ? 'Only on this computer' : binding.pending_action ? 'A sync was interrupted. Open Change to finish it.' : problem ? `Synced with ${server}, but the last sync needs attention` : status.auto?.state === 'syncing' ? `Syncing with ${server}…` : `Synced with ${server}`
-  return <Card icon={<RefreshCw className="h-4 w-4 text-muted-foreground" />} title="Sync with a server" status={summary} tone={!binding ? 'off' : problem || binding.pending_action ? 'warn' : 'ok'} details={<CrewSyncPanel projectId={projectId} />}>
-    {binding?.updated_at && <p className="text-xs text-muted-foreground">Last synced {new Date(binding.updated_at).toLocaleString()} · working on {binding.editing === 'local' ? 'this Mac' : 'the server'}</p>}
-    {!binding && status && <p className="text-xs text-muted-foreground">Open Change to keep this Crew on a server too.</p>}
-  </Card>
+  const network = networkName(binding, connections)
+  const target = binding?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
+  const run = async (action: 'update' | 'server' | 'local' | 'download') => {
+    setBusy(true); setError('')
+    try { await desktopRequest(`/${encodeURIComponent(target)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action }) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.') }
+    finally { setBusy(false); setReload(value => value + 1) }
+  }
+  const problem = error || (status?.auto?.state && !['syncing', 'synced', 'idle'].includes(status.auto.state) ? status.auto.message || '' : '')
+  const syncing = busy || status?.auto?.state === 'syncing'
+  return <section aria-label="Online" className="space-y-3 rounded-lg border border-border p-4">
+    <div className="flex items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <p role="status" className="flex items-center gap-2 text-sm font-semibold">
+          {binding ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
+          {!status ? 'Checking…' : binding ? `Online on ${network}` : 'Only on this Mac'}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use it from the website or your phone. It works here or on the network, with this project’s folder and terminal on this Mac.' : 'Turn on to use this Crew from anywhere.'}</p>
+      </div>
+      {/* Turning a Crew offline arrives with the server's stop-syncing step; until then the switch only turns it on. */}
+      <Switch on={Boolean(binding)} disabled={!status || busy || Boolean(binding) || !target} label="Online" onChange={() => void run('update')} />
+    </div>
+    {!binding && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => setChoice(event.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm">
+      <option value="">Choose a network</option>
+      {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+    </select>}
+    {syncing && <p role="status" className="text-xs text-muted-foreground">Updating…</p>}
+    {binding?.pending_action && !busy && <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last update was interrupted.</span><Button size="sm" variant="outline" onClick={() => void run(binding.pending_action!)}>Finish</Button></div>}
+    {problem && !binding?.pending_action && !syncing && <div className="space-y-1">
+      <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last update didn’t finish. Your work is kept.</span>{binding && <Button size="sm" variant="outline" onClick={() => void run('update')}>Try again</Button>}</div>
+      <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Details</summary><p className="mt-1 break-all">{problem}</p></details>
+    </div>}
+    {binding?.peer_server && <a className="inline-block text-xs underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">Open on {network}</a>}
+  </section>
 }
 
 function LaptopCard({ sessionId }: { sessionId?: string }) {
@@ -92,4 +118,19 @@ function LaptopCard({ sessionId }: { sessionId?: string }) {
       <li className="flex items-center gap-2"><Terminal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="flex-1">Terminal commands</span><span className={settings.commands ? 'font-medium text-amber-600' : 'text-muted-foreground'}>{settings.commands ? 'On' : 'Off'}</span></li>
     </ul>}
   </Card>
+}
+
+function Card({ icon, title, status, tone, children, details }: { icon: ReactNode; title: string; status: string; tone: 'ok' | 'off' | 'warn'; children?: ReactNode; details: ReactNode }) {
+  const mark = tone === 'ok' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : tone === 'warn' ? <TriangleAlert className="h-4 w-4 text-amber-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />
+  return <section aria-label={title} className="rounded-lg border border-border">
+    <div className="space-y-2 p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold">{icon}{title}</div>
+      <p role="status" className="flex items-center gap-2 text-sm">{mark}{status}</p>
+      {children}
+    </div>
+    <details className="border-t border-border">
+      <summary className="cursor-pointer px-4 py-2 text-xs text-muted-foreground">Change</summary>
+      <div className="px-4 pb-4">{details}</div>
+    </details>
+  </section>
 }

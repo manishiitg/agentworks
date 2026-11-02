@@ -26,7 +26,7 @@ beforeEach(() => {
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
-const accessDestinations = [['Your computer','computer'],['Connected agents','agentbridge']]
+const accessDestinations = [['Laptop access','computer'],['Connected agents','agentbridge']]
 const inventory = (features?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels: features, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
 async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => Promise<void>) {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -179,7 +179,7 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
    expect(sharingRow.textContent).toBe(`Sharing${detail}`)
    expect(footer.querySelector('button')).toBe(sharingRow)
    await act(async () => {})
-   expect([...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Your computer')?.textContent).toContain('Synced · Laptop off')
+   expect([...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Laptop access')?.textContent).toContain('Off')
    mocks.open.mockClear(); mocks.target.mockClear()
    if (mode === 'private') for (const [label,target] of accessDestinations) {
     await act(async () => [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!.click())
@@ -201,7 +201,7 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
  await render('cowork', async host => {
   const footer = host.querySelector('footer')!
   expect([...footer.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Sharing')).toBe(false)
-  await act(async () => [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Your computer')!.click())
+  await act(async () => [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Laptop access')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp','computer')
  })
 })
