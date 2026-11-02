@@ -238,6 +238,7 @@ gobuild "$OUT/bin/gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
 source "$REPO_ROOT/deploy/common/vault.sh"
 vault_build "$REPO_ROOT" "$OUT"
 install -m 0755 "$REPO_ROOT/deploy/aws-ec2/server/update-coding-clis.sh" "$OUT/bin/update-coding-clis"
+step "Binaries built"
 
 }
 
@@ -271,18 +272,41 @@ install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$OUT/downloads/
 # The CLI compatibility epoch (deploy/cli-release.json); the deploy turns it into version.json.
 install -m 0644 "$REPO_ROOT/deploy/cli-release.json" "$OUT/downloads/cli-release.json"
 bash -n "$OUT/downloads/install-agentworks.sh"
+step "CLI downloads built"
 
 }
 
 build_frontend() {
+# The website is the slowest part (~90s more than the binaries) and most deploys do not change it. Its output is kept by the
+# Git trees it reads (frontend/, the playbooks its catalog check reads, the two agent_go static folders it writes into, this
+# script) and the Node version, and reused when they are the same. BUILD_FRONTEND_CACHE=0 always builds.
+local key="" cached="" trees=""
+# A missing tree leaves no key, and the website is built.
+trees="$(cd "$REPO_ROOT" && git rev-parse HEAD:frontend HEAD:playbooks HEAD:agent_go/static HEAD:agent_go/cmd/server/static HEAD:deploy/common/build-release.sh 2>/dev/null)" \
+  && key="$(printf '%s\n%s\n' "$trees" "$(node --version)" | sha256sum | cut -c1-32)"
+cached="$CACHE/frontend/${key:-none}"
+if [[ "${BUILD_FRONTEND_CACHE:-1}" != 0 && -n "$key" && -f "$cached/.complete" ]]; then
+  step "Reusing the website built from the same sources ($key)"
+  cp -R "$cached/frontend/." "$OUT/frontend/"
+  cp -R "$cached/static/." "$OUT/static/"
+  touch "$cached/.complete"
+else
 step "Building frontend"
 (cd "$REPO_ROOT/frontend" && npm ci)
 (cd "$REPO_ROOT/frontend" && VITE_API_BASE_URL='' VITE_WORKSPACE_API_URL=/api/wp npm run build)
 cp -R "$REPO_ROOT/frontend/dist/." "$OUT/frontend/"
-node "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$OUT/frontend"
 # The frontend build writes report-preview.js here, into the checkout, never into dist; the agent serves it from ./static/.
 cp -R "$REPO_ROOT/agent_go/cmd/server/static/." "$OUT/static/"
+if [[ -n "$key" ]]; then
+rm -rf "$cached.partial"; mkdir -p "$cached.partial"
+cp -R "$OUT/frontend" "$OUT/static" "$cached.partial/" && touch "$cached.partial/.complete" && rm -rf "$cached" && mv "$cached.partial" "$cached"
+# Keep the five most recently used websites.
+ls -1dt "$CACHE/frontend"/*/ 2>/dev/null | tail -n +6 | xargs -r rm -rf
+fi
+fi
+node "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$OUT/frontend"
 python3 "$REPO_ROOT/scripts/build-playwright-packages.py" "$OUT/packages" >/dev/null
+step "Website ready"
 
 }
 
@@ -327,8 +351,10 @@ trap 'rm -rf "$WORK"' EXIT
 # Upload the build to the public builds repository so servers can download it (publish-build.sh; PLAT-426). Best effort: without a
 # token it only prints a message, and a failure here never fails the build (BUILD_PUBLISH=0 turns it off).
 if [[ "${BUILD_PUBLISH:-1}" != 0 && -f "$REPO_ROOT/deploy/common/publish-build.sh" ]]; then
-  step "Publishing to GitHub"
-  bash "$REPO_ROOT/deploy/common/publish-build.sh" "$BUILDS/$NAME" || echo "Publishing the build to GitHub failed (the build itself is fine)" >&2
+  # Only the CLI downloads (~50 MB), which the live site links to; the ~500 MB server bundle is published by the deploy of a
+  # server that downloads it (build-once.sh publish_build_remote). That upload was ~45 s of every deploy to the build host.
+  step "Publishing the CLI downloads to GitHub"
+  bash "$REPO_ROOT/deploy/common/publish-build.sh" --cli-only "$BUILDS/$NAME" || echo "Publishing the CLI downloads to GitHub failed (the build itself is fine)" >&2
 fi
 step "Build complete"
 echo "BUILD_NAME=$NAME"

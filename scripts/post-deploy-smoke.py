@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 PROMPT = ("Post-deploy smoke check. Call workspace action=owners once for this Crew to list its owners, "
@@ -182,12 +183,16 @@ def main():
         print("SMOKE: no configured company provider account to check")
         return 0
     failed = 0
-    for target in targets:
-        problems, elapsed = smoke(config, args.workspace_id, target, owners, args.timeout)
-        failed += bool(problems)
-        verdict = "PASS" if not problems else "FAIL"
-        runas = f" runs as {target['runas']}" if target.get("runas") else ""
-        print(f"SMOKE {verdict} {target['provider']} ({target['model_id'] or 'default'}){runas} {elapsed:.0f}s" + (": " + "; ".join(problems) if problems else ""), flush=True)
+    # Each provider has its own side chat and its own file name, so they run at the same time: the check takes as long
+    # as the slowest provider, not the sum (four providers took ~3 minutes one after another). Results print as they finish.
+    with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+        running = {pool.submit(smoke, config, args.workspace_id, target, owners, args.timeout): target for target in targets}
+        results = ((running[done], *done.result()) for done in as_completed(running))
+        for target, problems, elapsed in results:
+            failed += bool(problems)
+            verdict = "PASS" if not problems else "FAIL"
+            runas = f" runs as {target['runas']}" if target.get("runas") else ""
+            print(f"SMOKE {verdict} {target['provider']} ({target['model_id'] or 'default'}){runas} {elapsed:.0f}s" + (": " + "; ".join(problems) if problems else ""), flush=True)
     print(f"SMOKE: {len(targets) - failed}/{len(targets)} providers passed")
     return 0
 
