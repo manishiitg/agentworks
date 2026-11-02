@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -127,7 +128,11 @@ func Command(ctx context.Context, stage string, args []string, extraRead []strin
 			if canonical, e := filepath.EvalSymlinks(p); e == nil {
 				p = canonical
 			}
-			fmt.Fprintf(&profile, "(allow file-read* (subpath %s))", strconv.Quote(p))
+			predicate := "literal"
+			if info, e := os.Stat(p); e == nil && info.IsDir() {
+				predicate = "subpath"
+			}
+			fmt.Fprintf(&profile, "(allow file-read* (%s %s))", predicate, strconv.Quote(p))
 			for parent := filepath.Dir(p); parent != "/"; parent = filepath.Dir(parent) {
 				fmt.Fprintf(&profile, "(allow file-read-data (literal %s))", strconv.Quote(parent))
 			}
@@ -299,7 +304,16 @@ func Client(ctx context.Context, stage string, upload bool, stream *Socket) erro
 	} else {
 		args = append(args, "peer:.", stage+"/")
 	}
-	cmd, cleanup, e := Command(ctx, stage, args, []string{control, executable, filepath.Join(filepath.Dir(executable), "lib")})
+	extraRead := []string{control, executable, filepath.Join(filepath.Dir(executable), "lib")}
+	if runtime.GOOS == "darwin" {
+		libraries, err := executableLibraryFiles(executable)
+		if err != nil {
+			return fmt.Errorf("could not inspect the native sync helper's linked libraries: %w", err)
+		}
+		extraRead = append(extraRead, libraries...)
+		log.Printf("[NATIVE_RSYNC] phase=library_scope literal_files=%d rpath_directory_grants=0", len(libraries))
+	}
+	cmd, cleanup, e := Command(ctx, stage, args, extraRead)
 	if e != nil {
 		return e
 	}

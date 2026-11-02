@@ -83,7 +83,20 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, request)
 	}
 
-	fail := func(err error) { externalError(w, 409, crewSyncErrorCode(err), err.Error()) }
+	fail := func(err error) {
+		pair := ""
+		if binding != nil {
+			pair = binding.PairID
+		}
+		action := input.Action
+		switch action {
+		case "update", "server", "local", "download", "mode", "status":
+		default:
+			action = "unknown"
+		}
+		log.Printf("[CREW_SYNC] project=%s pair=%s action=%s phase=failed code=%s reason=%q", roots.ID, pair, action, crewSyncErrorCode(err), err.Error())
+		externalError(w, 409, crewSyncErrorCode(err), err.Error())
+	}
 	if input.Action == "status" {
 		out := crewSyncReply{ProjectID: roots.ID, Binding: binding, RuntimeReadiness: readCrewDependencies(roots.ID), Auto: crewAutoStatus(roots.ID)}
 		if binding != nil {
