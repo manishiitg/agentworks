@@ -3,6 +3,7 @@ package crewsync
 import (
 	"context"
 	"io/fs"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,10 +20,12 @@ type Measurement struct {
 	Bytes    int64        `json:"bytes"`
 	Largest  []FolderSize `json:"largest_folders,omitempty"`
 	TooLarge []string     `json:"files_over_limit,omitempty"`
-	MaxFiles int          `json:"max_files"`
-	MaxBytes int64        `json:"max_bytes"`
-	MaxFile  int64        `json:"max_file_bytes"`
-	byFolder map[string]int64
+	// Dependency files whose packages the server installs itself (node_modules and the like never sync).
+	Dependencies []string `json:"dependency_files,omitempty"`
+	MaxFiles     int      `json:"max_files"`
+	MaxBytes     int64    `json:"max_bytes"`
+	MaxFile      int64    `json:"max_file_bytes"`
+	byFolder     map[string]int64
 }
 
 type FolderSize struct {
@@ -70,6 +73,12 @@ func Measure(ctx context.Context, roots crewroot.Roots) (Measurement, error) {
 			out.Bytes += info.Size()
 			if info.Size() > publication.MaxFileBytes && len(out.TooLarge) < 10 {
 				out.TooLarge = append(out.TooLarge, rel)
+			}
+			switch path.Base(rel) {
+			case "package.json", "requirements.txt", "pyproject.toml", "Pipfile", "go.mod", "Gemfile", "Cargo.toml", "composer.json":
+				if len(out.Dependencies) < 10 {
+					out.Dependencies = append(out.Dependencies, rel)
+				}
 			}
 			top, _, _ := strings.Cut(rel, "/")
 			if top != rel {

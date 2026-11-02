@@ -13,7 +13,7 @@ import { useLocalFileDevices } from './codeLocalFiles'
 
 type Binding = { archive_only?: boolean; mode?: 'continuous' | 'manual' | 'off' | 'relay'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
 type SyncStatus = { binding: Binding | null; auto?: { state: string; message?: string } }
-type Readiness = { fits: boolean; estimated_seconds: number; measurement: { files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
+type Readiness = { fits: boolean; estimated_seconds: number; secrets?: number; connections?: { kind: string; name: string }[]; measurement: { dependency_files?: string[]; files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
 const sizeLabel = (bytes: number) => bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : bytes >= 1 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : 'under 1 MB'
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
@@ -147,7 +147,13 @@ function CloudCard({ projectId }: { projectId: string }) {
           {(readiness.measurement.largest_folders?.length ?? 0) > 0 && <p>Biggest folders: {readiness.measurement.largest_folders!.map(folder => `${folder.path} (${sizeLabel(folder.bytes)})`).join(', ')}</p>}
           {(readiness.measurement.files_over_limit?.length ?? 0) > 0 && <p>Files over {sizeLabel(readiness.measurement.max_file_bytes)}: {readiness.measurement.files_over_limit!.join(', ')}</p>}
         </>
-        : <p>First upload about {Math.max(1, Math.round(readiness.estimated_seconds / 60))} {Math.round(readiness.estimated_seconds / 60) > 1 ? 'minutes' : 'minute'}, in the background.</p>}
+        : <>
+          <p>First upload about {Math.max(1, Math.round(readiness.estimated_seconds / 60))} {Math.round(readiness.estimated_seconds / 60) > 1 ? 'minutes' : 'minute'}, in the background.</p>
+          <p>Works with your Mac off: your files, including .env and keys{(readiness.secrets ?? 0) > 0 ? `, and ${readiness.secrets} selected ${readiness.secrets === 1 ? 'secret' : 'secrets'}` : ''}.</p>
+          {(readiness.connections?.length ?? 0) > 0 && <p>Checked on the server when you turn this on: {readiness.connections!.map(item => item.name).join(', ')}.</p>}
+          {(readiness.measurement.dependency_files?.length ?? 0) > 0 && <p>Packages are installed again on the server ({readiness.measurement.dependency_files!.join(', ')}).</p>}
+          <p>Programs and tools only on your Mac don't run there.</p>
+        </>}
     </div>}
     {!paired && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => { setChoice(event.target.value); if (event.target.value) void run('relay', undefined, event.target.value) }} className="w-full rounded-md border border-border bg-background p-2 text-sm">
       <option value="">Choose a network</option>

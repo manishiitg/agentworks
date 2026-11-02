@@ -196,6 +196,23 @@ func (api *StreamingAPI) handleCrewSyncReadiness(w http.ResponseWriter, r *http.
 		externalError(w, 409, "sync_unavailable", "Could not check this Crew's folder: "+err.Error())
 		return
 	}
+	// What the Crew uses from the Mac's Vault: selected secrets are copied to the server, apps and
+	// accounts need the same connection there (checked when Cloud turns on).
+	secrets, connections := 0, []map[string]string{}
+	if vaultConfigured() {
+		if inventory, e := api.projectVaultInventory(r.Context(), roots.Owner, roots.Virtual); e == nil {
+			secrets = len(inventory.Secrets)
+			seen := map[string]bool{}
+			for _, group := range inventory.Vaults {
+				for _, item := range group.Items {
+					if item.Selected && !seen[item.Kind+":"+item.ID] && (item.Kind == "mcp" || item.Kind == "google" || item.Kind == "slack") {
+						seen[item.Kind+":"+item.ID] = true
+						connections = append(connections, map[string]string{"kind": item.Kind, "name": item.Name})
+					}
+				}
+			}
+		}
+	}
 	// About 1.5 MB/s up from a typical laptop connection; shown as a rough minute count.
-	externalJSON(w, map[string]any{"measurement": m, "fits": m.Fits(), "estimated_seconds": m.Bytes / (3 << 19)})
+	externalJSON(w, map[string]any{"measurement": m, "fits": m.Fits(), "estimated_seconds": m.Bytes / (3 << 19), "secrets": secrets, "connections": connections})
 }
