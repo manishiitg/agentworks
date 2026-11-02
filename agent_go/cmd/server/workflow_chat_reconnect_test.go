@@ -36,25 +36,40 @@ func TestContinuityArchiveCommandReadsPrivateCrewStorage(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(docs, filepath.FromSlash(logical))); !os.IsNotExist(err) {
 		t.Fatal("fixture must reproduce an absent physical logical path")
 	}
-	notice := buildCodingAgentContinuityNotice(logical, root, nil)
-	if !strings.Contains(notice, physical) || !strings.Contains(notice, "absolute path") {
-		t.Fatal("archive instruction retained a virtual path")
-	}
-	var command string
-	for _, line := range strings.Split(notice, "\n") {
-		if strings.HasPrefix(line, "  jq -r ") {
-			command = strings.TrimSpace(line)
+	run := func(want string) {
+		t.Helper()
+		notice := buildCodingAgentContinuityNotice(logical, root, nil)
+		if !strings.Contains(notice, "absolute path") {
+			t.Fatal("archive instruction retained a virtual path")
+		}
+		var command string
+		for _, line := range strings.Split(notice, "\n") {
+			if strings.HasPrefix(line, "  jq ") {
+				command = strings.TrimSpace(line)
+			}
+		}
+		if command == "" {
+			t.Fatal("archive command missing")
+		}
+		cmd := exec.Command("sh", "-c", command)
+		cmd.Dir = t.TempDir()
+		out, err := cmd.CombinedOutput()
+		if err != nil || strings.TrimSpace(string(out)) != want {
+			t.Fatalf("archive recipe failed from unrelated cwd: %s %v", out, err)
 		}
 	}
-	if command == "" {
-		t.Fatal("archive command missing")
+	run("human: Earlier question")
+	// A long chat's conversation.json keeps only its latest messages; the whole history is the .history.jsonl
+	// beside it. The notice must point there, or the agent cannot read past the tail (a reported chat
+	// with 218 messages saw only its last 40 and could not tell what "this" was).
+	if err := os.WriteFile(physical, []byte(`{"history_tail":true,"history_total":2,"conversation_history":[{"Role":"ai","Parts":[{"Text":"Latest answer"}]}]}`), 0600); err != nil {
+		t.Fatal(err)
 	}
-	cmd := exec.Command("sh", "-c", command)
-	cmd.Dir = t.TempDir()
-	out, err := cmd.CombinedOutput()
-	if err != nil || strings.TrimSpace(string(out)) != "human: Earlier question" {
-		t.Fatalf("archive recipe failed from unrelated cwd: %s %v", out, err)
+	log := strings.TrimSuffix(physical, ".json") + ".history.jsonl"
+	if err := os.WriteFile(log, []byte("{\"Role\":\"human\",\"Parts\":[{\"Text\":\"Oldest question\"}]}\n{\"Role\":\"ai\",\"Parts\":[{\"Text\":\"Latest answer\"}]}\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
+	run("human: Oldest question\nai: Latest answer")
 }
 
 func reconnectMessage(role llmtypes.ChatMessageType, text string) llmtypes.MessageContent {
