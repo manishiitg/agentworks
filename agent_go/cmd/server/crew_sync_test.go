@@ -574,6 +574,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 
 			checkCrewNativeSyncAdmission(t, api, ctx, owner, serverRoots)
 			checkCrewDependencySecretBoundary(t, api, ctx, owner, local, serverRoots)
+			checkCrewSyncOff(t, api, ctx, local, serverRoots, &offline)
 
 		})
 	}

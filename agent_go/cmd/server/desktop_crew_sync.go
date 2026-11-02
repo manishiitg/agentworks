@@ -64,6 +64,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
+	if api.desktopCrewSyncOff(w, r, roots, connection, input.Action, input.Mode) {
+		return
+	}
 	unlock, err := wf.LockWorkspace(r.Context(), roots.Files)
 	if err != nil {
 		externalError(w, 409, "sync_unavailable", err.Error())
@@ -80,6 +83,11 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	call := func(project string, request crewSyncRequest) (crewSyncReply, error) {
+		if input.Action != "mode" && input.Action != "status" {
+			if err := crewSyncOn(roots.ID); err != nil {
+				return crewSyncReply{}, err
+			}
+		}
 		return desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, request)
 	}
 
@@ -124,12 +132,16 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			fail(err)
 			return
 		}
-		binding.Mode = input.Mode
-		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
+		binding, err = crewroot.SetSyncMode(roots.ID, binding.PairID, input.Mode)
+		if err != nil {
 			fail(err)
 			return
 		}
 		externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
+		return
+	}
+	if binding != nil && binding.Mode == "off" {
+		fail(fmt.Errorf("sync is off; turn on Cloud for this project before syncing"))
 		return
 	}
 	if binding == nil {
@@ -364,6 +376,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	binding.LastCompletedAt = binding.UpdatedAt
 	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 		fail(err)
 		return

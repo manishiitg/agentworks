@@ -241,6 +241,22 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if err != nil {
 		return crewSyncReply{}, err
 	}
+	if input.Action == "mode" && input.Mode == "off" {
+		b, e := crewroot.ReadSync(roots.ID)
+		if e != nil {
+			return crewSyncReply{}, e
+		}
+		if b == nil || b.Side != "server" || b.PairID != input.PairID {
+			return crewSyncReply{}, fmt.Errorf("use this project’s paired connection")
+		}
+		b, e = crewroot.SetSyncMode(roots.ID, b.PairID, "off")
+		return crewSyncReply{ProjectID: roots.ID, Binding: b}, e
+	}
+	if input.Action != "status" && input.Action != "inspect" && input.Action != "mode" && input.Action != "pair" {
+		if e := crewSyncOn(roots.ID); e != nil {
+			return crewSyncReply{}, e
+		}
+	}
 	// Main-chat initialization may write the project manifest through workspace
 	// HTTP. Complete it before taking the file lock used by that endpoint.
 	var main ProductConversationRecord
@@ -296,6 +312,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if binding == nil || input.PairID != binding.PairID || binding.Side != "server" {
 		return out, fmt.Errorf("choose the server paired with this Crew")
 	}
+	if binding.Mode == "off" && input.Action != "mode" {
+		return out, fmt.Errorf("sync is off for this project; turn on Cloud before syncing")
+	}
 	previous, err := readCrewSyncManifest(roots.ID)
 	if err != nil {
 		return out, err
@@ -305,7 +324,11 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if input.Mode != "continuous" && input.Mode != "manual" {
 			return out, fmt.Errorf("choose automatic or manual sync")
 		}
-		binding.Mode = input.Mode
+		binding, err = crewroot.SetSyncMode(roots.ID, binding.PairID, input.Mode)
+		if err != nil {
+			return out, err
+		}
+		out.Binding = binding
 	case "mirror-put":
 		if binding.Editing != "local" {
 			return out, fmt.Errorf("the server has newer work; bring it back first")
@@ -474,6 +497,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		return out, fmt.Errorf("unknown sync action")
 	}
 	binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if input.Action == "push" || input.Action == "ack" {
+		binding.LastCompletedAt = binding.UpdatedAt
+	}
 	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 		return out, err
 	}

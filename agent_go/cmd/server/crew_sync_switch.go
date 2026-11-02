@@ -27,7 +27,7 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 		return false
 	}
 	b, err := crewroot.ReadSync(roots.ID)
-	if err != nil || b == nil || b.Mode == "manual" {
+	if err != nil || b == nil || (b.Mode == "manual" || b.Mode == "off") {
 		return false
 	}
 	main, err := api.crewHandoffMain(r.Context(), claims, project)
