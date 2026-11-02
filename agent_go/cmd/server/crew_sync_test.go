@@ -28,6 +28,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/nativersync"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 	"github.com/spf13/viper"
@@ -1049,4 +1050,87 @@ func checkCrewNativeSyncAdmission(t *testing.T, api *StreamingAPI, ctx context.C
 			}
 		}
 	})
+}
+
+// PLAT-856-509 / PR836: old staged-index baselines must not become empty
+// when an app upgrade replaces the stored patch with a fingerprint.
+func TestCrewSyncMigratesStagedGitBaseline(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	local, remote := t.TempDir(), t.TempDir()
+	run := func(root string, args ...string) {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	run(local, "init", "-b", "main")
+	file := filepath.Join(local, "note.txt")
+	if err := os.WriteFile(file, []byte("committed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run(local, "add", "note.txt")
+	run(local, "-c", "user.name=Example", "-c", "user.email=owner@example.com", "commit", "-m", "initial")
+	if err := os.WriteFile(file, []byte("staged"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run(local, "add", "note.txt")
+	first, err := crewsync.CaptureGit(t.Context(), local, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer discardCapturedCrewPayloads(&crewsync.Snapshot{Git: first})
+	if err = crewsync.ApplyGit(t.Context(), remote, first); err != nil {
+		t.Fatal(err)
+	}
+	path, err := crewSyncManifestPath("index-upgrade")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path += ".git"
+	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := json.Marshal(map[string]any{"head": first.Head, "branch": first.Branch, "index_patch": first.IndexPatch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := readCrewSyncGit("index-upgrade")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(local, "reset", "--mixed", "HEAD")
+	next, err := crewsync.CaptureGit(t.Context(), local, baseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer discardCapturedCrewPayloads(&crewsync.Snapshot{Git: next})
+	if err = crewsync.CheckGit(t.Context(), remote, next); err != nil {
+		t.Fatalf("unchanged old staging rejected: %v", err)
+	}
+	if err = crewsync.ApplyGit(t.Context(), remote, next); err != nil {
+		t.Fatal(err)
+	}
+	backups, _ := filepath.Glob(path + ".*.bak")
+	if len(backups) != 1 {
+		t.Fatalf("missing old-index backup: %v", backups)
+	}
+	backup, err := os.ReadFile(backups[0])
+	if err != nil || !bytes.Equal(backup, legacy) {
+		t.Fatal("old-index backup changed")
+	}
+	stored, err := os.ReadFile(path)
+	if err != nil || bytes.Contains(stored, []byte("index_patch")) || !bytes.Contains(stored, []byte("index_hash")) {
+		t.Fatal("old patch was not replaced with hash")
+	}
+	if _, err = readCrewSyncGit("index-upgrade"); err != nil {
+		t.Fatal(err)
+	}
+	backups, _ = filepath.Glob(path + ".*.bak")
+	if len(backups) != 1 {
+		t.Fatal("index baseline migrated twice")
+	}
 }
