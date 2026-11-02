@@ -83,7 +83,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
   expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Build')?.open).toBe(true)
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
-  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','GitHub','Access & sharing']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
+  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','GitHub','Sharing']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
   expect(host.querySelector('[aria-label="Back to workspace"]')?.textContent).toBe('Full menu')
   expect(host.textContent).not.toContain('Back to workspace')
   const files = [...host.querySelectorAll('button')].find(node => node.textContent === 'Files')!
@@ -174,18 +174,15 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
   mocks.share = { can_share:true, mode, people:[{id:'a'},{id:'b'},{id:'a'}], unknown_emails:['missing@example.test'] }
   await render('cowork', async host => {
    const footer = host.querySelector('footer')!
-   const share = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('Access & sharing'))!
-   expect(share.textContent).toBe(`Access & sharing${detail}`)
-   expect(footer.querySelector('button')).toBe(share)
+   // Sharing, Your computer and Connected agents sit in the main menu with their status.
+   const sharingRow = [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Sharing')!
+   expect(sharingRow.textContent).toBe(`Sharing${detail}`)
+   expect(footer.querySelector('button')).toBe(sharingRow)
+   await act(async () => {})
+   expect([...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Your computer')?.textContent).toContain('Synced · Laptop off')
    mocks.open.mockClear(); mocks.target.mockClear()
-   await act(async () => share.click())
-   expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.target).not.toHaveBeenCalled()
-   const sharingRow = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Sharing')!
-   // The Your computer row answers in one line: synced or not, laptop on or off.
-   if (mode === 'private') await act(async () => {})
-   if (mode === 'private') expect([...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Your computer')?.textContent).toContain('Synced · Laptop off')
    if (mode === 'private') for (const [label,target] of accessDestinations) {
-    await act(async () => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!.click())
+    await act(async () => [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!.click())
     expect(mocks.target).toHaveBeenLastCalledWith('mcp',target)
     expect(mocks.open).toHaveBeenLastCalledWith('mcp')
    }
@@ -202,10 +199,9 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
  }
  mocks.share = { can_share:false, mode:'private', people:[], unknown_emails:[] }
  await render('cowork', async host => {
-  expect(host.querySelector('footer')?.textContent).not.toContain('Access & sharing')
-  await act(async () => [...host.querySelector('footer')!.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Access')!.click())
-  expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Sharing')).toBe(false)
-  await act(async () => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Your computer')!.click())
+  const footer = host.querySelector('footer')!
+  expect([...footer.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Sharing')).toBe(false)
+  await act(async () => [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Your computer')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp','computer')
  })
 })
