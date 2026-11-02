@@ -195,7 +195,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   if (total === 0) return loadFailed ? <section className="my-2 rounded-md border border-border px-2.5 py-2 text-xs text-muted-foreground" aria-label="File changes unavailable">
     Saved file changes for this reply could not be loaded. <button type="button" className="underline hover:text-foreground" onClick={() => openChatFiles(reference.sessionId)}>Review chat changes</button>
   </section> : null
-  if (!panel) return <TooltipProvider delayDuration={150}><section className="reply-file-toolbar my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Project changes during this turn" title="Project changes during this turn; other chats or editors may contribute.">
+  if (!panel) return <TooltipProvider delayDuration={150}><section className="reply-file-toolbar my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Project changes during this turn">
     <div className="flex min-w-0 items-center gap-2">
       <button type="button" aria-label={`Open ${plural(total)} changed during this turn`} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
         <FileDiffIcon /><span title={incomplete || undefined}>{incomplete ? 'Incomplete' : plural(total)}</span>
