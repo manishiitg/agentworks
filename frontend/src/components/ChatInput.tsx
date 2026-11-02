@@ -2921,21 +2921,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         <NativeTerminalToolbar
           className={inputPadX}
           uploading={isUploadingFiles}
-          commandsOpen={terminalCommandPalette && showCommandDialog}
-          commandListId={commandListId}
-          commandButtonRef={nativeCommandButtonRef}
-          onCommands={() => {
-            const wasOpen = terminalCommandPalette && showCommandDialog
-            closeComposerPickers()
-            if (wasOpen) {
-              requestMainTerminalFocus(tabSessionId)
-            } else {
-              dismissedTriggerRef.current = null
-              setTerminalCommandPalette(true)
-              setCommandSearchQuery('')
-              setShowCommandDialog(true)
-            }
-          }}
           onAttach={openAttachmentPicker}
           focused={terminalFocus.focused}
           onToggleFocus={terminalFocus.available ? terminalFocus.toggle : undefined}
