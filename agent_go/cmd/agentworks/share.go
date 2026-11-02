@@ -188,7 +188,7 @@ type startFlags struct {
 
 func startCommand(o *options) *cobra.Command {
 	var f startFlags
-	cmd := &cobra.Command{Use: "start", Args: cobra.NoArgs, Short: "Connect this computer; choose Crew folders and permissions in Settings", Long: "Connect this computer once using your AgentWorks login. AgentBridge messaging keeps its existing attachments. Choose folders with Read or Read & write access in each Crew's Settings → Laptop access. The current terminal folder is not shared automatically.", RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "start", Args: cobra.NoArgs, Short: "Connect this computer; choose Crew folders and permissions in Settings", Long: "Connect this computer once using your AgentWorks login. AgentBridge messaging keeps its existing attachments. Open Your computer to choose folders and permissions for each Crew. The current terminal folder is not shared automatically.", RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := restoreAgentBridge(cmd.Context(), o, "", false); err != nil {
 			fmt.Fprintln(o.stderr, err)
 		}
@@ -243,7 +243,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`; your saved folders and permissions stay in Crew Settings.")
 	}
 	login := func() error {
-		fmt.Fprintln(o.stderr, "Signing in for AgentBridge and laptop access; choose folders in Crew Settings...")
+		fmt.Fprintln(o.stderr, "Signing in for AgentBridge and laptop access; open Your computer to choose folders...")
 		return o.browserLogin(ctx, cfg, cfgPath, nil, false)
 	}
 	if cfg.Token == "" {
@@ -253,7 +253,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	}
 
 	if st, ok := runningShares(dir)[key]; ok {
-		fmt.Fprintf(o.stderr, "%s is already connected (process %d). Choose folders in Crew Settings → Laptop access.\n", st.Device, st.PID)
+		fmt.Fprintf(o.stderr, "%s is already connected (process %d). Open Your computer to choose folders and permissions.\n", st.Device, st.PID)
 		return nil
 	}
 	in := bufio.NewReader(o.stdin)
@@ -272,7 +272,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	case prefs.Background != nil:
 		foreground, usedSaved = !*prefs.Background, true
 	case interactive:
-		fmt.Fprintf(o.stderr, "Connecting %s. Choose folders and permissions in Crew Settings.\n", device)
+		fmt.Fprintf(o.stderr, "Connecting %s. Open Your computer to choose folders and permissions.\n", device)
 		bg := ask(in, os.Stderr, "Run in the background? (No keeps this terminal open and shows live activity; Ctrl-C stops.)", true)
 		foreground, prefs.Background = !bg, &bg
 	}
@@ -527,7 +527,7 @@ func listShares(o *options, shares map[string]shareState) {
 		if st.Connected {
 			state = "connected"
 		}
-		fmt.Fprintf(o.stderr, "  %s  %s  (process %d, since %s) · folders managed in Crew Settings\n", st.Device, state, st.PID, st.Started.Format("15:04"))
+		fmt.Fprintf(o.stderr, "  %s  %s  (process %d, since %s) · folders managed in Your computer\n", st.Device, state, st.PID, st.Started.Format("15:04"))
 	}
 }
 
@@ -549,7 +549,7 @@ func statusCommand(o *options) *cobra.Command {
 		}
 		shares := runningShares(dir)
 		if len(shares) == 0 {
-			fmt.Fprintln(o.stderr, "No laptop is connected. Run `agentworks start`, then choose folders in Crew Settings.")
+			fmt.Fprintln(o.stderr, "No laptop is connected. Run `agentworks start`, then open Your computer to choose folders.")
 			return nil
 		}
 		listShares(o, shares)
@@ -621,7 +621,7 @@ func requestTrace(o *options) func(request localfiles.Request, response localfil
 func printShared(o *options, folder, device, alias, workspace, server string, pid int, background bool) {
 	w := o.stderr
 	fmt.Fprintf(w, "\nConnected %s to AgentWorks.\n", device)
-	fmt.Fprintln(w, "Choose folders and Read or Read & write access in Crew Settings → Laptop access. AgentBridge uses the same CLI and login.")
+	fmt.Fprintln(w, "Open Your computer to choose folders and permissions. AgentBridge uses the same CLI and login.")
 	if background {
 		fmt.Fprintf(w, "Running in the background (process %d). Status: agentworks status · Stop: agentworks stop\n", pid)
 	} else {

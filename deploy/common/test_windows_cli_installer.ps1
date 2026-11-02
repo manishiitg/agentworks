@@ -6,7 +6,19 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('aw-install-' + [guid]::NewGuid().
 New-Item -ItemType Directory $root | Out-Null
 $oldPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $oldProcessPath = $env:Path
+$profileKeys = @('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'CODEX_HOME', 'CLAUDE_CONFIG_DIR', 'MUSE_CONFIG_DIR', 'ProgramFiles', 'ProgramW6432', 'ProgramFiles(x86)', 'AGENTWORKS_CONFIG', 'AGENTWORKS_BRIDGE_ROOT', 'AGENTWORKS_TOKEN')
+$savedProfile = @{}
+foreach ($key in $profileKeys) {
+  $savedProfile[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
+}
 try {
+  # NoLogin still runs app setup. Fence all profile roots and app detection,
+  # including provider CLIs on PATH, before starting the native installer.
+  foreach ($key in $profileKeys) {
+    [Environment]::SetEnvironmentVariable($key, (Join-Path $root ($key -replace '[^a-zA-Z0-9_-]', '_')), 'Process')
+  }
+  $env:AGENTWORKS_TOKEN = ''
+  $env:Path = ''
   $gz = Join-Path $root 'fixture.gz'
   $inputFile = [IO.File]::OpenRead($Executable)
   $outputFile = [IO.File]::Create($gz)
@@ -37,6 +49,9 @@ try {
   }
   Write-Output 'Native installer staged/final version checks and antivirus error classification: PASS'
 } finally {
+  foreach ($key in $profileKeys) {
+    [Environment]::SetEnvironmentVariable($key, $savedProfile[$key], 'Process')
+  }
   [Environment]::SetEnvironmentVariable('Path', $oldPath, 'User')
   $env:Path = $oldProcessPath
   Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
