@@ -60,15 +60,12 @@ export function CLIOAuthConsent() {
           </>}
         </ul>
         {connectsComputer && <p className="mt-2 text-xs text-muted-foreground">No folder is shared automatically.</p>}
-        {additionalScopes.length > 0 && <section aria-label="Additional permissions" className="mt-4 text-sm">
-          <h2 className="font-medium">Also requested</h2>
-          <ul className="mt-1 space-y-1 break-words text-xs text-muted-foreground">{consent.scopes.filter(scope => scope !== 'devices:connect').map(scope => <li key={scope}>{scope}</li>)}</ul>
-          <p className="mt-2 text-xs text-muted-foreground">Your current account access applies to every request.</p>
-        </section>}
+        {additionalScopes.length > 0 && <p className="mt-4 flex items-start gap-2.5 text-sm"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span>Work in AgentWorks as you, with the same access you have on the website.</span></p>}
         <details className="mt-4 text-xs text-muted-foreground">
           <summary className="cursor-pointer rounded py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Connection details</summary>
           <div className="mt-2 space-y-2 leading-5">
             <p>Requested by {consent.client_name}.</p>
+            {additionalScopes.length > 0 && <p className="break-words">Permissions: {consent.scopes.filter(scope => scope !== 'devices:connect').join(', ')}.</p>}
             <p>Approve only if you started <code>agentworks start</code> or <code>agentworks login</code>.</p>
             {connectsComputer && <p>Choose folders and Read or Read &amp; write in Crew Settings → Laptop access. Stopping the CLI disconnects laptop access and pauses messaging.</p>}
             {messagingOnly && <p>Your chats stay on your own computer. This network does not get access to your files or AI accounts.</p>}
