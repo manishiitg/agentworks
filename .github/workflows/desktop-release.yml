@@ -32,18 +32,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Checkout MCPAgent dependency
-        uses: actions/checkout@v4
-        with:
-          repository: manishiitg/mcpagent
-          path: deps/mcpagent
-
-      - name: Checkout LLM provider dependency
-        uses: actions/checkout@v4
-        with:
-          repository: manishiitg/llm-provider-mcp
-          path: deps/multi-llm-provider-go
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -89,13 +77,13 @@ jobs:
           mkdir -p agent_go/static
           cp -R frontend/dist/. agent_go/static/
 
-      - name: Use Checked Out Go Module Dependencies
+      # Build the versions recorded by this release, never dependency main.
+      - name: Download pinned Go dependencies
         run: |
           set -euo pipefail
           cd agent_go
-          go mod edit -replace=github.com/manishiitg/mcpagent=../deps/mcpagent
-          go mod edit -replace=github.com/manishiitg/multi-llm-provider-go=../deps/multi-llm-provider-go
           go mod download
+          go list -m github.com/manishiitg/mcpagent github.com/manishiitg/multi-llm-provider-go
 
       - name: Build Agent Server (arm64)
         run: |
@@ -159,18 +147,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Checkout MCPAgent dependency
-        uses: actions/checkout@v4
-        with:
-          repository: manishiitg/mcpagent
-          path: deps/mcpagent
-
-      - name: Checkout LLM provider dependency
-        uses: actions/checkout@v4
-        with:
-          repository: manishiitg/llm-provider-mcp
-          path: deps/multi-llm-provider-go
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -216,13 +192,13 @@ jobs:
           mkdir -p agent_go/static
           cp -R frontend/dist/. agent_go/static/
 
-      - name: Use Checked Out Go Module Dependencies
+      # Build the versions recorded by this release, never dependency main.
+      - name: Download pinned Go dependencies
         run: |
           set -euo pipefail
           cd agent_go
-          go mod edit -replace=github.com/manishiitg/mcpagent=../deps/mcpagent
-          go mod edit -replace=github.com/manishiitg/multi-llm-provider-go=../deps/multi-llm-provider-go
           go mod download
+          go list -m github.com/manishiitg/mcpagent github.com/manishiitg/multi-llm-provider-go
 
       - name: Build Agent Server (arm64)
         run: |
