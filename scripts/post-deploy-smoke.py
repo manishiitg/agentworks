@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import tempfile
@@ -271,9 +272,10 @@ def main():
                    for target in targets}
         results = ((running[done], *done.result()) for done in as_completed(running))
         for target, problems, elapsed in results:
-            # On a server with slots every program runs as the Crew owner's slot; the app account there is a failure.
+            # On a server with slots every program runs as the Crew owner's slot (slot03, cf14, sc01: a per-product prefix and a
+            # number); the product's own service account there is a failure.
             must = {name.strip() for name in args.require_slot.split(",") if name.strip()}
-            if (must == {"1"} or target["provider"] in must) and not problems and not target.get("runas", "").startswith("slot"):
+            if (must == {"1"} or target["provider"] in must) and not problems and not re.fullmatch(r"[a-z]+[0-9]+", target.get("runas", "")):
                 problems = [f"runs as {target.get('runas') or 'unknown'}, not the Crew owner's slot"]
             failed += bool(problems)
             verdict = "PASS" if not problems else "FAIL"
