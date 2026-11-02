@@ -40,6 +40,7 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	if !isCodingAgentProvider(provider, "") {
 		return project, nil
 	}
+	runtimeOwner := user
 	stateRoot, err := workflowCLIStateRoot()
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
@@ -49,10 +50,11 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	// session started there to the slot's own server). Otherwise the app's private state, as before.
 	// A slot without its state folder on this host keeps the app account, and so does a CLI whose server login
 	// would reach the slot as a file (see slotLoginFromEnv).
-	if slot, _ := crewOwnerSlot(folder); slot != "" && slotLoginFromEnv(provider) {
+	if slot, owner := crewOwnerSlot(folder); slot != "" && slotLoginFromEnv(provider) {
 		if state, stateErr := slots.StateDirFor(slot); stateErr == nil {
 			if info, statErr := os.Stat(state); statErr == nil && info.IsDir() {
 				stateRoot = state
+				runtimeOwner = owner
 			}
 		}
 	}
@@ -66,15 +68,21 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
 	}
-	if err := prepareCrewGit(dir, project, provider); err != nil {
+	if err := prepareCrewGit(dir, project, provider, runtimeOwner); err != nil {
 		return "", err
 	}
 	return dir, nil
 }
 
-func prepareCrewGit(runtimeDir, project, provider string) error {
+func prepareCrewGit(runtimeDir, project, provider, owner string) error {
 	if cliHostOS != "linux" {
 		return nil // A personal Mac keeps its own HOME and Git configuration.
+	}
+	// Owner-slot launches already receive Git trust plus disabled hooks and
+	// fsmonitor from Landlock. App-created 0700 homes here prevent that slot
+	// from importing its native journal before the first CLI launch (498).
+	if _, inSlot := crewNativeSlot(owner, runtimeDir, provider); inSlot {
+		return nil
 	}
 	if err := cliruntime.PrepareProjectGit(filepath.Clean(runtimeDir), cliHomeName(provider), project); err != nil {
 		return fmt.Errorf("cannot prepare Crew Git: %w", err)
@@ -100,7 +108,7 @@ func crewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool
 	}
 	dir, err := cliruntime.PrepareMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
 	if err == nil {
-		err = prepareCrewGit(dir, roots.Files, provider)
+		err = prepareCrewGit(dir, roots.Files, provider, user)
 	}
 	return dir, err
 }

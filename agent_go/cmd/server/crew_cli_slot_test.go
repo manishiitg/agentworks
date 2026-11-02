@@ -13,7 +13,14 @@ import (
 // state folder (group-shared, outside the documents) and declares the owner's slot. A Crew whose owner holds no
 // slot, or a CLI whose server login would reach the slot as a file, keeps the app account and the app's private state.
 func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
+	oldOS := cliHostOS
+	cliHostOS = "linux"
+	t.Cleanup(func() { cliHostOS = oldOS })
 	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("WORKSPACE_DOCS_PATH", filepath.Join(root, "docs"))
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(root, "state"))
 	slotState := filepath.Join(root, "slots", "state")
@@ -61,6 +68,18 @@ func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
 			}
 			if info, err := os.Stat(dir); err != nil || (inSlot && info.Mode().Perm() != 0o770) {
 				t.Fatalf("slot runtime %s mode %v (%v), want 0770 for the platform and the slot", dir, info.Mode(), err)
+			}
+			// PLAT-856-498: service-owned 0700 Git homes blocked slot native
+			// imports. Slot launches already carry Git trust in their environment.
+			cache := filepath.Join(dir, ".sandbox-cache")
+			if inSlot {
+				if _, err := os.Stat(cache); !os.IsNotExist(err) {
+					t.Fatalf("app precreated the slot's private native home: %v", err)
+				}
+			} else {
+				if _, err := os.Stat(filepath.Join(cache, "cli-home", cliHomeName(provider), ".gitconfig")); err != nil {
+					t.Fatalf("non-slot private Git configuration missing: %v", err)
+				}
 			}
 			got := decideTurnRunAs(context.Background(), turnRunAsInput{ProfileID: "work", WorkingFolder: crew, CLIWorkingDir: dir, SharedWorkingDir: shared, CallerID: tc.caller, ConnectionID: "global:claude-code"}, defaultRunAsDeps())
 			if got.User != tc.wantUser || got.Slot != tc.wantSlot {
