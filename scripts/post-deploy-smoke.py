@@ -162,6 +162,8 @@ def main():
     parser.add_argument("--workspace-id", required=True, help="the smoke Crew, work:<crew id>")
     parser.add_argument("--providers", default="", help="comma-separated subset; default: every configured company account")
     parser.add_argument("--timeout", type=int, default=420, help="seconds per provider (both turns)")
+    parser.add_argument("--require-slot", action="store_true",
+                        help="fail a provider whose shell runs as the app account, not the Crew owner's slot (servers with slots, PLAT-872-86)")
     args = parser.parse_args()
 
     config = login_path(args.login)
@@ -189,6 +191,9 @@ def main():
         running = {pool.submit(smoke, config, args.workspace_id, target, owners, args.timeout): target for target in targets}
         results = ((running[done], *done.result()) for done in as_completed(running))
         for target, problems, elapsed in results:
+            # On a server with slots every program runs as the Crew owner's slot; the app account there is a failure.
+            if args.require_slot and not problems and not target.get("runas", "").startswith("slot"):
+                problems = [f"runs as {target.get('runas') or 'unknown'}, not the Crew owner's slot"]
             failed += bool(problems)
             verdict = "PASS" if not problems else "FAIL"
             runas = f" runs as {target['runas']}" if target.get("runas") else ""

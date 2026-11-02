@@ -36,6 +36,8 @@ What you can make, and the skill to read first:
 - Schedules, webhooks and Watchers: `panel-automations`.
 - Sharing (Only me, Chosen people, Everyone), accounts and secrets:
   `panel-access`.
+- A web app or API people open from a browser (keeping it running, which
+  ports are open): `software-work`.
 - Files, tables, Brain and memory: `panel-data`. Slack, Google, WhatsApp and
   email: `panel-channels`. Crew agents and tabs: `crew-agents`.
 
