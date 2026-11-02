@@ -345,14 +345,18 @@ func CallLocalBridge(ctx context.Context, root string, request LocalBridgeReques
 	}
 	socket := filepath.Join(root, "bridge.sock")
 	info, err = os.Lstat(socket)
-	if err != nil {
+	switch {
+	case socketUnreadable(err):
+		// Windows: a socket file cannot be opened for inspection (PLAT-874).
+		// Its folder's owner-only access list, checked above, protects it; dial it.
+	case err != nil:
 		return out, err
-	}
-	if info.Mode()&os.ModeSocket == 0 {
+	case info.Mode()&os.ModeSocket == 0:
 		return out, errors.New("unsafe local bridge socket: expected a socket")
-	}
-	if err = CheckPrivateAccess(socket, info); err != nil {
-		return out, fmt.Errorf("unsafe local bridge socket: %w", err)
+	default:
+		if err = CheckPrivateAccess(socket, info); err != nil {
+			return out, fmt.Errorf("unsafe local bridge socket: %w", err)
+		}
 	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
@@ -491,6 +495,12 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		}
 		if e = os.Remove(socket); e != nil {
 			return e
+		}
+	} else if socketUnreadable(e) {
+		// Windows: a socket left by a helper that died cannot be opened (PLAT-874).
+		// This process holds the listener lock, so the file is stale: remove it.
+		if e = os.Remove(socket); e != nil {
+			return fmt.Errorf("cannot remove the stale AgentWorks bridge socket: %w", e)
 		}
 	} else if !errors.Is(e, os.ErrNotExist) {
 		return e

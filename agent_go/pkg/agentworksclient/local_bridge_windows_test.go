@@ -3,6 +3,7 @@ package agentworksclient
 import (
 	"context"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,5 +108,52 @@ func TestWindowsLocalBridgeServesAndRefusesASecondListener(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), root) || strings.Contains(err.Error(), user.String()) {
 		t.Fatalf("descriptor-read failure disclosed a path or SID: %v", err)
+	}
+}
+
+// PLAT-874: a helper that dies leaves its socket file behind, and Windows cannot open that file
+// ("The file cannot be accessed by the system"). A new helper must still start, and a call must reach it.
+func TestWindowsBridgeStartsOverAStaleSocketFile(t *testing.T) {
+	dir, err := os.MkdirTemp("", "aw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	root := filepath.Join(dir, "bridge")
+	if err = PrepareLocalBridgeRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	socket := filepath.Join(root, "bridge.sock")
+	old, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.(*net.UnixListener).SetUnlinkOnClose(false)
+	old.Close()
+	if _, err = os.Lstat(socket); err != nil && !socketUnreadable(err) {
+		t.Fatalf("stale socket setup: %v", err)
+	}
+	t.Logf("stale socket Lstat: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ServeLocalBridge(ctx, root, LocalBridgeOptions{Version: "stale-test"}) }()
+	defer func() { cancel(); <-done }()
+	var reply LocalBridgeReply
+	for i := 0; i < 100; i++ {
+		select {
+		case err := <-done:
+			t.Fatalf("the bridge stopped at start over a stale socket: %v", err)
+		default:
+		}
+		callCtx, stop := context.WithTimeout(ctx, time.Second)
+		reply, err = CallLocalBridge(callCtx, root, LocalBridgeRequest{Action: "ping"})
+		stop()
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil || reply.Version != "stale-test" {
+		t.Fatalf("ping over a replaced stale socket = %+v, %v", reply, err)
 	}
 }
