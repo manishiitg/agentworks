@@ -38,6 +38,8 @@ type crewSyncRequest struct {
 	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
 }
 type crewSyncReply struct {
+	Project            *crewSyncProject         `json:"project,omitempty"`
+	SourceProject      *crewSyncProject         `json:"source_project,omitempty"`
 	RuntimeReadiness   *crewDependencyReport    `json:"runtime_readiness,omitempty"`
 	ConversationNotice string                   `json:"conversation_notice,omitempty"`
 	TransferID         string                   `json:"transfer_id,omitempty"`
@@ -100,7 +102,7 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 	}
 	binding, _, ok := api.resolveExternalWorkspace(ctx, claims, id)
 	if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
-		return crewroot.Roots{}, fmt.Errorf("only this Crew's main owner can sync it")
+		return crewroot.Roots{}, fmt.Errorf("only this project's main owner can move it between computers; ask its owner to open it on their Mac")
 	}
 	roots, found, err := crewStorageRoots(binding.Binding.WorkspacePath)
 	if err != nil {
@@ -176,6 +178,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
+	if IsLocalMode() {
+		out.SourceProject = readCrewSourceProject(out.ProjectID)
+	}
 	externalJSON(w, out)
 }
 
@@ -213,7 +218,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	// Main-chat initialization may write the project manifest through workspace
 	// HTTP. Complete it before taking the file lock used by that endpoint.
 	var main ProductConversationRecord
-	if input.Action == "mirror-get" || input.Action == "activate" || input.Action == "pull" || (input.Action == "push" && input.Editing == "server") {
+	if input.Action == "pair" || input.Action == "mirror-get" || input.Action == "activate" || input.Action == "pull" || (input.Action == "push" && input.Editing == "server") {
 		main, err = api.crewHandoffMain(ctx, claims, roots.ID)
 		if err != nil {
 			return crewSyncReply{}, err
@@ -229,8 +234,38 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		return crewSyncReply{}, err
 	}
 	out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)}
-	if input.Action == "status" {
+	if input.Action == "inspect" || input.Action == "pair" {
+		out.Project, err = api.crewSyncProject(ctx, claims, roots)
+		if err != nil {
+			return out, err
+		}
+	}
+	if input.Action == "status" || input.Action == "inspect" {
 		return out, nil
+	}
+	if input.Action == "pair" {
+		// Both roots represent this existing project. A server-first open
+		// never enters the create-new-server-project path.
+		if input.PairID == "" || input.SourceID != roots.ID {
+			return out, fmt.Errorf("choose this project in the Mac app")
+		}
+		if binding != nil && (binding.Side != "server" || binding.PairID != input.PairID || binding.PeerProjectID != roots.ID) {
+			return out, fmt.Errorf("this project is already paired with another local project; use its existing Mac copy")
+		}
+		if err := api.crewSyncIdle(roots); err != nil {
+			return out, err
+		}
+		if binding == nil {
+			binding = &crewroot.SyncBinding{PairID: input.PairID, Side: "server", Editing: "server", PeerProjectID: roots.ID, SplitFiles: roots.SeparateFiles()}
+			if err := crewroot.WriteSync(roots.ID, *binding); err != nil {
+				return out, err
+			}
+		}
+		out.Binding = binding
+		if binding.Editing == "server" {
+			out.Conversation, err = api.captureCrewHandoffConversation(ctx, claims, roots, main)
+		}
+		return out, err
 	}
 	if binding == nil || input.PairID != binding.PairID || binding.Side != "server" {
 		return out, fmt.Errorf("choose the server paired with this Crew")
