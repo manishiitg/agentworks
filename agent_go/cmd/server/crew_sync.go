@@ -224,6 +224,12 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if !personalLaptopSettingsClaims(claims) || !workspaceCreateTokenAllowed(claims) {
 			return crewSyncReply{}, fmt.Errorf("this connection cannot create a Crew")
 		}
+		// A retried relay create (a lost reply) returns the Mac Crew's existing twin, never a second one.
+		if input.Mode == "relay" {
+			if id, b := api.existingCrewRelayTwin(ctx, claims, input.SourceID); b != nil {
+				return crewSyncReply{ProjectID: id, Binding: b}, nil
+			}
+		}
 		created, err := api.createWorkspaceFromSpec(ctx, claims, crewProfileID, crewSpec{Name: input.Name}, false)
 		if err != nil {
 			return crewSyncReply{}, err

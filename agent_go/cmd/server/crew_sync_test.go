@@ -103,7 +103,8 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			write(local.Files, "note.txt", "local work")
 			write(local.Resources, "skills/example/SKILL.md", "Useful skill")
-			write(local.Files, ".env", "keep private")
+			write(local.Files, ".env", "API_KEY=example")
+			write(local.Files, ".cache/state", "keep private")
 			listing := httptest.NewRecorder()
 			files.ServeHTTP(listing, httptest.NewRequest("GET", "/api/documents?folder="+local.Virtual+"&max_depth=5", nil))
 			if listing.Code != 200 || !strings.Contains(listing.Body.String(), local.Virtual+"/skills/example/SKILL.md") {
@@ -190,8 +191,24 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					t.Fatalf("file %s: %q %v", item.name, raw, err)
 				}
 			}
-			if _, err := os.Stat(filepath.Join(serverRoots.Files, ".env")); !os.IsNotExist(err) {
+			// Owner 2 Nov (PLAT-856-509): the owner's own server gets the project's secret files; other hidden state stays.
+			if _, err := os.Stat(filepath.Join(serverRoots.Files, ".env")); err != nil {
+				t.Fatal("secret file did not reach the owner's server")
+			}
+			if _, err := os.Stat(filepath.Join(serverRoots.Files, ".cache/state")); !os.IsNotExist(err) {
 				t.Fatal("copied private file")
+			}
+			// PLAT-856-509: a retried relay create (lost reply) returns the same empty twin, which never takes files.
+			twin, err := api.crewSync(ctx, owner, "", crewSyncRequest{Action: "create", Mode: "relay", PairID: "relay-pair", SourceID: "mac-crew", Name: "Mac Crew"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			again, err := api.crewSync(ctx, owner, "", crewSyncRequest{Action: "create", Mode: "relay", PairID: "retry-pair", SourceID: "mac-crew", Name: "Mac Crew"})
+			if err != nil || again.ProjectID != twin.ProjectID || again.Binding == nil || again.Binding.PairID != "relay-pair" || again.Binding.Mode != "relay" {
+				t.Fatalf("a retried relay create made a second twin: %+v %v", again, err)
+			}
+			if _, err := api.crewSync(ctx, owner, twin.ProjectID, crewSyncRequest{Action: "push", PairID: "relay-pair", TransferID: "t", Editing: "local"}); err == nil {
+				t.Fatal("a relay twin accepted files")
 			}
 			if _, err := api.crewSync(t.Context(), crewWriter("other"), serverRoots.ID, crewSyncRequest{Action: "status"}); err == nil {
 				t.Fatal("other owner accessed sync")

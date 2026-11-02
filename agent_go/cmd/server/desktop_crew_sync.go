@@ -100,6 +100,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 
 	// Picking a Crew's server (several connected) creates its empty twin there; a Crew has one server.
 	if input.Action == "relay" {
+		if binding == nil && !desktopServerSupportsRelay(r.Context(), claims.UserID, connection) {
+			externalError(w, 409, "sync_unavailable", "This server needs an update before this Crew can be used from your phone.")
+			return
+		}
 		if binding == nil {
 			_, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, roots.ID)
 			if !ok {
