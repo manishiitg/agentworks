@@ -70,6 +70,8 @@ it('keeps comparison tables and displays retired HTML visuals as source without 
   expect(container.querySelector('table')?.textContent).toContain('Lower cost')
   expect(container.querySelector('pre')?.textContent).toContain(html)
   expect(container.querySelector('iframe, script, img')).toBeNull()
+  await act(async () => { (container.querySelector('button[aria-label="Copy table"]') as HTMLButtonElement).click() })
+  expect(writeText).toHaveBeenCalledWith('Option\tBenefit\nA\tFaster\nB\tLower cost')
 })
 
 const fence = (spec: unknown) => '```chat-ui\n' + JSON.stringify(spec) + '\n```'
