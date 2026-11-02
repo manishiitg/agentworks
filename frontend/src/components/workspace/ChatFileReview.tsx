@@ -1,3 +1,5 @@
+import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { ProjectChangesPanel } from './ProjectChangesPanel'
 import { ReplyFileChanges } from '../chat/ReplyFileChanges'
 import { openChatFiles } from './chatFileNavigation'
@@ -70,17 +72,18 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   const [error, setError] = useState('')
   const [selectedKey, setSelectedKey] = useState('')
   const [pullRequests, setPullRequests] = useState<ReplyFileGroup[]>([])
-  const [canWatch, setCanWatch] = useState(false)
+  const [canEdit, setCanEdit] = useState(false)
   const viewers = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  useEffect(() => { window.addEventListener(githubConnectionChanged, refresh); return () => window.removeEventListener(githubConnectionChanged, refresh) }, [refresh])
   const baseline = (reply || allChat) ? 'start' : result?.history.baseline_snapshot_id
   const groupParams: Record<string, string> = reply ? { snapshot_id: reply.snapshotId, ...(reply.historyScope ? { history_scope: reply.historyScope } : {}), ...(reply.checkoutId ? { checkout_id: reply.checkoutId } : {}) } : outsideGit ? { group_kind: 'crew_files' } : {}
   const params = { ...groupParams, workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, baseline_snapshot_id: baseline }
   useEffect(() => {
     const controller = new AbortController()
-    setResult(null); setError(''); setPullRequests([]); setCanWatch(false)
-    if (!outsideGit && !reply) void api.get<{ groups?: ReplyFileGroup[]; history?: { can_review?: boolean } }>(endpoint, { params: { workspace_path: workspacePath, session_id: sessionId, op: 'chat_status' }, signal: controller.signal })
-      .then(({ data }) => { if (!controller.signal.aborted) { setPullRequests((data.groups ?? []).filter(group => group.kind === 'repo' && !!group.pr?.number)); setCanWatch(data.history?.can_review === true) } })
+    setResult(null); setError(''); setPullRequests([]); setCanEdit(false)
+    if (!outsideGit && !reply) void api.get<{ groups?: ReplyFileGroup[]; can_edit?: boolean }>(endpoint, { params: { workspace_path: workspacePath, session_id: sessionId, op: 'chat_status' }, signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) { setPullRequests((data.groups ?? []).filter(group => group.kind === 'repo' && (!!group.pr?.number || group.pr?.state === 'connect_github' || group.pr?.state === 'unavailable'))); setCanEdit(data.can_edit === true) } })
       .catch(() => { /* The saved comparison loads independently of GitHub status. */ })
     void api.get<Result>(endpoint, { params: { ...groupParams, workspace_path: workspacePath, session_id: sessionId, review_id: reviewId, op: 'snapshot_compare', ...((reply || allChat) ? { baseline_snapshot_id: 'start' } : {}) }, signal: controller.signal })
       .then(({ data }) => { if (!controller.signal.aborted) setResult(data) })
@@ -133,10 +136,12 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     {result?.comparison?.note && <p role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs text-muted-foreground">{result.comparison.note}</p>}
     {reply && <ReplyFileChanges reference={reply} panel showFiles={false} />}
     {pullRequests.length > 0 && <div className="space-y-2 border-b border-border px-3 py-2 text-xs" aria-label="Pull requests in this chat">
-      {pullRequests.map(group => <div key={group.root} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {pullRequests.map(group => <div key={`${group.root}:${group.branch}`} className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-muted-foreground">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span>
-        <a href={group.pr?.url} target="_blank" rel="noreferrer" className="underline">PR #{group.pr?.number} · {group.pr?.state}{group.pr?.checks ? ` · checks ${group.pr.checks}` : ''}{group.pr?.review ? ` · ${group.pr.review}` : ''}</a>
-        {canWatch && <PRWatcherControls group={group} sessionId={sessionId} />}
+        {!!group.pr?.number && <a href={group.pr.url} target="_blank" rel="noreferrer" className="underline">PR #{group.pr.number} · {group.pr.state}{group.pr.checks ? ` · checks ${group.pr.checks}` : ''}{group.pr.review ? ` · ${group.pr.review}` : ''}</a>}
+        {group.pr?.state === 'connect_github' && (canEdit ? <button type="button" className="underline" onClick={() => openProjectIntegrations('github', sessionId)}>Connect GitHub</button> : <span className="text-muted-foreground">Ask the owner to connect GitHub.</span>)}
+        {group.pr?.state === 'unavailable' && <><span className="text-muted-foreground">PR status unavailable.</span>{canEdit && <button type="button" className="underline" onClick={() => openProjectIntegrations('github', sessionId)}>Change GitHub account</button>}<button type="button" className="underline" onClick={refresh}>Try again</button></>}
+        {canEdit && !!group.pr?.number && <PRWatcherControls group={group} sessionId={sessionId} />}
       </div>)}
     </div>}
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}

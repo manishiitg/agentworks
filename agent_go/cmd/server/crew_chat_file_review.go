@@ -73,6 +73,21 @@ type chatFileReview struct {
 	replyData map[string]json.RawMessage
 }
 
+// Saved labels show the person's message, not model-only reconnect/session notices.
+// Read projection only: keep original journal bytes and source turn boundaries intact.
+func savedChatUserText(text string) string {
+	text = strings.TrimSpace(stripSessionMode(text))
+	for strings.HasPrefix(text, continuityNoticeOpen) {
+		marker := continuityNoticeClose + sessionModeSplit
+		index := strings.LastIndex(text, marker)
+		if index < 0 {
+			return ""
+		}
+		text = strings.TrimSpace(stripSessionMode(text[index+len(marker):]))
+	}
+	return cleanChatHistoryQuery(text)
+}
+
 func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesnapshots.Store, sessionID, root string) (chatFileReview, error) {
 	out := chatFileReview{Replies: []chatSnapshotReference{}, Reviews: []chatReviewPoint{}, Baseline: "start", replyData: map[string]json.RawMessage{}}
 	history, err := api.eventStore.ReadChatFileHistory(ctx, sessionID)
@@ -133,7 +148,7 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesn
 		out.Available = first.ID == history.FirstSnapshotID && history.FirstUserSequence > first.Start && history.FirstUserSequence <= first.End
 		if !out.Available {
 			if message, err := api.eventStore.ChatUserMessageBetween(ctx, sessionID, first.Start, first.End); err == nil {
-				text := []rune(strings.Join(strings.Fields(message.Text), " "))
+				text := []rune(strings.Join(strings.Fields(savedChatUserText(message.Text)), " "))
 				if len(text) > 80 {
 					text = append(text[:79], '…')
 				}
@@ -430,8 +445,19 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		}
 		comparison.Record.Skipped = nil
 		groups := replyFileGroups(ctx, roots, prefix, comparison, allow, true, store.ChatStarts(ids))
-		log.Printf("[FILE_REVIEW] chat_status session=%s groups=%d replies=%d", sessionID, len(groups), len(ids))
-		externalJSON(w, map[string]any{"history": history, "groups": groups})
+		canEdit := api.replyCardCanEdit(r, root)
+		log.Printf("[FILE_REVIEW] chat_status session=%s groups=%d replies=%d can_edit=%t can_review=%t", sessionID, len(groups), len(ids), canEdit, history.CanReview)
+		for _, group := range groups {
+			if group.Kind != "repo" || group.GitHubRepo == "" {
+				continue
+			}
+			state := "none"
+			if group.PR != nil {
+				state = group.PR.State
+			}
+			log.Printf("[FILE_REVIEW] phase=github_status session=%s repo=%q branch=%q pr_state=%s can_edit=%t can_review=%t", sessionID, group.Root, group.Branch, state, canEdit, history.CanReview)
+		}
+		externalJSON(w, map[string]any{"history": history, "groups": groups, "can_edit": canEdit})
 		return
 	}
 	if op == "reply_card" {

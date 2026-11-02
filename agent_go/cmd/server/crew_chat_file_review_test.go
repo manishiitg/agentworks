@@ -51,6 +51,14 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The durable journal may include the reconnect wrapper around the actual query.
+	for i, text := range []string{"Original request", "", continuityNoticeOpen + "\n" + strings.Repeat("Prior context. ", 10) + "\n" + continuityNoticeClose + sessionModeSplit + "Fix the requested setting"} {
+		kind := "user_message"
+		if i == 1 {
+			kind = "assistant_message"
+		}
+		events.AddEvent("chat-a", storeevents.Event{ID: fmt.Sprintf("message-%d", i), Type: kind, Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData(kind, map[string]any{"content": text}))})
+	}
 	ref := func(id string, start, end int64) {
 		events.AddEvent("chat-a", storeevents.Event{ID: "ref-" + id, Type: "reply_file_changes", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("reply_file_changes", map[string]any{"snapshot_id": filesnapshots.ID(id), "workspace_path": "", "start_sequence": start, "end_sequence": end, "summary": map[string]any{"groups": []filesnapshots.Group{{Kind: "repo", Root: id, Files: []filesnapshots.Change{{Path: id + "/main.txt"}}}}}}))})
 	}
@@ -221,6 +229,10 @@ func TestChatFileReviewKeepsPrivateHistoryAndSavedLineAnchors(t *testing.T) {
 	}
 	if code, body := call("alice", params, true); code != 200 || !strings.Contains(body, "-first") || !strings.Contains(body, "+last") || !strings.Contains(body, `"available":false`) {
 		t.Fatalf("comparison from the oldest saved reply %d %s", code, body)
+	}
+	_, body = call("alice", params, true)
+	if err := json.Unmarshal([]byte(body), &page); err != nil || page.History.StartMessage == nil || page.History.StartMessage.Text != "Fix the requested setting" {
+		t.Fatalf("retained start preview exposed internal continuity text: %v %+v", err, page.History.StartMessage)
 	}
 }
 

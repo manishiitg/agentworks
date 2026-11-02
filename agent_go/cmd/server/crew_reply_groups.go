@@ -74,13 +74,18 @@ func (h chatFileReview) summaryGroups(id string) ([]filesnapshots.Group, bool) {
 // action list. The Git actions, card commands and Undo follow the Crew
 // screens' Builder check (the same one as /api/workspace-access); everyone
 // else gets Review changes only.
-func (api *StreamingAPI) replyCard(r *http.Request, root string, groups []filesnapshots.Group) map[string]any {
+func (api *StreamingAPI) replyCardCanEdit(r *http.Request, root string) bool {
 	canEdit := false
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken == nil && claims.Scope == "" {
 		if target, err := api.dashboardTarget(r.Context(), claims, root); err == nil {
 			canEdit = target.Edit
 		}
 	}
+	return canEdit
+}
+
+func (api *StreamingAPI) replyCard(r *http.Request, root string, groups []filesnapshots.Group) map[string]any {
+	canEdit := api.replyCardCanEdit(r, root)
 	var cardCommands []commands.Command
 	if canEdit {
 		// Same path and access rule as listing the Crew's commands.

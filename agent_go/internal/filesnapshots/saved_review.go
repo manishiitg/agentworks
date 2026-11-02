@@ -133,7 +133,11 @@ func (s Store) compareReview(ctx context.Context, records []Record, file, key st
 		return a.Path < b.Path
 	})
 	if incomplete > 0 {
-		out.Note = fmt.Sprintf("Incomplete: Git history could not be established for %d checkout comparisons.", incomplete)
+		noun := "comparison"
+		if incomplete != 1 {
+			noun += "s"
+		}
+		out.Note = fmt.Sprintf("Incomplete: Git history could not be established for %d checkout %s.", incomplete, noun)
 		out.Record.Status = "partial"
 	}
 	if file != "" || key != "" {
