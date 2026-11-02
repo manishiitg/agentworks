@@ -124,6 +124,25 @@ const (
 // and the whole excerpt is capped. Tool calls and results are never included:
 // only TextContent parts cross. A user turn that carried an earlier notice
 // keeps just the user's own message.
+// continuityDialogueTurns counts the user and assistant messages that carry text, the unit the excerpt shows.
+func continuityDialogueTurns(history []llmtypes.MessageContent) int {
+	n := 0
+	for _, message := range history {
+		switch strings.ToLower(string(message.Role)) {
+		case "human", "user", "ai", "assistant":
+		default:
+			continue
+		}
+		for _, part := range message.Parts {
+			if t, ok := part.(llmtypes.TextContent); ok && strings.TrimSpace(t.Text) != "" {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
 func continuityExcerpt(history []llmtypes.MessageContent) []string {
 	var lines []string
 	used := 0
@@ -237,7 +256,13 @@ func buildCodingAgentContinuityNotice(conversationPath, workspacePath string, hi
 	archive := fmt.Sprintf("The complete conversation is saved at %s (%s): %s. This command prints its last 10 dialogue turns:\n  jq %s '%s' %s\n", conversationPath, location, format, jqFlags, recentJQ, quotedPath)
 	recent := ""
 	if lines := continuityExcerpt(history); len(lines) > 0 {
-		recent = fmt.Sprintf("Recent conversation (the last %d text turns, oldest first, long turns shortened, tool output left out):\n%s\n[end of recent conversation]\nThis is only the tail of the chat. For anything older or cut here (earlier work, counts, dates, exact wording, tool results), read the archive below before answering; do not guess from this excerpt.\n", len(lines), strings.Join(lines, "\n"))
+		total := continuityDialogueTurns(history)
+		if total < len(lines) {
+			total = len(lines)
+		}
+		// One firm rule instead of an option: an agent that treated "read further back" as optional asked
+		// "what does this refer to?" about work that was in its own history.
+		recent = fmt.Sprintf("Recent conversation (the last %d of this chat's %d text turns, oldest first, long turns shortened, tool output left out):\n%s\n[end of recent conversation]\nThis is only the tail of the chat. When the user's message points at something not plainly in these lines (\"this\", \"it\", \"again\", \"that\", a name, earlier work, counts, dates or exact wording), search the full history below first (jq or grep for the words), and only ask the user what they mean if the history does not answer it.\n", len(lines), total, strings.Join(lines, "\n"))
 		archive += "Change -10, or jq/grep for keywords or dates, to read further back."
 	} else {
 		archive += "Before answering that message, run it. Read further back yourself (change -10, or jq/grep for keywords or dates) whenever you need more context or the user asks about earlier work."
