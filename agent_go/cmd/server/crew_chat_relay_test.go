@@ -218,3 +218,58 @@ func TestCrewChatVirtualSessionKeepsDottedIDsAndConversationGeneration(t *testin
 		t.Fatal("new conversation reused old event cursor address")
 	}
 }
+
+// PLAT-856-509 contract §8: the Mac's real connection code against the real
+// server handler: connect, a command round trip through the local chat, a
+// drop (offline refusal and the offline snapshot) and a reconnect.
+func checkCrewRelaySocketEndToEnd(t *testing.T, api *StreamingAPI, project, pair string) {
+	t.Helper()
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	request := func(ctx context.Context, path string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		return mux.SetURLVars(r.WithContext(context.WithValue(ctx, UserContextKey, owner)), map[string]string{"project": project})
+	}
+	waitFor := func(online bool) {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			if (crewMacSocketFor("owner", project, pair) != nil) == online {
+				return
+			}
+		}
+		t.Fatalf("Mac connection online=%v never happened", online)
+	}
+	connect := func() (context.CancelFunc, chan error) {
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { done <- api.desktopCrewRelaySession(ctx, "saved") }()
+		waitFor(true)
+		return cancel, done
+	}
+	stop, done := connect()
+	resolved := api.callCrewMac(request(t.Context(), "/"), project, crewChatCall{Operation: "resolve"})
+	var conversation struct {
+		ConversationID string `json:"conversation_id"`
+	}
+	if resolved.Status != 200 || json.Unmarshal(resolved.Body, &conversation) != nil || conversation.ConversationID == "" {
+		t.Fatalf("command through the Mac connection: %d %s", resolved.Status, resolved.Body)
+	}
+	stop()
+	<-done
+	waitFor(false)
+	if got := api.callCrewMac(request(t.Context(), "/"), project, crewChatCall{Operation: "resolve"}); got.Status != 503 {
+		t.Fatalf("dropped Mac must refuse: %d", got.Status)
+	}
+	saveCrewMacState(project, crewMacState{State: "idle", At: time.Now().UTC().Format(time.RFC3339)})
+	viewCtx, viewDone := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer viewDone()
+	view := httptest.NewRecorder()
+	api.serveCrewMacEvents(view, request(viewCtx, "/api/sessions/x/events/stream"), project, conversation.ConversationID)
+	if !bytes.Contains(view.Body.Bytes(), []byte("event: snapshot")) || !bytes.Contains(view.Body.Bytes(), []byte(`"state":"idle"`)) {
+		t.Fatalf("offline viewer did not get the saved state: %d %s", view.Code, view.Body.String())
+	}
+	stop, done = connect()
+	defer func() { stop(); <-done }()
+	if got := api.callCrewMac(request(t.Context(), "/"), project, crewChatCall{Operation: "resolve"}); got.Status != 200 {
+		t.Fatalf("reconnected Mac: %d %s", got.Status, got.Body)
+	}
+}

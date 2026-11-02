@@ -131,6 +131,10 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					w.WriteHeader(403)
 					return
 				}
+				if r.URL.Path == "/api/crew-relay/connect" {
+					api.handleCrewRelayConnect(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, owner)))
+					return
+				}
 				if code, _ := forcedErrorCode.Load().(string); code != "" {
 					externalError(w, 409, code, "Both copies were kept.")
 					return
@@ -209,6 +213,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal("root shape changed")
 			}
 			checkCrewChatRelayOwnerBoundary(t, api, serverRoots.ID, out.Binding.PairID)
+			checkCrewRelaySocketEndToEnd(t, api, serverRoots.ID, out.Binding.PairID)
 			for _, item := range []struct{ root, name, want string }{{serverRoots.Files, "note.txt", "local work"}, {serverRoots.Resources, "skills/example/SKILL.md", "Useful skill"}} {
 				raw, err := os.ReadFile(filepath.Join(item.root, item.name))
 				if err != nil || string(raw) != item.want {
