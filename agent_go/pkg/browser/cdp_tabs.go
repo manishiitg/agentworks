@@ -3,7 +3,6 @@ package browser
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -13,9 +12,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
@@ -94,11 +93,12 @@ func acquireSharedCDPLock(ctx context.Context, port int) (func(), error) {
 	}
 
 	for {
-		err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
+		ok, lockErr := filelock.TryLock(lockFile)
+		if ok {
 			break
 		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+		if lockErr != nil {
+			err = lockErr
 			lockFile.Close()
 			local.Unlock()
 			return nil, fmt.Errorf("acquire shared CDP lock %s: %w", lockPath, err)
@@ -113,7 +113,7 @@ func acquireSharedCDPLock(ctx context.Context, port int) (func(), error) {
 	}
 
 	return func() {
-		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+		filelock.Unlock(lockFile)
 		_ = lockFile.Close()
 		local.Unlock()
 	}, nil

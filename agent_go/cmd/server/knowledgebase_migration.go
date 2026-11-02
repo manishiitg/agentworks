@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,10 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
-	"golang.org/x/sys/unix"
 )
 
 const sharedKnowledgebaseContract = "shared-kb-v1"
@@ -68,11 +67,11 @@ func knowledgeIntegrationLock() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if ok, err := filelock.TryLock(f); err != nil || !ok {
 		f.Close()
 		return nil, &knowledgebase.Error{Code: "BACKUP_BUSY", Message: "Another integration operation is running.", Retryable: true}
 	}
-	return func() { unix.Flock(int(f.Fd()), unix.LOCK_UN); f.Close() }, nil
+	return func() { filelock.Unlock(f); f.Close() }, nil
 }
 func knowledgeMigrationPath(id string) (string, error) {
 	if !strings.HasPrefix(id, "migration_") || len(id) != len("migration_")+64 || strings.ContainsAny(id, "/\\.") {
@@ -122,50 +121,6 @@ func knowledgeSaveMigration(r *knowledgeMigrationReceipt) error {
 	return knowledgeSavePrivate(path, r)
 }
 
-func knowledgeReadSource(root, relative string) ([]byte, error) {
-	if filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, "../") {
-		return nil, fmt.Errorf("invalid source-relative path")
-	}
-	if !filepath.IsAbs(root) {
-		return nil, fmt.Errorf("source root must be canonical and absolute")
-	}
-	fd, err := unix.Open(string(filepath.Separator), unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { unix.Close(fd) }()
-	parts := strings.Split(strings.TrimPrefix(filepath.ToSlash(filepath.Join(root, relative)), "/"), "/")
-	for i, part := range parts {
-		if part == "" || part == "." || part == ".." {
-			return nil, fmt.Errorf("invalid source-relative path")
-		}
-		flags := unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC
-		if i < len(parts)-1 {
-			flags |= unix.O_DIRECTORY
-		}
-		next, err := unix.Openat(fd, part, flags, 0)
-		if err != nil {
-			return nil, err
-		}
-		unix.Close(fd)
-		fd = next
-	}
-	f := os.NewFile(uintptr(fd), relative)
-	defer f.Close()
-	fd = -1
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("source must be a regular file")
-	}
-	b, err := io.ReadAll(io.LimitReader(f, 10*1024*1024+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(b) > 10*1024*1024 {
-		return nil, fmt.Errorf("source file exceeds 10 MiB")
-	}
-	return b, nil
-}
 func knowledgeReadMigration(id, owner string) (*knowledgeMigrationReceipt, error) {
 	path, err := knowledgeMigrationPath(id)
 	if err != nil {

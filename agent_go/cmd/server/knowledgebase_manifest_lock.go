@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
-	"golang.org/x/sys/unix"
 )
 
 // Serialize the CAS check and rename with ordinary server manifest updates.
@@ -16,11 +16,11 @@ func knowledgeManifestLock(path string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if ok, err := filelock.TryLock(f); err != nil || !ok {
 		f.Close()
 		return nil, &knowledgebase.Error{Code: "VERSION_CONFLICT", Message: "Project configuration is being updated; retry.", Retryable: true}
 	}
-	return func() { unix.Flock(int(f.Fd()), unix.LOCK_UN); f.Close() }, nil
+	return func() { filelock.Unlock(f); f.Close() }, nil
 }
 
 // Ordinary manifest saves tolerate a short competing server write. Keep the

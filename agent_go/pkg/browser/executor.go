@@ -1644,10 +1644,10 @@ func captureChromePID(session string) {
 // Chrome's PGID equals its own PID, so killing -PGID takes the entire Chrome tree
 // (GPU, renderer, network helpers) in one shot.
 func killChromePID(chromePID int, session string) {
-	if err := syscall.Kill(-chromePID, syscall.SIGKILL); err != nil {
+	if err := killChromeTree(chromePID); err != nil {
 		// Fallback: kill just the process if group kill fails
 		if p, err2 := os.FindProcess(chromePID); err2 == nil {
-			p.Signal(syscall.SIGKILL) //nolint:errcheck
+			p.Kill() //nolint:errcheck
 		}
 		log.Printf("[BROWSER] Killed Chrome PID %d (group kill failed: %v) for session %q", chromePID, err, session)
 	} else {
