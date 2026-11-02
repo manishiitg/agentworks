@@ -1,4 +1,4 @@
-import { ChevronDown, Eye } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { conditionTriggersApi, type ConditionTrigger } from '../../api/conditionTriggers'
@@ -53,7 +53,7 @@ export function PRWatcherControls({ group, sessionId, compact = false }: { compa
     catch (e) { showError(e) } finally { setBusy(false) }
   }
   return <span className="relative inline-flex items-center gap-2">
-    <button type="button" disabled={busy} title="Discuss what to watch in this chat" aria-label="Watch PR" className={compact ? 'inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50' : 'text-muted-foreground underline hover:text-foreground disabled:opacity-50'} onClick={() => void ask()}>{compact ? <Eye className="h-3.5 w-3.5" /> : 'Watch PR'}</button>
+    <button type="button" disabled={busy} title="Discuss what to watch in this chat" aria-label="Watch PR" className={compact ? 'inline-flex h-6 shrink-0 items-center justify-center whitespace-nowrap rounded px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50' : 'text-muted-foreground underline hover:text-foreground disabled:opacity-50'} onClick={() => void ask()}>Watch PR</button>
     {watchers.length > 0 && <button type="button" aria-label="PR watch status" aria-expanded={open} className="inline-flex items-center gap-1 text-xs text-muted-foreground" onClick={() => setOpen(value => !value)}>{watchers.some(item => item.enabled) ? 'Watching' : 'Paused'}{watchers.length > 1 ? ` · ${watchers.length}` : ''}<ChevronDown className="h-3 w-3" /></button>}
     {open && watchers.length > 0 && <span className="absolute right-0 top-full z-50 mt-2 flex w-72 flex-col gap-2 rounded-md border border-border bg-background p-3 text-xs shadow-lg" role="group" aria-label="PR watch status">
       {watchers.map(item => <span key={item.id} className="flex items-center gap-2">
