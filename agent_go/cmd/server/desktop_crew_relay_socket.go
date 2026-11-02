@@ -447,6 +447,7 @@ func crewEventText(value any, depth int) string {
 	return ""
 }
 
+// As base64 in JSON this is about 6.7 MB; it must stay under crewChatMaxReply (8 MB).
 const crewRelayMaxFile = 5 << 20
 
 // desktopCrewFile returns one file of the Crew's folder for its owner's phone
@@ -475,7 +476,8 @@ func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || info.IsDir() {
+	// Only regular files: a FIFO or device would block the read and hold the command.
+	if err != nil || !info.Mode().IsRegular() {
 		return fail(404, "That file is not in this Crew's folder.")
 	}
 	if info.Size() > crewRelayMaxFile {
