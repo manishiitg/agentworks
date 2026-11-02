@@ -8496,24 +8496,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				chatQuery = cleanChatHistoryQuery(chatQuery)
-				// Owner27Oct: a restored native thread also gets the canonical
-				// conversation archive, just like a provider change. Keep native
-				// memory and reference the file instead of replaying the full JSON.
-				// PLAT-872: the Agent wrapper is rebuilt per turn, even when its
-				// native thread continues. Use actual history hydration or a changed
-				// product definition, never the fresh wrapper's empty handle.
+				// Owner 2 Nov (replaces 27 Oct): a resumed native thread already holds the conversation, and changed
+				// instructions reach it through the current-instructions block, so it gets no continuity notice. On two
+				// servers 70-85% of notices went to chats whose native resume had worked. The notice stays for a fresh
+				// native session and a provider switch below.
 				if historyRestoredThisTurn || productDefinitionRefreshed {
-					if restoredConversationPathForFallback == "" {
-						if path, ok, err := FindChatHistoryConversationPathForSession(currentUserID, sessionID, restoredConversationWorkspace); err != nil {
-							logfWithContext(queryLogCtx, "[CHAT_HISTORY] Could not resolve archive for native resume: %v", err)
-						} else if ok {
-							restoredConversationPathForFallback = path
-						}
-					}
-					if restoredConversationPathForFallback != "" {
-						chatQuery = prependCodingAgentContinuityNotice(chatQuery, restoredConversationPathForFallback, restoredConversationWorkspace, continuityHistory)
-						logfWithContext(queryLogCtx, "[CHAT_HISTORY] Native resume retained; supplied conversation archive %s", restoredConversationPathForFallback)
-					}
+					logfWithContext(queryLogCtx, "[CHAT_HISTORY] Native resume retained; no continuity notice (restored=%t definition_changed=%t)", historyRestoredThisTurn, productDefinitionRefreshed)
 				}
 			} else if req.resolvedResumeTarget != nil && req.resolvedResumeTarget.crossesProvider(finalProvider) && restoredConversationPathForFallback != "" {
 				// Provider-native handles cannot cross CLI implementations. Keep the
