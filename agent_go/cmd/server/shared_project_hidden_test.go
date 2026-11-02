@@ -4,7 +4,8 @@ import "testing"
 
 // A Crew or Code reader must never open credentials or tool state: the
 // project's HOME (.sandbox-cache/home, with git credentials and CLI logins),
-// .git, .env and every other dot-path, at any depth.
+// .git, .env and every other dot-path, at any depth, and credential files that
+// Crew sync copies to the server (keys, credentials.json; PLAT-856-509).
 func TestSharedProjectReadersNeverSeeDotPaths(t *testing.T) {
 	for _, hidden := range []string{
 		".sandbox-cache/home/.git-credentials",
@@ -13,6 +14,9 @@ func TestSharedProjectReadersNeverSeeDotPaths(t *testing.T) {
 		".git/config",
 		"code/project-a-website/.git/config",
 		"code/app/.env",
+		"code/keys/deploy.pem",
+		"code/config/credentials.json",
+		"certs/server.key",
 		".claude/settings.json",
 		"builder/conversation/x.json",
 		"db/db.sqlite",

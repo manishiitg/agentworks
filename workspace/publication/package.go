@@ -93,6 +93,18 @@ func ExcludedDirectory(p string) bool { return excluded(p, true, true) }
 // credential files included (owner, 2 Nov); only machine state stays out.
 func ExcludedFromSync(p string, directory bool) bool { return excluded(p, directory, false) }
 
+// CredentialPath reports a path that holds secret values by its name. People a
+// project is shared with never read these, even where Crew sync copies them.
+func CredentialPath(p string) bool {
+	parts := strings.Split(strings.ToLower(strings.Trim(p, "/")), "/")
+	for i := range parts {
+		if credentialPart(parts, i, false) || i == len(parts)-1 && hiddenCredentialFile(parts[i]) {
+			return true
+		}
+	}
+	return false
+}
+
 func credentialPart(parts []string, i int, directory bool) bool {
 	part := parts[i]
 	switch path.Ext(part) {
