@@ -12,6 +12,7 @@ vi.hoisted(() => {
 vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn((surface: string, options?: { keepHome?: boolean }) => { if (options?.keepHome) return; window.history.pushState({}, '', `/${surface === 'work' ? 'crew' : surface === 'agentworks' ? 'goals' : surface}`) }) }))
 vi.mock('./WelcomeAiReadiness', () => ({ default: ({ onSetup, crewReadyView }: { onSetup: () => void; crewReadyView?: unknown }) => readiness.crewReady ? crewReadyView : <button onClick={onSetup}>Review AI setup</button> }))
 vi.mock('../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../services/api')>(), default: { post: vi.fn() } }))
+vi.mock('../services/bullpenApi', () => ({ bullpenApi: { agents: vi.fn(async () => []) } }))
 vi.mock('./HomeRecentWork', () => ({ HomeRecentWork: () => <section>Recent work</section> }))
 vi.mock('./HomeAgentModel', () => ({ HomeAgentModel: () => <span>Runs on Test model</span> }))
 vi.mock('../voice/MicButton', () => ({ MicButton: ({ onText }: { onText: (text: string, autoSubmit: boolean) => void }) => <button type="button" aria-label="Dictate" onClick={() => onText('spoken words', false)}>Mic</button> }))
@@ -24,6 +25,7 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import api from '../services/api'
+import { bullpenApi } from '../services/bullpenApi'
 import { productRoutePath } from '../utils/productRoutes'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 
@@ -118,9 +120,8 @@ describe('WelcomeHome', () => {
     expect(host.querySelector('code')).toBeNull()
     expect(host.querySelector('footer')).toBeNull()
     expect(host.textContent).not.toContain('CLI & agent messaging')
-    await act(async () => button(host, 'Connect your AI app').click())
-    expect(useAppStore.getState().adminPage).toBe('mcp')
-    expect(window.location.pathname).toBe('/settings/ai-tools')
+    await act(async () => button(host, 'Connect an agent').click())
+    expect(window.location.pathname + window.location.search).toBe(productRoutePath({ surface: 'bullpen', view: 'setup' }))
     expect(host.querySelector('[role="dialog"]')).toBeNull()
     expect(host.querySelector('main')).toBeNull()
     window.history.replaceState({}, '', '/home')
@@ -129,6 +130,25 @@ describe('WelcomeHome', () => {
     expect(window.location.pathname).toBe('/settings/ai-accounts')
     expect(useLLMStore.getState().showLLMModal).toBe(true)
     expect(host.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('shows only owned online agents and hides the directory entry when unavailable to this account', async () => {
+    // PLAT-746-299: shared and offline entries must not appear as the person's connected agents.
+    vi.mocked(bullpenApi.agents).mockResolvedValueOnce([
+      { agent_id: 'own', provider: 'codex', online: true },
+      { agent_id: 'shared', provider: 'claude', online: true, shared: true },
+      { agent_id: 'offline', provider: 'cursor', online: false },
+    ] as never)
+    configure()
+    const host = await renderWelcome()
+    expect(button(host, 'Connected agents · 1')).toBeDefined()
+    await act(async () => button(host, 'Connected agents · 1').click())
+    expect(window.location.pathname).toBe('/agentbridge')
+    configure(['work'])
+    window.history.replaceState({}, '', '/home')
+    const limited = await renderWelcome()
+    expect(limited.textContent).not.toContain('Connected agents')
+    expect(limited.textContent).not.toContain('Connect an agent')
   })
 
   it('stays on Home while opening search, and leaves when a destination is selected', async () => {

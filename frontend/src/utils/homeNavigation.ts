@@ -7,3 +7,9 @@ export function openHome(focusPrompt = false) {
   openAppPage('/home')
   window.dispatchEvent(new CustomEvent(OPEN_HOME_EVENT, { detail: { focusPrompt } }))
 }
+
+/** Reopen onboarding from the local Mac account menu without resetting anything. */
+export function openLocalSetup() {
+  openHome()
+  window.dispatchEvent(new CustomEvent(OPEN_HOME_EVENT, { detail: { setup: true } }))
+}
