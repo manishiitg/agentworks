@@ -14,9 +14,56 @@ import (
 
 func init() {
 	if root := os.Getenv("AGENTWORKS_STARTUP_TEST_CHILD"); root != "" {
-		err := agentworksclient.ServeLocalBridge(context.Background(), root)
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		if err := agentworksclient.ServeLocalBridge(context.Background(), root, agentworksclient.LocalBridgeOptions{Version: "startup-test"}); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+}
+
+// PLAT-856-222: update used to skip startup without sessions.json, then report
+// GetFileAttributesEx on Windows instead of creating the private helper folder.
+func TestUpdateStartsHelperOnFreshProfile(t *testing.T) {
+	dir, err := os.MkdirTemp("", "aw") // keep the Windows/macOS socket path short
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	root := filepath.Join(dir, "bridge")
+	t.Setenv("AGENTWORKS_STARTUP_TEST_CHILD", root)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	defer stopLocalBridgeAt(context.Background(), root, "stop")
+	o := &options{configPath: filepath.Join(dir, "no-login")}
+	if err = restoreLocalBridgeAt(ctx, root, o, executable, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Lstat(root); !os.IsNotExist(err) {
+		t.Fatalf("folder-sharing start created fresh messaging state: %v", err)
+	}
+	if err = restoreLocalBridgeAt(ctx, root, o, executable, true); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(root)
+	if err != nil {
+		t.Fatalf("update did not create the helper folder: %v", err)
+	}
+	if err = agentworksclient.CheckPrivateAccess(root, info); err != nil {
+		t.Fatalf("helper folder is not private: %v", err)
+	}
+	var status strings.Builder
+	writeUpdateMessagingStatus(&status, root, nil)
+	if !strings.Contains(status.String(), "messaging: ready (build startup-test)") || !strings.Contains(status.String(), "Open a Codex or Claude chat") {
+		t.Fatalf("fresh-profile helper was not ready with a next step: %q", status.String())
+	}
+	chats, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
+	if err != nil || len(chats.AgentStates) != 0 {
+		t.Fatalf("fresh profile created an attachment without a chat: %+v, %v", chats, err)
 	}
 }
 

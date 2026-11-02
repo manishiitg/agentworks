@@ -80,6 +80,9 @@ func writeUpdateMessagingStatus(out io.Writer, root string, startupErr error) {
 			build = "unknown"
 		}
 		fmt.Fprintf(out, "AgentWorks messaging: ready (build %s)\n", build)
+		if chats, listErr := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"}); listErr == nil && len(chats.AgentStates) == 0 {
+			fmt.Fprintln(out, "Open a Codex or Claude chat to connect it.")
+		}
 		return
 	}
 	if startupErr != nil {

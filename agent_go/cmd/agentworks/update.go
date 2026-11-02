@@ -215,7 +215,7 @@ func runUpdate(o *options, check, force, switchSource bool) (resultErr error) {
 		updateWindowsCodexTools(context.Background(), &pluginOptions)
 		// Restore existing chat connections if needed. Startup discovery belongs
 		// to that helper; a healthy helper must not rescan old desktop history.
-		if err = restoreAgentBridge(context.Background(), o, ""); err != nil {
+		if err = restoreAgentBridge(context.Background(), o, "", true); err != nil {
 			return err
 		}
 		target, err := os.Executable()
@@ -242,7 +242,7 @@ func runUpdate(o *options, check, force, switchSource bool) (resultErr error) {
 	if err = stopAgentBridge(context.Background(), "update"); err != nil {
 		return err
 	}
-	if err = restoreAgentBridge(context.Background(), o, target); err != nil {
+	if err = restoreAgentBridge(context.Background(), o, target, true); err != nil {
 		return err
 	}
 	if err = refreshLaptopConnections(context.Background(), o, target, release.CLIBuild); err != nil {

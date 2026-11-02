@@ -189,7 +189,7 @@ type startFlags struct {
 func startCommand(o *options) *cobra.Command {
 	var f startFlags
 	cmd := &cobra.Command{Use: "start", Args: cobra.NoArgs, Short: "Connect this computer; choose Crew folders and permissions in Settings", Long: "Connect this computer once using your AgentWorks login. AgentBridge messaging keeps its existing attachments. Choose folders with Read or Read & write access in each Crew's Settings → Laptop access. The current terminal folder is not shared automatically.", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := restoreAgentBridge(cmd.Context(), o, ""); err != nil {
+		if err := restoreAgentBridge(cmd.Context(), o, "", false); err != nil {
 			fmt.Fprintln(o.stderr, err)
 		}
 		// The helper discovers chats on startup; native events connect new chats.

@@ -1101,15 +1101,23 @@ func stopLocalBridgeAt(ctx context.Context, root, reason string) error {
 	}
 }
 
-func restoreAgentBridge(ctx context.Context, o *options, executable string) error {
+func restoreAgentBridge(ctx context.Context, o *options, executable string, startFresh bool) error {
 	root, err := agentworksclient.DefaultLocalBridgeRoot()
 	if err != nil {
 		return err
 	}
-	// Never turn a folder-sharing start into a first attachment or parent login.
-	if _, err = os.Stat(filepath.Join(root, "sessions.json")); errors.Is(err, os.ErrNotExist) {
-		return nil
+	return restoreLocalBridgeAt(ctx, root, o, executable, startFresh)
+}
+
+func restoreLocalBridgeAt(ctx context.Context, root string, o *options, executable string, startFresh bool) error {
+	// Updating also starts fresh profiles and discovers verified local chats.
+	// Folder-sharing start only restores previously connected chats.
+	if !startFresh {
+		if _, err := os.Stat(filepath.Join(root, "sessions.json")); errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 	}
+	var err error
 	if running, pingErr := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); pingErr == nil {
 		if executable != "" || running.Version == cliVersion {
 			return nil
