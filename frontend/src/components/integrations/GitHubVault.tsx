@@ -20,6 +20,7 @@ export function GitHubVaultCard({ changeConnectionOpen = false }: { changeConnec
   const [ghLogin, setGhLogin] = useState('')
   const tokenId = useId()
   const [message, setMessage] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
   const load = useCallback(async () => {
     try {
       const next = (await api.get<GitHubStatus>('/api/vault/github')).data
@@ -34,10 +35,10 @@ export function GitHubVaultCard({ changeConnectionOpen = false }: { changeConnec
     try {
       const result = (await api.post<{ auth_url?: string; login?: string }>('/api/vault/github/connect', { method, ...(method === 'pat' ? { token } : method === 'gh' ? { login: ghLogin } : {}) })).data
       if (result.auth_url) { window.location.assign(result.auth_url); return }
-      setMessage(`Connected as ${result.login}.`)
+      setFailed(false); setMessage(`Connected as ${result.login}.`)
       await load()
       window.dispatchEvent(new Event(githubConnectionChanged))
-    } catch (cause) { setMessage(errorText(cause, 'Could not connect GitHub.')) } finally { setToken(''); setBusy(false) }
+    } catch (cause) { setFailed(true); setMessage(errorText(cause, 'Could not connect GitHub.')) } finally { setToken(''); setBusy(false) }
   }
   const disconnect = async () => {
     setBusy(true); setMessage(null)
@@ -95,7 +96,7 @@ export function GitHubVaultCard({ changeConnectionOpen = false }: { changeConnec
       {status.connected && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>}
     </div>
     {status.connected ? <details open={changeConnectionOpen || undefined}><summary className="cursor-pointer text-xs text-muted-foreground">Change connection</summary>{methods}</details> : methods}
-    {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}
+    {message && <p role={failed ? 'alert' : 'status'} className={`text-xs ${failed ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}
   </section>
 }
 
