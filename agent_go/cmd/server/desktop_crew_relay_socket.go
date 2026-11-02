@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -229,10 +230,11 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				}
 				pairsMu.Unlock()
 				for project, pair := range current {
-					state := api.desktopCrewRelayState(session, localCrewForPeer(project, pair), pair)
+					local := localCrewForPeer(project, pair)
+					state := api.desktopCrewRelayState(session, local, pair)
 					if state != "" && reported[project] != state {
 						reported[project] = state
-						_ = send(crewRelayMessage{Type: "state", Project: project, State: state, At: time.Now().UTC().Format(time.RFC3339)})
+						_ = send(crewRelayMessage{Type: "state", Project: project, State: state, LastLine: api.desktopCrewLastLine(session, local, pair), At: time.Now().UTC().Format(time.RFC3339)})
 					}
 				}
 			}
@@ -379,4 +381,67 @@ func saveRenewedDesktopToken(owner string, connection desktopConnection, token s
 		}
 	}
 	_ = writeDesktopConnections(owner, records)
+}
+
+// desktopCrewLastLine is the last line of the main chat's latest reply (or the
+// person's last message), for the phone's Crew list.
+func (api *StreamingAPI) desktopCrewLastLine(ctx context.Context, local, pair string) string {
+	if local == "" {
+		return ""
+	}
+	result := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "last-line", Operation: "events", Query: url.Values{"view": {"messages"}, "durable_chat": {"1"}, "limit": {"2"}}})
+	if result.Status != 200 {
+		return ""
+	}
+	return crewEventsLastLine(result.Body)
+}
+
+func crewEventsLastLine(raw []byte) string {
+	var envelope struct {
+		Events []struct {
+			Type string          `json:"type"`
+			Data json.RawMessage `json:"data"`
+		} `json:"events"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil {
+		return ""
+	}
+	for _, kinds := range [][]string{{"unified_completion", "conversation_end", "agent_end"}, {"user_message"}} {
+		for i := len(envelope.Events) - 1; i >= 0; i-- {
+			event := envelope.Events[i]
+			if !slices.Contains(kinds, event.Type) {
+				continue
+			}
+			var data any
+			if json.Unmarshal(event.Data, &data) == nil {
+				if text := crewEventText(data, 0); text != "" {
+					lines := strings.Split(strings.TrimSpace(text), "\n")
+					line := strings.TrimSpace(lines[len(lines)-1])
+					if runes := []rune(line); len(runes) > 280 {
+						line = string(runes[:279]) + "…"
+					}
+					return line
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func crewEventText(value any, depth int) string {
+	object, ok := value.(map[string]any)
+	if !ok || depth > 3 {
+		return ""
+	}
+	for _, key := range []string{"final_result", "content", "display_content", "message", "text"} {
+		if text, ok := object[key].(string); ok && strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	for _, key := range []string{"data", "result", "response"} {
+		if text := crewEventText(object[key], depth+1); text != "" {
+			return text
+		}
+	}
+	return ""
 }
