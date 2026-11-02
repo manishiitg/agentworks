@@ -144,11 +144,8 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 				tools := []map[string]any{}
 				for _, item := range items {
 					if t, ok := item.(map[string]any); ok {
-						name, _ := t["name"].(string)
-						if _, plain, found := strings.Cut(name, "__"); found {
-							name = plain
-						}
-						tools = append(tools, map[string]any{"tool": name, "description": t["description"], "parameters": t["parameters"]})
+						// The server's own tool name, prefix included: its call action expects exactly that.
+						tools = append(tools, map[string]any{"tool": t["name"], "description": t["description"], "parameters": t["parameters"]})
 					}
 				}
 				return out(map[string]any{"server": p.conn.Name, "app": app, "tools": tools, "total": list["total"], "next_offset": list["next_offset"], "has_more": list["has_more"]})
