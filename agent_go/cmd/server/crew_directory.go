@@ -17,6 +17,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
 // Crew directory (Crew Run mode): every crew has a single owner and is
@@ -109,7 +110,8 @@ var sharedProjectExcludedRootFiles = map[string]bool{"product.json": true, "work
 // of a Crew (server A 2026-09-28).
 func sharedProjectHiddenPath(rel string) bool {
 	rel = strings.Trim(rel, "/")
-	if sharedProjectExcludedRootFiles[rel] {
+	// Crew sync copies the owner's secret files to the server; shared readers never see them (PLAT-856-509).
+	if sharedProjectExcludedRootFiles[rel] || publication.CredentialPath(rel) {
 		return true
 	}
 	parts := strings.Split(rel, "/")
