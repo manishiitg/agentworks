@@ -203,7 +203,7 @@ post_deploy_smoke() {
     [[ -n "${SMOKE_LOGIN:-}" && -n "${SMOKE_WORKSPACE:-}" ]] || { echo "==> [$product] smoke.env needs SMOKE_LOGIN and SMOKE_WORKSPACE" >&2; exit 0; }
     echo "==> [$product] Smoke check: per provider, a tool call and then a shell turn in the same chat, in $SMOKE_WORKSPACE"
     python3 -I "$REPO_ROOT/scripts/post-deploy-smoke.py" --login "$SMOKE_LOGIN" --workspace-id "$SMOKE_WORKSPACE" ${SMOKE_PROVIDERS:+--providers "$SMOKE_PROVIDERS"} \
-      ${SMOKE_REQUIRE_SLOT:+--require-slot} || echo "==> [$product] Smoke check could not run (the deploy itself succeeded)."
+      ${SMOKE_REQUIRE_SLOT:+--require-slot} ${SMOKE_APP_HOST:+--app-host "$SMOKE_APP_HOST"} || echo "==> [$product] Smoke check could not run (the deploy itself succeeded)."
   )
   return 0
 }

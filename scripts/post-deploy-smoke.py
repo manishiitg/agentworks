@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -32,6 +33,41 @@ PROMPT = ("Post-deploy smoke check. Call workspace action=owners once for this C
 SHELL_PROMPT = ("Post-deploy smoke check, part 2. Use your shell tool to run exactly this one command in the Crew folder: "
                 "f=.smoke-$$; echo ok > $f && cat $f && rm $f; id -un\n"
                 "Then reply with exactly RUNAS=<the account name it printed> FILE=<ok if it printed ok, else fail> and nothing else.")
+
+
+# The third turn (with --app-host): start a tiny app the way a person's app is started from chat, detached, on this
+# program's own port, so it can be opened from outside and must keep running through the next deploy (PLAT-856-506).
+APP_PROMPT = ("Post-deploy smoke check, part 3. Use your shell tool to run exactly this one command in the Crew folder:\n"
+              "{command}\n"
+              "Then reply with exactly APP=<the text it printed last> and nothing else.")
+
+
+def app_command(provider, port, started):
+    script = f".smoke-app-{provider}.py"
+    body = (f"import http.server,socketserver\n"
+            f"class H(http.server.BaseHTTPRequestHandler):\n"
+            f"    def do_GET(self):\n"
+            f"        self.send_response(200); self.end_headers(); self.wfile.write(b'smoke-app {provider} {started}')\n"
+            f"    def log_message(self, *a): pass\n"
+            f"socketserver.TCPServer.allow_reuse_address = True\n"
+            f"socketserver.TCPServer(('0.0.0.0', {port}), H).serve_forever()\n")
+    # Anchored at the start of the command line, so it never matches the shell running this command.
+    return (f"pkill -f '^python3 {script}'; printf '%s' \"{body}\" > {script} && "
+            f"(setsid nohup python3 {script} > /dev/null 2>&1 < /dev/null &) ; sleep 2; curl -s http://127.0.0.1:{port}/")
+
+
+def app_port(provider, base):
+    # A fixed port per program, so the next deploy knows where to look.
+    order = ["agy-cli", "claude-code", "codex-cli", "cursor-cli", "muse-cli", "pi-cli"]
+    return base + (order.index(provider) if provider in order else len(order) + sum(map(ord, provider)) % 10)
+
+
+def fetch(host, port):
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/", timeout=5) as reply:
+            return reply.read().decode("utf-8", "replace").strip()
+    except Exception as error:
+        return f"unreachable ({first_line(str(error))})"
 
 
 def login_path(name):
@@ -122,7 +158,7 @@ def turn(config, workspace, chat_id, prompt, started, limit, accept, expected):
     return problems, answers[0] if len(answers) == 1 else ""
 
 
-def smoke(config, workspace, target, owners, limit):
+def smoke(config, workspace, target, owners, limit, app=None):
     started = time.monotonic()
     chat_id = None
     try:
@@ -140,6 +176,15 @@ def smoke(config, workspace, target, owners, limit):
                                     lambda answer: "FILE=ok" in answer.replace(" ", ""), "FILE=ok")
             problems = [f"turn 2: {p}" for p in problems]
             target["runas"] = next((w[len("RUNAS="):] for w in answer.replace("RUNAS=", " RUNAS=").split() if w.startswith("RUNAS=")), "")
+        if not problems and app:
+            host, port, started = app
+            expected = f"smoke-app {target['provider']} {started}"
+            app_problems, _ = turn(config, workspace, chat_id, APP_PROMPT.format(command=app_command(target["provider"], port, started)),
+                                   started=time.monotonic(), limit=limit, accept=lambda answer: expected in answer, expected=expected)
+            seen = fetch(host, port)
+            target["app"] = (f"app on :{port} reachable from outside" if seen == expected
+                             else f"app on :{port} not reachable from outside: {seen[:80]}")
+            problems = [f"turn 3: {p}" for p in app_problems] + ([] if seen == expected else [target["app"]])
         return problems, time.monotonic() - started
     except Exception as error:  # a failed call is a failed smoke result, not a crashed check
         return [f"error: {first_line(str(error))}"], time.monotonic() - started
@@ -162,6 +207,9 @@ def main():
     parser.add_argument("--workspace-id", required=True, help="the smoke Crew, work:<crew id>")
     parser.add_argument("--providers", default="", help="comma-separated subset; default: every configured company account")
     parser.add_argument("--timeout", type=int, default=420, help="seconds per provider (both turns)")
+    parser.add_argument("--app-host", default="",
+                        help="public address: each program starts a small app on its own port there, and the next run checks it survived")
+    parser.add_argument("--app-port-base", type=int, default=20390, help="first of the app ports, one per program")
     parser.add_argument("--require-slot", action="store_true",
                         help="fail a provider whose shell runs as the app account, not the Crew owner's slot (servers with slots, PLAT-872-86)")
     args = parser.parse_args()
@@ -185,10 +233,22 @@ def main():
         print("SMOKE: no configured company provider account to check")
         return 0
     failed = 0
+    started = time.strftime("%Y%m%dT%H%M%S")
+    if args.app_host:
+        # The apps the last run started: still answering means they kept running through this deploy's restart.
+        for target in targets:
+            port = app_port(target["provider"], args.app_port_base)
+            seen = fetch(args.app_host, port)
+            if seen.startswith(f"smoke-app {target['provider']} "):
+                print(f"APP KEPT {target['provider']} :{port} (started {seen.split()[-1]})", flush=True)
+            else:
+                print(f"APP LOST {target['provider']} :{port}: {seen[:80]}", flush=True)
     # Each provider has its own side chat and its own file name, so they run at the same time: the check takes as long
     # as the slowest provider, not the sum (four providers took ~3 minutes one after another). Results print as they finish.
     with ThreadPoolExecutor(max_workers=len(targets)) as pool:
-        running = {pool.submit(smoke, config, args.workspace_id, target, owners, args.timeout): target for target in targets}
+        running = {pool.submit(smoke, config, args.workspace_id, target, owners, args.timeout,
+                               (args.app_host, app_port(target["provider"], args.app_port_base), started) if args.app_host else None): target
+                   for target in targets}
         results = ((running[done], *done.result()) for done in as_completed(running))
         for target, problems, elapsed in results:
             # On a server with slots every program runs as the Crew owner's slot; the app account there is a failure.
@@ -197,6 +257,7 @@ def main():
             failed += bool(problems)
             verdict = "PASS" if not problems else "FAIL"
             runas = f" runs as {target['runas']}" if target.get("runas") else ""
+            runas += f", {target['app']}" if target.get("app") else ""
             print(f"SMOKE {verdict} {target['provider']} ({target['model_id'] or 'default'}){runas} {elapsed:.0f}s" + (": " + "; ".join(problems) if problems else ""), flush=True)
     print(f"SMOKE: {len(targets) - failed}/{len(targets)} providers passed")
     return 0
