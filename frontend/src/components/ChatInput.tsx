@@ -145,6 +145,7 @@ import { shouldUsePastedTextAttachment } from '../utils/chatPasteBehavior'
 import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
+import { useChatClaudeTerminal } from '../products/work/useChatClaudeTerminal'
 
 // The person's chat/terminal choice for this tab. Not remembered: every
 // Crew, Code or workflow opens in the chat view.
@@ -854,10 +855,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     providerUsesStructuredTransport: false,
   })
   // Offered in Local Code too, view-only (the server refuses typed input there; MainAgentTerminal is read-only).
+  // The chat's own Claude terminal switch, from the server: the provider list only has the server-wide default.
+  const chatClaudeTerminalOn = useChatClaudeTerminal(tabSessionId, isTurnInFlight)
   const liveTerminalOffered = chatOffersLiveTerminal(
     mainTerminalAvailable,
     activeReportedTransport,
-    providerManifest.find(provider => provider.id === (effectiveProviderForSteer || activeSession?.runtime?.provider))?.coding_agent?.supports_terminal_stream === true,
+    chatClaudeTerminalOn || providerManifest.find(provider => provider.id === (effectiveProviderForSteer || activeSession?.runtime?.provider))?.coding_agent?.supports_terminal_stream === true,
   )
   useEffect(() => {
     if (!providerManifestLoaded) {
