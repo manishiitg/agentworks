@@ -76,6 +76,12 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		folder = api.projectRootForSession(sessionID)
 	}
 	if folder == "" {
+		// A chat whose turns carry no folder still has the workspace the server bound it to.
+		api.sessionWorkspaceMu.RLock()
+		folder = api.sessionWorkspaceFolders[sessionID]
+		api.sessionWorkspaceMu.RUnlock()
+	}
+	if folder == "" {
 		log.Printf("[FILE_SNAPSHOT] phase=skipped session=%s execution=%s reason=no_folder", sessionID, executionID)
 		return
 	}
@@ -562,3 +568,21 @@ func writeSavedSnapshotFile(w http.ResponseWriter, r *http.Request, file string,
 	w.Write(content)
 	return
 }
+
+// chatTurnSnapshotActive reports whether a turn sent from the chat already captures this session's files;
+// a terminal turn then belongs to it and takes no capture of its own.
+func (api *StreamingAPI) chatTurnSnapshotActive(sessionID string) bool {
+	active := false
+	api.crewTurnSnapshots.Range(func(key, value any) bool {
+		snapshot := value.(*crewTurnSnapshot)
+		if snapshot.sessionID == sessionID && !strings.HasPrefix(snapshot.executionID, terminalTurnSnapshotPrefix) {
+			active = true
+			return false
+		}
+		return true
+	})
+	return active
+}
+
+// terminalTurnSnapshotPrefix names the capture of a turn the person started in the terminal itself.
+const terminalTurnSnapshotPrefix = "terminal-turn-"
