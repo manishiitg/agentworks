@@ -1,13 +1,13 @@
 import { quickNavigationItems, openQuickNavigation } from '../utils/quickNavigation'
 import { HomeAgentModel } from './HomeAgentModel'
+import { HomeConnectedAgents } from './HomeConnectedAgents'
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, Plus } from 'lucide-react'
+import { ArrowUp, Loader2, Menu, Plus } from 'lucide-react'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
 import { isGuideRemembered, rememberGuide } from '../utils/onboarding'
-import { getRuntimeAppName, runtimeBrandingConfig } from '../runtime-branding'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { productUrlViewChanged } from '../utils/productUrlNavigation'
 import WelcomeAiReadiness from './WelcomeAiReadiness'
@@ -67,6 +67,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   useEffect(() => {
     const show = (event?: Event) => {
       setFocusPrompt(Boolean((event as CustomEvent | undefined)?.detail?.focusPrompt))
+      if ((event as CustomEvent | undefined)?.detail?.setup && window.electronAPI?.getDesktopConnection?.() === 'local') setSetupOpen(true)
       if ((event as CustomEvent | undefined)?.detail?.focusPrompt) requestAnimationFrame(() => prompt.current?.focus())
       if (window.location.pathname !== '/home') window.history.pushState({}, '', '/home')
       setOpen(true)
@@ -107,8 +108,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   }, [setupOpen, open])
   if (!open) return null
 
-  const branding = runtimeBrandingConfig()
-  const appName = getRuntimeAppName(branding) || 'AgentWorks'
   const workProducts = WORK_PRODUCT_ORDER.flatMap(id => products.filter(product => product.id === id))
   const createItem = quickNavigationItems(user, 'work', multiUser).find(item => item.action === 'create' && item.surface === 'work')
   // The server makes the person's own AgentWorks on first use, sends the message into its main chat and says which
@@ -136,7 +135,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
       setAgentWorksSending(false)
     }
   }
-  const openMcpSetup = () => openWorkspaceSettings('mcp')
   const openProviders = () => openWorkspaceSettings('providers')
 
   return (
@@ -189,20 +187,10 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
           </section>} />}</div>
         </section>
 
+        {products.some(product => product.id === 'bullpen') && <div className="mx-auto w-full max-w-3xl"><HomeConnectedAgents key={scope} /></div>}
+
         {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} />}
 
-        <section aria-labelledby="welcome-tools" className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-primary/20 bg-primary/[0.04] p-5 sm:flex-row sm:items-center sm:p-6">
-          <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Terminal className="h-5 w-5" aria-hidden="true" /></span>
-            <div><h2 id="welcome-tools" className="text-base font-semibold">Already use an AI app?</h2><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">Connect ChatGPT, Claude or your favorite coding app to {appName}.</p></div>
-          </div>
-          <Button type="button" variant="outline" onClick={openMcpSetup} className="shrink-0">Connect your AI app<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
-        </section>
-
-        {onThisMac && <section aria-labelledby="welcome-setup" className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-dashed border-primary/40 p-5 sm:flex-row sm:items-center">
-          <div><h2 id="welcome-setup" className="text-sm font-semibold">Start new-user setup</h2><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">Check the AI programs on this Mac and optionally connect a server. Nothing you have is reset.</p></div>
-          <Button type="button" onClick={() => setSetupOpen(true)} className="shrink-0">Start setup</Button>
-        </section>}
         {setupOpen && <LocalSetup onClose={closeSetup} />}
 
       </div>

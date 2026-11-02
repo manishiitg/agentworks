@@ -1,3 +1,5 @@
+import { RotateCcw } from 'lucide-react'
+import { openLocalSetup } from '../../utils/homeNavigation'
 import { ConnectedServersMenuItem } from './ConnectedServersMenuItem'
 import { ProductSettingsMenu } from './ProductSettingsMenu'
 import ProvidersControl from '../topbar/ProvidersControl'
@@ -23,6 +25,7 @@ export function WorkspaceAccountMenu() {
       {!sidebarTarget && <ProductSurfaceSwitcher menuOnly includeConnectTools
         className="!border-t-0 border-b pb-2 [&_h3]:sr-only [&>div]:!grid-cols-3 [&_button[data-product-option]]:!flex-col [&_button[data-product-option]]:!items-center [&_button[data-product-option]]:!gap-1 [&_button[data-product-option]]:!px-1 [&_button[data-product-option]]:!py-2 [&_button[data-product-option]]:!text-center [&_button[data-product-option]]:!text-[11px] [&_button[data-product-option]>span]:max-w-full [&_button[data-product-option]>span]:truncate" />}
       <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Workspace</p>
+      {window.electronAPI?.getDesktopConnection?.() === 'local' && <button type="button" role="menuitem" data-product-navigation-action onClick={openLocalSetup}><RotateCcw className="h-4 w-4" aria-hidden="true" /><span>Run setup again</span></button>}
       <ConnectedServersMenuItem />
       <ProvidersControl />
       <UsersControl />
