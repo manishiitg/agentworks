@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -136,13 +136,14 @@ func (m *Manager) Check(ctx context.Context) error {
 		return err
 	}
 	defer lock.Close()
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil
-		}
+	ok, err := filelock.TryLock(lock)
+	if err != nil {
 		return err
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	if !ok {
+		return nil
+	}
+	defer filelock.Unlock(lock)
 	s, err := m.ReadState()
 	if err != nil {
 		return err

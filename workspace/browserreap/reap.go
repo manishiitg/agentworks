@@ -16,7 +16,6 @@
 package browserreap
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,7 +24,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
@@ -162,7 +160,7 @@ func PlanReap(daemons []Daemon, dirs []string, live func(string) bool, prefix st
 			now.Sub(f.info.ModTime()) < StaleFileAge {
 			continue
 		}
-		if st, ok := f.info.Sys().(*syscall.Stat_t); ok && int(st.Uid) != uid {
+		if owner, ok := fileOwnerUID(f.info); ok && owner != uid {
 			continue
 		}
 		plan.StaleFiles = append(plan.StaleFiles, f.path)
@@ -198,22 +196,15 @@ func IsPerChatHelper(session, prefix string) bool {
 	return perChatHelperSession.MatchString(session)
 }
 
-// ProcessAlive reports whether pid is a live process. A process of another
-// account (EPERM) is alive: its session's files are not this account's to judge.
-func ProcessAlive(pid int) bool {
-	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
-}
-
 // Terminate ends a daemon: SIGTERM, then SIGKILL if it is still the same
 // daemon after a short grace.
 func Terminate(d Daemon) {
-	if err := syscall.Kill(d.PID, syscall.SIGTERM); err != nil {
+	if err := stopProcess(d.PID); err != nil {
 		return
 	}
 	deadline := time.Now().Add(termGrace)
 	for time.Now().Before(deadline) {
-		if syscall.Kill(d.PID, 0) != nil {
+		if !ProcessAlive(d.PID) {
 			return
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -222,7 +213,7 @@ func Terminate(d Daemon) {
 	if current, err := ListDaemons(); err == nil {
 		for _, c := range current {
 			if c.PID == d.PID && c.Session == d.Session {
-				_ = syscall.Kill(d.PID, syscall.SIGKILL)
+				_ = killProcess(d.PID)
 				return
 			}
 		}
@@ -310,7 +301,7 @@ func listDaemonsProc() ([]Daemon, error) {
 		if err != nil {
 			continue
 		}
-		if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != uid {
+		if owner, ok := fileOwnerUID(info); !ok || owner != uid {
 			continue
 		}
 		cmdline, err := os.ReadFile(filepath.Join(dir, "cmdline"))

@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -167,8 +166,7 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 func run(ctx context.Context, dir string, env []string, executable string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, executable, args...)
 	cmd.Dir, cmd.Env = dir, env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	killTreeOnCancel(cmd)
 	cmd.WaitDelay = 5 * time.Second
 	var out limitedBuffer
 	cmd.Stdout, cmd.Stderr = &out, io.Discard
