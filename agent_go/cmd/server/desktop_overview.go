@@ -110,7 +110,7 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 				}
 				cells[provider][c.ID] = cell
 			}
-		}(c, index+1)
+		}(c, index)
 	}
 	wg.Wait()
 	desktopJSON(w, map[string]any{"places": places, "cells": cells})
