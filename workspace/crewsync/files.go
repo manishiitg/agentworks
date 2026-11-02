@@ -27,10 +27,10 @@ type File struct {
 }
 type Manifest map[string]File
 type Change struct {
-	Path   string `json:"path"`
-	Before *File  `json:"before,omitempty"`
-	After  *File  `json:"after,omitempty"`
-	Data   []byte `json:"-"`
+	Path     string `json:"path"`
+	Before   *File  `json:"before,omitempty"`
+	After    *File  `json:"after,omitempty"`
+	DataPath string `json:"-"`
 }
 type ContentSnapshot struct {
 	Base       string `json:"base"`
@@ -45,12 +45,14 @@ type Payload struct {
 }
 
 type Snapshot struct {
-	Payloads map[string]Payload `json:"payloads,omitempty"`
-	Content  *ContentSnapshot   `json:"content,omitempty"`
-	Omitted  []string           `json:"omitted,omitempty"`
-	Git      *GitSnapshot       `json:"git,omitempty"`
-	Files    Manifest           `json:"files"`
-	Changes  []Change           `json:"changes"`
+	DecodedDir string             `json:"-"`
+	StagingDir string             `json:"-"`
+	Payloads   map[string]Payload `json:"payloads,omitempty"`
+	Content    *ContentSnapshot   `json:"content,omitempty"`
+	Omitted    []string           `json:"omitted,omitempty"`
+	Git        *GitSnapshot       `json:"git,omitempty"`
+	Files      Manifest           `json:"files"`
+	Changes    []Change           `json:"changes"`
 }
 
 // Both send and receive use this policy. Project ignore rules are additionally
@@ -73,35 +75,93 @@ func fingerprint(data []byte, executable bool) File {
 	return File{Hash: hex.EncodeToString(sum[:]), Size: int64(len(data)), Executable: executable}
 }
 
-func readFile(root, rel string) ([]byte, File, error) {
+// CopyChecked bounds memory independently of the file size and verifies the
+// admitted bytes before returning. The caller owns the reader and destination.
+func CopyChecked(ctx context.Context, dst io.Writer, src io.Reader, expected File) error {
+	if expected.Size < 0 || expected.Size > SyncLimits(ctx).FileBytes {
+		return fmt.Errorf("project file exceeds sync limit")
+	}
+	h := sha256.New()
+	n, err := io.CopyBuffer(io.MultiWriter(dst, h), &contextReader{ctx, io.LimitReader(src, expected.Size+1)}, make([]byte, 64<<10))
+	if err != nil {
+		return err
+	}
+	if n != expected.Size || hex.EncodeToString(h.Sum(nil)) != expected.Hash {
+		return fmt.Errorf("project file changed during capture or does not match its snapshot")
+	}
+	return nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
+
+func readFile(ctx context.Context, root, rel string, dst io.Writer) (File, error) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
-		return nil, File{}, err
+		return File{}, err
 	}
 	defer dir.Close()
 	info, err := dir.Lstat(rel)
 	if err != nil {
-		return nil, File{}, err
+		return File{}, err
 	}
-	if !info.Mode().IsRegular() || info.Size() > publication.MaxFileBytes {
-		return nil, File{}, fmt.Errorf("unsupported file or file larger than 64 MiB: %s", rel)
+	if !info.Mode().IsRegular() || info.Size() > SyncLimits(ctx).FileBytes {
+		return File{}, fmt.Errorf("unsupported file or file exceeds sync limit: %s", rel)
 	}
 	f, err := dir.Open(rel)
 	if err != nil {
-		return nil, File{}, err
+		return File{}, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, publication.MaxFileBytes+1))
-	if err != nil || int64(len(data)) > publication.MaxFileBytes {
-		return nil, File{}, fmt.Errorf("cannot read project file: %s", rel)
+	h := sha256.New()
+	n, err := io.CopyBuffer(io.MultiWriter(dst, h), &contextReader{ctx, io.LimitReader(f, SyncLimits(ctx).FileBytes+1)}, make([]byte, 64<<10))
+	if err != nil {
+		return File{}, err
 	}
-	return data, fingerprint(data, info.Mode()&0111 != 0), nil
+	if n > SyncLimits(ctx).FileBytes {
+		return File{}, fmt.Errorf("project file exceeds sync limit: %s", rel)
+	}
+	return File{Hash: hex.EncodeToString(h.Sum(nil)), Size: n, Executable: info.Mode()&0111 != 0}, nil
+}
+
+// Close removes only this operation's generated files, never working files or
+// an admitted transfer's frozen artifacts. Call on capture errors as well.
+func (s *Snapshot) Close() {
+	if s.DecodedDir != "" {
+		_ = os.RemoveAll(s.DecodedDir)
+		s.DecodedDir = ""
+	}
+	if s.StagingDir != "" {
+		_ = os.RemoveAll(s.StagingDir)
+		s.StagingDir = ""
+	}
 }
 
 // Capture sends only changed bytes. Expected fingerprints are retained for
 // every deletion/replacement so edits outside AgentWorks are never overwritten.
-func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snapshot, error) {
-	out := Snapshot{Files: Manifest{}, Changes: []Change{}}
+func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest, privateStageRoot string) (out Snapshot, err error) {
+	out = Snapshot{Files: Manifest{}, Changes: []Change{}}
+	if privateStageRoot == "" {
+		return out, fmt.Errorf("private sync staging directory is required")
+	}
+	out.StagingDir, err = os.MkdirTemp(privateStageRoot, "capture-")
+	if err != nil {
+		return out, err
+	}
+	defer func() {
+		if err != nil {
+			out.Close()
+		}
+	}()
 	var total int64
 	ignoredFiles := map[string]bool{}
 	areas := []struct{ name, root string }{{"files", roots.Files}, {"resources", roots.Resources}}
@@ -142,12 +202,12 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 			if entry.Type()&os.ModeSymlink != 0 {
 				return nil
 			}
-			data, file, err := readFile(area.root, rel)
+			file, err := readFile(ctx, area.root, rel, io.Discard)
 			if err != nil {
 				return err
 			}
 			total += file.Size
-			if total > publication.MaxBytes || len(out.Files) >= publication.MaxFiles {
+			if total > SyncLimits(ctx).Bytes || len(out.Files) >= SyncLimits(ctx).Files {
 				return fmt.Errorf("project exceeds 256 MiB or 10,000 files; exclude generated files before syncing")
 			}
 			before, exists := previous[key]
@@ -158,7 +218,19 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest) (Snap
 			}
 			out.Files[key] = file
 			if !exists || before != file {
-				change := Change{Path: key, After: &file, Data: data}
+				stage, err := os.CreateTemp(out.StagingDir, "file-")
+				if err != nil {
+					return err
+				}
+				err = CopyContent(ctx, stage, roots, key, file)
+				closeErr := stage.Close()
+				if err != nil {
+					return err
+				}
+				if closeErr != nil {
+					return closeErr
+				}
+				change := Change{Path: key, After: &file, DataPath: stage.Name()}
 				if exists {
 					change.Before = &before
 				}
@@ -197,7 +269,7 @@ func sameFile(actual, expected File) bool {
 	return actual == expected
 }
 
-func checkChange(roots crewroot.Roots, change Change) error {
+func checkChange(ctx context.Context, roots crewroot.Roots, change Change) error {
 	root, rel, err := rootFor(roots, change.Path)
 	if err != nil {
 		return err
@@ -205,7 +277,7 @@ func checkChange(roots crewroot.Roots, change Change) error {
 	if _, err = crewroot.ResolveContained(root, rel); err != nil {
 		return err
 	}
-	_, actual, err := readFile(root, rel)
+	actual, err := readFile(ctx, root, rel, io.Discard)
 	if os.IsNotExist(err) {
 		if change.Before == nil || change.After == nil {
 			return nil
@@ -228,7 +300,7 @@ func checkChange(roots crewroot.Roots, change Change) error {
 // Apply validates the complete batch before its first write. Callers serialize
 // this with the existing project mutation lock and save its manifest on success.
 func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
-	if len(snapshot.Changes) > publication.MaxFiles || len(snapshot.Files) > publication.MaxFiles {
+	if len(snapshot.Changes) > SyncLimits(ctx).Files || len(snapshot.Files) > SyncLimits(ctx).Files {
 		return fmt.Errorf("too many project files")
 	}
 	seen := map[string]bool{}
@@ -239,14 +311,17 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 		}
 		seen[change.Path] = true
 		if change.After != nil {
-			total += int64(len(change.Data))
-			if int64(len(change.Data)) > publication.MaxFileBytes || total > publication.MaxBytes || fingerprint(change.Data, change.After.Executable) != *change.After || snapshot.Files[change.Path] != *change.After {
+			total += change.After.Size
+			if total > SyncLimits(ctx).Bytes || snapshot.Files[change.Path] != *change.After {
 				return fmt.Errorf("invalid project file content")
+			}
+			if err := change.CopyTo(ctx, io.Discard); err != nil {
+				return err
 			}
 		} else if _, exists := snapshot.Files[change.Path]; exists {
 			return fmt.Errorf("deleted file remains in snapshot")
 		}
-		if err := checkChange(roots, change); err != nil {
+		if err := checkChange(ctx, roots, change); err != nil {
 			return err
 		}
 	}
@@ -260,7 +335,7 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := checkChange(roots, change); err != nil {
+		if err := checkChange(ctx, roots, change); err != nil {
 			return err
 		}
 		root, rel, _ := rootFor(roots, change.Path)
@@ -293,7 +368,7 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 						err = f.Chmod(targetMode)
 					}
 					if err == nil {
-						_, err = f.Write(change.Data)
+						err = change.CopyTo(ctx, f)
 					}
 					closeErr := f.Close()
 					if err == nil {
@@ -310,22 +385,35 @@ func Apply(ctx context.Context, roots crewroot.Roots, snapshot Snapshot) error {
 	return nil
 }
 
-// ReadContent is used only when bootstrapping a sync baseline or re-including
-// an unchanged file. The rooted reader never follows a path outside this Crew.
-func ReadContent(roots crewroot.Roots, key string, expected File) ([]byte, error) {
+// CopyContent reads through the Crew root, never following a path outside it.
+func CopyContent(ctx context.Context, dst io.Writer, roots crewroot.Roots, key string, expected File) error {
 	root, rel, err := rootFor(roots, key)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if _, err = crewroot.ResolveContained(root, rel); err != nil {
-		return nil, err
+		return err
 	}
-	data, actual, err := readFile(root, rel)
+	actual, err := readFile(ctx, root, rel, dst)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !sameFile(actual, expected) {
-		return nil, fmt.Errorf("%s changed during capture; retry sync", key)
+		return fmt.Errorf("%s changed during capture; retry sync", key)
 	}
-	return data, nil
+	return nil
+}
+
+// DataPath is populated only by local capture or the verified bundle decoder;
+// it is never accepted from JSON metadata.
+func (c Change) CopyTo(ctx context.Context, dst io.Writer) error {
+	if c.After == nil {
+		return fmt.Errorf("missing project file metadata")
+	}
+	f, err := os.Open(c.DataPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return CopyChecked(ctx, dst, f, *c.After)
 }

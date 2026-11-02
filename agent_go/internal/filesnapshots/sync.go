@@ -4,27 +4,32 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
-	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
+
+// Bound Git's delta search and stream large blobs as well as Go's copies.
+func (s Store) syncCommand(ctx context.Context, args ...string) *exec.Cmd {
+	return s.command(ctx, append([]string{"-c", "core.bigFileThreshold=16m", "-c", "pack.windowMemory=16m", "-c", "pack.deltaCacheSize=16m", "-c", "pack.threads=1"}, args...)...)
+}
 
 // Sync uses the existing object store, but never the turn index or turn refs.
 // Its caller supplies a complete sync-policy capture, not a partial review.
 func syncRef(pair, name string) string { return "refs/sync/" + digest(pair) + "/" + name }
 
 func (s Store) syncRoot(ctx context.Context, tree string) (string, error) {
-	cmd := s.command(ctx, "commit-tree", tree, "-m", "AgentWorks sync baseline")
+	cmd := s.syncCommand(ctx, "commit-tree", tree, "-m", "AgentWorks sync baseline")
 	cmd.Env = append(cmd.Env, "GIT_AUTHOR_NAME=AgentWorks", "GIT_AUTHOR_EMAIL=sync@example.com", "GIT_COMMITTER_NAME=AgentWorks", "GIT_COMMITTER_EMAIL=sync@example.com", "GIT_AUTHOR_DATE=@0 +0000", "GIT_COMMITTER_DATE=@0 +0000")
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
@@ -33,10 +38,10 @@ func (s Store) syncBase(ctx context.Context, pair string) (string, error) {
 	if err := s.init(ctx); err != nil {
 		return "", err
 	}
-	if out, err := s.command(ctx, "rev-parse", "--verify", syncRef(pair, "baseline")).Output(); err == nil {
+	if out, err := s.syncCommand(ctx, "rev-parse", "--verify", syncRef(pair, "baseline")).Output(); err == nil {
 		return strings.TrimSpace(string(out)), nil
 	}
-	cmd := s.command(ctx, "mktree")
+	cmd := s.syncCommand(ctx, "mktree")
 	cmd.Stdin = strings.NewReader("")
 	out, err := cmd.Output()
 	if err != nil {
@@ -46,7 +51,7 @@ func (s Store) syncBase(ctx context.Context, pair string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return base, s.command(ctx, "update-ref", syncRef(pair, "baseline"), base).Run()
+	return base, s.syncCommand(ctx, "update-ref", syncRef(pair, "baseline"), base).Run()
 }
 
 func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots, snapshot *crewsync.Snapshot) error {
@@ -55,11 +60,14 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 		return err
 	}
 	defer unlock()
+	if err := agentworksclient.EnsurePrivateDirectory(s.dir()); err != nil {
+		return err
+	}
 	base, err := s.syncBase(ctx, pair)
 	if err != nil {
 		return err
 	}
-	raw, err := s.command(ctx, "ls-tree", "-r", "--name-only", "-z", base).Output()
+	raw, err := s.syncCommand(ctx, "ls-tree", "-r", "--name-only", "-z", base).Output()
 	if err != nil {
 		return err
 	}
@@ -85,7 +93,7 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 	}
 	sort.Strings(keys)
 	reader, writer := io.Pipe()
-	cmd := s.command(ctx, "fast-import", "--quiet", "--force")
+	cmd := s.syncCommand(ctx, "fast-import", "--quiet", "--force")
 	cmd.Stdin = reader
 	written := make(chan error, 1)
 	go func() {
@@ -108,22 +116,20 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 				if !changed && existing[key] {
 					continue
 				}
-				data := change.Data
-				if !changed {
-					var err error
-					data, err = crewsync.ReadContent(roots, key, snapshot.Files[key])
-					if err != nil {
-						return err
-					}
-				}
 				mode := "100644"
 				if snapshot.Files[key].Executable {
 					mode = "100755"
 				}
-				if _, err := fmt.Fprintf(writer, "M %s inline %s\ndata %d\n", mode, strconv.Quote(key), len(data)); err != nil {
+				if _, err := fmt.Fprintf(writer, "M %s inline %s\ndata %d\n", mode, strconv.Quote(key), snapshot.Files[key].Size); err != nil {
 					return err
 				}
-				if _, err := writer.Write(data); err != nil {
+				var err error
+				if changed {
+					err = change.CopyTo(ctx, writer)
+				} else {
+					err = crewsync.CopyContent(ctx, writer, roots, key, snapshot.Files[key])
+				}
+				if err != nil {
 					return err
 				}
 				if _, err := io.WriteString(writer, "\n"); err != nil {
@@ -145,7 +151,7 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 	if err != nil {
 		return fmt.Errorf("capture project snapshot: %w", err)
 	}
-	head, err := s.command(ctx, "rev-parse", syncRef(pair, "pending")).Output()
+	head, err := s.syncCommand(ctx, "rev-parse", syncRef(pair, "pending")).Output()
 	if err != nil {
 		return err
 	}
@@ -160,20 +166,23 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 		}
 	}()
 	file := filepath.Join(dir, "content.bundle")
-	if err = s.command(ctx, "bundle", "create", file, syncRef(pair, "pending"), "^"+base).Run(); err != nil {
+	if err = s.syncCommand(ctx, "bundle", "create", file, syncRef(pair, "pending"), "^"+base).Run(); err != nil {
+		return err
+	}
+	if err = os.Chmod(file, 0600); err != nil {
 		return err
 	}
 	info, err := os.Stat(file)
 	if err != nil {
 		return err
 	}
-	if info.Size() > publication.MaxBytes+(8<<20) {
+	if info.Size() > crewsync.SyncLimits(ctx).Bytes+(8<<20) {
 		return fmt.Errorf("project bundle exceeds transfer limit")
 	}
 	snapshot.Content = &crewsync.ContentSnapshot{Base: base, Head: strings.TrimSpace(string(head)), BundlePath: file}
 	keep = true
 	for i := range snapshot.Changes {
-		snapshot.Changes[i].Data = nil
+		snapshot.Changes[i].DataPath = ""
 	}
 	return nil
 }
@@ -190,33 +199,36 @@ func (s Store) DecodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 	if content == nil || !objectName(content.Base) || !objectName(content.Head) {
 		return fmt.Errorf("invalid project bundle")
 	}
+	if err := agentworksclient.EnsurePrivateDirectory(s.dir()); err != nil {
+		return err
+	}
 	base, err := s.syncBase(ctx, pair)
 	if err != nil {
 		return err
 	}
 	// The old pending/incoming ref pins prerequisites across an interrupted ack.
-	if base != content.Base && s.command(ctx, "cat-file", "-e", content.Base+"^{commit}").Run() != nil {
+	if base != content.Base && s.syncCommand(ctx, "cat-file", "-e", content.Base+"^{commit}").Run() != nil {
 		return fmt.Errorf("sync baseline is unavailable; retry the pending transfer")
 	}
 	file := content.BundlePath
 	info, e := os.Lstat(file)
-	if e != nil || !info.Mode().IsRegular() || info.Size() > publication.MaxBytes+(8<<20) {
+	if e != nil || !info.Mode().IsRegular() || info.Size() > crewsync.SyncLimits(ctx).Bytes+(8<<20) {
 		return fmt.Errorf("invalid project bundle file")
 	}
-	if err = s.command(ctx, "bundle", "verify", file).Run(); err != nil {
+	if err = s.syncCommand(ctx, "bundle", "verify", file).Run(); err != nil {
 		return fmt.Errorf("project bundle does not match its baseline")
 	}
-	heads, err := s.command(ctx, "bundle", "list-heads", file).Output()
+	heads, err := s.syncCommand(ctx, "bundle", "list-heads", file).Output()
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(string(heads)) != content.Head+" "+syncRef(pair, "pending") {
 		return fmt.Errorf("unexpected project bundle references")
 	}
-	if err = s.command(ctx, "-c", "protocol.file.allow=always", "-c", "transfer.fsckObjects=true", "-c", "core.protectHFS=true", "-c", "core.protectNTFS=true", "fetch", "--no-tags", "--no-write-fetch-head", file, "+"+syncRef(pair, "pending")+":"+syncRef(pair, "incoming")).Run(); err != nil {
+	if err = s.syncCommand(ctx, "-c", "protocol.file.allow=always", "-c", "transfer.fsckObjects=true", "-c", "core.protectHFS=true", "-c", "core.protectNTFS=true", "fetch", "--no-tags", "--no-write-fetch-head", file, "+"+syncRef(pair, "pending")+":"+syncRef(pair, "incoming")).Run(); err != nil {
 		return fmt.Errorf("cannot import project bundle")
 	}
-	parents, err := s.command(ctx, "rev-list", "--parents", "-n", "1", content.Head).Output()
+	parents, err := s.syncCommand(ctx, "rev-list", "--parents", "-n", "1", content.Head).Output()
 	if err != nil {
 		return err
 	}
@@ -224,7 +236,7 @@ func (s Store) DecodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 		return fmt.Errorf("unexpected project snapshot ancestry")
 	}
 	if base != content.Base {
-		tree, e := s.command(ctx, "rev-parse", content.Head+"^{tree}").Output()
+		tree, e := s.syncCommand(ctx, "rev-parse", content.Head+"^{tree}").Output()
 		if e != nil {
 			return e
 		}
@@ -248,7 +260,7 @@ func objectName(s string) bool {
 }
 
 func (s Store) syncBytes(ctx context.Context, snapshot *crewsync.Snapshot) error {
-	raw, err := s.command(ctx, "ls-tree", "-r", "-z", "--full-tree", snapshot.Content.Head).Output()
+	raw, err := s.syncCommand(ctx, "ls-tree", "-r", "-z", "--full-tree", snapshot.Content.Head).Output()
 	if err != nil {
 		return err
 	}
@@ -295,7 +307,7 @@ func (s Store) syncBytes(ctx context.Context, snapshot *crewsync.Snapshot) error
 		seen[key] = true
 		entries = append(entries, entry{key, fields[2], fields[0] == "100755"})
 	}
-	if len(entries) > publication.MaxFiles {
+	if len(entries) > crewsync.SyncLimits(ctx).Files {
 		return fmt.Errorf("too many project files")
 	}
 	for key := range snapshot.Files {
@@ -303,7 +315,21 @@ func (s Store) syncBytes(ctx context.Context, snapshot *crewsync.Snapshot) error
 			return fmt.Errorf("project snapshot is incomplete")
 		}
 	}
-	cmd := s.command(ctx, "cat-file", "--batch")
+	if snapshot.DecodedDir != "" {
+		_ = os.RemoveAll(snapshot.DecodedDir)
+		snapshot.DecodedDir = ""
+	}
+	stage, err := os.MkdirTemp(s.dir(), "sync-decoded-")
+	if err != nil {
+		return err
+	}
+	keepStage := false
+	defer func() {
+		if !keepStage {
+			_ = os.RemoveAll(stage)
+		}
+	}()
+	cmd := s.syncCommand(ctx, "cat-file", "--batch")
 	var ids strings.Builder
 	for _, e := range entries {
 		ids.WriteString(e.oid + "\n")
@@ -335,36 +361,51 @@ func (s Store) syncBytes(ctx context.Context, snapshot *crewsync.Snapshot) error
 			return fmt.Errorf("invalid project blob")
 		}
 		size, err := strconv.ParseInt(parts[2], 10, 64)
-		if err != nil || size < 0 || size > publication.MaxFileBytes {
+		if err != nil || size < 0 || size > crewsync.SyncLimits(ctx).FileBytes {
 			return fmt.Errorf("project file exceeds 64 MiB")
 		}
 		total += size
-		if total > publication.MaxBytes {
+		if total > crewsync.SyncLimits(ctx).Bytes {
 			return fmt.Errorf("project exceeds 256 MiB")
 		}
-		data := make([]byte, int(size)+1)
-		if _, err = io.ReadFull(reader, data); err != nil {
-			return err
-		}
-		if data[len(data)-1] != '\n' {
-			return fmt.Errorf("invalid project blob framing")
-		}
-		data = data[:len(data)-1]
-		hash := sha256.Sum256(data)
 		f := snapshot.Files[e.path]
-		if f.Hash != hex.EncodeToString(hash[:]) || f.Size != size || f.Executable != e.exec {
+		if f.Size != size || f.Executable != e.exec {
 			return fmt.Errorf("project file does not match its snapshot")
 		}
-		if i, ok := changed[e.path]; ok {
-			if snapshot.Changes[i].After == nil {
-				return fmt.Errorf("deleted file in project tree")
+		var out *os.File
+		dst := io.Writer(io.Discard)
+		i, changed := changed[e.path]
+		if changed {
+			if snapshot.Changes[i].After == nil || *snapshot.Changes[i].After != f {
+				return fmt.Errorf("invalid changed file in project tree")
 			}
-			snapshot.Changes[i].Data = data
+			out, err = os.CreateTemp(stage, "file-")
+			if err != nil {
+				return err
+			}
+			dst = out
+		}
+		err = crewsync.CopyChecked(ctx, dst, io.LimitReader(reader, size), f)
+		if out != nil {
+			closeErr := out.Close()
+			if err == nil {
+				err = closeErr
+			}
+			snapshot.Changes[i].DataPath = out.Name()
+		}
+		if err != nil {
+			return err
+		}
+		separator, err := reader.ReadByte()
+		if err != nil || separator != '\n' {
+			return fmt.Errorf("invalid project blob framing")
 		}
 	}
 	if err = cmd.Wait(); err != nil {
 		return err
 	}
+	keepStage = true
+	snapshot.DecodedDir = stage
 	return nil
 }
 
@@ -379,7 +420,7 @@ func (s Store) AckSync(ctx context.Context, pair string, content *crewsync.Conte
 		return err
 	}
 	defer unlock()
-	tree, err := s.command(ctx, "rev-parse", content.Head+"^{tree}").Output()
+	tree, err := s.syncCommand(ctx, "rev-parse", content.Head+"^{tree}").Output()
 	if err != nil {
 		return err
 	}
@@ -387,5 +428,5 @@ func (s Store) AckSync(ctx context.Context, pair string, content *crewsync.Conte
 	if err != nil {
 		return err
 	}
-	return s.command(ctx, "update-ref", syncRef(pair, "baseline"), root).Run()
+	return s.syncCommand(ctx, "update-ref", syncRef(pair, "baseline"), root).Run()
 }
