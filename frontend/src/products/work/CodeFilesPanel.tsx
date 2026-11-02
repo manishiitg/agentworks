@@ -62,6 +62,7 @@ export function LaptopConnectionSetup({ connected }: { connected: boolean }) {
       <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer{windows ? ' in PowerShell' : ''}. Your model stays on this server; the CLI connects this computer. Choose folders in the project’s Local laptop settings. Already installed? Start at step 2.</p>
       <SetupStep number={1} title="Install the CLI">
         <CopyCommand label="install command" command={installCommand} />
+        {windows && <p className="text-xs leading-5 text-muted-foreground">If Windows Defender blocks AgentWorks: open Windows Security › Virus &amp; threat protection › Protection history, open the agentworks.exe entry, choose Actions › Allow on device, then run <code>agentworks setup</code>.</p>}
         <p className="text-xs text-muted-foreground">{windows ? 'Installs AgentWorks in %LOCALAPPDATA%\\agentworks and adds it to your PATH; no administrator rights. Running commands on your computer needs Git for Windows (git-scm.com). No model or server runs on your computer.' : 'Installs AgentWorks in ~/.local/bin. No model or server runs on your computer.'}</p>
       </SetupStep>
       <SetupStep number={2} title="Connect your computer once">

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
@@ -47,6 +49,18 @@ func cliIsCurrent(version, build, latestVersion, latestBuild string) bool {
 // updateTargetOverride pins the install target in tests. Empty means replace
 // the running executable.
 var updateTargetOverride string
+
+var updateVersionOutput = func(target string) ([]byte, error) {
+	return exec.Command(target, "version").CombinedOutput()
+}
+
+const windowsDefenderSetupHelp = "Windows Defender blocked this unsigned AgentWorks app. Open Windows Security > Virus & threat protection > Protection history, open the agentworks.exe entry, choose Actions > Allow on device, then run: agentworks setup"
+
+func windowsAntivirusBlocked(err error) bool {
+	// Win32 ERROR_VIRUS_INFECTED / ERROR_VIRUS_DELETED, including localized
+	// launch errors wrapped by os/exec or file operations.
+	return errors.Is(err, syscall.Errno(225)) || errors.Is(err, syscall.Errno(226))
+}
 
 func versionCommand(o *options) *cobra.Command {
 	return &cobra.Command{
@@ -259,7 +273,12 @@ func runUpdate(o *options, check, force, switchSource bool) (resultErr error) {
 // installUpdate downloads the asset, checks its checksum, swaps it in for the executable and runs the new one's
 // `version` as a self-test (restoring the old one if that fails). With keepBackup the previous executable stays at
 // the returned path so a caller can roll back.
-func installUpdate(base, asset, target string, release cliRelease, keepBackup bool, progress io.Writer) (string, error) {
+func installUpdate(base, asset, target string, release cliRelease, keepBackup bool, progress io.Writer) (backupPath string, resultErr error) {
+	defer func() {
+		if windowsAntivirusBlocked(resultErr) {
+			resultErr = errors.New(windowsDefenderSetupHelp)
+		}
+	}()
 	compressed, err := downloadUpdate(base+"/"+asset+".gz", progress, time.Minute)
 	if err != nil {
 		return "", err
@@ -309,7 +328,12 @@ func installUpdate(base, asset, target string, release cliRelease, keepBackup bo
 		os.Rename(backup, target)
 		return "", fmt.Errorf("install update: %w", err)
 	}
-	if out, err := exec.Command(target, "version").CombinedOutput(); err != nil || !strings.Contains(string(out), release.Version) {
+	if out, err := updateVersionOutput(target); err != nil || !strings.Contains(string(out), release.Version) {
+		if windowsAntivirusBlocked(err) {
+			// Keep the verified download's final path for Protection history to
+			// restore, and retain the previous executable as its existing backup.
+			return "", err
+		}
 		os.Rename(backup, target)
 		return "", fmt.Errorf("new binary failed to run; previous version restored")
 	}
