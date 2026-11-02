@@ -33,6 +33,7 @@ type crewSyncRequest struct {
 	PairID       string                   `json:"pair_id,omitempty"`
 	SourceID     string                   `json:"source_id,omitempty"`
 	Name         string                   `json:"name,omitempty"`
+	MacName      string                   `json:"mac_name,omitempty"`
 	Editing      string                   `json:"editing,omitempty"`
 	Snapshot     *crewsync.Snapshot       `json:"snapshot,omitempty"`
 	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
@@ -102,6 +103,9 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 	}
 	binding, _, ok := api.resolveExternalWorkspace(ctx, claims, id)
 	if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
+		if ok && binding.OwnerID != "" {
+			return crewroot.Roots{}, fmt.Errorf("only this project's main owner can move it between computers; ask %s to open it on their Mac", shareOwnerLabel(binding.OwnerID))
+		}
 		return crewroot.Roots{}, fmt.Errorf("only this project's main owner can move it between computers; ask its owner to open it on their Mac")
 	}
 	roots, found, err := crewStorageRoots(binding.Binding.WorkspacePath)
@@ -250,13 +254,13 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, fmt.Errorf("choose this project in the Mac app")
 		}
 		if binding != nil && (binding.Side != "server" || binding.PairID != input.PairID || binding.PeerProjectID != roots.ID) {
-			return out, fmt.Errorf("this project is already paired with another local project; use its existing Mac copy")
+			return out, crewAlreadyOnMac(binding)
 		}
 		if err := api.crewSyncIdle(roots); err != nil {
 			return out, err
 		}
 		if binding == nil {
-			binding = &crewroot.SyncBinding{PairID: input.PairID, Side: "server", Editing: "server", PeerProjectID: roots.ID, SplitFiles: roots.SeparateFiles()}
+			binding = &crewroot.SyncBinding{PairID: input.PairID, Side: "server", Editing: "server", PeerProjectID: roots.ID, SplitFiles: roots.SeparateFiles(), MacName: input.MacName}
 			if err := crewroot.WriteSync(roots.ID, *binding); err != nil {
 				return out, err
 			}

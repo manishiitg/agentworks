@@ -43,6 +43,14 @@ func readCrewSourceProject(id string) *crewSyncProject {
 	return &out
 }
 
+func crewAlreadyOnMac(binding *crewroot.SyncBinding) error {
+	name := strings.TrimSpace(binding.MacName)
+	if name == "" {
+		name = "another Mac"
+	}
+	return fmt.Errorf("this project is already open on %s; use that Mac's existing copy or open the project on the server. Moving its pairing to another Mac is not available yet", name)
+}
+
 func (api *StreamingAPI) crewSyncProject(ctx context.Context, claims *UserClaims, roots crewroot.Roots) (*crewSyncProject, error) {
 	raw, found, err := readFileFromWorkspace(ctx, roots.Virtual+"/product.json")
 	if err != nil || !found {
@@ -168,7 +176,16 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 		break
 	}
 	if remote.Binding != nil && (remote.Binding.Side != "server" || remote.Binding.PeerProjectID != project) {
-		return nil, fmt.Errorf("this project already has a paired Mac copy; use that existing copy")
+		return nil, crewAlreadyOnMac(remote.Binding)
+	}
+	// A pair seen on the server isn't an admission for a second Mac. Only
+	// this installation's private receipt can resume an interrupted restore.
+	localPair, err := crewroot.ReadSync(project)
+	if err != nil {
+		return nil, err
+	}
+	if remote.Binding != nil && (localPair == nil || localPair.Side != "local" || localPair.PairID != remote.Binding.PairID || localPair.ConnectionID != connection.ID || localPair.PeerProjectID != project || localPair.PeerServer != connection.Server) {
+		return nil, crewAlreadyOnMac(remote.Binding)
 	}
 	if !existing && remote.Binding != nil && remote.Binding.Editing != "server" {
 		return nil, fmt.Errorf("work is on this project's original Mac; reconnect that copy before opening it here")
@@ -193,17 +210,18 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 		}
 	}
 	pair := uuid.NewString()
-	if remote.Binding != nil {
-		pair = remote.Binding.PairID
+	if localPair != nil && remote.Binding != nil {
+		pair = localPair.PairID
 	}
-	remote, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, crewSyncRequest{Action: "pair", PairID: pair, SourceID: project})
+	macName, _ := os.Hostname()
+	remote, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, crewSyncRequest{Action: "pair", PairID: pair, SourceID: project, MacName: macName})
 	if err != nil {
 		return nil, err
 	}
 	if remote.ProjectID != project || remote.Binding == nil || remote.Binding.PairID != pair || remote.Project == nil {
 		return nil, fmt.Errorf("the server did not confirm this project's pair; retry")
 	}
-	binding := crewroot.SyncBinding{PairID: pair, Side: "local", Editing: "server", ConnectionID: connection.ID, PeerProjectID: project, PeerServer: connection.Server, SplitFiles: remote.Binding.SplitFiles}
+	binding := crewroot.SyncBinding{PairID: pair, Side: "local", Editing: "server", ConnectionID: connection.ID, PeerProjectID: project, PeerServer: connection.Server, SplitFiles: remote.Binding.SplitFiles, MacName: remote.Binding.MacName}
 	// Resolve the original flat/split layout before writing local manifests.
 	if err := crewroot.WriteSync(project, binding); err != nil {
 		return nil, err

@@ -194,6 +194,13 @@ func TestCrewSyncServerFirstHTTPIdentityAndOwner(t *testing.T) {
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
+			if split {
+				// This source already has a split pair. Mac A retains its
+				// private receipt from before an interrupted first restore.
+				if err := crewroot.WriteSync(source.ProjectID, crewroot.SyncBinding{PairID: "existing-split-pair", Side: "local", Editing: "server", ConnectionID: "saved", PeerProjectID: source.ProjectID, PeerServer: source.URL, SplitFiles: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			for _, actor := range []string{"owner", "other", "admin"} {
 				if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: source.URL, Token: actor, User: UserInfo{ID: actor}}}); err != nil {
 					t.Fatal(err)
@@ -277,6 +284,27 @@ func TestCrewSyncServerFirstHTTPIdentityAndOwner(t *testing.T) {
 			all, _ := defaultProjectOwners().All()
 			if len(all) != 1 {
 				t.Fatal("duplicate local project")
+			}
+			// The owner's second Mac has the same saved server account, but
+			// no locally admitted receipt. Server status isn't a new pairing.
+			stateA := os.Getenv("AGENTWORKS_STATE_ROOT")
+			t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+			if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: source.URL, Token: "owner", User: UserInfo{ID: "owner"}}}); err != nil {
+				t.Fatal(err)
+			}
+			folderB := filepath.Join(t.TempDir(), "second-mac-copy")
+			if denied := open(folderB); denied.Code != 409 || !strings.Contains(denied.Body.String(), "already open on") || !strings.Contains(denied.Body.String(), "not available yet") {
+				t.Fatalf("second Mac admitted: %d %s", denied.Code, denied.Body)
+			}
+			if _, err := os.Stat(folderB); !os.IsNotExist(err) {
+				t.Fatal("refused second Mac created a folder")
+			}
+			if records, _ := defaultProjectOwners().All(); len(records) != 0 {
+				t.Fatal("refused second Mac created a project")
+			}
+			t.Setenv("AGENTWORKS_STATE_ROOT", stateA)
+			if again := open(occupied); again.Code != 200 {
+				t.Fatalf("original Mac lost its admitted pair: %d %s", again.Code, again.Body)
 			}
 			send := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 			send.Header.Set("X-Session-ID", main.SessionID)

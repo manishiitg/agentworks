@@ -24,6 +24,7 @@ type SyncBinding struct {
 	UpdatedAt     string `json:"updated_at,omitempty"`
 	PendingAction string `json:"pending_action,omitempty"`
 	LastTransfer  string `json:"last_transfer,omitempty"`
+	MacName       string `json:"mac_name,omitempty"`
 }
 
 func syncPath(id string) (string, error) {
