@@ -35,13 +35,15 @@ it.each(['user', 'admin'])('uses only header navigation and preserves AgentBridg
     const open = async () => act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Switch product: AgentBridge"]')!.click())
     await open()
     const pages = host.querySelector('[aria-label="Product pages"]')!
-    expect(pages.textContent).toContain('Agents')
+    expect(pages.textContent).toContain('Connected chats')
     expect(pages.textContent?.includes('Administration')).toBe(role === 'admin')
     expect(pages.textContent).not.toContain('Help')
     expect(pages.textContent).toContain('Token usage')
-    await act(async () => [...pages.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Connect an agent')!.click())
+    await act(async () => [...pages.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Connect your AI app')!.click())
     expect(host.textContent).toContain('Existing connection setup')
     expect(host.querySelector('[data-product-picker-menu]')).toBeNull()
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Back to Home')!.click())
+    expect(window.location.pathname).toBe('/home')
     if (role === 'admin') {
       await open()
       await act(async () => [...host.querySelectorAll<HTMLButtonElement>('[aria-label="Product pages"] button')].find(button => button.textContent === 'Administration')!.click())

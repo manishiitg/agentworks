@@ -1,8 +1,9 @@
+import { openHome } from '../../utils/homeNavigation'
 import { currentProductRoute } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { BullpenUsageOverview } from './BullpenUsage'
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { ChartNoAxesCombined, Check, Copy, MessagesSquare, Search, Terminal, UsersRound, ShieldCheck, X } from 'lucide-react'
+import { ArrowLeft, ChartNoAxesCombined, Check, Copy, MessagesSquare, Search, Terminal, UsersRound, ShieldCheck, X } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { WorkspacePageHeader } from '../../components/workspace/WorkspacePageHeader'
 import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
@@ -20,8 +21,8 @@ import { bullpenApi, bullpenError, type BullpenAgent, type BullpenNotice } from 
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const views = [
-  { id: 'agents' as const, label: 'Agents', icon: UsersRound },
-  { id: 'setup' as const, label: 'Connect an agent', icon: Terminal },
+  { id: 'agents' as const, label: 'Connected chats', icon: UsersRound },
+  { id: 'setup' as const, label: 'Connect your AI app', icon: Terminal },
 ]
 const providerNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', muse: 'Muse Code', pi: 'Pi', cursor: 'Cursor', agy: 'agy' }
 
@@ -138,7 +139,7 @@ function AgentDirectory() {
     {notices.length > 1 ? <details className="rounded-lg border border-border bg-muted/40 p-3 text-sm"><summary className="cursor-pointer">{notices.length} notices from an administrator</summary><div className="mt-3 space-y-2">{notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}<Button variant="outline" size="sm" onClick={() => void Promise.all(notices.map(item => bullpenApi.dismissNotice(item.notice_id))).then(() => setNotices([])).catch(() => undefined)}>Dismiss all</Button></div></details> : notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}
     {agents.length > 0 && <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input aria-label="Find an agent" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find an agent" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>}
     {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4 text-sm"><p>{error}</p><Button variant="outline" size="sm" onClick={() => setAttempt(value => value + 1)}>Try again</Button></div>}
-    {loading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your agents…</p> : !error && !agents.length ? <div className="py-16 text-center"><MessagesSquare aria-hidden="true" className="mx-auto mb-4 h-8 w-8 text-muted-foreground" /><h2 className="font-semibold">No agents connected yet</h2><p className="mt-2 text-sm text-muted-foreground">Choose Connect an agent to get started.</p></div> : visible.length ? <div className="divide-y divide-border rounded-xl border border-border">
+    {loading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading connected chats…</p> : !error && !agents.length ? <div className="py-16 text-center"><MessagesSquare aria-hidden="true" className="mx-auto mb-4 h-8 w-8 text-muted-foreground" /><h2 className="font-semibold">Your AI chats will appear here</h2><p className="mt-2 text-sm text-muted-foreground">Connect a chat from Claude, Codex or another AI app to message it through AgentWorks.</p></div> : visible.length ? <div className="divide-y divide-border rounded-xl border border-border">
       {visible.map(agent => <article key={agent.agent_id} className="flex flex-wrap items-center justify-between gap-4 p-4 sm:px-5">
         <button type="button" aria-label={'Details for ' + (agent.label || agent.agent_name)} aria-haspopup="dialog" onClick={() => setSelected(agent.agent_id)} className="min-w-0 flex-1 rounded-md text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">
           <h2 className="break-words text-sm font-semibold">{agent.label || agent.agent_name}</h2>
@@ -167,15 +168,15 @@ export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: bool
         {messagingOnly ? <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
           <h1><button type="button" onClick={() => setView('agents')} className="flex items-center gap-2 rounded-md text-base font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessagesSquare aria-hidden="true" className="h-5 w-5" />AgentBridge</button></h1>
           <nav aria-label="AgentBridge" className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={() => setView('setup')}>Connect an agent</Button>
+            <Button size="sm" onClick={() => setView('setup')}>Connect your AI app</Button>
             {user?.role === 'admin' && <Button variant={view === 'admin' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('admin')}>Administration</Button>}
             <AccountControl messagingOnly onOpenUsage={() => setDialog('usage')} />
           </nav>
-        </header> : <WorkspacePageHeader title={view === 'setup' ? 'Connect an agent' : view === 'admin' ? 'Administration' : 'AgentBridge'} icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
+        </header> : <WorkspacePageHeader title={view === 'setup' ? 'Connect your AI app' : view === 'admin' ? 'Administration' : 'AgentBridge'} icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
           ...views.map(item => ({ ...item, active: view === item.id, onSelect: () => setView(item.id) })),
           ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Administration', icon: ShieldCheck, active: view === 'admin', onSelect: () => setView('admin') }] : []),
           { id: 'usage', label: 'Token usage', icon: ChartNoAxesCombined, onSelect: () => setDialog('usage') },
-        ]}>{view !== 'setup' && <Button size="sm" onClick={() => setView('setup')}>Connect an agent</Button>}</WorkspacePageHeader>}
+        ]}><Button variant="ghost" size="sm" onClick={() => openHome()}><ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />Back to Home</Button>{view !== 'setup' && <Button size="sm" onClick={() => setView('setup')}>Connect your AI app</Button>}</WorkspacePageHeader>}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <WorkspacePageContent className={view === 'setup' ? 'mx-auto w-full max-w-5xl' : undefined}>
             {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={messagingOnly ? undefined : () => useAppStore.getState().setAdminPage('mcp')} onBack={() => setView('agents')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} /> : <p>Sign in to see your agents.</p>}
