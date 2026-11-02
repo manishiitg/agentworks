@@ -351,6 +351,7 @@ func validateVaultSecretSelection(ctx context.Context, userID string, scoped []s
 	}
 	rows, err := permittedGlobalSecrets(ctx, userID)
 	if err != nil {
+		log.Printf("[VAULT_SECRETS] permission lookup failed user=%s selected=%d err=%v", userID, len(*selection), err)
 		return errors.New("Vault secret permissions are unavailable; execution was stopped")
 	}
 	for _, s := range rows {
