@@ -23,7 +23,7 @@ import (
 var notifierIcon []byte
 
 // Bump when the app below changes, so an older copy is rebuilt.
-const notifierVersion = "2"
+const notifierVersion = "3"
 
 const notifierScript = `on run
 	-- Clicking a notification opens this app again with no message waiting: do nothing then.
@@ -111,6 +111,12 @@ func buildNotifierApp(ctx context.Context) (string, error) {
 		},
 		func() error {
 			return run("/usr/bin/plutil", "-replace", "CFBundleName", "-string", "AgentWorks", plist)
+		},
+		// A ping means someone waits for a reply: show it as an alert that stays
+		// until clicked, not a banner that hides after a few seconds. macOS uses
+		// this only as the starting style; the person can change it in Settings.
+		func() error {
+			return run("/usr/bin/plutil", "-replace", "NSUserNotificationAlertStyle", "-string", "alert", plist)
 		},
 		func() error {
 			return os.WriteFile(filepath.Join(resources, "agentworks-notifier-version"), []byte(notifierVersion), 0o644)
