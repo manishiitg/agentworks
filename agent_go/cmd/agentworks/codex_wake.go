@@ -7,7 +7,6 @@ import (
 	"log"
 	"os/exec"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,7 +34,7 @@ func codexDesktopOwnerReady(ctx context.Context, remote, session string) bool {
 
 func nativeCodexWake(root string, o *options) func(context.Context, agentworksclient.AgentAttachment, string) error {
 	return func(ctx context.Context, a agentworksclient.AgentAttachment, remote string) error {
-		if a.Provider != "codex" || !strings.HasPrefix(remote, "desktop+unix://") {
+		if a.Provider != "codex" || !agentworksclient.IsCodexDesktopRemote(remote) {
 			return errors.New("native Codex desktop required")
 		}
 		if _, err := uuid.Parse(a.SessionID); err != nil {

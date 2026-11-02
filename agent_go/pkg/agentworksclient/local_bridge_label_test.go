@@ -94,6 +94,7 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 	}{
 		{native: "desktop+unix:///example.sock", want: "codex_desktop"},
 		{hook: "codex_hook", want: "codex_hook"},
+		{native: "desktop+npipe://codex-ipc", want: "codex_desktop"}, // after a route change: unchanged labels are not resent
 		{native: "desktop+unix:///example.sock", offline: true, want: "inbox"},
 	} {
 		primary.NativeRemote, primary.HookTransport, primary.Offline = tc.native, tc.hook, tc.offline

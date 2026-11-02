@@ -65,6 +65,9 @@ func TestPendingMailWakesOnlyItsSavedNativeChat(t *testing.T) {
 	for _, name := range []string{"target", "stopped", "moved", "closed"} {
 		saved[localBridgeKey("codex", name)] = seed(name)
 	}
+	// PLAT-856-500: the same saved-chat policy must accept the Windows desktop
+	// transport too, rather than leaving pending mail dormant without hooks.
+	saved[localBridgeKey("codex", "target")].NativeRemote = "desktop+npipe://codex-ipc"
 	saved[localBridgeKey("codex", "closed")].ServerClosed = true
 	if err = atomicLiveJSON(filepath.Join(root, "sessions.json"), saved); err != nil {
 		t.Fatal(err)

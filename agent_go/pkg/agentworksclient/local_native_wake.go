@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -104,7 +103,7 @@ func (b *localBridge) nativeWakeTarget(s *localSession) (*localSession, string, 
 	}
 	key := localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)
 	primary := b.sessions[key]
-	if primary == nil || primary.ServerClosed || b.stopped[key] || !primary.AccountSenders || !strings.HasPrefix(primary.NativeRemote, "desktop+unix://") {
+	if primary == nil || primary.ServerClosed || b.stopped[key] || !primary.AccountSenders || !IsCodexDesktopRemote(primary.NativeRemote) {
 		return nil, "", false
 	}
 	sourceKey := key

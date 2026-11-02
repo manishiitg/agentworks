@@ -83,11 +83,10 @@ func codexDesktopOffer(ctx context.Context, remote string, delivery agentworkscl
 
 // Read-only discovery and delivery share the same framed, exact-owner IPC.
 func openCodexDesktop(ctx context.Context, remote string) (net.Conn, func(string, any, int, string) (map[string]json.RawMessage, error), error) {
-	remote = strings.TrimPrefix(remote, "desktop+")
 	if err := validateCodexRemote(remote); err != nil {
 		return nil, nil, err
 	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", strings.TrimPrefix(remote, "unix://"))
+	conn, err := dialCodexDesktop(ctx, remote)
 	if err != nil {
 		return nil, nil, err
 	}
