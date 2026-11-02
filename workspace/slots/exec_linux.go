@@ -309,8 +309,8 @@ func endProcessGroup(pgid int) {
 const BusctlPath = "/usr/bin/busctl"
 
 // moveToAppScope puts a just-started slot program in its own scope in the slot's user manager
-// (PLAT-856-506). Limits are the slot's own (provision-slots.sh sets them on user-<uid>.slice). The program keeps its process group, sandbox and stop handling; only its cgroup
-// moves out of the platform service, so a program it detached (setsid, nohup, pm2, docker -d) keeps
+// (PLAT-856-506). Limits are the slot's own (provision-slots.sh sets them on user-<uid>.slice).
+// The program keeps its process group, sandbox and stop handling; only its cgroup moves out of the platform service, so a program it detached (setsid, nohup, pm2, docker -d) keeps
 // running when the platform restarts. The slot can list them with systemctl --user list-units 'aw-app-*'.
 // Best effort and never a second start: on failure the program simply runs as before.
 func moveToAppScope(pid int) {
