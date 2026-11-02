@@ -177,9 +177,9 @@ def smoke(config, workspace, target, owners, limit, app=None):
             problems = [f"turn 2: {p}" for p in problems]
             target["runas"] = next((w[len("RUNAS="):] for w in answer.replace("RUNAS=", " RUNAS=").split() if w.startswith("RUNAS=")), "")
         if not problems and app:
-            host, port, started = app
-            expected = f"smoke-app {target['provider']} {started}"
-            app_problems, _ = turn(config, workspace, chat_id, APP_PROMPT.format(command=app_command(target["provider"], port, started)),
+            host, port, stamp = app
+            expected = f"smoke-app {target['provider']} {stamp}"
+            app_problems, _ = turn(config, workspace, chat_id, APP_PROMPT.format(command=app_command(target["provider"], port, stamp)),
                                    started=time.monotonic(), limit=limit, accept=lambda answer: expected in answer, expected=expected)
             seen = fetch(host, port)
             target["app"] = (f"app on :{port} reachable from outside" if seen == expected
@@ -209,9 +209,10 @@ def main():
     parser.add_argument("--timeout", type=int, default=420, help="seconds per provider (both turns)")
     parser.add_argument("--app-host", default="",
                         help="public address: each program starts a small app on its own port there, and the next run checks it survived")
-    parser.add_argument("--app-port-base", type=int, default=20390, help="first of the app ports, one per program")
-    parser.add_argument("--require-slot", action="store_true",
-                        help="fail a provider whose shell runs as the app account, not the Crew owner's slot (servers with slots, PLAT-872-86)")
+    parser.add_argument("--app-port-base", type=int, default=20310, help="first of the app ports, one per program")
+    parser.add_argument("--require-slot", default="",
+                        help="comma-separated programs whose shell must run as the Crew owner's slot, or 1 for every program "
+                             "(servers with slots, PLAT-872-86)")
     args = parser.parse_args()
 
     config = login_path(args.login)
@@ -252,7 +253,8 @@ def main():
         results = ((running[done], *done.result()) for done in as_completed(running))
         for target, problems, elapsed in results:
             # On a server with slots every program runs as the Crew owner's slot; the app account there is a failure.
-            if args.require_slot and not problems and not target.get("runas", "").startswith("slot"):
+            must = {name.strip() for name in args.require_slot.split(",") if name.strip()}
+            if (must == {"1"} or target["provider"] in must) and not problems and not target.get("runas", "").startswith("slot"):
                 problems = [f"runs as {target.get('runas') or 'unknown'}, not the Crew owner's slot"]
             failed += bool(problems)
             verdict = "PASS" if not problems else "FAIL"
