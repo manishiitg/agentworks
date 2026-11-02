@@ -201,7 +201,7 @@ func TestCodingAgentContinuityNoticeCarriesBoundedRecentTurns(t *testing.T) {
 			reconnectMessage(llmtypes.ChatMessageTypeAI, fmt.Sprintf("answer-%02d %s end-%02d", i, strings.Repeat("a", 5000), i)))
 	}
 	got := prependCodingAgentContinuityNotice("how many messages did I send today", "builder/conversation/c.json", "", history)
-	for _, want := range []string{"builder/conversation/c.json", ".[-10:][]", "question-26", "answer-30", "end-30", "[USER MESSAGE]\nhow many messages did I send today"} {
+	for _, want := range []string{"builder/conversation/c.json", ".[-10:][]", "question-26", "answer-30", "end-30", "of this chat's 60 text turns", "[USER MESSAGE]\nhow many messages did I send today"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("notice missing %q:\n%s", want, got)
 		}
