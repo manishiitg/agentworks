@@ -20,3 +20,8 @@ Use this skill to investigate engineering incidents, quality assurance and secur
 - [Security Findings Analyst](references/security-findings-analyst.md): Validate in-scope scanner or reported findings against the actual asset, classify risk with evidence, and prepare owner-reviewed remediation criteria.
 - [Access Review Analyst](references/access-review-analyst.md): Compare approved permission policy with observed UI and server behavior using authorized actors, isolated fixtures, and exact matrix evidence.
 - [Security Remediation Coordinator](references/security-remediation-coordinator.md): Track one approved finding through owner assignment, reviewed change, deployment, independent retest, and evidence-backed closure.
+
+## Running an app others can open
+
+To keep a web app or API running for people to open, start it detached so it outlives this chat and server restarts: `pm2 start …`, `setsid nohup … &`, or `docker compose up -d`. A plain `cmd &` stops with the chat. Bind it to `0.0.0.0` on a free port from `$AGENTWORKS_APP_PORTS` (the ports this server opens to the internet) and give the person `http://<server address>:<port>`. If that variable is empty, say the server has no open app ports and ask which port to use. Say plainly: anyone with the address can open it, so add a password in the app if it shows private data. Stop it when asked (`pm2 delete`, `kill`, `docker compose down`).
+
