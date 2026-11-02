@@ -57,6 +57,10 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	if len(first.Files) != 5 {
 		t.Fatalf("unexpected files: %v", first.Files)
 	}
+	// The readiness count must say exactly what a first sync sends.
+	if m, err := Measure(t.Context(), local); err != nil || m.Files != len(first.Files) {
+		t.Fatalf("Measure counted %d files, Capture %d: %v", m.Files, len(first.Files), err)
+	}
 	for _, key := range []string{"files/.env", "files/keys/deploy.pem"} {
 		if _, ok := first.Files[key]; !ok || !publication.Excluded(strings.TrimPrefix(key, "files/")) {
 			t.Fatalf("%s: synced=%v, publication must still exclude it", key, ok)

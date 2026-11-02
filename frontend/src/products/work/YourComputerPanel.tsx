@@ -13,6 +13,8 @@ import { useLocalFileDevices } from './codeLocalFiles'
 
 type Binding = { archive_only?: boolean; mode?: 'continuous' | 'manual' | 'off' | 'relay'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
 type SyncStatus = { binding: Binding | null; auto?: { state: string; message?: string } }
+type Readiness = { fits: boolean; estimated_seconds: number; measurement: { files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
+const sizeLabel = (bytes: number) => bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : bytes >= 1 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : 'under 1 MB'
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
 /** In the AgentWorks app a Crew is either in the cloud (on a network) or only on this computer; on a server the page is its laptop access. */
@@ -104,6 +106,16 @@ function CloudCard({ projectId }: { projectId: string }) {
   const paired = status?.binding
   const binding = paired && paired.mode !== 'off' && paired.mode !== 'relay' ? paired : null
   const relay = paired?.mode === 'relay'
+  // Before Cloud is on, the Mac says whether this Crew fits a first upload (the server decides the numbers).
+  const [readiness, setReadiness] = useState<Readiness>()
+  const inCloud = Boolean(binding)
+  useEffect(() => {
+    if (inCloud) return
+    const abort = new AbortController()
+    void api.get<Readiness>(`/api/crew-sync/${encodeURIComponent(projectId)}/readiness`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setReadiness(data) }).catch(() => {})
+    return () => abort.abort()
+  }, [projectId, inCloud])
+  const tooBig = !inCloud && readiness?.fits === false
   const network = networkName(binding, connections)
   const target = paired?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
   const run = async (action: 'update' | 'server' | 'local' | 'download' | 'mode' | 'relay', mode?: 'continuous' | 'off', via = target) => {
@@ -125,8 +137,18 @@ function CloudCard({ projectId }: { projectId: string }) {
         <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone.' : relay ? 'You can use this Crew from the website or your phone while this Mac is on. Turn on to keep working when your Mac is off.' : connections.length > 1 ? 'Choose a server to use this Crew from the website or your phone.' : 'Turn on to use this Crew from the website or your phone.'}</p>
         {binding && <p className="mt-1 text-xs text-muted-foreground">{laptop?.state === 'existing' || laptop?.state === 'needs_app' ? laptop.message : 'While Cloud is on, people using this Crew run commands in this folder on your computer.'}</p>}
       </div>
-      <Switch on={Boolean(binding)} disabled={!status || busy || !target} label="Cloud" onChange={() => void (binding ? run('mode', 'off') : paired ? run('mode', 'continuous') : run('update'))} />
+      <Switch on={Boolean(binding)} disabled={!status || busy || !target || tooBig} label="Cloud" onChange={() => void (binding ? run('mode', 'off') : paired ? run('mode', 'continuous') : run('update'))} />
     </div>
+    {!inCloud && readiness && <div className={`space-y-1 text-xs ${tooBig ? 'text-amber-600' : 'text-muted-foreground'}`}>
+      <p>Size {sizeLabel(readiness.measurement.bytes)} of {sizeLabel(readiness.measurement.max_bytes)} · {readiness.measurement.files.toLocaleString()} of {readiness.measurement.max_files.toLocaleString()} files</p>
+      {tooBig
+        ? <>
+          <p className="font-medium">Too big to work with your Mac off. Move large folders out of this Crew, or add them to .gitignore.</p>
+          {(readiness.measurement.largest_folders?.length ?? 0) > 0 && <p>Biggest folders: {readiness.measurement.largest_folders!.map(folder => `${folder.path} (${sizeLabel(folder.bytes)})`).join(', ')}</p>}
+          {(readiness.measurement.files_over_limit?.length ?? 0) > 0 && <p>Files over {sizeLabel(readiness.measurement.max_file_bytes)}: {readiness.measurement.files_over_limit!.join(', ')}</p>}
+        </>
+        : <p>First upload about {Math.max(1, Math.round(readiness.estimated_seconds / 60))} {Math.round(readiness.estimated_seconds / 60) > 1 ? 'minutes' : 'minute'}, in the background.</p>}
+    </div>}
     {!paired && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => { setChoice(event.target.value); if (event.target.value) void run('relay', undefined, event.target.value) }} className="w-full rounded-md border border-border bg-background p-2 text-sm">
       <option value="">Choose a network</option>
       {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
