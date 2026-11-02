@@ -30,12 +30,7 @@ func (r NativeSessionRequest) NativeRuntime(cfg ExecConfig, actualSlot string) (
 	if r.Transport != "sdk" && r.Transport != "tmux" && r.Transport != "structured" {
 		return "", fmt.Errorf("unsupported slot native program")
 	}
-	table, err := LoadTable(cfg.SlotTable)
-	if err != nil {
-		return "", err
-	}
-	slot, ok := table.SlotFor(r.OwnerID)
-	if !ok || slot != actualSlot {
+	if r.OwnerID == "" || cfg.NativeOwners[actualSlot] != r.OwnerID {
 		return "", fmt.Errorf("native session owner does not hold this account")
 	}
 	root := cfg.SlotStateDir(actualSlot)

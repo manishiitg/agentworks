@@ -110,6 +110,11 @@ func RunExec(stdin io.Reader, stdout, stderr *os.File, cfg ExecConfig) int {
 			fmt.Fprintln(stderr, "slotctl: native session requires its assigned OS account")
 			return 125
 		}
+		cfg, err = LoadNativeExecConfig(ConfigBesideExecutable())
+		if err != nil {
+			fmt.Fprintln(stderr, "slotctl:", err)
+			return 125
+		}
 		if _, err = request.NativeSession.NativeRuntime(cfg, me.Username); err != nil {
 			fmt.Fprintln(stderr, "slotctl:", err)
 			return 125

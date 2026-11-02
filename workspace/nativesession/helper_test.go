@@ -21,8 +21,13 @@ func TestAssignedNativeSessionStreamsOnlyItsJournalAndRefusesForeignPaths(t *tes
 	if err := os.WriteFile(table, []byte(`{"slots":{"slot01":"owner","slot02":"other"}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := slots.ExecConfig{SlotStateRoot: root, SlotTable: table}
+	cfg := slots.ExecConfig{SlotStateRoot: root, SlotTable: table, NativeOwners: map[string]string{"slot01": "owner", "slot02": "other"}}
 	req := slots.NativeSessionRequest{OwnerID: "owner", RuntimeID: strings.Repeat("1", 64), SessionID: "11111111-1111-4111-8111-111111111111", Operation: "export", Transport: "sdk"}
+	// The private master table is unavailable to the assigned account. The
+	// helper must rely on the root-owned readable config projection instead.
+	if err := os.Remove(table); err != nil {
+		t.Fatal(err)
+	}
 	runtime, err := req.NativeRuntime(cfg, "slot01")
 	if err != nil {
 		t.Fatal(err)
