@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"os/exec"
@@ -749,7 +750,11 @@ func pluginAttachmentStatus(out agentworksclient.LocalBridgeReply) string {
 		}
 		return text + " Native live delivery is selected."
 	}
-	return text + " Connected. Messages arrive when you next send a message in this chat or when a turn ends; live delivery is not available for this app yet."
+	text += " Connected. Messages arrive when you next send a message in this chat or when a turn ends; live delivery is not available for this app yet."
+	if reason := nativeRouteReason(); reason != "" && out.Attachment.Provider == "codex" {
+		text += " Live delivery was not selected because: " + reason
+	}
+	return text
 }
 
 func discoverNativeRemote(provider, session, hostKey string) string {
@@ -798,6 +803,32 @@ func discoverNativeRemote(provider, session, hostKey string) string {
 }
 
 // Refresh only within the approved process/session. A new process key requires person resume.
+// lastNativeRouteReason keeps why the last Windows Codex route check found no
+// live route, so the attach reply can say it once (PLAT-856-500: no blind step).
+var lastNativeRouteReason struct {
+	sync.Mutex
+	text string
+}
+
+func setNativeRouteReason(text string) {
+	lastNativeRouteReason.Lock()
+	lastNativeRouteReason.text = text
+	lastNativeRouteReason.Unlock()
+}
+
+func nativeRouteReason() string {
+	lastNativeRouteReason.Lock()
+	defer lastNativeRouteReason.Unlock()
+	return lastNativeRouteReason.text
+}
+
+// windowsRouteRefused logs and keeps the reason; the caller gets no route.
+func windowsRouteRefused(reason string) string {
+	log.Printf("[BRIDGE-ROUTE] provider=codex transport=desktop_pipe outcome=refused reason=%q", reason)
+	setNativeRouteReason(reason)
+	return ""
+}
+
 func refreshNativeRoute(provider, session, hostKey, remote string) string {
 	if hostKey == "" {
 		return ""
@@ -828,12 +859,16 @@ func refreshNativeRoute(provider, session, hostKey, remote string) string {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if actual, err := codexDesktopProcessHost(ctx, remote); err != nil || actual != hostKey {
-			return ""
+		actual, err := codexDesktopProcessHost(ctx, remote)
+		switch {
+		case err != nil:
+			return windowsRouteRefused(err.Error())
+		case actual != hostKey:
+			return windowsRouteRefused("the Codex core under the desktop pipe is not this chat's Codex process")
+		case recovering && !codexDesktopOwnerReady(ctx, remote, session):
+			return windowsRouteRefused("the Codex app did not confirm this chat as its own")
 		}
-		if recovering && !codexDesktopOwnerReady(ctx, remote, session) {
-			return ""
-		}
+		setNativeRouteReason("")
 		return remote
 	}
 	recovering := remote == ""
