@@ -258,7 +258,7 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 		if e != nil || b == nil || b.Side != "local" {
 			return
 		}
-		if b.Mode == "manual" {
+		if b.Mode == "manual" || b.Mode == "off" {
 			continue
 		}
 		checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)

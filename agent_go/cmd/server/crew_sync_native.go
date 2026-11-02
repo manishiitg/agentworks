@@ -180,7 +180,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	}
 	binding, err := crewroot.ReadSync(roots.ID)
 	direction := r.URL.Query().Get("direction")
-	if err != nil || binding == nil || binding.Side != "server" || binding.PairID != r.URL.Query().Get("pair") || (direction != "push" && direction != "pull") || (direction == "push" && binding.Editing != "local") {
+	if err != nil || binding == nil || binding.Mode == "off" || binding.Side != "server" || binding.PairID != r.URL.Query().Get("pair") || (direction != "push" && direction != "pull") || (direction == "push" && binding.Editing != "local") {
 		externalError(w, 409, "native_sync_unavailable", "Use the project's current sync connection.")
 		return
 	}
@@ -193,7 +193,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	}
 	binding, err = crewroot.ReadSync(roots.ID)
 	unlock()
-	if err != nil || binding == nil || binding.PairID != r.URL.Query().Get("pair") || (direction == "push" && binding.Editing != "local") {
+	if err != nil || binding == nil || binding.Mode == "off" || binding.PairID != r.URL.Query().Get("pair") || (direction == "push" && binding.Editing != "local") {
 		externalError(w, 409, "native_sync_unavailable", "The active computer changed; sync again.")
 		return
 	}
@@ -291,6 +291,9 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 }
 
 func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *sessiontransfer.Bundle, upload bool) error {
+	if err := crewSyncOn(roots.ID); err != nil {
+		return err
+	}
 	if b == nil {
 		return nil
 	}

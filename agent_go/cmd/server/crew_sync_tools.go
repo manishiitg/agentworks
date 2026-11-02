@@ -33,8 +33,8 @@ func (api *StreamingAPI) pairedCrewSyncAction(w http.ResponseWriter, r *http.Req
 		externalJSON(w, out)
 		return
 	}
-	if action != "update" && action != "server" && action != "local" {
-		externalError(w, 400, "invalid_action", "Choose status, update, server or local.")
+	if action != "update" && action != "server" && action != "local" && action != "off" && action != "on" {
+		externalError(w, 400, "invalid_action", "Choose status, update, server, local, off or on.")
 		return
 	}
 	binding, err := crewroot.ReadSync(roots.ID)
@@ -42,7 +42,15 @@ func (api *StreamingAPI) pairedCrewSyncAction(w http.ResponseWriter, r *http.Req
 		externalError(w, 409, "pair_first", "Open the local Crew in the Mac app and choose its server in Project sync.")
 		return
 	}
-	data, _ := json.Marshal(map[string]string{"action": action})
+	input := map[string]string{"action": action}
+	if action == "off" || action == "on" {
+		input["action"] = "mode"
+		input["mode"] = "off"
+		if action == "on" {
+			input["mode"] = "continuous"
+		}
+	}
+	data, _ := json.Marshal(input)
 	request := r.Clone(r.Context())
 	request.Method = http.MethodPost
 	request.Body = io.NopCloser(bytes.NewReader(data))
@@ -58,7 +66,7 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 		return err
 	}
 	gate.Declare("manage_crew_sync")
-	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "Inspect this Crew's server sync or explicitly update its server copy and move editing. Turn on Cloud once for this Crew in the Mac app. action=status, update, server (Work on server), local (Work on this Mac). Uses only the owner's saved paired connection; moves your own main conversation; logins stay on each computer. Handoff requires existing project turns to finish first.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "update", "server", "local"}}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
+	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "Inspect this Crew's server sync or explicitly update its server copy and move editing. Turn on Cloud once for this Crew in the Mac app. action=off (keep both copies), on (resume sync), status, update, server (Work on server), local (Work on this Mac). Uses only the owner's saved paired connection; moves your own main conversation; logins stay on each computer. Handoff requires existing project turns to finish first.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "update", "server", "local", "off", "on"}}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller, err := api.interactiveLaptopOwner(ctx, claims, sessionID, root)
 		if err != nil {
 			return "", err
