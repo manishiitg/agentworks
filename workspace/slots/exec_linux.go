@@ -248,7 +248,9 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 		if os.Getppid() == 1 {
 			return 125 // the parent is already gone
 		}
-		moveToAppScope(os.Getpid())
+		if !moveToAppScope(os.Getpid()) {
+			fmt.Fprintln(stderr, "slotctl: note: the app scope was not ready; starting in the current group")
+		}
 	}
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(stderr, "slotctl: could not start: %v\n", err)
@@ -321,11 +323,11 @@ const BusctlPath = "/usr/bin/busctl"
 // The program keeps its process group, sandbox and stop handling; only its cgroup moves out of the platform service, so a program it detached (setsid, nohup, pm2, docker -d) keeps
 // running when the platform restarts. The slot can list them with systemctl --user list-units 'aw-app-*'.
 // Best effort and never a second start: on failure the program simply runs as before.
-func moveToAppScope(pid int) {
+func moveToAppScope(pid int) bool {
 	uid := strconv.Itoa(os.Getuid())
 	runtimeDir := "/run/user/" + uid
 	if _, err := os.Stat(filepath.Join(runtimeDir, "bus")); err != nil {
-		return
+		return false
 	}
 	unit := fmt.Sprintf("aw-app-%d.scope", pid) // pid is slotctl's own, so one scope per launch
 	cmd := exec.Command(BusctlPath, "--user", "--quiet", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
@@ -336,7 +338,7 @@ func moveToAppScope(pid int) {
 		"0")
 	cmd.Env = []string{"XDG_RUNTIME_DIR=" + runtimeDir, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join(runtimeDir, "bus")}
 	if cmd.Run() != nil {
-		return
+		return false
 	}
 	// StartTransientUnit only queues the job: the move lands a moment later. A program started before then stayed in
 	// the platform service (seen live: slotctl in aw-app-<pid>.scope, Cursor's runner it started still in the
@@ -344,7 +346,8 @@ func moveToAppScope(pid int) {
 	self := fmt.Sprintf("/proc/%d/cgroup", pid)
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
 		if data, err := os.ReadFile(self); err == nil && strings.Contains(string(data), "/"+unit) {
-			return
+			return true
 		}
 	}
+	return false
 }
