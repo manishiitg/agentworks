@@ -142,6 +142,14 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				}
 			}
 			write(local.Files, "note.txt", "local work")
+			// PLAT-856-509: an empty Git index must roundtrip without requiring
+			// a zero-byte upload that the binary-piece endpoint cannot send.
+			for _, args := range [][]string{{"init", "-b", "main"}, {"add", "note.txt"}, {"-c", "user.name=Example", "-c", "user.email=owner@example.com", "commit", "-m", "initial"}} {
+				cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", local.Files}, args...)...)
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("initial Git repository: %v %s", err, out)
+				}
+			}
 			write(local.Resources, "skills/example/SKILL.md", "Useful skill")
 			write(local.Files, ".env", "API_KEY=example")
 			write(local.Files, ".cache/state", "keep private")
