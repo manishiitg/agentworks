@@ -337,6 +337,28 @@ func TestCrewSyncServerFirstHTTPIdentityAndOwner(t *testing.T) {
 			if len(all) != 1 {
 				t.Fatal("duplicate local project")
 			}
+			// PR670: opening an already admitted copy must not erase an
+			// upload receipt waiting to replay after its response was lost.
+			original, err := crewroot.ReadSync(source.ProjectID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pending := *original
+			pending.PendingAction = "server"
+			pending.Editing = "local"
+			pending.LastTransfer = "retained-upload"
+			if err := crewroot.WriteSync(source.ProjectID, pending); err != nil {
+				t.Fatal(err)
+			}
+			if reopened := open(occupied); reopened.Code != 200 {
+				t.Fatalf("open pending copy: %d %s", reopened.Code, reopened.Body)
+			}
+			if retained, err := crewroot.ReadSync(source.ProjectID); err != nil || retained == nil || *retained != pending {
+				t.Fatalf("opening erased interrupted transfer state: %+v %v", retained, err)
+			}
+			if err := crewroot.WriteSync(source.ProjectID, *original); err != nil {
+				t.Fatal(err)
+			}
 			// The owner's second Mac has the same saved server account, but
 			// no locally admitted receipt. Server status isn't a new pairing.
 			stateA := os.Getenv("AGENTWORKS_STATE_ROOT")

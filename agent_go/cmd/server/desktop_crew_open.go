@@ -170,6 +170,10 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 		if remote.Binding == nil || remote.Binding.PairID != binding.PairID {
 			return nil, fmt.Errorf("the existing local copy no longer matches this server; reconnect its original project")
 		}
+		if binding.PendingAction != "" {
+			out.Notice = "Open Project sync on this Mac and choose Finish interrupted transfer before continuing."
+			return out, nil
+		}
 		if inspect || (binding.PendingAction == "" && readCrewSourceProject(project) != nil) {
 			return out, nil
 		}
@@ -219,13 +223,18 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 	}
 	macName, _ := os.Hostname()
 	binding := crewroot.SyncBinding{PairID: pair, Side: "local", Editing: "server", ConnectionID: connection.ID, PeerProjectID: project, PeerServer: connection.Server, MacName: macName}
+	if localPair != nil {
+		binding = *localPair
+	}
 	if remote.Binding != nil {
 		binding.SplitFiles = remote.Binding.SplitFiles
 	}
 	// Save the admitted attempt before the RPC: a lost server response must
 	// remain retryable on this Mac without admitting a second Mac.
-	if err := crewroot.WriteSync(project, binding); err != nil {
-		return nil, err
+	if localPair == nil {
+		if err := crewroot.WriteSync(project, binding); err != nil {
+			return nil, err
+		}
 	}
 	remote, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, crewSyncRequest{Action: "pair", PairID: pair, SourceID: project, MacName: macName})
 	if err != nil {
