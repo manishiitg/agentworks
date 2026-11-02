@@ -41,6 +41,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const connections = useConnectedWorkStore(connectedLocations)
   const currentConnection = hasDesktopConnections() && connections.length > 1 ? connections.find(connection => connection.id === server) : undefined
   const scope = `${server}:${user?.id || ''}`
+  const [personalAgent, setPersonalAgent] = useState<{ scope: string; id: string }>()
+  const onPersonalAgent = useCallback((id: string) => setPersonalAgent({ scope, id }), [scope])
   const prompt = useRef<HTMLTextAreaElement>(null)
   const mic = useRef<MicButtonHandle>(null)
   const micState = useRef<MicState>('idle')
@@ -182,14 +184,14 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
                 </span>
                 AI accounts
               </Button>
-              <HomeAgentModel key={scope} />
+              <HomeAgentModel key={scope} onPersonalAgent={onPersonalAgent} />
             </div>
           </section>} />}</div>
         </section>
 
         {products.some(product => product.id === 'bullpen') && <div className="mx-auto w-full max-w-3xl"><HomeConnectedAgents key={scope} /></div>}
 
-        {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} />}
+        {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} personalAgentId={personalAgent?.scope === scope ? personalAgent.id : undefined} />}
 
         {setupOpen && <LocalSetup onClose={closeSetup} />}
 

@@ -9,7 +9,7 @@ import { openSidebarProject, SidebarProjectRow } from './workspace/SidebarServer
 import { openConnectedServers } from './workspace/ConnectedServersMenuItem'
 
 /** Reuse admitted navigation metadata; never fetch another server's conversations for Home. */
-export function ConnectedHomeRecentWork() {
+export function ConnectedHomeRecentWork({ personalAgentId }: { personalAgentId?: string }) {
   const state = useConnectedWorkStore()
   const connections = connectedLocations(state)
   const current = isChatIdentityCurrent(state.identity)
@@ -20,7 +20,7 @@ export function ConnectedHomeRecentWork() {
   const [error, setError] = useState('')
   useEffect(() => { void state.refresh() }, [state.refresh])
   const directory = new Map(connections.flatMap(connection => inventory[connection.id]?.status === 'connected'
-    ? inventory[connection.id].projects.map(project => [connectedProjectKey(connection.id, project.kind, project.id), { project, connection }] as const) : []))
+    ? inventory[connection.id].projects.filter(project => !(connection.id === getRawActiveWorkspaceId() && project.kind === 'crew' && project.id === personalAgentId)).map(project => [connectedProjectKey(connection.id, project.kind, project.id), { project, connection }] as const) : []))
   // Only actual visits belong in Recent work. Never fill it with alphabetic directory entries.
   const rows = (recent || []).flatMap(key => directory.has(key) ? [{ key, ...directory.get(key)! }] : []).slice(0, 8)
   const loading = !current || !state.loaded || connections.some(connection => !inventory[connection.id])

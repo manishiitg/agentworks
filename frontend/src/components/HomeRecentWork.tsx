@@ -17,11 +17,11 @@ import { ProductSurfaceIcon } from './ProductSurfaceIcon'
 import { hasDesktopConnections } from '../stores/useConnectedWorkStore'
 import { ConnectedHomeRecentWork } from './ConnectedHomeRecentWork'
 
-export function HomeRecentWork() {
-  return hasDesktopConnections() ? <ConnectedHomeRecentWork /> : <CurrentHomeRecentWork />
+export function HomeRecentWork({ personalAgentId }: { personalAgentId?: string } = {}) {
+  return hasDesktopConnections() ? <ConnectedHomeRecentWork personalAgentId={personalAgentId} /> : <CurrentHomeRecentWork personalAgentId={personalAgentId} />
 }
 
-function CurrentHomeRecentWork() {
+function CurrentHomeRecentWork({ personalAgentId }: { personalAgentId?: string }) {
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${server}:${user?.id || ''}`
@@ -52,13 +52,13 @@ function CurrentHomeRecentWork() {
     if (!current) return []
     const chats = sidebarChats({ tabs, active, recent: current.recent, projects: current.projects, projectInventoryKnown: current.inventoryKnown, presets, allowed, allowedWorkflowIds: user?.allowed_workflow_ids })
     return sidebarWorkspaceGroups(chats, current.projects, presets, true).flatMap(group => {
-      if (!['work', 'agentworks', 'relays'].includes(group.surface)) return []
+      if (!['work', 'agentworks', 'relays'].includes(group.surface) || group.id === `work:${personalAgentId}`) return []
       const row = group.chats.find(item => item.projectId || item.workflowId)
       const project = current.projects.find(item => `${item.surface}:${item.id}` === group.id)
       const id = row?.projectId || row?.workflowId || project?.id
       return id ? [{ ...group, href: productRoutePath({ surface: group.surface, id }), waiting: group.chats.some(item => item.waiting) }] : []
     })
-  }, [current, tabs, active, presets, allowed.join('|'), user?.allowed_workflow_ids])
+  }, [current, tabs, active, presets, allowed.join('|'), user?.allowed_workflow_ids, personalAgentId])
   const canSearch = rows.length > 20
   const filter = canSearch ? query.trim().toLocaleLowerCase() : ''
   useEffect(() => { if (!canSearch) setQuery('') }, [canSearch])
