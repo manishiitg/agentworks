@@ -165,6 +165,11 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 	session, stop := context.WithCancel(ctx)
 	defer stop()
 	defer conn.Close()
+	// Stopping (app quit, last Crew removed) closes the socket now, not after the read timeout.
+	go func() {
+		<-session.Done()
+		_ = conn.Close()
+	}()
 	conn.SetReadLimit(4 << 20)
 	var writeMu sync.Mutex
 	send := func(msg crewRelayMessage) error {
