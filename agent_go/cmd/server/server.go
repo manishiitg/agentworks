@@ -6614,9 +6614,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					common.SetSessionRunOutputPath(sessionID, crewRunOutput)
 					common.ReplaceSessionShellEnvPrefix(sessionID, crewOutputDirEnv, crewOutputFolderEnv(firstNonEmptyString(crewRunOutput, ownerOutput)))
 					common.ReplaceSessionShellEnvPrefix(sessionID, crewRunDirEnv, crewOutputFolderEnv(firstNonEmptyString(crewRunOutput, ownerOutput)))
-					// Ports people can open from outside, for apps a Crew keeps running (PLAT-856-506).
-					if ports := strings.TrimSpace(os.Getenv("AGENTWORKS_APP_PORTS")); ports != "" {
-						common.ReplaceSessionShellEnvPrefix(sessionID, "AGENTWORKS_APP_PORTS", map[string]string{"AGENTWORKS_APP_PORTS": ports})
+					// PLAT-856-506: apps a Crew keeps running.
+					// Ports people can open from outside and the per-person limit apps share, from the server's settings.
+					for _, name := range []string{"AGENTWORKS_APP_PORTS", "AGENTWORKS_APP_LIMITS"} {
+						if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+							common.ReplaceSessionShellEnvPrefix(sessionID, name, map[string]string{name: value})
+						}
 					}
 					// Brain's chat: a person who owns the whole Brain also works in Brain's folder with a shell and git,
 					// like any product's folder (PLAT-633); everyone else stays in their own Brain chat folder.
