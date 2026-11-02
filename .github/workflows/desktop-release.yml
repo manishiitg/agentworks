@@ -66,11 +66,13 @@ jobs:
           cd frontend
           npm ci
 
-      - name: Test Frontend Performance Contracts
+      # Full frontend coverage stays in frontend-ci.yml. Packaging checks the
+      # install/onboarding path here, then performs the complete production build.
+      - name: Test desktop onboarding
         run: |
           set -euo pipefail
           cd frontend
-          npm test
+          npm test -- src/components/WelcomeHome.test.tsx src/components/HomeAgentModel.test.tsx src/products/work/CreateCrewWizard.test.tsx src/products/work/crewOnboarding.test.ts
 
       - name: Build Frontend Static Assets
         env:
@@ -191,11 +193,13 @@ jobs:
           cd frontend
           npm ci
 
-      - name: Test Frontend Performance Contracts
+      # Full frontend coverage stays in frontend-ci.yml. Packaging checks the
+      # install/onboarding path here, then performs the complete production build.
+      - name: Test desktop onboarding
         run: |
           set -euo pipefail
           cd frontend
-          npm test
+          npm test -- src/components/WelcomeHome.test.tsx src/components/HomeAgentModel.test.tsx src/products/work/CreateCrewWizard.test.tsx src/products/work/crewOnboarding.test.ts
 
       - name: Build Frontend Static Assets
         env:
