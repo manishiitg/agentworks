@@ -287,3 +287,36 @@ func TestIncludedConfigSymlinkedGitDirAndBadConfigDoNotRunCommands(t *testing.T)
 		}
 	})
 }
+
+// PLAT-874: Windows snapshot capture refused its own Git config because Git's
+// line output quotes backslashes. Preserve literal origins without admitting
+// included config outside the private store.
+func TestPrivateStoreConfigOriginsRemainLiteralAndConfined(t *testing.T) {
+	root := t.TempDir()
+	name := "private\\store.git"
+	if os.PathSeparator == '\\' {
+		name = "private-store.git" // Windows's normal path separators trigger quoting.
+	}
+	gitDir := filepath.Join(t.TempDir(), name)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Env = env()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	run("init", "--bare", "--quiet", "--template=", gitDir)
+	index := filepath.Join(t.TempDir(), "index")
+	if out, err := PrivateStore(t.Context(), root, gitDir, root, index, "rev-parse", "--show-toplevel").CombinedOutput(); err != nil {
+		t.Fatalf("refused the private store's literal config path: %v %s", err, out)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.cfg")
+	if err := os.WriteFile(outside, []byte("[filter \"external\"]\n\tclean = false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run("--git-dir", gitDir, "config", "include.path", outside)
+	if err := PrivateStore(t.Context(), root, gitDir, root, index, "rev-parse", "--show-toplevel").Run(); err == nil {
+		t.Fatal("admitted an included config outside the private store")
+	}
+}
