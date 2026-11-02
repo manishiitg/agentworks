@@ -115,6 +115,7 @@ while p not in ("/", ""):
   # The one program the service account may run as a slot.
   install -d -o root -g root -m 0755 "$(dirname "$LIBEXEC")" "$LIBEXEC"
   install -o root -g root -m 0755 "$slotctl_src" "$LIBEXEC/slotctl"
+  install -o root -g root -m 0755 "$(dirname "$slotctl_src")/native-session" "$LIBEXEC/native-session"
   install -d -o root -g "$PRODUCT" -m 0750 "$ETC"
   # A product's folder below /etc/agentworks is only reachable if every parent is searchable: /etc/agentworks
   # belongs to the first product's group (server B's agents, 0750), which would hide another product's folder

@@ -1,8 +1,9 @@
 module github.com/manishiitg/coding-agent-loop/workspace
 
-go 1.25.0
+go 1.25.12
 
 require (
+	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261101195916-cda25222f13d
 	github.com/creack/pty v1.1.24
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-gonic/gin v1.12.0
