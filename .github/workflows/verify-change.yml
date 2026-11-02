@@ -321,6 +321,21 @@ jobs:
         run: |
           go build -o agentworks.exe ./cmd/agentworks
           ./agentworks.exe version
+      # Windows desktop app (owner go, 2 Nov 2026): the same local servers the Mac app bundles,
+      # built natively for Windows. Opt-in with "Verify-Windows-Servers: true" in the commit.
+      - name: Build the local servers for Windows
+        if: "contains(github.event.head_commit.message, 'Verify-Windows-Servers: true')"
+        shell: bash
+        env:
+          GOWORK: "off"
+        run: |
+          mkdir -p windows-artifacts
+          # Every compile error at once (-e), and both servers even if the first fails.
+          status=0
+          (cd agent_go && CGO_ENABLED=1 go build -gcflags=all=-e -tags novoice -o ../windows-artifacts/agent-server.exe .) || status=1
+          (cd workspace && go build -gcflags=all=-e -o ../windows-artifacts/workspace-server.exe .) || status=1
+          ls -l windows-artifacts
+          exit $status
       - name: Windows tests named in the commit
         shell: bash
         env:
