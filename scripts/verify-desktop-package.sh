@@ -11,7 +11,7 @@ MINIMUM="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Cont
 printf 'Packaged %s app requires macOS %s or later\n' "$ARCH" "$MINIMUM"
 while IFS= read -r -d '' binary; do
   if file -b "$binary" | grep -q 'Mach-O'; then
-    lipo -verify_arch "$CPU" "$binary"
+    lipo "$binary" -verify_arch "$CPU"
   fi
 done < <(find "$APP" -type f -print0)
 STAGE="$(mktemp -d -t agentworks-dmg-smoke)"

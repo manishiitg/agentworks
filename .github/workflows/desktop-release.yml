@@ -32,6 +32,8 @@ jobs:
             arch: x64
             goarch: amd64
     runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '12.0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -74,7 +76,6 @@ jobs:
           GOOS=darwin GOARCH='${{ matrix.goarch }}' go build -o ../desktop/resources/workspace-server .
       - name: Bundle native CLI and platform helpers
         run: |
-          brew list tmux >/dev/null 2>&1 || brew install tmux
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/v}"; fi
           bash scripts/build-desktop-helpers.sh
       - name: Test combined installer and updater
