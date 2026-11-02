@@ -239,12 +239,20 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 		policyWriter = writer
 		defer reader.Close()
 	}
+	if req.Argv[0] != TmuxPath && req.Argv[0] != ChmodPath {
+		// slotctl enters the scope itself before it starts the program, so the program and everything it starts are
+		// born there. Moving only the started pid lost a race: a launcher that forks at once (Cursor's SDK runner) left
+		// its children, and so the apps they started, in the platform service (PLAT-856-506). slotctl still dies with
+		// its parent (sudo, in the service), and the program with slotctl.
+		_ = unix.Prctl(unix.PR_SET_PDEATHSIG, uintptr(syscall.SIGKILL), 0, 0, 0)
+		if os.Getppid() == 1 {
+			return 125 // the parent is already gone
+		}
+		moveToAppScope(os.Getpid())
+	}
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(stderr, "slotctl: could not start: %v\n", err)
 		return 127
-	}
-	if req.Argv[0] != TmuxPath && req.Argv[0] != ChmodPath {
-		moveToAppScope(cmd.Process.Pid)
 	}
 	if policyWriter != nil {
 		go func() {
@@ -319,7 +327,7 @@ func moveToAppScope(pid int) {
 	if _, err := os.Stat(filepath.Join(runtimeDir, "bus")); err != nil {
 		return
 	}
-	unit := fmt.Sprintf("aw-app-%d.scope", pid)
+	unit := fmt.Sprintf("aw-app-%d.scope", pid) // pid is slotctl's own, so one scope per launch
 	cmd := exec.Command(BusctlPath, "--user", "--quiet", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
 		"org.freedesktop.systemd1.Manager", "StartTransientUnit", "ssa(sv)a(sa(sv))", unit, "fail", "3",
 		"PIDs", "au", "1", strconv.Itoa(pid),
