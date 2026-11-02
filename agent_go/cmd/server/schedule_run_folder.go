@@ -4,13 +4,13 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"io/fs"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -52,10 +52,10 @@ func allocateImmutableRunFolder(workspace, runID, suffix, markerName string) (st
 		return "", err
 	}
 	defer allocationLock.Close()
-	if err := syscall.Flock(int(allocationLock.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockProjectFile(allocationLock); err != nil {
 		return "", err
 	}
-	defer syscall.Flock(int(allocationLock.Fd()), syscall.LOCK_UN)
+	defer filelock.Unlock(allocationLock)
 	if err = root.MkdirAll("runs", 0700); err != nil {
 		return "", err
 	}

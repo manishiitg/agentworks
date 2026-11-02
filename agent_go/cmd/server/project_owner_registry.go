@@ -10,9 +10,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 )
 
 // PLAT-449: who owns a Crew or a Code is SERVER-CONTROLLED metadata, kept where neither a user nor an agent turn can
@@ -393,15 +394,15 @@ func (r *projectOwnerRegistry) modify(fn func(map[string]projectOwnerRecord) (bo
 	if err := os.MkdirAll(r.dir, 0o700); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(filepath.Join(r.dir, ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	lock, err := openProjectOwnerLock(filepath.Join(r.dir, ".lock"))
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockProjectFile(lock); err != nil {
 		return err
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer filelock.Unlock(lock)
 
 	// Read fresh under the lock (the cache may be behind another process's write).
 	r.mu.Lock()
