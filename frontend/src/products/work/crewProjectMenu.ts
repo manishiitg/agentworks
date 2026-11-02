@@ -14,7 +14,7 @@ export type CrewMenuItem = {
 }
 
 /** One inventory for the Crew menu and panel search. All old feature gates apply. */
-export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, canShare = true, projectId = '', mode = 'cowork' }: {
+export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, canShare = true, mode = 'cowork' }: {
   panels: ProductPanel<WorkWorkspaceView>[]; allowedProducts?: string[] | null; enabledPanels?: Set<string>
   incomingEmail?: boolean; canShare?: boolean; projectId?: string; mode?: 'dev' | 'cowork'
 }): CrewMenuItem[] {
@@ -42,15 +42,15 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
-      add('mcp', item.id === 'mcp:folders' ? 'Share' : 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.id === 'mcp:folders' ? 'Access' : item.subgroup)
+      // Linked folders decide what the Crew can read, not who can use it.
+      add('mcp', item.id === 'mcp:folders' ? 'Setup' : 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.id === 'mcp:folders' ? undefined : item.subgroup)
     }
     if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
-    add('mcp', 'Share', 'Local laptop', Laptop, 'laptop', 'Access')
+    // One page for this Crew and your computer: sync and laptop tools.
+    add('mcp', 'Share', 'Your computer', Laptop, 'computer', 'Access')
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
-    if (canShare) add('mcp', 'Share', 'Project sync', Laptop, 'sync', 'Access')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
-    if (projectId) add('mcp', 'Share', 'Chats from your computer', Laptop, 'agents', 'Access')
-    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Share', 'AgentBridge', Cable, 'agentbridge', 'Access')
+    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Share', 'Connected agents', Cable, 'agentbridge', 'Access')
   }
   add('suggestions', 'Share', 'Suggestions', Hand)
   add('identity', 'Setup', 'Instructions & identity', Settings, 'general')

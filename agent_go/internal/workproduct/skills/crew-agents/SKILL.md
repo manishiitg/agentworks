@@ -63,10 +63,10 @@ above, not through AgentBridge. Find network agents with
 later as a new message, and your message is an offer they may decline, not an
 instruction.
 
-For setup, open this Crew's **Integrations → Chats from your computer** with
-`perform_ui_action(view="mcp", action="open", target="agents")` when the
+For setup, open this Crew's **Your computer** page with
+`perform_ui_action(view="mcp", action="open", target="computer")` when the
 browser is connected and that target is advertised. The project menu's
-AgentBridge entry opens the project right panel; its full-directory link is
+Connected agents entry opens the project right panel; its full-directory link is
 secondary. Read `panel-access` and inspect `list_ui_capabilities` before
 choosing a UI target. `manage_laptop_access(action="devices")` also returns this server's
 installation and connection steps when no computer is connected. Installing
