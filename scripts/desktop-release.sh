@@ -167,22 +167,24 @@ notes_file="$(mktemp)"
 {
   echo "Desktop release $tag."
   echo
-  # Install through curl only: the app is not notarized, and macOS
-  # quarantines a browser download and then refuses to open it.
   cat <<INSTALL
 ## Install (macOS, Apple Silicon)
 
-Install from Terminal with \`curl\`. Do not download the DMG in a browser: AgentWorks is not notarized by Apple, so macOS blocks a browser-downloaded copy ("is damaged and can't be opened"). A curl download is not quarantined.
+Install the Mac app and bundled CLI:
 
 \`\`\`bash
-curl -fL -o /tmp/AgentWorks.dmg https://github.com/$REPO/releases/download/$tag/AgentWorks-$version-arm64.dmg
-hdiutil attach -nobrowse -quiet -mountpoint /tmp/agentworks-dmg /tmp/AgentWorks.dmg
-rm -rf /Applications/AgentWorks.app && cp -R /tmp/agentworks-dmg/AgentWorks.app /Applications/
-hdiutil detach -quiet /tmp/agentworks-dmg && rm /tmp/AgentWorks.dmg
-open /Applications/AgentWorks.app
+npx --yes @manishiitg/agentworks --version $tag
 \`\`\`
 
-Already installed? The app updates itself from this release.
+Without Node.js:
+
+\`\`\`bash
+curl -fsSL https://raw.githubusercontent.com/$REPO/$tag/install.sh | bash -s -- --version $tag
+\`\`\`
+
+This build is unsigned and not notarized by Apple. The installer checks the download checksum and clears quarantine on the installed app. Existing projects and sign-ins stay in place.
+
+Already installed? Use **Check for Updates** in AgentWorks, or quit the installed app and run \`npx --yes @manishiitg/agentworks update --version $tag\`.
 
 INSTALL
   if [[ -n "$previous_tag" ]]; then
