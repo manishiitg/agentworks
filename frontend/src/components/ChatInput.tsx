@@ -1563,6 +1563,22 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [inputText, adjustTextareaHeight, isProductSurface, terminalViewSelected])
 
+  // The height above follows the text, but a box measured while hidden (another tab open) or at another width keeps a
+  // wrong height: back on the tab, a long draft showed cut to one line. Fit again whenever its width changes, which
+  // includes becoming visible; height changes are ignored so fitting never feeds itself.
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea || typeof ResizeObserver === 'undefined') return
+    let width = textarea.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === width) return
+      width = textarea.clientWidth
+      if (width > 0 && textarea.value.trim()) adjustTextareaHeight()
+    })
+    observer.observe(textarea)
+    return () => observer.disconnect()
+  }, [adjustTextareaHeight])
+
   // Set initial height on mount
   useEffect(() => {
     if (textareaRef.current) {
