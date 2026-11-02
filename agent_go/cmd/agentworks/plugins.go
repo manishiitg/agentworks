@@ -1327,15 +1327,27 @@ func notifyPing(a agentworksclient.AgentAttachment, text string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	desktopNotify(ctx, a, text)
+	// One line per ping so a missing notification can be traced; never the text.
+	method, err := desktopNotify(ctx, a, text)
+	if err != nil {
+		log.Printf("[BRIDGE-PING] outcome=failed agent=%s attachment=%s method=%s error=%q", a.AgentName, a.ID, method, err.Error())
+		return
+	}
+	log.Printf("[BRIDGE-PING] outcome=shown agent=%s attachment=%s method=%s", a.AgentName, a.ID, method)
 }
 
-func desktopNotify(ctx context.Context, a agentworksclient.AgentAttachment, text string) {
-	if runtime.GOOS == "darwin" {
+// desktopNotify shows one notification and reports which way it went out:
+// "shown" means the OS accepted it, not that the person saw it (a person who
+// has not allowed notifications gets no banner).
+func desktopNotify(ctx context.Context, a agentworksclient.AgentAttachment, text string) (string, error) {
+	switch runtime.GOOS {
+	case "darwin":
 		// The AgentWorks app shows the AgentWorks icon; the rest are fallbacks.
-		if err := notifyWithIcon(text); err == nil {
-			return
+		iconErr := notifyWithIcon(text)
+		if iconErr == nil {
+			return "notifier_app", nil
 		}
+		log.Printf("[BRIDGE-PING] notifier app unavailable, trying fallbacks: %v", iconErr)
 		if helper, err := exec.LookPath("terminal-notifier"); err == nil {
 			args := []string{"-title", "AgentWorks", "-message", text, "-group", "agentworks-" + a.AgentName}
 			if a.Provider == "codex" {
@@ -1344,18 +1356,19 @@ func desktopNotify(ctx context.Context, a agentworksclient.AgentAttachment, text
 				}
 			}
 			if exec.CommandContext(ctx, helper, args...).Run() == nil {
-				return
+				return "terminal_notifier", nil
 			}
 		}
 		// Without the optional helper macOS attributes this basic alert to Script Editor.
 		// No click-through claim: the person must open their agent chat manually.
 		quoted, _ := json.Marshal(text)
-		_ = exec.CommandContext(ctx, "osascript", "-e", "display notification "+string(quoted)+" with title \"AgentWorks\"").Run()
-	} else if runtime.GOOS == "linux" {
-		_ = exec.CommandContext(ctx, "notify-send", "AgentWorks", text).Run()
-	} else if runtime.GOOS == "windows" {
-		_ = notifyWithIcon(text)
+		return "osascript", exec.CommandContext(ctx, "osascript", "-e", "display notification "+string(quoted)+" with title \"AgentWorks\"").Run()
+	case "linux":
+		return "notify_send", exec.CommandContext(ctx, "notify-send", "AgentWorks", text).Run()
+	case "windows":
+		return "windows_toast", notifyWithIcon(text)
 	}
+	return "none", errors.New("no desktop notifications on this system")
 }
 
 func providerPIDHostKey(provider string, pid int) (string, error) {
