@@ -9,6 +9,8 @@ export async function readEventStream(
   body: ReadableStream<Uint8Array>,
   signal: AbortSignal,
   onFrame: (frame: EventStreamFrame) => void,
+  /** Any bytes, comment heartbeats (": ping") included: the stream is alive. */
+  onActivity?: () => void,
 ): Promise<void> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
@@ -28,6 +30,7 @@ export async function readEventStream(
     while (!signal.aborted) {
       const { value, done } = await reader.read()
       if (done || signal.aborted) break
+      onActivity?.()
       buffer += decoder.decode(value, { stream: true })
       let nl: number
       while ((nl = buffer.indexOf('\n')) >= 0) {

@@ -167,7 +167,7 @@ export class SSEConnection {
             const cursor = Number.parseInt(id, 10)
             if (!Number.isNaN(cursor)) this.sinceIndex = cursor
           }
-        })
+        }, () => { this.activityAt = Date.now() })
         } finally { clearInterval(watchdog) }
         this.open = false
         if (this.closed) return
