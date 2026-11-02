@@ -22,6 +22,11 @@ func main() {
 		err = fmt.Errorf("account is outside this installation")
 	}
 	if err == nil {
+		// Provider filesystem helpers must use this installation's policy,
+		// never an environment value supplied by an invoking slot account.
+		err = os.Setenv(slots.EnvConfig, slots.ConfigBesideExecutable())
+	}
+	if err == nil {
 		err = nativesession.Run(os.Stdin, os.Stdout, cfg, me.Username)
 	}
 	if err != nil {
