@@ -13,6 +13,7 @@ import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { workspaceApi, agentApi } from '../../services/api'
 import { CodeCopyButton, codeBlockText } from './CodeCopyButton'
+import { MarkdownTable } from './MarkdownTable'
 import { ChatElementBlock, type ChatElementStream } from './ChatElement'
 
 const SyntaxHighlightedCode = lazy(() => import('./SyntaxHighlightedCode'))
@@ -1373,13 +1374,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
             )
           },
           hr: () => <hr className="my-6 border-gray-300 dark:border-gray-600" />,
-          table: ({ children }) => (
-            <div className="overflow-x-auto my-6 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-              <table className="min-w-full border-collapse">
-                {children}
-              </table>
-            </div>
-          ),
+          table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
           thead: ({ children }) => (
             <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
               {children}
