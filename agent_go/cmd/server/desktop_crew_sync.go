@@ -27,6 +27,13 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 		return
 	}
 	api.runDesktopCrewSync(w, r, true)
+	// Cloud on or off also adds or removes the server copy's access to this Crew's folder on the Mac (PLAT-856-501).
+	if r.Method == http.MethodPost {
+		claims := GetUserFromContext(r.Context())
+		if roots, err := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"]); err == nil {
+			go api.syncCloudLaptop(claims.UserID, roots)
+		}
+	}
 }
 
 func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Request, allowPair bool) {
