@@ -417,18 +417,15 @@ it('keeps a late file comparison on its original reply in both transcript views 
         expect(card.querySelector('[aria-label="Reply file names"]')?.textContent).toContain('report.md')
         expect(openReplyChanges).not.toHaveBeenCalled()
         expect(get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ snapshot_id: 'saved-first', session_id: 'files-session' }) }))
-        // PLAT-746-158: a saved card disappears when the project is Cowork,
-        // including after reopening old history; it does not fetch comparisons.
+        // PLAT-746-295: saved reply cards remain available in Cowork too.
         const priorTabs = useChatStore.getState().chatTabs
         try {
           await act(async () => {
             useChatStore.setState({ chatTabs: { ...priorTabs, 'files-tab': { sessionId: 'files-session', metadata: { agentProfileProjectId: 'snapshot-project' } } as ChatTab } })
             setProjectMode('snapshot-project', 'cowork')
           })
-          const requests = get.mock.calls.length
           await render([...history, late])
-          expect(host.querySelector('[aria-label="Reply changes"]')).toBeNull()
-          expect(get.mock.calls.length).toBe(requests)
+          expect(host.querySelector('[aria-label="Reply changes"]')).not.toBeNull()
           await act(async () => setProjectMode('snapshot-project', 'dev'))
           expect(host.querySelector('[aria-label="Reply changes"]')).not.toBeNull()
         } finally { await act(async () => useChatStore.setState({ chatTabs: priorTabs })) }

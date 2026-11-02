@@ -5,7 +5,6 @@ import { ArrowDownToLine, GitBranch, Github, MessageSquare, MoreHorizontal, Plus
 import api from '../../services/api'
 import { useReviewRevision, type ReviewResult } from '../workspace/chatFileReviewData'
 import { shownFilePath, type ReplyCardAction, type ReplyFileChangesRef, type ReplyFileGroup, type ReplyPullRequest } from '../../utils/replyFileChanges'
-import { useProjectMode } from '../../products/work/codeLocalFiles'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { openChatFiles, openReplyChanges } from '../workspace/chatFileNavigation'
@@ -72,11 +71,9 @@ const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: referen
 type ReplyCard = { groups: FileGroup[]; actions: ReplyCardAction[]; can_edit: boolean; note?: string }
 
 export function ReplyFileChanges({ reference, panel = false, showFiles = true }: { reference: ReplyFileChangesRef; panel?: boolean; showFiles?: boolean }) {
-  const mode = useProjectMode(reference.sessionId)
   const account = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = JSON.stringify([account, server, reference.workspacePath, reference.snapshotId, reference.historyScope, reference.checkoutId])
-  if (mode !== 'dev') return null
   if (reference.unavailable) return <p className="my-2 text-xs text-muted-foreground">{reference.unavailable}</p>
   return <ScopedFileChanges key={`${scope}:${panel}`} reference={reference} panel={panel} showFiles={showFiles} />
 }

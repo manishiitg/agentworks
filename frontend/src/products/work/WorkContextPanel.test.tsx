@@ -105,6 +105,8 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
   { id:'brief', title:'Project brief', path:'db/reports/brief.html', order:2, artifact:true },
  ]
  await render('cowork', async host => {
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('files', expect.stringContaining('reply:'))
   expect(host.textContent).not.toContain('Results')
   expect(host.textContent).not.toContain('Finished files')
   expect(host.querySelector('[aria-label="Dashboards"]')?.textContent).toBe('Dashboards3')
