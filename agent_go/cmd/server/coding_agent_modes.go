@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -114,12 +115,15 @@ func codingAgentTurnAttended(claims *UserClaims, req *QueryRequest, sessionID st
 func chatClaudeCodeTransport(ctx context.Context, owner, sessionID, carried string) string {
 	for _, candidate := range []string{owner, productWorkspaceUserID(ctx)} {
 		if tab, found := chatContextTabForSession(ctx, candidate, sessionID); found {
+			transport := llmproviders.ClaudeCodeTransportSDK
 			if tab.Identity.ClaudeTerminal {
-				return llmproviders.ClaudeCodeTransportTmux
+				transport = llmproviders.ClaudeCodeTransportTmux
 			}
-			return llmproviders.ClaudeCodeTransportSDK
+			log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=route transport=%s source=chat", sessionID, candidate, transport)
+			return transport
 		}
 	}
+	log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=route transport=%q source=request reason=no_saved_chat", sessionID, owner, carried)
 	return carried
 }
 
