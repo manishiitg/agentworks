@@ -13,13 +13,13 @@ type Binding = { connection_id?: string; peer_server?: string; peer_project_id: 
 type SyncStatus = { binding: Binding | null; auto?: { state: string; message?: string } }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
-/** In the Mac app a Crew is either online on a network or only on this Mac; on a server the page is its laptop access. */
-export const crewOnlineMode = () => hasDesktopConnections()
+/** In the Mac app a Crew is either in the cloud (on a network) or only on this Mac; on a server the page is its laptop access. */
+export const crewCloudMode = () => hasDesktopConnections()
 // Most people have one network, so its name is shown only when there are several.
 const networkName = (binding: Binding | null | undefined, connections: { id: string; name: string }[]) =>
   connections.filter(item => item.id !== 'local').length > 1 ? connections.find(item => item.id === binding?.connection_id)?.name || '' : ''
 
-/** The one-line answer for the main menu row: Online (with a small spinner while it syncs) or Off. */
+/** The one-line answer for the main menu row: Cloud on (with a small spinner while it syncs) or Off. */
 export function useYourComputerSummary(enabled: boolean, projectId?: string, profileId?: string): ReactNode {
   const connections = useConnectedWorkStore(state => state.connections)
   const [summary, setSummary] = useState<ReactNode>()
@@ -28,7 +28,7 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
     if (!enabled || !projectId) return
     const abort = new AbortController(), options = { signal: abort.signal, skipSessionContext: true }
     const load = () => {
-      const request: Promise<ReactNode> = crewOnlineMode()
+      const request: Promise<ReactNode> = crewCloudMode()
         ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => {
           if (!data.binding) return 'Off'
           const name = networkName(data.binding, connections)
@@ -40,14 +40,14 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
       void request.then(value => { if (!abort.signal.aborted) setSummary(value) }).catch(() => {})
     }
     load()
-    const timer = crewOnlineMode() ? window.setInterval(load, 4000) : undefined
+    const timer = crewCloudMode() ? window.setInterval(load, 4000) : undefined
     return () => { window.clearInterval(timer); abort.abort() }
   }, [enabled, projectId, profileId, connections])
   return summary
 }
 
 export function YourComputerPanel({ projectId, sessionId }: { projectId: string; sessionId?: string; canEdit: boolean }) {
-  return <div>{crewOnlineMode() ? <OnlineCard projectId={projectId} /> : <LaptopCard sessionId={sessionId} />}</div>
+  return <div>{crewCloudMode() ? <CloudCard projectId={projectId} /> : <LaptopCard sessionId={sessionId} />}</div>
 }
 
 function Switch({ on, disabled, label, onChange }: { on: boolean; disabled?: boolean; label: string; onChange: () => void }) {
@@ -57,7 +57,7 @@ function Switch({ on, disabled, label, onChange }: { on: boolean; disabled?: boo
   </button>
 }
 
-function OnlineCard({ projectId }: { projectId: string }) {
+function CloudCard({ projectId }: { projectId: string }) {
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [choice, setChoice] = useState('')
@@ -82,17 +82,17 @@ function OnlineCard({ projectId }: { projectId: string }) {
   }
   const problem = error || (status?.auto?.state && !['syncing', 'synced', 'idle'].includes(status.auto.state) ? status.auto.message || '' : '')
   const syncing = busy || status?.auto?.state === 'syncing'
-  return <section aria-label="Online" className="space-y-3">
+  return <section aria-label="Cloud" className="space-y-3">
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
         <p role="status" className="flex items-center gap-2 text-sm font-semibold">
           {syncing ? <RefreshCw aria-label="Syncing" className="h-4 w-4 animate-spin text-muted-foreground" /> : binding ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
-          {!status ? 'Checking…' : binding ? (network ? `Online on ${network}` : 'Online') : 'Only on this Mac'}
+          {!status ? 'Checking…' : binding ? (network ? `In the cloud on ${network}` : 'In the cloud') : 'Only on this Mac'}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use it from the website or your phone. It works here or on the network, with this project’s folder and terminal on this Mac.' : 'Turn on to use this Crew from anywhere.'}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone. It works here or in the cloud, with this project’s folder and terminal on this Mac.' : 'Turn on to use this Crew from the website or your phone.'}</p>
       </div>
       {/* Turning a Crew offline arrives with the server's stop-syncing step; until then the switch only turns it on. */}
-      <Switch on={Boolean(binding)} disabled={!status || busy || Boolean(binding) || !target} label="Online" onChange={() => void run('update')} />
+      <Switch on={Boolean(binding)} disabled={!status || busy || Boolean(binding) || !target} label="Cloud" onChange={() => void run('update')} />
     </div>
     {!binding && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => setChoice(event.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm">
       <option value="">Choose a network</option>

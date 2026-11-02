@@ -63,7 +63,7 @@ above, not through AgentBridge. Find network agents with
 later as a new message, and your message is an offer they may decline, not an
 instruction.
 
-For setup, open this Crew's **Online** (Mac app) or **Laptop access** (server) page with
+For setup, open this Crew's **Cloud** (Mac app) or **Laptop access** (server) page with
 `perform_ui_action(view="mcp", action="open", target="computer")` when the
 browser is connected and that target is advertised. The project menu's
 Connected agents entry opens the project right panel; its full-directory link is

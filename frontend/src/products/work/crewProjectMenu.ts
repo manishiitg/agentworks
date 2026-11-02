@@ -1,4 +1,4 @@
-import { BookOpen, Cable, Globe, Cpu, Database, DollarSign, Files, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cloud, Cpu, Database, DollarSign, Files, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -47,9 +47,9 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', item.id === 'mcp:folders' ? 'Setup' : 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.id === 'mcp:folders' ? undefined : item.subgroup)
     }
     if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
-    // In the Mac app a Crew is Online on a network or not (shown once a network is connected); on a server it is Laptop access.
+    // In the Mac app a Crew is in the Cloud (on a network) or not (shown once a network is connected); on a server it is Laptop access.
     if (!hasDesktopConnections()) add('mcp', 'Share', 'Laptop access', Laptop, 'computer', 'Access')
-    else if (useConnectedWorkStore.getState().connections.some(item => item.id !== 'local')) add('mcp', 'Share', 'Online', Globe, 'computer', 'Access')
+    else if (useConnectedWorkStore.getState().connections.some(item => item.id !== 'local')) add('mcp', 'Share', 'Cloud', Cloud, 'computer', 'Access')
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
     if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Share', 'Connected agents', Cable, 'agentbridge', 'Access')
