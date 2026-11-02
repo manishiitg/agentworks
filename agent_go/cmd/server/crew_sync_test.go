@@ -264,6 +264,8 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				release()
 				if _, e = api.crewHandoffMain(check, owner, local.ID); e != nil {
 					t.Errorf("chat unavailable during upload: %v", e)
+				} else {
+					t.Logf("[CREW_SYNC_PROOF] at=%s chat_open_during_upload=ok", time.Now().UTC().Format(time.RFC3339Nano))
 				}
 				write(local.Files, "saved-during-upload.txt", "newer work stays local until next capture")
 			}
@@ -290,12 +292,15 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			if got := probe("owner", "wrong-pair"); got.Code != 409 {
 				t.Fatalf("wrong pair piece: %d", got.Code)
+			} else {
+				t.Logf("[CREW_SYNC_PROOF] at=%s wrong_pair_status=%d", time.Now().UTC().Format(time.RFC3339Nano), got.Code)
 			}
 			got := probe("owner", upload.PairID)
 			offset, _ := strconv.ParseInt(got.Header().Get("Upload-Offset"), 10, 64)
 			if got.Code != 200 || offset != crewSyncPieceBytes {
 				t.Fatalf("saved offset: %d %d", got.Code, offset)
 			}
+			t.Logf("[CREW_SYNC_PROOF] at=%s interrupted_upload_saved_offset=%d", time.Now().UTC().Format(time.RFC3339Nano), offset)
 			// An independently edited destination is never overwritten at apply.
 			write(serverRoots.Files, "resumable.bin", "destination work")
 			if w = call("update", "owner", true); w.Code != 409 {
@@ -328,6 +333,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if digest(largePath) != digest(filepath.Join(serverRoots.Files, "resumable.bin")) {
 				t.Fatal("resumed bytes differ")
 			}
+			t.Logf("[CREW_SYNC_PROOF] at=%s resumed_upload=ok sha256_match=true", time.Now().UTC().Format(time.RFC3339Nano))
 			if _, e = os.Stat(filepath.Join(serverRoots.Files, "saved-during-upload.txt")); !os.IsNotExist(e) {
 				t.Fatal("acknowledged uncaptured newer work")
 			}
@@ -530,6 +536,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
 					if offset > 0 {
 						resumedDownload = true
+						t.Logf("[CREW_SYNC_PROOF] at=%s resumed_download_offset=%d", time.Now().UTC().Format(time.RFC3339Nano), offset)
 					}
 				}
 			}
@@ -540,6 +547,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if !resumedDownload || digest(largePath) != digest(filepath.Join(serverRoots.Files, "resumable.bin")) {
 				t.Fatal("download did not resume correct bytes")
 			}
+			t.Logf("[CREW_SYNC_PROOF] at=%s resumed_download=ok sha256_match=true", time.Now().UTC().Format(time.RFC3339Nano))
 			mirror, _ := crewroot.ReadSync(local.ID)
 			if mirror.Editing != "server" {
 				t.Fatal("background copy moved editing")
