@@ -48,9 +48,9 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	// A Crew whose owner holds a slot runs its CLI as that slot (PLAT-872-84), from the slot's state folder
 	// (slot_state_root/<slot>: the platform's and that slot's only, outside the documents; tmux already routes a
 	// session started there to the slot's own server). Otherwise the app's private state, as before.
-	// A slot without its state folder on this host keeps the app account, and so does a CLI whose server login
-	// would reach the slot as a file (see slotLoginFromEnv).
-	if slot, owner := crewOwnerSlot(folder); slot != "" && slotLoginFromEnv(provider) {
+	// A slot without its state folder on this host keeps the app account, and so does a CLI not yet moved to slots
+	// (see slotRunsProvider).
+	if slot, owner := crewOwnerSlot(folder); slot != "" && slotRunsProvider(provider) {
 		if state, stateErr := slots.StateDirFor(slot); stateErr == nil {
 			if info, statErr := os.Stat(state); statErr == nil && info.IsDir() {
 				stateRoot = state
@@ -206,17 +206,13 @@ func inSlotStateFolder(dir, slot string) bool {
 	return strings.HasPrefix(filepath.Clean(dir)+string(filepath.Separator), filepath.Clean(state)+string(filepath.Separator))
 }
 
-// slotLoginFromEnv reports whether provider's CLI can run as a person's slot with the server's shared login kept
-// off the slot's files: only Claude Code takes it from an environment variable (CLAUDE_CODE_OAUTH_TOKEN or
-// ANTHROPIC_API_KEY) and never writes it out. Codex writes an API key into its home's auth.json, and Cursor and Muse
-// keep file logins, which the CLI's shells could read; they stay on the app account until that changes (PLAT-872-84).
-func slotLoginFromEnv(provider string) bool {
+// slotRunsProvider reports whether provider's CLI runs as a person's slot (PLAT-872-86: Pi and Antigravity not yet).
+func slotRunsProvider(provider string) bool {
+	// The launcher gives the slot the server's own login (a file or the environment) and Landlock keeps it out of
+	// every shell the CLI starts (PLAT-872-84, PLAT-872-86).
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "claude-code":
-		return strings.TrimSpace(os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")) != "" || strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
-	case "codex-cli":
-		// Codex takes the server's key from CODEX_API_KEY, so no login file reaches the slot (PLAT-872-86).
-		return strings.TrimSpace(os.Getenv("CODEX_API_KEY")) != ""
+	case "claude-code", "codex-cli", "cursor-cli", "muse-cli":
+		return true
 	}
 	return false
 }
