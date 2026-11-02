@@ -766,8 +766,12 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			if loginFailure && b.recoverSessionLogin(ctx, s, &recovery) {
 				return // the replacement owns its own stream and native worker
 			}
+			// A refused stream is retried slowly, never abandoned while this chat is
+			// current: the native worker keeps reading, but without the stream each
+			// message waits for its 25 s timer (PLAT-856-273). Detach cancels streamCtx.
+			limit := 5 * time.Second
 			if !loginFailure && errors.As(err, &apiErr) && apiErr.Code != "agent_attachment_closed" && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 404) {
-				return
+				limit = 30 * time.Second
 			}
 			timer := time.NewTimer(backoff + time.Duration(rand.Intn(251))*time.Millisecond)
 			select {
@@ -776,7 +780,7 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 				return
 			case <-timer.C:
 			}
-			backoff = min(5*time.Second, backoff*2)
+			backoff = min(limit, backoff*2)
 		}
 	}()
 }

@@ -425,6 +425,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	}
 	a, _, err := currentAgentAttachment(r.Context(), claims, name, id)
 	if err != nil {
+		log.Printf("[AGENT-STREAM] refused agent_name=%q attachment=%s reason=%q", name, id, err.Error())
 		externalError(w, 403, "attachment_refused", "Exact attachment unavailable or access denied.")
 		return
 	}
