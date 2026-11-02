@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
-	"golang.org/x/sys/unix"
 )
 
 type brainResponseProbe struct {
@@ -53,14 +53,14 @@ func TestBrainCancellationAndUnavailableDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		t.Fatal(err)
+	if locked, err := filelock.TryLock(lock); err != nil || !locked {
+		t.Fatalf("could not hold content lock for cancellation case: locked=%t err=%v", locked, err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	w := &brainResponseProbe{header: http.Header{}}
 	api.handleKnowledgebaseViewer(w, request(ctx))
-	_ = unix.Flock(int(lock.Fd()), unix.LOCK_UN)
+	filelock.Unlock(lock)
 	if w.status != 0 || w.body.Len() != 0 || strings.Contains(logs.String(), "[KB_ERROR]") {
 		t.Fatalf("caller cancellation reported a service failure: status=%d body_bytes=%d logs=%s", w.status, w.body.Len(), logs.String())
 	}
