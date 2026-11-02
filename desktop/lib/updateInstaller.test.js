@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { prepareDesktopUpdate } = require('./updateInstaller');
+const { prepareDesktopUpdate, desktopUpdateAsset } = require('./updateInstaller');
 
 test('desktop update passes literal paths and an explicit update to the bundled installer', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentworks-update-test-'));
@@ -22,4 +22,11 @@ test('desktop update passes literal paths and an explicit update to the bundled 
     fs.rmSync(root, { recursive: true, force: true });
     if (staged) fs.rmSync(staged, { recursive: true, force: true });
   }
+});
+
+// PLAT-746-303: the updater previously sent every Mac the ARM-only app.
+test('Intel and Apple silicon updates select their own DMG', () => {
+  assert.equal(desktopUpdateAsset('1.2.3', 'x64'), 'AgentWorks-1.2.3-x64.dmg');
+  assert.equal(desktopUpdateAsset('1.2.3', 'arm64'), 'AgentWorks-1.2.3-arm64.dmg');
+  assert.throws(() => desktopUpdateAsset('1.2.3', 'ia32'));
 });

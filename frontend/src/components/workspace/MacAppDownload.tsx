@@ -35,7 +35,7 @@ export function MacAppDownload({ compact }: { compact: boolean }) {
       <code className="block break-words rounded-lg border border-border bg-background p-3 text-xs">{installer}</code>
       <button type="button" onClick={() => void copyInstaller()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 font-medium text-primary-foreground hover:bg-primary/90">{copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}{copied ? 'Copied' : 'Copy install command'}</button>
       {copyError && <p role="status" className="text-xs text-muted-foreground">Select the command above and copy it manually.</p>}
-      <p className="text-xs text-muted-foreground">Apple silicon · M1 or later</p>
+      <p className="text-xs text-muted-foreground">Intel and Apple silicon Macs</p>
       <p className="border-t border-border pt-3 text-xs text-muted-foreground">Already installed? Open AgentWorks from Applications.</p>
     </section>}
   </div>

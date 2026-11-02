@@ -47,7 +47,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ "$(uname -s)" = Darwin ] || die "The desktop installer currently supports macOS. The standalone CLI remains available from your server."
-[ "$(uname -m)" = arm64 ] || die "This release supports Apple Silicon Macs. Use the source development launcher on other architectures."
+case "$(uname -m)" in
+  arm64) ARCH=arm64 ;;
+  x86_64)
+    # A Rosetta Terminal reports x86_64 on Apple silicon; install the native app.
+    if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" = 1 ]; then ARCH=arm64; else ARCH=x64; fi ;;
+  *) die "This installer supports Intel and Apple silicon Macs." ;;
+esac
 case "$VERSION" in '') ;; *) [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Version must be vX.Y.Z" ;; esac
 mkdir -p "$APP_DIR" "$BIN_DIR" || die "Choose writable --app-dir and --bin-dir locations; no sudo is needed."
 APP_DIR="$(cd "$APP_DIR" && pwd -P)"
@@ -112,7 +118,7 @@ function run(args) {
 JXA
 )"
   fi
-  ASSET="AgentWorks-${VERSION#v}-arm64.dmg"
+  ASSET="AgentWorks-${VERSION#v}-${ARCH}.dmg"
   BASE="https://github.com/$REPO/releases/download/$VERSION"
   DMG="$STAGE/$ASSET"
   log "Downloading AgentWorks $VERSION"
@@ -122,7 +128,7 @@ fi
 if [ -z "$CHECKSUM" ]; then
   [ -n "$VERSION" ] || die "Local DMGs require --sha256-file."
   CHECKSUM="$STAGE/app.sha256"
-  curl -fsSL "https://github.com/$REPO/releases/download/$VERSION/AgentWorks-${VERSION#v}-arm64.dmg.sha256" -o "$CHECKSUM"
+  curl -fsSL "https://github.com/$REPO/releases/download/$VERSION/AgentWorks-${VERSION#v}-${ARCH}.dmg.sha256" -o "$CHECKSUM"
 fi
 [ -f "$CHECKSUM" ] || die "Checksum file not found: $CHECKSUM"
 EXPECTED="$(awk 'NR == 1 {print $1}' "$CHECKSUM")"

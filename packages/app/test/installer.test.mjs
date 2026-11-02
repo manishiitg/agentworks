@@ -11,7 +11,7 @@ const repo = fileURLToPath(new URL('../../../', import.meta.url));
 function run(command, args, options = {}) {
   return spawnSync(command, args, { encoding: 'utf8', timeout: 90_000, ...options });
 }
-test('PLAT-856-434: verified Mac install preserves standalone CLI and requires explicit update', { skip: process.platform !== 'darwin' || process.arch !== 'arm64' }, () => {
+test('PLAT-856-434: verified Mac install preserves standalone CLI and requires explicit update', { skip: process.platform !== 'darwin' }, () => {
   const root = mkdtempSync(join(tmpdir(), 'agentworks-installer-test-'));
   try {
     const source = join(root, 'source/AgentWorks.app');
@@ -86,5 +86,27 @@ test('development launcher forwards to the existing checkout without pulling or 
     const result = run(process.execPath, [join(repo, 'packages/app/bin/app.mjs'), 'dev', '--repo', root, '--only-frontend', '--help']);
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, '1\n--only-frontend\n--help\n');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// PLAT-746-303: download selection must follow hardware, including Rosetta.
+test('Mac installer selects separate DMG and checksum for Intel and Apple silicon', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentworks-arch-test-'));
+  try {
+    const tools = join(root, 'tools'); mkdirSync(tools);
+    writeFileSync(join(tools, 'uname'), '#!/bin/sh\nif [ "$1" = -s ]; then echo Darwin; else echo "$TEST_CPU"; fi\n', { mode: 0o755 });
+    writeFileSync(join(tools, 'sysctl'), '#!/bin/sh\necho "$TEST_TRANSLATED"\n', { mode: 0o755 });
+    writeFileSync(join(tools, 'curl'), '#!/bin/sh\nprintf "%s\\n" "$@" >> "$TEST_REQUESTS"\nwhile [ "$#" -gt 0 ]; do if [ "$1" = -o ]; then shift; echo fixture > "$1"; fi; shift; done\n', { mode: 0o755 });
+    for (const [cpu, translated, arch] of [['arm64', '0', 'arm64'], ['x86_64', '0', 'x64'], ['x86_64', '1', 'arm64']]) {
+      const requests = join(root, `${cpu}-${translated}.txt`);
+      const result = run('/bin/bash', [join(repo, 'install.sh'), '--version', 'v1.2.3', '--app-dir', join(root, 'Apps'), '--bin-dir', join(root, 'bin'), '--no-open'], {
+        env: { ...process.env, PATH: tools + ':' + process.env.PATH, TEST_CPU: cpu, TEST_TRANSLATED: translated, TEST_REQUESTS: requests },
+      });
+      assert.notEqual(result.status, 0); // Deliberately invalid checksum: never installs.
+      assert.match(result.stderr, /Invalid SHA-256/);
+      const urls = readFileSync(requests, 'utf8');
+      assert.ok(urls.includes(`/AgentWorks-1.2.3-${arch}.dmg\n`));
+      assert.ok(urls.includes(`/AgentWorks-1.2.3-${arch}.dmg.sha256\n`));
+    }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

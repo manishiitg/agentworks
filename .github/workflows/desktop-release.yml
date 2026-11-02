@@ -1,9 +1,7 @@
 name: Desktop DMG
 
-# The macOS DMG build is slow and costly, so it runs only for a platform release
-# tag (vX.Y.Z) or by hand (Actions > Desktop DMG > Run workflow, builds the
-# artifact for any branch). Pushes and pull requests are covered by
-# frontend-ci.yml and coding-cli-p0.yml.
+# Native builders keep the app, speech libraries and bundled CLI helpers on
+# the same CPU architecture. The owner's laptop is never a release builder.
 on:
   push:
     tags:
@@ -22,114 +20,82 @@ defaults:
     shell: bash
 
 jobs:
-  commit-artifact:
-    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: macos-15
-    permissions:
-      contents: read
-    
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            goarch: arm64
+          - runner: macos-15-intel
+            arch: x64
+            goarch: amd64
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.26.x'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          # Match local development: frontend tests rely on Node 25+ runtime
-          # behaviour (they fail on 20/22/24 and pass on 26).
           node-version: 26
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: |
             frontend/package-lock.json
             desktop/package-lock.json
-
-      - name: Install Frontend Dependencies
-        run: |
-          set -euo pipefail
-          cd frontend
-          npm ci
-
-      # Full frontend coverage stays in frontend-ci.yml. Packaging checks the
-      # install/onboarding path here, then performs the complete production build.
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
       - name: Test desktop onboarding
         run: |
-          set -euo pipefail
           cd frontend
           npm test -- src/components/WelcomeHome.test.tsx src/components/HomeAgentModel.test.tsx src/products/work/CreateCrewWizard.test.tsx src/products/work/crewOnboarding.test.ts
-
-      - name: Build Frontend Static Assets
+      - name: Build frontend static assets
         env:
           VITE_DEPLOYMENT_MODE: local
         run: |
-          set -euo pipefail
           cd frontend
           npm run build
-
-      - name: Copy Frontend Into Agent Static Directory
-        run: |
-          set -euo pipefail
+          cd ..
           rm -rf agent_go/static
           mkdir -p agent_go/static
           cp -R frontend/dist/. agent_go/static/
-
-      # Build the versions recorded by this release, never dependency main.
+      # Use the dependency versions recorded by the release, never dependency main.
       - name: Download pinned Go dependencies
         run: |
-          set -euo pipefail
           cd agent_go
           go mod download
           go list -m github.com/manishiitg/mcpagent github.com/manishiitg/multi-llm-provider-go
-
-      - name: Build Agent Server (arm64)
+      - name: Build native servers and speech libraries
         run: |
-          set -euo pipefail
-          # cgo on purpose: the agent links the shared speech engine's native
-          # libraries (pkg/voicestt); the script stages them in resources/lib.
-          bash scripts/build-darwin-voice-binary.sh agent_go desktop/resources/agent-server arm64
-
-      - name: Build Workspace Server (arm64)
-        run: |
-          set -euo pipefail
+          bash scripts/build-darwin-voice-binary.sh agent_go desktop/resources/agent-server '${{ matrix.goarch }}'
           cd workspace
           go mod download
-          GOOS=darwin GOARCH=arm64 go build -o ../desktop/resources/workspace-server .
-
-      - name: Bundle CLI and platform helpers
+          GOOS=darwin GOARCH='${{ matrix.goarch }}' go build -o ../desktop/resources/workspace-server .
+      - name: Bundle native CLI and platform helpers
         run: |
-          set -euo pipefail
           brew list tmux >/dev/null 2>&1 || brew install tmux
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/v}"; fi
           bash scripts/build-desktop-helpers.sh
-
-      - name: Test combined installer
+      - name: Test combined installer and updater
         run: node --test packages/app/test/installer.test.mjs desktop/lib/updateInstaller.test.js
-
-      - name: Install Desktop Dependencies
+      - name: Package Mac app
         run: |
-          set -euo pipefail
           cd desktop
           npm ci
-
-      - name: Build Commit Artifact
-        run: |
-          set -euo pipefail
-          cd desktop
-          npx electron-builder --mac --arm64 --publish never
-
-      - name: Checksum local artifacts
-        run: |
-          cd desktop/dist
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            npm pkg set version="$VERSION"
+          fi
+          npx electron-builder --mac --${{ matrix.arch }} --publish never
+          cd dist
           for asset in *.dmg *.zip; do shasum -a 256 "$asset" > "$asset.sha256"; done
-
-      - name: Upload DMG Artifact
-        uses: actions/upload-artifact@v4
+      - name: Verify packaged native architecture and actual DMG installation
+        run: |
+          bash scripts/verify-desktop-package.sh '${{ matrix.arch }}'
+      - uses: actions/upload-artifact@v4
         with:
-          name: AgentForge-${{ github.run_number }}-${{ github.sha }}-mac-arm64
+          name: AgentWorks-mac-${{ matrix.arch }}
           path: |
             desktop/dist/*.dmg
             desktop/dist/*.zip
@@ -137,122 +103,31 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  release:
+  # Publish only after BOTH architectures passed. A stable release must never
+  # become visible to the installer with only one architecture uploaded.
+  publish:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: macos-15
+    needs: build
+    runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/download-artifact@v4
         with:
-          go-version: '1.26.x'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          # Match local development: frontend tests rely on Node 25+ runtime
-          # behaviour (they fail on 20/22/24 and pass on 26).
-          node-version: 26
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            desktop/package-lock.json
-
-      - name: Install Frontend Dependencies
-        run: |
-          set -euo pipefail
-          cd frontend
-          npm ci
-
-      # Full frontend coverage stays in frontend-ci.yml. Packaging checks the
-      # install/onboarding path here, then performs the complete production build.
-      - name: Test desktop onboarding
-        run: |
-          set -euo pipefail
-          cd frontend
-          npm test -- src/components/WelcomeHome.test.tsx src/components/HomeAgentModel.test.tsx src/products/work/CreateCrewWizard.test.tsx src/products/work/crewOnboarding.test.ts
-
-      - name: Build Frontend Static Assets
-        env:
-          VITE_DEPLOYMENT_MODE: local
-        run: |
-          set -euo pipefail
-          cd frontend
-          npm run build
-
-      - name: Copy Frontend Into Agent Static Directory
-        run: |
-          set -euo pipefail
-          rm -rf agent_go/static
-          mkdir -p agent_go/static
-          cp -R frontend/dist/. agent_go/static/
-
-      # Build the versions recorded by this release, never dependency main.
-      - name: Download pinned Go dependencies
-        run: |
-          set -euo pipefail
-          cd agent_go
-          go mod download
-          go list -m github.com/manishiitg/mcpagent github.com/manishiitg/multi-llm-provider-go
-
-      - name: Build Agent Server (arm64)
-        run: |
-          set -euo pipefail
-          # cgo on purpose: the agent links the shared speech engine's native
-          # libraries (pkg/voicestt); the script stages them in resources/lib.
-          bash scripts/build-darwin-voice-binary.sh agent_go desktop/resources/agent-server arm64
-
-      - name: Build Workspace Server (arm64)
-        run: |
-          set -euo pipefail
-          cd workspace
-          go mod download
-          GOOS=darwin GOARCH=arm64 go build -o ../desktop/resources/workspace-server .
-
-      - name: Bundle CLI and platform helpers
-        run: |
-          set -euo pipefail
-          brew list tmux >/dev/null 2>&1 || brew install tmux
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/v}"; fi
-          bash scripts/build-desktop-helpers.sh
-
-      - name: Test combined installer
-        run: node --test packages/app/test/installer.test.mjs desktop/lib/updateInstaller.test.js
-
-      - name: Install Desktop Dependencies
-        run: |
-          set -euo pipefail
-          cd desktop
-          npm ci
-
-      - name: Build & Publish Release
-        run: |
-          set -euo pipefail
-          cd desktop
-          # Sync package.json version with git tag (strip 'v' prefix).
-          # Use npm pkg set which is idempotent (npm version errors when target == current).
-          VERSION=${GITHUB_REF#refs/tags/v}
-          CURRENT=$(node -p "require('./package.json').version")
-          echo "Tag version: $VERSION, package.json version: $CURRENT"
-          if [ "$CURRENT" != "$VERSION" ]; then
-            npm version "$VERSION" --no-git-tag-version
-          else
-            echo "package.json already at $VERSION; skipping version bump"
-          fi
-
-          npm run dist -- --arm64 --publish always
-          (cd dist; for asset in *.dmg *.zip; do shasum -a 256 "$asset" > "$asset.sha256"; done)
-          gh release upload "v${VERSION}" dist/*.sha256 --clobber
-
-          # Versions through v1.25.111 construct the updater URL with the old
-          # product name. Keep this alias so those installations can jump
-          # directly to the latest AgentWorks release.
-          cp "dist/AgentWorks-${VERSION}-arm64.dmg" "dist/Runloop-${VERSION}-arm64.dmg"
-          gh release upload "v${VERSION}" "dist/Runloop-${VERSION}-arm64.dmg" --clobber
+          pattern: AgentWorks-mac-*
+          path: dist
+          merge-multiple: true
+      - name: Publish combined Mac release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release create "v$VERSION" --draft --title "AgentWorks $VERSION" --generate-notes
+          fi
+          gh release upload "v$VERSION" dist/*.dmg dist/*.zip dist/*.sha256 --clobber
+          # Old Apple silicon installations use the former product name.
+          cp "dist/AgentWorks-$VERSION-arm64.dmg" "dist/Runloop-$VERSION-arm64.dmg"
+          gh release upload "v$VERSION" "dist/Runloop-$VERSION-arm64.dmg" --clobber
+          gh release edit "v$VERSION" --draft=false --latest

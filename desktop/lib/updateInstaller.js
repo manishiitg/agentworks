@@ -15,4 +15,10 @@ function prepareDesktopUpdate(resources, executable, version, dmg) {
     args: ['-c', 'sleep 2; exec /bin/bash "$@"', 'agentworks-update', installer, '--update', '--version', `v${version}`, '--dmg', dmg, '--app-dir', path.resolve(path.dirname(executable), '../../..')],
   };
 }
-module.exports = { prepareDesktopUpdate };
+// Match the running app architecture so Intel updates never fetch an ARM app.
+function desktopUpdateAsset(version, arch) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Invalid update version');
+  if (!['arm64', 'x64'].includes(arch)) throw new Error('Unsupported Mac architecture');
+  return `AgentWorks-${version}-${arch}.dmg`;
+}
+module.exports = { prepareDesktopUpdate, desktopUpdateAsset };
