@@ -98,21 +98,30 @@ func TestLockedPresetLLMConfigLocksToThePublishedProvidersProfile(t *testing.T) 
 	if !ok || builder == nil || tiers == nil {
 		t.Fatal("provider profile must resolve")
 	}
-	if builder.Provider != "cursor-cli" || builder.ModelID != "auto" {
-		t.Fatalf("builder = %+v, want cursor-cli/auto", builder)
+	if builder.Provider != "cursor-cli" || builder.ModelID == "" {
+		t.Fatalf("builder = %+v, want the cursor-cli profile model", builder)
 	}
-	if tiers.Tier1.ModelID != "auto" || tiers.Tier2.ModelID != "auto" || tiers.Tier3.ModelID != "auto" {
-		t.Fatalf("tiers = %+v/%+v/%+v, want auto / auto / auto", tiers.Tier1, tiers.Tier2, tiers.Tier3)
+	if tiers.Tier1.ModelID != builder.ModelID || tiers.Tier2.ModelID != builder.ModelID || tiers.Tier3.ModelID != builder.ModelID {
+		t.Fatalf("tiers = %+v/%+v/%+v, want the profile model", tiers.Tier1, tiers.Tier2, tiers.Tier3)
 	}
 	if saved.BuilderLLM.Provider != "claude-code" {
 		t.Fatal("the saved config must not be mutated")
 	}
 	// The profile's own models are published by implication.
-	if !isAllowedDefaultLLM("cursor-cli", "auto") {
-		t.Fatal("cursor-cli/auto must be allowed under the lock")
+	if !isAllowedDefaultLLM("cursor-cli", builder.ModelID) {
+		t.Fatalf("cursor-cli/%s must be allowed under the lock", builder.ModelID)
 	}
-	if isAllowedDefaultLLM("cursor-cli", "gpt-5") || isAllowedDefaultLLM("cursor-cli", "composer-2.5") || isAllowedDefaultLLM("openai", "gpt-5.2") {
+	if isAllowedDefaultLLM("cursor-cli", "gpt-5") || isAllowedDefaultLLM("openai", "gpt-5.2") {
 		t.Fatal("models outside the published provider's profile must stay refused")
+	}
+	// The lock picks the program, not the model: a Goal that chose models of the locked program keeps them
+	// (owner, 2 Nov: a Goal set to Cursor Auto still ran Composer because the lock reset every role).
+	cursorAuto := &workflowtypes.AgentLLMConfig{Provider: "cursor-cli", ModelID: "auto"}
+	sameProgram := &workflowtypes.PresetLLMConfig{SchemaVersion: 2, Mode: workflowtypes.LLMConfigModeExplicit,
+		BuilderLLM: cursorAuto, BackgroundLLM: cursorAuto,
+		TieredConfig: &workflowtypes.TieredLLMConfig{Tier1: cursorAuto, Tier2: cursorAuto, Tier3: cursorAuto}}
+	if got := lockedPresetLLMConfig(sameProgram); got.Mode != workflowtypes.LLMConfigModeExplicit || got.BuilderLLM == nil || got.BuilderLLM.ModelID != "auto" {
+		t.Fatalf("a Goal's own Cursor models must be kept under a Cursor lock, got %+v", got)
 	}
 	if lockedPresetLLMConfig(nil) == nil {
 		t.Fatal("a workflow with no llm_config still gets the locked profile")

@@ -1363,6 +1363,12 @@ func lockedPresetLLMConfig(cfg *workflowtypes.PresetLLMConfig) *workflowtypes.Pr
 		out = &copied
 	}
 	if _, ok := llmproviders.GetCodingAgentDefaultTierModels(llmproviders.Provider(defProvider)); ok {
+		// The lock picks the AI program, not the model: a Goal that chose models of that same program (Cursor
+		// Auto when Composer's allowance ran out) keeps them. Before, every role was forced back to the
+		// program's built-in defaults, so a Goal set to Auto still ran Composer (owner, 2 Nov).
+		if cfg != nil && cfg.Mode == workflowtypes.LLMConfigModeExplicit && explicitRolesUseOnly(cfg, defProvider) {
+			return out
+		}
 		out.Mode = workflowtypes.LLMConfigModeProviderProfile
 		out.Provider = defProvider
 		out.BuilderLLM, out.BackgroundLLM, out.TieredConfig = nil, nil, nil
@@ -1391,4 +1397,23 @@ func lockedPresetLLMConfig(cfg *workflowtypes.PresetLLMConfig) *workflowtypes.Pr
 	out.BackgroundLLM = role(savedPulse)
 	out.TieredConfig = &workflowtypes.TieredLLMConfig{Tier1: role(t1), Tier2: role(t2), Tier3: role(t3)}
 	return out
+}
+
+// explicitRolesUseOnly reports whether every role an explicit config sets uses provider, and at least one is set.
+func explicitRolesUseOnly(cfg *workflowtypes.PresetLLMConfig, provider string) bool {
+	roles := []*workflowtypes.AgentLLMConfig{cfg.BuilderLLM, cfg.BackgroundLLM}
+	if cfg.TieredConfig != nil {
+		roles = append(roles, cfg.TieredConfig.Tier1, cfg.TieredConfig.Tier2, cfg.TieredConfig.Tier3)
+	}
+	set := 0
+	for _, role := range roles {
+		if role == nil {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(role.Provider), provider) || strings.TrimSpace(role.ModelID) == "" {
+			return false
+		}
+		set++
+	}
+	return set > 0
 }
