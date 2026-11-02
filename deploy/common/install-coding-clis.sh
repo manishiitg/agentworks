@@ -26,11 +26,17 @@ flock -w 300 9
 # version marker owner-only ("codex.js is not accessible", "installed binary is missing"). Programs only; the
 # install state and any logins stay as they are. On every exit, failures included: a later step failing after
 # Codex was reinstalled once left it owner-only and broke Codex for every slot (2 Nov).
+# The programs also update themselves while running as this account (Muse rewrites its binary; Codex was found
+# reinstalled outside any deploy), so a default ACL keeps every later file readable and runnable by slots too.
 open_programs_to_slots() {
   chmod o+x "$prefix" || true # enter only: the install state inside stays private
   local dir
   for dir in "$prefix/bin" "$prefix/lib" "$prefix/node"; do
-    [[ ! -d "$dir" ]] || chmod -R o+rX "$dir" || true
+    [[ -d "$dir" ]] || continue
+    chmod -R o+rX "$dir" || true
+    if command -v setfacl >/dev/null; then
+      find "$dir" -type d -exec setfacl -m d:o::rx {} + || true
+    fi
   done
 }
 trap open_programs_to_slots EXIT
