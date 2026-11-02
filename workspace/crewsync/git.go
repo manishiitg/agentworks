@@ -70,7 +70,7 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot, private
 			_ = os.Remove(patch.Name())
 		}
 	}()
-	indexHash, _, err := captureIndex(ctx, root, patch)
+	indexHash, indexSize, err := captureIndex(ctx, root, patch)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +89,13 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot, private
 		beforeBranch = previous.Branch
 	}
 	out := &GitSnapshot{BeforeBranch: beforeBranch, BeforeIndexHash: beforeIndex, Head: strings.TrimSpace(string(head)), Before: before, Branch: strings.TrimSpace(string(branch)), IndexPath: patch.Name(), IndexHash: indexHash}
+	// Empty staging has no binary payload; HEAD probes do not create empty files.
+	if indexSize == 0 {
+		if err = os.Remove(patch.Name()); err != nil {
+			return nil, err
+		}
+		out.IndexPath = ""
+	}
 	if out.Head == before {
 		keepPatch = true
 		return out, nil
