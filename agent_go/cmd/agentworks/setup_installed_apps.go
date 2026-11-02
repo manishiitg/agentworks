@@ -16,13 +16,14 @@ var setupApps = []struct{ provider, name string }{
 
 // Installation already requests setup. Each app uses the exact manual setup
 // command/defaults; a missing or failing app never prevents the others.
-func setupInstalledApps(ctx context.Context, o *options, installed func(string) bool, setup func(context.Context, *options, string) error) error {
+func setupInstalledApps(ctx context.Context, o *options, installed func(string) bool, setup func(context.Context, *options, string) (string, error)) error {
 	for _, app := range setupApps {
 		if !installed(app.provider) {
 			fmt.Fprintf(o.stdout, "%s not found; run agentworks setup %s after installing it.\n", app.name, app.provider)
 			continue
 		}
-		if err := setup(ctx, o, app.provider); err != nil {
+		note, err := setup(ctx, o, app.provider)
+		if err != nil {
 			fmt.Fprintf(o.stdout, "%s: setup needs attention: %s. Run agentworks setup %s to retry.\n", app.name, strings.Join(strings.Fields(err.Error()), " "), app.provider)
 			continue
 		}
@@ -32,20 +33,25 @@ func setupInstalledApps(ctx context.Context, o *options, installed func(string) 
 		} else if app.provider == "codex" && runtime.GOOS != "windows" && hooksPluginInstalled("codex") {
 			next += "; review AgentWorks in Settings > Hooks"
 		}
-		fmt.Fprintf(o.stdout, "%s: set up; %s.\n", app.name, next)
+		if note != "" {
+			next += ". " + strings.TrimSpace(note)
+		}
+		fmt.Fprintf(o.stdout, "%s: set up; %s\n", app.name, next)
 	}
 	return nil
 }
 
-func setupOneInstalledApp(ctx context.Context, o *options, provider string) error {
+func setupOneInstalledApp(ctx context.Context, o *options, provider string) (string, error) {
 	var details strings.Builder
 	child := *o
 	child.stdout, child.stderr = &details, &details
 	child.stdin = strings.NewReader("") // provider trust stays a person's choice after restart
 	child.setupBatch = true
+	child.setupToolsNote = ""
 	cmd := setupCommand(&child)
 	cmd.SetArgs([]string{provider})
-	return cmd.ExecuteContext(ctx)
+	err := cmd.ExecuteContext(ctx)
+	return child.setupToolsNote, err
 }
 
 func codingAppInstalled(provider string) bool {

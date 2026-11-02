@@ -39,7 +39,8 @@ func toolsServerURL(o *options) (url, name string, err error) {
 
 // addToolsServer adds the tools server to one app and returns a plain line for the person.
 // It never fails the setup: a missing login or an app command that errors becomes a note.
-func addToolsServer(ctx context.Context, o *options, provider string) string {
+func addToolsServer(ctx context.Context, o *options, provider string) (note string) {
+	defer func() { o.setupToolsNote = note }()
 	url, serverName, err := toolsServerURL(o)
 	if err != nil {
 		return "The AgentWorks tools were not added because there is no saved sign-in yet. Run agentworks login, then agentworks setup " + provider + " again."

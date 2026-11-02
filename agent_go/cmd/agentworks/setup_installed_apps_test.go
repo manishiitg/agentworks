@@ -17,17 +17,18 @@ func TestInstalledAppSetupContinuesAfterOneAppFails(t *testing.T) {
 	var called []string
 	err := setupInstalledApps(context.Background(), &options{stdout: &out}, func(provider string) bool {
 		return provider == "codex" || provider == "cursor"
-	}, func(_ context.Context, _ *options, provider string) error {
+	}, func(_ context.Context, _ *options, provider string) (string, error) {
 		called = append(called, provider)
 		if provider == "codex" {
-			return errors.New("provider setup failed")
+			return "", errors.New("provider setup failed")
 		}
-		return nil
+		// PR710: a tools/sign-in note is actionable even when plugin setup succeeds.
+		return "The AgentWorks tools were not added; sign in and retry.", nil
 	})
 	if err != nil || strings.Join(called, ",") != "codex,cursor" {
 		t.Fatalf("setup stopped at the first failure: %v %v", called, err)
 	}
-	for _, want := range []string{"Codex: setup needs attention", "Cursor: set up", "Claude not found; run agentworks setup claude"} {
+	for _, want := range []string{"Codex: setup needs attention", "Cursor: set up", "Claude not found; run agentworks setup claude", "The AgentWorks tools were not added; sign in and retry."} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing actionable result %q: %s", want, out.String())
 		}
