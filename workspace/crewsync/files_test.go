@@ -2,8 +2,11 @@ package crewsync
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -147,4 +150,65 @@ func testChangeData(t *testing.T, c Change) []byte {
 		t.Fatal(err)
 	}
 	return b.Bytes()
+}
+
+// PLAT-856-509 / PR845: cancellation after the first streamed write must not
+// turn a valid destination into a partial file that refuses the next retry.
+type cancelDuringApply struct {
+	context.Context
+	cancel         context.CancelFunc
+	folder, target string
+}
+
+func (c cancelDuringApply) Err() error {
+	paths, _ := filepath.Glob(filepath.Join(c.folder, ".aw-sync-*.tmp"))
+	paths = append(paths, c.target)
+	for _, p := range paths {
+		if info, err := os.Stat(p); err == nil && info.Size() >= 64<<10 {
+			c.cancel()
+			break
+		}
+	}
+	return c.Context.Err()
+}
+func TestCanceledSyncApplyPreservesOriginalAndRetries(t *testing.T) {
+	source, dest := t.TempDir(), t.TempDir()
+	before := []byte("original")
+	after := bytes.Repeat([]byte("replacement-data"), 32<<10)
+	name := "note.txt"
+	target := filepath.Join(dest, name)
+	if err := os.WriteFile(filepath.Join(source, name), after, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, before, 0640); err != nil {
+		t.Fatal(err)
+	}
+	prior := Manifest{"resources/" + name: fingerprint(before, false)}
+	snap, err := Capture(t.Context(), crewroot.Roots{Files: source, Resources: source}, prior, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.Close()
+	base, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ctx := cancelDuringApply{base, cancel, dest, target}
+	roots := crewroot.Roots{Files: dest, Resources: dest}
+	if err = Apply(ctx, roots, snap); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected mid-copy cancellation, got %v", err)
+	}
+	if actual, err := os.ReadFile(target); err != nil || !bytes.Equal(actual, before) {
+		t.Fatalf("canceled apply changed original: bytes=%d err=%v", len(actual), err)
+	}
+	if temps, _ := filepath.Glob(filepath.Join(dest, ".aw-sync-*.tmp")); len(temps) != 0 {
+		t.Fatalf("canceled apply left temporary contents: %v", temps)
+	}
+	if err = Apply(t.Context(), roots, snap); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if actual, err := os.ReadFile(target); err != nil || !bytes.Equal(actual, after) {
+		t.Fatal("retry lost replacement bytes")
+	}
+	if info, err := os.Stat(target); err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0640 {
+		t.Fatalf("replacement mode: %v %v", info, err)
+	}
 }
