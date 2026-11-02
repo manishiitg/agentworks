@@ -137,8 +137,9 @@ func updateCrewSyncEditing(ctx context.Context, roots crewroot.Roots, observed c
 		return nil, fmt.Errorf("paired project is unavailable")
 	}
 	// The remote reply describes the observed state, not a handoff that
-	// committed while it was in flight. Retry authority on the next tick.
-	if *current != observed {
+	// committed while it was in flight. A pending transfer also owns its
+	// editing intent until its receipt; status may still report the old side.
+	if *current != observed || current.PendingAction != "" {
 		return current, nil
 	}
 	if current.Editing != editing {
