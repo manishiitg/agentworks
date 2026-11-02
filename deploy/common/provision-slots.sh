@@ -28,9 +28,9 @@ SERVICE_HOME="${SERVICE_HOME:-$HOME_DIR/home}"
 SLOT_COUNT="${SLOT_COUNT:-50}"
 # Per-person cap on everything a slot runs (its AI turns and the apps it keeps running), set per server in
 # product.env: a ceiling, not a reservation (PLAT-856-506).
-SLOT_CPU_QUOTA="${SLOT_CPU_QUOTA:-200%}"
-SLOT_MEMORY_MAX="${SLOT_MEMORY_MAX:-8G}"
-SLOT_TASKS_MAX="${SLOT_TASKS_MAX:-2048}"
+# deploy.sh passes them; a later run without them (a manual assign) reads the last ones from $ETC/slot-limits.env, so it
+# never falls back to the 8G default on a small box.
+SLOT_LIMITS_GIVEN="${SLOT_CPU_QUOTA:-}${SLOT_MEMORY_MAX:-}${SLOT_TASKS_MAX:-}"
 # Products that share one host each get their own slot accounts, launcher, config, table and sudo rule, so a
 # product's service account is only ever in its own slot groups. The default prefix "slot" keeps the original
 # host-wide names (the first product on a host, server B's `agents`); any other prefix puts everything under
@@ -47,6 +47,20 @@ else
   LIBEXEC="/usr/local/libexec/agentworks/$PRODUCT"
   ETC="/etc/agentworks/$PRODUCT"
   SUDOERS="/etc/sudoers.d/agentworks-slots-$PRODUCT"
+fi
+SLOT_LIMITS_FILE="$ETC/slot-limits.env"
+if [[ -z "$SLOT_LIMITS_GIVEN" && -r "$SLOT_LIMITS_FILE" ]]; then
+  # shellcheck disable=SC1090
+  . "$SLOT_LIMITS_FILE"
+fi
+SLOT_CPU_QUOTA="${SLOT_CPU_QUOTA:-200%}"
+SLOT_MEMORY_MAX="${SLOT_MEMORY_MAX:-8G}"
+SLOT_TASKS_MAX="${SLOT_TASKS_MAX:-2048}"
+[[ "$SLOT_CPU_QUOTA" =~ ^[0-9]+%$ && "$SLOT_MEMORY_MAX" =~ ^[0-9]+[KMGT]?$ && "$SLOT_TASKS_MAX" =~ ^[0-9]+$ ]] || { echo "Bad slot limits." >&2; exit 2; }
+if [[ -n "$SLOT_LIMITS_GIVEN" && $EUID -eq 0 ]]; then
+  install -d -m 0755 "$ETC"
+  printf 'SLOT_CPU_QUOTA=%s\nSLOT_MEMORY_MAX=%s\nSLOT_TASKS_MAX=%s\n' "$SLOT_CPU_QUOTA" "$SLOT_MEMORY_MAX" "$SLOT_TASKS_MAX" > "$SLOT_LIMITS_FILE"
+  chmod 0644 "$SLOT_LIMITS_FILE"
 fi
 TABLE="$ETC/slots.json"
 SLOTCTL_CONFIG="$LIBEXEC/slotctl.json"
