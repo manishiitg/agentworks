@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
@@ -152,29 +153,12 @@ func testChangeData(t *testing.T, c Change) []byte {
 	return b.Bytes()
 }
 
-// PLAT-856-509 / PR845: cancellation after the first streamed write must not
-// turn a valid destination into a partial file that refuses the next retry.
-type cancelDuringApply struct {
-	context.Context
-	cancel         context.CancelFunc
-	folder, target string
-}
-
-func (c cancelDuringApply) Err() error {
-	paths, _ := filepath.Glob(filepath.Join(c.folder, ".aw-sync-*.tmp"))
-	paths = append(paths, c.target)
-	for _, p := range paths {
-		if info, err := os.Stat(p); err == nil && info.Size() >= 64<<10 {
-			c.cancel()
-			break
-		}
-	}
-	return c.Context.Err()
-}
-func TestCanceledSyncApplyPreservesOriginalAndRetries(t *testing.T) {
+// PLAT-856-509 / PR845: once a streamed write starts, cancellation must
+// finish that file so the next retry accepts its complete After fingerprint.
+func TestCanceledSyncApplyFinishesFileAndRetries(t *testing.T) {
 	source, dest := t.TempDir(), t.TempDir()
 	before := []byte("original")
-	after := bytes.Repeat([]byte("replacement-data"), 32<<10)
+	after := bytes.Repeat([]byte("replacement-data"), 4<<20) // the shipping 64 MiB file limit
 	name := "note.txt"
 	target := filepath.Join(dest, name)
 	if err := os.WriteFile(filepath.Join(source, name), after, 0600); err != nil {
@@ -183,30 +167,54 @@ func TestCanceledSyncApplyPreservesOriginalAndRetries(t *testing.T) {
 	if err := os.WriteFile(target, before, 0640); err != nil {
 		t.Fatal(err)
 	}
+	original, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
 	prior := Manifest{"resources/" + name: fingerprint(before, false)}
 	snap, err := Capture(t.Context(), crewroot.Roots{Files: source, Resources: source}, prior, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer snap.Close()
-	base, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	ctx := cancelDuringApply{base, cancel, dest, target}
+	stop := make(chan struct{})
+	observed := make(chan bool, 1)
+	go func() {
+		timer := time.NewTicker(100 * time.Microsecond)
+		defer timer.Stop()
+		for {
+			select {
+			case <-stop:
+				observed <- false
+				return
+			case <-timer.C:
+				if info, err := os.Stat(target); err == nil && info.Size() >= 64<<10 && info.Size() < int64(len(after)) {
+					cancel()
+					observed <- true
+					return
+				}
+			}
+		}
+	}()
 	roots := crewroot.Roots{Files: dest, Resources: dest}
-	if err = Apply(ctx, roots, snap); !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected mid-copy cancellation, got %v", err)
+	err = Apply(ctx, roots, snap)
+	close(stop)
+	if !<-observed {
+		t.Fatal("did not observe a partially written file before cancellation")
 	}
-	if actual, err := os.ReadFile(target); err != nil || !bytes.Equal(actual, before) {
-		t.Fatalf("canceled apply changed original: bytes=%d err=%v", len(actual), err)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation between files, got %v", err)
 	}
-	if temps, _ := filepath.Glob(filepath.Join(dest, ".aw-sync-*.tmp")); len(temps) != 0 {
-		t.Fatalf("canceled apply left temporary contents: %v", temps)
+	if actual, err := os.ReadFile(target); err != nil || !bytes.Equal(actual, after) {
+		t.Fatalf("cancellation left partial bytes: size=%d err=%v", len(actual), err)
+	}
+	if current, err := os.Stat(target); err != nil || !os.SameFile(original, current) {
+		t.Fatal("changed the destination inode")
 	}
 	if err = Apply(t.Context(), roots, snap); err != nil {
 		t.Fatalf("retry: %v", err)
-	}
-	if actual, err := os.ReadFile(target); err != nil || !bytes.Equal(actual, after) {
-		t.Fatal("retry lost replacement bytes")
 	}
 	if info, err := os.Stat(target); err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0640 {
 		t.Fatalf("replacement mode: %v %v", info, err)
