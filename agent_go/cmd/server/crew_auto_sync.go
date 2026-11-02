@@ -300,7 +300,8 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 			}
 		}
 		setCrewAutoStatus(id, "syncing", "")
-		attempt, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		// A first sync sends the whole project; the server allows the same 15 minutes for its upload.
+		attempt, cancel := context.WithTimeout(ctx, 15*time.Minute)
 		attempt = context.WithValue(attempt, UserContextKey, claims)
 		body, _ := json.Marshal(map[string]string{"action": action})
 		r, _ := http.NewRequestWithContext(attempt, http.MethodPost, "http://localhost/", bytes.NewReader(body))

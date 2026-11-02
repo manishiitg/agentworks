@@ -405,7 +405,7 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 	upstream.Header.Set("Authorization", "Bearer "+connection.Token)
 	upstream.Header.Set("Content-Type", "application/json")
 	client := desktopHTTPClient()
-	client.Timeout = 5 * time.Minute
+	client.Timeout = 15 * time.Minute
 	response, e := client.Do(upstream)
 	if e != nil {
 		return crewSyncReply{}, fmt.Errorf("cannot reach the server; your local files are unchanged")
