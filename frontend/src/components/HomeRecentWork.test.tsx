@@ -22,7 +22,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let cleanup = () => {}
 const refreshConnections = useConnectedWorkStore.getState().refresh
 afterEach(() => { cleanup(); vi.restoreAllMocks(); document.body.innerHTML = ''; delete window.__APP_RUNTIME_CONFIG__; delete window.electronAPI; useConnectedWorkStore.setState({ refresh: refreshConnections }) })
-const project = { workspace_id: 'work:notes', id: 'notes', profile_id: 'work' as const, name: 'Research notes', workspace_path: 'Crew/notes' }
+const project = { workspace_id: 'work:notes', id: 'notes', profile_id: 'work' as const, owned_by_caller: true, mode: 'builder' as const, name: 'Research notes', workspace_path: 'Crew/notes' }
 const history = [{ session_id: 'note-chat', workspace_path: 'Crew/notes', updated_at: '2026-10-26T10:00:00Z' }, { session_id: 'goal-chat', workspace_path: 'Goals/reading', updated_at: '2026-10-26T11:00:00Z' }]
 async function mount() {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'agentworks', 'relays'] } as never
