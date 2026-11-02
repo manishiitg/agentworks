@@ -279,6 +279,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		}
 		pendingPath += ".pending"
 		var transfer crewSyncRequest
+		movedOld := false
 		if binding.PendingAction != "" {
 			if input.Action != binding.PendingAction {
 				fail(fmt.Errorf("finish the interrupted %s transfer first", binding.PendingAction))
@@ -293,11 +294,33 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(fmt.Errorf("%s", crewSyncResetMessage))
 				return
 			}
-		} else {
+			if len(transfer.Snapshot.Payloads) == 0 {
+				if e = moveOldCrewTransfer(pendingPath, roots.ID); e != nil {
+					fail(e)
+					return
+				}
+				binding.PendingAction = ""
+				if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
+					fail(e)
+					return
+				}
+				movedOld = true
+			}
+		}
+		if binding.PendingAction == "" {
 			remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "status"})
 			if e != nil {
 				fail(e)
 				return
+			}
+			if movedOld && remote.Binding != nil && remote.Binding.PairID == binding.PairID {
+				// A lost old receipt may already have moved execution; use the
+				// server's current authority before choosing the next capture.
+				binding.Editing = remote.Binding.Editing
+				if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
+					fail(e)
+					return
+				}
 			}
 			if remote.Binding == nil || remote.Binding.PairID != binding.PairID || remote.Binding.Editing != "local" {
 				fail(fmt.Errorf("editing is on the server; choose Work on this computer to bring its changes back"))

@@ -107,6 +107,39 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			oldTransfer := func(path string, value any) []byte {
+				t.Helper()
+				raw, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var legacy map[string]any
+				if err = json.Unmarshal(raw, &legacy); err != nil {
+					t.Fatal(err)
+				}
+				snapshot := legacy["snapshot"].(map[string]any)
+				delete(snapshot, "payloads")
+				snapshot["content"].(map[string]any)["bundle"] = "b2xkLWJ1bmRsZQ=="
+				raw, err = json.Marshal(legacy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = os.WriteFile(path, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+				return raw
+			}
+			checkOldBackup := func(path string, want []byte) {
+				t.Helper()
+				backups, err := filepath.Glob(path + ".*.bak")
+				if err != nil || len(backups) != 1 {
+					t.Fatalf("old transfer backup: %v %v", backups, err)
+				}
+				got, err := os.ReadFile(backups[0])
+				if err != nil || !bytes.Equal(got, want) {
+					t.Fatal("old transfer backup changed bytes")
+				}
+			}
 			write(local.Files, "note.txt", "local work")
 			write(local.Resources, "skills/example/SKILL.md", "Useful skill")
 			write(local.Files, ".env", "API_KEY=example")
@@ -357,6 +390,29 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("unchanged sync retained capture bundles: %v %v", scratch, err)
 			}
 
+			// PLAT-856-509: upgrading an interrupted inline upload automatically
+			// preserves its old record and recaptures current working files.
+			legacyPath, _ := crewSyncManifestPath(local.ID)
+			legacyPath += ".pending"
+			legacyBytes := oldTransfer(legacyPath, upload)
+			legacyBinding, _ := crewroot.ReadSync(local.ID)
+			legacyBinding.PendingAction, legacyBinding.Editing = "update", "server"
+			if err := crewroot.WriteSync(local.ID, *legacyBinding); err != nil {
+				t.Fatal(err)
+			}
+			write(local.Files, "after-upgrade.txt", "current working file")
+			if w = call("update", "owner", true); w.Code != 200 {
+				t.Fatalf("old upload recapture: %d %s", w.Code, w.Body.String())
+			}
+			checkOldBackup(legacyPath, legacyBytes)
+			if got, err := os.ReadFile(filepath.Join(serverRoots.Files, "after-upgrade.txt")); err != nil || string(got) != "current working file" {
+				t.Fatalf("upgrade lost source work: %q %v", got, err)
+			}
+			legacyBinding, _ = crewroot.ReadSync(local.ID)
+			if legacyBinding.PendingAction != "" || legacyBinding.Editing != "local" {
+				t.Fatal("old upload kept stale execution state")
+			}
+
 			for _, kind := range []string{"bound-agent", "product"} {
 				claims := crewWriter("owner")
 				if kind == "bound-agent" {
@@ -581,6 +637,22 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if err != nil || stillPending.Snapshot == nil || stillPending.TransferID != pendingReturn.TransferID {
 				t.Fatalf("newer return was discarded: %+v %v", stillPending, err)
 			}
+
+			// A pre-upgrade return is recaptured even after editing has already
+			// moved locally. Its saved conversation must still accompany it.
+			legacyReturn, _ := crewSyncManifestPath(serverRoots.ID)
+			legacyReturn += ".return"
+			legacyReturnBytes := oldTransfer(legacyReturn, pendingReturn)
+			upgradedReturn, err := api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "download", PairID: serverBinding.PairID})
+			if err != nil || upgradedReturn.Snapshot == nil || len(upgradedReturn.Snapshot.Payloads) == 0 || upgradedReturn.TransferID == pendingReturn.TransferID {
+				t.Fatalf("old return recapture failed: %v", err)
+			}
+			beforeChat, _ := json.Marshal(pendingReturn.Conversation)
+			afterChat, _ := json.Marshal(upgradedReturn.Conversation)
+			if !bytes.Equal(beforeChat, afterChat) {
+				t.Fatal("old return lost its conversation")
+			}
+			checkOldBackup(legacyReturn, legacyReturnBytes)
 
 			// Server Editing is already local, but the Mac has not imported or
 			// acknowledged the return. A send must finish it before choosing a CLI.

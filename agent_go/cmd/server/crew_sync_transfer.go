@@ -296,6 +296,17 @@ func cleanupCrewPayloads(id, pair, transfer, direction string) {
 	}
 }
 
+// Retire an obsolete transfer record, not its files, baselines or conversation.
+// The next capture writes only the current descriptor format.
+func moveOldCrewTransfer(path, id string) error {
+	backup := path + "." + time.Now().UTC().Format("20060102T150405.000000000Z") + ".bak"
+	if err := os.Rename(path, backup); err != nil {
+		return err
+	}
+	log.Printf("[CREW_SYNC] project=%s old_pending=moved", id)
+	return nil
+}
+
 func readCrewTransfer(path string, out any) error {
 	f, e := os.Open(path)
 	if e != nil {
