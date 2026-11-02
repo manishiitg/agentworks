@@ -25,6 +25,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -62,6 +63,30 @@ func crewPayloadName(name string) bool { return name == "content" || name == "gi
 func crewPayloadValid(p crewsync.Payload) bool {
 	b, e := hex.DecodeString(p.Hash)
 	return e == nil && len(b) == 32 && p.Hash == strings.ToLower(p.Hash) && p.Size >= 0 && p.Size <= crewSyncPayloadBytes
+}
+func crewPayloadAllowed(name string, p crewsync.Payload) bool {
+	if !crewPayloadValid(p) {
+		return false
+	}
+	switch name {
+	case "content":
+		return true
+	case "git":
+		return p.Size <= 256<<20
+	case "index":
+		return p.Size <= 64<<20
+	}
+	return false
+}
+func checkLocalCrewTransfer(id string, expected *crewroot.SyncBinding) error {
+	current, e := crewroot.ReadSync(id)
+	if e != nil {
+		return e
+	}
+	if current == nil || current.PairID != expected.PairID || current.Side != "local" || current.ConnectionID != expected.ConnectionID || current.PeerProjectID != expected.PeerProjectID || current.Editing != expected.Editing || current.Mode == "off" || current.Mode == "relay" {
+		return fmt.Errorf("sync state changed; retry from the current paired connection")
+	}
+	return nil
 }
 func crewPayloadData(s *crewsync.Snapshot) map[string]*[]byte {
 	out := map[string]*[]byte{}
@@ -129,7 +154,7 @@ func freezeCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snapsh
 			return err
 		}
 		p := crewsync.Payload{Hash: hex.EncodeToString(h.Sum(nil)), Size: size}
-		if !crewPayloadValid(p) {
+		if !crewPayloadAllowed(name, p) {
 			in.Close()
 			return fmt.Errorf("sync artifact exceeds transfer limit")
 		}
@@ -167,7 +192,7 @@ func freezeCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snapsh
 		}
 		hash := sha256.Sum256(*data)
 		p := crewsync.Payload{Hash: hex.EncodeToString(hash[:]), Size: int64(len(*data))}
-		if !crewPayloadValid(p) {
+		if !crewPayloadAllowed(name, p) {
 			return fmt.Errorf("sync artifact exceeds transfer limit")
 		}
 		path := filepath.Join(dir, name)
@@ -206,7 +231,7 @@ func hydrateCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snaps
 	}
 	for name, p := range s.Payloads {
 		dst, ok := fields[name]
-		if !ok || !crewPayloadName(name) || !crewPayloadValid(p) {
+		if !ok || !crewPayloadName(name) || !crewPayloadAllowed(name, p) {
 			return fmt.Errorf("invalid sync artifact")
 		}
 		file := filepath.Join(dir, name)
@@ -276,7 +301,7 @@ func (api *StreamingAPI) crewTransferBinding(ctx context.Context, claims *UserCl
 	return roots, b, nil
 }
 func validateCrewPayloads(s *crewsync.Snapshot) error {
-	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 3 {
+	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 3 || len(s.Files) > publication.MaxFiles || len(s.Changes) > publication.MaxFiles {
 		return fmt.Errorf("send a snapshot with binary artifact descriptors")
 	}
 	if _, ok := s.Payloads["content"]; !ok {
@@ -284,7 +309,7 @@ func validateCrewPayloads(s *crewsync.Snapshot) error {
 	}
 	fields := crewPayloadData(s)
 	for name, p := range s.Payloads {
-		if _, ok := fields[name]; !ok || !crewPayloadName(name) || !crewPayloadValid(p) {
+		if _, ok := fields[name]; !ok || !crewPayloadName(name) || !crewPayloadAllowed(name, p) {
 			return fmt.Errorf("invalid sync artifact descriptor")
 		}
 	}
@@ -409,7 +434,7 @@ func (api *StreamingAPI) handleCrewSyncPiece(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	payload, ok := snapshot.Payloads[name]
-	if !ok || !crewPayloadValid(payload) {
+	if !ok || !crewPayloadAllowed(name, payload) {
 		fail(fmt.Errorf("artifact not admitted by this transfer"))
 		return
 	}
@@ -451,7 +476,8 @@ func (api *StreamingAPI) handleCrewSyncPiece(w http.ResponseWriter, r *http.Requ
 		count := min(crewSyncPieceBytes, payload.Size-wanted)
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", strconv.FormatInt(count, 10))
-		_, _ = io.CopyN(w, io.NewSectionReader(f, wanted, count), count)
+		n, copyErr := io.CopyN(w, io.NewSectionReader(f, wanted, count), count)
+		log.Printf("[CREW_SYNC_PIECE] project=%s transfer=%s direction=download bytes=%d offset=%d total=%d complete=%t", id, transfer, n, wanted+n, payload.Size, copyErr == nil)
 		return
 	}
 	if r.Method != http.MethodPut || direction != "upload" {
@@ -539,6 +565,9 @@ func desktopCrewPayloads(ctx context.Context, id string, c desktopConnection, b 
 		return e
 	}
 	for name, p := range s.Payloads {
+		if e = checkLocalCrewTransfer(id, b); e != nil {
+			return e
+		}
 		path := filepath.Join(dir, name)
 		if upload {
 			if e = crewCheckPayloadFile(path, p); e != nil {
@@ -558,7 +587,7 @@ func desktopCrewPayloads(ctx context.Context, id string, c desktopConnection, b 
 				return e
 			}
 			for offset < p.Size {
-				if e = crewSyncOn(id); e != nil {
+				if e = checkLocalCrewTransfer(id, b); e != nil {
 					f.Close()
 					return e
 				}
@@ -589,7 +618,7 @@ func desktopCrewPayloads(ctx context.Context, id string, c desktopConnection, b 
 			}
 			offset := info.Size()
 			for offset < p.Size {
-				if e = crewSyncOn(id); e != nil {
+				if e = checkLocalCrewTransfer(id, b); e != nil {
 					f.Close()
 					return e
 				}
