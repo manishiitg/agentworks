@@ -111,3 +111,38 @@ it('uses real stream frames without HTTP polls, recovers a silent stream, and ke
     await new Promise<void>(resolve => server.close(() => resolve()))
   }
 })
+
+it('a snapshot replaces the view and moves the resume cursor; message states reach the page (PLAT-856-509)', async () => {
+  const requests: string[] = []
+  const server = createServer((req, res) => {
+    requests.push(req.url!)
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    if (requests.length === 1) {
+      res.end('event: message_state\ndata: {"submission_id":"s1","state":"received"}\n\nevent: snapshot\ndata: {"last_seq":42,"events":[{"type":"x"}]}\n\n')
+    } else {
+      res.write('event: status\ndata: {"session_status":"completed"}\n\n')
+    }
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  endpoint.baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  const { SSEConnection } = await import('./sse')
+  const onMessageState = vi.fn(), onSnapshot = vi.fn(), onConnection = vi.fn()
+  let finish!: () => void
+  const completed = new Promise<void>(resolve => { finish = resolve })
+  const connection = new SSEConnection('session-snap', 3, {
+    onMessage: vi.fn(), onMessageState, onSnapshot, onConnection,
+    onStatusUpdate: () => { connection.close(); finish() },
+  })
+  try {
+    await completed
+    expect(onMessageState).toHaveBeenCalledWith({ submission_id: 's1', state: 'received' })
+    expect(onSnapshot).toHaveBeenCalledWith({ last_seq: 42, events: [{ type: 'x' }] })
+    expect(requests[1]).toContain('since=42')
+    expect(onConnection.mock.calls.map(call => call[0])).toEqual(['live', 'reconnecting', 'live'])
+  } finally {
+    connection.close()
+    server.closeAllConnections()
+    await new Promise<void>(resolve => server.close(() => resolve()))
+  }
+})
