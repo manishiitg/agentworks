@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"io"
@@ -80,6 +81,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	// must not wait for the network. Cloud Off already bypasses this lock.
 	operationPath, err := crewSyncManifestPath(roots.ID)
 	if err != nil {
+		externalError(w, 409, "sync_unavailable", err.Error())
+		return
+	}
+	if err = agentworksclient.EnsurePrivateDirectory(operationPath + ".operation"); err != nil {
 		externalError(w, 409, "sync_unavailable", err.Error())
 		return
 	}
