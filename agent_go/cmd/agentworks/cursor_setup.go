@@ -119,15 +119,11 @@ func setupCommand(o *options) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 				}
-				say(app.name + " is set up for AgentWorks without hooks: installed " + installed + ". This applies to every project.")
+				say(app.name + " is set up for AgentWorks: installed " + installed + ", for every project.")
 				if line := addToolsServer(cmd.Context(), o, app.provider); line != "" {
 					say(line)
 				}
-				say("Next: restart " + app.name + ". Verified chats connect privately through your saved sign-in when their AgentWorks tools run.")
-				say(noHooksGivesUp)
-				if app.provider == "codex" {
-					say("Using the Codex command line? Run agentworks setup codex --hooks.")
-				}
+				say("Next: restart " + app.name + ", then say \"connect this chat to AgentWorks\" in a chat.")
 				say("To undo: " + undo)
 				return nil
 			}
