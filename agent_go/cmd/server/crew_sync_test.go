@@ -802,8 +802,26 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			offline.Store(false)
 			awaitFile(serverRoots.Files, "automatic.txt", "saved offline")
+			// PLAT-856-509: force a status refresh in the released-lock window.
+			// Its old server authority must not reverse a pending handoff.
+			refreshedPending := false
+			pieceHook = func(r *http.Request) {
+				observed, err := crewroot.ReadSync(local.ID)
+				if err != nil || observed == nil || observed.PendingAction != "server" || r.Method != http.MethodPut {
+					return
+				}
+				refreshedPending = true
+				updated, err := updateCrewSyncEditing(ctx, local, *observed, "local")
+				if err != nil || updated.Editing != "server" || updated.PendingAction != "server" {
+					t.Errorf("status reversed the pending handoff: %+v %v", updated, err)
+				}
+			}
 			if w := call("server", "owner", true); w.Code != 200 {
 				t.Fatalf("automatic handoff: %s", w.Body.String())
+			}
+			pieceHook = nil
+			if !refreshedPending {
+				t.Fatal("pending handoff authority refresh was not exercised")
 			}
 			write(serverRoots.Files, "automatic.txt", "saved on server")
 			awaitFile(local.Files, "automatic.txt", "saved on server")
