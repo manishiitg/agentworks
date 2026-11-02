@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { CheckCircle2, CircleDashed, Folder, Laptop, Terminal, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, CircleDashed, Folder, Laptop, RefreshCw, Terminal, TriangleAlert } from 'lucide-react'
 import api from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -15,22 +15,33 @@ type LaptopSettings = { device_id: string; folders: { id: string; path: string; 
 
 /** In the Mac app a Crew is either online on a network or only on this Mac; on a server the page is its laptop access. */
 export const crewOnlineMode = () => hasDesktopConnections()
+// Most people have one network, so its name is shown only when there are several.
 const networkName = (binding: Binding | null | undefined, connections: { id: string; name: string }[]) =>
-  connections.find(item => item.id === binding?.connection_id)?.name || (binding?.peer_server ? binding.peer_server.replace(/^https?:\/\//, '') : '')
+  connections.filter(item => item.id !== 'local').length > 1 ? connections.find(item => item.id === binding?.connection_id)?.name || '' : ''
 
-/** The one-line answer for the main menu row: the network it is online on, or Off. */
-export function useYourComputerSummary(enabled: boolean, projectId?: string, profileId?: string) {
+/** The one-line answer for the main menu row: Online (with a small spinner while it syncs) or Off. */
+export function useYourComputerSummary(enabled: boolean, projectId?: string, profileId?: string): ReactNode {
   const connections = useConnectedWorkStore(state => state.connections)
-  const [summary, setSummary] = useState<string>()
+  const [summary, setSummary] = useState<ReactNode>()
   useEffect(() => {
     setSummary(undefined)
     if (!enabled || !projectId) return
     const abort = new AbortController(), options = { signal: abort.signal, skipSessionContext: true }
-    const request = crewOnlineMode()
-      ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => data.binding ? networkName(data.binding, connections) || 'On' : 'Off')
-      : api.get<LaptopSettings>(laptopSettingsEndpoint(undefined, profileId, projectId), options).then(({ data }) => data.device_id ? 'On' : 'Off')
-    void request.then(value => { if (!abort.signal.aborted) setSummary(value) }).catch(() => {})
-    return () => abort.abort()
+    const load = () => {
+      const request: Promise<ReactNode> = crewOnlineMode()
+        ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => {
+          if (!data.binding) return 'Off'
+          const name = networkName(data.binding, connections)
+          if (data.auto?.state === 'syncing') return <span className="inline-flex items-center gap-1"><RefreshCw aria-label="Syncing" className="h-3 w-3 animate-spin" />{name || 'Syncing'}</span>
+          if (data.binding.pending_action || (data.auto?.state && !['synced', 'idle'].includes(data.auto.state))) return <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><TriangleAlert className="h-3 w-3" />{name || 'On'}</span>
+          return <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="h-3 w-3" />{name || 'On'}</span>
+        })
+        : api.get<LaptopSettings>(laptopSettingsEndpoint(undefined, profileId, projectId), options).then(({ data }) => data.device_id ? 'On' : 'Off')
+      void request.then(value => { if (!abort.signal.aborted) setSummary(value) }).catch(() => {})
+    }
+    load()
+    const timer = crewOnlineMode() ? window.setInterval(load, 4000) : undefined
+    return () => { window.clearInterval(timer); abort.abort() }
   }, [enabled, projectId, profileId, connections])
   return summary
 }
@@ -71,12 +82,12 @@ function OnlineCard({ projectId }: { projectId: string }) {
   }
   const problem = error || (status?.auto?.state && !['syncing', 'synced', 'idle'].includes(status.auto.state) ? status.auto.message || '' : '')
   const syncing = busy || status?.auto?.state === 'syncing'
-  return <section aria-label="Online" className="space-y-3 rounded-lg border border-border p-4">
+  return <section aria-label="Online" className="space-y-3">
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
         <p role="status" className="flex items-center gap-2 text-sm font-semibold">
-          {binding ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
-          {!status ? 'Checking…' : binding ? `Online on ${network}` : 'Only on this Mac'}
+          {syncing ? <RefreshCw aria-label="Syncing" className="h-4 w-4 animate-spin text-muted-foreground" /> : binding ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
+          {!status ? 'Checking…' : binding ? (network ? `Online on ${network}` : 'Online') : 'Only on this Mac'}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use it from the website or your phone. It works here or on the network, with this project’s folder and terminal on this Mac.' : 'Turn on to use this Crew from anywhere.'}</p>
       </div>
@@ -87,13 +98,12 @@ function OnlineCard({ projectId }: { projectId: string }) {
       <option value="">Choose a network</option>
       {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
     </select>}
-    {syncing && <p role="status" className="text-xs text-muted-foreground">Updating…</p>}
-    {binding?.pending_action && !busy && <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last update was interrupted.</span><Button size="sm" variant="outline" onClick={() => void run(binding.pending_action!)}>Finish</Button></div>}
+        {binding?.pending_action && !busy && <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last update was interrupted.</span><Button size="sm" variant="outline" onClick={() => void run(binding.pending_action!)}>Finish</Button></div>}
     {problem && !binding?.pending_action && !syncing && <div className="space-y-1">
       <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last update didn’t finish. Your work is kept.</span>{binding && <Button size="sm" variant="outline" onClick={() => void run('update')}>Try again</Button>}</div>
       <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Details</summary><p className="mt-1 break-all">{problem}</p></details>
     </div>}
-    {binding?.peer_server && <a className="inline-block text-xs underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">Open on {network}</a>}
+    {binding?.peer_server && <a className="inline-block text-xs underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">{network ? `Open on ${network}` : 'Open on the website'}</a>}
   </section>
 }
 
