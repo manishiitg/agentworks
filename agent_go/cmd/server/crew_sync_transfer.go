@@ -348,6 +348,36 @@ func validateCrewPayloads(s *crewsync.Snapshot) error {
 	return nil
 }
 
+// Abandoned uploads are app-private scratch, not Crew files. A new stage
+// prunes only old siblings, retaining this retry and the latest receipt.
+func pruneCrewUploadStages(id, dir, lastTransfer string) {
+	entries, err := os.ReadDir(filepath.Dir(dir))
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-24 * time.Hour)
+	current, last := filepath.Base(dir), crewTransferDigest(lastTransfer)
+	removed := 0
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == current || entry.Name() == last {
+			continue
+		}
+		if name, err := hex.DecodeString(entry.Name()); err != nil || len(name) != 32 {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		if os.RemoveAll(filepath.Join(filepath.Dir(dir), entry.Name())) == nil {
+			removed++
+		}
+	}
+	if removed > 0 {
+		log.Printf("[CREW_SYNC] project=%s abandoned_uploads_pruned=%d", id, removed)
+	}
+}
+
 // The immutable descriptor is admitted before any bytes. A retry cannot reuse
 // its transfer ID for different files, even when the previous HTTP reply was lost.
 func (api *StreamingAPI) prepareCrewTransfer(ctx context.Context, claims *UserClaims, id string, in crewSyncRequest) (crewSyncReply, error) {
@@ -369,6 +399,7 @@ func (api *StreamingAPI) prepareCrewTransfer(ctx context.Context, claims *UserCl
 	if e != nil {
 		return out, e
 	}
+	pruneCrewUploadStages(roots.ID, dir, b.LastTransfer)
 	unlock, e := wf.LockWorkspace(ctx, dir)
 	if e != nil {
 		return out, e

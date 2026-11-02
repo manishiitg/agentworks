@@ -276,6 +276,32 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if _, err := api.crewSync(t.Context(), crewWriter("other"), serverRoots.ID, crewSyncRequest{Action: "status"}); err == nil {
 				t.Fatal("other owner accessed sync")
 			}
+			// PLAT-856-509: old abandoned upload bytes are pruned while the
+			// receipt, recent stages and a resumed current stage survive.
+			pruneBinding, err := crewroot.ReadSync(serverRoots.ID)
+			if err != nil || pruneBinding.LastTransfer == "" {
+				t.Fatal("missing initial receipt")
+			}
+			staleTime := time.Now().Add(-25 * time.Hour)
+			stageDir := func(id string, old bool) string {
+				t.Helper()
+				dir, err := crewTransferDir(serverRoots.ID, pruneBinding.PairID, id, "upload")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = os.WriteFile(filepath.Join(dir, "content"), []byte("scratch"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if old {
+					if err = os.Chtimes(dir, staleTime, staleTime); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return dir
+			}
+			abandoned := stageDir("abandoned-upload", true)
+			recent := stageDir("recent-upload", false)
+			lastReceipt := stageDir(pruneBinding.LastTransfer, true)
 			// PLAT-856-509: lose a piece reply after durable storage. Retry
 			// resumes that exact artifact; the working-folder lock is free.
 			largePath := filepath.Join(local.Files, "resumable.bin")
@@ -313,6 +339,14 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("did not exercise interrupted upload: %d %s", w.Code, w.Body.String())
 			}
 			pieceHook = nil
+			if _, err := os.Stat(abandoned); !os.IsNotExist(err) {
+				t.Fatal("abandoned upload was not pruned")
+			}
+			for _, kept := range []string{recent, lastReceipt} {
+				if _, err := os.Stat(kept); err != nil {
+					t.Fatal("recent upload or receipt was pruned")
+				}
+			}
 			pendingPath, _ := crewSyncManifestPath(local.ID)
 			var upload crewSyncRequest
 			if e = readCrewTransfer(pendingPath+".pending", &upload); e != nil {
@@ -340,6 +374,13 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("saved offset: %d %d", got.Code, offset)
 			}
 			t.Logf("[CREW_SYNC_PROOF] at=%s interrupted_upload_saved_offset=%d", time.Now().UTC().Format(time.RFC3339Nano), offset)
+			currentStage, err := crewTransferDir(serverRoots.ID, upload.PairID, upload.TransferID, "upload")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.Chtimes(currentStage, staleTime, staleTime); err != nil {
+				t.Fatal(err)
+			}
 			// An independently edited destination is never overwritten at apply.
 			write(serverRoots.Files, "resumable.bin", "destination work")
 			if w = call("update", "owner", true); w.Code != 409 {
