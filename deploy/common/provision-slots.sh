@@ -588,7 +588,8 @@ PY
 # only, never slot assignments, journals, directory permissions or ACLs.
 cmd_native_session() {
   local source_dir
-  source_dir="$(readlink -f "$HOME_DIR/current/bin")"
+  # install-native-session passes root-checked copies here; run by hand it is the active release's bin/.
+  source_dir="$(readlink -f "${NATIVE_SOURCE_DIR:-$HOME_DIR/current/bin}")"
   [[ -x "$source_dir/slotctl" && -x "$source_dir/native-session" ]] || { echo "The active release lacks its native session helper." >&2; exit 1; }
   sync_native_owners
   install -o root -g root -m 0755 "$source_dir/native-session" "$LIBEXEC/native-session"

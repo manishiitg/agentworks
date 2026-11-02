@@ -405,6 +405,10 @@ echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOS
 if [[ "${SLOTS_ENABLED:-false}" == true && -n "${HOST_SETUP_USER:-}" ]]; then
   echo "==> [$PRODUCT] Installing the active native session helper"
   ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} bash -s -- native-session" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+elif [[ "${SLOTS_ENABLED:-false}" == true ]] && "${SSH[@]}" "sudo -n -l /usr/local/libexec/agentworks/install-native-session >/dev/null 2>&1"; then
+  # The host allows exactly this root step (deploy/common/install-native-session.sh, installed by root with one sudoers line).
+  echo "==> [$PRODUCT] Installing the active native session helper (checked against the build manifest)"
+  "${SSH[@]}" "sudo -n /usr/local/libexec/agentworks/install-native-session" || echo "!!! [$PRODUCT] ROOT STEP FAILED: install-native-session (see above); slot changes in this release may not apply" >&2
 elif [[ "${SLOTS_ENABLED:-false}" == true ]]; then
   # Without a root setup user the root-owned slotctl is not updated by the deploy. Say so loudly when the new release's differs,
   # or a slot change silently does not apply (it happened on 2 Nov until someone installed it by hand).
