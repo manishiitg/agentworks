@@ -28,10 +28,11 @@ function TerminalToolButton({ label, buttonRef, children, ...props }: ButtonProp
 export function NativeTerminalToolbar({ className = '', uploading, focused = false, onToggleFocus, onAttach, onReturnToChat }: NativeTerminalToolbarProps) {
   return (
     <div className={`flex flex-wrap items-center gap-1.5 py-1 text-xs text-muted-foreground ${className}`} data-testid="native-terminal-toolbar">
+      {/* A small cluster on the right: back to chat, attach files, focus mode. */}
+      <span className="mr-auto" />
       <TerminalToolButton label="Return to chat" variant="outline" className="h-6 w-6 shrink-0" onClick={onReturnToChat}>
         <ArrowLeft className="h-3.5 w-3.5" />
       </TerminalToolButton>
-      <span className="mr-auto" />
       <TerminalToolButton label={uploading ? 'Uploading files…' : 'Attach files'} onClick={onAttach} disabled={uploading}>
         {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
       </TerminalToolButton>
