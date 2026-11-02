@@ -46,7 +46,7 @@ with (root/'npm-calls').open('a') as f:f.write(' '.join(args)+'\\n')
 packages={'@anthropic-ai/claude-code':'claude','@openai/codex':'codex','@earendil-works/pi-coding-agent':'pi','agent-browser':'agent-browser'}
 for package,name in packages.items():
  if package+'@latest' not in args:continue
- p=prefix/'bin'/name;p.write_text('#!/bin/sh\\necho 1.2.14\\n'+('exit 47\\n' if name=='codex' and os.environ.get('FAIL_CODEX') else ''));p.chmod(0o755)
+ p=prefix/'bin'/name;p.write_text('#!/bin/sh\\necho 1.2.14\\n'+('exit 47\\n' if name=='codex' and os.environ.get('FAIL_CODEX') else ''));p.chmod(0o700 if os.environ.get('PRIVATE_INSTALL') else 0o755)
 sdks={'@anthropic-ai/claude-agent-sdk':('sdk.mjs','export function query() {}'), '@cursor/sdk':('dist/cjs/index.js','const sdk = { Agent: class Agent {} }; module.exports = sdk;')}
 for package,(entry,source) in sdks.items():
  requested=next((a for a in args if a.startswith(package+'@')),None)
@@ -189,6 +189,14 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         result = self.run_installer()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(target.read_text(), 'original')
+
+    def test_failed_later_step_still_opens_installed_programs_to_slots(self):
+        # 2 Nov: Codex was reinstalled owner-only, a later step failed, and Codex broke for every slot.
+        self.env['PRIVATE_INSTALL'] = '1'
+        (self.root/'payload').write_bytes(b'corrupted download')
+        self.assertNotEqual(self.run_installer().returncode, 0)
+        mode = (self.prefix/'bin/codex').stat().st_mode
+        self.assertEqual(mode & 0o005, 0o005, oct(mode))
 
     def test_published_package_without_working_binary_fails_deployment(self):
         self.env['FAIL_CODEX'] = '1'
