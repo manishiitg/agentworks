@@ -11,7 +11,7 @@ import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 
 type Person = { id: string; email?: string; username?: string }
 type ShareState = {
-  mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean; needs_dashboard?: boolean
+  mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean; share_blocked?: string; needs_dashboard?: boolean
   accounts?: { kind: string; name: string; use: string }[]
   agents?: { chat_id: string; name: string; purpose: string; selected: boolean }[]
 }
@@ -81,7 +81,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     return () => document.removeEventListener('keydown', escape)
   }, [open, close])
   if (!state) return isPanel ? <div className="text-sm">{error ? <p role="alert">{error} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p> : <p role="status" className="text-muted-foreground">Loading access…</p>}</div> : null
-  if (!state.can_share) return isPanel ? <p className="text-sm text-muted-foreground">Ask a project owner to change access.</p> : null
+  if (!state.can_share) return isPanel ? <p className="text-sm text-muted-foreground">{state.share_blocked || 'Ask a project owner to change access.'}</p> : null
   if (variant === 'row') return <Row icon={Users} detail={audience(state)} onClick={() => onOpen?.()}>{label}</Row>
   const selected = (state.agents || []).filter(agent => agent.selected)
   const emails = (state.people || []).map(person => person.email).filter((value): value is string => !!value)
