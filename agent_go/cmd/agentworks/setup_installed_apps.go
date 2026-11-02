@@ -30,8 +30,6 @@ func setupInstalledApps(ctx context.Context, o *options, installed func(string) 
 		next := "restart " + app.name
 		if app.provider == "muse" {
 			next += "; review its AgentWorks hook approval"
-		} else if app.provider == "codex" && runtime.GOOS != "windows" && hooksPluginInstalled("codex") {
-			next += "; review AgentWorks in Settings > Hooks"
 		}
 		if note != "" {
 			next += ". " + strings.TrimSpace(note)
@@ -98,7 +96,7 @@ func codingAppInstalled(provider string) bool {
 	return false
 }
 
-// A Windows setup changes the selected plugin, not provider hook approval. Old
+// Setup changes the selected plugin, not provider hook approval. Old
 // cached hooks stop loading after the required Codex restart.
 func setupCodexPluginVariant(ctx context.Context, o *options, name string) error {
 	if err := codexHomeError(); err != nil {
