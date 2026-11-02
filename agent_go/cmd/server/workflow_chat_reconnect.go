@@ -3,6 +3,8 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -98,6 +100,9 @@ func recentDialogueLines(history []llmtypes.MessageContent, skipPrefixes ...stri
 
 // continuityRecentTurnsJQ prints an archive's newest user/assistant turns
 // that carry text, one "role: text" line each.
+// The same over the full .history.jsonl, read with jq -s (all lines as one array).
+const continuityRecentTurnsLogJQ = `[.[] | select(.Role=="human" or .Role=="user" or .Role=="ai" or .Role=="assistant") | {r: .Role, t: ([.Parts[]?.Text? // empty] | join(" "))} | select(.t != "")] | .[-10:][] | "\(.r): \(.t)"`
+
 const continuityRecentTurnsJQ = `[.conversation_history[] | select(.Role=="human" or .Role=="user" or .Role=="ai" or .Role=="assistant") | {r: .Role, t: ([.Parts[]?.Text? // empty] | join(" "))} | select(.t != "")] | .[-10:][] | "\(.r): \(.t)"`
 
 // Bounds for the recent-dialogue excerpt in the continuity notice (PLAT-700).
@@ -211,8 +216,25 @@ func buildCodingAgentContinuityNotice(conversationPath, workspacePath string, hi
 		conversationPath = physical
 		location = "absolute path to this conversation's private archive; use exactly this path"
 	}
+	// A long chat's conversation.json keeps only its latest messages (history_tail); the whole history is the
+	// .history.jsonl beside it, one message per line. Point the agent there, or "read further back" stops at
+	// the last 40 messages (a chat with 218 messages could not find its own earlier work).
+	format, recentJQ := "JSON whose conversation_history array stores each turn's role in Role and its text in Parts[].Text", continuityRecentTurnsJQ
+	jqFlags := "-r"
+	if strings.HasSuffix(conversationPath, ".json") {
+		logPath := strings.TrimSuffix(conversationPath, ".json") + ".history.jsonl"
+		abs := logPath
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.TrimSuffix(normalizedConversationPath, ".json")+".history.jsonl"))
+		}
+		if info, err := os.Stat(abs); err == nil && info.Mode().IsRegular() {
+			conversationPath = logPath
+			format = "JSON Lines, one message per line, each with its role in Role and its text in Parts[].Text"
+			recentJQ, jqFlags = continuityRecentTurnsLogJQ, "-rs"
+		}
+	}
 	quotedPath := "'" + strings.ReplaceAll(conversationPath, "'", "'\"'\"'") + "'"
-	archive := fmt.Sprintf("The complete conversation is saved at %s (%s): JSON whose conversation_history array stores each turn's role in Role and its text in Parts[].Text. This command prints its last 10 dialogue turns:\n  jq -r '%s' %s\n", conversationPath, location, continuityRecentTurnsJQ, quotedPath)
+	archive := fmt.Sprintf("The complete conversation is saved at %s (%s): %s. This command prints its last 10 dialogue turns:\n  jq %s '%s' %s\n", conversationPath, location, format, jqFlags, recentJQ, quotedPath)
 	recent := ""
 	if lines := continuityExcerpt(history); len(lines) > 0 {
 		recent = fmt.Sprintf("Recent conversation (the last %d text turns, oldest first, long turns shortened, tool output left out):\n%s\n[end of recent conversation]\nThis is only the tail of the chat. For anything older or cut here (earlier work, counts, dates, exact wording, tool results), read the archive below before answering; do not guess from this excerpt.\n", len(lines), strings.Join(lines, "\n"))
