@@ -715,7 +715,7 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 			}
 			return errors.New("set up Codex first with agentworks setup codex --hooks, then restart Codex and connect this chat again")
 		}
-		return setupCodexPlugin(ctx, o, "agentworks-codex")
+		return setupCodexPluginVariant(ctx, o, "agentworks-codex")
 	}
 	// Existing cache + installation registry are required; a downloaded cache on
 	// its own is not an installed plugin. Never enable/trust hooks programmatically.

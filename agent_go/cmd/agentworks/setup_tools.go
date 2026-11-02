@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -26,7 +28,7 @@ func installToolsPlugin(ctx context.Context, o *options, provider string) (insta
 	case "claude":
 		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", "user"}, {"plugin", "install", "agentworks-tools@agentworks", "--scope", "user"}}
 		installed, remove = "the AgentWorks tools plugin (agentworks-tools@agentworks, no hooks) for your user in Claude Code (~/.claude)", "claude plugin uninstall agentworks-tools@agentworks --scope user"
-		if raw, e := os.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json")); e == nil && strings.Contains(string(raw), "agentworks@agentworks") {
+		if hooksPluginInstalled("claude") {
 			newSetupStyle(o.stdout).Say("Note: the full AgentWorks plugin (with hooks) is also installed. Remove it so the hooks stop: claude plugin uninstall agentworks@agentworks --scope user")
 		}
 	case "codex":
@@ -35,14 +37,14 @@ func installToolsPlugin(ctx context.Context, o *options, provider string) (insta
 		}
 		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins"}, {"plugin", "add", "agentworks-codex-tools@agentworks"}}
 		installed, remove = "the AgentWorks tools plugin (agentworks-codex-tools@agentworks, no hooks) in your Codex profile (~/.codex); it serves the Codex app (the Codex command line keeps the version with hooks)", "remove AgentWorks (tools only) in Codex Settings > Plugins, then restart Codex"
-		if raw, e := os.ReadFile(filepath.Join(codexHomeDir(home), "config.toml")); e == nil && strings.Contains(string(raw), "agentworks-codex@agentworks") {
+		if raw, e := os.ReadFile(filepath.Join(codexHomeDir(home), "config.toml")); e == nil && strings.Contains(string(raw), "agentworks-codex@agentworks") && runtime.GOOS != "windows" {
 			newSetupStyle(o.stdout).Say("Note: the full AgentWorks plugin (with hooks) is also installed. Remove that copy in Codex Settings > Plugins so its hooks stop.")
 		}
 	default:
 		return "", "", errors.New("--no-hooks is available for Claude Code and the Codex app")
 	}
 	if provider == "codex" {
-		err = setupCodexPlugin(ctx, o, "agentworks-codex-tools")
+		err = setupCodexPluginVariant(ctx, o, "agentworks-codex-tools")
 	} else {
 		err = runPluginSteps(ctx, o, provider, steps)
 	}
@@ -58,7 +60,16 @@ func hooksPluginInstalled(provider string) bool {
 	switch provider {
 	case "claude":
 		raw, e := os.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))
-		return e == nil && strings.Contains(string(raw), "agentworks@agentworks")
+		if e != nil || !strings.Contains(string(raw), "agentworks@agentworks") {
+			return false
+		}
+		// A cached/registered full package can be disabled while tools-only is
+		// enabled. Setup must not silently reactivate its command hooks.
+		var settings struct {
+			EnabledPlugins map[string]bool `json:"enabledPlugins"`
+		}
+		raw, e = os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+		return e == nil && json.Unmarshal(raw, &settings) == nil && settings.EnabledPlugins["agentworks@agentworks"]
 	case "codex":
 		raw, e := os.ReadFile(filepath.Join(codexHomeDir(home), "config.toml"))
 		return e == nil && strings.Contains(string(raw), "agentworks-codex@agentworks")

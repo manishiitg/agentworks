@@ -22,8 +22,10 @@ var cursorHookEvents = []string{"sessionStart", "beforeSubmitPrompt", "stop", "p
 
 func setupCommand(o *options) *cobra.Command {
 	say := newSetupStyle(o.stdout).Say
-	cmd := &cobra.Command{Use: "setup", Short: "Set up a coding app to work with AgentWorks: claude, codex, cursor, muse or pi", PersistentPostRun: func(cmd *cobra.Command, _ []string) {
-		if cmd.Name() != "notifications" {
+	cmd := &cobra.Command{Use: "setup", Args: cobra.NoArgs, Short: "Set up installed AI apps, or choose claude, codex, cursor, muse or pi", RunE: func(cmd *cobra.Command, _ []string) error {
+		return setupInstalledApps(cmd.Context(), o, codingAppInstalled, setupOneInstalledApp)
+	}, PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+		if cmd.Name() != "notifications" && !o.setupBatch {
 			connectLiveChats(cmd.Context(), o)
 		}
 	}}
@@ -98,7 +100,6 @@ func setupCommand(o *options) *cobra.Command {
 		var noHooks, withHooks bool
 		sub := &cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks or sign in. With a saved sign-in, verified chats connect privately automatically.", RunE: func(cmd *cobra.Command, _ []string) error {
 			o.setupAll = true
-			// Windows Codex uses hooks by default; other setups keep the tools-only default.
 			// --hooks installs the full plugin (typed /agentworks shortcuts, delivery at the end of a turn,
 			// reconnect after a restart); the Codex command line needs it.
 			if withHooks && noHooks {
@@ -108,11 +109,8 @@ func setupCommand(o *options) *cobra.Command {
 			if app.provider == "claude" || app.provider == "codex" {
 				// Running setup again (or an update that does) never removes hooks someone already has: with no flag, the
 				// full plugin stays when it is installed; --no-hooks is how to switch them off.
-				if !withHooks && !noHooks && hooksPluginInstalled(app.provider) {
+				if !withHooks && !noHooks && !(app.provider == "codex" && runtime.GOOS == "windows") && hooksPluginInstalled(app.provider) {
 					withHooks, keptHooks = true, true
-				}
-				if !withHooks && !noHooks && app.provider == "codex" && runtime.GOOS == "windows" {
-					withHooks = true
 				}
 				noHooks = !withHooks
 			}
@@ -135,9 +133,6 @@ func setupCommand(o *options) *cobra.Command {
 			}
 			if noHooks {
 				return fmt.Errorf("--no-hooks is available for Claude Code and the Codex app; %s needs its hooks", app.name)
-			}
-			if app.provider == "codex" && runtime.GOOS == "windows" {
-				say("AgentWorks will check for messages when Codex starts, when you send a prompt, and when a reply finishes. Messages that arrive while Codex is idle wait until then. Run agentworks setup codex --no-hooks to turn this off.")
 			}
 			if err := installAgentPlugin(cmd.Context(), o, app.provider); err != nil {
 				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
@@ -163,7 +158,7 @@ func setupCommand(o *options) *cobra.Command {
 		}}
 		if app.provider == "claude" || app.provider == "codex" {
 			sub.Flags().BoolVar(&noHooks, "no-hooks", false, "Install the tools only, with no hooks; you ask the agent to connect")
-			sub.Flags().BoolVar(&withHooks, "hooks", false, "Install the full plugin with hooks (typed /agentworks shortcuts, automatic reconnect); the default for Windows Codex, needed for the Codex command line")
+			sub.Flags().BoolVar(&withHooks, "hooks", false, "Install the full plugin with hooks (typed /agentworks shortcuts, automatic reconnect); needed for the Codex command line")
 		}
 		cmd.AddCommand(sub)
 	}

@@ -35,6 +35,8 @@ type options struct {
 	// setupAll is set by agentworks setup: the person asked for the install, so
 	// there is no extra yes prompt, and it installs for every project.
 	setupAll bool
+	// setupBatch suppresses duplicate chat scans while setup configures each app.
+	setupBatch bool
 	// reconnectNote is set when a bare attach took back an earlier agent of the folder.
 	reconnectNote string
 	// newAgentWhy is set when a bare attach created a new agent although the person may have expected an earlier one back.
