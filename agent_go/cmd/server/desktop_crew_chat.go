@@ -43,7 +43,7 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 					}
 					id := strings.TrimSuffix(entry.Name(), ".json")
 					binding, e := crewroot.ReadSync(id)
-					if e != nil || binding == nil || binding.Side != "local" || binding.Editing != "local" || binding.PendingAction != "" {
+					if e != nil || binding == nil || binding.Mode == "off" || binding.Side != "local" || binding.Editing != "local" || binding.PendingAction != "" {
 						continue
 					}
 					live[id] = true
@@ -81,7 +81,7 @@ func (api *StreamingAPI) desktopCrewChatBinding(ctx context.Context, project str
 		return nil, nil, desktopConnection{}, err
 	}
 	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction != "" {
+	if err != nil || b == nil || b.Mode == "off" || b.Side != "local" || b.Editing != "local" || b.PendingAction != "" {
 		return nil, nil, desktopConnection{}, fmt.Errorf("local editing is unavailable")
 	}
 	connection, err := desktopConnectionFor(claims.UserID, b.ConnectionID)
@@ -166,7 +166,7 @@ func (api *StreamingAPI) pollDesktopCrewChat(ctx context.Context, project string
 								check = err
 							}
 						}
-						if check == nil && current != nil && current.PairID == b.PairID {
+						if check == nil && current != nil && current.Mode != "off" && current.PairID == b.PairID {
 							replyCtx, stopReply := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 							reply, e := desktopCrewChatHTTP(replyCtx, claims.UserID, fresh, current, &result)
 							stopReply()
