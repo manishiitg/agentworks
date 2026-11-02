@@ -134,7 +134,7 @@ func TestWorkspaceNavigationListsOnlyTheOwnersCrewsAndRejectsTokenDetail(t *test
 		return out
 	}
 	owner := request(f.Claims(fixtureUserA), `{"action":"list","detail":"navigation"}`)
-	if owner.Code != 200 || !strings.Contains(owner.Body.String(), `"workspace_id":"work:`+fixtureCrewID+`"`) || owner.Header().Get("Cache-Control") != "no-store" {
+	if owner.Code != 200 || !strings.Contains(owner.Body.String(), `"workspace_id":"work:`+fixtureCrewID+`"`) || owner.Header().Get("Cache-Control") != "no-store" || !strings.Contains(owner.Body.String(), `"owned_by_caller":true`) {
 		t.Fatalf("owner navigation: %d %s", owner.Code, owner.Body.String())
 	}
 	other := request(f.Claims(fixtureUserB), `{"action":"list","detail":"navigation"}`)
