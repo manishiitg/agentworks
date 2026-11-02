@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
-	"golang.org/x/sys/unix"
 )
 
 type brainStarterCaller interface {
@@ -98,11 +98,12 @@ func seedBrainStarterFiles(ctx context.Context, service brainStarterCaller, admi
 	}
 	defer lock.Close()
 	for {
-		if err = unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err == nil {
-			break
+		ok, lockErr := filelock.TryLock(lock)
+		if lockErr != nil {
+			return lockErr
 		}
-		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
-			return err
+		if ok {
+			break
 		}
 		select {
 		case <-ctx.Done():
@@ -110,7 +111,7 @@ func seedBrainStarterFiles(ctx context.Context, service brainStarterCaller, admi
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	defer unix.Flock(int(lock.Fd()), unix.LOCK_UN)
+	defer filelock.Unlock(lock)
 	ledger := filepath.Join(stateDir, "offers.json")
 	offered := map[string]brainStarterOffer{}
 	if b, err := os.ReadFile(ledger); err == nil {

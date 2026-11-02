@@ -23,7 +23,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -181,7 +180,7 @@ func companyModelProxyUpstream() (string, string, bool) {
 	cmd := exec.Command(binary, "--config", config)
 	cmd.Dir = dir
 	cmd.Env = modelProxyEnv()
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = ownProcessGroup()
 	logFile, _ := os.OpenFile(filepath.Join(dir, "proxy.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	if err := cmd.Start(); err != nil {
@@ -241,7 +240,7 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 	cmd := exec.Command(binary, "--config", filepath.Join(dir, "config.yaml"), login.flag, "--no-browser")
 	cmd.Dir = dir
 	cmd.Env = modelProxyEnv()
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = ownProcessGroup()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
