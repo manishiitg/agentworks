@@ -2,7 +2,11 @@ package server
 
 import (
 	"context"
+	"os"
+	"path"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
@@ -22,7 +26,27 @@ type projectCheckout struct {
 	ID          string           `json:"id"`
 	Root        string           `json:"root"`
 	Name        string           `json:"name"`
+	WorktreeOf  string           `json:"worktree_of,omitempty"`
 	Captures    []projectCapture `json:"captures"`
+}
+
+// worktreeOf names the checkout a Git worktree belongs to ("cd-web1854-main"), read from the worktree's .git
+// file ("gitdir: <main>/.git/worktrees/<name>"), so the Changes list can tell a worktree from its clone.
+// A full clone, or anything unreadable, returns "".
+func worktreeOf(root, rel string) string {
+	if rel == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel), ".git"))
+	if err != nil {
+		return ""
+	}
+	gitdir := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(raw)), "gitdir:"))
+	i := strings.LastIndex(filepath.ToSlash(gitdir), "/.git/worktrees/")
+	if i <= 0 {
+		return ""
+	}
+	return path.Base(filepath.ToSlash(gitdir)[:i])
 }
 
 // Project history contains file snapshots, never another chat's messages,
@@ -85,6 +109,7 @@ func projectFileReviewHistory(ctx context.Context, store filesnapshots.Store, ro
 				checkout := projectCheckout{ID: id, Name: "Project files", Captures: []projectCapture{}}
 				if label := labels[id]; label != nil {
 					checkout.Root, checkout.Name = label.Root, label.Name
+					checkout.WorktreeOf = worktreeOf(store.Root, label.Root)
 				}
 				for _, group := range filesnapshots.GroupChanges(ctx, store.Root, changes, nil, allow) {
 					if group.CheckoutID == id {

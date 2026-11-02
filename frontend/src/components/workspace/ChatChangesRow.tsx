@@ -27,15 +27,22 @@ export function ChatChangesRow({ workspacePath, sessionId, onOpen }: { workspace
     window.addEventListener('focus', load)
     return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener('focus', load) }
   }, [workspacePath, revision, savedEvents, retry])
+  // One heading, then each Git copy by its full name: several copies of one repository (cd-web1854-main,
+  // cd-web1854-always-on) looked like duplicates when every row said "Changes" and cut the name short.
+  const shown = checkouts?.filter(checkout => checkout.captures[0]) ?? []
   return <div className="space-y-0.5">
-    {checkouts?.length ? checkouts.map(checkout => {
+    {shown.length > 0 && <p className="flex items-center gap-2 px-2.5 pt-1 text-xs font-medium text-muted-foreground"><FileDiff aria-hidden="true" className="h-3.5 w-3.5" />Changes</p>}
+    {shown.length ? shown.map(checkout => {
       const capture = checkout.captures[0]
       if (!capture) return null
       const warning = capture.note
       return <WorkspaceContextRow key={checkout.id} icon={FileDiff} hint={`${checkout.root || checkout.name}${capture.branch ? ` · ${capture.branch}` : ''}. ${warning || 'Latest saved project changes; other chats or editors may contribute.'}${checkout.working_tree === 'clean' ? ' Working tree clean.' : checkout.working_tree === 'dirty' ? ' Uncommitted changes present.' : ''}`} onClick={() => onOpen({ workspacePath, sessionId, snapshotId: capture.snapshot_id, historyScope: 'project', checkoutId: checkout.id })} detail={<span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums">
         <span>{capture.files} file{capture.files === 1 ? '' : 's'}</span><span className="text-diff-add">+{capture.added}</span><span className="text-diff-del">−{capture.removed}</span>
         {warning && <span role="img" aria-label={warning} title={warning} className="inline-flex shrink-0 text-amber-500"><AlertTriangle aria-hidden="true" className="h-3 w-3" /></span>}
-      </span>}><span className="flex min-w-0 items-center gap-1.5"><span>Changes</span><span className="truncate text-xs text-muted-foreground">{checkout.name}</span></span></WorkspaceContextRow>
+      </span>}><span title={checkout.root || checkout.name} className="block min-w-0">
+        <span className="block truncate">{checkout.name}</span>
+        {(checkout.worktree_of || capture.branch) && <span className="block truncate text-xs text-muted-foreground">{[checkout.worktree_of && `worktree of ${checkout.worktree_of}`, capture.branch && `branch ${capture.branch}`].filter(Boolean).join(' · ')}</span>}
+      </span></WorkspaceContextRow>
     }) : <WorkspaceContextRow icon={FileDiff} hint="Saved project changes, separated by worktree." onClick={() => onOpen()} detail={error ? 'Unavailable' : checkouts === null ? 'Loading…' : '0 files'}>Changes</WorkspaceContextRow>}
     {error && <p role="alert" className="px-1 text-xs text-muted-foreground">{error} <button type="button" className="underline hover:text-foreground" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
   </div>
