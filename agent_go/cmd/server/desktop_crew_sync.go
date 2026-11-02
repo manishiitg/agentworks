@@ -394,7 +394,7 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 		connection.Token = token
 	}
 	if response.StatusCode == http.StatusUnauthorized {
-		return crewSyncReply{}, fmt.Errorf("reconnect this server from Connected servers, then retry Project sync")
+		return crewSyncReply{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: response.StatusCode, Message: "reconnect this server from Connected servers, then retry Project sync"}
 	}
 
 	if response.StatusCode != 200 {
@@ -405,7 +405,8 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 			} `json:"error"`
 		}
 		_ = json.NewDecoder(io.LimitReader(response.Body, 8192)).Decode(&failure)
-		return crewSyncReply{}, crewSyncPeerError(failure.Error.Code, firstNonEmptyTrimmed(failure.Error.Message, http.StatusText(response.StatusCode)))
+		err := crewSyncPeerError(failure.Error.Code, firstNonEmptyTrimmed(failure.Error.Message, http.StatusText(response.StatusCode)))
+		return crewSyncReply{}, &crewSyncFailure{Code: failure.Error.Code, Status: response.StatusCode, Message: err.Error(), Cause: err}
 	}
 	var out crewSyncReply
 	e = json.NewDecoder(io.LimitReader(response.Body, 800<<20)).Decode(&out)

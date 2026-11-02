@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,7 +49,7 @@ func crewAlreadyOnMac(binding *crewroot.SyncBinding) error {
 	if name == "" {
 		name = "another Mac"
 	}
-	return fmt.Errorf("this project is already open on %s; use that Mac's existing copy or open the project on the server. Moving its pairing to another Mac is not available yet", name)
+	return &crewSyncFailure{Code: crewPairInUseCode, Status: 409, Message: fmt.Sprintf("this project is already open on %s; use that Mac's existing copy or open the project on the server. Moving its pairing to another Mac is not available yet", name)}
 }
 
 func (api *StreamingAPI) crewSyncProject(ctx context.Context, claims *UserClaims, roots crewroot.Roots) (*crewSyncProject, error) {
@@ -210,18 +211,38 @@ func (api *StreamingAPI) openServerCrewOnMac(r *http.Request, connectionID, proj
 		}
 	}
 	pair := uuid.NewString()
-	if localPair != nil && remote.Binding != nil {
+	if localPair != nil {
+		if localPair.Side != "local" || localPair.ConnectionID != connection.ID || localPair.PeerProjectID != project || localPair.PeerServer != connection.Server {
+			return nil, fmt.Errorf("use this Mac's existing project connection")
+		}
 		pair = localPair.PairID
 	}
 	macName, _ := os.Hostname()
+	binding := crewroot.SyncBinding{PairID: pair, Side: "local", Editing: "server", ConnectionID: connection.ID, PeerProjectID: project, PeerServer: connection.Server, MacName: macName}
+	if remote.Binding != nil {
+		binding.SplitFiles = remote.Binding.SplitFiles
+	}
+	// Save the admitted attempt before the RPC: a lost server response must
+	// remain retryable on this Mac without admitting a second Mac.
+	if err := crewroot.WriteSync(project, binding); err != nil {
+		return nil, err
+	}
 	remote, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, crewSyncRequest{Action: "pair", PairID: pair, SourceID: project, MacName: macName})
 	if err != nil {
+		var refusal *crewSyncFailure
+		if localPair == nil && errors.As(err, &refusal) && (refusal.Code == crewPairInUseCode || refusal.Status == 401 || refusal.Status == 403) {
+			if current, e := crewroot.ReadSync(project); e == nil && current != nil && *current == binding {
+				if state, e := crewroot.StateRoot(); e == nil {
+					_ = os.Remove(filepath.Join(state, "crew-sync", project+".json"))
+				}
+			}
+		}
 		return nil, err
 	}
 	if remote.ProjectID != project || remote.Binding == nil || remote.Binding.PairID != pair || remote.Project == nil {
 		return nil, fmt.Errorf("the server did not confirm this project's pair; retry")
 	}
-	binding := crewroot.SyncBinding{PairID: pair, Side: "local", Editing: "server", ConnectionID: connection.ID, PeerProjectID: project, PeerServer: connection.Server, SplitFiles: remote.Binding.SplitFiles, MacName: remote.Binding.MacName}
+	binding.SplitFiles, binding.MacName = remote.Binding.SplitFiles, remote.Binding.MacName
 	// Resolve the original flat/split layout before writing local manifests.
 	if err := crewroot.WriteSync(project, binding); err != nil {
 		return nil, err

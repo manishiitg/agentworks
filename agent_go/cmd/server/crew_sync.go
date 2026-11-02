@@ -87,26 +87,26 @@ func saveCrewSyncManifest(id string, files crewsync.Manifest) error {
 
 func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, id string) (crewroot.Roots, error) {
 	if !personalLaptopSettingsClaims(claims) {
-		return crewroot.Roots{}, fmt.Errorf("use your own interactive Crew chat or personal Builder connection to sync")
+		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "use your own interactive Crew chat or personal Builder connection to sync"}
 	}
 	if code, message := externalCrewAuthorGate(claims); code != 0 {
-		return crewroot.Roots{}, fmt.Errorf("%s", message)
+		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: message}
 	}
 	if claims.AccessToken != nil && (!claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(id))) {
-		return crewroot.Roots{}, fmt.Errorf("this connection cannot sync this Crew")
+		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "this connection cannot sync this Crew"}
 	}
 	if token := claims.AccessToken; token != nil && token.FileGuard != nil {
 		guard := token.FileGuard
 		if !guard.Allows(".", false) || !guard.Allows(".", true) || len(guard.BlockedPaths)+len(guard.BlockedWritePaths)+len(guard.ReadOnlyPaths) > 0 {
-			return crewroot.Roots{}, fmt.Errorf("sync needs access to the whole project; use the Mac app or a full-project Builder connection")
+			return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "sync needs access to the whole project; use the Mac app or a full-project Builder connection"}
 		}
 	}
 	binding, _, ok := api.resolveExternalWorkspace(ctx, claims, id)
 	if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
 		if ok && binding.OwnerID != "" {
-			return crewroot.Roots{}, fmt.Errorf("only this project's main owner can move it between computers; ask %s to open it on their Mac", shareOwnerLabel(binding.OwnerID))
+			return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: fmt.Sprintf("only this project's main owner can move it between computers; ask %s to open it on their Mac", shareOwnerLabel(binding.OwnerID))}
 		}
-		return crewroot.Roots{}, fmt.Errorf("only this project's main owner can move it between computers; ask its owner to open it on their Mac")
+		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "only this project's main owner can move it between computers; ask its owner to open it on their Mac"}
 	}
 	roots, found, err := crewStorageRoots(binding.Binding.WorkspacePath)
 	if err != nil {
@@ -149,8 +149,25 @@ func updateCrewSyncEditing(ctx context.Context, roots crewroot.Roots, observed c
 }
 
 const crewNativeDivergedCode = "native_history_diverged"
+const crewPairInUseCode = "crew_pair_in_use"
+const crewSyncForbiddenCode = "crew_sync_forbidden"
+
+// Keep refusal identity and HTTP status separate from user-facing wording.
+// Cause retains native divergence identity across wrapped peer replies.
+type crewSyncFailure struct {
+	Code, Message string
+	Status        int
+	Cause         error
+}
+
+func (e *crewSyncFailure) Error() string { return e.Message }
+func (e *crewSyncFailure) Unwrap() error { return e.Cause }
 
 func crewSyncErrorCode(err error) string {
+	var failure *crewSyncFailure
+	if errors.As(err, &failure) && failure.Code != "" {
+		return failure.Code
+	}
 	if errors.Is(err, sessiontransfer.ErrDiverged) {
 		return crewNativeDivergedCode
 	}
@@ -178,7 +195,12 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	out, err := api.crewSync(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"], input)
 	if err != nil {
-		externalError(w, 409, crewSyncErrorCode(err), err.Error())
+		status := 409
+		var failure *crewSyncFailure
+		if errors.As(err, &failure) && failure.Status >= 400 && failure.Status < 500 {
+			status = failure.Status
+		}
+		externalError(w, status, crewSyncErrorCode(err), err.Error())
 		return
 	}
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
