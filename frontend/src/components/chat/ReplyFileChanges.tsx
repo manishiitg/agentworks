@@ -65,6 +65,39 @@ function MoreMenu({ items, onSelect }: { items: ReplyCardAction[]; onSelect: (ac
     </Menu.Content></Menu.Portal>
   </Menu.Root>
 }
+
+// Both Changes surfaces render the server's list and send its prompts unchanged.
+export function ReplyFileActions({ actions, sessionId, onReview }: { actions: ReplyCardAction[]; sessionId: string; onReview?: () => void }) {
+  const phone = useMobileViewport()
+  const [error, setError] = useState('')
+  const run = async (action: ReplyCardAction) => {
+    setError('')
+    try {
+      if (action.id === 'review') { onReview?.(); return }
+      const identity = captureChatIdentity()
+      const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === sessionId)?.tabId
+      if (!tabId) throw new Error('Open the original chat to ask for this.')
+      assertChatIdentityCurrent(identity)
+      const message = action.prompt ?? ''
+      if (action.id === 'add_button') await openWorkspacePaneChatWithDraft({ tabId, message })
+      else await sendWorkspacePaneMessageToChat({ tabId, message })
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not send this to the chat. Try again.') }
+  }
+  const visible = actions.filter(action => action.id !== 'review' || onReview)
+  const inMore = (action: ReplyCardAction) => action.placement === 'more' || (phone && action.placement === 'row' && ownButton(action))
+  const row = visible.filter(action => action.placement === 'row' && !inMore(action))
+  const more = visible.filter(inMore)
+  const rowButton = (action: ReplyCardAction) => <IconButton key={action.id} strong={action.id === 'review'} label={action.aria_label || action.label} name={action.label} hint={action.description ?? ''} onClick={() => void run(action)}>{actionIcon(action.icon)}</IconButton>
+  return <TooltipProvider delayDuration={150}><div className="shrink-0">
+    <div className="flex items-center gap-0.5">
+      {row.filter(action => !ownButton(action)).map(rowButton)}
+      {row.some(ownButton) && <Divider />}
+      {row.filter(ownButton).map(rowButton)}
+      {more.length > 0 && <MoreMenu items={more} onSelect={action => void run(action)} />}
+    </div>
+    {error && <p role="alert" className="mt-1 max-w-xs text-xs">{error}</p>}
+  </div></TooltipProvider>
+}
 const endpoint = '/api/workspace-snapshots'
 const paramsFor = (reference: ReplyFileChangesRef) => ({ workspace_path: reference.workspacePath, snapshot_id: reference.snapshotId, ...(reference.historyScope ? { history_scope: reference.historyScope } : {}), ...(reference.checkoutId ? { checkout_id: reference.checkoutId } : {}) })
 // The server decides the card for this viewer: its groups (PR status once looked up) and actions.
@@ -85,7 +118,6 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const [loadFailed, setLoadFailed] = useState(false)
   const comparison = result?.comparison
   const [revision] = useReviewRevision()
-  const phone = useMobileViewport()
   const [reviewError, setReviewError] = useState('')
   const [card, setCard] = useState<ReplyCard | null>(null)
   const [checked, setChecked] = useState<ReplyCard | null>(null)
@@ -179,13 +211,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
   const incomplete = checked?.note || card?.note || summary?.note
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
-  const addButton = (message: string) => { const tabId = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === reference.sessionId)?.tabId; if (tabId) void openWorkspacePaneChatWithDraft({ tabId, message }).catch(() => setReviewError('Open the original chat to add a button.')) }
-  const run = (action: ReplyCardAction) => action.id === 'review' ? (panel ? openChatFiles(reference.sessionId) : sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)) : action.id === 'add_button' ? addButton(action.prompt ?? '') : void ask(action.prompt ?? '')
-  // Phones show the card's defaults in the row and the person's own buttons under More.
-  const inMore = (action: ReplyCardAction) => action.placement === 'more' || (phone && action.placement === 'row' && ownButton(action))
-  const row = actions.filter(action => action.placement === 'row' && !inMore(action))
-  const more = actions.filter(inMore)
-  const rowButton = (action: ReplyCardAction) => <IconButton key={action.id} strong={action.id === 'review'} label={action.aria_label || action.label} name={action.label} hint={action.description ?? ''} onClick={() => run(action)}>{actionIcon(action.icon)}</IconButton>
+  const actionButtons = <ReplyFileActions actions={actions} sessionId={reference.sessionId} onReview={panel ? undefined : () => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)} />
   const repoGroups = groups.filter(group => group.kind === 'repo')
   const checkoutSummary = (responsive = false) => <button type="button" aria-label={`${repoGroups.length} worktrees`} title={repoGroups.map(group => `${group.name} · ${group.branch || ''}`).join('\n')}
     className={`${responsive ? 'reply-toolbar-checkout-summary ' : ''}inline-flex min-w-0 items-center gap-1 rounded px-1 text-muted-foreground hover:bg-muted hover:text-foreground`}
@@ -214,12 +240,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
       {repoGroups.length > 0 && checkoutSummary(true)}
       </>}
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
-        {row.filter(action => !ownButton(action)).map(rowButton)}
-        {row.some(ownButton) && <Divider />}
-        {row.filter(ownButton).map(rowButton)}
-        {more.length > 0 && <MoreMenu items={more} onSelect={run} />}
-      </div>
+      {actionButtons}
     </div>
     {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
     {sharedViewer && sharedOpen && <div className="mt-2 rounded border border-border p-2" aria-label="Reply file names">
@@ -239,12 +260,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
           <span className="font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
           {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
         </div>
-        <TooltipProvider delayDuration={150}><div className="flex shrink-0 items-center gap-0.5">
-          {row.filter(action => !ownButton(action)).map(rowButton)}
-          {row.some(ownButton) && <Divider />}
-          {row.filter(ownButton).map(rowButton)}
-          {more.length > 0 && <MoreMenu items={more} onSelect={run} />}
-        </div></TooltipProvider>
+        {actionButtons}
       </div>
       {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-diff-add">+{result.since_review.added}</span> <span className="text-diff-del">−{result.since_review.removed}</span></p>}
       {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
@@ -273,7 +289,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
               <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>
               {canEdit && <PRWatcherControls group={group} sessionId={reference.sessionId} />}
-              {actions.filter(action => action.placement === 'pr_line' && action.group === group.root).map(action => <button key={action.id} type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => run(action)}>{action.label}</button>)}
+              {actions.filter(action => action.placement === 'pr_line' && action.group === group.root).map(action => <button key={action.id} type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => void ask(action.prompt ?? '')}>{action.label}</button>)}
             </div>}
           </div>
         ))}

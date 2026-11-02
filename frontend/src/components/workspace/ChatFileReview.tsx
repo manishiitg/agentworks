@@ -1,10 +1,10 @@
 import { openProjectIntegrations } from '../../utils/projectIntegrationNavigation'
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { ProjectChangesPanel } from './ProjectChangesPanel'
-import { ReplyFileChanges } from '../chat/ReplyFileChanges'
+import { ReplyFileActions, ReplyFileChanges } from '../chat/ReplyFileChanges'
 import { openChatFiles } from './chatFileNavigation'
 import { PRWatcherControls } from '../chat/PRWatcherControls'
-import type { ReplyFileChangesRef, ReplyFileGroup } from '../../utils/replyFileChanges'
+import type { ReplyCardAction, ReplyFileChangesRef, ReplyFileGroup } from '../../utils/replyFileChanges'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, FolderOpen, Info, RefreshCw } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
@@ -73,6 +73,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
   const [selectedKey, setSelectedKey] = useState('')
   const [pullRequests, setPullRequests] = useState<ReplyFileGroup[]>([])
   const [canEdit, setCanEdit] = useState(false)
+  const [actions, setActions] = useState<ReplyCardAction[]>([])
   const viewers = useRef<HTMLDivElement>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   useEffect(() => { window.addEventListener(githubConnectionChanged, refresh); return () => window.removeEventListener(githubConnectionChanged, refresh) }, [refresh])
@@ -91,6 +92,16 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     return () => controller.abort()
   }, [workspacePath, sessionId, reviewId, revision, outsideGit, allChat, reply?.snapshotId, reply?.historyScope, reply?.checkoutId])
   const through = reply?.snapshotId || result?.history.last_snapshot_id
+  useEffect(() => {
+    setActions([])
+    if (reply || !through || !result?.comparison) return
+    const controller = new AbortController()
+    // Use the displayed saved span, never the latest reply's action context.
+    void api.get<{ actions?: ReplyCardAction[] }>(endpoint, { params: { ...params, through_snapshot_id: through, op: 'reply_card', pull_requests: true }, signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) setActions(data.actions ?? []) })
+      .catch(() => { /* Do not invent owner actions when the server cannot return them. */ })
+    return () => controller.abort()
+  }, [workspacePath, sessionId, reviewId, revision, outsideGit, allChat, reply?.snapshotId, through, baseline, !!result?.comparison])
   const loadMore = async () => {
     if (!result?.next_offset || !result.comparison) return
     const shown = result
@@ -135,6 +146,13 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     </div>}
     {result?.comparison?.note && <p role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs text-muted-foreground">{result.comparison.note}</p>}
     {reply && <ReplyFileChanges reference={reply} panel showFiles={false} />}
+    {!reply && result?.comparison && <div className="shrink-0 border-b border-border p-3 text-xs">
+      <div className="flex items-center gap-2">
+        <p className="min-w-0 flex-1 text-muted-foreground">{result.total_changes ?? changes.length} changed files{result.summary && <> <span className="text-diff-add">+{result.summary.added}</span> <span className="text-diff-del">−{result.summary.removed}</span></>}</p>
+        <ReplyFileActions key={`${sessionId}:${through}:${baseline}`} actions={actions} sessionId={sessionId} />
+      </div>
+      {!reviewId && !result.history.reviews?.length && !result.history.available && <p className="mt-1 text-muted-foreground">Saved changes{startedFrom(result.history.start_message)}</p>}
+    </div>}
     {pullRequests.length > 0 && <div className="space-y-2 border-b border-border px-3 py-2 text-xs" aria-label="Pull requests in this chat">
       {pullRequests.map(group => <div key={`${group.root}:${group.branch}`} className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-muted-foreground">{group.name}{group.branch ? ` · ${group.branch}` : ''}</span>
@@ -149,7 +167,6 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
       {!result && !error && <p className="p-3 text-sm">Loading saved comparison…</p>}
       {result && !result.comparison && <p className="p-3 text-sm">{result.history.note}</p>}
       <div className="grid gap-1 border-b border-border p-2">
-        {!reply && result?.comparison && <p className="p-2 text-xs text-muted-foreground" title="Saved changes observed during this chat’s replies. Other chats using the same files may contribute.">{result.total_changes ?? changes.length} changed files{!reviewId && !result.history.reviews?.length && !result.history.available ? startedFrom(result.history.start_message) : ''}</p>}
         {changes.map((change, index) => {
           const key = change.key || change.path
           const active = (selected?.key || selected?.path) === key
