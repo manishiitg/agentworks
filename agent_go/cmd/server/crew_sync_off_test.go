@@ -60,8 +60,9 @@ func checkCrewSyncOff(t *testing.T, api *StreamingAPI, ctx context.Context, loca
 	if err := crewroot.WriteSync(local.ID, *b); err != nil {
 		t.Fatal(err)
 	}
-	if result := api.runDesktopCrewChat(ctx, local.ID, b.PairID, crewChatCall{ID: "off-poll", Operation: "resolve"}); result.Status != 403 {
-		t.Fatalf("Off admitted a returned remote poll: %+v", result)
+	// PLAT-856-509: Off stops file sync only; the owner still uses the Mac Crew from the phone.
+	if _, _, _, err := api.desktopCrewChatBinding(ctx, local.ID); err != nil {
+		t.Fatalf("Off stopped the phone relay: %v", err)
 	}
 	if err := crewSyncOn(local.ID); err == nil {
 		t.Fatal("new transfer admitted while Off")
