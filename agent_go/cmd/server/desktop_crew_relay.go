@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 // Every Mac Crew gets an empty twin on its one server, so its owner can use it
@@ -175,4 +177,25 @@ func crewRelayTwin(id string) bool {
 	}
 	b, err := crewroot.ReadSync(id)
 	return err == nil && b != nil && b.Side == "server" && b.Mode == "relay"
+}
+
+// handleCrewSyncReadiness tells the owner, before Cloud turns on, whether this
+// Crew fits a first upload and about how long it takes. Mac app only; read-only.
+func (api *StreamingAPI) handleCrewSyncReadiness(w http.ResponseWriter, r *http.Request) {
+	if !IsLocalMode() {
+		externalError(w, 404, "local_app_required", "Open the Crew in the local AgentWorks app.")
+		return
+	}
+	roots, err := api.crewSyncRoots(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"])
+	if err != nil {
+		externalError(w, 403, "sync_unavailable", err.Error())
+		return
+	}
+	m, err := crewsync.Measure(r.Context(), roots)
+	if err != nil {
+		externalError(w, 409, "sync_unavailable", "Could not check this Crew's folder: "+err.Error())
+		return
+	}
+	// About 1.5 MB/s up from a typical laptop connection; shown as a rough minute count.
+	externalJSON(w, map[string]any{"measurement": m, "fits": m.Fits(), "estimated_seconds": m.Bytes / (3 << 19)})
 }
