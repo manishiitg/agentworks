@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -235,6 +236,9 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 		fmt.Fprintf(stderr, "slotctl: could not start: %v\n", err)
 		return 127
 	}
+	if req.Argv[0] != TmuxPath && req.Argv[0] != ChmodPath {
+		moveToAppScope(cmd.Process.Pid)
+	}
 	if policyWriter != nil {
 		go func() {
 			_, _ = policyWriter.WriteString(req.FD3)
@@ -292,4 +296,37 @@ func endProcessGroup(pgid int) {
 	for i := 0; i < 40 && !gone(); i++ {
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// BusctlPath asks the slot's own user manager for a scope.
+const BusctlPath = "/usr/bin/busctl"
+
+// App scopes cap what one slot program and the apps it leaves running may use.
+const (
+	appScopeMemoryMax = 4 << 30
+	appScopeTasksMax  = 512
+)
+
+// moveToAppScope puts a just-started slot program in its own scope in the slot's user manager
+// (PLAT-856-506). The program keeps its process group, sandbox and stop handling; only its cgroup
+// moves out of the platform service, so a program it detached (setsid, nohup, pm2, docker -d) keeps
+// running when the platform restarts. The slot can list them with systemctl --user list-units 'aw-app-*'.
+// Best effort and never a second start: on failure the program simply runs as before.
+func moveToAppScope(pid int) {
+	uid := strconv.Itoa(os.Getuid())
+	runtimeDir := "/run/user/" + uid
+	if _, err := os.Stat(filepath.Join(runtimeDir, "bus")); err != nil {
+		return
+	}
+	unit := fmt.Sprintf("aw-app-%d.scope", pid)
+	cmd := exec.Command(BusctlPath, "--user", "--quiet", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+		"org.freedesktop.systemd1.Manager", "StartTransientUnit", "ssa(sv)a(sa(sv))", unit, "fail", "5",
+		"PIDs", "au", "1", strconv.Itoa(pid),
+		"Slice", "s", "aw-apps.slice",
+		"MemoryMax", "t", strconv.Itoa(appScopeMemoryMax),
+		"TasksMax", "t", strconv.Itoa(appScopeTasksMax),
+		"CollectMode", "s", "inactive-or-failed",
+		"0")
+	cmd.Env = []string{"XDG_RUNTIME_DIR=" + runtimeDir, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join(runtimeDir, "bus")}
+	_ = cmd.Run()
 }
