@@ -1033,6 +1033,10 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerAgentWorksAgentTools(registrar, gate, userID, workspacePath); err != nil {
 			return err
 		}
+		// A Crew on the Mac linked to a server Crew uses that Crew's apps on the server (PLAT-856-493).
+		if err := api.registerPairedServerAppTools(registrar, gate, userID, workspacePath); err != nil {
+			return err
+		}
 	}
 
 	// The existing Ask read tool also resolves captured published dashboard
