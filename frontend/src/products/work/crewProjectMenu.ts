@@ -36,7 +36,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
     if (has('dashboard') && canShare) {
-      add('mcp', 'Share', 'Access & sharing', UsersRound, 'share')
+      add('mcp', 'Share', 'Sharing', UsersRound, 'share')
     }
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
