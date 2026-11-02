@@ -1474,7 +1474,8 @@ async function downloadAndPrepareUpdate(targetVersion) {
   updateState.version = versionNoV;
   updateState.dmgPath = null;
 
-  const dmgName = `AgentWorks-${versionNoV}-arm64.dmg`;
+  const { desktopUpdateAsset } = require('./lib/updateInstaller');
+  const dmgName = desktopUpdateAsset(versionNoV, process.arch);
   const url = `https://github.com/manishiitg/coding-agent-loop/releases/download/v${versionNoV}/${dmgName}`;
   const dir = updateCacheDir();
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
