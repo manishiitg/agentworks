@@ -75,7 +75,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
     if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
-    if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
+    if (item.view === 'files') setWorkspaceViewTarget('files', 'browse')
+    else if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
     onOpen(item.view)
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }

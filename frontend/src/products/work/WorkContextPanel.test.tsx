@@ -88,6 +88,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(host.textContent).not.toContain('Back to workspace')
   const files = [...host.querySelectorAll('button')].find(node => node.textContent === 'Files')!
   await act(async () => files.click()); expect(mocks.open).toHaveBeenLastCalledWith('files')
+  expect(mocks.target).toHaveBeenLastCalledWith('files', 'browse')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to workspace"]')!.click())
   expect(host.textContent).not.toContain('Models')
   mocks.open.mockClear()
