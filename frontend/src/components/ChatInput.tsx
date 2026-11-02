@@ -1,3 +1,4 @@
+import { presetDraftChange, type AppliedPreset } from './presetDraft'
 import { TERMINAL_FILE_DROP_EVENT, type TerminalFileDrop } from '../utils/terminalFileDrop'
 import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
 import { ComposerActionsMenu } from './chat/ComposerActionsMenu'
@@ -1522,22 +1523,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Preset draft sync belongs only to interactive product composers.
   // Read-only workflow/bot observers must never publish composer updates.
+  // Only a real change of the selected preset touches the draft; store refreshes never wipe typing (PLAT-746-296).
+  const appliedPresetRef = useRef<AppliedPreset | null>(null)
   useEffect(() => {
     if (!isMultiAgentMode || isViewOnly || !activeTabId) return
     const currentInput = useChatStore.getState().chatTabs[activeTabId]?.config?.inputText || ''
-    const activePresetId = activePresetIds['multi-agent']
-
-    if (activePresetId && activeTabId) {
-      const preset = getActivePreset('multi-agent')
-
-      if (preset && preset.query && currentInput !== preset.query) {
-        // Sync tab config with preset query
-        setTabConfig(activeTabId, { inputText: preset.query })
-      }
-    } else if (!activePresetId && activeTabId && currentInput !== '') {
-      // No preset active, clear input text
-      setTabConfig(activeTabId, { inputText: '' })
-    }
+    const activePresetId = activePresetIds['multi-agent'] || ''
+    const preset = activePresetId ? getActivePreset('multi-agent') : undefined
+    const change = presetDraftChange(appliedPresetRef.current, activeTabId, activePresetId, activePresetId ? (preset ? preset.query || '' : undefined) : '', currentInput)
+    appliedPresetRef.current = change.applied
+    if (change.inputText !== undefined) setTabConfig(activeTabId, { inputText: change.inputText })
   }, [activePresetIds, getActivePreset, activeTabId, setTabConfig, isMultiAgentMode, isViewOnly])
 
   // Handle auto-run from tab config
