@@ -30,16 +30,21 @@ to_https_url() {
 # gomod_pinned_sha <app sha> <module repo>: the full commit agent_go/go.mod at that app commit pins for the module
 # (its pseudo-version suffix), so a release builds what the app was tested against, not whatever main moved on to.
 gomod_pinned_sha() {
-  local app="$1" repo="$2" module short full
+  local app="$1" repo="$2" module version short full
   case "$repo" in
     mcpagent) module="github.com/manishiitg/mcpagent" ;;
     multi-llm-provider-go) module="github.com/manishiitg/multi-llm-provider-go" ;;
     *) return 1 ;;
   esac
   git -C "$REPO_ROOT" fetch -q origin "$app" 2>/dev/null || true
-  short="$(git -C "$REPO_ROOT" show "$app:agent_go/go.mod" 2>/dev/null | awk -v m="$module" '$1 == m && $2 ~ /-[0-9a-f]{12}$/ {n = split($2, p, "-"); print p[n]; exit}')"
-  [[ "$short" =~ ^[0-9a-f]{12}$ ]] || return 1
-  git -C "$(repo_dir "$repo")" fetch -q origin 2>/dev/null || true
+  version="$(git -C "$REPO_ROOT" show "$app:agent_go/go.mod" 2>/dev/null | awk -v m="$module" '$1 == m {print $2; exit}')"
+  [[ -n "$version" ]] || return 1
+  git -C "$(repo_dir "$repo")" fetch -q --tags origin 2>/dev/null || true
+  if [[ "$version" =~ -[0-9a-f]{12}$ ]]; then
+    short="${version##*-}"   # pseudo-version: its commit
+  else
+    short="$version"          # a release tag such as v1.2.3
+  fi
   full="$(git -C "$(repo_dir "$repo")" rev-parse -q --verify "$short^{commit}" 2>/dev/null)" || return 1
   printf '%s\n' "$full"
 }
@@ -61,9 +66,12 @@ build_release_remote() {
     elif [[ "$repo" != mcp-agent-builder-go ]] && sha="$(gomod_pinned_sha "$app_sha" "$repo")"; then
       # The app's go.mod decides the dependency revisions; main's head of a dependency may be untested with this app.
       source=" (agent_go/go.mod)"
-    else
+    elif [[ "$repo" == mcp-agent-builder-go ]]; then
       sha="$(git ls-remote "$url" "refs/heads/$branch" | awk '{print $1}')"
-      [[ "$repo" == mcp-agent-builder-go ]] || source=" (branch head: go.mod pin not resolvable)"
+    else
+      # Never fall back to a branch head: that is how an untested dependency reached servers.
+      echo "agent_go/go.mod at ${app_sha:0:10} pins a $repo version this checkout cannot resolve; fetch $(repo_dir "$repo") or set $pin_var=<40-hex>." >&2
+      return 1
     fi
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve $branch of $url" >&2; return 1; }
     [[ "$repo" != mcp-agent-builder-go ]] || app_sha="$sha"
