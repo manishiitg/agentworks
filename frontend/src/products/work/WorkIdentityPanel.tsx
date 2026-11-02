@@ -261,11 +261,11 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
         additionalReferences={crewReferences}
         additionalLabel="Crew"
         showAdditionalGroup
-        hideAdd
       />
       <SettingsCard
         icon={<FolderOpen aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Attached folders"
+        description="Folders on your Mac that your Crews can open. Read only, or read & write. They stay on your Mac."
         count={`${folders.length} attached`}
       >
         {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={folders} onRemove={remove} />}

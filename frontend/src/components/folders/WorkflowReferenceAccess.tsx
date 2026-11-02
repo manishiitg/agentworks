@@ -100,7 +100,7 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
         <Link2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
         <div>
           <h3 className="text-sm font-medium text-foreground">Work linked here</h3>
-          <p className="mt-1 text-xs text-muted-foreground">{normalizedSelected.length} linked · Access checked on every run.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Other Crews and workflows this one can open and use. {normalizedSelected.length} linked.</p>
         </div>
       </div>
       <div className="mt-3 grid gap-3">
