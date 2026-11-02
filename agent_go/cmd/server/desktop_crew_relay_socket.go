@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -444,4 +445,46 @@ func crewEventText(value any, depth int) string {
 		}
 	}
 	return ""
+}
+
+const crewRelayMaxFile = 5 << 20
+
+// desktopCrewFile returns one file of the Crew's folder for its owner's phone
+// (load on tap). os.Root refuses ".." and symlinks that leave the folder.
+func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims, project string, call crewChatCall) crewChatResult {
+	fail := func(code int, message string) crewChatResult {
+		body, _ := json.Marshal(map[string]string{"error": message})
+		return crewChatResult{ID: call.ID, Status: code, Body: body}
+	}
+	roots, err := api.crewSyncRoots(ctx, claims, project)
+	if err != nil {
+		return fail(403, "This Crew is unavailable on your Mac.")
+	}
+	rel := strings.TrimPrefix(filepath.ToSlash(filepath.Clean("/"+call.Path)), "/")
+	if rel == "" || rel == "." {
+		return fail(400, "Choose a file.")
+	}
+	root, err := os.OpenRoot(roots.Files)
+	if err != nil {
+		return fail(404, "The Crew's folder is unavailable on your Mac.")
+	}
+	defer root.Close()
+	file, err := root.Open(rel)
+	if err != nil {
+		return fail(404, "That file is not in this Crew's folder.")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.IsDir() {
+		return fail(404, "That file is not in this Crew's folder.")
+	}
+	if info.Size() > crewRelayMaxFile {
+		return fail(413, "This file is too large to open from your phone. Open it on your Mac.")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, crewRelayMaxFile+1))
+	if err != nil {
+		return fail(500, "Could not read the file on your Mac.")
+	}
+	body, _ := json.Marshal(map[string]any{"path": rel, "size": len(data), "content_base64": data})
+	return crewChatResult{ID: call.ID, Status: 200, Body: body}
 }

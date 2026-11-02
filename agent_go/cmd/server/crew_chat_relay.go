@@ -33,6 +33,7 @@ type crewChatCall struct {
 	DeliveryMode   string          `json:"delivery_mode,omitempty"`
 	Query          url.Values      `json:"query,omitempty"`
 	Answer         json.RawMessage `json:"answer,omitempty"`
+	Path           string          `json:"path,omitempty"`
 }
 type crewChatResult struct {
 	ID     string          `json:"id"`
@@ -236,11 +237,13 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			operation = "cancel"
 		case r.Method == "POST" && suffix == "coding-agent-question/answer":
 			operation = "answer"
+		case r.Method == "GET" && suffix == "file":
+			operation = "file"
 		default:
 			externalError(w, 409, "mac_chat_action", "Use your Mac for this action. Messages, replies and Stop are available here.")
 			return
 		}
-		call := crewChatCall{Operation: operation, ConversationID: generation, Query: crewChatEventQuery(r.URL.Query())}
+		call := crewChatCall{Operation: operation, ConversationID: generation, Query: crewChatEventQuery(r.URL.Query()), Path: r.URL.Query().Get("path")}
 		if operation == "answer" {
 			call.Answer, _ = io.ReadAll(http.MaxBytesReader(w, r.Body, 128<<10))
 			if !json.Valid(call.Answer) {
