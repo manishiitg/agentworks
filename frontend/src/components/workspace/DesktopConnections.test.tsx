@@ -63,14 +63,17 @@ it('keeps shared projects in the active server beside the owner navigation', asy
   mocks.request.mockImplementation(async (path = '') => !path
     ? { connections: [{ id, name: 'Team', server: 'https://example.com' }] }
     : { status: 'connected', projects: path === `/${id}/inventory` ? [
-      { id: 'owned', name: 'Owned crew', kind: 'crew', mode: 'builder' },
-      { id: 'shared', name: 'Shared crew', kind: 'crew', mode: 'run' },
+      { id: 'owned', name: 'Owned crew', kind: 'crew', mode: 'builder', owned_by_caller: true },
+      { id: 'shared', name: 'Shared crew', kind: 'crew', mode: 'run', owned_by_caller: false, owner_name: 'Project owner' },
     ] : [] })
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<DesktopConnections projects={[{ id: 'owned', name: 'Owned crew', kind: 'crew' }, { id: 'weekly', name: 'Weekly goal', kind: 'goal' }]} />))
     const group = host.querySelector('[aria-label="Connected work"]')!
-    expect(group.textContent).toContain('Shared crew')
+    expect(group.querySelector('[aria-label="Mine"]')?.textContent).toContain('Owned crew')
+    expect(group.querySelector('[aria-label="Shared with me"]')?.textContent).toContain('Shared crew')
+    expect(group.querySelector('[aria-label="Shared with me"]')?.textContent).toContain('Project owner')
+    expect(group.querySelector('[aria-label="Mine"]')?.textContent).not.toContain('Shared crew')
     expect(group.textContent).toContain('Weekly goal')
     expect(group.textContent?.match(/Owned crew/g)).toHaveLength(1)
   } finally {

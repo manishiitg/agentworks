@@ -8,7 +8,18 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 
-type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run' }
+type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string }
+
+function OwnershipGroups<T extends SidebarProject>({ projects, render }: { projects: T[]; render: (project: T) => ReactNode }) {
+  const groups = [
+    { label: 'Mine', rows: projects.filter(project => project.owned_by_caller === true) },
+    { label: 'Shared with me', rows: projects.filter(project => project.owned_by_caller === false) },
+  ]
+  return <>{groups.map(group => group.rows.length > 0 && <section key={group.label} aria-label={group.label} className="mb-3 space-y-1">
+    <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">{group.label}</h2>
+    {group.rows.map(render)}
+  </section>)}{projects.filter(project => project.owned_by_caller === undefined).map(render)}</>
+}
 
 function useWorkHistory(projects: SidebarProject[]) {
   const active = getRawActiveWorkspaceId()
@@ -39,7 +50,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   }} />
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
     <div className="py-2"><LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={[]} workTypes /></div>
-    <div className="space-y-1">{orderedProjects.filter(project => filter === 'all' || (filter === 'dashboard' ? project.kind === 'crew' && project.mode === 'run' : project.kind === filter && (project.kind !== 'crew' || project.mode !== 'run'))).map(renderProject)}</div>
+    <div className="space-y-1"><OwnershipGroups projects={orderedProjects.filter(project => filter === 'all' || (filter === 'dashboard' ? project.kind === 'crew' && project.mode === 'run' : project.kind === filter && (project.kind !== 'crew' || project.mode !== 'run')))} render={renderProject} /></div>
     {children}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
   </div>
@@ -67,7 +78,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const rows = connections.flatMap(connection => {
     const byId = new Map<string, SidebarProject>()
     for (const project of inventory[connection.id]?.projects || []) byId.set(`${project.kind}:${project.id}`, project)
-    if (connection.id === active) for (const project of projects) byId.set(`${project.kind}:${project.id}`, project)
+    if (connection.id === active) for (const project of projects) byId.set(`${project.kind}:${project.id}`, { ...byId.get(`${project.kind}:${project.id}`), ...project })
     return [...byId.values()].map(project => ({ ...project, connection }))
   }).sort((a, b) => {
     const rank = (row: typeof a) => { const index = recent?.indexOf(connectedProjectKey(row.connection.id, row.kind, row.id)) ?? -1; return index < 0 ? Infinity : index }
@@ -89,7 +100,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} workTypes />
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <div className="space-y-1">{visible.map(renderProject)}</div>
+      <div className="space-y-1"><OwnershipGroups projects={visible} render={renderProject} /></div>
       {(filter === 'all' || filter === active) && children}
       {locations.map(connection => {
         const status = inventory[connection.id]?.status
