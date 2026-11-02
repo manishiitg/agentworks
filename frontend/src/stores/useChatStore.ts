@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PollingEvent, ExtendedLLMConfiguration, SessionStatusResponse, ActiveSessionInfo, DelegationTierConfig, SSEEventMessage, SSEStatusMessage, WorkflowScheduleSummary } from '../services/api-types'
 import { SSEConnection } from '../services/sse'
+import type { SSEMessageState } from '../../shared/session/sse'
 import { shouldShowEventByMode } from '../components/events/eventModeUtils'
 import type { StoreActions } from './types'
 import type { FileContextItem } from './types'
@@ -823,6 +824,10 @@ export interface ChatState extends StoreActions {
 
   // SSE connection management
   sseConnections: Record<string, SSEConnection>  // sessionId -> SSEConnection
+  /** Per session: whether its stream is live or being reconnected (reconnect bar). */
+  sseLink: Record<string, 'live' | 'reconnecting'>
+  /** Per session: the server's state for the latest sent message (Mac Crews). */
+  messageStates: Record<string, SSEMessageState>
   connectSSE: (sessionId: string, onMessage: (msg: SSEEventMessage) => void, onStatus: (msg: SSEStatusMessage) => void, onError?: () => void, durableChat?: boolean) => void
   disconnectSSE: (sessionId: string) => void
   disconnectAllSSE: () => void
@@ -1159,6 +1164,8 @@ export const useChatStore = create<ChatState>()(
 
       // SSE connections (not persisted)
       sseConnections: {},
+      sseLink: {},
+      messageStates: {},
 
       // Actions
       setIsStreaming: (streaming) => {
@@ -2147,12 +2154,27 @@ export const useChatStore = create<ChatState>()(
             set((s) => {
               const conns = { ...s.sseConnections }
               delete conns[sessionId]
-              return { sseConnections: conns }
+              const link = { ...s.sseLink }
+              delete link[sessionId]
+              return { sseConnections: conns, sseLink: link }
             })
             onError?.()
           },
           onOpen: () => {
             logger.debug('ChatStore', `SSE connected for session ${sessionId}`)
+          },
+          onConnection: link => {
+            if (!isChatIdentityCurrent(identity) || get().sseLink[sessionId] === link) return
+            set(s => ({ sseLink: { ...s.sseLink, [sessionId]: link } }))
+          },
+          onMessageState: message => {
+            if (isChatIdentityCurrent(identity)) set(s => ({ messageStates: { ...s.messageStates, [sessionId]: message } }))
+          },
+          // The cursor fell behind the server's cache: show its snapshot instead of appending.
+          onSnapshot: snapshot => {
+            if (!isChatIdentityCurrent(identity)) return
+            get().setTabEvents(sessionId, snapshot.events as PollingEvent[])
+            get().setTabLastEventIndex(sessionId, snapshot.last_seq)
           },
         }, durableChat)
         set((s) => ({
@@ -2168,7 +2190,9 @@ export const useChatStore = create<ChatState>()(
           set((s) => {
             const conns = { ...s.sseConnections }
             delete conns[sessionId]
-            return { sseConnections: conns }
+            const link = { ...s.sseLink }
+            delete link[sessionId]
+            return { sseConnections: conns, sseLink: link }
           })
         }
       },
@@ -2395,6 +2419,8 @@ export const useChatStore = create<ChatState>()(
           lastDelegationChunkIndex: {},
           executionStreaming: {},
           sseConnections: {},
+      sseLink: {},
+      messageStates: {},
         })
         useAppStore.getState().clearRequiresNewChat()
       },
