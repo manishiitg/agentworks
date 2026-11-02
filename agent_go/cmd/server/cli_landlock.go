@@ -241,6 +241,12 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 			}
 		}
 	}
+	// The person removed their Mac's Downloads folder: blocked last, so it wins over any grant.
+	if cliPersonalMac() && common.HostDownloadsRemoved.Load() {
+		if downloads := macDownloadsFolder(); downloads != "" {
+			policy.BlockedPaths = appendUniqueStrings(policy.BlockedPaths, downloads)
+		}
+	}
 	policy.WorkspaceWritePaths = crewroot.SyncWriteGrants(fsutil.WorkspaceDocsRoot(), policy.WorkspaceWritePaths)
 	return policy
 }

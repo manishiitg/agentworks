@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // FolderGuardConfig represents folder access restrictions
@@ -97,8 +98,11 @@ func expandHomePath(path string) string {
 // (PI_HOST_DOWNLOADS_PATH/HOST_DOWNLOADS_PATH). A person's own ~/Downloads is
 // never opened to steps by default (owner, 2026-10-15); headless browser
 // downloads stay inside workspace folders. A multi-user server never grants it.
+// HostDownloadsRemoved is set when the person removed their Mac's Downloads folder from what agents may use.
+var HostDownloadsRemoved atomic.Bool
+
 func CDPHostDownloadsPath(browserMode string) string {
-	if !strings.EqualFold(strings.TrimSpace(browserMode), "cdp") || os.Getenv("MULTI_USER_MODE") == "true" {
+	if !strings.EqualFold(strings.TrimSpace(browserMode), "cdp") || os.Getenv("MULTI_USER_MODE") == "true" || HostDownloadsRemoved.Load() {
 		return ""
 	}
 	if strings.TrimSpace(os.Getenv("PI_HOST_DOWNLOADS_PATH")) == "" && strings.TrimSpace(os.Getenv("HOST_DOWNLOADS_PATH")) == "" {
