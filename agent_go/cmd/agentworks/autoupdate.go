@@ -30,9 +30,11 @@ var autoUpdateInstallsOnWindows = false
 // The steps after the swap; tests replace them.
 var (
 	autoUpdateStopHelper    = func(ctx context.Context) error { return stopAgentBridge(ctx, "update") }
-	autoUpdateRestoreHelper = restoreAgentBridge
-	autoUpdatePlugins       = updateInstalledPlugins
-	autoUpdateLaptops       = refreshLaptopConnections
+	autoUpdateRestoreHelper = func(ctx context.Context, o *options, executable string) error {
+		return restoreAgentBridge(ctx, o, executable, false)
+	}
+	autoUpdatePlugins = updateInstalledPlugins
+	autoUpdateLaptops = refreshLaptopConnections
 )
 
 type autoUpdateState struct {
