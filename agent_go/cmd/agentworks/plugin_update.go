@@ -367,9 +367,10 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 	if e := codexHomeError(); e != nil {
 		fmt.Fprintf(o.stderr, "Skipped the Codex plugin: %v.\n", e)
 	}
-	windowsCodexSetup := updateWindowsCodexTools(ctx, o)
+	codexSetup := updateCodexTools(ctx, o)
+	claudeSetup := updateClaudeTools(ctx, o)
 	managedCodex := codexManagedMarketplace(home)
-	if managedCodex && o.setupAll && !windowsCodexSetup {
+	if managedCodex && o.setupAll && !codexSetup {
 		doc, e := readCodexSettings(codexHomeDir(home))
 		if e == nil {
 			for _, name := range []string{"agentworks-codex", "agentworks-codex-tools"} {
@@ -392,7 +393,7 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 		return string(out)
 	})
 	for _, update := range installedPluginUpdates(home, onPath, read) {
-		if update.Provider == "codex" && (managedCodex || windowsCodexSetup) {
+		if update.Provider == "codex" && (managedCodex || codexSetup) || update.Provider == "claude" && claudeSetup {
 			continue
 		}
 		if update.Provider == "claude" {

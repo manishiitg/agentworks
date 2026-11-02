@@ -212,7 +212,8 @@ func runUpdate(o *options, check, force, switchSource bool) (resultErr error) {
 		updateStep(progress, "AgentWorks is already up to date.")
 		pluginOptions := *o
 		pluginOptions.setupAll = true
-		updateWindowsCodexTools(context.Background(), &pluginOptions)
+		updateCodexTools(context.Background(), &pluginOptions)
+		updateClaudeTools(context.Background(), &pluginOptions)
 		// Restore existing chat connections if needed. Startup discovery belongs
 		// to that helper; a healthy helper must not rescan old desktop history.
 		if err = restoreAgentBridge(context.Background(), o, "", true); err != nil {
