@@ -308,17 +308,8 @@ func endProcessGroup(pgid int) {
 // BusctlPath asks the slot's own user manager for a scope.
 const BusctlPath = "/usr/bin/busctl"
 
-// App scopes cap what one slot program and the apps it leaves running may use.
-const (
-	appScopeMemoryMax = 4 << 30
-	appScopeTasksMax  = 512
-	// The slot's apps together, so leftovers cannot add up past this.
-	appSliceMemoryMax = 6 << 30
-	appSliceTasksMax  = 2048
-)
-
 // moveToAppScope puts a just-started slot program in its own scope in the slot's user manager
-// (PLAT-856-506). The program keeps its process group, sandbox and stop handling; only its cgroup
+// (PLAT-856-506). Limits are the slot's own (provision-slots.sh sets them on user-<uid>.slice). The program keeps its process group, sandbox and stop handling; only its cgroup
 // moves out of the platform service, so a program it detached (setsid, nohup, pm2, docker -d) keeps
 // running when the platform restarts. The slot can list them with systemctl --user list-units 'aw-app-*'.
 // Best effort and never a second start: on failure the program simply runs as before.
@@ -330,22 +321,11 @@ func moveToAppScope(pid int) {
 	}
 	unit := fmt.Sprintf("aw-app-%d.scope", pid)
 	cmd := exec.Command(BusctlPath, "--user", "--quiet", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
-		"org.freedesktop.systemd1.Manager", "StartTransientUnit", "ssa(sv)a(sa(sv))", unit, "fail", "5",
+		"org.freedesktop.systemd1.Manager", "StartTransientUnit", "ssa(sv)a(sa(sv))", unit, "fail", "3",
 		"PIDs", "au", "1", strconv.Itoa(pid),
 		"Slice", "s", "aw-apps.slice",
-		"MemoryMax", "t", strconv.Itoa(appScopeMemoryMax),
-		"TasksMax", "t", strconv.Itoa(appScopeTasksMax),
 		"CollectMode", "s", "inactive-or-failed",
 		"0")
-	env := []string{"XDG_RUNTIME_DIR=" + runtimeDir, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join(runtimeDir, "bus")}
-	cmd.Env = env
-	if cmd.Run() != nil {
-		return
-	}
-	limit := exec.Command(BusctlPath, "--user", "--quiet", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
-		"org.freedesktop.systemd1.Manager", "SetUnitProperties", "sba(sv)", "aw-apps.slice", "true", "2",
-		"MemoryMax", "t", strconv.Itoa(appSliceMemoryMax),
-		"TasksMax", "t", strconv.Itoa(appSliceTasksMax))
-	limit.Env = env
-	_ = limit.Run()
+	cmd.Env = []string{"XDG_RUNTIME_DIR=" + runtimeDir, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + filepath.Join(runtimeDir, "bus")}
+	_ = cmd.Run()
 }
