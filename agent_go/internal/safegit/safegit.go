@@ -232,7 +232,7 @@ func env() []string {
 // follow include.path/includeIf). Reading config runs nothing. ok is false when
 // the config cannot be read or includes a file outside root.
 func driverOverrides(ctx context.Context, root, dir, gitDir string) ([]string, bool) {
-	cmd := exec.CommandContext(ctx, "git", "-c", "safe.directory="+dir, "--git-dir", gitDir, "config", "--local", "--includes", "--show-origin", "--name-only", "--list")
+	cmd := exec.CommandContext(ctx, "git", "-c", "safe.directory="+dir, "--git-dir", gitDir, "config", "--local", "--includes", "--show-origin", "--name-only", "--null", "--list")
 	cmd.Dir = dir
 	cmd.Env = env()
 	out, err := cmd.Output()
@@ -241,12 +241,15 @@ func driverOverrides(ctx context.Context, root, dir, gitDir string) ([]string, b
 	}
 	seen := map[string]bool{}
 	var cfg []string
-	for _, line := range strings.Split(string(out), "\n") {
-		if line == "" {
-			continue
-		}
-		origin, k, found := strings.Cut(line, "\t")
-		if !found {
+	// Git quotes origins containing backslashes/control characters in its
+	// line format. NUL framing preserves literal Windows paths and filenames.
+	fields := strings.Split(string(out), "\x00")
+	if len(fields)%2 != 1 || fields[len(fields)-1] != "" {
+		return nil, false
+	}
+	for index := 0; index+1 < len(fields); index += 2 {
+		origin, k := fields[index], fields[index+1]
+		if origin == "" || k == "" {
 			return nil, false
 		}
 		if file, isFile := strings.CutPrefix(origin, "file:"); isFile {

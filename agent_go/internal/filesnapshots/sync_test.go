@@ -36,7 +36,10 @@ func TestSyncBundlesPreserveReplicaEditsAndUndoHistory(t *testing.T) {
 	write(a.Files, ".env", "private")
 	// A private turn contains content that is absent from the sync tree.
 	if _, err := sa.Warm(time.Minute); err != nil {
-		t.Fatal(err)
+		// The private test store has no credentials. Show names/origins only
+		// so a platform path/config refusal can be diagnosed on its real OS.
+		origins, probeErr := sa.command(t.Context(), "config", "--local", "--includes", "--show-origin", "--name-only", "--list").Output()
+		t.Fatalf("warm snapshot store: %v; config origins=%q probe=%v git_dir=%q", err, origins, probeErr, sa.gitDir())
 	}
 	if _, err := sa.Begin(t.Context(), "turn"); err != nil {
 		t.Fatal(err)
