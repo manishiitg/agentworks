@@ -210,35 +210,24 @@ it('refuses executable card URLs and ambiguous or dangling graph identities (PLA
 })
 
 
-it('opens a known same-server dashboard link in its server-resolved Crew panel (PLAT-750-82)', async () => {
-  // Node's optional native localStorage is absent in the remote test runner.
-  const stored = new Map<string, string>()
-  vi.stubGlobal('localStorage', { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => { stored.set(key, value) }, removeItem: (key: string) => { stored.delete(key) } })
+it('opens same-server dashboards in a new tab without replacing the chat (PLAT-750)', async () => {
   const original = window.location.pathname + window.location.search
   const external = vi.spyOn(window, 'open').mockImplementation(() => null)
   window.history.replaceState({}, '', '/crew/projects/current')
-  dashboardPost.mockResolvedValue({ data: { dashboards: [{
-    dashboard_id: 'overview', project_id: 'resolved-project', product: 'crew',
-    workspace: 'Crew/sample', document_path: 'db/reports/managed/overview/index.html', published_revision: '',
-  }], has_more: false, next_offset: 1 } })
-  dashboardGet.mockResolvedValue({ data: { root: 'Crew/sample', document_path: 'db/reports/managed/overview/index.html', product: 'crew', project_id: 'resolved-project' } })
   try {
     const href = sharedReportLink(window.location.origin, 'Crew/sample', 'db/reports/managed/overview/index.html')
     const revisionLink = sharedReportLink(window.location.origin, 'Crew/sample', 'db/reports/managed/overview/' + 'a'.repeat(64) + '/index.html')
     for (const link of [href, revisionLink, window.location.origin + '/d/23456789ab']) {
       const container = await renderContent(`[Overview](${link})`, true, true)
       await act(async () => { container.querySelector<HTMLAnchorElement>('a')!.click() })
-      expect(window.location.pathname).toBe('/crew/projects/resolved-project/dashboard')
-      expect(external).not.toHaveBeenCalled()
-      expect(window.localStorage.getItem('report-document:Crew/sample')).toBe('db/reports/managed/overview/index.html')
+      expect(window.location.pathname).toBe('/crew/projects/current')
+      expect(external).toHaveBeenLastCalledWith(link, '_blank', 'noopener,noreferrer')
     }
   } finally {
     external.mockRestore()
     dashboardPost.mockReset()
     dashboardGet.mockReset()
     window.history.replaceState({}, '', original)
-    window.localStorage.removeItem('report-document:Crew/sample')
-    vi.unstubAllGlobals()
   }
 })
 
