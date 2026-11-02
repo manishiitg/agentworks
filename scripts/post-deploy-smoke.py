@@ -51,8 +51,9 @@ def app_command(provider, port, started):
             f"    def log_message(self, *a): pass\n"
             f"socketserver.TCPServer.allow_reuse_address = True\n"
             f"socketserver.TCPServer(('0.0.0.0', {port}), H).serve_forever()\n")
-    # Anchored at the start of the command line, so it never matches the shell running this command.
-    return (f"pkill -f '^python3 {script}'; printf '%s' \"{body}\" > {script} && "
+    # An app still running from an earlier run is kept (that is the point: it must outlive restarts); a sandboxed
+    # shell cannot see other processes to stop it anyway.
+    return (f"curl -s -m 3 http://127.0.0.1:{port}/ | grep -q 'smoke-app {provider} ' && {{ curl -s http://127.0.0.1:{port}/; exit 0; }}; printf '%s' \"{body}\" > {script} && "
             f"(setsid nohup python3 {script} > /dev/null 2>&1 < /dev/null &) ; sleep 2; curl -s http://127.0.0.1:{port}/")
 
 
@@ -178,13 +179,13 @@ def smoke(config, workspace, target, owners, limit, app=None):
             target["runas"] = next((w[len("RUNAS="):] for w in answer.replace("RUNAS=", " RUNAS=").split() if w.startswith("RUNAS=")), "")
         if not problems and app:
             host, port, stamp = app
-            expected = f"smoke-app {target['provider']} {stamp}"
+            expected = f"smoke-app {target['provider']} "
             app_problems, _ = turn(config, workspace, chat_id, APP_PROMPT.format(command=app_command(target["provider"], port, stamp)),
                                    started=time.monotonic(), limit=limit, accept=lambda answer: expected in answer, expected=expected)
             seen = fetch(host, port)
-            target["app"] = (f"app on :{port} reachable from outside" if seen == expected
+            target["app"] = (f"app on :{port} reachable from outside" if seen.startswith(expected)
                              else f"app on :{port} not reachable from outside: {seen[:80]}")
-            problems = [f"turn 3: {p}" for p in app_problems] + ([] if seen == expected else [target["app"]])
+            problems = [f"turn 3: {p}" for p in app_problems] + ([] if seen.startswith(expected) else [target["app"]])
         return problems, time.monotonic() - started
     except Exception as error:  # a failed call is a failed smoke result, not a crashed check
         return [f"error: {first_line(str(error))}"], time.monotonic() - started
