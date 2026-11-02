@@ -32,8 +32,10 @@ export const codeLocalFilesApi = {
 
 }
 export function localFileError(cause: unknown) {
-  const err = cause as { response?: { data?: { error?: { message?: string } | string } }; message?: string }
-  const error = err.response?.data?.error
+  const err = (cause || {}) as { response?: { data?: { error?: { message?: string } | string } | string }; message?: string }
+  const data = err.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim()
+  const error = typeof data === 'object' ? data?.error : undefined
   return typeof error === 'string' ? error : error?.message || err.message || 'Could not access local files.'
 }
 
