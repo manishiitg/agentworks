@@ -15,6 +15,25 @@ $ErrorActionPreference = 'Stop'
 if (-not $Server) { $Server = 'https://network.agentworkshq.com' }
 $Server = $Server.TrimEnd('/')
 
+function Test-AgentWorksDefenderBlock($Failure) {
+  for ($cause = $Failure.Exception; $cause; $cause = $cause.InnerException) {
+    if ($cause -is [ComponentModel.Win32Exception] -and $cause.NativeErrorCode -in @(225, 226)) { return $true }
+  }
+  return "$Failure" -match 'virus or potentially unwanted software'
+}
+
+function Invoke-AgentWorksCommand([string]$Executable, [string[]]$Arguments, [string]$AfterAllow = 'run: agentworks setup') {
+  try {
+    & $Executable @Arguments
+    $script:LASTEXITCODE = $LASTEXITCODE
+  } catch {
+    if (Test-AgentWorksDefenderBlock $_) {
+      throw "Windows Defender blocked this unsigned AgentWorks app. Open Windows Security > Virus & threat protection > Protection history, open the AgentWorks entry, choose Actions > Allow on device, then $AfterAllow"
+    }
+    throw
+  }
+}
+
 $machineArchitecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $machineArchitecture) { $machineArchitecture = $env:PROCESSOR_ARCHITECTURE }
 switch ($machineArchitecture) {
@@ -47,7 +66,7 @@ try {
   # The CLI's version command is local-only. Invoke the staged file with the
   # call operator so spaces and apostrophes in the path stay one argument.
   $candidate = Join-Path $stage $asset
-  $versionOutput = & $candidate version
+  $versionOutput = Invoke-AgentWorksCommand -Executable $candidate -Arguments @('version') -AfterAllow 'rerun this installer to finish installation.'
   if ($LASTEXITCODE -ne 0) { throw 'The downloaded CLI could not run; the installed copy was kept.' }
   $candidateVersion = $versionOutput | ConvertFrom-Json
   if ($candidateVersion.os -ne 'windows' -or $candidateVersion.arch -ne $arch -or -not $candidateVersion.version) {
@@ -58,6 +77,11 @@ try {
   $oldTarget = "$target.old-" + [guid]::NewGuid().ToString('N')
   if (Test-Path $target) { Move-Item $target $oldTarget } # a running copy can be renamed, not replaced
   Move-Item -Force $candidate $target
+  # Defender can act on the final name even after the staged file ran.
+  $installedVersion = Invoke-AgentWorksCommand -Executable $target -Arguments @('version') | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or $installedVersion.version -ne $candidateVersion.version -or $installedVersion.os -ne 'windows' -or $installedVersion.arch -ne $arch) {
+    throw 'The installed CLI could not run correctly. Run this installer again to retry.'
+  }
   Remove-Item $oldTarget -Force -ErrorAction SilentlyContinue
   Write-Host "Installed $target"
 } finally {
@@ -78,10 +102,10 @@ if (-not $bash) {
 
 if (-not $NoLogin) {
   Write-Host "Signing in to $Server ..."
-  & $target login --server $Server
+  Invoke-AgentWorksCommand -Executable $target -Arguments @('login', '--server', $Server)
   if ($LASTEXITCODE -ne 0) { throw 'Sign-in did not finish. AgentWorks is installed; run agentworks login, then agentworks setup to continue.' }
 }
 Write-Host 'Setting up your installed AI apps ...'
-& $target setup --server $Server
+Invoke-AgentWorksCommand -Executable $target -Arguments @('setup', '--server', $Server)
 if ($LASTEXITCODE -ne 0) { Write-Warning 'App setup needs attention. Run agentworks setup to retry; AgentWorks is installed.' }
 Write-Host "Done. Restart the apps listed above. In AgentWorks, open Your computer to connect this computer's files and commands."
