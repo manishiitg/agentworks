@@ -219,7 +219,7 @@ func buildHierarchicalStructure(documents []models.Document, queryFolder string)
 
 	// Helper to get parent directory ("." maps to "" for root-level items)
 	parentDir := func(filePath string) string {
-		dir := filepath.Dir(filePath)
+		dir := filepath.ToSlash(filepath.Dir(filePath))
 		if dir == "." {
 			return ""
 		}
@@ -2174,7 +2174,7 @@ func UploadFile(c *gin.Context) {
 	}
 
 	// Get folder path relative to user
-	folderRelPath := filepath.Dir(relativePath)
+	folderRelPath := filepath.ToSlash(filepath.Dir(relativePath))
 
 	// Native terminal attachments need an unambiguous path even when the CLI
 	// runs in a project subfolder rather than the workspace root.
