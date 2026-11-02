@@ -42,6 +42,7 @@ type nativeTerminalObserver struct {
 	previous                                         []builderConversationMessage
 	lastRead                                         time.Time
 	nativeRecords                                    *nativeCodingRecordState
+	turnSnapshot                                     string // the capture of the terminal turn now running
 	done                                             chan struct{}
 	stop                                             sync.Once
 }
@@ -109,6 +110,39 @@ func (o *nativeTerminalObserver) run() {
 			}
 		}
 		o.poll(false)
+		o.trackTerminalTurn()
+	}
+}
+
+// trackTerminalTurn captures the files of a turn the person started by typing in a Claude terminal (the
+// mod reports its turns): before when the turn starts, after when Claude is back at its prompt, so Changes
+// and the reply's file card count terminal edits. A turn sent from the chat captures its own.
+func (o *nativeTerminalObserver) trackTerminalTurn() {
+	idle, known := claudecode.ClaudeModIdle(o.snapshot.TmuxSession)
+	if !known {
+		return
+	}
+	sessionID := o.snapshot.SessionID
+	switch {
+	case !idle && o.turnSnapshot == "":
+		if o.api.chatTurnSnapshotActive(sessionID) {
+			return
+		}
+		id := fmt.Sprintf("%s%s-%d", terminalTurnSnapshotPrefix, sessionID, time.Now().UnixNano())
+		o.api.prepareCrewTurnSnapshot(id, sessionID, QueryRequest{})
+		if _, ok := o.api.crewTurnSnapshots.Load(id); ok {
+			o.turnSnapshot = id
+			log.Printf("[FILE_SNAPSHOT] phase=terminal_turn_start session=%s execution=%s", sessionID, id)
+		}
+	case idle && o.turnSnapshot != "":
+		id := o.turnSnapshot
+		o.turnSnapshot = ""
+		if value, ok := o.api.crewTurnSnapshots.Load(id); ok {
+			snapshot := value.(*crewTurnSnapshot)
+			snapshot.outputDone.Store(true)
+			log.Printf("[FILE_SNAPSHOT] phase=terminal_turn_end session=%s execution=%s", sessionID, id)
+			go o.api.finishCrewTurnSnapshot(snapshot)
+		}
 	}
 }
 
