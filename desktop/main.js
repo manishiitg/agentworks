@@ -103,6 +103,9 @@ const AGENT_PROMPT_LOG_MAX_SESSIONS = parseNonNegativeIntegerEnv(
 
 let workspaceProcess = null;
 let agentProcess = null;
+// PLAT-856-502: a local server that stops on its own is restarted, a few times at most.
+let appQuitting = false;
+let localServerRestarts = [];
 let mainWindow = null;
 let settingsWindow = null;
 let tray = null;
@@ -281,27 +284,10 @@ async function resolveDocsDir() {
   const settings = loadSettings();
   if (settings.docsDir && fs.existsSync(settings.docsDir)) return settings.docsDir;
 
-  // First launch (or path was deleted): ask user to choose.
-  const choice = await dialog.showMessageBox({
-    type: 'question',
-    title: 'Choose workspace folder',
-    message: 'Where should AgentWorks store your workspace documents?',
-    detail: 'Pick an existing folder to use, or let AgentWorks create a default one in your application data directory.',
-    buttons: ['Choose folder…', 'Use default'],
-    defaultId: 0,
-    cancelId: 1,
-  });
-
-  let chosen;
-  if (choice.response === 0) {
-    const result = await dialog.showOpenDialog({
-      title: 'Select workspace-docs folder',
-      properties: ['openDirectory', 'createDirectory'],
-    });
-    if (!result.canceled && result.filePaths[0]) chosen = result.filePaths[0];
-  }
-  if (!chosen) chosen = path.join(app.getPath('userData'), 'workspace-docs');
-
+  // First launch (or the folder was deleted): use the default without asking.
+  // A question here came before any window and could hide behind other apps,
+  // so the app looked stuck (PLAT-856-502). Settings > Workspace Folder changes it.
+  const chosen = path.join(app.getPath('userData'), 'workspace-docs');
   fs.mkdirSync(chosen, { recursive: true });
   saveSettings({ ...settings, docsDir: chosen });
   return chosen;
@@ -560,8 +546,13 @@ function restartServers() {
       });
     started.then(() => {
         desktopAgentReady = true;
-        const previous = new URL(mainWindow.webContents.getURL());
-        mainWindow.loadURL(currentDesktopAppOrigin() + previous.pathname + previous.search);
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        let route = '/';
+        try {
+          const previous = new URL(mainWindow.webContents.getURL());
+          if (previous.protocol === 'http:') route = previous.pathname + previous.search;
+        } catch (_) {}
+        mainWindow.loadURL(currentDesktopAppOrigin() + route);
       })
       .catch(err => {
         showErrorAndExit('Failed to restart servers: ' + err);
@@ -1054,10 +1045,13 @@ function spawnWorkspace(userDataPath) {
 
     // Prefer fixed port 45679 so frontend localStorage stays stable across launches;
     // spawnServer (lib/servers.js) falls forward to the next free port.
+    let started = null;
     spawnServer({
       name: 'workspace', bin, args: ['server', '--port', spawnServer.PORT_PLACEHOLDER, '--docs-dir', docsDir],
       preferredPort: 45679, env: withoutDesktopBootstrap(env), log: logStream, echoToConsole: true,
+      onExit: (code, signal) => handleLocalServerExit('workspace', started, code, signal),
     }).then(({ child, port }) => {
+      started = child;
       workspaceProcess = child;
       dynamicWorkspacePort = port;
       console.log(`[main] Workspace server started on dynamic port: ${dynamicWorkspacePort}`);
@@ -1218,6 +1212,7 @@ function spawnAgent(userDataPath) {
       delete env.LOG_AGENT_PROMPTS;
     }
 
+    let started = null;
     spawnServer({
       name: 'agent', bin, args, preferredPort: 45678, cwd,
       bootstrap: port => ({ secret: desktopConnectionSecret, host: `127.0.0.1:${port}`, auth_secret: env.AUTH_SECRET }),
@@ -1230,7 +1225,9 @@ function spawnAgent(userDataPath) {
         MCP_AGENT_SERVER_URL: env.MCP_AGENT_SERVER_URL || `http://127.0.0.1:${port}`,
       }),
       log: logStream, echoToConsole: true,
+      onExit: (code, signal) => handleLocalServerExit('agent', started, code, signal),
     }).then(({ child, port }) => {
+      started = child;
       agentProcess = child;
       dynamicAgentPort = port;
       const startupMsg = `[agent] Spawned agent-server with log-file=${logFile}, port=${port}\n`;
@@ -1596,6 +1593,26 @@ function killChildren() {
   }
 }
 
+// A server stopped by killChildren (settings restart, quit) is no longer the
+// current one, so only a server that stopped on its own is restarted. Without
+// this, a crash left the window blank until the person quit and reopened.
+function handleLocalServerExit(name, child, code, signal) {
+  const current = name === 'agent' ? agentProcess : workspaceProcess;
+  if (!child || appQuitting || current !== child) return;
+  if (name === 'agent') agentProcess = null; else workspaceProcess = null;
+  desktopAgentReady = false;
+  const now = Date.now();
+  localServerRestarts = localServerRestarts.filter(t => now - t < 10 * 60 * 1000);
+  diagLog(`[main] ${name}-server stopped unexpectedly (exit ${code}, signal ${signal || 'none'})`);
+  if (localServerRestarts.length >= 3) {
+    showErrorAndExit(`AgentWorks stopped working ${localServerRestarts.length + 1} times in a few minutes. Quit and open it again; if it keeps happening, send us ~/Library/Application Support/runloop-desktop/logs/agent.log.`);
+    return;
+  }
+  localServerRestarts.push(now);
+  diagLog(`[main] restarting local servers (${localServerRestarts.length} of 3 in 10 minutes)`);
+  restartServers();
+}
+
 function showErrorAndExit(message) {
   dialog.showMessageBoxSync({
     type: 'error',
@@ -1632,10 +1649,23 @@ function createWindow(initialUrl) {
     console.log('[main] Window finished loading:', mainWindow?.webContents.getURL());
   });
 
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+  let loadRetries = 0;
+  mainWindow.webContents.on('did-finish-load', () => { loadRetries = 0; });
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     // -3 is ERR_ABORTED (benign — e.g. a canceled/replaced subframe load).
     if (errorCode === -3) return;
     diagLog('[main] Window failed to load:', { errorCode, errorDescription, validatedURL });
+    // The local server is starting or restarting: try again rather than stay
+    // blank (PLAT-856-502). -102 refused, -101 reset, -7 timed out.
+    const window = mainWindow;
+    if (!isMainFrame || ![-102, -101, -7].includes(errorCode) || loadRetries >= 30) return;
+    let local = false;
+    try { local = ['127.0.0.1', 'localhost'].includes(new URL(validatedURL).hostname); } catch (_) {}
+    if (!local) return;
+    loadRetries += 1;
+    setTimeout(() => {
+      if (window && !window.isDestroyed() && window === mainWindow) window.loadURL(validatedURL);
+    }, 2000);
   });
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
@@ -1819,6 +1849,7 @@ app.on('show', updateDockActivityAnimation);
 
 app.on('before-quit', () => {
   console.log('[main] before-quit');
+  appQuitting = true;
   stopDockActivityAnimation();
   killChildren();
 });
