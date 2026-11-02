@@ -145,11 +145,13 @@ while p not in ("/", ""):
   chmod o+x /etc/agentworks
   local docker_flag
   docker_flag="$(slot_docker_enabled)"
+  # node: the system one, or the product's managed one where the host has none (a host without one: the Claude SDK bridge runs
+  # it, and a Claude slot launch was refused "node is not an allowed program", PLAT-872-86).
   cat > "$SLOTCTL_CONFIG.new" <<JSON
 {
   "slot_prefix": "$SLOT_PREFIX",
   "slot_docker": $docker_flag,
-  "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux", "/usr/bin/chmod", "/usr/bin/node"],
+  "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux", "/usr/bin/chmod", "/usr/bin/node", "$HOME_DIR/tools/node/bin/node"],
   "allowed_cwd": ["$DOCS", "$HOME_DIR/slots"],
   "slot_run_root": "$HOME_DIR/slots/run",
   "slot_state_root": "$HOME_DIR/slots/state",
