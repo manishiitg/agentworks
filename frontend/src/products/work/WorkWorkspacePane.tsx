@@ -228,7 +228,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const contextMode = useProjectMode(activeSessionId || '')
-  const [filesView, selectFilesView] = useWorkFilesView(accessKey, workspacePath, activeSessionId || '')
+  const [filesView, selectFilesView] = useWorkFilesView(accessKey, workspacePath, activeSessionId || '', view === 'files')
   useWorkspaceViewTarget('files', selectFilesView, view === 'files' && !!activeSessionId)
   const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? [] : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
   const contextPanels = workWorkspacePanels({ profileId: product.profileId, cowork: product.profileId === 'work' && contextMode === 'cowork', readOnly: Boolean(readOnly), showShell, enabledPanels })
