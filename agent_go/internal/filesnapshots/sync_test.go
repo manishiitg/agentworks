@@ -65,6 +65,7 @@ func TestSyncBundlesPreserveReplicaEditsAndUndoHistory(t *testing.T) {
 		if err = json.Unmarshal(raw, &wire); err != nil {
 			t.Fatal(err)
 		}
+		wire.Content.BundlePath = snap.Content.BundlePath
 		return wire
 	}
 	first := capture(a, sa, nil)
@@ -223,8 +224,7 @@ func TestSyncBundleRejectsLinksAndCaseCollisions(t *testing.T) {
 			if err = a.command(t.Context(), "bundle", "create", file, syncRef("pair", "pending"), "^"+base).Run(); err != nil {
 				t.Fatal(err)
 			}
-			data, _ := os.ReadFile(file)
-			snap := crewsync.Snapshot{Content: &crewsync.ContentSnapshot{Base: base, Head: h, Bundle: data}, Files: crewsync.Manifest{"files/note.txt": {}, "files/NOTE.txt": {}}}
+			snap := crewsync.Snapshot{Content: &crewsync.ContentSnapshot{Base: base, Head: h, BundlePath: file}, Files: crewsync.Manifest{"files/note.txt": {}, "files/NOTE.txt": {}}}
 			if err = b.DecodeSync(t.Context(), "pair", &snap); err == nil {
 				t.Fatal("accepted unsafe tree")
 			}

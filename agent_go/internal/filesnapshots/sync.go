@@ -153,7 +153,12 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	keep := false
+	defer func() {
+		if !keep {
+			_ = os.RemoveAll(dir)
+		}
+	}()
 	file := filepath.Join(dir, "content.bundle")
 	if err = s.command(ctx, "bundle", "create", file, syncRef(pair, "pending"), "^"+base).Run(); err != nil {
 		return err
@@ -165,11 +170,8 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 	if info.Size() > publication.MaxBytes+(8<<20) {
 		return fmt.Errorf("project bundle exceeds transfer limit")
 	}
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return err
-	}
-	snapshot.Content = &crewsync.ContentSnapshot{Base: base, Head: strings.TrimSpace(string(head)), Bundle: data}
+	snapshot.Content = &crewsync.ContentSnapshot{Base: base, Head: strings.TrimSpace(string(head)), BundlePath: file}
+	keep = true
 	for i := range snapshot.Changes {
 		snapshot.Changes[i].Data = nil
 	}
@@ -185,7 +187,7 @@ func (s Store) DecodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 	}
 	defer unlock()
 	content := snapshot.Content
-	if content == nil || !objectName(content.Base) || !objectName(content.Head) || int64(len(content.Bundle)) > publication.MaxBytes+(8<<20) {
+	if content == nil || !objectName(content.Base) || !objectName(content.Head) {
 		return fmt.Errorf("invalid project bundle")
 	}
 	base, err := s.syncBase(ctx, pair)
@@ -196,14 +198,10 @@ func (s Store) DecodeSync(ctx context.Context, pair string, snapshot *crewsync.S
 	if base != content.Base && s.command(ctx, "cat-file", "-e", content.Base+"^{commit}").Run() != nil {
 		return fmt.Errorf("sync baseline is unavailable; retry the pending transfer")
 	}
-	dir, err := os.MkdirTemp(s.dir(), "sync-incoming-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	file := filepath.Join(dir, "content.bundle")
-	if err = os.WriteFile(file, content.Bundle, 0600); err != nil {
-		return err
+	file := content.BundlePath
+	info, e := os.Lstat(file)
+	if e != nil || !info.Mode().IsRegular() || info.Size() > publication.MaxBytes+(8<<20) {
+		return fmt.Errorf("invalid project bundle file")
 	}
 	if err = s.command(ctx, "bundle", "verify", file).Run(); err != nil {
 		return fmt.Errorf("project bundle does not match its baseline")

@@ -33,17 +33,24 @@ type Change struct {
 	Data   []byte `json:"-"`
 }
 type ContentSnapshot struct {
-	Base   string `json:"base"`
-	Head   string `json:"head"`
-	Bundle []byte `json:"bundle,omitempty"`
+	Base       string `json:"base"`
+	Head       string `json:"head"`
+	BundlePath string `json:"-"`
+}
+
+// Payload describes an immutable binary artifact. Bytes travel separately from metadata.
+type Payload struct {
+	Hash string `json:"hash"`
+	Size int64  `json:"size"`
 }
 
 type Snapshot struct {
-	Content *ContentSnapshot `json:"content,omitempty"`
-	Omitted []string         `json:"omitted,omitempty"`
-	Git     *GitSnapshot     `json:"git,omitempty"`
-	Files   Manifest         `json:"files"`
-	Changes []Change         `json:"changes"`
+	Payloads map[string]Payload `json:"payloads,omitempty"`
+	Content  *ContentSnapshot   `json:"content,omitempty"`
+	Omitted  []string           `json:"omitted,omitempty"`
+	Git      *GitSnapshot       `json:"git,omitempty"`
+	Files    Manifest           `json:"files"`
+	Changes  []Change           `json:"changes"`
 }
 
 // Both send and receive use this policy. Project ignore rules are additionally
