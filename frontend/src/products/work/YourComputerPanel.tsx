@@ -19,9 +19,8 @@ export const crewCloudMode = () => hasDesktopConnections()
 const networkName = (binding: Binding | null | undefined, connections: { id: string; name: string }[]) =>
   connections.filter(item => item.id !== 'local').length > 1 ? connections.find(item => item.id === binding?.connection_id)?.name || '' : ''
 
-/** The one-line answer for the main menu row: Cloud on (with a small spinner while it syncs) or Off. */
+/** The menu row's short answer: On, Syncing (small spinner), Check, or Off. The network name stays on the page. */
 export function useYourComputerSummary(enabled: boolean, projectId?: string, profileId?: string): ReactNode {
-  const connections = useConnectedWorkStore(state => state.connections)
   const [summary, setSummary] = useState<ReactNode>()
   useEffect(() => {
     setSummary(undefined)
@@ -31,10 +30,9 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
       const request: Promise<ReactNode> = crewCloudMode()
         ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => {
           if (!data.binding) return 'Off'
-          const name = networkName(data.binding, connections)
-          if (data.auto?.state === 'syncing') return <span className="inline-flex items-center gap-1"><RefreshCw aria-label="Syncing" className="h-3 w-3 animate-spin" />{name || 'Syncing'}</span>
-          if (data.binding.pending_action || (data.auto?.state && !['synced', 'idle'].includes(data.auto.state))) return <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><TriangleAlert className="h-3 w-3" />{name || 'On'}</span>
-          return <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="h-3 w-3" />{name || 'On'}</span>
+          if (data.auto?.state === 'syncing') return <span className="inline-flex items-center gap-1"><RefreshCw aria-hidden="true" className="h-3 w-3 animate-spin" />Syncing</span>
+          if (data.binding.pending_action || (data.auto?.state && !['synced', 'idle'].includes(data.auto.state))) return <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><TriangleAlert className="h-3 w-3" />Check</span>
+          return <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="h-3 w-3" />On</span>
         })
         : api.get<LaptopSettings>(laptopSettingsEndpoint(undefined, profileId, projectId), options).then(({ data }) => data.device_id ? 'On' : 'Off')
       void request.then(value => { if (!abort.signal.aborted) setSummary(value) }).catch(() => {})
@@ -42,7 +40,7 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
     load()
     const timer = crewCloudMode() ? window.setInterval(load, 4000) : undefined
     return () => { window.clearInterval(timer); abort.abort() }
-  }, [enabled, projectId, profileId, connections])
+  }, [enabled, projectId, profileId])
   return summary
 }
 
