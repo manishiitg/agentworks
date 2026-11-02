@@ -115,7 +115,6 @@ while p not in ("/", ""):
   # The one program the service account may run as a slot.
   install -d -o root -g root -m 0755 "$(dirname "$LIBEXEC")" "$LIBEXEC"
   install -o root -g root -m 0755 "$slotctl_src" "$LIBEXEC/slotctl"
-  install -o root -g root -m 0755 "$(dirname "$slotctl_src")/native-session" "$LIBEXEC/native-session"
   install -d -o root -g "$PRODUCT" -m 0750 "$ETC"
   # A product's folder below /etc/agentworks is only reachable if every parent is searchable: /etc/agentworks
   # belongs to the first product's group (server B's agents, 0750), which would hide another product's folder
@@ -535,8 +534,20 @@ PY
   echo "Every account in $DOCS/config/users.json has a slot."
 }
 
+# Install the matching pair after activation: before the first release with
+# this helper, current/bin cannot supply it. This operation touches binaries
+# only, never slot assignments, journals, directory permissions or ACLs.
+cmd_native_session() {
+  local source_dir
+  source_dir="$(readlink -f "$HOME_DIR/current/bin")"
+  [[ -x "$source_dir/slotctl" && -x "$source_dir/native-session" ]] || { echo "The active release lacks its native session helper." >&2; exit 1; }
+  install -o root -g root -m 0755 "$source_dir/native-session" "$LIBEXEC/native-session"
+  install -o root -g root -m 0755 "$source_dir/slotctl" "$LIBEXEC/slotctl"
+}
+
 case "${1:-}" in
   ensure) cmd_ensure ;;
+  native-session) cmd_native_session ;;
   userns) shift; cmd_userns "$@" ;;
   userns-retire) shift; cmd_userns_retire "$@" ;;
   init) cmd_init ;;
@@ -546,5 +557,5 @@ case "${1:-}" in
   adduser) shift; cmd_adduser "$@" ;;
   release) shift; cmd_release "$@" ;;
   status) cmd_status ;;
-  *) echo "usage: provision-slots.sh init | ensure | userns [--print] | userns-retire | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
+  *) echo "usage: provision-slots.sh init | ensure | native-session | userns [--print] | userns-retire | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
 esac
