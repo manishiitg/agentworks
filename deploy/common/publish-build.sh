@@ -6,6 +6,7 @@
 #                                    manifest.json, SHA256SUMS; then keep only the newest 8 build releases per architecture
 #                                    Also publish cli-<build-name>: six compressed CLI assets and archive SHA256SUMS, retained independently.
 #   publish-build.sh --list          the build releases on GitHub (anonymous, read-only)
+#   publish-build.sh --cli-only DIR  only the build's CLI downloads (what a deploy to the build host itself needs)
 #
 # Runs on the build host after a build (build-release.sh, best effort; `./deploy.sh publish`). Needs only python3, tar and gzip.
 # The token (fine-grained, Contents read+write on the one repo) comes from GH_TOKEN in the environment or from the file
@@ -240,7 +241,7 @@ def tar_gz(parent, name, dest, excludes=()):
             raise Fatal(f"could not archive {name}")
 
 
-def publish(build):
+def publish(build, cli_only=False):
     build = os.path.abspath(build)
     manifest = os.path.join(build, "manifest.json")
     if not os.path.isfile(manifest):
@@ -266,6 +267,10 @@ def publish(build):
             say(f"publish skipped: no GitHub token (put GH_TOKEN=... in {token_file()}, mode 600); servers will be sent this build the old way")
         return
     cli_uploaded = publish_cli(build, gh, revs, manifest_sha)
+    if cli_only:
+        # The server bundle (~500 MB) is published when a server that downloads it is deployed (build-once.sh
+        # publish_build_remote), not before a deploy to the build host itself, which only needs its CLI downloads online.
+        return
     if release and complete(release, manifest_sha):
         say(f"build {name} is already published as {tag}")
     else:
@@ -334,8 +339,10 @@ def main(argv):
             list_releases()
         elif len(argv) == 1 and not argv[0].startswith("-"):
             publish(argv[0])
+        elif len(argv) == 2 and argv[0] == "--cli-only" and not argv[1].startswith("-"):
+            publish(argv[1], cli_only=True)
         else:
-            print("usage: publish-build.sh <build-dir> | --list", file=sys.stderr)
+            print("usage: publish-build.sh [--cli-only] <build-dir> | --list", file=sys.stderr)
             return 2
     except Fatal as err:
         print(f"publish-build: {err}", file=sys.stderr)
