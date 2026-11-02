@@ -139,6 +139,7 @@ while p not in ("/", ""):
 JSON
   install -o root -g root -m 0644 "$SLOTCTL_CONFIG.new" "$SLOTCTL_CONFIG" && rm -f "$SLOTCTL_CONFIG.new"
   [[ -f "$TABLE" ]] || printf '{"slots":{}}\n' | install -o root -g "$PRODUCT" -m 0640 /dev/stdin "$TABLE"
+  sync_native_owners
 
   cat > "$SUDOERS.new" <<SUDO
 # Managed by provision-slots.sh. The service account may run exactly one program as a slot.
@@ -268,6 +269,30 @@ PY
 
 user_tree() { printf '%s/_users/%s' "$DOCS" "$1"; }
 
+# Readable owner IDs live in the existing root-owned policy file. Never open
+# the private master table to slots. Re-read while holding its normal lock, so
+# concurrent assign/release operations cannot publish an older assignment map.
+sync_native_owners() {
+  python3 - "$TABLE" "$SLOTCTL_CONFIG" <<'PY_NATIVE_OWNERS'
+import fcntl, json, os, sys, tempfile
+master, config = sys.argv[1:]
+with open(master + ".lock", "a") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    owners = json.load(open(master)).get("slots", {})
+    cfg = json.load(open(config))
+    cfg["native_owners"] = owners
+    fd, temporary = tempfile.mkstemp(prefix=".slot-policy-", dir=os.path.dirname(config))
+    try:
+        with os.fdopen(fd, "w") as stream:
+            os.fchown(stream.fileno(), 0, 0)
+            os.fchmod(stream.fileno(), 0o644)
+            json.dump(cfg, stream, indent=2)
+        os.replace(temporary, config)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
+PY_NATIVE_OWNERS
+}
+
 cmd_assign() {
   local user_id="${1:-}" slot="${2:-}"
   [[ "$user_id" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "usage: assign <user-id> [slotNN]" >&2; exit 2; }
@@ -301,6 +326,7 @@ with open(path + ".lock", "a") as lock:
     print(free)
 PY
 )"
+  sync_native_owners
   local tree
   tree="$(user_tree "$user_id")"
   getent group "$slot" >/dev/null || { echo "$slot has no account: run init." >&2; exit 1; }
@@ -352,6 +378,7 @@ with open(path + ".lock", "a") as lock:
     os.chown(tmp, current.st_uid, current.st_gid)
     os.replace(tmp, path)
 PY
+  sync_native_owners
   echo "$user_id released (files keep their group; clear them before reusing the slot)"
 }
 
@@ -541,6 +568,7 @@ cmd_native_session() {
   local source_dir
   source_dir="$(readlink -f "$HOME_DIR/current/bin")"
   [[ -x "$source_dir/slotctl" && -x "$source_dir/native-session" ]] || { echo "The active release lacks its native session helper." >&2; exit 1; }
+  sync_native_owners
   install -o root -g root -m 0755 "$source_dir/native-session" "$LIBEXEC/native-session"
   install -o root -g root -m 0755 "$source_dir/slotctl" "$LIBEXEC/slotctl"
 }

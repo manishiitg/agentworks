@@ -17,7 +17,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "native session helper requires an assigned account")
 		os.Exit(125)
 	}
-	cfg, err := slots.LoadExecConfig(slots.ConfigBesideExecutable())
+	cfg, err := slots.LoadNativeExecConfig(slots.ConfigBesideExecutable())
 	if err == nil && !slots.ValidSlot(me.Username) {
 		err = fmt.Errorf("account is outside this installation")
 	}

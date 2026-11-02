@@ -43,6 +43,9 @@ const maxRequestBytes = 8 << 20
 // ExecConfig is what slotctl will agree to run. It is root-owned, so the platform account cannot
 // widen it.
 type ExecConfig struct {
+	// NativeOwners is a root-maintained projection of the private assignment table.
+	// Account IDs are metadata; slots can read this config but cannot change it.
+	NativeOwners map[string]string `json:"native_owners,omitempty"`
 	// SlotPrefix names this product's slot accounts (slot_prefix); empty means "slot".
 	SlotPrefix string `json:"slot_prefix,omitempty"`
 	// SlotDocker says every slot has its own rootless Docker (provision-slots.sh docker): a command run as a

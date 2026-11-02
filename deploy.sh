@@ -403,7 +403,7 @@ echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOS
 # root-installed launcher/helper pair from this active release.
 if [[ "${SLOTS_ENABLED:-false}" == true && -n "${HOST_SETUP_USER:-}" ]]; then
   echo "==> [$PRODUCT] Installing the active native session helper"
-  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT bash -s -- native-session" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} bash -s -- native-session" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
 fi
 
 # The release is live and the services have re-exec'd under the standard profile: only now retire an older per-product profile
