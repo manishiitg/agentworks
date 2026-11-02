@@ -7,7 +7,7 @@ import { SettingsMenuContext } from './productNavigationContexts'
 export { useProductSettingsMenu, useProductSetupTiles } from './productNavigationContexts'
 
 /** Existing actions remain mounted and enforce their own permissions. */
-export function ProductSettingsMenu({ children, activity, accountTrigger }: { children: ReactNode; activity?: ReactNode; accountTrigger?: ReactNode }) {
+export function ProductSettingsMenu({ children, activity, accountTrigger, aboveTrigger }: { children: ReactNode; activity?: ReactNode; accountTrigger?: ReactNode; aboveTrigger?: ReactNode }) {
   const target = useProductNavigationToolbarStore(state => state.settingsTarget)
   const sidebarTarget = useProductNavigationToolbarStore(state => state.sidebarSettingsTarget)
   const compactTarget = useProductNavigationToolbarStore(state => state.compactSettingsTarget)
@@ -56,6 +56,7 @@ export function ProductSettingsMenu({ children, activity, accountTrigger }: { ch
       </div>
     </SettingsMenuContext.Provider>, target)
   const menu = <div ref={root} data-product-settings className={accountMenu && !sidebarTarget && !compactTarget ? 'fixed bottom-3 left-3 z-40 hidden md:block md:left-2' : 'relative'}>
+    {aboveTrigger}
     <button ref={trigger} data-product-settings-trigger type="button" aria-label={menuLabel} aria-haspopup="menu" aria-expanded={open} aria-controls={id}
       onClick={() => { window.dispatchEvent(new Event('close-workspace-picker')); setOpen(value => !value) }}
       onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); focusFirst() } }}
