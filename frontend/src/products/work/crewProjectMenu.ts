@@ -43,8 +43,8 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
-      // Linked folders decide what the Crew can read, not who can use it.
-      add('mcp', item.id === 'mcp:folders' ? 'Setup' : 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.id === 'mcp:folders' ? undefined : item.subgroup)
+      // Linked projects & folders sit in the main menu with Sharing and Cloud for now (owner, 2 Nov).
+      add('mcp', item.id === 'mcp:folders' ? 'Share' : 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.id === 'mcp:folders' ? 'Access' : item.subgroup)
     }
     if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
     // In the Mac app a Crew is in the Cloud (on a network) or not (shown once a network is connected); on a server it is Laptop access.
