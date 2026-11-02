@@ -69,6 +69,43 @@ func TestLocalCrewDocumentsLabelKeepsIssuedPaths(t *testing.T) {
 	}
 }
 
+// PLAT-874-12: cleaning a Gin wildcard on Windows changes its leading slash
+// to a backslash. It must still select the Crew's private manifest, not create
+// a product.json in the person's files or managed working tree.
+func TestCrewDocumentWildcardWritesPrivateManifest(t *testing.T) {
+	docs, project := setupLocalCrewDocuments(t)
+	router := setupRouter(docs)
+	router.PUT("/api/documents/*filepath", UpdateDocument)
+	const manifest = `{"id":"example","product":"work"}`
+	body, _ := json.Marshal(map[string]string{"content": manifest})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("PUT", "/api/documents/Crew/example/product.json", strings.NewReader(string(body)))
+	r.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, r)
+	if w.Code != 200 && w.Code != 201 {
+		t.Fatalf("write manifest: %d %s", w.Code, w.Body.String())
+	}
+	private, err := crewroot.PrivateRoot(docs, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(private, "product.json"))
+	if err != nil || string(got) != manifest {
+		t.Fatalf("manifest missed private storage: %q %v", got, err)
+	}
+	for _, root := range []string{project, filepath.Join(project, ".agentworks"), filepath.Join(docs, "Crew", "example")} {
+		if _, err := os.Lstat(filepath.Join(root, "product.json")); !os.IsNotExist(err) {
+			t.Fatalf("manifest appeared in project files: %s %v", root, err)
+		}
+	}
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/documents/Crew/example/product.json", nil))
+	var response models.APIResponse[models.Document]
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != 200 || !response.Success || response.Data.Content != manifest {
+		t.Fatalf("read private manifest: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestLazyCrewListingsLookAheadAndSearchUnloadedFiles(t *testing.T) {
 	docs, project := setupLocalCrewDocuments(t)
 	root := "Crew/example/_files"

@@ -54,7 +54,7 @@ func TestExecuteShellCommandBackgroundJobReturnsPromptly(t *testing.T) {
 		t.Fatalf("result does not name the background pid: %q", first.Stderr)
 	}
 	pid, _ := strconv.Atoi(m[1])
-	defer func() { _ = syscall.Kill(pid, syscall.SIGKILL) }()
+	defer func() { _ = signalProcess(pid, syscall.SIGKILL) }()
 
 	next, took := run("echo next")
 	if took > 5*time.Second || strings.TrimSpace(next.Stdout) != "next" || strings.Contains(next.Stderr, "[background]") {
