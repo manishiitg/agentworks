@@ -66,6 +66,20 @@ describe('Studio review comments', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
+  it('opens all saved chat changes from the start even after a review, with project history separate', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    state.reviewed = true; vi.mocked(api.get).mockClear()
+    try {
+      await act(async () => root.render(<ChatFileReview allChat workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
+      expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ session_id: 'chat-a', baseline_snapshot_id: 'start', op: 'snapshot_compare' }) }))
+      expect(host.textContent).toContain('All chat changes')
+      const history = [...host.querySelectorAll('button')].find(button => button.textContent === 'Project history')!
+      await act(async () => history.click())
+      expect(openChatFiles).toHaveBeenLastCalledWith('chat-a')
+    } finally { state.reviewed = false; await act(async () => root.unmount()); host.remove() }
+  })
+
   it('keeps identical paths on saved branches and other checkouts bound to their exact diffs', async () => {
     // PLAT-746-264: choosing a filename must not open another branch’s copy.
     const host = document.createElement('div'); document.body.append(host)
