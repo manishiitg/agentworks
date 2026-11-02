@@ -7,21 +7,18 @@ Record whether this was a fresh install or an existing package.
 
 1. Install/update the reviewed AgentWorks CLI and sign in to the intended
    server in your own terminal. Open the Codex app and record both versions.
-   Confirm this terminal has no standalone `codex` command. After sign-in,
-   `agentworks attach` must recognize the supported app; cancel selection if
-   you are only checking discovery. No chat should be attached on cancellation.
-2. Open **Settings → Plugins → Browse directory → Add → Add a marketplace**.
-   Enter `manishiitg/agentworks-plugins` in **Source**, then select
-   **Add marketplace**. Confirm the `agentworks` source appears.
-3. Choose that source, open **AgentWorks** (`agentworks-codex`) and select
-   **Install plugin**. Check its enabled state under **Settings → Plugins**.
-   It should expose two skills, the messaging MCP and four hook definitions.
+   Confirm this terminal has no standalone `codex`, `node` or `npm` command.
+2. Run `agentworks setup codex --hooks`, then restart Codex. No separate Codex
+   CLI or Node installation should be requested. A missing/unrunnable bundled
+   executable uses the pinned, checksum-verified local-marketplace installation.
+3. Open **Settings → Plugins** and check that **AgentWorks** is installed.
+   It should expose the skills, messaging MCP and bundled hook definitions.
    App and bundled CLI must refer to the same Codex home/cache; report a custom
    `CODEX_HOME` if used. Native attachment from a custom home is a separate
    pending check; matching plugin configuration alone does not prove it. An existing disabled package must stay disabled during
    an update unless you choose to enable it.
 4. Open **Settings → Hooks → From Plugins → AgentWorks**. Review and trust
-   the SessionStart, SessionEnd, UserPromptSubmit and Stop definitions yourself.
+   the bundled hook definitions yourself.
    Use **Reload hooks** and reload the app/start a new chat when requested.
    Record whether the app showed the review prompts and any loading issue.
 5. In the exact chat, type `/agentworks attach codex-app-test`, then

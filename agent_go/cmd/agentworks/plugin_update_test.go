@@ -80,6 +80,20 @@ func TestCodexAppCommandLineAndHome(t *testing.T) {
 	if got := codexExecutable(none); got != "" {
 		t.Fatalf("no guessed fallback outside macOS: %q", got)
 	}
+	// PLAT-856-496: a verified Windows app resource works without a CLI on PATH.
+	codexGOOS = "windows"
+	t.Setenv("LOCALAPPDATA", dir)
+	t.Setenv("ProgramFiles", filepath.Join(dir, "no-programs"))
+	windowsApp := filepath.Join(dir, "Programs", "Codex", "resources", "codex.exe")
+	if err := os.MkdirAll(filepath.Dir(windowsApp), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(windowsApp, []byte("native app fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := codexExecutable(none); got != windowsApp {
+		t.Fatalf("Windows desktop binary was not found: %q", got)
+	}
 	codexGOOS = "darwin"
 	codexAppBundleCLI = filepath.Join(dir, "missing")
 	if got := codexExecutable(none); got != "" {

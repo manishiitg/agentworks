@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -36,22 +34,19 @@ func installToolsPlugin(ctx context.Context, o *options, provider string) (insta
 			return "", "", e
 		}
 		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins"}, {"plugin", "add", "agentworks-codex-tools@agentworks"}}
-		installed, remove = "the AgentWorks tools plugin (agentworks-codex-tools@agentworks, no hooks) in your Codex profile (~/.codex); it serves the Codex app (the Codex command line keeps the version with hooks)", "codex plugin remove agentworks-codex-tools@agentworks"
+		installed, remove = "the AgentWorks tools plugin (agentworks-codex-tools@agentworks, no hooks) in your Codex profile (~/.codex); it serves the Codex app (the Codex command line keeps the version with hooks)", "remove AgentWorks (tools only) in Codex Settings > Plugins, then restart Codex"
 		if raw, e := os.ReadFile(filepath.Join(codexHomeDir(home), "config.toml")); e == nil && strings.Contains(string(raw), "agentworks-codex@agentworks") {
-			newSetupStyle(o.stdout).Say("Note: the full AgentWorks plugin (with hooks) is also installed. Remove it so the hooks stop: codex plugin remove agentworks-codex@agentworks")
+			newSetupStyle(o.stdout).Say("Note: the full AgentWorks plugin (with hooks) is also installed. Remove that copy in Codex Settings > Plugins so its hooks stop.")
 		}
 	default:
 		return "", "", errors.New("--no-hooks is available for Claude Code and the Codex app")
 	}
-	for _, args := range steps {
-		c := exec.CommandContext(ctx, providerExecutable(provider), args...)
-		out, e := c.CombinedOutput()
-		if e != nil && !strings.Contains(strings.ToLower(string(out)), "already") {
-			return "", "", fmt.Errorf("%s plugin setup failed: %s", provider, strings.TrimSpace(string(out)))
-		}
-		fmt.Fprint(o.stderr, string(out))
+	if provider == "codex" {
+		err = setupCodexPlugin(ctx, o, "agentworks-codex-tools")
+	} else {
+		err = runPluginSteps(ctx, o, provider, steps)
 	}
-	return installed, remove, nil
+	return installed, remove, err
 }
 
 // hooksPluginInstalled reports whether the full AgentWorks plugin (with hooks) is already installed for the app.

@@ -2,8 +2,15 @@
 
 ## Codex app
 
-A separate Codex CLI on PATH is not required. Install the AgentWorks CLI and
-sign in, then use the app to install the plugin:
+A separate Codex CLI or Node.js is not required. Install the AgentWorks CLI,
+sign in, and run `agentworks setup codex --hooks`, then restart Codex. Setup
+uses the app's bundled command line when available. Otherwise it installs a
+checksum-verified package in a local marketplace in your Codex profile. It keeps
+disabled plugins disabled and leaves hook approval to you in **Settings → Hooks**.
+Use `--no-hooks` for tools only. Refresh this managed package with an explicit
+`agentworks setup codex` or `agentworks update`; it does not refresh in the background.
+
+You can also install through the app:
 
 1. Open **Settings → Plugins → Browse directory**.
 2. Select **Add → Add a marketplace**. Enter `manishiitg/agentworks-plugins`
@@ -17,10 +24,8 @@ sign in, then use the app to install the plugin:
 6. Type `/agentworks attach` in the exact chat you want to connect.
 
 These labels were inspected in the macOS app's installed UI. If its marketplace
-menu is unavailable, after signing in run `agentworks attach` in your own
-terminal. Current AgentWorks finds the Codex executable on PATH or in a
-supported app bundle, offers a missing-plugin install and lets you select a
-verified live chat. It does not approve the app's hooks.
+menu is unavailable, use `agentworks setup codex --hooks`, then restart Codex.
+It does not approve the app's hooks.
 
 The app and its bundled CLI use the same Codex home by default: plugin settings
 in `~/.codex/config.toml`, installed packages in `~/.codex/plugins/cache/`.
@@ -35,8 +40,7 @@ To update in the app, open **Settings → Plugins → Marketplace**, select
 **Upgrade** for `agentworks`, then reload as requested and check the package version. Preserve your
 plugin enablement choice and review changed hooks. `agentworks update` updates
 AgentWorks separately and can use the supported app-bundled Codex executable.
-Windows/Linux app fallback is used only when a verified layout exists; otherwise
-use the in-app flow and report the unsupported discovery result.
+Desktop-only setup also works when no runnable bundled Codex binary is found.
 
 The [five-step owner test](https://github.com/manishiitg/agentworks/blob/main/docs/codex-app-live-test.md)
 checks a fresh app installation, hook review and exact-chat receipts after deployment.
@@ -51,7 +55,8 @@ codex plugin add agentworks-codex@agentworks
 Review hooks with `/hooks` and reload the CLI as needed.
 
 Install the AgentWorks CLI and sign in with `agentworks login`. Run
-`agentworks attach` from your terminal to install the plugin if missing and select a verified live chat. Review and
+`agentworks setup codex --hooks` first if the plugin is missing, then restart Codex.
+`agentworks attach` from your terminal selects a verified live chat. Review and
 approve the provider's trust prompts; reload/restart the provider as it requires.
 Installation alone does not attach a conversation; selection or an in-chat person command does. The MCP child has only messaging
 tools and stays unavailable until this exact session is attached. Install a full

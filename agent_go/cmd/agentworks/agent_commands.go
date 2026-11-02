@@ -24,7 +24,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
-	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 	_ "modernc.org/sqlite"
 )
@@ -708,27 +707,20 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 		if e := codexHomeError(); e != nil {
 			return e
 		}
+		if !o.setupAll {
+			// Attaching a chat must not refresh its installed plugin. Setup and
+			// update are the person's explicit refresh operations.
+			if hooksPluginInstalled(provider) {
+				return nil
+			}
+			return errors.New("set up Codex first with agentworks setup codex --hooks, then restart Codex and connect this chat again")
+		}
+		return setupCodexPlugin(ctx, o, "agentworks-codex")
 	}
 	// Existing cache + installation registry are required; a downloaded cache on
 	// its own is not an installed plugin. Never enable/trust hooks programmatically.
 	registry := filepath.Join(home, ".claude", "plugins", "installed_plugins.json")
 	marker := "agentworks@agentworks"
-	if provider == "codex" {
-		registry = filepath.Join(codexHomeDir(home), "plugins", "installed_plugins.json")
-		marker = "agentworks-codex"
-	}
-	if provider == "codex" {
-		var cfg struct {
-			Plugins map[string]struct {
-				Enabled bool `toml:"enabled"`
-			} `toml:"plugins"`
-		}
-		if b, e := os.ReadFile(filepath.Join(codexHomeDir(home), "config.toml")); e == nil && toml.Unmarshal(b, &cfg) == nil {
-			if _, exists := cfg.Plugins["agentworks-codex@agentworks"]; exists {
-				return nil
-			}
-		}
-	}
 	// A project-scoped Claude install elsewhere is not an every-project setup.
 	if b, e := os.ReadFile(registry); e == nil && json.Valid(b) && strings.Contains(string(b), marker) && !(o.setupAll && provider == "claude") {
 		return nil
@@ -744,26 +736,12 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 			return errors.New("plugin installation cancelled")
 		}
 	}
-	var steps [][]string
-	if provider == "claude" {
-		scope := "project"
-		if o.setupAll {
-			scope = "user"
-		}
-		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", scope}, {"plugin", "install", "agentworks@agentworks", "--scope", scope}}
-	} else {
-		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins"}, {"plugin", "add", "agentworks-codex@agentworks"}}
+	scope := "project"
+	if o.setupAll {
+		scope = "user"
 	}
-	for _, args := range steps {
-		c := exec.CommandContext(ctx, providerExecutable(provider), args...)
-		c.Stdin = o.stdin
-		result, e := c.CombinedOutput()
-		if e != nil && !strings.Contains(strings.ToLower(string(result)), "already") {
-			return fmt.Errorf("%s plugin setup failed: %s", provider, strings.TrimSpace(string(result)))
-		}
-		fmt.Fprint(o.stderr, string(result))
-	}
-	return nil
+	steps := [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", scope}, {"plugin", "install", "agentworks@agentworks", "--scope", scope}}
+	return runPluginSteps(ctx, o, provider, steps)
 }
 
 func installMusePlugin(ctx context.Context, o *options) error {
