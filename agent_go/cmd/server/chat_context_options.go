@@ -39,6 +39,7 @@ func chatContextTabForSession(ctx context.Context, owner, sessionID string) (cha
 	}
 	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(owner))
 	if err != nil {
+		log.Printf("[CHAT_CONTEXT] session=%s owner=%s chat settings unreadable: %v", sessionID, owner, err)
 		return chatContextTab{}, false
 	}
 	for key, record := range doc.Entries {
@@ -485,7 +486,7 @@ func (api *StreamingAPI) startClaudeTerminalNow(owner string, tab chatContextTab
 	sessionID := tab.Record.SessionID
 	chat, _, refusal := chatCompactRefusal(sessionID)
 	if refusal != "" || chat.lastPerson.IsZero() {
-		log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=start result=deferred reason=%q", sessionID, owner, refusal)
+		log.Printf("[CLAUDE_TERMINAL] session=%s owner=%s action=start result=deferred reason=%q", sessionID, owner, "no message to start from since the server started; the next message starts it")
 		return "The terminal starts with your next message."
 	}
 	runAs := api.idleCompactOwner(sessionID, chat.personUser)
@@ -577,6 +578,9 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 		// The next message launches Claude on the chosen transport and resumes the same conversation; a change
 		// made from inside a reply is relaunched by that next message (prepareProductConversationTurn).
 		retireProductCodingCLI(tab.Record.SessionID, "claude runtime changed")
+		// The old pane belongs to the other transport: hide it so the terminal view says it starts with the
+		// next message instead of showing a closed pane as this chat's terminal. A new pane shows again.
+		api.hideMainTerminals(tab.Record.SessionID)
 	}
 	status, message := http.StatusOK, ""
 	if runtimeChanged && !afterTurn && tab.Identity.ClaudeTerminal {
@@ -667,4 +671,17 @@ func (api *StreamingAPI) externalChatContext(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	externalJSON(w, out)
+}
+
+// hideMainTerminals hides the chat's main-agent panes from the terminal view (presentation only; the
+// terminal store shows a pane again when it has new activity).
+func (api *StreamingAPI) hideMainTerminals(sessionID string) {
+	if api.terminalStore == nil {
+		return
+	}
+	for _, snapshot := range api.terminalStore.List(sessionID) {
+		if terminalSnapshotIsMainAgent(snapshot) {
+			api.terminalStore.Dismiss(snapshot.TerminalID)
+		}
+	}
 }

@@ -249,7 +249,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
               role="status"
             >
               <span className="min-w-0 flex-1">
-                This terminal is no longer running. Return to chat and send a new message to continue the conversation.
+                This terminal has stopped. Send a message below to start it again.
               </span>
               {onUnavailable && (
                 <button type="button" className="rounded-md border border-neutral-600 px-3 py-1 text-neutral-100 hover:bg-neutral-800" onClick={() => onUnavailableRef.current?.()}>
