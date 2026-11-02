@@ -4,19 +4,15 @@ import type { ProductMode } from '../../platform/chat/productProjects'
 import { agentApi } from '../../services/api'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
-import { CREW_STARTER_TYPES, type CrewOnboarding, type CrewStarterType } from './crewStarterTypes'
+import type { CrewOnboarding } from './crewStarterTypes'
 
-export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', initialType, studio = false, allowExistingFolder = false }: {
+export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowExistingFolder = false }: {
   onClose: () => void
   onCreate: (title: string, purpose: string, runsOn: RunsOnSelection | undefined, mode: ProductMode, onboarding: CrewOnboarding, rootPath?: string) => void | Promise<void>
   submitting: boolean
   error: string | null
-  initialType?: CrewStarterType
-  initialMode?: ProductMode
-  studio?: boolean
   allowExistingFolder?: boolean
 }) {
-  const [type, setType] = useState<CrewStarterType | undefined>(initialType ?? (initialMode === 'cowork' ? 'cowork' : undefined))
   const [title, setTitle] = useState('')
   const [rootPath, setRootPath] = useState('')
   const [editingFolder, setEditingFolder] = useState(false)
@@ -25,12 +21,10 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
   const [locationLoading, setLocationLoading] = useState(true)
   const [locationError, setLocationError] = useState(false)
   const [locationRevision, setLocationRevision] = useState(0)
-  const [mode, setMode] = useState(initialMode)
+  const [mode, setMode] = useState<ProductMode>('dev')
   const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
   const formRef = useRef<HTMLFormElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
-  const selected = CREW_STARTER_TYPES.find(item => item.id === type)
-  const starters = studio ? CREW_STARTER_TYPES.filter(item => item.id === 'code' || item.id === 'cowork') : CREW_STARTER_TYPES
   const canChangeFolder = allowExistingFolder && location?.can_choose_folder === true
   const closingRef = useRef({ onClose, submitting })
   closingRef.current = { onClose, submitting }
@@ -61,19 +55,20 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
     setLocationError(false)
     const timer = window.setTimeout(() => {
       void agentApi.getProjectCreationLocation('work', title.trim()).then(next => {
-        if (active && isChatIdentityCurrent(identity)) { setLocation(next); setLocationLoading(false) }
+        if (active && isChatIdentityCurrent(identity)) {
+          if (!next || typeof next.folder !== 'string' || !next.folder.trim() || typeof next.can_choose_folder !== 'boolean') {
+            setLocation(null); setLocationError(true)
+          } else setLocation(next)
+          setLocationLoading(false)
+        }
       }).catch(() => { if (active && isChatIdentityCurrent(identity)) { setLocationError(true); setLocationLoading(false) } })
     }, 200)
     return () => { active = false; window.clearTimeout(timer) }
   }, [title, locationRevision])
-  const choose = (next?: CrewStarterType) => {
-    setType(next)
-    if (studio && next) setMode(next === 'code' ? 'dev' : 'cowork')
-  }
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (submitting || !title.trim()) return
-    void onCreate(title.trim(), selected?.purpose || '', runsOn, mode, { type }, canChangeFolder ? rootPath.trim() || undefined : undefined)
+    void onCreate(title.trim(), '', runsOn, mode, {}, canChangeFolder ? rootPath.trim() || undefined : undefined)
   }
   return <div className="fixed inset-0 z-50 grid place-items-center bg-black/65 p-3 backdrop-blur-sm sm:p-6">
     <form ref={formRef} tabIndex={-1} onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="crew-wizard-title" aria-busy={submitting} className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
@@ -100,8 +95,8 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
               }} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"><FolderOpen aria-hidden="true" className="h-4 w-4" />Browse</button>}
             </div>
             <button type="button" disabled={submitting} onClick={() => { setRootPath(''); setEditingFolder(false); setFolderError(null) }} className="mt-1.5 text-xs text-muted-foreground hover:text-foreground">Use default folder</button>
-          </> : <p className="mt-1.5 break-all text-sm text-muted-foreground" title={rootPath || location?.folder}>{rootPath || (locationLoading ? 'Checking folder…' : locationError ? 'Folder location unavailable' : location?.folder)}</p>}
-          {!rootPath && location && !locationLoading && !locationError && <p className="mt-1 text-xs text-muted-foreground">A unique suffix is added when created.</p>}
+          </> : <p className="mt-1.5 break-all text-sm text-muted-foreground" title={rootPath || location?.folder}>{rootPath || (locationLoading ? 'Checking folder…' : locationError ? 'Could not load the project folder. Update and restart the local app if Retry does not help.' : location?.folder)}</p>}
+          {!rootPath && location && !locationLoading && !locationError && <p className="mt-1 text-xs text-muted-foreground">Your project files will be saved here.</p>}
           {locationError && <button type="button" onClick={() => setLocationRevision(value => value + 1)} className="mt-1 text-xs text-primary">Retry folder lookup</button>}
           {folderError && <p role="alert" className="mt-1 text-xs text-destructive">{folderError}</p>}
         </section>
@@ -112,12 +107,6 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
           </select>
         </label>
         <RunsOnPicker profileId="work" onChange={setRunsOn} disabled={submitting} saveAccount="when-needed" />
-        <label className="block border-t border-border pt-4 text-sm font-medium" htmlFor="crew-wizard-type">Starting point <span className="font-normal text-muted-foreground">(optional)</span>
-          <select id="crew-wizard-type" value={type || ''} onChange={event => choose(event.target.value as CrewStarterType || undefined)} disabled={submitting} className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal">
-            <option value="">Blank project</option>
-            {starters.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-        </label>
         {error && <p role="alert" className="flex items-start gap-2 text-sm text-destructive"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</p>}
       </div>
       <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-5 py-3.5 sm:px-6">
