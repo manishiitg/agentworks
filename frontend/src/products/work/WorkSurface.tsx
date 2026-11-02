@@ -48,7 +48,7 @@ import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, 
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { setProjectMode } from './codeLocalFiles'
+import { localFileError, setProjectMode } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
 import { DashboardLayoutControls, DashboardLayoutProvider } from '../../components/workflow/DashboardLayoutControls'
 import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
@@ -1266,8 +1266,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       setCreateOpen(false)
       if (startedAtHome && window.location.pathname === '/home') openAppProduct({ surface: 'work', id: created.id })
     } catch (cause) {
-      const serverMessage = (cause as { response?: { data?: unknown } })?.response?.data
-      setCreateError(typeof serverMessage === 'string' && serverMessage.trim() ? serverMessage.trim() : cause instanceof Error ? cause.message : `Could not create ${product.itemNoun}.`)
+      setCreateError(localFileError(cause))
     } finally {
       setCreating(false)
     }
