@@ -118,7 +118,12 @@ func setupCommand(o *options) *cobra.Command {
 					say(line)
 				}
 				say("Next: restart " + app.name + ". Verified chats connect privately through your saved sign-in when their AgentWorks tools run.")
-				say(noHooksGivesUp)
+				say(toolsPluginGuidance)
+				if app.provider == "claude" {
+					for _, project := range claudeProjectInstalls() {
+						say(fmt.Sprintf("This project has a separate Claude plugin with hooks. Remove that project copy to use the tools only: cd %s && claude plugin uninstall agentworks@agentworks --scope project", shellWord(project)))
+					}
+				}
 				if app.provider == "codex" {
 					say("Using the Codex command line? Run agentworks setup codex --hooks.")
 				}
@@ -314,7 +319,7 @@ func claudeProjectInstalls() []string {
 	if err != nil {
 		return nil
 	}
-	raw, err := os.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))
+	raw, err := os.ReadFile(filepath.Join(claudeProfileDir(home), "plugins", "installed_plugins.json"))
 	if err != nil {
 		return nil
 	}

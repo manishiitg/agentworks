@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix="agentworks-desktop-setup-") as temp:
     env = dict(os.environ, PATH="", HOME=str(root), USERPROFILE=str(root),
                CODEX_HOME=str(profile), XDG_CONFIG_HOME=str(root / "config"), APPDATA=str(root / "config"))
     config = root / "no-agentworks-login.json"
-    for flags, plugin in ((["--hooks"], "agentworks-codex"), (["--no-hooks"], "agentworks-codex-tools")):
+    for flags, plugin in ((["--hooks"], "agentworks-codex"), ([], "agentworks-codex-tools")):
         result = subprocess.run([str(cli), "--config", str(config), "setup", "codex", *flags],
                                 cwd=root, env=env, capture_output=True, text=True, timeout=100)
         if result.returncode:
@@ -40,6 +40,10 @@ with tempfile.TemporaryDirectory(prefix="agentworks-desktop-setup-") as temp:
         mcp = json.loads((installed[0].parent.parent / ".mcp.json").read_text())
         assert mcp["mcpServers"]["agentworks"]["args"] == ["plugin", "mcp", "codex"]
         assert "hooks" not in doc, "setup must not approve hooks"
+        if plugin == "agentworks-codex-tools":
+            assert "agentworks-codex@agentworks" not in doc["plugins"], "plain setup kept old hooks"
+            assert doc["plugins"][plugin + "@agentworks"]["enabled"] is False, "migration re-enabled a disabled plugin"
+            assert not (profile / "plugins/cache/agentworks/agentworks-codex").exists(), "old hook cache remains"
         print(f"Real setup codex {' '.join(flags)}, empty PATH, no saved login: PASS", flush=True)
         if plugin == "agentworks-codex":
             # Repeat setup after a person disables the plugin; keep it disabled.

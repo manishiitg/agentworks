@@ -10,7 +10,7 @@ import (
 // chat. The person says "connect this chat to AgentWorks"; the app tells
 // AgentWorks which chat made each tool call.
 
-const noHooksGivesUp = "For the typed shortcuts and automatic reconnect, or if you use the Codex command line, run the same command with --hooks. Without hooks you give up: delivery at the end of a turn if the live connection drops, automatic reconnect after a restart (say \"connect this chat to AgentWorks\" once), and the typed /agentworks shortcuts. Joining another network (--also) is still your own request: ask the agent, which runs agentworks attach --also LOGIN in the chat."
+const toolsPluginGuidance = "Ask your agent to connect this chat to AgentWorks, check messages, or reply. To use the typed /agentworks shortcuts or Codex command-line hooks, run setup again with --hooks. Joining another network is your choice: ask the agent to connect this chat with --also LOGIN."
 
 // installToolsPlugin installs the tools-only package for one app, for every project.
 func installToolsPlugin(ctx context.Context, o *options, provider string) (installed, remove string, err error) {

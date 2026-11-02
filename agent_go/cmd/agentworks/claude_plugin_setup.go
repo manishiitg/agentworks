@@ -117,6 +117,9 @@ func updateClaudeTools(ctx context.Context, o *options) bool {
 		fmt.Fprintf(o.stderr, "Could not switch Claude to the tools-only plugin: %v. Run agentworks setup claude to retry.\n", err)
 	} else {
 		fmt.Fprintln(o.stderr, "Claude uses the tools-only plugin. Restart Claude to stop its previous hooks and load the tools.")
+		for _, project := range claudeProjectInstalls() {
+			fmt.Fprintf(o.stderr, "A separate project copy still has hooks: cd %s && claude plugin uninstall agentworks@agentworks --scope project\n", shellWord(project))
+		}
 	}
 	return true
 }
