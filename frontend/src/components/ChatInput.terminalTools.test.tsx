@@ -22,7 +22,7 @@ const contextPreference = vi.hoisted(() => ({ show: false }))
 vi.mock('../hooks/useChatPreferences', () => ({ useChatPreferences: () => ({ showContextIndicator: contextPreference.show }) }))
 
 import { ChatInput } from './ChatInput'
-import { TerminalFocusLayout } from './TerminalFocusLayout'
+import { dropFilesOnTerminal } from '../utils/terminalFileDrop'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
@@ -60,10 +60,10 @@ describe('terminal toolbar shared tools', () => {
   const send = vi.fn(async () => true)
   const stopTurn = vi.fn(() => useChatStore.getState().setTabStreaming('A', false))
   const newChat = vi.fn()
-  const renderComposer = (tabId?: string, enabled = true) => root.render(<QueryClientProvider client={client}>
-    <TerminalFocusLayout tabId={tabId} enabled={enabled} className="h-screen">
+  const renderComposer = (tabId?: string) => root.render(<QueryClientProvider client={client}>
+    <div className="h-screen">
       <ChatInput tabId={tabId} onSubmit={send} onStopStreaming={stopTurn} onNewChat={newChat} showNewChatAction />
-    </TerminalFocusLayout>
+    </div>
   </QueryClientProvider>)
   beforeEach(async () => {
     contextPreference.show = false
@@ -97,7 +97,7 @@ describe('terminal toolbar shared tools', () => {
     vi.spyOn(productProjects, 'loadProductProjects').mockResolvedValue([])
     await act(async () => {
       useChatStore.getState().setTabViewMode('A', 'formatted')
-      renderComposer('A', false)
+      renderComposer('A')
     })
     const input = host.querySelector('textarea')!
     await act(async () => {
@@ -147,7 +147,7 @@ describe('terminal toolbar shared tools', () => {
         useLLMStore.setState({ savedLLMs: [], availableLLMs: [{ provider: 'codex-cli', model: 'builder-model', label: 'Codex · Builder model', description: '' }] })
         useChatStore.setState({ activeSessionsCache: [{ session_id: 'A-session', runtime: { provider: 'claude-code', model_id: 'old-model' } }] as never })
         useChatStore.getState().setTabViewMode('A', 'formatted')
-        renderComposer('A', false)
+        renderComposer('A')
       })
       const modelButton = host.querySelector<HTMLButtonElement>('button[aria-label="Model: Builder model"]')!
       expect(modelButton).not.toBeNull()
@@ -187,7 +187,7 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => {
       useChatStore.getState().setTabStreaming('A', true)
       useChatStore.getState().setTabViewMode('A', 'formatted')
-      renderComposer('A', false)
+      renderComposer('A')
     })
     const before = vi.mocked(agentApi.listTerminals).mock.calls.length
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
@@ -202,7 +202,7 @@ describe('terminal toolbar shared tools', () => {
   })
   it('sends the selected Queue next intent by click and Enter while a turn is running', async () => {
     useChatStore.getState().setTabStreaming('A', true)
-    await act(async () => renderComposer(undefined, false))
+    await act(async () => renderComposer(undefined))
     expect(host.querySelector('[aria-label^="Send options:"]')).toBeNull()
     await act(async () => {
       const add = host.querySelector<HTMLElement>('[aria-label="Add files and actions"]')!
@@ -236,7 +236,7 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => {
       useChatStore.getState().setTabConfig('A', { inputText: '' })
       useChatStore.getState().setTabStreaming('A', true)
-      renderComposer(undefined, false)
+      renderComposer(undefined)
       await client.invalidateQueries({ queryKey: ['chat-queued-messages'] })
     })
     const flush = async () => act(async () => { await new Promise(resolve => setTimeout(resolve, 40)) })
@@ -267,7 +267,7 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => {
       setUserCommands([{ command: 'menu-review', description: 'Review via menu', icon: 'terminal', source: 'user', modes: ['workflow'], execute: ctx => ctx.onSubmit('review via menu') }])
       useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })
-      renderComposer(undefined, false)
+      renderComposer(undefined)
     })
     expect(host.querySelector('[data-testid="chat-command-menu-button"]')).toBeNull()
     const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Add files and actions"]')!
@@ -309,7 +309,7 @@ describe('terminal toolbar shared tools', () => {
         useChatStore.getState().setTabViewMode('A', 'formatted')
         useChatStore.getState().setTabStreaming('A', true)
         useChatStore.getState().setTabHasRunningBgAgents('A', true)
-        renderComposer(undefined, false)
+        renderComposer(undefined)
       })
       expect(host.querySelector('[data-testid="chat-background-activity"]')).toBeTruthy()
       expect(host.querySelector('[data-testid="background-work-pill"]')).toBeNull()
@@ -368,28 +368,21 @@ describe('terminal toolbar shared tools', () => {
       expect(useChatStore.getState().getTabConfig('A')?.inputText).toBe('review this file')
     } finally { card.remove() }
   })
-  const toolbar = () => host.querySelector('[data-testid="native-terminal-toolbar"]')!
-  const button = (label: string) => toolbar().querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
   const textarea = () => host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
   const composer = () => host.querySelector<HTMLDivElement>('[data-testid="message-composer"]')!
-  const attach = async () => {
-    await act(async () => button('Attach files').click())
-    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
-    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['example'], 'example.txt', { type: 'text/plain' })] })
-    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+  // Files reach the terminal by dropping them on it; the chat's normal upload pastes their paths.
+  const attach = async (sessionId = 'A-session') => {
+    await act(async () => dropFilesOnTerminal(sessionId, [new File(['example'], 'example.txt', { type: 'text/plain' })]))
   }
+  const showChat = async () => act(async () => useChatStore.getState().setTabViewMode('A', 'formatted'))
 
 
   it('uploads and pastes references into tmux without a composer, submission, or consuming the saved draft', async () => {
     const focus = vi.fn()
     window.addEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus)
     try {
-      const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
-      const click = vi.spyOn(input, 'click')
-      expect(button('Show message composer')).toBeNull()
-      expect(button('Hide message composer')).toBeNull()
+      expect(host.querySelector('[data-testid="native-terminal-toolbar"]')).toBeNull()
       await attach()
-      expect(click).toHaveBeenCalledOnce()
       expect(composer().hidden).toBe(true)
       expect(agentApi.uploadPlannerFile).toHaveBeenCalledWith(expect.any(File), 'Workflow/project', expect.any(String))
       expect(agentApi.getMainTerminal).toHaveBeenCalledWith('A-session', { content: 'none' })
@@ -399,7 +392,7 @@ describe('terminal toolbar shared tools', () => {
       expect(textarea().value).toBe('review this file')
       expect(send).not.toHaveBeenCalled()
       expect((focus.mock.calls[0][0] as CustomEvent).detail).toEqual({ sessionId: 'A-session' })
-      await act(async () => button('Return to chat').click())
+      await showChat()
       expect(composer().hidden).toBe(false)
       expect(textarea().value).toBe('review this file')
     } finally { window.removeEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus) }
@@ -412,7 +405,7 @@ describe('terminal toolbar shared tools', () => {
     expect(useChatStore.getState().getTabConfig('A')?.fileContext).toEqual([{ name: 'example.txt', path: 'Workflow/project/example.txt', type: 'file' }])
     expect(textarea().value).toBe('review this file')
     expect(send).not.toHaveBeenCalled()
-    await act(async () => button('Return to chat').click())
+    await showChat()
     expect(composer().hidden).toBe(false)
   })
 
@@ -439,7 +432,7 @@ describe('terminal toolbar shared tools', () => {
   })
 
   it('uploads in chat mode without pasting into tmux', async () => {
-    await act(async () => button('Return to chat').click())
+    await showChat()
     const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
     Object.defineProperty(input, 'files', { configurable: true, value: [new File(['example'], 'example.txt')] })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
@@ -465,60 +458,10 @@ describe('terminal toolbar shared tools', () => {
   it('quotes paths with spaces and uses the scoped terminal when another tab is globally active', async () => {
     await act(async () => renderComposer('B'))
     vi.mocked(agentApi.uploadPlannerFile).mockResolvedValueOnce({ data: { filepath: 'Workflow/project/my file.txt', absolute_path: '/workspace/Workflow/project/my file.txt' } } as never)
-    await attach()
+    await attach('B-session')
     expect(agentApi.sendTerminalInput).toHaveBeenCalledWith('B-session:main', ' @"/workspace/Workflow/project/my file.txt" ', false)
     expect(useChatStore.getState().activeTabId).toBe('A')
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('toggles focus without remounting the composer, and restores normal layout on return to chat', async () => {
-    const original = textarea()
-    await act(async () => button('Enter focus mode').click())
-    expect(host.querySelector('[data-terminal-focus="true"]')).not.toBeNull()
-    expect(button('Exit focus mode').getAttribute('aria-pressed')).toBe('true')
-    expect(textarea()).toBe(original)
-    expect(textarea().value).toBe('review this file')
-    expect(send).not.toHaveBeenCalled()
-    await act(async () => button('Exit focus mode').click())
-    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
-    await act(async () => button('Enter focus mode').click())
-    await act(async () => button('Return to chat').click())
-    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
-    expect(textarea()).toBe(original)
-    expect(textarea().value).toBe('review this file')
-    await act(async () => useChatStore.getState().setTabViewMode('A', 'terminal'))
-    expect(button('Enter focus mode').getAttribute('aria-pressed')).toBe('false')
-  })
-
-  it.each(['tab', 'session', 'close'])('does not carry focus mode to a changed %s', async change => {
-    await act(async () => button('Enter focus mode').click())
-    await act(async () => {
-      const state = useChatStore.getState()
-      if (change === 'tab') useChatStore.setState({ activeTabId: 'B' })
-      if (change === 'session') useChatStore.setState({ chatTabs: { ...state.chatTabs, A: { ...state.chatTabs.A, sessionId: 'replacement' } } })
-      if (change === 'close') useChatStore.setState({ chatTabs: { B: state.chatTabs.B }, activeTabId: null })
-    })
-    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
-    expect(send).not.toHaveBeenCalled()
-  })
-
-  it('focuses the scoped project conversation even when the globally active tab differs', async () => {
-    await act(async () => renderComposer('B'))
-    await act(async () => button('Enter focus mode').click())
-    expect(host.querySelector('[data-terminal-focus="true"]')).not.toBeNull()
-    expect(useChatStore.getState().activeTabId).toBe('A')
-    await act(async () => useChatStore.getState().setTabViewMode('A', 'formatted'))
-    expect(host.querySelector('[data-terminal-focus="true"]')).not.toBeNull()
-    await act(async () => useChatStore.getState().setTabViewMode('B', 'formatted'))
-    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
-  })
-
-  it('restores navigation on global pages and does not resume focus when returning', async () => {
-    await act(async () => button('Enter focus mode').click())
-    await act(async () => renderComposer(undefined, false))
-    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
-    expect(button('Exit focus mode')).toBeNull()
-    await act(async () => renderComposer())
-    expect(button('Enter focus mode').getAttribute('aria-pressed')).toBe('false')
-  })
 })

@@ -14,7 +14,6 @@ import { AuthWrapper } from "./components/AuthWrapper";
 import { Loader2 } from "lucide-react";
 import { ProductTopBar, ProductTopBarMain } from './components/workspace/ProductTopBar'
 import { ModePresetBar } from "./components/ModePresetBar";
-import { TerminalFocusLayout } from './components/TerminalFocusLayout'
 import { useAppStore, useMCPStore, useGlobalPresetStore, useWorkflowStore, useChatStore } from "./stores";
 import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
@@ -750,7 +749,7 @@ function AppWorkspace() {
         <>
         <UpdateProgressToast />
         <GlobalHumanFeedbackPrompt />
-        <TerminalFocusLayout className="h-full bg-background flex" enabled={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage}>
+        <div className="h-full bg-background flex">
           {/* All workspace products reuse the same global navigation. */}
           <div className="flex-1 flex min-w-0 min-h-0 relative z-10 overflow-hidden">
             {/* Global Mode & Preset Bar - only above middle content area, not sidebars */}
@@ -790,7 +789,7 @@ function AppWorkspace() {
             </div>
           </div>
 
-        </TerminalFocusLayout>
+        </div>
 
         </>
         )}
