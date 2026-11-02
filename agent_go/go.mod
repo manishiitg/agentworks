@@ -39,6 +39,8 @@ require (
 	modernc.org/sqlite v1.49.1
 )
 
+require github.com/Microsoft/go-winio v0.6.2
+
 replace github.com/manishiitg/coding-agent-loop/workspace => ../workspace
 
 replace github.com/manishiitg/coding-agent-loop/mcpoauth => ./pkg/mcpoauth

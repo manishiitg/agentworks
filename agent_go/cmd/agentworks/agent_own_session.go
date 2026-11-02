@@ -48,6 +48,9 @@ func ownAgentSession(ctx context.Context, root string, o *options) (liveAgentSes
 			return own, true, nil
 		}
 		if o.getenv("CODEX_THREAD_ID") != "" {
+			if runtime.GOOS == "windows" {
+				return liveAgentSession{}, true, fmt.Errorf("could not confirm this exact Codex chat: %w. Restart Codex, check AgentWorks is enabled in Settings > Plugins, then ask to connect this chat again; no other chat was selected", err)
+			}
 			// A typed /agentworks attach reaches this command only when the chat's hook did not run it.
 			return liveAgentSession{}, true, fmt.Errorf("could not confirm this Codex chat from here (detail: %w). If AgentWorks hooks are not active in this chat, trust them in Settings > Hooks and reload it, then ask again or type /agentworks attach; otherwise the Codex app may be busy, so try again in a moment", err)
 		}
@@ -120,6 +123,9 @@ const codexDesktopHostPrefix = "codex-desktop-"
 
 // codexDesktopSocket is the desktop app-server's local socket.
 func codexDesktopSocket() (string, error) {
+	if runtime.GOOS == "windows" {
+		return "desktop+npipe://codex-ipc", nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
