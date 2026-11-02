@@ -38,6 +38,8 @@ export function chatLimitsShort(limits: ChatContextView['limits']): string {
 
 /** Sent when the menu changes a chat's context, so the chip in the chat box shows the server's new view. */
 export const chatContextChangedEvent = 'agentworks:chat-context-changed'
+/** Asks the chat box of one chat to send a message as if the person typed it ({ sessionId, text }). */
+export const chatSendMessageEvent = 'agentworks:chat-send-message'
 /** Sent by the chip in the chat box to open that chat's model menu. */
 export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 
@@ -57,6 +59,11 @@ export async function changeChatContext(sessionId: string, body: ChatContextChan
       if (tab) useChatStore.getState().setTabViewMode(tab.tabId, body.claude_terminal ? 'terminal' : 'formatted')
     }
     if (result.message) useChatStore.getState().addToast(result.message, 'success')
+    // The terminal had nothing to start from: send the server's short starter message in this chat for the
+    // person, so Claude opens in the terminal now instead of waiting for them to type something.
+    if (result.starter_message) {
+      window.dispatchEvent(new CustomEvent(chatSendMessageEvent, { detail: { sessionId, text: result.starter_message } }))
+    }
     return result.context
   } catch (cause) {
     const reason = (cause as { response?: { data?: { error?: string } } })?.response?.data?.error
