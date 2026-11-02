@@ -78,7 +78,7 @@ try {
   if (Test-Path $target) { Move-Item $target $oldTarget } # a running copy can be renamed, not replaced
   Move-Item -Force $candidate $target
   # Defender can act on the final name even after the staged file ran.
-  $installedVersion = Invoke-AgentWorksCommand -Executable $target -Arguments @('version') | ConvertFrom-Json
+  $installedVersion = Invoke-AgentWorksCommand -Executable $target -Arguments @('version') -AfterAllow 'rerun this installer to finish installation.' | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or $installedVersion.version -ne $candidateVersion.version -or $installedVersion.os -ne 'windows' -or $installedVersion.arch -ne $arch) {
     throw 'The installed CLI could not run correctly. Run this installer again to retry.'
   }
