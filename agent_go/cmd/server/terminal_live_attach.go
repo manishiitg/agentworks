@@ -6,19 +6,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
+
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/mux"
@@ -113,13 +112,7 @@ const (
 	liveAttachMinTmuxMinor = 9
 )
 
-var signalLiveAttachPaneProcess = func(pid int) error {
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-	return process.Signal(syscall.SIGWINCH)
-}
+var signalLiveAttachPaneProcess = signalWindowChange
 
 // liveAttachEnabled reports whether the live-attach transport is turned on.
 // Live-attach is now the only transport for the selected terminal, so this is
