@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Terminal } from 'lucide-react'
+import { Button } from '../../components/ui/Button'
 import { agentApi } from '../../services/api'
 import type { ChatContextView } from '../../services/api-types'
 import { changeChatContext, chatContextChangedEvent } from './ChatContextItems'
@@ -33,8 +34,10 @@ export default function ClaudeTerminalToggle({ sessionId, modelKey }: { sessionI
   if (!offered) return null
   const label = on ? 'Claude Code terminal is on. Click to turn it off.' : 'Run Claude Code in a terminal. Click to turn it on.'
   return (
-    <button
+    <Button
       type="button"
+      variant={on ? 'secondary' : 'ghost'}
+      size="icon"
       disabled={busy}
       aria-pressed={on}
       aria-label={label}
@@ -43,9 +46,9 @@ export default function ClaudeTerminalToggle({ sessionId, modelKey }: { sessionI
         setBusy(true)
         try { await changeChatContext(sessionId, { claude_terminal: !on }) } finally { setBusy(false) }
       }}
-      className={`inline-flex shrink-0 items-center rounded px-1 py-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${on ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+      className="h-7 w-7 shrink-0 p-0"
     >
-      <Terminal className="h-3 w-3" aria-hidden="true" />
-    </button>
+      <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
+    </Button>
   )
 }
