@@ -1081,7 +1081,7 @@ async function spawnDevelopmentAgent() {
 
 function spawnAgent(userDataPath) {
   return new Promise((resolve, reject) => {
-    const selected = app.isPackaged && process.platform === 'darwin'
+    const selected = process.platform === 'darwin' && (app.isPackaged || fs.existsSync(path.join(getResourcesDir(), 'voice', 'minimum-macos.json')))
       ? require('./lib/voiceRuntime').selectPackagedAgent(getResourcesDir(), process.getSystemVersion())
       : { binary: getBinaryPath('agent-server'), voiceUnavailableReason: '' };
     const bin = selected.binary;

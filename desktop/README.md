@@ -19,7 +19,8 @@ Choose **Later** if asked to quit, then stop and restart
 without the development arguments; quitting also stops the launcher's services.
 The packaged AgentWorks app has its own bundle and startup entry point.
 
-Before packaging a release, run `bash scripts/build-desktop-helpers.sh` from
+Before packaging locally, run `bash desktop/dev-setup.sh` to prepare both the
+base server and optional voice runtime, then `bash scripts/build-desktop-helpers.sh` from
 the repository root on the target Mac architecture. CI does this before
 electron-builder. Publish each DMG with its `.sha256` file. An existing app is
 only replaced with `--update`; `agentworks open` opens the app without updating.
