@@ -74,7 +74,7 @@ func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string
 		return nil, err
 	}
 	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Mode == "off" || b.Side != "server" || (!completion && b.Editing != "local") || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
+	if err != nil || b == nil || b.Side != "server" || (!completion && b.Editing != "local") || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
 		return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
 	}
 	return b, nil
@@ -264,7 +264,7 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		return false
 	}
 	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Mode == "off" || b.Side != "server" || b.Editing != "local" {
+	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" {
 		return false
 	}
 	resolved, err := api.agentProfiles.Resolve(profile, 0, GetUserIDFromContext(r.Context()))
