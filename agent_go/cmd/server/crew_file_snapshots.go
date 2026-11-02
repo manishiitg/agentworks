@@ -6,10 +6,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"log"
 	"mime"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -393,6 +395,7 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	summaryCtx, cancelSummary := context.WithTimeout(context.Background(), 5*time.Second)
 	summary, ok := replyFileSummary(summaryCtx, snapshot.store, roots, record.ID)
 	cancelSummary()
+	go api.sendClaudeModChanges(snapshot, roots, record.ID)
 	if ok {
 		fields["summary"] = summary
 	}
@@ -586,3 +589,52 @@ func (api *StreamingAPI) chatTurnSnapshotActive(sessionID string) bool {
 
 // terminalTurnSnapshotPrefix names the capture of a turn the person started in the terminal itself.
 const terminalTurnSnapshotPrefix = "terminal-turn-"
+
+// claudeModChanges holds each chat's changed files (absolute path -> status) for its Claude terminal's mod.
+var claudeModChanges sync.Map
+
+// sendClaudeModChanges hands a chat's Claude terminal (when it runs the AgentWorks mod) every file the
+// chat has changed so far, from the same snapshots as the app's Changes, so the terminal's band and
+// Changes pane match it (git or not).
+func (api *StreamingAPI) sendClaudeModChanges(snapshot *crewTurnSnapshot, roots crewroot.Roots, recordID string) {
+	api.nativeObserversMu.Lock()
+	observer := api.nativeObservers[snapshot.sessionID]
+	tmux := ""
+	if observer != nil {
+		tmux = observer.snapshot.TmuxSession
+	}
+	api.nativeObserversMu.Unlock()
+	if tmux == "" || !claudecode.ClaudeModRunsIn(tmux) {
+		return
+	}
+	prefix := ""
+	if roots.SeparateFiles() {
+		prefix = crewroot.FilesSegment + "/"
+	}
+	allow := func(path string) bool {
+		_, ok := confineSharedProjectPath(roots.Virtual, prefix+path)
+		return ok && !crewCallerPrivatePath(prefix+path)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	comparison, err := snapshot.store.Compare(ctx, recordID, "", allow)
+	if err != nil {
+		return
+	}
+	value, _ := claudeModChanges.LoadOrStore(snapshot.sessionID, &sync.Map{})
+	seen := value.(*sync.Map)
+	for _, change := range comparison.Changes {
+		seen.Store(filepath.Join(roots.Files, filepath.FromSlash(change.Path)), change.Status)
+	}
+	var files []claudecode.ClaudeModChangedFile
+	seen.Range(func(key, value any) bool {
+		files = append(files, claudecode.ClaudeModChangedFile{Path: key.(string), Status: value.(string)})
+		return true
+	})
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	if err := claudecode.SetClaudeModChanges(tmux, files); err != nil {
+		log.Printf("[CLAUDE_MOD] session=%s changes not handed to the terminal: %v", snapshot.sessionID, err)
+		return
+	}
+	log.Printf("[CLAUDE_MOD] session=%s changes files=%d", snapshot.sessionID, len(files))
+}
