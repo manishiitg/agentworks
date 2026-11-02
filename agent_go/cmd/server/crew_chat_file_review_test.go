@@ -472,6 +472,14 @@ func TestProjectCheckoutHistoryAcrossChatsAndCommitOnlyTurn(t *testing.T) {
 	if err != nil || len(h.Checkouts) != 1 || h.Checkouts[0].Root != "tools" {
 		t.Fatalf("project list bypassed path grant: %v %+v", err, h)
 	}
+	// A deleted copy (a removed worktree or clone) is no longer listed from its saved history (owner report, 2 Nov).
+	if err := os.RemoveAll(filepath.Join(store.Root, "tools")); err != nil {
+		t.Fatal(err)
+	}
+	h, err = projectFileReviewHistory(ctx, store, "Crew/example", func(string) bool { return true }, true)
+	if err != nil || len(h.Checkouts) != 1 || h.Checkouts[0].Root != "app" {
+		t.Fatalf("deleted checkout still listed: %v %+v", err, h)
+	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
 	if _, err := projectFileReviewHistory(canceled, store, "Crew/example", func(string) bool { return true }, true); err == nil {

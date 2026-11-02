@@ -260,9 +260,9 @@ it('names expanded shared shortcuts on keyboard focus and rechecks access before
     expect(brain.textContent).toBe('')
     expect(host.querySelector('a[aria-label="Dashboards"]')?.getAttribute('href')).toBe('/dashboards')
     await act(async () => brain.focus())
-    expect(host.querySelector('[role="tooltip"]')?.textContent).toBe('Brain')
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Brain')
     await act(async () => brain.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-    expect(host.querySelector('[role="tooltip"]')).toBeNull()
+    expect(document.querySelector('[role="tooltip"]')).toBeNull()
     mocks.user.allowed_products = ['knowledgebase']
     await act(async () => { vault.click() })
     expect(mocks.openProduct).not.toHaveBeenCalled()
