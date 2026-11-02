@@ -69,7 +69,7 @@ Use attached skills and live schemas, including product-specific differences.
 | Browser, live interaction or saving a reusable browser procedure | `panel-settings` |
 | Access: owners, audience and selected shared Crew agents | `panel-access`; shared agents keep the existing product's supported contract |
 | Goal execution Team | `panel-access`; execution assignments are separate from Share |
-| Connected agents (AgentBridge) or Your computer | `panel-access`; messages and computer connection grants remain separate |
+| Connected agents (AgentBridge), Online or Laptop access | `panel-access`; messages and computer connection grants remain separate |
 | Slack bot, WhatsApp or connecting an external AI app | `panel-channels`, `panel-channels`, `panel-access` |
 | Settings, instructions, Models, Costs and usage | `panel-settings`, `panel-settings`, `panel-settings` |
 | Workflow playbooks, Publish, Notify, Backup, Upgrades | `panel-data`, `panel-dashboard`, `panel-channels`, `panel-dashboard`, `panel-settings` |

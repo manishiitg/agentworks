@@ -78,13 +78,13 @@ it('opens each resource directly without a My Vault destination', async () => {
  }
 })
 
-// Sync and laptop tools are one "Your computer" page; old links to either still open it.
+// Sync and laptop tools are one page (Online in the Mac app, Laptop access on a server); old links still open it.
 it('opens sync and laptop access together on Your computer', async () => {
  const host = await mount()
  for (const target of ['computer', 'sync', 'laptop', 'agents']) {
   await act(async () => state.target('connected'))
   await act(async () => state.target(target))
-  expect(host.querySelector('header')?.textContent).toContain('Your computer')
+  expect(host.querySelector('header')?.textContent).toContain('Laptop access')
   expect(host.querySelector('[data-computer]')).not.toBeNull()
  }
 })
