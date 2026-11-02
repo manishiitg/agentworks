@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -306,7 +305,7 @@ func runAgentBrowserPreflightCommand(ctx context.Context, timeout time.Duration,
 	defer cancel()
 
 	cmd := exec.CommandContext(runCtx, "agent-browser", args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setPreflightProcessGroup(cmd)
 
 	var output bytes.Buffer
 	cmd.Stdout = &output
@@ -338,8 +337,7 @@ func killAgentBrowserPreflightProcessGroup(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	if pgid, err := syscall.Getpgid(cmd.Process.Pid); err == nil {
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	if killPreflightProcessGroup(cmd.Process.Pid) == nil {
 		return
 	}
 	_ = cmd.Process.Kill()
@@ -354,7 +352,9 @@ func cleanupAgentBrowserPreflightSession(session string) {
 	pidPath := filepath.Join(stateDir, session+".pid")
 	if raw, readErr := os.ReadFile(pidPath); readErr == nil {
 		if pid, convErr := strconv.Atoi(strings.TrimSpace(string(raw))); convErr == nil && pid > 0 {
-			_ = syscall.Kill(pid, syscall.SIGKILL)
+			if p, findErr := os.FindProcess(pid); findErr == nil {
+				_ = p.Kill()
+			}
 		}
 	}
 	for _, suffix := range []string{".pid", ".sock", ".stream", ".version", ".engine", ".log", ".chrome-pid"} {
