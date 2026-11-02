@@ -1,4 +1,4 @@
-import { CrewSyncPanel } from './CrewSyncPanel'
+import { YourComputerPanel } from './YourComputerPanel'
 import { useProjectMode } from './codeLocalFiles'
 import { useState } from 'react'
 import { Cable, Server, Users } from 'lucide-react'
@@ -60,9 +60,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
     <WorkspaceViewHeader icon={shareSection ? Users : tab === 'agentbridge' ? Cable : Server} title={shareSection ? 'Access' : labels[tab]} />
     <div data-ui-view-section={shareSection ? 'share' : tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={draft} /> : <>
-        {tab === 'computer' && <div className="space-y-8">
-          {canEdit && <section aria-label="Work from your Mac" className="space-y-2"><h3 className="text-sm font-semibold">Work on this Crew from your Mac</h3><CrewSyncPanel projectId={projectId} /></section>}
-          <section aria-label="Let this Crew use your computer" className="space-y-2"><h3 className="text-sm font-semibold">Let this Crew use your computer</h3><ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section="laptop" canEdit={canEdit} onAsk={draft} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} /></section>        </div>}
+        {tab === 'computer' && (canEdit ? <YourComputerPanel projectId={projectId} sessionId={sessionId} canEdit={canEdit} /> : <ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section="laptop" canEdit={false} onAsk={draft} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} />)}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'agentbridge' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} />}
         {tab === 'apps' && <ProjectIntegrationPanel github={projectMode === 'dev'} workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
