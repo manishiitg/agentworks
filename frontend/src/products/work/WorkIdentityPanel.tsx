@@ -268,6 +268,12 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
         description="Folders on your Mac that your Crews can open. Read only, or read & write. They stay on your Mac."
         count={`${folders.length} attached`}
       >
+        {/* On a person's own Mac the agent can already use their Downloads folder; show it so that is visible. */}
+        {canPick && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
+          <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1"><p className="text-sm font-medium">Downloads</p><p className="text-xs text-muted-foreground">Your Mac's Downloads folder. Always available on this Mac.</p></div>
+          <span className="shrink-0 text-xs text-muted-foreground">Read &amp; write</span>
+        </div>}
         {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={folders} onRemove={remove} />}
         {canPick ? <div className="mt-3 flex flex-wrap items-center gap-2">
           <select aria-label="Access for the new folder" value={addAccess} disabled={adding} onChange={event => setAddAccess(event.target.value as 'read_only' | 'read_write')} className="h-8 rounded-md border border-border bg-background px-2 text-xs">
