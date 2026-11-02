@@ -492,12 +492,7 @@ func syncGitDirectory(dir string) error {
 		if de.IsDir() {
 			return syncDir(name)
 		}
-		f, err := os.Open(name)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		return f.Sync()
+		return syncFile(name)
 	})
 }
 func gitWorkspaceTree(ctx context.Context, dir, ref string) (map[string][]byte, error) {

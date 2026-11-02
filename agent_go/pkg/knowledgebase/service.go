@@ -7,12 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filelock"
 
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
@@ -273,14 +274,6 @@ func durableMkdir(p string) error {
 		return err
 	}
 	return syncDir(parent)
-}
-func syncDir(p string) error {
-	f, err := os.Open(p)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return f.Sync()
 }
 func (s *Service) apply(j journal) error {
 	for _, c := range j.Changes {
