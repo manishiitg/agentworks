@@ -206,15 +206,18 @@ func inSlotStateFolder(dir, slot string) bool {
 	return strings.HasPrefix(filepath.Clean(dir)+string(filepath.Separator), filepath.Clean(state)+string(filepath.Separator))
 }
 
-// slotRunsProvider reports whether provider's CLI runs as a person's slot (PLAT-872-86).
+// slotRunsProvider reports whether provider's CLI runs as a person's slot. Claude does everywhere; another program
+// only on a server that lists it in AGENTWORKS_SLOT_PROGRAMS, once its slot launch is proven there (PLAT-872-86:
+// Cursor's first slot launch exited 125 on every turn on a live server).
 func slotRunsProvider(provider string) bool {
-	// The launcher gives the slot the server's own login (a file or the environment) and Landlock keeps it out of
-	// every shell the CLI starts (PLAT-872-84, PLAT-872-86).
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "claude-code":
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "claude-code" {
 		return true
-	// Codex, Cursor and Muse wait for their slot launch to be proven: Cursor's SDK launch as a slot exited 125
-	// at once on a live server (PLAT-872-86).
+	}
+	for _, listed := range strings.Split(os.Getenv("AGENTWORKS_SLOT_PROGRAMS"), ",") {
+		if provider != "" && strings.ToLower(strings.TrimSpace(listed)) == provider {
+			return true
+		}
 	}
 	return false
 }
