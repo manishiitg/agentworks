@@ -395,15 +395,30 @@ func githubLogin(ctx context.Context, token string) (string, error) {
 	}
 	defer resp.Body.Close()
 	var out struct {
-		Login string `json:"login"`
+		Login   string `json:"login"`
+		Message string `json:"message"`
 	}
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out) != nil || out.Login == "" {
-		log.Printf("[GITHUB_VAULT] account lookup failed status=%d", resp.StatusCode)
+	decoded := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out) == nil
+	if resp.StatusCode != http.StatusOK || !decoded || out.Login == "" {
+		// GitHub's own short answer ("Bad credentials", "Requires authentication") is shown with the explanation,
+		// so the person sees what GitHub said. It never contains the token.
+		said := strings.TrimSpace(out.Message)
+		if token != "" && strings.Contains(said, token) {
+			said = "" // never repeat a credential, whatever the server answered
+		}
+		if len(said) > 120 {
+			said = said[:120]
+		}
+		log.Printf("[GITHUB_VAULT] account lookup failed status=%d github_message=%q", resp.StatusCode, said)
+		detail := ""
+		if said != "" {
+			detail = fmt.Sprintf(" (GitHub said: %s)", said)
+		}
 		if resp.StatusCode == http.StatusUnauthorized {
 			// GitHub does not recognise the token: a partial copy, an expired or deleted token. Retrying cannot help.
-			return "", errors.New("GitHub did not accept this token. Check that you copied the whole token and that it has not expired, or create a new one.")
+			return "", fmt.Errorf("GitHub did not accept this token%s. Check that you copied the whole token and that it has not expired, or create a new one.", detail)
 		}
-		return "", errors.New("GitHub did not return your account. Try again.")
+		return "", fmt.Errorf("GitHub did not return your account%s. Try again.", detail)
 	}
 	return out.Login, nil
 }
