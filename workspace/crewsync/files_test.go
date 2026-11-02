@@ -37,6 +37,9 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	// Owner 2 Nov (PLAT-856-509): the owner's project secrets sync to their own server; publishing still skips them.
 	write(local.Files, ".env", "API_KEY=x")
 	write(local.Files, "keys/deploy.pem", "key")
+	// Projects gitignore their secrets; they still reach the owner's server, other ignored files do not.
+	write(local.Files, ".gitignore", ".env\nkeys/\n*.log\n")
+	write(local.Files, "build.log", "ignored")
 	write(local.Files, ".cache/token", "private")
 	write(local.Resources, "product.json", "private")
 	write(local.Resources, "skills/review/SKILL.md", "Review the changes")
@@ -51,13 +54,16 @@ func TestRoundTripPreservesExternalEditsAndPrivateFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Files) != 4 {
+	if len(first.Files) != 5 {
 		t.Fatalf("unexpected files: %v", first.Files)
 	}
 	for _, key := range []string{"files/.env", "files/keys/deploy.pem"} {
 		if _, ok := first.Files[key]; !ok || !publication.Excluded(strings.TrimPrefix(key, "files/")) {
 			t.Fatalf("%s: synced=%v, publication must still exclude it", key, ok)
 		}
+	}
+	if _, ok := first.Files["files/build.log"]; ok {
+		t.Fatal("a gitignored file that is not a credential synced")
 	}
 	if err = Apply(t.Context(), server, first); err != nil {
 		t.Fatal(err)
