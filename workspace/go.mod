@@ -6,7 +6,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-gonic/gin v1.12.0
-	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261102121206-be8ed5c18bc6
+	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261102123346-c482bf0ce079
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
