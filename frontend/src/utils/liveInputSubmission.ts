@@ -117,6 +117,11 @@ export function shouldAppendOptimisticLiveInputMessage(
 // PLAT-872-23: live input support does not imply a terminal. Native protocol
 // sessions use question/tool events; only the server's terminal capability
 // and the actual runtime transport admit the live terminal view.
+// PLAT-872-100: the server's report that this chat runs in tmux decides on its
+// own. The provider capability is the server-wide default, so a Claude chat
+// with the terminal switched on (tmux) on an Agent SDK server lost its toolbar.
 export function chatOffersLiveTerminal(hasSession: boolean, reportedTransport: string, supportsTerminalStream: boolean): boolean {
-  return hasSession && supportsTerminalStream && (!reportedTransport || reportedTransport === 'tmux')
+  if (!hasSession) return false
+  if (reportedTransport === 'tmux') return true
+  return supportsTerminalStream && !reportedTransport
 }

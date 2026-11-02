@@ -143,7 +143,8 @@ describe('terminal availability after native protocol migration', () => {
       expect(chatOffersLiveTerminal(true, transport, true)).toBe(false)
     }
     expect(chatOffersLiveTerminal(true, 'tmux', true)).toBe(true)
-    expect(chatOffersLiveTerminal(true, 'tmux', false)).toBe(false)
+    // A chat the server reports on tmux has a terminal even where the provider's server-wide default is a native SDK.
+    expect(chatOffersLiveTerminal(true, 'tmux', false)).toBe(true)
     expect(chatOffersLiveTerminal(true, '', false)).toBe(false)
     expect(chatOffersLiveTerminal(true, '', true)).toBe(true)
     expect(chatOffersLiveTerminal(false, 'tmux', true)).toBe(false)
