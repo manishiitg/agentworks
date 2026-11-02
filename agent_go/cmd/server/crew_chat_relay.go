@@ -80,6 +80,16 @@ func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string
 	return b, nil
 }
 
+// crewMacLastSeen is when the twin's Mac last asked for work; zero if never since the server started.
+func crewMacLastSeen(owner, project, pair string) time.Time {
+	crewChatRelays.Lock()
+	defer crewChatRelays.Unlock()
+	if box := crewChatRelays.boxes[crewChatMailboxKey(owner, project, pair)]; box != nil {
+		return box.lastPoll
+	}
+	return time.Time{}
+}
+
 func crewChatMailboxKey(owner, project, pair string) string {
 	return owner + "/" + project + "/" + pair
 }

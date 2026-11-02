@@ -11,7 +11,7 @@ import { ServerProjectLocalOpen } from './ServerProjectLocalOpen'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 
-type Binding = { archive_only?: boolean; mode?: 'continuous' | 'manual' | 'off'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
+type Binding = { archive_only?: boolean; mode?: 'continuous' | 'manual' | 'off' | 'relay'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
 type SyncStatus = { binding: Binding | null; auto?: { state: string; message?: string } }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
@@ -32,7 +32,8 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
     const load = () => {
       const request: Promise<CloudState> = crewCloudMode() && getRawActiveWorkspaceId() !== 'local' ? Promise.resolve('on') : crewCloudMode()
         ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => {
-          if (!data.binding || data.binding.mode === 'off') return 'off'
+          // A relay twin moves no files: the Crew is used from the phone while the Mac is on.
+          if (!data.binding || data.binding.mode === 'off' || data.binding.mode === 'relay') return 'off'
           if (data.auto?.state === 'syncing') return 'syncing'
           if (data.binding.pending_action || (data.auto?.state && !['synced', 'idle'].includes(data.auto.state))) return 'check'
           return 'on'
@@ -101,12 +102,13 @@ function CloudCard({ projectId }: { projectId: string }) {
   }, [projectId, reload])
   // A paired Crew turned off keeps its pair (both copies stay); the switch reads the server's saved mode.
   const paired = status?.binding
-  const binding = paired && paired.mode !== 'off' ? paired : null
+  const binding = paired && paired.mode !== 'off' && paired.mode !== 'relay' ? paired : null
+  const relay = paired?.mode === 'relay'
   const network = networkName(binding, connections)
   const target = paired?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
-  const run = async (action: 'update' | 'server' | 'local' | 'download' | 'mode', mode?: 'continuous' | 'off') => {
+  const run = async (action: 'update' | 'server' | 'local' | 'download' | 'mode' | 'relay', mode?: 'continuous' | 'off', via = target) => {
     setBusy(true); setError('')
-    try { await desktopRequest(`/${encodeURIComponent(target)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', mode ? { action, mode } : { action }) }
+    try { await desktopRequest(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', mode ? { action, mode } : { action }) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.') }
     finally { setBusy(false); setReload(value => value + 1) }
   }
@@ -120,12 +122,12 @@ function CloudCard({ projectId }: { projectId: string }) {
           {syncing ? <RefreshCw aria-label="Syncing" className="h-4 w-4 animate-spin text-muted-foreground" /> : binding ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
           {!status ? 'Checking…' : binding ? (network ? `In the cloud on ${network}` : 'In the cloud') : 'Only on this computer'}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone.' : 'Turn on to use this Crew from the website or your phone.'}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone.' : relay ? 'You can use this Crew from the website or your phone while this Mac is on. Turn on to keep working when your Mac is off.' : connections.length > 1 ? 'Choose a server to use this Crew from the website or your phone.' : 'Turn on to use this Crew from the website or your phone.'}</p>
         {binding && <p className="mt-1 text-xs text-muted-foreground">{laptop?.state === 'existing' || laptop?.state === 'needs_app' ? laptop.message : 'While Cloud is on, people using this Crew run commands in this folder on your computer.'}</p>}
       </div>
       <Switch on={Boolean(binding)} disabled={!status || busy || !target} label="Cloud" onChange={() => void (binding ? run('mode', 'off') : paired ? run('mode', 'continuous') : run('update'))} />
     </div>
-    {!paired && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => setChoice(event.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm">
+    {!paired && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => { setChoice(event.target.value); if (event.target.value) void run('relay', undefined, event.target.value) }} className="w-full rounded-md border border-border bg-background p-2 text-sm">
       <option value="">Choose a network</option>
       {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
     </select>}

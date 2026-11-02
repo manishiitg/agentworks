@@ -28,6 +28,7 @@ import (
 type crewSyncRequest struct {
 	ArchiveOnly  bool                     `json:"archive_only,omitempty"`
 	Mode         string                   `json:"mode,omitempty"`
+	MacID        string                   `json:"mac_id,omitempty"`
 	SplitFiles   bool                     `json:"split_files,omitempty"`
 	TransferID   string                   `json:"transfer_id,omitempty"`
 	Action       string                   `json:"action"`
@@ -237,6 +238,10 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			}
 		}
 		binding := crewroot.SyncBinding{ArchiveOnly: input.ArchiveOnly, SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID}
+		// A relay twin is empty: the owner uses the Mac Crew from the website while the Mac is on (PLAT-856-509).
+		if input.Mode == "relay" {
+			binding.Mode, binding.MacName, binding.MacID = "relay", input.MacName, input.MacID
+		}
 		if err = crewroot.WriteSync(created, binding); err != nil {
 			return crewSyncReply{}, err
 		}
@@ -319,6 +324,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	}
 	if binding.Mode == "off" && input.Action != "mode" {
 		return out, fmt.Errorf("sync is off for this project; turn on Cloud before syncing")
+	}
+	if binding.Mode == "relay" && input.Action != "mode" {
+		return out, fmt.Errorf("this Crew's files are only on the Mac; turn on Work with my Mac off to copy them here")
 	}
 	previous, err := readCrewSyncManifest(roots.ID)
 	if err != nil {

@@ -153,7 +153,8 @@ func (api *StreamingAPI) startDesktopCrewSync() context.CancelFunc {
 					}
 					id := strings.TrimSuffix(entry.Name(), ".json")
 					b, e := crewroot.ReadSync(id)
-					if e != nil || b == nil || b.Side != "local" {
+					// A relay twin moves no files, so it needs no watcher.
+					if e != nil || b == nil || b.Side != "local" || b.Mode == "relay" {
 						continue
 					}
 					live[id] = true
@@ -258,7 +259,7 @@ func (api *StreamingAPI) watchDesktopCrewSync(ctx context.Context, id string) {
 		if e != nil || b == nil || b.Side != "local" {
 			return
 		}
-		if b.Mode == "manual" || b.Mode == "off" {
+		if b.Mode == "manual" || b.Mode == "off" || b.Mode == "relay" {
 			continue
 		}
 		checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
