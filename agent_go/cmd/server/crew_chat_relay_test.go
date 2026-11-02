@@ -264,7 +264,7 @@ func checkCrewRelaySocketEndToEnd(t *testing.T, api *StreamingAPI, project, pair
 	defer viewDone()
 	view := httptest.NewRecorder()
 	api.serveCrewMacEvents(view, request(viewCtx, "/api/sessions/x/events/stream"), project, conversation.ConversationID)
-	if !bytes.Contains(view.Body.Bytes(), []byte("event: snapshot")) || !bytes.Contains(view.Body.Bytes(), []byte(`"state":"idle"`)) {
+	if !bytes.Contains(view.Body.Bytes(), []byte("event: snapshot")) || !bytes.Contains(view.Body.Bytes(), []byte(`"state":{"state":"idle"`)) {
 		t.Fatalf("offline viewer did not get the saved state: %d %s", view.Code, view.Body.String())
 	}
 	stop, done = connect()

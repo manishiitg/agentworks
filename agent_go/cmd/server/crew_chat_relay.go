@@ -332,9 +332,9 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 		if len(events) > 50 {
 			events = events[len(events)-50:]
 		}
-		state := "idle"
+		state := crewMacState{State: "idle"}
 		if s := readCrewMacState(project); s != nil {
-			state = s.State
+			state = *s
 		}
 		lastSeq := since
 		if len(replay) > 0 {
