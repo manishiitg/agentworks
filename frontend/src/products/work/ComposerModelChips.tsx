@@ -198,5 +198,5 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} /></div>}
     </div>
   </Chip>
-    {sessionId && <ClaudeTerminalToggle sessionId={sessionId} />}</>
+    {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}</>
 }
