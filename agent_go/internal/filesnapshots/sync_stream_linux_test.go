@@ -39,15 +39,17 @@ func TestSyncStreamsLargeProjectWithBoundedMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	block := make([]byte, 64<<10)
-	if _, err := rand.Read(block); err != nil {
-		t.Fatal(err)
-	}
 	for i := 0; i < 8; i++ {
 		f, err := os.Create(filepath.Join(a.Files, fmt.Sprintf("large-%d.bin", i)))
 		if err != nil {
 			t.Fatal(err)
 		}
 		for j := 0; j < 2048; j++ {
+			// Unique incompressible bytes exercise real >1 GiB pack I/O,
+			// rather than only expanding a tiny repeated-data bundle.
+			if _, err = rand.Read(block); err != nil {
+				t.Fatal(err)
+			}
 			if _, err = f.Write(block); err != nil {
 				t.Fatal(err)
 			}
@@ -72,6 +74,7 @@ func TestSyncStreamsLargeProjectWithBoundedMemory(t *testing.T) {
 	}
 	runtime.GC()
 	var peakHeap, peakRSS atomic.Uint64
+	var proofBytes int64
 	done, stopped := make(chan struct{}), make(chan struct{})
 	sample := func() {
 		var m runtime.MemStats
@@ -101,7 +104,7 @@ func TestSyncStreamsLargeProjectWithBoundedMemory(t *testing.T) {
 	defer func() {
 		close(done)
 		<-stopped
-		t.Logf("STREAM_PROOF bytes=%d paths=10009 largest_file=%d peak_go_heap=%d peak_process_tree_rss=%d", int64(1<<30)+40000, 128<<20, peakHeap.Load(), peakRSS.Load())
+		t.Logf("STREAM_PROOF bytes=%d paths=10009 largest_file=%d peak_go_heap=%d peak_process_tree_rss=%d", proofBytes, 128<<20, peakHeap.Load(), peakRSS.Load())
 		if peakHeap.Load() > 192<<20 || peakRSS.Load() > 384<<20 {
 			t.Errorf("memory grows with project contents: heap=%d process_tree_rss=%d", peakHeap.Load(), peakRSS.Load())
 		}
@@ -114,6 +117,10 @@ func TestSyncStreamsLargeProjectWithBoundedMemory(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer snap.Close()
+		proofBytes = 0
+		for _, f := range snap.Files {
+			proofBytes += f.Size
+		}
 		if len(snap.Files) != 10009 {
 			t.Fatalf("paths=%d", len(snap.Files))
 		}
