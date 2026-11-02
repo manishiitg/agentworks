@@ -269,6 +269,27 @@ func dropCrewPayloadBytes(s *crewsync.Snapshot) {
 		}
 	}
 }
+
+// discardCapturedCrewPayloads is only for locally captured scratch bundles,
+// including no-change scans and capture failures. Frozen transfer artifacts
+// have already cleared these paths and remain until their receipt.
+func discardCapturedCrewPayloads(s *crewsync.Snapshot) {
+	paths := []*string{}
+	if s.Content != nil {
+		paths = append(paths, &s.Content.BundlePath)
+	}
+	if s.Git != nil {
+		paths = append(paths, &s.Git.BundlePath)
+	}
+	for _, path := range paths {
+		if *path != "" {
+			_ = os.Remove(*path)
+			_ = os.Remove(filepath.Dir(*path))
+			*path = ""
+		}
+	}
+}
+
 func cleanupCrewPayloads(id, pair, transfer, direction string) {
 	if d, e := crewTransferDir(id, pair, transfer, direction); e == nil {
 		_ = os.RemoveAll(d)

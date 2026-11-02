@@ -310,6 +310,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				}
 			}
 			snapshot, e := captureCrewSyncSnapshot(r.Context(), roots, previous)
+			defer discardCapturedCrewPayloads(&snapshot)
 			if e != nil {
 				fail(e)
 				return

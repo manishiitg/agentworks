@@ -344,6 +344,14 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal("newer source edit never synced")
 			}
 
+			// PLAT-856-509: a no-change scan must not keep a new scratch bundle.
+			if w = call("update", "owner", true); w.Code != 200 {
+				t.Fatalf("unchanged scan: %d %s", w.Code, w.Body.String())
+			}
+			if scratch, err := filepath.Glob(filepath.Join(local.Private, "file-snapshots", "sync-bundle-*")); err != nil || len(scratch) != 0 {
+				t.Fatalf("unchanged sync retained capture bundles: %v %v", scratch, err)
+			}
+
 			for _, kind := range []string{"bound-agent", "product"} {
 				claims := crewWriter("owner")
 				if kind == "bound-agent" {

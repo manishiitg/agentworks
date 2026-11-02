@@ -486,6 +486,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		stamp := crewSyncStamp(roots)
 		snapshot, e := captureCrewSyncSnapshot(ctx, roots, previous)
+		defer discardCapturedCrewPayloads(&snapshot)
 		if e != nil {
 			return out, e
 		}
