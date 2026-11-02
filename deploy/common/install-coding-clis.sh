@@ -122,3 +122,10 @@ install_node_cli agent-browser agent-browser
 for cli in "${CODING_CLI_BINARIES[@]}" agent-browser; do
   tool_version "$cli" >/dev/null || { echo "FATAL: $cli is unavailable" >&2; exit 1; }
 done
+# The CLIs also run as each person's slot account (PLAT-872-86), so the installed programs must be readable and
+# runnable by every account: an npm or vendor install made with a private umask left Codex's package and Muse's
+# version marker owner-only ("codex.js is not accessible", "installed binary is missing"). Programs only; the
+# install state and any logins stay as they are.
+for dir in "$prefix/bin" "$prefix/lib" "$prefix/node"; do
+  [[ ! -d "$dir" ]] || chmod -R o+rX "$dir"
+done
