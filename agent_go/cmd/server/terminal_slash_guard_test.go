@@ -36,20 +36,25 @@ func TestSlashGuardAllowsOnlyTheAllowlist(t *testing.T) {
 	if d, _ := lastDecision(t, g, "a", "/", "u", "s", "\r"); d != slashCancel {
 		t.Fatalf("a partial /us was let through: %v", d)
 	}
-	// A Claude terminal running the mod also takes the session commands, with
-	// arguments; commands that change the CLI's login or settings stay blocked.
+	// A Claude terminal running the mod allows every command but a few (owner, 2 Nov 2026), with arguments;
+	// the login, model, tools/settings and leave-the-chat commands stay blocked, also as a partial name the
+	// CLI's menu would complete on Enter.
 	typed := func(line string) slashDecision {
 		var d slashDecision
 		for _, b := range []byte(line + "\r") {
-			d, _ = g.decide("mod", []byte{b}, claudeModSessionCommands)
+			d, _ = g.decideBlocked("mod", []byte{b}, claudeModBlockedCommands)
 		}
 		return d
 	}
-	if d := typed("/resume 6f1c"); d != slashForward {
-		t.Fatalf("/resume in a mod terminal = %v, want forward", d)
+	for _, line := range []string{"/resume 6f1c", "/compact", "/context", "/clear", "/review"} {
+		if d := typed(line); d != slashForward {
+			t.Fatalf("%s in a mod terminal = %v, want forward", line, d)
+		}
 	}
-	if d := typed("/logout"); d != slashCancel {
-		t.Fatalf("/logout in a mod terminal = %v, want cancel", d)
+	for _, line := range []string{"/logout", "/model opus", "/mod", "/permissions", "/add-dir /etc", "/bug"} {
+		if d := typed(line); d != slashCancel {
+			t.Fatalf("%s in a mod terminal = %v, want cancel", line, d)
+		}
 	}
 }
 
