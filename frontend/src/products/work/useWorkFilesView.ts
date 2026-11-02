@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
 import type { SavedFileSelection } from '../../components/workspace/chatFileNavigation'
 
@@ -10,8 +10,16 @@ export type WorkFilesView =
 
 /** One file-panel selection per chat. New chats inherit Changes/Browse only;
  * exact saved versions never move to another session or access scope. */
-export function useWorkFilesView(scope: string, workspacePath: string, sessionId: string) {
+export function useWorkFilesView(scope: string, workspacePath: string, sessionId: string, visible = true) {
   const [state, setState] = useState<{ scope: string; chats: Record<string, WorkFilesView>; changes: boolean }>({ scope, chats: {}, changes: false })
+  useEffect(() => {
+    if (!visible || !sessionId) return
+    setState(previous => {
+      const current = previous.scope === scope ? previous : { scope, chats: {}, changes: false }
+      if (current.chats[sessionId]) return current
+      return { ...current, chats: { ...current.chats, [sessionId]: { kind: current.changes ? 'changes' : 'browse' } } }
+    })
+  }, [scope, sessionId, visible])
   const view: WorkFilesView = state.scope === scope
     ? state.chats[sessionId] ?? { kind: state.changes ? 'changes' : 'browse' }
     : { kind: 'browse' }
