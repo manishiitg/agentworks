@@ -93,6 +93,10 @@ trusted = ["existing-provider-trust"]
 	}
 	bundle, digest := desktopBundleFixture(t, "", 0)
 	o := &options{stdout: io.Discard, stderr: io.Discard}
+	// The plain command first (as on Mac and Linux), then a pinned path, on every OS.
+	previous := pinnedPluginCommand
+	defer func() { pinnedPluginCommand = previous }()
+	pinnedPluginCommand = func() string { return "" }
 	for _, name := range []string{"agentworks-codex", "agentworks-codex-tools"} {
 		if err := installCodexDesktopBundle(o, profile, name, bundle, digest); err != nil {
 			t.Fatal(err)
@@ -127,6 +131,32 @@ trusted = ["existing-provider-trust"]
 		raw, _ := os.ReadFile(matches[0])
 		if json.Unmarshal(raw, &mcp) != nil || mcp.MCPServers["agentworks"].Command != "agentworks" {
 			t.Fatal("plugin must use the existing AgentWorks transport, with no credential copied")
+		}
+	}
+	// PLAT-856-500: on Windows Codex keeps the PATH it launched with, so the tool
+	// server command is pinned to the CLI's own path in the marketplace and cache.
+	pinned := filepath.Join(personHome, "agentworks", "agentworks.exe")
+	pinnedPluginCommand = func() string { return pinned }
+	if err := installCodexDesktopBundle(o, profile, "agentworks-codex-tools", bundle, digest); err != nil {
+		t.Fatal(err)
+	}
+	for _, pattern := range []string{
+		filepath.Join(profile, "plugins", "cache", "agentworks", "agentworks-codex-tools", "*", ".mcp.json"),
+		filepath.Join(profile, "plugins", "marketplaces", "agentworks", "plugins", "codex-tools", ".mcp.json"),
+	} {
+		matches, _ := filepath.Glob(pattern)
+		var mcp struct {
+			MCPServers map[string]struct {
+				Command string
+				Args    []string
+			}
+		}
+		if len(matches) != 1 {
+			t.Fatalf("missing %s", pattern)
+		}
+		raw, _ := os.ReadFile(matches[0])
+		if json.Unmarshal(raw, &mcp) != nil || mcp.MCPServers["agentworks"].Command != pinned || strings.Join(mcp.MCPServers["agentworks"].Args, " ") != "plugin mcp codex" {
+			t.Fatalf("Windows plugin must start the CLI by its absolute path with unchanged arguments: %s", raw)
 		}
 	}
 	backups, _ := filepath.Glob(filepath.Join(profile, "config.toml.agentworks-backup-*"))
