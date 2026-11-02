@@ -2019,15 +2019,13 @@ func (api *StreamingAPI) liveAttachRawInput(ctx context.Context, tmuxSession str
 			return nil
 		}
 	}
-	// A Claude terminal running the AgentWorks mod allows every command but a
-	// few (claudeModBlockedCommands); other terminals keep the allowlist.
-	decide := func() (slashDecision, int) { return terminalSlashGuard.decide(tmuxSession, data) }
+	// A Claude terminal running the AgentWorks mod blocks its few disallowed
+	// commands inside Claude Code (however they are picked), so its slash menu
+	// works normally here; other terminals keep the allowlist.
 	if claudecode.ClaudeModRunsIn(tmuxSession) {
-		decide = func() (slashDecision, int) {
-			return terminalSlashGuard.decideBlocked(tmuxSession, data, claudeModBlockedCommands)
-		}
+		return api.liveAttachRawSend(ctx, tmuxSession, data, streams...)
 	}
-	switch decision, erase := decide(); decision {
+	switch decision, erase := terminalSlashGuard.decide(tmuxSession, data); decision {
 	case slashDrop:
 		liveAttachSlashNote(streams, "Pick a slash command by typing its full name")
 		return nil
