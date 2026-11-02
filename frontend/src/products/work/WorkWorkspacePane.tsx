@@ -14,8 +14,6 @@ import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHead
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
-import type { ReplyFileChangesRef } from '../../utils/replyFileChanges'
-import type { SavedFileSelection } from '../../components/workspace/chatFileNavigation'
 import { setWorkspaceViewTarget, useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
@@ -43,6 +41,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
+import { useWorkFilesView } from './useWorkFilesView'
 
 const ReplyChangesPanel = lazy(() => import('../../components/workspace/ReplyChangesPanel').then(module => ({ default: module.ReplyChangesPanel })))
 const ReplyFileViewer = lazy(() => import('../../components/workspace/ReplyFileViewer').then(module => ({ default: module.ReplyFileViewer })))
@@ -90,7 +89,8 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, projectId || workspacePath), item.id)
     if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
-    if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
+    if (item.view === 'files') setWorkspaceViewTarget('files', 'browse')
+    else if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
     onViewChange(item.view)
   })
 
@@ -228,32 +228,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const contextMode = useProjectMode(activeSessionId || '')
-  const [reviewOpen, setReviewOpen] = useState(false)
-  const [reviewOutsideGit, setReviewOutsideGit] = useState(false)
-  const [reviewUncommitted, setReviewUncommitted] = useState(false)
-  const [reviewProject, setReviewProject] = useState(false)
-  const [reviewProjectCheckout, setReviewProjectCheckout] = useState('')
-  const [replyReference, setReplyReference] = useState<ReplyFileChangesRef | null>(null)
-  const [savedFile, setSavedFile] = useState<SavedFileSelection | null>(null)
-  useEffect(() => { setReviewOpen(false); setSavedFile(null); setReplyReference(null) }, [tabId, activeSessionId, contextMode, accessKey])
-  useWorkspaceViewTarget('files', target => {
-    setSavedFile(null); setReviewOpen(target === 'review' || (target === 'review-project' || target.startsWith('review-project:')) || target === 'review-outside-git' || target === 'review-uncommitted'); setReviewOutsideGit(target === 'review-outside-git'); setReviewUncommitted(target === 'review-uncommitted'); setReviewProject((target === 'review-project' || target.startsWith('review-project:'))); setReviewProjectCheckout(target.startsWith('review-project:') ? target.slice('review-project:'.length) : '')
-    if (target.startsWith('reply:')) {
-      setReplyReference(null)
-      try {
-        const reference = JSON.parse(target.slice(6)) as ReplyFileChangesRef
-        if (reference.sessionId === activeSessionId && reference.workspacePath === workspacePath && reference.snapshotId) setReplyReference(reference)
-      } catch { /* A stale or malformed target cannot select another chat. */ }
-      return
-    }
-    if (!target.startsWith('saved:')) setReplyReference(null)
-    if (target.startsWith('saved:')) {
-      try {
-        const selection = JSON.parse(target.slice(6)) as SavedFileSelection
-        if (selection.reference?.sessionId === activeSessionId && selection.reference.workspacePath === workspacePath && selection.change?.path) setSavedFile(selection)
-      } catch { /* Ignore stale navigation targets. */ }
-    }
-  }, view === 'files')
+  const [filesView, selectFilesView] = useWorkFilesView(accessKey, workspacePath, activeSessionId || '')
+  useWorkspaceViewTarget('files', selectFilesView, view === 'files' && !!activeSessionId)
   const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? [] : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
   const contextPanels = workWorkspacePanels({ profileId: product.profileId, cowork: product.profileId === 'work' && contextMode === 'cowork', readOnly: Boolean(readOnly), showShell, enabledPanels })
   // The dashboard's only link to the chat beside it: a stable callback, so
@@ -278,6 +254,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   }
 
   const openProjectFile = async (filePath: string) => {
+    selectFilesView('browse')
     if (readOnly) {
       // The proxy refuses cross-user reads, so shared files open in the
       // mediated browser instead of the workspace viewer.
@@ -331,7 +308,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{savedFile ? <ReplyFileViewer key={JSON.stringify(savedFile)} selection={savedFile} tabId={tabId} onBack={() => { setSavedFile(null); setReviewOpen(true) }} /> : replyReference && replyReference.sessionId === activeSessionId ? <ReplyChangesPanel key={`${accessKey}:${replyReference.snapshotId}:${replyReference.checkoutId || ''}:${replyReference.historyScope || ''}`} reference={replyReference} tabId={tabId} onBrowse={() => { setReplyReference(null); setReviewOpen(false) }} /> : reviewOpen && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${reviewOutsideGit}:${reviewUncommitted}:${reviewProject}:${reviewProjectCheckout}`} projectHistory={reviewProject} allChat={!reviewProject && !reviewOutsideGit && !reviewUncommitted} initialCheckoutId={reviewProjectCheckout} outsideGit={reviewOutsideGit} initialScope={reviewUncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => setReviewOpen(false)} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{filesView.kind === 'saved' ? <ReplyFileViewer key={JSON.stringify(filesView.selection)} selection={filesView.selection} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'reply' ? <ReplyChangesPanel key={`${accessKey}:${activeSessionId}:${filesView.reference.snapshotId}:${filesView.reference.checkoutId || ''}:${filesView.reference.historyScope || ''}`} reference={filesView.reference} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : filesView.kind === 'changes' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${filesView.outsideGit}:${filesView.uncommitted}:${filesView.project}:${filesView.checkoutId}`} projectHistory={filesView.project} allChat={!filesView.project && !filesView.outsideGit && !filesView.uncommitted} initialCheckoutId={filesView.checkoutId} outsideGit={filesView.outsideGit} initialScope={filesView.uncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
 
