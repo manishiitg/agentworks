@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Loader2, MessageSquare, Pencil, PinOff, X } from 'lucide-react'
+import { ChevronDown, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
@@ -200,6 +200,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           </span>
         </>
       )}
+      <ShowChatButton tabId={tab.tabId} />
       {productSurface && <>
         {workspacePickable && <button ref={registerWorkspaceTrigger} type="button" data-workspace-setup-trigger aria-label="Switch workspace" aria-haspopup="menu" aria-expanded={pickerOpen}
           title="Switch workspace or product"
@@ -266,3 +267,17 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
 })
 
 ChatTabPill.displayName = 'ChatTabPill'
+
+// While a tab shows its terminal, one click shows the chat again (the terminal keeps running).
+function ShowChatButton({ tabId }: { tabId: string }) {
+  const terminalView = useChatStore(state => state.chatTabs[tabId]?.viewMode === 'terminal')
+  if (!terminalView) return null
+  return (
+    <button type="button" aria-label="Show chat" title="Show chat"
+      onClick={event => { event.stopPropagation(); useChatStore.getState().setTabViewMode(tabId, 'formatted') }}
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
+      className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <MessageSquareText aria-hidden="true" className="h-3 w-3" />
+    </button>
+  )
+}
