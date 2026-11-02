@@ -302,7 +302,7 @@ describe('Studio review comments', () => {
       expect(host.querySelector('select')?.value).toBe('changes')
       await act(async () => button('second.ts').click())
       expect(host.textContent).toContain('new second')
-      expect(api.get).toHaveBeenLastCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ file: 'second.ts', through_snapshot_id: 'last', baseline_snapshot_id: 'start' }) }))
+      expect(api.get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ op: 'snapshot_compare', file: 'second.ts', session_id: 'chat-a', through_snapshot_id: 'last', baseline_snapshot_id: 'start' }) }))
       expect(openChatFiles).not.toHaveBeenCalled()
       expect(host.querySelectorAll('[aria-label="File versions"]')).toHaveLength(2)
       expect(host.textContent).not.toContain('Uncommitted')
