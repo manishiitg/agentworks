@@ -28,6 +28,7 @@ Servers (each one's host, domain and settings live in the private deployments re
                         docs root, a workflow, a Crew and a Code project, the slotctl/slot table/launcher checks, and the
                         secret admission scan (warnings). Exits 1 on any FAIL. Every deploy of a slot host runs it too.
   build [--force]       build a release of the current main of the three repositories on the build host; deploys nothing
+  queue                 which servers are being deployed right now, by whom and since when (a deploy waits for one to the same server)
   builds                list the builds on the build host (name, age, the three revisions, pinned) and the builds on GitHub
   publish [build]       upload a build (default: the newest) to github.com/manishiitg/agentworks-builds from the build host
   verify [name]         build, vet and test the commit you are on (HEAD) on the build host with the Verify-Test / Verify-Vitest /
@@ -404,6 +405,15 @@ echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOS
 if [[ "${SLOTS_ENABLED:-false}" == true && -n "${HOST_SETUP_USER:-}" ]]; then
   echo "==> [$PRODUCT] Installing the active native session helper"
   ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} bash -s -- native-session" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+elif [[ "${SLOTS_ENABLED:-false}" == true ]]; then
+  # Without a root setup user the root-owned slotctl is not updated by the deploy. Say so loudly when the new release's differs,
+  # or a slot change silently does not apply (it happened on 2 Nov until someone installed it by hand).
+  libexec=/usr/local/libexec/agentworks; [[ "${SLOT_PREFIX:-slot}" == slot ]] || libexec="$libexec/$PRODUCT"
+  if ! "${SSH[@]}" "cmp -s '$libexec/slotctl' '$REMOTE_APP/current/bin/slotctl'"; then
+    echo "!!! [$PRODUCT] ROOT STEP NEEDED: this release's slotctl differs from the installed $libexec/slotctl, and this deploy has no" >&2
+    echo "!!! HOST_SETUP_USER to install it. Until a root user runs it, slot changes in this release do not apply:" >&2
+    echo "!!!   sudo env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} bash deploy/common/provision-slots.sh native-session" >&2
+  fi
 fi
 
 # The release is live and the services have re-exec'd under the standard profile: only now retire an older per-product profile
@@ -461,6 +471,12 @@ if [[ "$SERVER" == builds ]]; then
   echo
   echo "On GitHub (github.com/manishiitg/agentworks-builds; a tag is build-<builder8>-<mcpagent8>-<provider8>):"
   bash "$REPO_ROOT/deploy/common/publish-build.sh" --list || echo "(GitHub could not be read)" >&2
+  exit 0
+fi
+# ./deploy.sh queue: which servers are being deployed right now, by whom, since when.
+if [[ "$SERVER" == queue ]]; then
+  reject_extra_arguments "$@"
+  deploy_lock_list
   exit 0
 fi
 if [[ "$SERVER" == verify ]]; then
@@ -569,10 +585,27 @@ if [[ "$SERVER" == report ]]; then
   exec "$REPO_ROOT/deploy/common/profile-report-all.sh" "$@"
 fi
 
+# Runs one deploy while holding its server's deploy lock (deploy_lock_take in build-once.sh); the lock is let go once the
+# release is live (or the deploy failed), before the report-only smoke check.
+locked_deploy() { # lock-name command...
+  local lock="$1" rc=0
+  shift
+  deploy_lock_take "$lock"
+  trap "deploy_lock_release '$lock'; exit 130" INT TERM
+  # Not "( ... ) || rc=$?": that turns off set -e inside, and a failed step would not stop the deploy.
+  set +e
+  ( set -e; "$@" )
+  rc=$?
+  set -e
+  deploy_lock_release "$lock"
+  trap - INT TERM
+  return "$rc"
+}
+
 case "$SERVER" in
   rts|video-studio)
     reject_extra_arguments "$@"
-    deploy_rts
+    locked_deploy rts deploy_rts
     report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
     prune_builds_remote
     post_deploy_smoke video-studio  # this deployment's private settings folder is products/video-studio
@@ -581,7 +614,7 @@ case "$SERVER" in
     # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
     # A product on its own host sets SSH_JUMP, HOST_SETUP_SCRIPT and PREBUILT_DELIVERY=fetch in its private product.env.
     reject_extra_arguments "$@"
-    deploy_rootless_product "$SERVER"
+    locked_deploy "$SERVER" deploy_rootless_product "$SERVER"
     prune_builds_remote
     post_deploy_smoke "$SERVER"
     ;;
@@ -589,7 +622,7 @@ case "$SERVER" in
     # the Hetzner server; its account, units and product
     # folder are named "agents" on the host.
     reject_extra_arguments "$@"
-    deploy_rootless_product agents
+    locked_deploy excellence deploy_rootless_product agents
     prune_builds_remote
     post_deploy_smoke agents
     ;;
@@ -600,8 +633,8 @@ case "$SERVER" in
     [[ -n "$DEPLOY_PREBUILT_NAME" ]]
     export DEPLOY_PREBUILT_NAME
     echo "==> all-hetzner: build $DEPLOY_PREBUILT_NAME -> excellence, confida"
-    deploy_rootless_product agents
-    deploy_rootless_product confida
+    locked_deploy excellence deploy_rootless_product agents
+    locked_deploy confida deploy_rootless_product confida
     prune_builds_remote  # once, after both products: a chosen older build must still exist for the next product
     post_deploy_smoke agents; post_deploy_smoke confida
     ;;
@@ -618,7 +651,7 @@ case "$SERVER" in
   *)
     if [[ "$SERVER" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$SERVER/product.env" ]]; then
       reject_extra_arguments "$@"
-      deploy_rootless_product "$SERVER"
+      locked_deploy "$SERVER" deploy_rootless_product "$SERVER"
       prune_builds_remote
       post_deploy_smoke "$SERVER"
     else

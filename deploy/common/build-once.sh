@@ -222,3 +222,41 @@ deliver_build_to_product_host() { # name dest
       test \"\$(sha256sum \"\$t/$name/manifest.json\" | cut -d' ' -f1)\" = '$hash' || { echo 'streamed build: manifest hash mismatch' >&2; exit 1; }
       mv \"\$t/$name\" '$dest'"
 }
+
+# ---- One deploy per server at a time, visible to everyone who deploys -------------------------------------------------------------
+# A deploy holds <builds-dir>/.deploys/<server> on the build host (every deploy already reaches it), with who holds it and since
+# when. A second deploy to the same server waits and says whose deploy it is waiting for; `./deploy.sh queue` lists the holders.
+# A holder older than DEPLOY_LOCK_STALE_MINUTES (default 40) is treated as abandoned. Agents stop coordinating deploys by message.
+deploy_lock_who() {
+  local rev
+  rev="$(git -C "$REPO_ROOT" rev-parse --short=8 HEAD 2>/dev/null || echo unknown)"
+  printf '%s@%s (%s) %s' "$(id -un)" "$(hostname -s)" "${DEPLOY_WHO:-$(basename "$REPO_ROOT")}" "$rev"
+}
+
+deploy_lock_take() { # server
+  local server="$1" who out last=""
+  who="$(deploy_lock_who)"
+  while :; do
+    out="$(build_ssh "d='$BUILDS_DIR/.deploys'; install -d -m 0777 \"\$d\" 2>/dev/null || mkdir -p \"\$d\"
+      l=\"\$d/$server\"
+      if [ -d \"\$l\" ] && [ \$(( \$(date +%s) - \$(stat -c %Y \"\$l\") )) -gt $(( ${DEPLOY_LOCK_STALE_MINUTES:-40} * 60 )) ]; then
+        echo \"abandoned: \$(cat \"\$l/holder\" 2>/dev/null)\" >&2; rm -rf \"\$l\"
+      fi
+      if mkdir \"\$l\" 2>/dev/null; then printf '%s\n' '$who' > \"\$l/holder\"; echo TAKEN
+      else echo \"HELD \$(cat \"\$l/holder\" 2>/dev/null) since \$(date -u -d @\$(stat -c %Y \"\$l\") +%H:%MZ) (\$(( (\$(date +%s) - \$(stat -c %Y \"\$l\")) / 60 )) min)\"; fi")" || return 1
+    [[ "$out" == TAKEN ]] && { echo "==> Deploying $server (others wait until this deploy is live)" >&2; return 0; }
+    if [[ "${out%% since*}" != "$last" ]]; then
+      echo "==> Waiting: $server is being deployed by ${out#HELD }" >&2
+      last="${out%% since*}"
+    fi
+    sleep 15
+  done
+}
+
+deploy_lock_release() { # server
+  build_ssh "rm -rf '$BUILDS_DIR/.deploys/$1'" >/dev/null 2>&1 || true
+}
+
+deploy_lock_list() {
+  build_ssh "cd '$BUILDS_DIR/.deploys' 2>/dev/null && for l in *; do [ -d \"\$l\" ] && echo \"\$l: \$(cat \"\$l/holder\" 2>/dev/null) since \$(date -u -d @\$(stat -c %Y \"\$l\") +%H:%MZ)\"; done" | grep . || echo "No deploy is running."
+}
