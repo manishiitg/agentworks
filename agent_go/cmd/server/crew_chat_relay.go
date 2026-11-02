@@ -291,9 +291,6 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		first = &result
-	} else if sock == nil && len(replay) == 0 && since == 0 {
-		writeCrewChatResult(w, crewChatResult{Status: 503, Body: json.RawMessage(`{"error":"Your Mac is offline. Open AgentWorks on it to continue this chat."}`)})
-		return
 	}
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -318,8 +315,9 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		log.Printf("[CREW_RELAY] resume project=%s since=%d source=mac", project, since)
-	} else if gap || sock == nil && since == 0 {
-		// The viewer is older than the cache (or the Mac is off): replace, not append.
+	} else if gap || sock == nil && (since == 0 || len(replay) == 0) {
+		// The viewer is older than the cache, or the Mac is off: replace, not append.
+		// With nothing cached (a server restart) the saved state still greys the Crew.
 		events := []json.RawMessage{}
 		for _, batch := range replay {
 			if batch.Kind == "event" {
