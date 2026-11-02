@@ -399,6 +399,10 @@ func githubLogin(ctx context.Context, token string) (string, error) {
 	}
 	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out) != nil || out.Login == "" {
 		log.Printf("[GITHUB_VAULT] account lookup failed status=%d", resp.StatusCode)
+		if resp.StatusCode == http.StatusUnauthorized {
+			// GitHub does not recognise the token: a partial copy, an expired or deleted token. Retrying cannot help.
+			return "", errors.New("GitHub did not accept this token. Check that you copied the whole token and that it has not expired, or create a new one.")
+		}
 		return "", errors.New("GitHub did not return your account. Try again.")
 	}
 	return out.Login, nil
