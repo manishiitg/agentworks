@@ -7,8 +7,9 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useEffect, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
+import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 
-type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string }
+type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string } & CrewLocationFields
 
 function OwnershipGroups<T extends SidebarProject>({ projects, render }: { projects: T[]; render: (project: T) => ReactNode }) {
   const groups = [
@@ -44,13 +45,24 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     }
     return rank(a) - rank(b) || a.name.localeCompare(b.name)
   })
-  const renderProject = (project: SidebarProject) => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project} onOpen={() => {
+  const renderProject = ({ location, mac, state, ...project }: SidebarProject) => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project}
+    stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onOpen={() => {
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
   }} />
+  const { macs, server } = groupByMac(orderedProjects.filter(project => filter === 'all' || (filter === 'dashboard' ? project.kind === 'crew' && project.mode === 'run' : project.kind === filter && (project.kind !== 'crew' || project.mode !== 'run'))))
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
     <div className="py-2"><LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={[]} workTypes /></div>
-    <div className="space-y-1"><OwnershipGroups projects={orderedProjects.filter(project => filter === 'all' || (filter === 'dashboard' ? project.kind === 'crew' && project.mode === 'run' : project.kind === filter && (project.kind !== 'crew' || project.mode !== 'run')))} render={renderProject} /></div>
+    {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
+      <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+        <span className="shrink-0">On your Mac</span>
+        <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${mac.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
+        <span className="truncate font-normal" title={`${mac.name} · ${macStatusText(mac)}`}>{mac.name} · {macStatusText(mac)}</span>
+      </h2>
+      {rows.map(renderProject)}
+    </section>)}
+    {macs.length > 0 && server.length > 0 && <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">On the server</h2>}
+    <div className="space-y-1"><OwnershipGroups projects={server} render={renderProject} /></div>
     {children}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
   </div>
