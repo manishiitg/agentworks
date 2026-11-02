@@ -21,7 +21,7 @@ import (
 
 // Bound Git's delta search and stream large blobs as well as Go's copies.
 func (s Store) syncCommand(ctx context.Context, args ...string) *exec.Cmd {
-	return s.command(ctx, append([]string{"-c", "core.bigFileThreshold=16m", "-c", "pack.windowMemory=16m", "-c", "pack.deltaCacheSize=16m", "-c", "pack.threads=1"}, args...)...)
+	return s.command(ctx, append([]string{"-c", "core.bigFileThreshold=16m", "-c", "core.packedGitWindowSize=16m", "-c", "core.packedGitLimit=32m", "-c", "pack.windowMemory=16m", "-c", "pack.deltaCacheSize=16m", "-c", "pack.threads=1"}, args...)...)
 }
 
 // Sync uses the existing object store, but never the turn index or turn refs.

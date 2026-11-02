@@ -27,7 +27,7 @@ type GitSnapshot struct {
 }
 
 func gitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
-	base := []string{"-c", "core.bigFileThreshold=16m", "-c", "pack.windowMemory=16m", "-c", "pack.deltaCacheSize=16m", "-c", "pack.threads=1", "-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "protocol.file.allow=always", "-C", root}
+	base := []string{"-c", "core.bigFileThreshold=16m", "-c", "core.packedGitWindowSize=16m", "-c", "core.packedGitLimit=32m", "-c", "pack.windowMemory=16m", "-c", "pack.deltaCacheSize=16m", "-c", "pack.threads=1", "-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "protocol.file.allow=always", "-C", root}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	for _, item := range os.Environ() {
 		if !strings.HasPrefix(item, "GIT_") {
