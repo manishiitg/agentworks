@@ -34,7 +34,7 @@ func TestSyncStreamsLargeProjectWithBoundedMemory(t *testing.T) {
 	}
 	a, b := roots(), roots()
 	sa, sb := Store{Root: a.Files, Private: a.Private}, Store{Root: b.Files, Private: b.Private}
-	stage := t.TempDir()
+	stage := filepath.Join(t.TempDir(), "sync-staging")
 	if err := agentworksclient.EnsurePrivateDirectory(stage); err != nil {
 		t.Fatal(err)
 	}
