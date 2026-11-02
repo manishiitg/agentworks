@@ -25,24 +25,42 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "resources/agent-server",
+          "to": "agent-server"
+        },
+        {
+          "from": "resources/workspace-server",
+          "to": "workspace-server"
+        },
+        {
+          "from": "resources/lib",
+          "to": "lib"
+        },
+        {
+          "from": "resources/bin",
+          "to": "bin"
+        },
+        {
+          "from": "resources/install.sh",
+          "to": "install.sh"
+        },
+        {
+          "from": "resources/tmux-build.json",
+          "to": "tmux-build.json"
+        },
+        {
+          "from": "resources/voice",
+          "to": "voice"
+        }
+      ]
     },
     "extraResources": [
       {
         "from": "resources/icons",
         "to": "icons"
-      },
-      {
-        "from": "resources/agent-server",
-        "to": "agent-server"
-      },
-      {
-        "from": "resources/workspace-server",
-        "to": "workspace-server"
-      },
-      {
-        "from": "resources/lib",
-        "to": "lib"
       },
       {
         "from": "../agent_go/configs",
@@ -53,24 +71,8 @@
         "to": "static"
       },
       {
-        "from": "resources/bin",
-        "to": "bin"
-      },
-      {
-        "from": "resources/install.sh",
-        "to": "install.sh"
-      },
-      {
-        "from": "resources/tmux-build.json",
-        "to": "tmux-build.json"
-      },
-      {
         "from": "resources/licenses",
         "to": "licenses"
-      },
-      {
-        "from": "resources/voice",
-        "to": "voice"
       }
     ],
     "files": [
@@ -81,7 +83,38 @@
       "!lib/*.test.js",
       "settings.html",
       "auth-prompt.html"
-    ]
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icons/icon.png",
+      "artifactName": "${productName}-${version}-win-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "resources/win/agent-server.exe",
+          "to": "agent-server.exe"
+        },
+        {
+          "from": "resources/win/workspace-server.exe",
+          "to": "workspace-server.exe"
+        },
+        {
+          "from": "resources/win/bin",
+          "to": "bin"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+    }
   },
   "dependencies": {
     "detect-port": "^1.5.1"

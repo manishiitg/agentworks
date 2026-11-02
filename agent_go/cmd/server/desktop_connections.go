@@ -39,11 +39,16 @@ type desktopBootstrap struct {
 }
 
 func consumeDesktopBootstrap() desktopBootstrap {
-	if os.Getenv("AGENTWORKS_BOOTSTRAP_FD") != "3" {
+	var pipe *os.File
+	switch os.Getenv("AGENTWORKS_BOOTSTRAP_FD") {
+	case "3":
+		pipe = os.NewFile(3, "desktop-bootstrap")
+	case "stdin": // Windows: an inherited fd 3 is not a Go file there.
+		pipe = os.Stdin
+	default:
 		return desktopBootstrap{}
 	}
 	_ = os.Unsetenv("AGENTWORKS_BOOTSTRAP_FD")
-	pipe := os.NewFile(3, "desktop-bootstrap")
 	if pipe == nil {
 		panic("Desktop bootstrap pipe unavailable")
 	}

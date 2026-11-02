@@ -92,7 +92,7 @@ importLoginShellEnv();
 // tools and lifecycle. Provider logins remain owned by their installed CLIs.
 if (app.isPackaged) {
   process.env.PATH = path.join(process.resourcesPath, 'bin') + path.delimiter + process.env.PATH;
-  process.env.MCP_BRIDGE_BINARY = path.join(process.resourcesPath, 'bin', 'mcpbridge');
+  process.env.MCP_BRIDGE_BINARY = path.join(process.resourcesPath, 'bin', process.platform === 'win32' ? 'mcpbridge.exe' : 'mcpbridge');
 }
 
 const MANAGED_LOG_MAX_BYTES = parsePositiveIntegerEnv('RUNLOOP_MAX_LOG_BYTES', DEFAULT_MANAGED_LOG_MAX_BYTES);
@@ -827,7 +827,7 @@ function unifyAgentLogsDir(userDataPath) {
 
 function getBinaryPath(name) {
   const base = getResourcesDir();
-  return path.join(base, name);
+  return path.join(base, process.platform === 'win32' ? `${name}.exe` : name);
 }
 
 function getAppIconPath() {
@@ -1295,6 +1295,15 @@ function fetchJsonWithRedirects(url, redirectsLeft = 6) {
 }
 
 function checkForUpdates(manual = false) {
+  // The updater installs a Mac disk image; Windows updates arrive as a new
+  // installer until the Windows updater lands (PLAT-874-4).
+  if (process.platform !== 'darwin') {
+    console.log('[update] Skipping check — no updater on ' + process.platform + ' yet');
+    if (manual) {
+      dialog.showMessageBox({ type: 'info', title: 'Updates', message: 'To update AgentWorks on Windows, run the newest installer.', buttons: ['OK'] });
+    }
+    return;
+  }
   if (!app.isPackaged) {
     console.log('[update] Skipping check — not packaged');
     if (manual) {
