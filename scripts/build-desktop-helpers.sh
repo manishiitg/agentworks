@@ -16,6 +16,6 @@ EPOCH="$(node -p 'require(process.argv[1]).compat_epoch' "$ROOT/deploy/cli-relea
 bash "$ROOT/deploy/common/install-rsync.sh" "$OUT"
 mkdir -p "$OUT/licenses/rsync"
 cp "$OUT/share/licenses/rsync/COPYING" "$OUT/licenses/rsync/COPYING"
-python3 "$ROOT/scripts/bundle-desktop-tmux.py" "$OUT"
+bash "$ROOT/scripts/build-desktop-tmux.sh" "$OUT"
 cp "$ROOT/install.sh" "$OUT/install.sh"
 "$OUT/bin/agentworks" --version
