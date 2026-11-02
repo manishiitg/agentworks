@@ -571,8 +571,30 @@ func readCrewSyncGit(id string) (*crewsync.GitSnapshot, error) {
 		return nil, err
 	}
 	var state crewsync.GitSnapshot
-	err = json.Unmarshal(b, &state)
-	return &state, err
+	if err = json.Unmarshal(b, &state); err != nil {
+		return nil, err
+	}
+	if state.IndexHash == "" {
+		// One-time conversion of the old on-disk baseline. Ignoring its
+		// staged patch would mistake unchanged destination staging for edits.
+		var old struct {
+			IndexPatch []byte `json:"index_patch"`
+		}
+		if err = json.Unmarshal(b, &old); err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(old.IndexPatch)
+		state.IndexHash = hex.EncodeToString(sum[:])
+		backup := p + ".git." + time.Now().UTC().Format("20060102T150405.000000000Z") + ".bak"
+		if err = os.WriteFile(backup, b, 0600); err != nil {
+			return nil, err
+		}
+		if err = fsutil.WriteJSONAtomic(p+".git", state, 0600); err != nil {
+			return nil, err
+		}
+		log.Printf("[CREW_SYNC] project=%s old_git_index=migrated", id)
+	}
+	return &state, nil
 }
 func captureCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, previous crewsync.Manifest) (crewsync.Snapshot, error) {
 	snapshot, err := crewsync.Capture(ctx, roots, previous)
