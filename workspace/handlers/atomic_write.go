@@ -54,6 +54,14 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		cleanup()
 		return err
 	}
+	// Metadata has been copied. Windows cannot replace a destination while
+	// this writer still holds its original file open (PLAT-874-12).
+	if original != nil {
+		if err := original.Close(); err != nil {
+			cleanup()
+			return err
+		}
+	}
 	if err := os.Rename(tmpName, path); err != nil {
 		cleanup()
 		return err

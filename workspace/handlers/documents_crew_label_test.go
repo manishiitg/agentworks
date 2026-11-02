@@ -76,6 +76,15 @@ func TestCrewDocumentWildcardWritesPrivateManifest(t *testing.T) {
 	docs, project := setupLocalCrewDocuments(t)
 	router := setupRouter(docs)
 	router.PUT("/api/documents/*filepath", UpdateDocument)
+	private, err := crewroot.PrivateRoot(docs, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// PLAT-874-12: updating the main-chat registry failed on Windows because
+	// the atomic writer kept the original file open through its replacement.
+	if err := os.WriteFile(filepath.Join(private, "product.json"), []byte(`{"id":"old"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	const manifest = `{"id":"example","product":"work"}`
 	body, _ := json.Marshal(map[string]string{"content": manifest})
 	w := httptest.NewRecorder()
@@ -84,10 +93,6 @@ func TestCrewDocumentWildcardWritesPrivateManifest(t *testing.T) {
 	router.ServeHTTP(w, r)
 	if w.Code != 200 && w.Code != 201 {
 		t.Fatalf("write manifest: %d %s", w.Code, w.Body.String())
-	}
-	private, err := crewroot.PrivateRoot(docs, "example")
-	if err != nil {
-		t.Fatal(err)
 	}
 	got, err := os.ReadFile(filepath.Join(private, "product.json"))
 	if err != nil || string(got) != manifest {
