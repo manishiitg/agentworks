@@ -88,6 +88,7 @@ cmd_init() {
     getent group "$slot" >/dev/null || groupadd "$slot"
     id "$slot" >/dev/null 2>&1 || useradd -M -N -g "$slot" -d "$HOME_DIR/slots/home/$slot" -s /usr/sbin/nologin -c "AgentWorks slot" "$slot"
     id -nG "$PRODUCT" | tr ' ' '\n' | grep -qx "$slot" || usermod -aG "$slot" "$PRODUCT"
+    set_slot_limits "$slot"
     names="${names:+$names, }$slot"
   done
 
@@ -214,6 +215,14 @@ alloc_subid() {
 # see slot_docker), so a user can run containers without the platform's own Docker, which their account cannot
 # reach, and without seeing or stopping anyone else's containers. Each slot keeps its own images and volumes
 # under its home: mind the disk, and the memory (a running daemon is roughly 100-150 MB). Safe to run again.
+# One generous safety net per person, not a ration (owner, 2 Nov, PLAT-856-506): it catches runaway apps a
+# Crew left running. It applies to everything in the slot's own user session.
+set_slot_limits() {
+  local slot="$1" uid
+  uid="$(id -u "$slot")" || return 0
+  systemctl set-property "user-${uid}.slice" CPUQuota=200% MemoryMax=8G TasksMax=2048 || echo "Could not set limits for $slot." >&2
+}
+
 enable_slot_docker() {
   local slot="$1" uid home env
   uid="$(id -u "$slot")"
@@ -338,6 +347,7 @@ PY
   # The slot's own runtime and state areas are group-owned too (created at init).
   chown root:"$PRODUCT" "$TABLE"; chmod 0640 "$TABLE"
   echo "$user_id -> $slot (tree $tree is group $slot, closed to everyone else)"
+  set_slot_limits "$slot"
   if [[ "$(slot_docker_enabled)" == true ]]; then enable_slot_docker "$slot"; fi
 }
 
