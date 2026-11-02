@@ -3,9 +3,12 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -252,6 +255,25 @@ func checkCrewRelaySocketEndToEnd(t *testing.T, api *StreamingAPI, project, pair
 	}
 	if resolved.Status != 200 || json.Unmarshal(resolved.Body, &conversation) != nil || conversation.ConversationID == "" {
 		t.Fatalf("command through the Mac connection: %d %s", resolved.Status, resolved.Body)
+	}
+	// Load on tap: the owner reads a file of the Crew's folder; nothing outside it.
+	local, err := api.crewSyncRoots(t.Context(), owner, "local-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("private"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(local.Files, "escape.txt")); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(filepath.Join(local.Files, "escape.txt"))
+	for path, want := range map[string]int{"note.txt": 200, "../../outside.txt": 404, "escape.txt": 404} {
+		got := api.callCrewMac(request(t.Context(), "/"), project, crewChatCall{Operation: "file", ConversationID: conversation.ConversationID, Path: path})
+		if got.Status != want || want == 200 && !bytes.Contains(got.Body, []byte(base64.StdEncoding.EncodeToString([]byte("local work")))) || bytes.Contains(got.Body, []byte(base64.StdEncoding.EncodeToString([]byte("private")))) {
+			t.Fatalf("file %s: %d %s", path, got.Status, got.Body)
+		}
 	}
 	stop()
 	<-done
