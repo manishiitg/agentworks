@@ -262,6 +262,10 @@ func (api *StreamingAPI) handleCloudApps(w http.ResponseWriter, r *http.Request)
 				}
 			case "google", "slack":
 				if selected {
+					// The signed-in address says which account it is; the generic label does not.
+					if email, _ := item["account_email"].(string); email != "" {
+						name = email
+					}
 					accounts = append(accounts, map[string]any{"name": name, "kind": kind})
 				}
 			}

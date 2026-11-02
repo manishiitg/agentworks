@@ -137,7 +137,7 @@ function CloudCard({ projectId }: { projectId: string }) {
       <p className="font-medium">In the cloud this Crew uses</p>
       {cloudUses.apps.length > 0 && <p><span className="text-muted-foreground">Apps: </span>{cloudUses.apps.map(app => app.name).join(', ')}</p>}
       {cloudUses.secrets.length > 0 && <p><span className="text-muted-foreground">Secrets: </span>{cloudUses.secrets.join(', ')}</p>}
-      {cloudUses.accounts.length > 0 && <p><span className="text-muted-foreground">Accounts: </span>{cloudUses.accounts.map(account => account.name).join(', ')}</p>}
+      {cloudUses.accounts.length > 0 && <p><span className="text-muted-foreground">Accounts: </span>{cloudUses.accounts.map(account => `${account.kind === 'google' ? 'Google' : 'Slack'} · ${account.name}`).join(', ')}</p>}
       <p className="text-muted-foreground">They run on the server with its sign-ins. Secret values stay there.</p>
     </div>}
     {binding?.peer_server && <a className="inline-block text-xs underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">{network ? `Open on ${network}` : 'Open on the website'}</a>}
