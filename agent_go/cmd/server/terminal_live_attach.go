@@ -2026,18 +2026,20 @@ func (api *StreamingAPI) liveAttachRawInput(ctx context.Context, tmuxSession str
 			return nil
 		}
 	}
-	// A Claude terminal running the AgentWorks mod reports its session switches,
-	// so the session commands may be typed there too.
-	var extra []map[string]bool
+	// A Claude terminal running the AgentWorks mod allows every command but a
+	// few (claudeModBlockedCommands); other terminals keep the allowlist.
+	decide := func() (slashDecision, int) { return terminalSlashGuard.decide(tmuxSession, data) }
 	if claudecode.ClaudeModRunsIn(tmuxSession) {
-		extra = append(extra, claudeModSessionCommands)
+		decide = func() (slashDecision, int) {
+			return terminalSlashGuard.decideBlocked(tmuxSession, data, claudeModBlockedCommands)
+		}
 	}
-	switch decision, erase := terminalSlashGuard.decide(tmuxSession, data, extra...); decision {
+	switch decision, erase := decide(); decision {
 	case slashDrop:
 		liveAttachSlashNote(streams, "Pick a slash command by typing its full name")
 		return nil
 	case slashCancel:
-		log.Printf("[live-attach] session=%s: a slash command was not allowed and its line was erased (allowed: %s)", tmuxSession, terminalSlashCommandsEnv)
+		log.Printf("[live-attach] session=%s: a slash command was not allowed and its line was erased", tmuxSession)
 		if erase > 0 {
 			if err := api.liveAttachRawSend(ctx, tmuxSession, bytes.Repeat([]byte{0x7f}, erase), streams...); err != nil {
 				return err
