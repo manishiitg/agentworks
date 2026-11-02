@@ -17,7 +17,7 @@ it('shows every app consistently, opens its guide and preserves trust instructio
   }
   await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Codex"]')!.click())
   const setup=[...host.querySelectorAll('details')].find(d=>d.querySelector('summary')?.textContent==='1. Set up this app once')!
-  expect(setup.open).toBe(false);expect(setup.textContent).toContain('Settings → Hooks')
+  expect(setup.open).toBe(false);expect(setup.textContent).toContain('tools only')
   expect(host.textContent).toContain('2Connect this chat');expect(host.textContent).toContain('3Try a message')
   expect(host.querySelector('[aria-label="Install in the Codex app"]')).not.toBeNull()
   await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='Back to all apps')!.click())

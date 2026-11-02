@@ -111,4 +111,9 @@ if [ "${NO_LOGIN:-0}" != 1 ]; then
   "$INSTALL_DIR/agentworks" login --server "$SERVER"
 fi
 
-echo "Done. In your coding-agent chat, ask: Connect this chat to AgentBridge."
+echo "Setting up your installed AI apps ..."
+if ! "$INSTALL_DIR/agentworks" setup --server "$SERVER"; then
+  echo "App setup needs attention. Run agentworks setup to retry; AgentWorks is installed." >&2
+fi
+
+echo "Done. Restart the apps listed above. In AgentWorks, open Your computer to connect this computer's files and commands."
