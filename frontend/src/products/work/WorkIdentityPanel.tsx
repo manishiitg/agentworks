@@ -27,7 +27,8 @@ import { ProjectInstructionsCard } from './ProjectInstructionsCard'
 import type { WorkRuntimeSelection } from './workTabs'
 import { useChatStore } from '../../stores/useChatStore'
 
-import { useProjectMode } from './codeLocalFiles'
+import { localFileError, useProjectMode } from './codeLocalFiles'
+import { isLocalDeployment } from '../productSurfaceConfig'
 import { CODE_MODE_CHOICES } from './CreateCodeWorkspaceDialog'
 
 const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
@@ -164,9 +165,10 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
   )
 }
 
-export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange }: {
+export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange, onOpenComputer }: {
   workspacePath: string
   workflowContextPaths: string[]
+  onOpenComputer?: () => void
   onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>
 }) {
   const [folders, setFolders] = useState<WorkFolderGrant[]>([])
@@ -188,7 +190,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
       setFolders(response.folders || [])
       setRoots(response.roots || [])
     }).catch((cause: unknown) => {
-      if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load attached folders.')
+      if (!cancelled) setError(localFileError(cause))
     }).finally(() => {
       if (!cancelled) setLoading(false)
     })
@@ -218,7 +220,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
       setFolders(response.folders || [])
       setRoots(response.roots || [])
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load attached folders.')
+      setError(localFileError(cause))
     } finally {
       setLoading(false)
     }
@@ -227,16 +229,18 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   // In the Mac app, pick a folder on this computer and attach it (read only or read & write).
   const [addAccess, setAddAccess] = useState<'read_only' | 'read_write'>('read_only')
   const [adding, setAdding] = useState(false)
-  const canPick = Boolean(window.electronAPI?.pickWorkflowFolder)
+  const local = isLocalDeployment()
+  const canPick = local && Boolean(window.electronAPI?.pickWorkflowFolder)
   // On the Mac, agents may use the Downloads folder by default; the person can remove it (every agent sandbox then blocks it).
   const [downloads, setDownloads] = useState<{ available: boolean; removed?: boolean }>({ available: false })
   useEffect(() => { void api.get<{ available: boolean; removed?: boolean }>('/api/work/mac-downloads').then(({ data }) => setDownloads(data)).catch(() => {}) }, [])
   const setDownloadsRemoved = async (removed: boolean) => {
     setError('')
     try { const { data } = await api.put<{ available: boolean; removed?: boolean }>('/api/work/mac-downloads', { removed }); setDownloads(data) }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not change Downloads access.') }
+    catch (cause) { setError(localFileError(cause)) }
   }
   const add = async () => {
+    if (!canPick) return
     const path = await window.electronAPI?.pickWorkflowFolder?.()
     if (!path) return
     setAdding(true); setError('')
@@ -245,7 +249,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
       await workFolderApi.addWorkFolder({ path, alias, access: addAccess })
       await refresh()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not add the folder.')
+      setError(localFileError(cause))
     } finally { setAdding(false) }
   }
 
@@ -255,7 +259,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
       await workFolderApi.deleteWorkFolder(folder.id)
       await refresh()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not remove folder.')
+      setError(localFileError(cause))
     }
   }
 
@@ -273,7 +277,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
       <SettingsCard
         icon={<FolderOpen aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Attached folders"
-        description="Folders on your Mac that your Crews can open. Read only, or read & write. They stay on your Mac."
+        description={local ? "Folders on your Mac that your Crews can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
         count={`${folders.length} attached`}
       >
         {/* On a person's own Mac agents may use their Downloads folder by default; it can be removed and added back. */}
@@ -290,7 +294,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
             <option value="read_only">Read only</option><option value="read_write">Read &amp; write</option>
           </select>
           <button type="button" disabled={adding} onClick={() => void add()} className="h-8 rounded-md border border-border px-3 text-xs hover:bg-muted disabled:opacity-50">{adding ? 'Adding…' : 'Add folder'}</button>
-        </div> : <p className="mt-3 text-xs text-muted-foreground">Add folders from the AgentWorks Mac app.</p>}
+        </div> : <div className="mt-3 text-xs text-muted-foreground">{local ? 'Add folders from the AgentWorks Mac app.' : onOpenComputer && <button type="button" onClick={onOpenComputer} className="underline underline-offset-2 hover:text-foreground">Open Your computer</button>}</div>}
         {error && <p className="text-xs text-destructive">{error}</p>}
       </SettingsCard>
     </div>
