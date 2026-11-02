@@ -192,7 +192,7 @@ func validID(id string) bool {
 func (s Store) dir() string    { return filepath.Join(s.Private, "file-snapshots") }
 func (s Store) gitDir() string { return filepath.Join(s.dir(), "objects.git") }
 func (s Store) command(ctx context.Context, args ...string) *exec.Cmd {
-	flags := []string{"-c", "safe.directory=" + s.Root, "-c", "core.bare=false", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "gc.auto=0", "-c", "protocol.allow=never", "--git-dir=" + s.gitDir(), "--work-tree=" + s.Root}
+	flags := []string{"-c", "safe.directory=" + s.Root, "-c", "core.bare=false", "-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "gc.auto=0", "-c", "protocol.allow=never", "--git-dir=" + s.gitDir(), "--work-tree=" + s.Root}
 	cmd := exec.CommandContext(ctx, "git", append(flags, args...)...)
 	cmd.Dir = s.Root
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + s.dir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}

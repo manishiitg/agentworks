@@ -130,7 +130,7 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 }
 
 func (api *StreamingAPI) captureCrewNative(ctx context.Context, claims *UserClaims, roots crewroot.Roots, c ProductConversationRecord, runtime *ChatHistoryAgentRuntime) (*sessiontransfer.Bundle, error) {
-	if runtime == nil || runtime.AgentSessionHandle == nil {
+	if crewArchiveOnly(roots) || runtime == nil || runtime.AgentSessionHandle == nil {
 		return nil, nil
 	}
 	h := runtime.AgentSessionHandle.Provider
@@ -209,7 +209,7 @@ func crewNativeRuntimeAvailable(ctx context.Context, b *sessiontransfer.Bundle) 
 var errCrewNativeDestinationBusy = errors.New("the destination agent is still working; retry after it finishes")
 
 func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, session string, b *sessiontransfer.Bundle) (*ChatHistoryAgentRuntime, error) {
-	if b == nil {
+	if crewArchiveOnly(roots) || b == nil {
 		return nil, nil
 	}
 	if current.Provider != b.Provider {

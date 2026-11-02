@@ -26,6 +26,7 @@ import (
 )
 
 type crewSyncRequest struct {
+	ArchiveOnly  bool                     `json:"archive_only,omitempty"`
 	Mode         string                   `json:"mode,omitempty"`
 	SplitFiles   bool                     `json:"split_files,omitempty"`
 	TransferID   string                   `json:"transfer_id,omitempty"`
@@ -231,7 +232,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 				return crewSyncReply{}, err
 			}
 		}
-		binding := crewroot.SyncBinding{SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID}
+		binding := crewroot.SyncBinding{ArchiveOnly: input.ArchiveOnly, SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID}
 		if err = crewroot.WriteSync(created, binding); err != nil {
 			return crewSyncReply{}, err
 		}
@@ -298,7 +299,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, err
 		}
 		if binding == nil {
-			binding = &crewroot.SyncBinding{PairID: input.PairID, Side: "server", Editing: "server", PeerProjectID: roots.ID, SplitFiles: roots.SeparateFiles(), MacName: input.MacName}
+			binding = &crewroot.SyncBinding{ArchiveOnly: input.ArchiveOnly, PairID: input.PairID, Side: "server", Editing: "server", PeerProjectID: roots.ID, SplitFiles: roots.SeparateFiles(), MacName: input.MacName}
 			if err := crewroot.WriteSync(roots.ID, *binding); err != nil {
 				return out, err
 			}
@@ -336,8 +337,11 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if err = validateCrewHandoffConversation(input.Conversation); err != nil {
 			return out, err
 		}
-		if input.Conversation.Native == nil {
+		if input.Conversation.Native == nil && !binding.ArchiveOnly {
 			return out, fmt.Errorf("native session sync is not ready for this conversation")
+		}
+		if binding.ArchiveOnly {
+			input.Conversation.Native = nil
 		}
 		if err = bindCrewNativeStage(roots, input.Conversation.Native); err != nil {
 			return out, err

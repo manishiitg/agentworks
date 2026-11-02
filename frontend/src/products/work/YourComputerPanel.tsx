@@ -11,11 +11,11 @@ import { ServerProjectLocalOpen } from './ServerProjectLocalOpen'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 
-type Binding = { mode?: 'continuous' | 'manual' | 'off'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
+type Binding = { archive_only?: boolean; mode?: 'continuous' | 'manual' | 'off'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
 type SyncStatus = { binding: Binding | null; auto?: { state: string; message?: string } }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
-/** In the Mac app a Crew is either in the cloud (on a network) or only on this Mac; on a server the page is its laptop access. */
+/** In the AgentWorks app a Crew is either in the cloud (on a network) or only on this computer; on a server the page is its laptop access. */
 export const crewCloudMode = () => hasDesktopConnections()
 // Most people have one network, so its name is shown only when there are several.
 const networkName = (binding: Binding | null | undefined, connections: { id: string; name: string }[]) =>
@@ -65,7 +65,7 @@ const tintedIcons = new Map<string, LucideIcon>()
 
 export function YourComputerPanel({ projectId, sessionId }: { projectId: string; sessionId?: string; canEdit: boolean }) {
   if (!crewCloudMode()) return <div><LaptopCard sessionId={sessionId} /></div>
-  // A Crew opened from a connected server is already in the cloud; the Mac app offers to open it here.
+  // A Crew opened from a connected server is already in the cloud; the AgentWorks app offers to open it here.
   const connection = getRawActiveWorkspaceId()
   if (connection !== 'local') return <section aria-label="Cloud" className="space-y-3 text-sm">
     <p role="status" className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-500" />In the cloud</p>
@@ -113,14 +113,15 @@ function CloudCard({ projectId }: { projectId: string }) {
   const problem = error || (status?.auto?.state && !['syncing', 'synced', 'idle'].includes(status.auto.state) ? status.auto.message || '' : '')
   const syncing = busy || status?.auto?.state === 'syncing'
   return <section aria-label="Cloud" className="space-y-3">
+    {binding?.archive_only && <p className="text-sm text-muted-foreground">Your conversation is restored into a new AI session when you switch computers. Files finish syncing before the next reply.</p>}
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
         <p role="status" className="flex items-center gap-2 text-sm font-semibold">
           {syncing ? <RefreshCw aria-label="Syncing" className="h-4 w-4 animate-spin text-muted-foreground" /> : binding ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
-          {!status ? 'Checking…' : binding ? (network ? `In the cloud on ${network}` : 'In the cloud') : 'Only on this Mac'}
+          {!status ? 'Checking…' : binding ? (network ? `In the cloud on ${network}` : 'In the cloud') : 'Only on this computer'}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone.' : 'Turn on to use this Crew from the website or your phone.'}</p>
-        {binding && <p className="mt-1 text-xs text-muted-foreground">{laptop?.state === 'existing' || laptop?.state === 'needs_app' ? laptop.message : 'While Cloud is on, people using this Crew run commands in this folder on your Mac.'}</p>}
+        {binding && <p className="mt-1 text-xs text-muted-foreground">{laptop?.state === 'existing' || laptop?.state === 'needs_app' ? laptop.message : 'While Cloud is on, people using this Crew run commands in this folder on your computer.'}</p>}
       </div>
       <Switch on={Boolean(binding)} disabled={!status || busy || !target} label="Cloud" onChange={() => void (binding ? run('mode', 'off') : paired ? run('mode', 'continuous') : run('update'))} />
     </div>

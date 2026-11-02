@@ -13,7 +13,7 @@ import (
 
 func (api *StreamingAPI) registerOpenServerProjectTool(reg definitionToolRegistrar, gate *productToolGate, claims *UserClaims, sessionID, root string) error {
 	gate.Declare("open_server_project")
-	return reg.RegisterCustomToolWithTimeout("open_server_project", "Open one of your existing connected-server projects on this Mac, keeping its identity, files and main conversation through Project sync. Use action=list to find your connected servers; provide server to list its projects. Then action=inspect or open with server and project (exact name or ID). Optional folder must be empty; default is under ~/AgentWorks. Uses only your own saved server sign-in and the server rechecks the project's actual owner. Opening copies completed work but does not start an agent or move editing; your next local message uses the normal handoff. Server secrets and logins are not copied; the result names connections to set up on the Mac. Available only in your local interactive Builder chat; a server chat can open the Project sync panel in the Mac app.", map[string]any{
+	return reg.RegisterCustomToolWithTimeout("open_server_project", "Open one of your existing connected-server projects on this computer, keeping its identity, files and main conversation through Project sync. Use action=list to find your connected servers; provide server to list its projects. Then action=inspect or open with server and project (exact name or ID). Optional folder must be empty; default is under ~/AgentWorks. Uses only your own saved server sign-in and the server rechecks the project's actual owner. Opening copies completed work but does not start an agent or move editing; your next local message uses the normal handoff. Server secrets and logins are not copied; the result names connections to set up on the Mac. Available only in your local interactive Builder chat; a server chat can open the Project sync panel in the AgentWorks app.", map[string]any{
 		"type": "object", "properties": map[string]any{
 			"action": map[string]any{"type": "string", "enum": []string{"list", "inspect", "open"}},
 			"server": map[string]any{"type": "string"}, "project": map[string]any{"type": "string"}, "folder": map[string]any{"type": "string"},
@@ -48,7 +48,7 @@ func (api *StreamingAPI) registerOpenServerProjectTool(reg definitionToolRegistr
 			}
 		}
 		if connectionID == "" {
-			return "", fmt.Errorf("choose a saved server from action=list; connect it in the Mac app first if needed")
+			return "", fmt.Errorf("choose a saved server from action=list; connect it in the AgentWorks app first if needed")
 		}
 		connection, err := desktopConnectionFor(caller.UserID, connectionID)
 		if err != nil {
@@ -59,11 +59,11 @@ func (api *StreamingAPI) registerOpenServerProjectTool(reg definitionToolRegistr
 		request.Header.Set("Content-Type", "application/json")
 		response, err := desktopHTTPClient().Do(request)
 		if err != nil {
-			return "", fmt.Errorf("this server is unavailable; retry from the Mac app")
+			return "", fmt.Errorf("this server is unavailable; retry from the AgentWorks app")
 		}
 		defer response.Body.Close()
 		if response.StatusCode != 200 {
-			return "", fmt.Errorf("could not list this server's projects; reconnect in the Mac app")
+			return "", fmt.Errorf("could not list this server's projects; reconnect in the AgentWorks app")
 		}
 		var inventory struct {
 			Projects []desktopProject `json:"workspaces"`

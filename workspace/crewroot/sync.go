@@ -14,6 +14,7 @@ import (
 // SyncBinding is platform state, never a file supplied by the working tree.
 // IDs on different servers are deliberately not treated as interchangeable.
 type SyncBinding struct {
+	ArchiveOnly     bool   `json:"archive_only,omitempty"`
 	Mode            string `json:"mode,omitempty"`
 	SplitFiles      bool   `json:"split_files,omitempty"`
 	PairID          string `json:"pair_id"`

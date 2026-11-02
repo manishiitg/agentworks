@@ -19,13 +19,12 @@ import (
 // cliHostOS is the platform the agent server runs on (a variable for tests).
 var cliHostOS = runtime.GOOS
 
-// cliPersonalMac says whether the server runs on a person's own Mac (macOS,
-// single-user). There coding CLIs run Full CLI under Seatbelt with the
-// person's home open, folder-guard grants may name absolute host folders, and
-// the Code terminal runs as the person. Every other host, and any multi-user
-// server, confines its CLIs with Landlock or runs them bridge-only (PLAT-364,
-// PLAT-394). There is no switch: the platform decides, so local runs and
-// servers never drift on a forgotten setting.
+// Only the personal local Windows app may run without confinement (PLAT-856-508).
+func cliPersonalWindows() bool {
+	return cliHostOS == "windows" && IsLocalMode() && !IsMultiUserMode()
+}
+
+// cliPersonalMac retains the existing single-user Mac Seatbelt policy.
 func cliPersonalMac() bool {
 	return cliHostOS == "darwin" && !IsMultiUserMode()
 }
@@ -45,7 +44,8 @@ func failClosedToBridgeOnly(llmAgent *agent.LLMAgentWrapper, sessionID, why stri
 // it gets Full CLI under Seatbelt. Everywhere else it is confined to the
 // folders its folder guard grants, with a private CLI home in its working
 // directory, and gets Full CLI inside that lock. If neither lock can be
-// applied the chat falls back to bridge tools only; it never runs unconfined. The guard is only known after the agent
+// applied the chat falls back to bridge tools only. Personal local Windows is
+// explicitly unconfined for phase 1. The guard is only known after the agent
 // wrapper is built, so the policy is replaced here, before the Agent is
 // finalized. A read-only guard path stays read-only for the CLI; blocked paths
 // inside a granted folder are not carved out (Landlock only adds access), and
@@ -56,6 +56,14 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, prov
 	}
 	decision, runner, why := decideCLIConfinement(provider, workingDir)
 	switch decision {
+	case cliRunPersonalWindows:
+		policy := llmtypes.CLISecurityPolicy{Provider: provider, Mode: llmtypes.CLISecurityModeCompatibility, ApprovedCapabilities: []string{"personal_windows"}}
+		if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
+			failClosedToBridgeOnly(llmAgent, sessionID, "personal Windows launch policy could not be attached")
+			return
+		}
+		log.Printf("[CLI_SANDBOX] session=%s provider=%s person=%s personal_windows=true sandbox=none tools=%s", sessionID, provider, personID, llmAgent.CodingAgentToolsMode())
+		return
 	case cliRunSeatbelt:
 		applyCLISeatbelt(llmAgent, sessionID, provider, workingDir, base, runtimeDir...)
 		return
@@ -105,9 +113,10 @@ func cliNativeHomeEnvironment(provider, runtimeDir string) map[string]string {
 type cliRunDecision string
 
 const (
-	cliRunConfined   cliRunDecision = "confined"    // Full CLI inside the Landlock lock
-	cliRunBridgeOnly cliRunDecision = "bridge_only" // no native tools: no lock could be applied
-	cliRunSeatbelt   cliRunDecision = "seatbelt"    // Full CLI inside macOS Seatbelt: a person's own Mac
+	cliRunPersonalWindows cliRunDecision = "personal_windows" // owner-authorized local Windows execution
+	cliRunConfined        cliRunDecision = "confined"         // Full CLI inside the Landlock lock
+	cliRunBridgeOnly      cliRunDecision = "bridge_only"      // no native tools: no lock could be applied
+	cliRunSeatbelt        cliRunDecision = "seatbelt"         // Full CLI inside macOS Seatbelt: a person's own Mac
 )
 
 // cliSeatbeltAvailable reports whether macOS sandbox-exec is present (a variable for tests).
@@ -117,12 +126,14 @@ var cliSeatbeltAvailable = func() bool {
 }
 
 // decideCLIConfinement is applyCLILandlock's choice, kept separate so it can
-// be tested without an agent. Every CLI gets the same lock
-// (multi-llm-provider-go wraps every adapter's launch); there is no unconfined
-// answer.
+// be tested without an agent. Personal local Windows is explicitly unconfined;
+// other hosts retain their existing confinement requirements.
 func decideCLIConfinement(provider, workingDir string) (cliRunDecision, string, string) {
 	if strings.TrimSpace(workingDir) == "" {
 		return cliRunBridgeOnly, "", "the CLI has no working folder to confine it to"
+	}
+	if cliPersonalWindows() {
+		return cliRunPersonalWindows, "", ""
 	}
 	if cliPersonalMac() {
 		if !cliSeatbeltAvailable() {

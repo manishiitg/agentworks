@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -480,7 +481,12 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("journal retry duplicated or truncated dialogue: %d %v", len(page.Events), err)
 			}
 			checkTranscript(retried, "server continued")
-			checkCrewMuseNativeHandoff(t, api, ctx, owner, local, retried, replay)
+			t.Run("Muse native import", func(t *testing.T) {
+				if _, err := exec.LookPath("muse"); err != nil {
+					t.Skip("Muse native import needs Muse installed; archive, owner and secret checks still run")
+				}
+				checkCrewMuseNativeHandoff(t, api, ctx, owner, local, retried, replay)
+			})
 			saved, err = ReadChatHistoryConversation("owner", returned.SessionID, returned.WorkspacePath)
 			if err != nil || !bytes.Contains(saved, []byte("server continued")) || bytes.Contains(saved, []byte("do-not-transfer")) {
 				t.Fatalf("return lost conversation or copied runtime: %v", err)

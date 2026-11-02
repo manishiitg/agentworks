@@ -78,7 +78,7 @@ func serveServerFirstFixture(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(roots.Files, crewroot.FilesSegment), 0700); err != nil {
 			t.Fatal(err)
 		}
-		if err := crewroot.WriteSync(project, crewroot.SyncBinding{PairID: "existing-split-pair", Side: "server", Editing: "server", PeerProjectID: project, SplitFiles: true}); err != nil {
+		if err := crewroot.WriteSync(project, crewroot.SyncBinding{ArchiveOnly: os.Getenv("AGENTWORKS_SERVER_FIRST_ARCHIVE") == "true", PairID: "existing-split-pair", Side: "server", Editing: "server", PeerProjectID: project, SplitFiles: true}); err != nil {
 			t.Fatal(err)
 		}
 		roots, err = api.crewSyncRoots(ctx, GetUserFromContext(ctx), project)
@@ -183,6 +183,23 @@ func TestCrewSyncServerFirstHTTPIdentityAndOwner(t *testing.T) {
 		serveServerFirstFixture(t)
 		return
 	}
+	testCrewSyncServerFirst(t, false)
+}
+
+// PLAT-856-508: Windows selects archive before native export/rsync, keeps
+// the logical conversation, and applies both directions' files before a send.
+func TestWindowsCrewSyncReloadAndFiles(t *testing.T) {
+	testCrewSyncServerFirst(t, true)
+}
+
+func testCrewSyncServerFirst(t *testing.T, windows bool) {
+	t.Helper()
+	if windows {
+		oldOS := cliHostOS
+		cliHostOS = "windows"
+		t.Cleanup(func() { cliHostOS = oldOS })
+		t.Setenv("AGENTWORKS_RSYNC_BIN", filepath.Join(t.TempDir(), "rsync-must-not-run"))
+	}
 	for _, split := range []bool{false, true} {
 		t.Run(map[bool]string{false: "flat", true: "split"}[split], func(t *testing.T) {
 			api, ctx := serverFirstEnvironment(t)
@@ -192,7 +209,7 @@ func TestCrewSyncServerFirstHTTPIdentityAndOwner(t *testing.T) {
 				t.Fatal(err)
 			}
 			cmd := exec.Command(exe, "-test.run=^TestCrewSyncServerFirstHTTPIdentityAndOwner$", "-test.timeout=3m")
-			cmd.Env = append(os.Environ(), "AGENTWORKS_SERVER_FIRST_HELPER=true", "AGENTWORKS_SERVER_FIRST_READY="+ready, "AGENTWORKS_SERVER_FIRST_SPLIT="+map[bool]string{false: "false", true: "true"}[split])
+			cmd.Env = append(os.Environ(), "AGENTWORKS_SERVER_FIRST_HELPER=true", "AGENTWORKS_SERVER_FIRST_READY="+ready, "AGENTWORKS_SERVER_FIRST_SPLIT="+map[bool]string{false: "false", true: "true"}[split], "AGENTWORKS_SERVER_FIRST_ARCHIVE="+map[bool]string{false: "false", true: "true"}[windows])
 			stdin, err := cmd.StdinPipe()
 			if err != nil {
 				t.Fatal(err)
@@ -228,7 +245,7 @@ func TestCrewSyncServerFirstHTTPIdentityAndOwner(t *testing.T) {
 			if split {
 				// This source already has a split pair. Mac A retains its
 				// private receipt from before an interrupted first restore.
-				if err := crewroot.WriteSync(source.ProjectID, crewroot.SyncBinding{PairID: "existing-split-pair", Side: "local", Editing: "server", ConnectionID: "saved", PeerProjectID: source.ProjectID, PeerServer: source.URL, SplitFiles: true}); err != nil {
+				if err := crewroot.WriteSync(source.ProjectID, crewroot.SyncBinding{ArchiveOnly: windows, PairID: "existing-split-pair", Side: "local", Editing: "server", ConnectionID: "saved", PeerProjectID: source.ProjectID, PeerServer: source.URL, SplitFiles: true}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -406,6 +423,44 @@ func TestCrewSyncServerFirstHTTPIdentityAndOwner(t *testing.T) {
 			}
 			if state.Count != 1 || state.Binding == nil || state.Binding.Editing != "local" {
 				t.Fatalf("server duplicated project or did not transfer: %+v", state)
+			}
+			if windows {
+				if !b.ArchiveOnly || !state.Binding.ArchiveOnly {
+					t.Fatal("Windows pair did not select archive on both computers")
+				}
+				main, err = api.crewHandoffMain(ctx, GetUserFromContext(ctx), source.ProjectID)
+				if err != nil || !main.FreshNative || main.ConversationID != source.ConversationID {
+					t.Fatalf("Windows did not reload its conversation into a fresh session: %+v %v", main, err)
+				}
+				// Continuous saved-history mirroring must work without rsync too.
+				if err := api.syncCrewNativeMirror(ctx, GetUserFromContext(ctx), local, b, desktopConnection{ID: "saved", Server: source.URL, Token: "owner"}); err != nil {
+					t.Fatalf("archive mirror: %v", err)
+				}
+				mirror, err := readCrewNativeMirror(local)
+				if err != nil || mirror.Conversation.Native != nil || mirror.Conversation.ConversationID != source.ConversationID {
+					t.Fatalf("archive mirror lost history or acquired native state: %+v %v", mirror, err)
+				}
+				if err := os.WriteFile(filepath.Join(local.Files, "note.txt"), []byte("Windows edit"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				sent := api.runInternalCrewHandoff(ctx, GetUserFromContext(ctx), source.ProjectID, "saved", "server")
+				if sent.status >= 400 {
+					t.Fatalf("Windows -> server: %d %s", sent.status, sent.body.String())
+				}
+				returned := api.runInternalCrewHandoff(ctx, GetUserFromContext(ctx), source.ProjectID, "saved", "local")
+				if returned.status >= 400 {
+					t.Fatalf("server -> Windows: %d %s", returned.status, returned.body.String())
+				}
+				if content, err := os.ReadFile(filepath.Join(local.Files, "note.txt")); err != nil || string(content) != "Windows edit" {
+					t.Fatalf("roundtrip lost file: %q %v", content, err)
+				}
+				current, err := api.crewHandoffMain(ctx, GetUserFromContext(ctx), source.ProjectID)
+				if err != nil || current.ConversationID != source.ConversationID || !current.FreshNative {
+					t.Fatalf("roundtrip lost fresh-session continuity: %+v %v", current, err)
+				}
+				if history, err := ReadChatHistoryConversation("owner", current.SessionID, current.WorkspacePath); err != nil || !bytes.Contains(history, []byte("source-private-message")) {
+					t.Fatalf("roundtrip lost remembered conversation: %v", err)
+				}
 			}
 		})
 	}

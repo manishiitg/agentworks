@@ -11,11 +11,11 @@ export function ProjectConnectionNotes({ project }: { project?: SourceProject })
   const of = (kinds: string[]) => [...new Set((project?.dependencies || []).filter(item => kinds.includes(item.kind)).map(item => item.name))]
   const apps = of(['mcp']), secrets = of(['project_secret', 'shared_secret']), accounts = of(['google', 'slack'])
   if (!apps.length && !secrets.length && !accounts.length) return null
-  // Apps run on the server through list_server_apps / call_server_app (PLAT-856-493); nothing is copied to this Mac.
+  // Apps run on the server through list_server_apps / call_server_app (PLAT-856-493); nothing is copied to this computer.
   return <div className="space-y-1 text-muted-foreground">
     {apps.length > 0 && <p>{apps.join(', ')}: apps this Crew has selected keep working here through the server, with the server's sign-ins.</p>}
     {secrets.length > 0 && <p>Secrets ({secrets.join(', ')}) stay on the server. A step that needs them runs there.</p>}
-    {accounts.length > 0 && <p>Personal accounts ({accounts.join(', ')}) aren't available on this Mac yet.</p>}
+    {accounts.length > 0 && <p>Personal accounts ({accounts.join(', ')}) aren't available on this computer yet.</p>}
   </div>
 }
 
@@ -34,7 +34,7 @@ export function ServerProjectLocalOpen({ projectId, connection }: { projectId: s
     void desktopRequest<LocalProject>(path).then(data => {
       if (!disposed && isChatIdentityCurrent(identity)) { setPreview(data); setFolder(data.folder) }
     }).catch(cause => {
-      if (!disposed && isChatIdentityCurrent(identity)) setError(cause instanceof Error ? cause.message : 'Could not open this project on your Mac.')
+      if (!disposed && isChatIdentityCurrent(identity)) setError(cause instanceof Error ? cause.message : 'Could not open this project on your computer.')
     })
     return () => { disposed = true }
   }, [path])
@@ -48,14 +48,14 @@ export function ServerProjectLocalOpen({ projectId, connection }: { projectId: s
       void useConnectedWorkStore.getState().refresh()
       await window.electronAPI?.openDesktopConnection?.('local', `/crew/projects/${encodeURIComponent(data.project_id)}`)
     } catch (cause) {
-      if (current()) setError(cause instanceof Error ? cause.message : 'Could not bring this project to your Mac. Retry from Project sync.')
+      if (current()) setError(cause instanceof Error ? cause.message : 'Could not bring this project to your computer. Retry from Project sync.')
     } finally { if (current()) setBusy(false) }
   }
   return <div className="space-y-3">
-    <p>Open this project on your Mac with its files and main conversation. It keeps the same project identity and continues to sync with this server.</p>
-    {preview && !preview.binding && <label className="block space-y-2"><span>Folder on this Mac</span><input aria-label="Folder on this Mac" value={folder} onChange={event => setFolder(event.target.value)} className="w-full rounded-md border border-border bg-background p-2" /><span className="block text-xs text-muted-foreground">Choose an empty folder. Existing files will stay where they are.</span></label>}
+    <p>Open this project on your computer with its files and main conversation. It keeps the same project identity and continues to sync with this server.</p>
+    {preview && !preview.binding && <label className="block space-y-2"><span>Folder on this computer</span><input aria-label="Folder on this computer" value={folder} onChange={event => setFolder(event.target.value)} className="w-full rounded-md border border-border bg-background p-2" /><span className="block text-xs text-muted-foreground">Choose an empty folder. Existing files will stay where they are.</span></label>}
     <ProjectConnectionNotes project={preview?.project} />
     {error && <p role="alert" className="text-destructive">{error}</p>}
-    <Button disabled={!preview || busy} onClick={() => void open()}>{busy ? 'Bringing project to this Mac…' : 'Open on this Mac'}</Button>
+    <Button disabled={!preview || busy} onClick={() => void open()}>{busy ? 'Bringing project to this computer…' : 'Open on this computer'}</Button>
   </div>
 }
