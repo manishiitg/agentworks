@@ -88,11 +88,13 @@ function CloudCard({ projectId }: { projectId: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
+  const [laptop, setLaptop] = useState<{ state: string; message?: string }>()
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
-    load()
-    const timer = window.setInterval(load, 5000)
+    const loadLaptop = () => void api.get<{ state: string; message?: string }>(`/api/crew-cloud-laptop/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setLaptop(data) }).catch(() => {})
+    load(); loadLaptop()
+    const timer = window.setInterval(() => { load(); loadLaptop() }, 5000)
     return () => { window.clearInterval(timer); abort.abort() }
   }, [projectId, reload])
   // A paired Crew turned off keeps its pair (both copies stay); the switch reads the server's saved mode.
@@ -115,7 +117,8 @@ function CloudCard({ projectId }: { projectId: string }) {
           {syncing ? <RefreshCw aria-label="Syncing" className="h-4 w-4 animate-spin text-muted-foreground" /> : binding ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
           {!status ? 'Checking…' : binding ? (network ? `In the cloud on ${network}` : 'In the cloud') : 'Only on this Mac'}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone. It works here or in the cloud, with this project’s folder and terminal on this Mac.' : 'Turn on to use this Crew from the website or your phone.'}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone.' : 'Turn on to use this Crew from the website or your phone.'}</p>
+        {binding && <p className="mt-1 text-xs text-muted-foreground">{laptop?.state === 'existing' || laptop?.state === 'needs_app' ? laptop.message : 'While Cloud is on, people using this Crew run commands in this folder on your Mac.'}</p>}
       </div>
       <Switch on={Boolean(binding)} disabled={!status || busy || !target} label="Cloud" onChange={() => void (binding ? run('mode', 'off') : paired ? run('mode', 'continuous') : run('update'))} />
     </div>
