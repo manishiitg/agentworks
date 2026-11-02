@@ -84,21 +84,6 @@ func isPrintableASCII(data []byte) bool {
 
 // decide classifies one chunk of raw terminal input. On slashCancel the second result is how many
 // characters to erase (backspaces to send).
-// claudeModBlockedCommands are the built-in commands a Claude terminal running
-// the AgentWorks mod may not run (owner, 2 Nov 2026: allow the most, block a
-// few). Everything else is allowed. Its session switches (/clear, /new,
-// /resume, /branch, /fork) are allowed: the mod reports them and the chat
-// follows. Blocked: the login and model AgentWorks chooses and bills, the
-// tools, rules and add-ons it sets, leaving the Crew's folder, detaching from
-// the chat, sending the conversation out, and changing the machine.
-var claudeModBlockedCommands = map[string]bool{
-	"login": true, "logout": true, "model": true,
-	"permissions": true, "allowed-tools": true, "hooks": true, "plugin": true, "plugins": true, "mcp": true,
-	"add-dir": true, "cd": true, "background": true,
-	"bug": true, "feedback": true,
-	"upgrade": true, "terminal-setup": true, "ide": true, "install-github-app": true,
-}
-
 // decide also allows the commands named in extra, matched on the command's
 // first word so their arguments may follow.
 func (g *slashGuard) decide(session string, data []byte, extra ...map[string]bool) (slashDecision, int) {
@@ -115,24 +100,6 @@ func (g *slashGuard) decide(session string, data []byte, extra ...map[string]boo
 			}
 		}
 		return false
-	})
-}
-
-// decideBlocked allows every command except those in blocked (first word). The CLI's menu completes a
-// partial name on Enter, so a name that is the start of a blocked one ("/mod" for /model) is blocked too.
-func (g *slashGuard) decideBlocked(session string, data []byte, blocked map[string]bool) (slashDecision, int) {
-	allowAll, _ := slashPolicy()
-	return g.decideWith(session, data, allowAll, func(name string) bool {
-		fields := strings.Fields(name)
-		if len(fields) == 0 {
-			return false
-		}
-		for command := range blocked {
-			if strings.HasPrefix(command, fields[0]) {
-				return false
-			}
-		}
-		return true
 	})
 }
 
