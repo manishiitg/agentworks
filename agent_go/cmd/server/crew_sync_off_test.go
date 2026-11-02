@@ -29,6 +29,9 @@ func checkCrewSyncOff(t *testing.T, api *StreamingAPI, ctx context.Context, loca
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, _, err := api.desktopCrewChatBinding(ctx, local.ID); err != nil {
+		t.Fatalf("allowed local relay setup: %v", err)
+	}
 	offline.Store(true)
 	unlock, err := wf.LockWorkspace(ctx, local.Files)
 	if err != nil {
@@ -53,6 +56,13 @@ func checkCrewSyncOff(t *testing.T, api *StreamingAPI, ctx context.Context, loca
 	if locked, err := local.SourceLocked(); err != nil || locked {
 		t.Fatalf("Off kept source locked: %t %v", locked, err)
 	}
+	b.Editing = "local"
+	if err := crewroot.WriteSync(local.ID, *b); err != nil {
+		t.Fatal(err)
+	}
+	if result := api.runDesktopCrewChat(ctx, local.ID, b.PairID, crewChatCall{ID: "off-poll", Operation: "resolve"}); result.Status != 403 {
+		t.Fatalf("Off admitted a returned remote poll: %+v", result)
+	}
 	if err := crewSyncOn(local.ID); err == nil {
 		t.Fatal("new transfer admitted while Off")
 	}
@@ -66,6 +76,12 @@ func checkCrewSyncOff(t *testing.T, api *StreamingAPI, ctx context.Context, loca
 	peer, err := crewroot.ReadSync(server.ID)
 	if err != nil || peer.Mode != "off" {
 		t.Fatalf("next contact did not tell peer: %+v %v", peer, err)
+	}
+	// Restore the simulated transfer's server authority before On. The local
+	// relay refusal above deliberately changed Editing only to isolate its rule.
+	b.Editing = "server"
+	if err := crewroot.WriteSync(local.ID, *b); err != nil {
+		t.Fatal(err)
 	}
 	if w := request("mode", "continuous", "owner"); w.Code != 200 {
 		t.Fatalf("On: %d %s", w.Code, w.Body.String())
