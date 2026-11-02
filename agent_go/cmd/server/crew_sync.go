@@ -188,6 +188,10 @@ func crewNativeErrorReply(err error) map[string]string {
 // The transport carries project content, never paths or credentials chosen by
 // another machine. Every operation rechecks the destination's actual owner.
 func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("transfer") != "" {
+		api.handleCrewSyncPiece(w, r)
+		return
+	}
 	var input crewSyncRequest
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -195,7 +199,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		// A Crew upload carries its files and takes longer than the server's 30-second read limit.
 		log.Printf("[CREW_SYNC] project=%s read deadline not extended: %v", mux.Vars(r)["project"], err)
 	}
-	if r.Method != http.MethodGet && json.NewDecoder(io.LimitReader(r.Body, 800<<20)).Decode(&input) != nil {
+	if r.Method != http.MethodGet && json.NewDecoder(io.LimitReader(r.Body, crewSyncMetadataBytes)).Decode(&input) != nil {
 		externalError(w, 400, "invalid_request", "Send a valid sync request.")
 		return
 	}
@@ -217,6 +221,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
+	if input.Action == "stage" {
+		return api.prepareCrewTransfer(ctx, claims, id, input)
+	}
 	if input.Action == "create" {
 		if input.PairID == "" || input.SourceID == "" || input.Name == "" {
 			return crewSyncReply{}, fmt.Errorf("choose a local Crew to sync")
@@ -416,6 +423,13 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 				return out, err
 			}
 		}
+		if err = verifyCrewTransferDescriptor(roots.ID, binding.PairID, input.TransferID, input.Snapshot); err != nil {
+			return out, err
+		}
+		if err = hydrateCrewPayloads(roots.ID, binding.PairID, input.TransferID, "upload", input.Snapshot); err != nil {
+			return out, err
+		}
+		defer dropCrewPayloadBytes(input.Snapshot)
 		if err = applyCrewSyncSnapshot(ctx, roots, binding.PairID, input.Snapshot); err != nil {
 			return out, err
 		}
@@ -482,6 +496,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		crewSyncRememberScan(roots, stamp)
 		out.Snapshot = &snapshot
 		out.TransferID = uuid.NewString()
+		if e = freezeCrewPayloads(roots.ID, binding.PairID, out.TransferID, "download", out.Snapshot); e != nil {
+			return out, e
+		}
 		if e = fsutil.WriteJSONAtomic(pendingPath, out, 0600); e != nil {
 			return out, e
 		}
@@ -515,6 +532,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, err
 		}
 		_ = os.Remove(p)
+		cleanupCrewPayloads(roots.ID, binding.PairID, input.TransferID, "download")
 	default:
 		return out, fmt.Errorf("unknown sync action")
 	}
@@ -524,6 +542,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	}
 	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 		return out, err
+	}
+	if input.Action == "push" {
+		cleanupCrewPayloads(roots.ID, binding.PairID, input.TransferID, "upload")
 	}
 	log.Printf("[CREW_SYNC] project=%s action=%s editing=%s transfer=%s", roots.ID, input.Action, binding.Editing, input.TransferID)
 	return out, nil
@@ -591,7 +612,7 @@ func saveCrewSyncSnapshot(roots crewroot.Roots, snapshot crewsync.Snapshot) erro
 		return err
 	}
 	state := *snapshot.Git
-	state.Bundle = nil
+	state.BundlePath = ""
 	return fsutil.WriteJSONAtomic(p+".git", state, 0600)
 }
 
@@ -613,10 +634,7 @@ func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
 
 func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair string, snapshot *crewsync.Snapshot) (err error) {
 	started := time.Now()
-	size := 0
-	if snapshot.Content != nil {
-		size = len(snapshot.Content.Bundle)
-	}
+	size := snapshot.Payloads["content"].Size
 	defer func() {
 		log.Printf("[CREW_SYNC] project=%s pair=%s phase=apply bytes=%d paths=%d duration_ms=%d success=%t reason=%q", roots.ID, pair, size, len(snapshot.Changes), time.Since(started).Milliseconds(), err == nil, fmt.Sprint(err))
 	}()

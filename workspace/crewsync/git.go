@@ -20,8 +20,9 @@ type GitSnapshot struct {
 	BeforeBranch    string `json:"before_branch,omitempty"`
 	BeforeIndexHash string `json:"before_index_hash,omitempty"`
 	Branch          string `json:"branch,omitempty"`
-	Bundle          []byte `json:"bundle,omitempty"`
-	IndexPatch      []byte `json:"index_patch,omitempty"`
+	BundlePath      string `json:"-"`
+	IndexPatch      []byte `json:"-"`
+	IndexHash       string `json:"index_hash,omitempty"`
 }
 
 func gitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
@@ -63,10 +64,13 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 	beforeBranch := ""
 	if previous != nil {
 		before = previous.Head
-		beforeIndex = gitPatchHash(previous.IndexPatch)
+		beforeIndex = previous.IndexHash
+		if beforeIndex == "" {
+			beforeIndex = gitPatchHash(previous.IndexPatch)
+		}
 		beforeBranch = previous.Branch
 	}
-	out := &GitSnapshot{BeforeBranch: beforeBranch, BeforeIndexHash: beforeIndex, Head: strings.TrimSpace(string(head)), Before: before, Branch: strings.TrimSpace(string(branch)), IndexPatch: patch}
+	out := &GitSnapshot{BeforeBranch: beforeBranch, BeforeIndexHash: beforeIndex, Head: strings.TrimSpace(string(head)), Before: before, Branch: strings.TrimSpace(string(branch)), IndexPatch: patch, IndexHash: gitPatchHash(patch)}
 	if len(patch) > 64<<20 {
 		return nil, fmt.Errorf("staged Git changes exceed 64 MiB")
 	}
@@ -77,7 +81,12 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmp)
+	keep := false
+	defer func() {
+		if !keep {
+			_ = os.RemoveAll(tmp)
+		}
+	}()
 	archive := filepath.Join(tmp, "project.bundle")
 	args := []string{"bundle", "create", archive, "HEAD"}
 	// One current branch is transferred. Other local branches/remotes remain
@@ -95,8 +104,9 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot) (*GitSn
 	if info.Size() > 256<<20 {
 		return nil, fmt.Errorf("Git history exceeds 256 MiB")
 	}
-	out.Bundle, err = os.ReadFile(archive)
-	return out, err
+	out.BundlePath = archive
+	keep = true
+	return out, nil
 }
 
 var gitObjectID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -110,7 +120,7 @@ func CheckGit(ctx context.Context, root string, snapshot *GitSnapshot) error {
 	if snapshot == nil {
 		return nil
 	}
-	if !gitObjectID.MatchString(snapshot.Head) || snapshot.Before != "" && !gitObjectID.MatchString(snapshot.Before) || len(snapshot.Bundle) > 256<<20 || len(snapshot.IndexPatch) > 64<<20 {
+	if !gitObjectID.MatchString(snapshot.Head) || snapshot.Before != "" && !gitObjectID.MatchString(snapshot.Before) || len(snapshot.IndexPatch) > 64<<20 {
 		return fmt.Errorf("invalid Git snapshot")
 	}
 	if snapshot.Branch != "" && gitCommand(ctx, root, "check-ref-format", "refs/heads/"+snapshot.Branch).Run() != nil {
@@ -180,16 +190,13 @@ func ApplyGit(ctx context.Context, root string, snapshot *GitSnapshot) error {
 			return fmt.Errorf("cannot initialize the server Git repository")
 		}
 	}
-	if len(snapshot.Bundle) > 0 {
-		tmp, err := os.MkdirTemp("", "agentworks-git-sync-")
-		if err != nil {
-			return err
+	if snapshot.BundlePath != "" {
+		archive := snapshot.BundlePath
+		info, err := os.Lstat(archive)
+		if err != nil || !info.Mode().IsRegular() || info.Size() > 256<<20 {
+			return fmt.Errorf("invalid Git bundle file")
 		}
-		defer os.RemoveAll(tmp)
-		archive := filepath.Join(tmp, "project.bundle")
-		if err = os.WriteFile(archive, snapshot.Bundle, 0600); err != nil {
-			return err
-		}
+
 		if err = gitCommand(ctx, root, "bundle", "verify", archive).Run(); err != nil {
 			return fmt.Errorf("Git bundle does not match this repository")
 		}

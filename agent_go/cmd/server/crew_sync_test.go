@@ -3,13 +3,19 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -111,6 +117,8 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("local resource listing: %d %s", listing.Code, listing.Body.String())
 			}
 			loseResponse := false
+			dropUpload, dropDownload := false, false
+			var pieceHook func(*http.Request)
 			var offline atomic.Bool
 			var forcedErrorCode atomic.Value
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,14 +137,30 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				}
 				r = r.WithContext(context.WithValue(r.Context(), UserContextKey, owner))
 				r = mux.SetURLVars(r, map[string]string{"project": strings.TrimPrefix(r.URL.Path, "/api/crew-sync/")})
+				if pieceHook != nil && r.URL.Query().Get("transfer") != "" {
+					pieceHook(r)
+				}
 				response := httptest.NewRecorder()
 				api.handleCrewSync(response, r)
+				if dropUpload && r.Method == http.MethodPut && response.Code == 204 {
+					dropUpload = false
+					w.WriteHeader(502)
+					return
+				}
 				if loseResponse && response.Code == 200 && bytes.Contains(response.Body.Bytes(), []byte(`"editing":"server"`)) {
 					loseResponse = false
 					w.WriteHeader(502)
 					return
 				}
+				for key, values := range response.Header() {
+					w.Header()[key] = values
+				}
 				w.WriteHeader(response.Code)
+				if dropDownload && r.Method == http.MethodGet && r.URL.Query().Get("transfer") != "" && response.Code == 200 {
+					dropDownload = false
+					_, _ = w.Write(response.Body.Bytes()[:response.Body.Len()/2])
+					return
+				}
 				_, _ = w.Write(response.Body.Bytes())
 			}))
 			defer remote.Close()
@@ -213,6 +237,107 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if _, err := api.crewSync(t.Context(), crewWriter("other"), serverRoots.ID, crewSyncRequest{Action: "status"}); err == nil {
 				t.Fatal("other owner accessed sync")
 			}
+			// PLAT-856-509: lose a piece reply after durable storage. Retry
+			// resumes that exact artifact; the working-folder lock is free.
+			largePath := filepath.Join(local.Files, "resumable.bin")
+			large, e := os.Create(largePath)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = io.CopyN(large, rand.Reader, 12<<20); e != nil {
+				t.Fatal(e)
+			}
+			large.Close()
+			lockChecked := false
+			pieceHook = func(r *http.Request) {
+				if r.Method != http.MethodPut || lockChecked {
+					return
+				}
+				lockChecked = true
+				check, cancel := context.WithTimeout(ctx, time.Second)
+				defer cancel()
+				release, e := wf.LockWorkspace(check, local.Files)
+				if e != nil {
+					t.Errorf("upload holds chat's folder lock: %v", e)
+					return
+				}
+				release()
+				if _, e = api.crewHandoffMain(check, owner, local.ID); e != nil {
+					t.Errorf("chat unavailable during upload: %v", e)
+				}
+				write(local.Files, "saved-during-upload.txt", "newer work stays local until next capture")
+			}
+			dropUpload = true
+			if w = call("update", "owner", true); w.Code != 409 || dropUpload || !lockChecked {
+				t.Fatalf("did not exercise interrupted upload: %d %s", w.Code, w.Body.String())
+			}
+			pieceHook = nil
+			pendingPath, _ := crewSyncManifestPath(local.ID)
+			var upload crewSyncRequest
+			if e = readCrewTransfer(pendingPath+".pending", &upload); e != nil {
+				t.Fatal(e)
+			}
+			probe := func(who, pair string) *httptest.ResponseRecorder {
+				q := url.Values{"transfer": {upload.TransferID}, "pair": {pair}, "direction": {"upload"}, "blob": {"content"}}
+				req := httptest.NewRequest("HEAD", "/?"+q.Encode(), nil).WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: who, Username: who}))
+				req = mux.SetURLVars(req, map[string]string{"project": serverRoots.ID})
+				result := httptest.NewRecorder()
+				api.handleCrewSync(result, req)
+				return result
+			}
+			if got := probe("other", upload.PairID); got.Code != 403 {
+				t.Fatalf("other owner piece: %d", got.Code)
+			}
+			if got := probe("owner", "wrong-pair"); got.Code != 409 {
+				t.Fatalf("wrong pair piece: %d", got.Code)
+			}
+			got := probe("owner", upload.PairID)
+			offset, _ := strconv.ParseInt(got.Header().Get("Upload-Offset"), 10, 64)
+			if got.Code != 200 || offset != crewSyncPieceBytes {
+				t.Fatalf("saved offset: %d %d", got.Code, offset)
+			}
+			// An independently edited destination is never overwritten at apply.
+			write(serverRoots.Files, "resumable.bin", "destination work")
+			if w = call("update", "owner", true); w.Code != 409 {
+				t.Fatal("overwrote independent destination file")
+			}
+			actual, _ := os.ReadFile(filepath.Join(serverRoots.Files, "resumable.bin"))
+			if string(actual) != "destination work" {
+				t.Fatal("lost destination work")
+			}
+			if e = os.Remove(filepath.Join(serverRoots.Files, "resumable.bin")); e != nil {
+				t.Fatal(e)
+			}
+			if w = call("update", "owner", true); w.Code != 200 {
+				t.Fatalf("resumed upload: %d %s", w.Code, w.Body.String())
+			}
+			digest := func(path string) [32]byte {
+				f, e := os.Open(path)
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer f.Close()
+				h := sha256.New()
+				if _, e = io.Copy(h, f); e != nil {
+					t.Fatal(e)
+				}
+				var result [32]byte
+				copy(result[:], h.Sum(nil))
+				return result
+			}
+			if digest(largePath) != digest(filepath.Join(serverRoots.Files, "resumable.bin")) {
+				t.Fatal("resumed bytes differ")
+			}
+			if _, e = os.Stat(filepath.Join(serverRoots.Files, "saved-during-upload.txt")); !os.IsNotExist(e) {
+				t.Fatal("acknowledged uncaptured newer work")
+			}
+			if w = call("update", "owner", true); w.Code != 200 {
+				t.Fatalf("next capture: %d %s", w.Code, w.Body.String())
+			}
+			if _, e = os.Stat(filepath.Join(serverRoots.Files, "saved-during-upload.txt")); e != nil {
+				t.Fatal("newer source edit never synced")
+			}
+
 			for _, kind := range []string{"bound-agent", "product"} {
 				claims := crewWriter("owner")
 				if kind == "bound-agent" {
@@ -387,8 +512,33 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if stillServer.Editing != "server" || stillServer.PendingAction != "download" {
 				t.Fatal("stale authority rolled back the completed handoff")
 			}
+			serverLarge, e := os.OpenFile(filepath.Join(serverRoots.Files, "resumable.bin"), os.O_WRONLY|os.O_TRUNC, 0600)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = io.CopyN(serverLarge, rand.Reader, 12<<20); e != nil {
+				t.Fatal(e)
+			}
+			serverLarge.Close()
+			dropDownload = true
+			if w := call("download", "owner", true); w.Code != 409 || dropDownload {
+				t.Fatalf("interrupted download: %d %s", w.Code, w.Body.String())
+			}
+			resumedDownload := false
+			pieceHook = func(r *http.Request) {
+				if r.Method == http.MethodGet && r.URL.Query().Get("direction") == "download" {
+					offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
+					if offset > 0 {
+						resumedDownload = true
+					}
+				}
+			}
 			if w := call("download", "owner", true); w.Code != 200 {
 				t.Fatalf("background return: %d %s", w.Code, w.Body.String())
+			}
+			pieceHook = nil
+			if !resumedDownload || digest(largePath) != digest(filepath.Join(serverRoots.Files, "resumable.bin")) {
+				t.Fatal("download did not resume correct bytes")
 			}
 			mirror, _ := crewroot.ReadSync(local.ID)
 			if mirror.Editing != "server" {

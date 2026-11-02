@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -74,12 +76,29 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	if api.desktopCrewSyncOff(w, r, roots, connection, input.Action, input.Mode) {
 		return
 	}
+	// Serialize sync operations independently of working files. Chats and edits
+	// must not wait for the network. Cloud Off already bypasses this lock.
+	operationPath, err := crewSyncManifestPath(roots.ID)
+	if err != nil {
+		externalError(w, 409, "sync_unavailable", err.Error())
+		return
+	}
+	operationUnlock, err := wf.LockWorkspace(r.Context(), operationPath+".operation")
+	if err != nil {
+		externalError(w, 409, "sync_unavailable", err.Error())
+		return
+	}
+	defer operationUnlock()
 	unlock, err := wf.LockWorkspace(r.Context(), roots.Files)
 	if err != nil {
 		externalError(w, 409, "sync_unavailable", err.Error())
 		return
 	}
-	defer unlock()
+	defer func() {
+		if unlock != nil {
+			unlock()
+		}
+	}()
 	binding, err := crewroot.ReadSync(roots.ID)
 	if err != nil {
 		externalError(w, 409, "sync_unavailable", err.Error())
@@ -89,13 +108,44 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		externalError(w, 409, "wrong_connection", "Use this Crew's paired server.")
 		return
 	}
-	call := func(project string, request crewSyncRequest) (crewSyncReply, error) {
+	// Freeze the observed authority before releasing the file lock. A remote
+	// activation or Cloud Off during transfer must not be overwritten on return.
+	outside := func(fn func() error) error {
+		before, e := crewroot.ReadSync(roots.ID)
+		if e != nil {
+			return e
+		}
+		unlock()
+		unlock = nil
+		runErr := fn()
+		unlock, e = wf.LockWorkspace(r.Context(), roots.Files)
+		if e != nil {
+			return e
+		}
+		if _, e = api.crewSyncRoots(r.Context(), claims, roots.ID); e != nil {
+			return e
+		}
+		current, e := crewroot.ReadSync(roots.ID)
+		if e != nil {
+			return e
+		}
+		if (before == nil) != (current == nil) || (before != nil && (before.PairID != current.PairID || before.Editing != current.Editing || before.PendingAction != current.PendingAction || before.LastTransfer != current.LastTransfer || before.Mode != current.Mode)) {
+			return fmt.Errorf("this Crew's sync state changed during transfer; retry from its current state")
+		}
+		return runErr
+	}
+	call := func(project string, request crewSyncRequest) (out crewSyncReply, e error) {
 		if input.Action != "mode" && input.Action != "status" {
-			if err := crewSyncOn(roots.ID); err != nil {
-				return crewSyncReply{}, err
+			if e = crewSyncOn(roots.ID); e != nil {
+				return
 			}
 		}
-		return desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, request)
+		e = outside(func() error {
+			var err error
+			out, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, request)
+			return err
+		})
+		return
 	}
 
 	// Picking a Crew's server (several connected) creates its empty twin there; a Crew has one server.
@@ -151,7 +201,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	if input.Action == "mode" && binding != nil {
 		if input.Mode == "continuous" {
-			if _, e := api.prepareCrewDependencies(r, roots, binding, connection, true); e != nil {
+			if e := outside(func() error { _, e := api.prepareCrewDependencies(r, roots, binding, connection, true); return e }); e != nil {
 				fail(e)
 				return
 			}
@@ -203,7 +253,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if input.Action == "update" || input.Action == "server" {
-		if _, e := api.prepareCrewDependencies(r, roots, binding, connection, allowPair); e != nil {
+		if e := outside(func() error { _, e := api.prepareCrewDependencies(r, roots, binding, connection, allowPair); return e }); e != nil {
 			fail(e)
 			return
 		}
@@ -214,6 +264,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	conversationNotice := ""
+	changedDuringHandoff := false
 	switch input.Action {
 	case "update", "server":
 		pendingPath, e := crewSyncManifestPath(roots.ID)
@@ -275,6 +326,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 					return
 				}
 			}
+			if e = freezeCrewPayloads(roots.ID, binding.PairID, transfer.TransferID, "upload", transfer.Snapshot); e != nil {
+				fail(e)
+				return
+			}
 			if e = fsutil.WriteJSONAtomic(pendingPath, transfer, 0600); e != nil {
 				fail(e)
 				return
@@ -292,9 +347,56 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(err)
 				return
 			}
-			if err = desktopCrewNativeSync(r.Context(), roots, connection, binding, b, true); err != nil {
+			if err = outside(func() error { return desktopCrewNativeSync(r.Context(), roots, connection, binding, b, true) }); err != nil {
 				fail(err)
 				return
+			}
+		}
+		stage := transfer
+		stage.Action = "stage"
+		prepared, e := call(binding.PeerProjectID, stage)
+		if e != nil {
+			fail(e)
+			return
+		}
+		if prepared.Binding == nil || prepared.Binding.LastTransfer != transfer.TransferID {
+			if e = outside(func() error {
+				return desktopCrewPayloads(r.Context(), roots.ID, connection, binding, transfer.TransferID, transfer.Snapshot, true)
+			}); e != nil {
+				fail(e)
+				return
+			}
+		}
+		if input.Action == "server" && (prepared.Binding == nil || prepared.Binding.LastTransfer != transfer.TransferID) {
+			if e = api.crewSyncIdle(roots); e != nil {
+				fail(e)
+				return
+			}
+			latest, e := crewsync.Capture(r.Context(), roots, transfer.Snapshot.Files)
+			if e != nil {
+				fail(e)
+				return
+			}
+			git, e := crewsync.CaptureGit(r.Context(), roots.Files, transfer.Snapshot.Git)
+			if e != nil {
+				fail(e)
+				return
+			}
+			latest.Git = git
+			changedDuringHandoff = crewSnapshotChanged(latest)
+			if git != nil && git.BundlePath != "" {
+				_ = os.Remove(git.BundlePath)
+				_ = os.Remove(filepath.Dir(git.BundlePath))
+			}
+			if changedDuringHandoff {
+				// Confirm the captured copy without handing execution to a stale
+				// version. The next send captures the edits made during upload.
+				transfer.Editing = "local"
+				transfer.Conversation = nil
+				if e = fsutil.WriteJSONAtomic(pendingPath, transfer, 0600); e != nil {
+					fail(e)
+					return
+				}
 			}
 		}
 		remote, e := call(binding.PeerProjectID, transfer)
@@ -310,10 +412,11 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
-		log.Printf("[CREW_SYNC] project=%s pair=%s phase=receipt direction=upload bytes=%d paths=%d duration_ms=%d transfer=%s", roots.ID, binding.PairID, len(transfer.Snapshot.Content.Bundle), len(transfer.Snapshot.Changes), time.Since(started).Milliseconds(), transfer.TransferID)
+		log.Printf("[CREW_SYNC] project=%s pair=%s phase=receipt direction=upload bytes=%d paths=%d duration_ms=%d transfer=%s", roots.ID, binding.PairID, transfer.Snapshot.Payloads["content"].Size, len(transfer.Snapshot.Changes), time.Since(started).Milliseconds(), transfer.TransferID)
 		binding.Editing = remote.Binding.Editing
 		conversationNotice = remote.ConversationNotice
 		binding.PendingAction = ""
+		cleanupCrewPayloads(roots.ID, binding.PairID, transfer.TransferID, "upload")
 	case "local", "download":
 		if binding.PendingAction != "" && binding.PendingAction != input.Action {
 			fail(fmt.Errorf("finish the interrupted transfer first"))
@@ -365,6 +468,17 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 					return
 				}
 			}
+			if e = outside(func() error {
+				return desktopCrewPayloads(r.Context(), roots.ID, connection, binding, remote.TransferID, remote.Snapshot, false)
+			}); e != nil {
+				fail(e)
+				return
+			}
+			if err = hydrateCrewPayloads(roots.ID, binding.PairID, remote.TransferID, "download", remote.Snapshot); err != nil {
+				fail(err)
+				return
+			}
+			defer dropCrewPayloadBytes(remote.Snapshot)
 			if err = applyCrewSyncSnapshot(r.Context(), roots, binding.PairID, remote.Snapshot); err != nil {
 				fail(err)
 				return
@@ -375,7 +489,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			}
 			if movingLocal {
 				if remote.Conversation.Native != nil {
-					if err = desktopCrewNativeSync(r.Context(), roots, connection, binding, remote.Conversation.Native, false); err != nil {
+					if err = outside(func() error {
+						return desktopCrewNativeSync(r.Context(), roots, connection, binding, remote.Conversation.Native, false)
+					}); err != nil {
 						fail(err)
 						return
 					}
@@ -390,6 +506,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(err)
 				return
 			}
+			cleanupCrewPayloads(roots.ID, binding.PairID, remote.TransferID, "download")
 			if input.Action == "local" && remote.Binding != nil && remote.Binding.Editing != "local" {
 				continue
 			}
@@ -411,6 +528,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	if p, e := crewSyncManifestPath(roots.ID); e == nil {
 		_ = os.Remove(p + ".pending")
+	}
+	if changedDuringHandoff {
+		fail(fmt.Errorf("files changed during upload; the captured copy is saved on the server. Send again to move your latest work"))
+		return
 	}
 	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding, RuntimeReadiness: readCrewDependencies(roots.ID), Auto: crewAutoStatus(roots.ID), ConversationNotice: conversationNotice})
 }
@@ -465,7 +586,7 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 		return crewSyncReply{}, &crewSyncFailure{Code: failure.Error.Code, Status: response.StatusCode, Message: err.Error(), Cause: err}
 	}
 	var out crewSyncReply
-	e = json.NewDecoder(io.LimitReader(response.Body, 800<<20)).Decode(&out)
+	e = json.NewDecoder(io.LimitReader(response.Body, crewSyncMetadataBytes)).Decode(&out)
 	if e == nil && (request.ArchiveOnly || (out.Binding != nil && out.Binding.ArchiveOnly)) && out.Conversation != nil {
 		out.Conversation.Native = nil
 	}
