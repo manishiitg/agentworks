@@ -27,19 +27,27 @@ AgentWorks is a source-available platform for goal-driven AI agents. You describ
 ## Install (macOS, Apple Silicon)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/manishiitg/coding-agent-loop/main/install.sh | bash
+npx --yes @manishiitg/agentworks
 ```
 
-This downloads the latest release, installs `AgentWorks.app` to `/Applications`, installs the MCP bridge that Claude Code and Codex use for tool access (to `~/go/bin`, installing Go through Homebrew if needed), clears the macOS quarantine flag, and launches the app. Pin a version with `RUNLOOP_VERSION=v1.25.6 curl -fsSL … | bash` (the variable keeps its legacy name).
+Without Node.js:
 
-On first launch, pick a workspace folder and set an `AUTH_SECRET` (used to encrypt provider keys; reuse the same value on every machine that opens this workspace). Then connect a coding-agent CLI in **LLM Configuration**, signing in with your subscription or that CLI's API key.
+```bash
+curl -fsSL https://raw.githubusercontent.com/manishiitg/agentworks/main/install.sh | bash
+```
+
+The installer downloads the Mac app and bundled `agentworks` CLI, verifies the checksum and opens the app. No source checkout, Go or Homebrew build is needed. This build is unsigned; the installer clears macOS quarantine on the installed app.
+
+On first launch, AgentWorks detects your installed AI programs. Connect a server optionally, then choose a project folder and start chatting. Existing projects and sign-ins stay in place.
+
+To update an installed app, use **Check for Updates**, or quit it and run `npx --yes @manishiitg/agentworks update`.
 
 <details>
 <summary>Manual install, and the "AgentWorks is damaged and can't be opened" message</summary>
 
 Download `AgentWorks-<version>-arm64.dmg` from the [latest release](https://github.com/manishiitg/coding-agent-loop/releases/latest) and drag the app to Applications.
 
-The build is not yet signed or notarized, so macOS Gatekeeper flags it after download. The app is fine; clear the quarantine flag:
+The build is not yet signed or notarized, so macOS Gatekeeper flags it after download. For a copy downloaded from this release, clear the quarantine flag:
 
 ```bash
 xattr -cr /Applications/AgentWorks.app
