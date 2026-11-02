@@ -10,7 +10,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selec
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: mocks.server }), { getState: () => ({ activeWorkspaceId: mocks.server }) }) }))
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
 vi.mock('./useWorkspaceStatus', () => ({ useWorkspaceStatus: () => ({ snapshot: mocks.status, refresh: vi.fn() }) }))
-vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: (reference?: { workspacePath: string; sessionId: string; snapshotId: string }) => void }) => <button onClick={() => onOpen({ workspacePath: 'Crew/example', sessionId: 'chat', snapshotId: 'latest' })}>Changes</button> }))
+vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: () => void }) => <button onClick={onOpen}>Changes</button> }))
 vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => mocks.browser }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: mocks.documents }), selectReportDocument: vi.fn() }))
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
@@ -38,7 +38,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
  mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }, { id:'schedule:next',label:'Next summary',detail:'Jan 1, 8:00 AM',nextRunAt:'2099-01-01T08:00:00Z',destination:'schedules:schedules' }]
  await render('dev', async host => {
   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
-  expect(mocks.target).toHaveBeenLastCalledWith('files', expect.stringContaining('reply:'))
+  expect(mocks.target).toHaveBeenLastCalledWith('files', 'review')
   expect(host.textContent).not.toContain('person@example.com')
   expect(host.textContent).not.toContain('Morning summary')
   expect(host.querySelector('[aria-label="Automations"]')?.textContent).toContain('2 · Jan 1, 8:00 AM')
@@ -106,7 +106,7 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
  ]
  await render('cowork', async host => {
   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
-  expect(mocks.target).toHaveBeenLastCalledWith('files', expect.stringContaining('reply:'))
+  expect(mocks.target).toHaveBeenLastCalledWith('files', 'review')
   expect(host.textContent).not.toContain('Results')
   expect(host.textContent).not.toContain('Finished files')
   expect(host.querySelector('[aria-label="Dashboards"]')?.textContent).toBe('Dashboards3')

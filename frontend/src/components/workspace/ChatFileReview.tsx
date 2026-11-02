@@ -40,7 +40,7 @@ function CheckoutFileReview(props: ReviewProps) {
   const [revision, setRevision] = useState(0)
   useEffect(() => {
     let live = true
-    if (props.outsideGit || props.reply) { setRepos([]); setRecentRepos([]); return }
+    if (props.outsideGit || props.reply || props.allChat) { setRepos([]); setRecentRepos([]); return }
     void Promise.all([
       workspaceGitApi.status(props.workspacePath),
       api.get<ReviewHistory>(endpoint, { params: { workspace_path: props.workspacePath, session_id: props.sessionId, op: 'snapshots' } })
@@ -48,8 +48,8 @@ function CheckoutFileReview(props: ReviewProps) {
     ]).then(([found, recent]) => { if (live) { setRecentRepos(recent); setRepos(found) } })
       .catch(() => { if (live) setRepos(current => current ?? []) })
     return () => { live = false }
-  }, [props.workspacePath, props.sessionId, revision, props.outsideGit, props.reply?.snapshotId])
-  if (props.reply) return <SnapshotReview {...props} />
+  }, [props.workspacePath, props.sessionId, revision, props.outsideGit, props.reply?.snapshotId, props.allChat])
+  if (props.reply || props.allChat) return <SnapshotReview {...props} />
   if (!repos) return <section className="flex h-full min-h-0 flex-col" aria-label="Review changes">
     <WorkspaceViewHeader title="Files" subtitle="Review changes" />
     <p className="p-3 text-sm">Loading…</p>
@@ -114,7 +114,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
       <TooltipTrigger asChild><button type="button" aria-label="About saved changes" className={iconButton}><Info className="h-3.5 w-3.5" aria-hidden="true" /></button></TooltipTrigger>
       <TooltipContent side="bottom" align="start" className="max-w-64 text-xs">Saved project differences. Other chats or editors may contribute.</TooltipContent>
     </Tooltip></TooltipProvider>} subtitle={reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
-      {reply && <button type="button" className="text-xs underline" onClick={() => reply?.checkoutId ? openChatFiles(sessionId, undefined, reply.checkoutId) : openChatFiles(sessionId)}>Project history</button>}
+      {(reply || allChat) && <button type="button" className="text-xs underline" onClick={() => reply?.checkoutId ? openChatFiles(sessionId, undefined, reply.checkoutId) : openChatFiles(sessionId)}>Project history</button>}
       {!reply && !allChat && !!result?.history.reviews?.length && <select aria-label="Review history" title="Review history" value={reviewId} onChange={event => setReviewId(event.target.value)}
         className="max-w-40 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground">
         <option value="">Since your last review</option>
