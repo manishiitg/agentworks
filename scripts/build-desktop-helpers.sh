@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$ROOT/desktop/resources}"
-mkdir -p "$OUT/bin"
+mkdir -p "$OUT/bin" "$OUT/lib"
 OUT="$(cd "$OUT" && pwd)"
 VERSION="${AGENTWORKS_APP_VERSION:-$(node -p 'require(process.argv[1]).version' "$ROOT/desktop/package.json")}"
 BUILD="$(git -C "$ROOT" rev-parse --short=12 HEAD)"

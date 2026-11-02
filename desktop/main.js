@@ -1081,7 +1081,10 @@ async function spawnDevelopmentAgent() {
 
 function spawnAgent(userDataPath) {
   return new Promise((resolve, reject) => {
-    const bin = getBinaryPath('agent-server');
+    const selected = app.isPackaged && process.platform === 'darwin'
+      ? require('./lib/voiceRuntime').selectPackagedAgent(getResourcesDir(), process.getSystemVersion())
+      : { binary: getBinaryPath('agent-server'), voiceUnavailableReason: '' };
+    const bin = selected.binary;
     if (!fs.existsSync(bin)) {
       return reject(new Error(`Agent server binary not found at ${bin}. Place agent-server in desktop/resources/ for development.`));
     }
@@ -1187,6 +1190,7 @@ function spawnAgent(userDataPath) {
       RUNLOOP_USER_DATA_DIR: userDataPath,
       AGENTWORKS_STATE_ROOT: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'),
       WORKSPACE_API_URL: `http://127.0.0.1:${dynamicWorkspacePort}`,
+      AGENTWORKS_VOICE_UNAVAILABLE_REASON: selected.voiceUnavailableReason,
       WORKSPACE_DOCS_PATH: docsDir,
       DOCS_DIR: docsDir,
       LOG_FILE: logFile,

@@ -510,7 +510,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // build): the mic never appears where it would only answer 503.
   const platformVoiceAvailable = useCapabilitiesStore(state => state.capabilities?.voice?.available ?? false)
   const [profileVoiceEnabled, setProfileVoiceEnabled] = useState(false)
-  const voiceCapabilityEnabled = isProductProfile ? profileVoiceEnabled : platformVoiceAvailable
+  const voiceCapabilityEnabled = platformVoiceAvailable && (!isProductProfile || profileVoiceEnabled)
   // Provider metadata identifies the selected runtime; model changes live in workspace settings.
   const [engineOptions, setEngineOptions] = useState<AgentProfileProviderOption[]>([])
   useEffect(() => {

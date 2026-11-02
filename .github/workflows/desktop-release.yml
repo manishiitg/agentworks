@@ -70,7 +70,10 @@ jobs:
           go list -m github.com/manishiitg/mcpagent github.com/manishiitg/multi-llm-provider-go
       - name: Build native servers and speech libraries
         run: |
-          bash scripts/build-darwin-voice-binary.sh agent_go desktop/resources/agent-server '${{ matrix.goarch }}'
+          bash scripts/build-darwin-voice-binary.sh agent_go desktop/resources/voice/agent-server '${{ matrix.goarch }}'
+          VOICE_MINIMUM="$(python3 scripts/desktop-minimum-os.py desktop/resources/voice)"
+          node -e 'require("fs").writeFileSync("desktop/resources/voice/minimum-macos.json", JSON.stringify({minimumSystemVersion: process.argv[1]}))' "$VOICE_MINIMUM"
+          (cd agent_go && CGO_ENABLED=1 GOOS=darwin GOARCH='${{ matrix.goarch }}' go build -tags novoice -o ../desktop/resources/agent-server .)
           cd workspace
           go mod download
           GOOS=darwin GOARCH='${{ matrix.goarch }}' go build -o ../desktop/resources/workspace-server .
@@ -79,7 +82,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/v}"; fi
           bash scripts/build-desktop-helpers.sh
       - name: Test combined installer and updater
-        run: node --test packages/app/test/installer.test.mjs desktop/lib/updateInstaller.test.js
+        run: node --test packages/app/test/installer.test.mjs desktop/lib/updateInstaller.test.js desktop/lib/voiceRuntime.test.js
       - name: Package Mac app
         run: |
           MAC_MINIMUM="$(python3 scripts/desktop-minimum-os.py desktop/resources)"
