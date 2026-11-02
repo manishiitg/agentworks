@@ -275,7 +275,7 @@ def main():
             # On a server with slots every program runs as the Crew owner's slot (slot03, cf14, sc01: a per-product prefix and a
             # number); the product's own service account there is a failure.
             must = {name.strip() for name in args.require_slot.split(",") if name.strip()}
-            if (must == {"1"} or target["provider"] in must) and not problems and not re.fullmatch(r"[a-z]+[0-9]+", target.get("runas", "")):
+            if (must == {"1"} or target["provider"] in must) and not problems and not re.fullmatch(r"[a-z][a-z0-9]*[0-9]{2}", target.get("runas", "")):
                 problems = [f"runs as {target.get('runas') or 'unknown'}, not the Crew owner's slot"]
             failed += bool(problems)
             verdict = "PASS" if not problems else "FAIL"
