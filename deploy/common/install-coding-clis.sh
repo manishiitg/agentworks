@@ -126,6 +126,7 @@ done
 # runnable by every account: an npm or vendor install made with a private umask left Codex's package and Muse's
 # version marker owner-only ("codex.js is not accessible", "installed binary is missing"). Programs only; the
 # install state and any logins stay as they are.
+chmod o+x "$prefix" # enter only: the install state inside stays private
 for dir in "$prefix/bin" "$prefix/lib" "$prefix/node"; do
   [[ ! -d "$dir" ]] || chmod -R o+rX "$dir"
 done
