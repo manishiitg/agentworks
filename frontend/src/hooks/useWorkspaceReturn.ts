@@ -30,9 +30,10 @@ export async function flushWorkspaceState() {
     }
     if (useWorkspaceReturnStore.getState().account !== account || useWorkspaceReturnStore.getState().workspace !== workspace) return
     const status = (error as { response?: { status?: number } }).response?.status
-    useWorkspaceReturnStore.setState({ saveError: status === 403
-      ? 'Your place in this workspace could not be saved: it is not available to you on this server. Open it again from the list.'
-      : 'Your latest workspace could not be saved. It will retry when you continue working.' })
+    // A failed save only means reopening one step behind, and the next change retries it (a server restart caused
+    // most of these): say nothing then (owner, 2 Nov: "if its not saved.. we can ignore it"). Only a place that is not
+    // available to this person needs their action.
+    if (status === 403) useWorkspaceReturnStore.setState({ saveError: 'Your place in this workspace could not be saved: it is not available to you on this server. Open it again from the list.' })
   } finally { writing = false; if (pending) void flushWorkspaceState() }
 }
 
