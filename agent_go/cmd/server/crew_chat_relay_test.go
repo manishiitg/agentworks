@@ -205,6 +205,10 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 			if tc.want && w.Code != 503 {
 				t.Fatalf("main owner should see Mac offline, not a server chat: %d", w.Code)
 			}
+			// PLAT-856-509: a caller the relay does not route must not get a turn in the empty online copy either.
+			if !tc.want && tc.profile == "work" && !crewLivesOnMac(tc.profile, tc.key) {
+				t.Fatalf("%s: would run a server turn in a Crew that lives on the Mac", tc.name)
+			}
 		}
 	})
 }

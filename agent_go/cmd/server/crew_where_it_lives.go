@@ -58,3 +58,12 @@ func migrateCrewSyncToRelay() {
 		log.Printf("[CREW_SYNC] project=%s side=%s editing=%s migrate=relay old_mode=%q dropped_pending=%q", id, b.Side, b.Editing, old, dropped)
 	}
 }
+
+const crewOnMacRefusal = "This Crew lives on its owner's Mac, so it can't answer here."
+
+// crewLivesOnMac reports a server turn aimed at the empty online copy of a Crew that lives on its owner's Mac.
+// Such a turn would run with none of the Crew's files, so every server path refuses it; the owner's own chat reaches
+// the Mac through the relay before this check.
+func crewLivesOnMac(profileID, conversationKey string) bool {
+	return !IsLocalMode() && profileID == crewProfileID && crewRelayTwin(crewResourceProjectID(conversationKey))
+}

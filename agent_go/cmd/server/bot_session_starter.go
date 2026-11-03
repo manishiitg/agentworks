@@ -282,6 +282,14 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 	if err != nil {
 		return internalSessionTurnResult{}, fmt.Errorf("failed to marshal query request: %w", err)
 	}
+	var target struct {
+		Profile string `json:"agent_profile_id"`
+		Key     string `json:"agent_profile_conversation_key"`
+	}
+	if json.Unmarshal(body, &target) == nil && crewLivesOnMac(target.Profile, target.Key) {
+		log.Printf("[CREW_RELAY] refused server turn project=%s user=%s reason=crew_on_mac", crewResourceProjectID(target.Key), userID)
+		return internalSessionTurnResult{}, fmt.Errorf("%s", crewOnMacRefusal)
+	}
 	var queuedTurnID string
 	var queuedWaiter <-chan queuedConversationTurnResult
 	if !conversationTurnQueueExecution(ctx) {
