@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { Copy, Webhook } from 'lucide-react'
 import { apiTriggerURL, productWebhooksApi, type ProductAPITrigger, type ProductTriggerScope } from '../../api/productWebhooks'
+import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations } from '../automation/AutomationKit'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
@@ -76,6 +77,7 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
     <AutomationIntro icon={Webhook} tone="amber" title="Webhooks">
       A web address other services (GitHub, your CI, a form) call to start work in this {profileId === 'work' ? 'project' : 'Crew'}. Ask the chat to add one.
     </AutomationIntro>
+    {profileId === 'work' && <OnlineOnlyNote projectId={scope.projectId} />}
     {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {issued?.secret && <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
       <h3 className="text-sm font-medium">New secret for {issued.name}</h3>

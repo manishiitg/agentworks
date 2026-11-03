@@ -81,8 +81,8 @@ const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
   history: 'history', context: 'context', report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
-  // ?view=share opens the Access page on its Share section (the Mac app's "Move and share" lands here).
-  share: 'mcp',
+  // ?view=share and ?view=slack open the Access page on that section (links from the Mac app's Where it lives).
+  share: 'mcp', slack: 'mcp',
   // Legacy agent + preference ids land on the consolidated Setup views.
   llm: 'identity', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
@@ -90,7 +90,7 @@ type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
   history: 'Chat history', context: 'Context', report: 'Dashboard', plan: 'Plan', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
   suggestions: 'Suggestions', identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
-  llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Access',
+  llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Access', slack: 'Slack',
 }
 
 function workPresentationView(view: WorkWorkspaceView): WorkUIPresentationView {
@@ -1032,6 +1032,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-chat-usage', open)
     return () => window.removeEventListener('agentworks:open-chat-usage', open)
   }, [selected?.id, workspacePanels, selectWorkspaceView])
+  // "Works once this Crew is online. [Move online]" opens Where it lives (useMacCrew.tsx).
+  useEffect(() => {
+    const open = (event: Event) => {
+      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId !== selected?.id) return
+      openWorkPresentationView('mcp', 'computer')
+    }
+    window.addEventListener('agentworks:open-where-it-lives', open)
+    return () => window.removeEventListener('agentworks:open-where-it-lives', open)
+  }, [selected?.id, openWorkPresentationView])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
@@ -1144,11 +1153,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   // Capture the deep link's view on first render, before the URL projection
   // or any later effect can rewrite the address bar and hide it.
-  const initialRouteView = useRef<{ id: string; view: WorkWorkspaceView; share?: boolean } | null | undefined>(undefined)
+  const initialRouteView = useRef<{ id: string; view: WorkWorkspaceView; target?: string } | null | undefined>(undefined)
   if (initialRouteView.current === undefined) {
     const route = currentProductRoute()
     const view = route?.surface === product.profileId && route.id ? normalizeWorkWorkspaceView(route.view) : null
-    initialRouteView.current = view && route?.id ? { id: route.id, view, share: route.view === 'share' } : null
+    initialRouteView.current = view && route?.id ? { id: route.id, view, target: ({ share: 'share', slack: 'slack-bot' } as Record<string, string>)[route.view ?? ''] } : null
   }
   const routeSuppliedView = selected
     ? (initialRouteView.current?.id === selected.id ? initialRouteView.current.view : routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView))
@@ -1159,7 +1168,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     // The captured link view is spent once applied (and is keyed to its
     // project), so switching projects never reapplies an old ?view.
     if (initialRouteView.current?.id === selected?.id) {
-      if (initialRouteView.current?.share) setWorkspaceViewTarget('mcp', 'share')
+      if (initialRouteView.current?.target) setWorkspaceViewTarget('mcp', initialRouteView.current.target)
       initialRouteView.current = null
     }
     setWorkspaceView(isWorkSessionRun(selected) ? 'dashboard' : savedView ?? (selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))

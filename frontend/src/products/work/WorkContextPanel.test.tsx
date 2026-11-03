@@ -26,7 +26,7 @@ beforeEach(() => {
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
-const accessDestinations = [['Linked projects & folders','folders'],['Laptop access','computer'],['Connected agents','agentbridge']]
+const accessDestinations = [['Laptop access','computer'],['Connected agents','agentbridge']]
 const inventory = (features?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels: features, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
 async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => Promise<void>) {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
