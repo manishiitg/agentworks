@@ -152,6 +152,8 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("local resource listing: %d %s", listing.Code, listing.Body.String())
 			}
 			loseResponse := false
+			dropLocalReceipt := false
+			blockRetirement := false
 			failActivation := false
 			dropUpload := false
 			var pieceHook func(*http.Request)
@@ -180,12 +182,12 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				if pieceHook != nil && r.URL.Query().Get("transfer") != "" {
 					pieceHook(r)
 				}
-				if failActivation && r.Method == http.MethodPost && r.URL.Query().Get("transfer") == "" {
+				var incoming crewSyncRequest
+				if r.Method == http.MethodPost && r.URL.Query().Get("transfer") == "" {
 					raw, _ := io.ReadAll(r.Body)
 					r.Body = io.NopCloser(bytes.NewReader(raw))
-					var call crewSyncRequest
-					json.Unmarshal(raw, &call)
-					if call.Action == "push" {
+					json.Unmarshal(raw, &incoming)
+					if failActivation && incoming.Action == "push" {
 						failActivation = false
 						externalError(w, 409, "fixture_activation_failed", "injected import failure")
 						return
@@ -202,6 +204,19 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					loseResponse = false
 					w.WriteHeader(502)
 					return
+				}
+				if dropLocalReceipt && incoming.Action == "push" && incoming.Editing == "local" && response.Code == 200 {
+					dropLocalReceipt = false
+					w.WriteHeader(502)
+					return
+				}
+				if blockRetirement && incoming.Action == "push" && incoming.Editing == "server" && response.Code == 200 {
+					blockRetirement = false
+					p, e := crewMoveReceiptPath(local.ID)
+					if e != nil {
+						t.Fatal(e)
+					}
+					write(filepath.Dir(filepath.Dir(p)), filepath.Base(filepath.Dir(p)), "receipt storage unavailable")
 				}
 				for key, values := range response.Header() {
 					w.Header()[key] = values
@@ -288,7 +303,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				}
 			}
 			schedule := projectactions.Schedule{ID: "morning", Name: "Morning", Project: projectactions.Project{Kind: "crew", ID: local.ID}, When: projectactions.When{Cron: "0 9 * * *", Timezone: "UTC"}, Action: projectactions.Action{Type: "message", Tab: side.ConversationKey}, Input: json.RawMessage(`{"message":"check"}`), RunAs: "owner", Enabled: true}
-			watcher := conditiontrigger.Config{Script: "code/triggers/watch.py", SHA256: conditiontrigger.Hash("print('{}')"), Target: conditiontrigger.Target{Kind: "agent", ChatID: side.ConversationKey, Message: "check"}}
+			watcher := conditiontrigger.Config{Script: "code/triggers/watch.py", SHA256: conditiontrigger.Hash("print('{}')"), Target: conditiontrigger.Target{Kind: "agent", ChatID: "helper", Message: "check"}}
 			schedule.Input, _ = json.Marshal(scheduleExecutionInput{Messages: []string{"check"}, Condition: &watcher})
 			watcherKey := owner.UserID + "/" + projectScheduleJobID(crewProfileID, local.ID, schedule.ID)
 			ledger := conditiontrigger.Ledger{State: json.RawMessage(`{"cursor":7}`), Rows: []conditiontrigger.Row{{Event: conditiontrigger.Event{ID: "already-sent"}, Revision: watcher.Revision(), Status: "dispatched", Receipt: "accepted"}}, Tombstones: map[string]time.Time{conditiontrigger.Hash("older-event"): time.Now().Add(24 * time.Hour)}}
@@ -380,7 +395,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			progress, err := api.crewSync(check, owner, serverRoots.ID, crewSyncRequest{Action: "status"})
 			cancel()
 			release()
-			if err != nil || progress.BytesDone == 0 || progress.BytesDone >= progress.BytesTotal {
+			if err != nil || progress.Phase != "files" || progress.BytesDone == 0 || progress.BytesDone >= progress.BytesTotal {
 				t.Fatalf("progress: %+v %v", progress, err)
 			}
 			for _, person := range []string{"owner", "other"} {
@@ -397,6 +412,32 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					t.Fatalf("piece %s: %d %s", person, response.Code, response.Body.String())
 				}
 			}
+			// PR882: a lost reply to a file-only capture must not retire the Mac.
+			changed := false
+			pieceHook = func(req *http.Request) {
+				if req.Method == http.MethodPut && !changed {
+					write(local.Files, "late.txt", "newer local edit")
+					changed = true
+				}
+			}
+			dropLocalReceipt = true
+			if w := call("server", "owner", true); w.Code != 409 || dropLocalReceipt || !changed {
+				t.Fatalf("lost file-only receipt: %d %s", w.Code, w.Body.String())
+			}
+			pieceHook = nil
+			if w := call("server", "owner", true); w.Code != 409 || !strings.Contains(w.Body.String(), "files changed") {
+				t.Fatalf("file-only receipt retired the Mac: %d %s", w.Code, w.Body.String())
+			}
+			kept, e := crewroot.ReadSync(local.ID)
+			if e != nil || kept == nil || kept.Editing != "local" || kept.PendingAction != "" {
+				t.Fatalf("Mac did not stay active: %+v %v", kept, e)
+			}
+			if receipt, e := readCrewMoveReceipt(local.ID); e != nil || receipt != nil {
+				t.Fatalf("file-only receipt created retirement state: %+v %v", receipt, e)
+			}
+			if _, e := api.crewHandoffMain(ctx, owner, local.ID); e != nil {
+				t.Fatalf("Mac chat lost: %v", e)
+			}
 			failActivation = true
 			if w := call("server", "owner", true); w.Code != 409 || failActivation || !strings.Contains(w.Body.String(), "paused for this move") {
 				t.Fatalf("activation failure not explicit: %d %s", w.Code, w.Body.String())
@@ -411,6 +452,22 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			loseResponse = true
 			if w := call("server", "owner", true); w.Code != 409 || loseResponse {
 				t.Fatalf("lost receipt: %d %s", w.Code, w.Body.String())
+			}
+			// PR882: a failed first retirement-receipt write must retain the pending transfer.
+			blockRetirement = true
+			if w := call("server", "owner", true); w.Code != 409 || blockRetirement {
+				t.Fatalf("retirement storage failure: %d %s", w.Code, w.Body.String())
+			}
+			kept, e = crewroot.ReadSync(local.ID)
+			if e != nil || kept == nil || kept.PendingAction != "server" {
+				t.Fatalf("retirement failure lost pending move: %+v %v", kept, e)
+			}
+			blocked, _ := crewMoveReceiptPath(local.ID)
+			if e = os.Remove(filepath.Dir(blocked)); e != nil {
+				t.Fatal(e)
+			}
+			if w := call("status", "owner", true); w.Code != 200 || !strings.Contains(w.Body.String(), `"phase":"activating"`) {
+				t.Fatalf("retirement phase: %d %s", w.Code, w.Body.String())
 			}
 			if w := call("server", "owner", true); w.Code != 200 {
 				t.Fatalf("retry: %d %s", w.Code, w.Body.String())
@@ -547,7 +604,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					break
 				}
 			}
-			if movedCaller.WatcherSource == nil || movedCaller.WatcherSource.Path != serverRoots.Virtual || !movedCaller.Schedule.Enabled || movedCaller.Schedule.Condition.Target.Name != serverRoots.Virtual {
+			if movedCaller.WatcherSource == nil || movedCaller.WatcherSource.Path != serverRoots.Virtual || !movedCaller.Schedule.Enabled || movedCaller.Schedule.Condition.Target.Name != serverRoots.Virtual || movedCaller.Schedule.Condition.Target.ChatID != "helper" {
 				t.Fatalf("caller not rebound: %+v", movedCaller)
 			}
 			if script, found, e := api.projectActions.readFile(ctx, conditionScriptRoot(movedCaller)+"/"+movedCaller.Schedule.Condition.Script); e != nil || !found || script != "print('{}')" {
