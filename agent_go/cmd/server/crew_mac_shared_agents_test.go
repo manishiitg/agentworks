@@ -47,11 +47,6 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 			t.Fatalf("tab %q: the Mac took a message for a tab it does not share: %d", tab, got.Status)
 		}
 	}
-	// An agent the owner keeps to people only: the Mac refuses a message from someone's AI agent (owner, 3 Nov).
-	fromAgent, _ := json.Marshal(map[string]any{"sender_id": "b", "from_agent": true})
-	if got := api.desktopMacSharedAgent(t.Context(), &UserClaims{UserID: "owner"}, agentprofiles.Profile{}, "p", crewChatCall{Operation: "agent_ask", Tab: "helper01", Message: "hi", Args: fromAgent}); got.Status != 403 {
-		t.Fatalf("the Mac took an agent's message for an agent closed to agents: %d", got.Status)
-	}
 
 	// a and c both message Writer, and the owner types in that tab too: a reads only a's turn and its answer.
 	items := []codeTurnItem{

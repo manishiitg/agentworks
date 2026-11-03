@@ -327,8 +327,6 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		WaitSeconds int    `json:"wait_seconds"`
 		// Submission: read only the turn that answers this one message (an agent message's id).
 		Submission string `json:"submission"`
-		// FromAgent: sent by another person's AI agent at this agent's address, not typed by the person.
-		FromAgent bool `json:"from_agent"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -346,9 +344,6 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	}
 	if agent == nil {
 		return refuse("not_shared")
-	}
-	if args.FromAgent && !agent.Agents {
-		return refuse("agents_off")
 	}
 	key := macSharedAgentChatKey(project, call.Tab)
 	if call.Tab != macMainTab {
