@@ -23,7 +23,7 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-const crewSyncResetMessage = "this saved transfer cannot be resumed; your files are kept. Ask your administrator to reset Project sync, then pair this Crew again"
+const crewSyncResetMessage = "this saved transfer cannot be resumed; your files are kept. Open this Crew in the Mac app to restart its move"
 
 func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
@@ -241,7 +241,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	if binding == nil {
 		if !allowPair {
-			fail(fmt.Errorf("open this Crew in the AgentWorks app and choose a server in Project sync first"))
+			fail(fmt.Errorf("open this Crew in the AgentWorks app and choose its connected server first"))
 			return
 		}
 		if input.Action != "server" {
@@ -433,7 +433,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				// Confirm the captured copy without handing execution to a stale
 				// version. The next send captures the edits made during upload.
 				transfer.Editing = "local"
-				transfer.Conversation = nil
 				if e = fsutil.WriteJSONAtomic(pendingPath, transfer, 0600); e != nil {
 					fail(e)
 					return
@@ -533,7 +532,7 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 		connection.Token = token
 	}
 	if response.StatusCode == http.StatusUnauthorized {
-		return crewSyncReply{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: response.StatusCode, Message: "reconnect this server from Connected servers, then retry Project sync"}
+		return crewSyncReply{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: response.StatusCode, Message: "reconnect this server from Connected servers, then retry Move online"}
 	}
 
 	if response.StatusCode != 200 {
@@ -549,8 +548,5 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 	}
 	var out crewSyncReply
 	e = json.NewDecoder(io.LimitReader(response.Body, crewSyncMetadataBytes)).Decode(&out)
-	if e == nil && (request.ArchiveOnly || (out.Binding != nil && out.Binding.ArchiveOnly)) && out.Conversation != nil {
-		out.Conversation.Native = nil
-	}
 	return out, e
 }

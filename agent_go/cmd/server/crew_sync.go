@@ -25,36 +25,34 @@ import (
 )
 
 type crewSyncRequest struct {
-	Native       []*sessiontransfer.Bundle `json:"native,omitempty"`
-	ArchiveOnly  bool                      `json:"archive_only,omitempty"`
-	Mode         string                    `json:"mode,omitempty"`
-	MacID        string                    `json:"mac_id,omitempty"`
-	SplitFiles   bool                      `json:"split_files,omitempty"`
-	TransferID   string                    `json:"transfer_id,omitempty"`
-	Action       string                    `json:"action"`
-	PairID       string                    `json:"pair_id,omitempty"`
-	SourceID     string                    `json:"source_id,omitempty"`
-	Name         string                    `json:"name,omitempty"`
-	MacName      string                    `json:"mac_name,omitempty"`
-	Editing      string                    `json:"editing,omitempty"`
-	Snapshot     *crewsync.Snapshot        `json:"snapshot,omitempty"`
-	Conversation *crewHandoffConversation  `json:"conversation,omitempty"`
+	Native      []*sessiontransfer.Bundle `json:"native,omitempty"`
+	ArchiveOnly bool                      `json:"archive_only,omitempty"`
+	Mode        string                    `json:"mode,omitempty"`
+	MacID       string                    `json:"mac_id,omitempty"`
+	SplitFiles  bool                      `json:"split_files,omitempty"`
+	TransferID  string                    `json:"transfer_id,omitempty"`
+	Action      string                    `json:"action"`
+	PairID      string                    `json:"pair_id,omitempty"`
+	SourceID    string                    `json:"source_id,omitempty"`
+	Name        string                    `json:"name,omitempty"`
+	MacName     string                    `json:"mac_name,omitempty"`
+	Editing     string                    `json:"editing,omitempty"`
+	Snapshot    *crewsync.Snapshot        `json:"snapshot,omitempty"`
 }
 type crewSyncReply struct {
-	SchedulesPaused    bool                     `json:"schedules_paused"`
-	Message            string                   `json:"message,omitempty"`
-	BytesDone          int64                    `json:"bytes_done"`
-	BytesTotal         int64                    `json:"bytes_total"`
-	BackupPath         string                   `json:"backup_path,omitempty"`
-	LocalFolderKept    string                   `json:"local_folder_kept,omitempty"`
-	RuntimeReadiness   *crewDependencyReport    `json:"runtime_readiness,omitempty"`
-	ConversationNotice string                   `json:"conversation_notice,omitempty"`
-	TransferID         string                   `json:"transfer_id,omitempty"`
-	ProjectID          string                   `json:"project_id"`
-	Workspace          string                   `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
-	Binding            *crewroot.SyncBinding    `json:"binding"`
-	Snapshot           *crewsync.Snapshot       `json:"snapshot,omitempty"`
-	Conversation       *crewHandoffConversation `json:"conversation,omitempty"`
+	SchedulesPaused    bool                  `json:"schedules_paused"`
+	Message            string                `json:"message,omitempty"`
+	BytesDone          int64                 `json:"bytes_done"`
+	BytesTotal         int64                 `json:"bytes_total"`
+	BackupPath         string                `json:"backup_path,omitempty"`
+	LocalFolderKept    string                `json:"local_folder_kept,omitempty"`
+	RuntimeReadiness   *crewDependencyReport `json:"runtime_readiness,omitempty"`
+	ConversationNotice string                `json:"conversation_notice,omitempty"`
+	TransferID         string                `json:"transfer_id,omitempty"`
+	ProjectID          string                `json:"project_id"`
+	Workspace          string                `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
+	Binding            *crewroot.SyncBinding `json:"binding"`
+	Snapshot           *crewsync.Snapshot    `json:"snapshot,omitempty"`
 	// Place is where the Crew lives for the Access row: mac, mac_off, moving or online (the server decides).
 	Place string `json:"place,omitempty"`
 }
@@ -341,7 +339,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			if err = api.importCrewMoveData(ctx, claims, roots, binding.PairID, input.TransferID, main, input.Snapshot.StatePath); err != nil {
 				return out, err
 			}
-			out.ConversationNotice = "Your agents, chats and schedules are available online."
+			out.ConversationNotice = crewMoveNotice(input.Snapshot.StatePath)
 		}
 		binding.Editing = input.Editing
 		binding.LastTransfer = input.TransferID
