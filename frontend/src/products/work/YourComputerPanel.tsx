@@ -114,16 +114,16 @@ export function cloudStateIcon(state?: CloudState, theirs = false): LucideIcon {
 }
 const tintedIcons = new Map<string, LucideIcon>()
 
-export function YourComputerPanel({ projectId, sessionId }: { projectId: string; sessionId?: string; canEdit: boolean }) {
+export function YourComputerPanel({ projectId, sessionId, onFullScreen }: { projectId: string; sessionId?: string; canEdit: boolean; onFullScreen?: (full: boolean) => void }) {
   if (!crewCloudMode()) return <div><LaptopCard sessionId={sessionId} /></div>
   // A Crew opened from a connected server lives online.
   if (getRawActiveWorkspaceId() !== 'local') return <section aria-label="Where it lives" className="space-y-3 text-sm">
     <p role="status" className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-500" />Online</p>
   </section>
-  return <div><WhereItLivesCard projectId={projectId} sessionId={sessionId} /></div>
+  return <div><WhereItLivesCard projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} /></div>
 }
 
-function WhereItLivesCard({ projectId, sessionId }: { projectId: string; sessionId?: string }) {
+function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void }) {
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
   const name = tab?.metadata?.agentProfileProjectTitle || 'this'
   const workspacePath = tab?.metadata?.agentProfileWorkspace || ''
@@ -183,6 +183,13 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
     {action}
   </div>
   const ready = <span className="text-xs text-emerald-500">✓ Ready</span>
+  // Move online takes the whole page (owner, 3 Nov mockup): the step, then its progress, then done.
+  const [doneSeen, setDoneSeen] = useState(false)
+  const done = online && Boolean(moved) && !doneSeen
+  const step: MoveStep | '' = open === 'move' && !online ? 'confirm' : moving ? 'moving' : done ? 'done' : ''
+  useEffect(() => { onFullScreen?.(step !== ''); return () => onFullScreen?.(false) }, [step, onFullScreen])
+  if (step) return <MoveOnlineScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
+    onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   // The boxes sit on the page directly, without section labels (owner, 3 Nov: less text).
   return <div className="space-y-3 text-sm">
     <section aria-label="Where it lives" className="space-y-1">
@@ -209,7 +216,6 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
         <p className="text-xs text-muted-foreground">Which network?</p>
         {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
       </div>}
-      {open === 'move' && <MoveOnline name={name} facts={facts} tooBig={tooBig} onCancel={() => setOpen('')} onMove={() => void move(false)} />}
       {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
     {status && <section aria-label="Who can use it" className="space-y-1">
@@ -339,18 +345,47 @@ function MacCrewSlack({ connection, project }: { connection: string; project: st
 }
 
 /** The Move online step: size and time, what moves, then the owner's click. One-way (owner, 3 Nov). */
-function MoveOnline({ name, facts, tooBig, onCancel, onMove }: { name: string; facts?: { size: string; time: string }; tooBig: boolean; onCancel: () => void; onMove: () => void }) {
-  return <div className="mt-2 space-y-3 rounded-xl border border-border bg-background/40 p-3">
-    <p className="font-semibold">Move "{name}" online</p>
-    {tooBig
-      ? <p className="text-[13px] text-amber-600">It's too big to move online. Move large folders out of this Crew first.</p>
-      : <>
-        <p className="text-[13px] text-muted-foreground">It will work even when your Mac is off. After the move it lives online only.</p>
-        <MoveFacts facts={facts} />
-        <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">What moves</summary><p className="mt-1">Its files and your chats move; apps installed only on this Mac don't, and this Mac keeps a backup copy of the folder.</p></details>
-      </>}
-    <div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button size="sm" disabled={tooBig || !facts} onClick={onMove}>Move online</Button></div>
-  </div>
+type MoveStep = 'confirm' | 'moving' | 'done'
+
+/** Move online, as one full-page step (owner, 3 Nov mockup): what moves and what stays, size and time, then progress
+ * from the move's own report, then done. One-way, no extra gates. */
+function MoveOnlineScreen({ step, name, facts, tooBig, status, backup, error, onCancel, onMove, onOpen }: { step: MoveStep; name: string; facts?: { size: string; time: string }; tooBig: boolean; status: SyncStatus | null; backup?: string; error: string; onCancel: () => void; onMove: () => void; onOpen: () => void }) {
+  const box = (title: string, items: string[]) => <div className="flex-1 rounded-xl border border-border p-3"><p className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</p><ul className="space-y-1 text-[13px]">{items.map(item => <li key={item}>{item}</li>)}</ul></div>
+  if (step === 'done') return <section aria-label="Moved online" className="flex flex-col items-center gap-3 py-10 text-center text-sm">
+    <Cloud className="h-10 w-10 text-primary" aria-hidden="true" />
+    <p className="text-base font-semibold">"{name}" is online</p>
+    <p className="max-w-sm text-[13px] text-muted-foreground">It works even when your Mac is off.{backup ? ` This Mac keeps a backup copy in "${backup.split('/').pop()}".` : ''}</p>
+    <Button onClick={onOpen}>Open it</Button>
+  </section>
+  if (step === 'moving') {
+    const total = status?.bytes_total || 0, done = status?.bytes_done || 0
+    const filesDone = total > 0 && done >= total
+    const steps: [string, 'done' | 'now' | 'next'][] = [['Files and database', filesDone ? 'done' : 'now'], ['Chats and agents', filesDone ? 'now' : 'next'], ['Schedules, watchers, dashboards', 'next'], ['Ready online', 'next']]
+    return <section aria-label="Moving online" className="space-y-4 py-4 text-sm">
+      <p className="text-base font-semibold">Moving "{name}" online…</p>
+      <p className="text-[13px] text-muted-foreground">If it's interrupted, it picks up where it left off.</p>
+      <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${total ? Math.min(100, Math.round(done * 100 / total)) : 5}%` }} /></div>
+      {total > 0 && <p className="text-[13px] tabular-nums">{sizeLabel(done)} <span className="text-muted-foreground">of {sizeLabel(total)}</span></p>}
+      <ul className="space-y-1 text-[13px]">{steps.map(([label, state]) => <li key={label} className={state === 'next' ? 'text-muted-foreground' : ''}>{state === 'done' ? '✓' : state === 'now' ? '●' : '○'} {label}</li>)}</ul>
+      {status?.schedules_paused && <p className="text-[13px] text-muted-foreground">{status.message || 'Its schedules wait until the move finishes.'}</p>}
+      {error && <p className="text-[13px] text-amber-600">It stopped. Your work is kept. <button type="button" className="underline" onClick={onMove}>Retry Move online</button></p>}
+    </section>
+  }
+  return <section aria-label={`Move ${name} online`} className="space-y-4 py-2 text-sm">
+    <div><p className="text-base font-semibold">Move "{name}" online</p><p className="text-[13px] text-muted-foreground">It will live online from now on, and work even when your Mac is off.</p></div>
+    <div className="flex items-center justify-center gap-4 py-2 text-center text-xs text-muted-foreground">
+      <span className="flex flex-col items-center gap-1"><Laptop className="h-7 w-7 text-foreground" aria-hidden="true" />On this Mac<span>now</span></span>
+      <span aria-hidden="true" className="text-lg">→</span>
+      <span className="flex flex-col items-center gap-1"><Cloud className="h-7 w-7 text-primary" aria-hidden="true" />Online<span>after the move</span></span>
+    </div>
+    {tooBig ? <p className="text-[13px] text-amber-600">It's too big to move online. Move large folders out of this Crew first.</p> : <>
+      <div className="flex flex-col gap-2 sm:flex-row">{box('Moves', ['Files and its database', 'All its chats and agents', 'Schedules and watchers', 'Dashboards and functions'])}{box('Stays on this Mac', ['A backup copy of the folder', 'Apps and sign-ins installed only here'])}</div>
+      <MoveFacts facts={facts} />
+      <p className="text-[13px] text-amber-600">You can't move it back to this Mac. Afterwards you open it from Online, like any online Crew.</p>
+    </>}
+    {error && <p className="text-[13px] text-amber-600">{error}</p>}
+    <div className="flex justify-end gap-2"><Button variant="outline" onClick={onCancel}>Cancel</Button><Button disabled={tooBig || !facts} onClick={onMove}>Move online</Button></div>
+  </section>
 }
 
 function MoveFacts({ facts }: { facts?: { size: string; time: string } }) {
@@ -358,7 +393,6 @@ function MoveFacts({ facts }: { facts?: { size: string; time: string } }) {
   return <div className="space-y-0.5 rounded-lg bg-muted/40 px-3 py-2 text-[13px]">
     <div className="flex justify-between"><span className="text-muted-foreground">Size</span>{facts.size}</div>
     <div className="flex justify-between"><span className="text-muted-foreground">Time</span>{facts.time}</div>
-    <div className="flex justify-between"><span className="text-muted-foreground">Your chats</span>move with it</div>
   </div>
 }
 
