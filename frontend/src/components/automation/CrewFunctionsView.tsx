@@ -3,6 +3,7 @@ import axios from 'axios'
 import { crewFunctionsApi, type CrewFunction, type CrewFunctionCall, type CrewFunctionSchema } from '../../api/crewFunctions'
 import { productWebhooksApi, type ProductAPITrigger, type ProductTriggerScope } from '../../api/productWebhooks'
 import { Braces } from 'lucide-react'
+import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, relativeTime } from './AutomationKit'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
@@ -114,6 +115,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
       <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this Crew. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
         {loaded ? `${functions.length} functions · ${running} running · ${calls.length} recent calls` : 'Loading functions…'}
       </AutomationIntro>
+      {scope.profileId === 'work' && <OnlineOnlyNote projectId={scope.projectId} />}
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       {functions.length > 6 && <input type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder={`Search ${functions.length} functions`} aria-label="Search functions" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />}
       {visibleFunctions.length > 0 && <AutomationListBox>

@@ -7,6 +7,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 
 type Person = { id: string; email?: string; username?: string }
@@ -32,6 +33,8 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const user = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const streaming = useChatStore(state => tabId ? state.chatTabs[tabId]?.isStreaming === true : false)
+  // A Crew that lives on the Mac: its dashboard link works once it is online (useMacCrew.tsx).
+  const crewProjectId = useChatStore(state => tabId && state.chatTabs[tabId]?.metadata?.agentProfileId === 'work' ? state.chatTabs[tabId]?.metadata?.agentProfileProjectId : undefined)
   const scope = `${server}:${user}:${workspacePath}`
   const [snapshot, setSnapshot] = useState<{ scope: string; state: ShareState } | null>(null)
   const state = snapshot?.scope === scope ? snapshot.state : null
@@ -156,6 +159,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   </form>
   const choices = [['private', 'Only me'], ['people', 'Chosen people'], ['everyone', 'Everyone']] as const
   const peopleContent = <div className="space-y-6 text-sm">
+    <OnlineOnlyNote projectId={crewProjectId} />
     <section aria-label="Shared with" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">Shared with</h3>

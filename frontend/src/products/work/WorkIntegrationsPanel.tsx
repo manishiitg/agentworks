@@ -23,7 +23,7 @@ import { integrationProductAvailable } from '../../components/integrations/integ
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
 
-export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'slack' | 'whatsapp' | 'cli' | 'computer' | 'agentbridge' | 'computer-use'
+export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'computer' | 'agentbridge' | 'computer-use'
 
 export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
   accessLoading?: boolean
@@ -51,11 +51,11 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
     if (next === 'agentbridge' && !integrationProductAvailable('bullpen', allowedProducts)) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setShareSection(false); setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
-    if (['apps', 'brain', 'folders', 'slack', 'whatsapp', 'cli', 'computer', 'agentbridge', 'computer-use'].includes(next)) {
+    if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'computer', 'agentbridge', 'computer-use'].includes(next)) {
       setShareSection(false); setTab(next as WorkIntegrationTab)
     }
   })
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', computer: hasDesktopConnections() ? 'Where it lives' : 'Laptop access', agentbridge: 'Connected agents', 'computer-use': 'Computer use' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', computer: hasDesktopConnections() ? 'Where it lives' : 'Laptop access', agentbridge: 'Connected agents', 'computer-use': 'Computer use' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <WorkspaceViewHeader icon={shareSection ? Users : tab === 'agentbridge' ? Cable : Server} title={shareSection ? 'Access' : labels[tab]} />
@@ -67,6 +67,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
         {tab === 'apps' && <ProjectIntegrationPanel github={projectMode === 'dev'} workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
         {tab === 'folders' && <WorkFoldersSection onOpenComputer={canEdit ? () => setTab('computer') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
+        {tab === 'mac-folders' && <CodeLocalFilesSettings sessionId={sessionId} />}
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}
         {tab === 'slack' && <ProductSlackPanel workspacePath={workspacePath} noun="Crew" section="bot" tabId={tabId} />}
         {tab === 'whatsapp' && <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
