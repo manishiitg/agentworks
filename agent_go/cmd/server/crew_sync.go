@@ -51,6 +51,8 @@ type crewSyncReply struct {
 	Binding            *crewroot.SyncBinding    `json:"binding"`
 	Snapshot           *crewsync.Snapshot       `json:"snapshot,omitempty"`
 	Conversation       *crewHandoffConversation `json:"conversation,omitempty"`
+	// Place is where the Crew lives for the Access row: mac, mac_off, moving or online (the server decides).
+	Place string `json:"place,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -215,6 +217,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
+	if r.Method == http.MethodGet {
+		out.Place = crewPlace(GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
+	}
 	if IsLocalMode() {
 		out.SourceProject = readCrewSourceProject(out.ProjectID)
 	}

@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useState, type ReactNode } from 'react'
-import { CheckCircle2, CircleDashed, Folder, Globe, Hash, Laptop, MessageSquare, RefreshCw, Smartphone, Terminal, TriangleAlert, type LucideIcon, type LucideProps } from 'lucide-react'
+import { CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, RefreshCw, Smartphone, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -21,45 +21,38 @@ type LaptopSettings = { device_id: string; folders: { id: string; path: string; 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
 export const crewCloudMode = () => hasDesktopConnections()
 
-// Laptop access (a Crew on a server) keeps its on/off.
-export type CloudState = 'mac' | 'online' | 'moving' | 'check' | 'on' | 'off'
-/** The menu row's state. The server decides where the Crew lives (its pair's editing side); the row only shows it. */
-export function useYourComputerSummary(enabled: boolean, projectId?: string, profileId?: string): CloudState | undefined {
+export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online'
+/** Where the Crew lives, for its Access row. The server decides (crew-sync status "place"); the row only shows it. */
+export function useYourComputerSummary(enabled: boolean, projectId?: string): CloudState | undefined {
   const [state, setState] = useState<CloudState>()
   useEffect(() => {
     setState(undefined)
     if (!enabled || !projectId) return
-    const abort = new AbortController(), options = { signal: abort.signal, skipSessionContext: true }
-    const load = () => {
-      const request: Promise<CloudState> = crewCloudMode() && getRawActiveWorkspaceId() !== 'local' ? Promise.resolve('online') : crewCloudMode()
-        ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => {
-          if (!data.binding) return 'mac'
-          if (data.binding.pending_action === 'server' || data.binding.pending_action === 'local') return 'check'
-          return data.binding.editing === 'server' ? 'online' : 'mac'
-        })
-        : api.get<LaptopSettings>(laptopSettingsEndpoint(undefined, profileId, projectId), options).then(({ data }) => data.device_id ? 'on' : 'off')
-      void request.then(value => { if (!abort.signal.aborted) setState(value) }).catch(() => {})
-    }
+    // A Crew opened from a connected server in the Mac app lives online.
+    if (crewCloudMode() && getRawActiveWorkspaceId() !== 'local') { setState('online'); return }
+    const abort = new AbortController()
+    const load = () => void api.get<SyncStatus & { place?: CloudState }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true })
+      .then(({ data }) => { if (!abort.signal.aborted && data.place) setState(data.place) }).catch(() => {})
     load()
-    const timer = crewCloudMode() ? window.setInterval(load, 4000) : undefined
+    const timer = window.setInterval(load, 5000)
     return () => { window.clearInterval(timer); abort.abort() }
-  }, [enabled, projectId, profileId])
+  }, [enabled, projectId])
   return state
 }
-export const cloudStateLabel: Record<CloudState, string> = { mac: 'On this Mac', online: 'Online', moving: 'Moving…', check: 'Check', on: 'On', off: 'Off' }
-/** The row icon in the state's colour: green online, pulsing while it moves, amber to check, plain on this Mac. */
-export function cloudStateIcon(Icon: LucideIcon, state?: CloudState): LucideIcon {
-  const tone = state === 'online' || state === 'on' ? '!text-emerald-400/90' : state === 'moving' ? '!text-emerald-400/90 animate-pulse' : state === 'check' ? '!text-amber-500' : ''
-  if (!tone) return Icon
-  // One component per icon and state, so a re-render does not restart the pulse.
-  const key = `${Icon.displayName || 'icon'}:${state}`
-  let Tinted = tintedIcons.get(key)
-  if (!Tinted) {
-    Tinted = forwardRef<SVGSVGElement, LucideProps>(({ className, ...props }, ref) => <Icon ref={ref} {...props} className={`${className || ''} ${tone}`} />) as LucideIcon
-    Tinted.displayName = 'CloudStateIcon'
-    tintedIcons.set(key, Tinted)
+export const cloudStateLabel: Record<CloudState, string> = { mac: 'On this Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online' }
+/** The Access row icon: a laptop while it lives on a Mac, a cloud online, people for someone else's Crew, with a dot:
+ * green reachable now, grey Mac off, amber moving. */
+export function cloudStateIcon(state?: CloudState, theirs = false): LucideIcon {
+  const Icon = theirs ? Users : state === 'online' ? Cloud : Laptop
+  const dot = !state ? '' : state === 'mac_off' ? 'bg-muted-foreground' : state === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
+  const key = `${theirs}:${state}`
+  let Marked = tintedIcons.get(key)
+  if (!Marked) {
+    Marked = forwardRef<SVGSVGElement, LucideProps>(({ className, ...props }, ref) => <span className="relative inline-flex shrink-0"><Icon ref={ref} {...props} className={className} />{dot && <span aria-hidden="true" className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${dot}`} />}</span>) as unknown as LucideIcon
+    Marked.displayName = 'AccessIcon'
+    tintedIcons.set(key, Marked)
   }
-  return Tinted
+  return Marked
 }
 const tintedIcons = new Map<string, LucideIcon>()
 
