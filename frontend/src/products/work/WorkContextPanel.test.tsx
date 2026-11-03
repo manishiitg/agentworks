@@ -83,7 +83,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
   expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Build')?.open).toBe(true)
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
-  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','GitHub','Sharing']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
+  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','GitHub','Access']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
   expect(host.querySelector('[aria-label="Back to workspace"]')?.textContent).toBe('Full menu')
   expect(host.textContent).not.toContain('Back to workspace')
   const files = [...host.querySelectorAll('button')].find(node => node.textContent === 'Files')!
