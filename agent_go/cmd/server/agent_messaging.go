@@ -1059,9 +1059,9 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		if api.agentProfiles == nil {
 			return session, fmt.Errorf("Crew runtime unavailable")
 		}
-		// An agent shared from a Crew on its owner's Mac answers through ask, never in an empty online tab (PLAT-856-509).
+		// An agent shared from a Crew on its owner's Mac runs there; its answer comes back to this inbox (PLAT-856-509).
 		if !IsLocalMode() && crewRelayTwin(dest.ID) {
-			return session, fmt.Errorf("this agent runs on its owner's Mac: ask it with workspace action=ask and its chat_id, then read_chat for the answer")
+			return session, api.deliverToMacSharedAgent(ctx, c, m, source, dest)
 		}
 		profile, err := api.agentProfiles.Resolve("work", 0, dest.UserID)
 		if err != nil {

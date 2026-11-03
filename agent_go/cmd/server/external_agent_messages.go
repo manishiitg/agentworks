@@ -114,6 +114,13 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		claims = view
 	}
 	token = claims.AccessToken
+	// A Mac Crew's shared agent: the audience check above is the access; there is no Crew to resolve here.
+	if peer.Kind == triggerCallerCrew && !IsLocalMode() && crewRelayTwin(peer.ID) && sharedCrewAgentPeer(ctx, claims.UserID, peer) {
+		if token != nil && !(token.Allows("crews:run") || !send && token.Allows("crews:read")) {
+			return denied
+		}
+		return nil
+	}
 	if peer.Kind == triggerCallerCrew && sharedCrewAgentPeer(ctx, claims.UserID, peer) {
 		if token != nil && !(token.Allows("crews:run") || !send && token.Allows("crews:read")) {
 			return denied

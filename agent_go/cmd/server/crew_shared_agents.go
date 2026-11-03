@@ -164,6 +164,11 @@ func sharedCrewAgentPeer(ctx context.Context, user string, peer agentMessageEndp
 	if peer.Kind != triggerCallerCrew || peer.ChatKey == "" || strings.HasPrefix(peer.ChatKey, "messages:") {
 		return false
 	}
+	// An agent shared from a Crew on its owner's Mac: its audience decides (PLAT-856-509).
+	if !IsLocalMode() && crewRelayTwin(peer.ID) {
+		_, reason := macSharedAgentFor(peer.ID, macSharedAgentTab(peer.ID, peer.ChatKey), user, peer.UserID)
+		return reason == ""
+	}
 	chat, ok := sharedCrewAgentChat(ctx, user, peer.Path, peer.ChatKey)
 	return ok && chat.OwnerID == peer.UserID && chat.SessionID == peer.Session
 }

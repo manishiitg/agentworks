@@ -72,3 +72,27 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 		t.Fatal("an unnamed sender read the tab")
 	}
 }
+
+// PLAT-856-509: a shared agent's address for other people's agents is unique for its owner, survives a rename, and
+// stays reserved while it is off, so turning it back on gives the same address.
+func TestMacSharedAgentAddressKeptAndReserved(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	if got := macAgentSlug("  Sales & Leads!! "); got != "sales-leads" {
+		t.Fatalf("slug %q", got)
+	}
+	first := assignMacAgentAddresses(t.Context(), "owner", "p", []macSharedAgent{{Tab: "a1", Name: "Writer"}, {Tab: "a2", Name: "Writer"}}, nil)
+	if first[0].Address != "writer" || first[1].Address != "writer-2" {
+		t.Fatalf("addresses not unique: %+v", first)
+	}
+	renamed := assignMacAgentAddresses(t.Context(), "owner", "p", []macSharedAgent{{Tab: "a1", Name: "Editor"}}, first)
+	if renamed[0].Address != "writer" {
+		t.Fatalf("a rename changed the address: %+v", renamed)
+	}
+	if len(renamed) != 2 || !renamed[1].Off || renamed[1].Address != "writer-2" {
+		t.Fatalf("a turned-off agent lost its reserved address: %+v", renamed)
+	}
+	again := assignMacAgentAddresses(t.Context(), "owner", "p", []macSharedAgent{{Tab: "a1", Name: "Editor"}, {Tab: "a2", Name: "Writer"}}, renamed)
+	if again[1].Address != "writer-2" || again[1].Off {
+		t.Fatalf("turning it back on did not reuse its address: %+v", again)
+	}
+}

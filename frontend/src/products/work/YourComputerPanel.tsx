@@ -244,7 +244,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   </div>
 }
 
-type SharedAgent = { tab: string; name: string; purpose: string; audience: 'everyone' | 'chosen'; people?: string[] }
+type SharedAgent = { tab: string; name: string; purpose: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string }
 type Person = { id: string; username: string; email?: string }
 
 // Reads one JSON reply from the Crew's network through the Mac's saved sign-in.
@@ -319,6 +319,7 @@ function MacSharedAgents({ projectId, connection }: { projectId: string; connect
               </span>}
             </span> : <button type="button" onClick={() => { setAdding(row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted">+ Add</button>}
           </div>}
+          <ReachLines agent={agent} />
           {row.tab === 'main' && <p className="text-[11px] text-muted-foreground">This is your main chat. Its answers to others can use what you've discussed here.</p>}
           {!agent.purpose.trim() && <p className="text-[11px] text-amber-600">Write one line about what it does to share it.</p>}
         </>}
@@ -536,4 +537,17 @@ export function useMacTabShareLine(projectId?: string, conversationKey?: string)
     return () => { live = false }
   }, [projectId, conversationKey])
   return line
+}
+
+/** Where the people it is shared with reach a shared agent (owner, 3 Nov): one audience for all three ways. */
+function ReachLines({ agent }: { agent: SharedAgent }) {
+  const [copied, setCopied] = useState(false)
+  const owner = agent.address?.split('/')[0]
+  return <div className="space-y-0.5 text-[12px] text-muted-foreground">
+    <p className="text-[11px] font-medium">They can reach it:</p>
+    <p>👤 On the AgentWorks website or phone · under 'Shared with me'</p>
+    <p>💬 From their ChatGPT or Claude · "ask {owner ? `${owner}'s` : 'your'} {agent.name} …"</p>
+    {agent.address && <p className="flex items-center gap-1.5">🤖 From their own agents · <code className="rounded bg-muted px-1">agent:{agent.address}</code>
+      <button type="button" className="text-primary hover:underline" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500) })}>{copied ? 'Copied' : 'Copy'}</button></p>}
+  </div>
 }
