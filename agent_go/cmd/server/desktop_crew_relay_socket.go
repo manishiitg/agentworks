@@ -82,7 +82,9 @@ func desktopRelayCrews(connection string) []desktopRelayCrew {
 			continue
 		}
 		b, e := crewroot.ReadSync(id)
-		if e != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction != "" || b.ConnectionID == "" {
+		// An unfinished upload or download leaves editing on this Mac, so the Crew stays reachable from the
+		// phone; only a handoff in flight ("server", "local") hides it (PLAT-856-509).
+		if e != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction == "server" || b.PendingAction == "local" || b.ConnectionID == "" {
 			continue
 		}
 		if connection != "" && b.ConnectionID != connection {
