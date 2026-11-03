@@ -20,7 +20,8 @@ export function applyWorkChatModels(profileId: string, projectId: string, models
     const model = models.find(item => item.conversation_key === key)
     if (!model) continue
     if (model.error) {
-      store.setTabMetadata(tab.tabId, { agentProfileChatModelLabel: model.display_label, agentProfileChatModelOverride: model.own_model, agentProfileCanOpenModels: canOpenModels })
+      // Drop the earlier guess so the chat box shows the server's "Model unavailable", not a stale model.
+      store.setTabMetadata(tab.tabId, { agentProfileChatModelLabel: model.display_label, agentProfileChatModelOverride: model.own_model, agentProfileCanOpenModels: canOpenModels, agentProfileEngine: undefined, agentProfileModelID: undefined, agentProfileReasoningEffort: undefined, agentProfileConnectionID: undefined })
       continue
     }
     const changed = tab.metadata?.agentProfileConnectionID !== model.connection_id || tab.metadata?.agentProfileEngine !== model.engine || tab.metadata?.agentProfileModelID !== model.model_id || tab.metadata?.agentProfileReasoningEffort !== model.reasoning_effort
