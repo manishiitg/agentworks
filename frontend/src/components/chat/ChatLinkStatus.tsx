@@ -32,7 +32,8 @@ export function ChatLinkStatus({ sessionId, tabId, macProjectId }: { sessionId?:
   const received = message?.state === 'received' && !streaming && Date.now() - Date.parse(message.at || '') > 15_000
   const delivery = sending ? 'Sending…' : message && !received ? STATE_TEXT[message.state] : ''
   return <>
-    {macOff && <div role="status" aria-live="polite" className="shrink-0 bg-muted px-4 py-1.5 text-[11px] text-muted-foreground">Your Mac is off. Your message will be answered when it's back on.</div>}
+    {/* One small line at the composer's top edge (owner, 3 Nov); what a send does while it is off is still his call. */}
+    {macOff && <p role="status" aria-live="polite" className="flex shrink-0 items-center gap-1.5 px-4 pt-1 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />Your Mac is off</p>}
     {link === 'reconnecting' && <div role="status" aria-live="polite" className="h-6 shrink-0 bg-amber-500/15 px-4 text-[11px] leading-6 text-amber-800 dark:text-amber-200">Reconnecting… your work keeps running.</div>}
     {delivery && <p role="status" aria-live="polite" className="px-4 pt-1 text-right text-[11px] text-muted-foreground">{delivery}{message?.state === 'failed' && message.reason ? `: ${message.reason}` : ''}</p>}
   </>

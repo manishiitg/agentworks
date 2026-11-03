@@ -12,9 +12,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
-import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
-import { CrewStarterGuide } from '../../components/chat/ProductStarterGuide'
-import { NewTabHint } from '../../components/chat/ShortcutHint'
 import { HomeEntry } from '../../components/workspace/HomeEntry'
 import { openAppProduct } from '../../utils/appNavigation'
 import { REPORT_SELECTION_EVENT } from '../../components/workflow/reportDocuments'
@@ -726,36 +723,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     onPin={async (key, pinned) => { applyServerOrder(await agentApi.pinAgentProfileSideChat(profileId, projectId, key, pinned)) }} />
 }
 
-function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; product: ProjectProductConfig; cowork?: boolean }) {
-  if (cowork) return <CrewStarterGuide />
-  if (!product.hasIdentity) {
-    return <ProductChatLandingCard
-      title="Work on this project"
-      description="Use this conversation to build, investigate or improve the existing project."
-      examples={[
-        'Clone a repository into code/ and explain how it works',
-        'Build, run, test and debug in the workspace terminal',
-        'Call your Crews and workflows when it needs them',
-      ]}
-      shortcutHint={<NewTabHint />}
-    />
-  }
-  if (sharedBy) {
-    return <ProductChatLandingCard
-      title={`Explore ${sharedBy}’s ${product.noun}`}
-      description={`This ${product.noun} is shared with you on Run. Ask it to:`}
-      examples={[
-        `Ask what this ${product.noun} can help you with`,
-        'Ask a question about its dashboard',
-        'Run its attached workflows when you ask',
-      ]}
-      footer="Your conversation stays private to you — the owner never sees it."
-      shortcutHint
-    />
-  }
-  return <CrewStarterGuide />
-}
-
 function WorkTopBarControl({
   product,
   sessions,
@@ -1412,7 +1379,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         <ChatArea
                           tabId={tabId}
                           compact
-                          landingContent={workspaceView === 'dashboard' ? <></> : <WorkNewChatGuide product={product} cowork={selectedMode === 'cowork'} sharedBy={isWorkSessionRun(selected) && selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
+                          landingContent={<></>}
                           composerPlaceholder={'Ask this Crew to help with your work…'}
                           showProductSteerAction
                           showProductTerminalControl

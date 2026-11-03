@@ -19,7 +19,6 @@ describe('WorkWorkspaceToolbar', () => {
     const pane = readFileSync('src/products/work/WorkWorkspacePane.tsx', 'utf8')
     expect(pane).toContain("view === 'shell' && showShell")
     expect(pane).toContain('<CodeShellPanel projectId={projectId} />')
-    expect(source).toContain('<WorkNewChatGuide product={product}')
   })
 
 
