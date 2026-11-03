@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+
+	"github.com/gorilla/mux"
 )
 
 // AgentProfileSideChat is one open tab of a Code or Crew project as the server knows it.
@@ -41,6 +43,9 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		return
 	}
 	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+	if mux.Vars(r)["id"] == crewProfileID && api.routeCrewMacTabs(w, r, projectID) {
+		return
+	}
 	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
 	if !ok {
 		return
@@ -74,6 +79,10 @@ func (api *StreamingAPI) handleOrderAgentProfileSideChats(w http.ResponseWriter,
 		return
 	}
 	projectID := strings.TrimSpace(input.ProjectID)
+	if api.crewMacTwinForOwner(r, projectID) {
+		writeAgentProfileError(w, http.StatusConflict, "Arrange this Crew's tabs on your Mac.")
+		return
+	}
 	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
 	if !ok {
 		return
@@ -111,6 +120,10 @@ func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r 
 		return
 	}
 	projectID := strings.TrimSpace(input.ProjectID)
+	if api.crewMacTwinForOwner(r, projectID) {
+		writeAgentProfileError(w, http.StatusConflict, "Arrange this Crew's tabs on your Mac.")
+		return
+	}
 	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
 	if !ok {
 		return

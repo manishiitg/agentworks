@@ -597,7 +597,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       const chatStore = useChatStore.getState()
       const tabId = await chatStore.createChatTab(name, {
         ...primary.metadata,
-        agentProfileChatLocation: undefined,
+        agentProfileChatLocation: conversation.chat_location,
         agentProfileIsMainChat: false,
         agentProfileBuilder: false,
         agentProfileChatModelOverride: false,
@@ -665,7 +665,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const previousActive = state.activeTabId
           const tabId = await state.createChatTab(chat.name, {
             ...primary.metadata,
-            agentProfileChatLocation: undefined,
+            // A Mac Crew's tabs are the Mac's, like its Main.
+            agentProfileChatLocation: primary.metadata?.agentProfileChatLocation === 'mac' ? 'mac' : undefined,
             agentProfileIsMainChat: false,
             agentProfileBuilder: false,
             agentProfileTabOwnerID: chat.tab_owner_id,

@@ -98,7 +98,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const place = useYourComputerSummary(Boolean(placeProject), placeProject)
   // On the website a Crew that lives on its owner's Mac has no tabs of its own online; a new one would be empty.
   const livesOnMac = useCrewLivesOnMac(placeProject)
-  const sideChatsHere = allowSideChats && !livesOnMac
+  // A Crew on its owner's Mac shows the Mac's own tabs while the Mac is on; with it off, Main only (PLAT-856-509).
+  const sideChatsHere = allowSideChats && place !== 'mac_off'
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
   const [reordering, setReordering] = useState(false)
