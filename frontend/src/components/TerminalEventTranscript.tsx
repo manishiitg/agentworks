@@ -414,7 +414,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   const attachments = messageAttachmentPaths(metadata)
   if (!collapsible) {
     return (
-      <div className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
+      <div data-sender-label={metadata?.source === 'agent_message' && typeof metadata.sender_label === 'string' ? metadata.sender_label : undefined} className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
         {attachments.length > 0 && <UserAttachments paths={attachments} />}
         {shown !== '' && <div data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>}
         {showReceipt && (
@@ -431,7 +431,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   }
 
   return (
-    <article className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
+    <article data-sender-label={metadata?.source === 'agent_message' && typeof metadata.sender_label === 'string' ? metadata.sender_label : undefined} className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
       {attachments.length > 0 && <UserAttachments paths={attachments} />}
       <div className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90">{shown}</div>
       <div className="mt-1 flex items-center gap-2">

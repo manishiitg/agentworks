@@ -33,7 +33,9 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 
 // One reading per Crew for the whole page (owner, 3 Nov: the page takes ONE flag): every panel that asks where a
 // Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
-type PlaceEntry = { place?: CloudState; shared?: number; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
+/** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
+export type CrewAsk = { tab: string; agent: string; sender: string; sender_label: string; conversation_key: string; started_at: string; active: boolean }
+type PlaceEntry = { place?: CloudState; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -45,12 +47,14 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     const load = () => {
       created.abort?.abort()
       created.abort = new AbortController()
-      void api.get<{ place?: CloudState; shared_agents?: number }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+      void api.get<{ place?: CloudState; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
         .then(({ data }) => {
           const shared = data.shared_agents || 0
-          if (!data.place || (data.place === created.place && shared === created.shared)) return
+          const asking = data.asking || []
+          if (!data.place || (data.place === created.place && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
           created.place = data.place
           created.shared = shared
+          created.asking = asking
           created.listeners.forEach(notify => notify(data.place))
         }).catch(() => {})
     }
@@ -91,6 +95,16 @@ export function useCrewSharedAgentCount(projectId?: string): number {
     return watchCrewPlace(projectId, () => setCount(placeCache.get(projectId)?.shared || 0))
   }, [projectId])
   return count
+}
+
+/** Who asked this Crew's shared agents on this Mac lately, newest first (owner, 3 Nov). */
+export function useCrewAsking(projectId?: string): CrewAsk[] {
+  const [asking, setAsking] = useState<CrewAsk[]>([])
+  useEffect(() => {
+    if (!projectId) return
+    return watchCrewPlace(projectId, () => setAsking(placeCache.get(projectId)?.asking || []))
+  }, [projectId])
+  return asking
 }
 
 /** The page's one flag: this Crew lives on its owner's Mac and this screen is not that Mac (the website or phone),
