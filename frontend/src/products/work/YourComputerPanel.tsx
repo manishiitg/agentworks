@@ -509,3 +509,29 @@ function Card({ icon, title, status, tone, children, details }: { icon: ReactNod
     </details>
   </section>
 }
+
+/** For a Mac Crew's tab in the Mac app: who it is shared with, in a few words ("Shared with user2"), or '' when it is
+ * not shared. Read from this Mac's own shared list and its network's people. */
+export function useMacTabShareLine(projectId?: string, conversationKey?: string): string {
+  const [line, setLine] = useState('')
+  useEffect(() => {
+    setLine('')
+    const tab = conversationKey?.split(':chat:')[1]
+    if (!projectId || !tab || !crewCloudMode() || getRawActiveWorkspaceId() !== 'local') return
+    let live = true
+    void (async () => {
+      const { data } = await api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { skipSessionContext: true })
+      const connection = data.binding?.connection_id
+      if (!connection || !live) return
+      const { agents } = await desktopRequest<{ agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'agents' })
+      const agent = agents?.find(item => item.tab === tab)
+      if (!agent || !live) return
+      if (agent.audience === 'everyone') { setLine('Shared with everyone'); return }
+      const people = await viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(result => result.users || []).catch(() => [] as Person[])
+      const names = (agent.people || []).map(id => people.find(person => person.id === id)?.username || 'someone')
+      if (live) setLine(`Shared with ${names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ')}`)
+    })().catch(() => {})
+    return () => { live = false }
+  }, [projectId, conversationKey])
+  return line
+}
