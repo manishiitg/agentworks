@@ -51,7 +51,11 @@ export function useWorkChatModels(profileId: string, projectId: string | undefin
     enabled: Boolean(projectId && canonicalTabId),
     refetchOnWindowFocus: true,
   })
+  // Opening a Crew writes the Crew's model onto its main tab, sometimes after the server's per-chat
+  // answer arrived; re-apply the server's answer whenever a tab's model changes so the chat box matches Models.
+  const tabModels = useChatStore(state => Object.values(state.chatTabs).filter(tab => projectId && belongsToWorkProject(tab, projectId))
+    .map(tab => `${tab.tabId}=${tab.metadata?.agentProfileEngine}/${tab.metadata?.agentProfileModelID}/${tab.metadata?.agentProfileReasoningEffort}/${tab.metadata?.agentProfileConnectionID}`).sort().join('|'))
   useEffect(() => {
     if (projectId && models.data && isChatIdentityCurrent(identity)) applyWorkChatModels(profileId, projectId, models.data.effective_chat_models, models.data.can_open_models)
-  }, [profileId, projectId, models.data, tabKeys, identity])
+  }, [profileId, projectId, models.data, tabKeys, tabModels, identity])
 }
