@@ -38,6 +38,7 @@ type crewSyncRequest struct {
 	MacName     string                    `json:"mac_name,omitempty"`
 	Editing     string                    `json:"editing,omitempty"`
 	Snapshot    *crewsync.Snapshot        `json:"snapshot,omitempty"`
+	Agents      []macSharedAgent          `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
 }
 type crewSyncReply struct {
 	SchedulesPaused    bool                  `json:"schedules_paused"`
@@ -183,6 +184,10 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	if input.Action == "unpair" {
 		api.unpairCrewRelayTwin(w, r, mux.Vars(r)["project"], input.PairID)
+		return
+	}
+	if input.Action == "share_agents" {
+		api.shareMacCrewAgents(w, r, mux.Vars(r)["project"], input)
 		return
 	}
 	out, err := api.crewSync(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"], input)

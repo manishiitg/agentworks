@@ -34,6 +34,9 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	// A Crew that lives on its owner's Mac answers there (PLAT-856-509): the owner's own AI app reaches it through
 	// the owner's Mac connection, in its Main chat; nobody else does.
 	if !IsLocalMode() && crewRelayTwin(manifest.ID) {
+		if api.externalMacSharedAgent(w, r, action, args, project, manifest) {
+			return
+		}
 		if project.OwnerID != claims.UserID || project.CoOwner {
 			externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
 			return
@@ -231,6 +234,24 @@ func ownerAppTurns(items []codeTurnItem, label, queryID, asked string) []codeTur
 	out := items[:0:0]
 	for _, item := range items {
 		if (queryID != "" && item.Turn == queryID) || turns[item.Turn] {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// senderOwnTurns keeps only one sender's exchange with a shared agent: the messages that person's agent sent and the
+// agent's answers to them, never other senders' turns or the owner's own (PLAT-856-509).
+func senderOwnTurns(items []codeTurnItem, sender string) []codeTurnItem {
+	turns := map[string]bool{}
+	for _, item := range items {
+		if item.Role == "you" && item.Turn != "" && sender != "" && item.SenderID == sender {
+			turns[item.Turn] = true
+		}
+	}
+	out := items[:0:0]
+	for _, item := range items {
+		if turns[item.Turn] {
 			out = append(out, item)
 		}
 	}

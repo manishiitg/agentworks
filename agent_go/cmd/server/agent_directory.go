@@ -100,6 +100,10 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			}
 		}
 	}
+	// Agents shared from Crews on their owners' Macs, for the people in each agent's audience (PLAT-856-509).
+	if !IsLocalMode() {
+		agents = append(agents, macSharedAgentRows(claims.UserID)...)
+	}
 	discovered, err := DiscoverWorkflowManifests(ctx)
 	if err != nil {
 		return nil, err

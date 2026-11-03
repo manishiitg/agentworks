@@ -97,7 +97,7 @@ func (api *StreamingAPI) existingCrewRelayTwin(ctx context.Context, claims *User
 }
 
 func handleCrewSyncCapabilities(w http.ResponseWriter, r *http.Request) {
-	externalJSON(w, map[string]bool{"relay": true})
+	externalJSON(w, map[string]bool{"relay": true, "shared_agents": true})
 }
 
 const macCrewShareBlocked = "This Crew lives on your Mac. So people can use it any time, even when your Mac is off, move it online first from the Mac app: Where it lives, then Move online."

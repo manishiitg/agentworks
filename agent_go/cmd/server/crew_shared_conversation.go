@@ -67,6 +67,8 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 			externalFailure(w, fmt.Errorf("could not read this agent's conversation"))
 			return true
 		}
+		// A sender reads only their own exchange, never other senders' or the owner's turns in this tab (PLAT-856-509).
+		items = senderOwnTurns(items, claims.UserID)
 		since := crewSharedAgentSince(project.Binding.WorkspacePath, chat.Key)
 		before := externalInt(args, "before_seq", 0)
 		shared := items[:0]

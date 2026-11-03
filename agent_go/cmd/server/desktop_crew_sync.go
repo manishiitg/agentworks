@@ -46,11 +46,12 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var input struct {
-		Action string `json:"action"`
+		Action string           `json:"action"`
+		Agents []macSharedAgent `json:"agents"`
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
-	} else if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&input) != nil {
+	} else if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&input) != nil {
 		externalError(w, 400, "invalid_request", "Choose a sync action.")
 		return
 	}
@@ -204,6 +205,12 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			binding, _ = crewroot.ReadSync(roots.ID)
 		}
 		externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
+		return
+	}
+	// Shared agents (PLAT-856-509): "agents" lists this Crew's side tabs and which are shared; "share_agents" saves the
+	// owner's choice here and on the online copy, which decides who may message them.
+	if input.Action == "agents" || input.Action == "share_agents" {
+		api.desktopShareMacCrewAgents(w, r, claims, roots.ID, binding, connection, input.Action, input.Agents)
 		return
 	}
 	// Reach off: the server removes this Crew's empty online copy, then the Mac forgets the pair (crew_where_it_lives.go).

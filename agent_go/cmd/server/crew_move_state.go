@@ -99,7 +99,7 @@ func crewSyncStatePaths(id string) ([]string, error) {
 	var paths []string
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == id+".json" || strings.HasPrefix(name, id+".json.") || name == id+"-files.json" || strings.HasPrefix(name, id+"-files.json.") {
+		if name == id+".json" || strings.HasPrefix(name, id+".json.") || name == id+"-files.json" || strings.HasPrefix(name, id+"-files.json.") || name == id+"-agents.json" {
 			paths = append(paths, filepath.Join(filepath.Dir(p), name))
 		}
 	}

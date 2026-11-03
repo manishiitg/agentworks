@@ -112,11 +112,14 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if got := crewSharedAgentSince(externalCommandCrewRoot, coach.ConversationKey); !got.Equal(since) {
 		t.Fatal("audience edit reset the continuously shared history")
 	}
-	transcript := fmt.Sprintf(`{"ui_events":[{"sequence":1,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Private earlier context"}}},{"sequence":2,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Shared owner context"}}},{"sequence":3,"timestamp":%q,"type":"user_message","data":{"data":{"content":"internal envelope","metadata":{"source":"agent_message","sender_label":"Colleague","display_content":"Please review this"}}}}]}`, since.Add(-time.Hour).Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano))
+	// PLAT-856-509: a sender reads only their own exchange with the shared agent: not the owner's words in that tab,
+	// not another sender's message.
+	transcript := fmt.Sprintf(`{"ui_events":[{"sequence":1,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Private earlier context"}}},{"sequence":2,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Shared owner context"}}},{"sequence":3,"timestamp":%q,"type":"user_message","data":{"data":{"content":"internal envelope","metadata":{"turn_id":"t-other","source":"agent_message","sender_label":"Colleague","sender_user_id":"other","display_content":"Please review this"}}}},{"sequence":4,"timestamp":%q,"type":"unified_completion","data":{"data":{"final_result":"Reviewed for you","metadata":{"turn_id":"t-other"}}}},{"sequence":5,"timestamp":%q,"type":"user_message","data":{"data":{"content":"third envelope","metadata":{"turn_id":"t-third","source":"agent_message","sender_label":"Third","sender_user_id":"third","display_content":"Third person's note"}}}}]}`, since.Add(-time.Hour).Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano))
 	f.write(t, externalCommandCrewState+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json", transcript)
 	for _, web := range []bool{false, true} {
 		w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey}, web)
-		if w.Code != 200 || strings.Contains(w.Body.String(), "Private earlier context") || !strings.Contains(w.Body.String(), "Shared owner context") || !strings.Contains(w.Body.String(), `"sender":"owner"`) || strings.Contains(w.Body.String(), `"role":"you"`) || !strings.Contains(w.Body.String(), `"sender":"Colleague"`) || strings.Contains(w.Body.String(), "internal envelope") {
+		body := w.Body.String()
+		if w.Code != 200 || strings.Contains(body, "Private earlier context") || strings.Contains(body, "Shared owner context") || strings.Contains(body, "Third person's note") || strings.Contains(body, `"role":"you"`) || !strings.Contains(body, `"sender":"Colleague"`) || !strings.Contains(body, "Please review this") || !strings.Contains(body, "Reviewed for you") || strings.Contains(body, "internal envelope") {
 			t.Fatalf("shared transcript web=%t: %d %s", web, w.Code, w.Body.String())
 		}
 		w = call("read_chat", map[string]any{"chat_id": private.ConversationKey}, web)
@@ -124,10 +127,10 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 			t.Fatalf("unselected history web=%t: %s", web, w.Body.String())
 		}
 	}
-	if w := call("read_chat", map[string]any{"workspace": externalCommandCrewRoot, "chat_id": coach.ConversationKey}, true); w.Code != 200 || !strings.Contains(w.Body.String(), "Shared owner context") || strings.Contains(w.Body.String(), "Private earlier context") {
+	if w := call("read_chat", map[string]any{"workspace": externalCommandCrewRoot, "chat_id": coach.ConversationKey}, true); w.Code != 200 || !strings.Contains(w.Body.String(), "Please review this") || strings.Contains(w.Body.String(), "Shared owner context") {
 		t.Fatalf("standalone dashboard reads the same shared conversation: %d %s", w.Code, w.Body.String())
 	}
-	if w := call("read_chat", map[string]any{"session_id": coach.SessionID}, false); w.Code != 200 || strings.Contains(w.Body.String(), "Private earlier context") || !strings.Contains(w.Body.String(), "Shared owner context") {
+	if w := call("read_chat", map[string]any{"session_id": coach.SessionID}, false); w.Code != 200 || strings.Contains(w.Body.String(), "Shared owner context") || !strings.Contains(w.Body.String(), "Please review this") {
 		t.Fatalf("session read must use the same shared transcript: %d %s", w.Code, w.Body.String())
 	}
 	otherCtx := internalBotRequestContext(t.Context(), "other")
