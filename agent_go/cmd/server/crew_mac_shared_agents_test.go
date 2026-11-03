@@ -106,3 +106,15 @@ func TestMacSharedAgentAddressKeptAndReserved(t *testing.T) {
 		t.Fatalf("turning it back on did not reuse its address: %+v", again)
 	}
 }
+
+// PLAT-856-509: sharing from chat names people in words. Only an exact name or email picks someone; any partial match,
+// even a single one, goes back to the person as a question, never a guess.
+func TestMatchNetworkPersonAsksWhenAmbiguous(t *testing.T) {
+	people := []networkPerson{{ID: "1", Username: "anita", Email: "anita@example.com"}, {ID: "2", Username: "anil", Email: "anil.k@example.com"}, {ID: "3", Username: "rakesh", Email: "rakesh@example.com"}}
+	for _, tc := range []struct{ text, want string }{{"Anita", "1"}, {"rakesh@example.com", "3"}, {"anil.k", "2"}, {"rak", ""}, {"ani", ""}, {"zoe", ""}} {
+		got, err := matchNetworkPerson(people, tc.text)
+		if got != tc.want || (tc.want == "") != (err != nil) {
+			t.Fatalf("%q: got %q, %v; want %q", tc.text, got, err, tc.want)
+		}
+	}
+}
