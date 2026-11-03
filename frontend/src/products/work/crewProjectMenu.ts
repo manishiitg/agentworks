@@ -1,8 +1,8 @@
-import { BookOpen, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
-import { isLocalDeployment } from '../productSurfaceConfig'
+import { isLocalDeployment, visibleProductSurfaceIDs } from '../productSurfaceConfig'
 import { isWorkIdentityTabEnabled, isWorkIntegrationTabEnabled } from './workViewGating'
 import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
 import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
@@ -46,6 +46,8 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (hasDesktopConnections()) add('mcp', 'Integrations', 'Folders on this Mac', Folder, 'mac-folders')
+    if (hasDesktopConnections() && visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'Coding apps on this Mac', Cable, 'coding-apps')
+    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Use', 'Message other agents', MessageSquareText, 'message-agents')
     if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
@@ -56,7 +58,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
   add('costs', 'Setup', 'Costs & usage', DollarSign)
   add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')
-  const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:github', 'mcp:gmail', 'mcp:slack-account', 'mcp:computer-use', 'mcp:brain', 'mcp:folders', 'mcp:mac-folders']
+  const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:github', 'mcp:gmail', 'mcp:slack-account', 'mcp:computer-use', 'mcp:brain', 'mcp:folders', 'mcp:mac-folders', 'mcp:coding-apps']
   return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
 }
 

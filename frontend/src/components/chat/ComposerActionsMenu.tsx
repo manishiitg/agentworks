@@ -1,17 +1,15 @@
 import { useId, useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Loader2, Paperclip, Plus, Terminal, Wand2 } from 'lucide-react'
-import { ReachableAgentsMenu } from './ReachableAgentsMenu'
 import { ChatSendOptions, type ChatSendOptionsProps } from './ChatSendModeButton'
 
 /** Presentation only: every action keeps its existing handler and admission. */
-export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, showAgents, sendOptions, onOpenChange }: {
+export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, sendOptions, onOpenChange }: {
   uploading: boolean
   onAttach: () => void
   onOpenCommands?: () => void
   onOpenLiveView?: () => void
   liveViewTitle?: string
-  showAgents: boolean
   sendOptions?: ChatSendOptionsProps
   onOpenChange?: (open: boolean) => void
 }) {
@@ -39,7 +37,6 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpe
       {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { afterClose.current = onOpenCommands }} className={rowClass}>
         <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands
       </Menu.Item>}
-      {showAgents && <ReachableAgentsMenu submenu />}
       {onOpenLiveView && <>
         <Menu.Separator className="my-1 h-px bg-border" />
         <Menu.Item onSelect={() => { afterClose.current = onOpenLiveView }} title={liveViewTitle} className={rowClass}>
