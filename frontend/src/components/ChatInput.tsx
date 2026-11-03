@@ -720,6 +720,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const base = localInputText
     const joined = base && !base.endsWith(' ') && !base.endsWith('\n') ? `${base} ${text}` : `${base}${text}`
     writeComposerText(joined)
+    // On a phone the spoken message is sent straight away (owner, 3 Nov), together with anything already typed; the
+    // desktop keeps it in the box to edit.
+    if (window.matchMedia('(max-width: 767px), (pointer: coarse)').matches && text.trim()) {
+      window.setTimeout(() => textareaRef.current?.form?.requestSubmit(), 60)
+      return
+    }
     // So Enter immediately sends — without this the composer stays unfocused
     // after dictation and Enter does nothing.
     textareaRef.current?.focus()

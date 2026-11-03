@@ -9,6 +9,7 @@ import { sessionStreamingState, type SessionActivitySnapshot } from '../utils/se
 import { isForegroundSessionEvent } from '../../shared/session/foreground'
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo, useState, lazy, Suspense, type ComponentType, type ForwardedRef, type ReactNode } from 'react'
 import { normalizeEventViewMode } from '../stores/useChatStore'
+import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import { intermediateUpdateFromTranscriptChunk, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
 import { applyLiveInputConfirmations, readLiveInputConfirmation, resolveLiveInputConfirmations, stampLiveInputIdentity, withLiveInputReceipt, withPendingProvider } from '../utils/liveInputReceipt'
 import { useRenderLogger, useMemoLogger } from '../utils/renderLogger'
@@ -1209,6 +1210,22 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Add ref for auto-scrolling
   const chatContentRef = useRef<HTMLDivElement>(null)
+  // Phone: scrolling toward the latest messages slides the header away; a small scroll up (24 px) or reaching the top
+  // brings it back (owner, 3 Nov). The message box never hides.
+  useEffect(() => {
+    const list = chatContentRef.current
+    if (!list || !window.matchMedia('(max-width: 767px)').matches) return
+    let last = list.scrollTop, up = 0
+    const set = (hidden: boolean) => { if (useProductNavigationToolbarStore.getState().phoneHeaderHidden !== hidden) useProductNavigationToolbarStore.setState({ phoneHeaderHidden: hidden }) }
+    const onScroll = () => {
+      const top = list.scrollTop, delta = top - last
+      last = top
+      if (top < 8) { up = 0; set(false); return }
+      if (delta > 4) { up = 0; set(true) } else if (delta < 0) { up -= delta; if (up >= 24) set(false) }
+    }
+    list.addEventListener('scroll', onScroll, { passive: true })
+    return () => { list.removeEventListener('scroll', onScroll); set(false) }
+  }, [])
 
   // Add ref for workflow mode handler
   const workflowModeHandlerRef = useRef<WorkflowModeHandlerRef>(null)

@@ -12,8 +12,9 @@ export function groupByMac<T extends CrewLocationFields>(projects: T[]): { macs:
   const server: T[] = []
   for (const project of projects) {
     if (project.location !== 'mac') { server.push(project); continue }
-    // A Crew paired before Macs were named has no device id: it still lives on the owner's Mac.
-    const mac: MacInfo = project.mac?.device_id ? project.mac : { device_id: 'mac', name: project.mac?.name || 'Mac', online: project.mac?.online === true, last_seen: project.mac?.last_seen }
+    // A Crew paired before Macs were named has no device id: it lives on a Mac we cannot name, never grouped under
+    // the Mac that is on now.
+    const mac: MacInfo = project.mac?.device_id ? project.mac : { device_id: 'unknown-mac', name: project.mac?.name || 'Another Mac', online: project.mac?.online === true, last_seen: project.mac?.last_seen }
     const group = macs.get(mac.device_id) || { mac, rows: [] }
     group.rows.push(project)
     macs.set(mac.device_id, group)
@@ -32,9 +33,10 @@ function clock(at: string | undefined, now: Date): string {
 }
 
 export function macStatusText(mac: MacInfo, now = new Date()): string {
-  if (mac.online) return 'Online'
+  // "Online" is the word for Crews that live online; a Mac is on or off.
+  if (mac.online) return 'on'
   const seen = clock(mac.last_seen, now)
-  return seen ? `Off · last seen ${seen}` : 'Off'
+  return seen ? `off · last seen ${seen}` : 'off'
 }
 
 /** One short line under a Mac Crew's name. */

@@ -28,9 +28,14 @@ export function WorkspaceTopToolbar({ className = '', children, navigationKind =
     }
   }, [])
   const showNavigation = navigationActive && (navigationKind === 'page' || (!globalPage && !providers))
+  // On a phone the header slides up while the chat scrolls toward its latest messages, and back on a small scroll up.
+  const hidden = useProductNavigationToolbarStore(state => state.phoneHeaderHidden)
+  const headerHeight = useRef(0)
   return (
     <div
       {...props}
+      ref={node => { if (node && !hidden) headerHeight.current = node.offsetHeight }}
+      style={{ ...props.style, ...(hidden ? { transform: 'translateY(-100%)', marginBottom: -headerHeight.current } : {}), transition: 'transform 180ms ease, margin-bottom 180ms ease' }}
       data-terminal-focus-chrome="toolbar"
       // Above the canvas and resize rail (z-30), below the chat sidebar (z-40)
       // and dialogs (z-50). Dropdowns must receive clicks over the split rail.
