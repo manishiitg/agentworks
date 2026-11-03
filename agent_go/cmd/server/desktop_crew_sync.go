@@ -55,7 +55,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	id := mux.Vars(r)["project"]
-	if input.Action != "status" && input.Action != "server" && input.Action != "relay" {
+	if input.Action != "status" && input.Action != "server" && input.Action != "relay" && input.Action != "offline" {
 		externalError(w, 400, "invalid_action", "Choose Move online.")
 		return
 	}
@@ -67,6 +67,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	} else if receipt != nil {
 		if !websiteDeviceClaims(claims) || receipt.Roots.Owner != claims.UserID || receipt.Binding.ConnectionID != connection.ID {
 			externalError(w, 403, "sync_unavailable", "Only this Crew's owner can finish its move.")
+			return
+		}
+		if input.Action != "status" && input.Action != "server" {
+			externalError(w, 409, "sync_unavailable", "This Crew lives online. Open its online copy.")
 			return
 		}
 		if !receipt.Complete && input.Action == "server" {

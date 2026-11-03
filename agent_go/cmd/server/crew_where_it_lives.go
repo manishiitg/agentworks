@@ -276,17 +276,14 @@ func backupCrewRelayTwin(roots crewroot.Roots) (string, error) {
 
 // removeCrewSyncFiles removes a Crew's pair files: <id>.json, <id>-files.json and what sits next to them.
 func removeCrewSyncFiles(id string) int {
-	state, err := crewroot.StateRoot()
-	if err != nil || id == "" || strings.ContainsAny(id, `/\`) {
+	paths, err := crewSyncStatePaths(id)
+	if err != nil {
 		return 0
 	}
 	removed := 0
-	for _, pattern := range []string{id + ".json", id + ".json.*", id + "-files.json", id + "-files.json.*"} {
-		matches, _ := filepath.Glob(filepath.Join(state, "crew-sync", pattern))
-		for _, path := range matches {
-			if os.RemoveAll(path) == nil {
-				removed++
-			}
+	for _, path := range paths {
+		if os.RemoveAll(path) == nil {
+			removed++
 		}
 	}
 	return removed
