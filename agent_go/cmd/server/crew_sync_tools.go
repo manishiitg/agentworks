@@ -92,7 +92,7 @@ func (api *StreamingAPI) pairedCrewSyncAction(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if action != "server" {
-		externalError(w, 400, "invalid_action", "Choose status, reach_on, reach_off or server (move online).")
+		externalError(w, 400, "invalid_action", "Choose status, reach_on, reach_off, server (move online), links, agents, share or unshare.")
 		return
 	}
 	binding, err := crewroot.ReadSync(roots.ID)
@@ -113,7 +113,7 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 		return nil
 	}
 	gate.Declare("manage_crew_sync")
-	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "Where this Crew lives and whether the owner can reach it from the phone and the web. status: on this Mac or online. reach_on: reach it from the phone and the web while the Mac is on (with several networks, pass network; if unsure, ask the person which one). reach_off: only in the app on this Mac; removes its empty online copy. server: move it online, so it works with the Mac off and can be shared with people (moves its files, settings, agents, chats and schedules once). Only the owner, on this Mac. Say \"On this Mac\", \"Offline\" and \"Online\" to the person; never server, sync or relay.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server"}}, "network": map[string]any{"type": "string", "description": "For reach_on with several networks: the network's name, as the person said it."}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
+	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "This Crew's Access page, from chat (the owner only, on this Mac). status: on this Mac or online. reach_on: reach it from the phone and the web while the Mac is on (with several networks, pass network; if unsure, ask the person which one). reach_off: only in the app on this Mac; removes its empty online copy. server: move it online (one-way; tell the person, get their yes, then pass confirmed=true). links: the website and phone link, the address for ChatGPT or Claude, and where Slack is set up. agents: this Crew's agents (Main and its tabs) with purpose and who can message each. share: let people message one agent (agent by name; audience everyone or chosen with people by name or email; ask the person when a name matches several). It opens the agent to those people and their own AI agents at its address; the agent needs a purpose first (set_my_agent_identity in that tab). unshare: back to only you. Needs Reach on. Say \"On this Mac\", \"Offline\" and \"Online\" to the person; never server, sync or relay.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server", "links", "agents", "share", "unshare"}}, "network": map[string]any{"type": "string", "description": "For reach_on with several networks: the network's name, as the person said it."}, "confirmed": map[string]any{"type": "boolean", "description": "For server: the person said yes to the one-way move in this chat."}, "agent": map[string]any{"type": "string", "description": "For share and unshare: the agent's name as listed by agents (Main for the main chat)."}, "audience": map[string]any{"type": "string", "enum": []string{"everyone", "chosen"}}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "For share with chosen: people's names or emails."}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller, err := api.interactiveLaptopOwner(ctx, claims, sessionID, root)
 		if err != nil {
 			return "", err
@@ -121,6 +121,15 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 		manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
 		if err != nil {
 			return "", err
+		}
+		switch action := externalArg(args, "action"); action {
+		case "links", "agents", "share", "unshare":
+			return api.crewAccessChatAction(ctx, manifest.ID, action, args)
+		case "server":
+			// One-way, like the screen's confirm: the person says yes in chat first.
+			if confirmed, _ := args["confirmed"].(bool); !confirmed {
+				return "", fmt.Errorf("Moving online is one-way: it will live online from then on and cannot move back to this Mac (a backup copy of the folder stays here). Tell the person this, ask for a yes, then call again with confirmed=true")
+			}
 		}
 		request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(ctx, UserContextKey, caller))
 		response := httptest.NewRecorder()
