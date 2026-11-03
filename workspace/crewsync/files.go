@@ -45,15 +45,16 @@ type Payload struct {
 }
 
 type Snapshot struct {
-	StatePath  string             `json:"-"` // owner-scoped move records, admitted separately from working files
-	DecodedDir string             `json:"-"`
-	StagingDir string             `json:"-"`
-	Payloads   map[string]Payload `json:"payloads,omitempty"`
-	Content    *ContentSnapshot   `json:"content,omitempty"`
-	Omitted    []string           `json:"omitted,omitempty"`
-	Git        *GitSnapshot       `json:"git,omitempty"`
-	Files      Manifest           `json:"files"`
-	Changes    []Change           `json:"changes"`
+	DatabasePath string             `json:"-"` // consistent Crew database snapshot, never a live SQLite file
+	StatePath    string             `json:"-"` // owner-scoped move records, admitted separately from working files
+	DecodedDir   string             `json:"-"`
+	StagingDir   string             `json:"-"`
+	Payloads     map[string]Payload `json:"payloads,omitempty"`
+	Content      *ContentSnapshot   `json:"content,omitempty"`
+	Omitted      []string           `json:"omitted,omitempty"`
+	Git          *GitSnapshot       `json:"git,omitempty"`
+	Files        Manifest           `json:"files"`
+	Changes      []Change           `json:"changes"`
 }
 
 // Both send and receive use this policy. Project ignore rules are additionally
