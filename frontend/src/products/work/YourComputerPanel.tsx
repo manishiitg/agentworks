@@ -29,7 +29,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online'
 
 // One reading per Crew for the whole page (owner, 3 Nov: the page takes ONE flag): every panel that asks where a
 // Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
-type PlaceEntry = { place?: CloudState; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController }
+type PlaceEntry = { place?: CloudState; shared?: number; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -41,10 +41,12 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     const load = () => {
       created.abort?.abort()
       created.abort = new AbortController()
-      void api.get<{ place?: CloudState }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+      void api.get<{ place?: CloudState; shared_agents?: number }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
         .then(({ data }) => {
-          if (!data.place || data.place === created.place) return
+          const shared = data.shared_agents || 0
+          if (!data.place || (data.place === created.place && shared === created.shared)) return
           created.place = data.place
+          created.shared = shared
           created.listeners.forEach(notify => notify(data.place))
         }).catch(() => {})
     }
@@ -71,6 +73,16 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string): Cl
     return watchCrewPlace(projectId, setState)
   }, [enabled, projectId])
   return state
+}
+
+/** How many of this Crew's agents others can message, from the same reading as its place (PLAT-856-509). */
+export function useCrewSharedAgentCount(projectId?: string): number {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!projectId) return
+    return watchCrewPlace(projectId, () => setCount(placeCache.get(projectId)?.shared || 0))
+  }, [projectId])
+  return count
 }
 
 /** The page's one flag: this Crew lives on its owner's Mac and this screen is not that Mac (the website or phone),
@@ -230,64 +242,79 @@ async function viaConnection<T>(connection: string, path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-/** Others can message this agent (owner, 3 Nov): per side tab, with who may. Main stays private. Shown only when the
+/** Who can message your agents (owner, 3 Nov, mockup local-cloud-agent-sharing): Main is always only yours; each side
+ * tab can be opened to chosen people or everyone, with one line about what it does. Saved as you go. Shown only when the
  * Crew's network supports it. */
 function MacSharedAgents({ projectId, connection }: { projectId: string; connection: string }) {
   const [tabs, setTabs] = useState<{ tab: string; name: string }[] | null>(null)
   const [shared, setShared] = useState<SharedAgent[]>([])
-  const [saved, setSaved] = useState('')
   const [people, setPeople] = useState<Person[]>([])
   const [supported, setSupported] = useState(false)
+  const [adding, setAdding] = useState('')
+  const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const endpoint = `/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`
   useEffect(() => {
     let live = true
     void viaConnection<{ shared_agents?: boolean }>(connection, '/api/crew-sync-capabilities').then(caps => { if (live) setSupported(Boolean(caps.shared_agents)) }).catch(() => {})
     void viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(data => { if (live) setPeople(data.users || []) }).catch(() => {})
-    void desktopRequest<{ tabs: { tab: string; name: string }[]; agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'agents' })
-      .then(data => { if (!live) return; setTabs(data.tabs || []); setShared(data.agents || []); setSaved(JSON.stringify(data.agents || [])) }).catch(() => { if (live) setTabs([]) })
+    void desktopRequest<{ tabs: { tab: string; name: string }[]; agents: SharedAgent[] }>(endpoint, 'POST', { action: 'agents' })
+      .then(data => { if (!live) return; setTabs(data.tabs || []); setShared(data.agents || []) }).catch(() => { if (live) setTabs([]) })
     return () => { live = false }
-  }, [connection, projectId])
-  if (!supported || !tabs?.length) return null
-  const change = (tab: string, next: Partial<SharedAgent> | null) => setShared(current => {
-    const others = current.filter(agent => agent.tab !== tab)
-    if (next === null) return others
-    const existing = current.find(agent => agent.tab === tab) || { tab, name: tabs.find(row => row.tab === tab)?.name || tab, purpose: '', audience: 'chosen' as const, people: [] }
-    return [...others, { ...existing, ...next }]
-  })
-  const save = async () => {
+  }, [connection, projectId, endpoint])
+  if (!supported || !tabs) return null
+  // Saves the whole list; an agent waits to be saved until it has its one line and, for chosen people, someone.
+  const save = async (next: SharedAgent[]) => {
+    setShared(next)
+    const ready = next.filter(agent => agent.purpose.trim() && (agent.audience === 'everyone' || agent.people?.length))
     setBusy(true); setError('')
-    try {
-      const data = await desktopRequest<{ agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'share_agents', agents: shared })
-      setShared(data.agents || []); setSaved(JSON.stringify(data.agents || []))
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'It was not saved. Try again.') }
+    try { await desktopRequest(endpoint, 'POST', { action: 'share_agents', agents: ready }) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'It was not saved. Try again.') }
     finally { setBusy(false) }
   }
-  return <div aria-label="Others can message these agents" className="mt-2 space-y-2 rounded-xl border border-border p-3">
-    <p className="text-[13px] text-muted-foreground">Let other people's agents message one of this Crew's agents while your Mac is on. They see only their own messages and its answers. Main stays private.</p>
+  const update = (tab: string, change: Partial<SharedAgent> | null, persist = true) => {
+    const current = shared.find(agent => agent.tab === tab)
+    const base = current || { tab, name: tabs.find(row => row.tab === tab)?.name || tab, purpose: '', audience: 'chosen' as const, people: [] }
+    const next = change === null ? shared.filter(agent => agent.tab !== tab) : [...shared.filter(agent => agent.tab !== tab), { ...base, ...change }]
+    if (persist) void save(next); else setShared(next)
+  }
+  const personName = (id: string) => people.find(person => person.id === id)?.username || id
+  const matches = (agent: SharedAgent) => people.filter(person => !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 6)
+  return <section aria-label="Who can message your agents" className="mt-2 space-y-2 rounded-xl border border-border p-3">
+    <p className="text-sm font-semibold">Who can message your agents</p>
+    <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-2.5 py-2 text-[13px]"><span aria-hidden="true">🔒</span><span><span className="font-medium">Main</span> is always only yours.</span></div>
     {tabs.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
-      return <div key={row.tab} className="space-y-1.5 border-t border-border pt-2 first:border-t-0 first:pt-0">
-        <label className="flex items-center justify-between gap-3"><span className="text-sm font-medium">{row.name}</span>
-          <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => change(row.tab, on ? {} : null)} /></label>
+      return <div key={row.tab} className="space-y-2 rounded-lg border border-border p-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-2 text-sm font-medium"><MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="truncate">{row.name}</span></span>
+          {agent ? <label className="flex items-center gap-2 text-xs text-muted-foreground">Others can message this agent<Switch aria-label={`Others can message ${row.name}`} checked disabled={busy} onCheckedChange={() => update(row.tab, null)} /></label>
+            : <label className="flex items-center gap-2 text-xs text-muted-foreground">Only you<Switch aria-label={`Others can message ${row.name}`} checked={false} disabled={busy} onCheckedChange={() => update(row.tab, {}, false)} /></label>}
+        </div>
         {agent && <>
-          <input aria-label={`What ${row.name} is for`} value={agent.purpose} maxLength={300} placeholder="What it is for, in one line" onChange={event => change(row.tab, { purpose: event.target.value })} className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" />
-          <select aria-label={`Who can message ${row.name}`} value={agent.audience} onChange={event => change(row.tab, { audience: event.target.value as SharedAgent['audience'] })} className="w-full rounded-md border border-border bg-background p-1.5 text-sm">
-            <option value="chosen">Chosen people</option>
-            <option value="everyone">Everyone</option>
-          </select>
-          {agent.audience === 'chosen' && <div className="max-h-32 space-y-0.5 overflow-y-auto rounded-md border border-border p-1.5">
-            {people.map(person => <label key={person.id} className="flex items-center gap-2 text-[13px]">
-              <input type="checkbox" checked={Boolean(agent.people?.includes(person.id))} onChange={event => change(row.tab, { people: event.target.checked ? [...(agent.people || []), person.id] : (agent.people || []).filter(id => id !== person.id) })} />
-              {person.username}{person.email && person.email !== person.username ? <span className="text-muted-foreground">{person.email}</span> : null}
-            </label>)}
+          <input aria-label={`What ${row.name} does`} value={agent.purpose} maxLength={300} placeholder="What it does, in one line" onChange={event => update(row.tab, { purpose: event.target.value }, false)} onBlur={() => void save(shared)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" />
+          <div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
+            {(['chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`px-2.5 py-1 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'chosen' ? 'Chosen people' : 'Everyone'}</button>)}
+          </div>
+          {agent.audience === 'chosen' && <div className="flex flex-wrap items-center gap-1.5">
+            {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
+            {adding === row.tab ? <span className="relative">
+              <input autoFocus aria-label="Find a person" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAdding(''); setSearch('') } }} placeholder="Name or email" className="w-40 rounded-md border border-border bg-background px-2 py-0.5 text-xs" />
+              {search.trim() && <span className="absolute left-0 top-full z-10 mt-1 block w-56 overflow-hidden rounded-md border border-border bg-popover shadow">
+                {matches(agent).map(person => <button key={person.id} type="button" onClick={() => { update(row.tab, { people: [...(agent.people || []), person.id] }); setAdding(''); setSearch('') }} className="block w-full px-2 py-1 text-left text-xs hover:bg-muted">{person.username}{person.email && person.email !== person.username ? <span className="ml-1 text-muted-foreground">{person.email}</span> : null}</button>)}
+                {!matches(agent).length && <span className="block px-2 py-1 text-xs text-muted-foreground">Nobody found</span>}
+              </span>}
+            </span> : <button type="button" onClick={() => { setAdding(row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted">+ Add</button>}
           </div>}
+          {!agent.purpose.trim() && <p className="text-[11px] text-amber-600">Write one line about what it does to share it.</p>}
         </>}
       </div>
     })}
+    {!tabs.length && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it. Main stays yours.</p>}
+    <p className="text-[12px] text-muted-foreground">They can ask these agents anything the agents can see in this Crew. They never see your other chats. Works while this Mac is on.</p>
     {error && <p className="text-xs text-amber-600">{error}</p>}
-    <div className="flex justify-end"><Button size="sm" disabled={busy || JSON.stringify(shared) === saved} onClick={() => void save()}>Save</Button></div>
-  </div>
+  </section>
 }
 
 /** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */

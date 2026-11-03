@@ -56,6 +56,8 @@ type crewSyncReply struct {
 	Snapshot           *crewsync.Snapshot    `json:"snapshot,omitempty"`
 	// Place is where the Crew lives for the Access row: mac, mac_off, moving or online (the server decides).
 	Place string `json:"place,omitempty"`
+	// SharedAgents is how many of a Mac Crew's agents others can message (PLAT-856-509).
+	SharedAgents int `json:"shared_agents,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -203,6 +205,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
 	if r.Method == http.MethodGet && out.Place == "" {
 		out.Place = crewPlace(GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
+	}
+	if r.Method == http.MethodGet {
+		out.SharedAgents = len(readMacSharedAgents(out.ProjectID))
 	}
 	externalJSON(w, out)
 }

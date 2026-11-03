@@ -2419,6 +2419,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/laptop", api.handleGoalLaptopSettings).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/workflow/laptop/folders", api.handleGoalLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/users/directory", api.handleUserDirectory).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/shared-with-me", api.handleSharedWithMe).Methods("GET")
 	apiRouter.HandleFunc("/me/token-usage", api.handleMyTokenUsage).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/share-tunnel/status", requireAdmin(api.handleGetShareTunnelStatus)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminListUsers)).Methods("GET", "OPTIONS")
