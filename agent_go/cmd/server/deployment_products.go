@@ -1,6 +1,11 @@
 package server
 
-import "github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+import (
+	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+)
+
+var errFlowsDisabled = errors.New(productpolicy.FlowsDisabledMessage)
 
 func localProductInstallation() bool        { return productpolicy.Local() }
 func localServerProductsEnabled() bool      { return productpolicy.LocalServerProducts() }

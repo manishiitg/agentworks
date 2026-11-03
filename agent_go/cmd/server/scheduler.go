@@ -678,6 +678,10 @@ func (s *SchedulerService) Stop() {
 // LoadSchedule registers a schedule for wall-clock evaluation from a ScheduleContext.
 func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 	if err := validateExecutableSchedule(context.Background(), sctx); err != nil {
+		if errors.Is(err, errFlowsDisabled) {
+			s.logf(sctx, "[SCHEDULER] %s", err.Error())
+			_ = s.recordScheduleFireDecision(context.Background(), sctx, "failed_to_start", err.Error(), "", time.Now().UTC())
+		}
 		return err
 	}
 	s.mu.Lock()
@@ -1308,7 +1312,16 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 	}
 
 	sctx := buildScheduleContext(workspacePath, manifest, *sched)
+	if input != nil {
+		sctx.TriggerSource = "webhook"
+	} else {
+		sctx.TriggerSource = "manual"
+	}
 	if err := validateExecutableSchedule(ctx, sctx); err != nil {
+		if errors.Is(err, errFlowsDisabled) {
+			s.logf(sctx, "[SCHEDULER] %s", err.Error())
+			_ = s.recordScheduleFireDecision(ctx, sctx, "failed_to_start", err.Error(), "", time.Now().UTC())
+		}
 		return "", err
 	}
 	sctx.TriggerSource = "manual"
@@ -1521,6 +1534,12 @@ func (s *SchedulerService) cancelScheduledSessionWork(sessionID, closeReason str
 // triggerSchedule is called by the tick loop when a schedule is due.
 func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor time.Time) {
 	if sctx.WorkflowKind == "relay" {
+		if !productEnabled("relays") {
+			sctx.ScheduledFor = scheduledFor
+			_ = s.recordScheduleFireDecision(context.Background(), sctx, "failed_to_start", errFlowsDisabled.Error(), "", time.Now().UTC())
+			s.logf(sctx, "[SCHEDULER] %s", errFlowsDisabled.Error())
+			return
+		}
 		s.logf(sctx, "[SCHEDULER] Flow timers are not supported; use an authenticated API function trigger")
 		return
 	}

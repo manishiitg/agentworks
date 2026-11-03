@@ -840,6 +840,8 @@ func (receiver webhookReceiver) receive(w http.ResponseWriter, r *http.Request) 
 		switch {
 		case errors.As(err, &invalid):
 			http.Error(w, invalid.msg, 400)
+		case errors.Is(err, errFlowsDisabled):
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		case errors.Is(err, ErrWebhookRunStoreMissing):
 			http.Error(w, "run storage is unavailable", 503)
 		default:

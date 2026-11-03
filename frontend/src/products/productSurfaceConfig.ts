@@ -38,10 +38,10 @@ export function enabledProductSurfaces(): ProductSurface[] {
     const local = Array.isArray(configured) ? configured.filter(isProductSurface).filter(surface => surface === 'agentworks' || surface === 'work' || surface === 'bullpen') : []
     return local.length ? [...new Set(local)] : ['agentworks', 'work', 'bullpen']
   }
-  const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'relays', 'work', 'mcp-gateway', 'knowledgebase'] : ['agentworks', 'relays', 'work', 'knowledgebase']
+  const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'work', 'mcp-gateway', 'knowledgebase'] : ['agentworks', 'work', 'knowledgebase']
   if (!Array.isArray(configured)) return defaults
 
-  const enabled = configured.filter(isProductSurface).filter(surface => surface !== 'mcp-gateway' || gatewayBaseUrl() !== null)
+  const enabled = configured.filter(isProductSurface).filter(surface => surface !== 'relays').filter(surface => surface !== 'mcp-gateway' || gatewayBaseUrl() !== null)
   return enabled.length > 0 ? [...new Set(enabled)] : defaults
 }
 

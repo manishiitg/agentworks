@@ -7,6 +7,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -437,5 +440,69 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/workflow-webhooks/"+sched.ID+"/runs/other-run/payload", nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("cross-run payload lookup: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// PLAT-746-265: a disabled Flow cannot start through an authenticated delivery;
+// owners receive a reason and the attempt remains in schedule history.
+func TestDisabledFlowWebhookRecordsReasonWithoutRunning(t *testing.T) {
+	_, files, ctx := newCrewCreationTestEnv(t)
+	root := "Workflow/disabled-flow"
+	sched := webhookTestSchedule(t, "bearer")
+	manifest := NewWorkflowManifest("Saved Flow")
+	manifest.ID, manifest.Kind, manifest.CreatedBy = "wf_test", "relay", "owner"
+	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
+	manifest.Schedules = []WorkflowSchedule{sched}
+	registerWorkflowOwner(root, "owner")
+	raw, _ := json.Marshal(manifest)
+	files.files[root+"/workflow.json"] = string(raw)
+	if err := saveWorkflowEntryActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	create := httptest.NewRecorder()
+	(&StreamingAPI{}).handleCreateWorkflowManifest(create, httptest.NewRequest(http.MethodPost, "/api/workflow-manifests", strings.NewReader(`{"label":"New Flow","kind":"relay","workspace_path":"Workflow/new-disabled-flow"}`)).WithContext(ctx))
+	if create.Code != http.StatusForbidden || !strings.Contains(create.Body.String(), productpolicy.FlowsDisabledMessage) {
+		t.Fatalf("disabled Flow creation: %d %s", create.Code, create.Body)
+	}
+	if userAllowedProduct(GetUserFromContext(ctx), "relays") {
+		t.Fatal("Flow profile granted despite installation disable")
+	}
+	svc := NewSchedulerService(nil)
+	svc.stateStore = store
+	loaded, found, err := ReadWorkflowManifest(ctx, root)
+	if err != nil || !found || len(loaded.Schedules) != 1 {
+		t.Fatalf("saved trigger unavailable: %+v %v", loaded, err)
+	}
+	receiver := webhookReceiver{
+		find: func(context.Context, string) (*ScheduleSearchResult, error) {
+			return &ScheduleSearchResult{WorkspacePath: root, Manifest: loaded}, nil
+		},
+		existing: func(context.Context, string) (schedulerstate.Run, error) {
+			return schedulerstate.Run{}, schedulerstate.ErrRunNotFound
+		},
+		start: svc.triggerSavedSchedule,
+	}
+	reply := httptest.NewRecorder()
+	receiver.receive(reply, webhookTestRequest(sched, `{}`))
+	if reply.Code != http.StatusServiceUnavailable || !strings.Contains(reply.Body.String(), productpolicy.FlowsDisabledMessage) {
+		t.Fatalf("disabled Flow delivery: %d %s", reply.Code, reply.Body)
+	}
+	decisions, err := svc.ListFireDecisions(ctx, root, sched.ID, 10)
+	if err != nil || len(decisions) != 1 || decisions[0].Reason != productpolicy.FlowsDisabledMessage {
+		t.Fatalf("missing disabled Flow history: %+v %v", decisions, err)
+	}
+	if err := svc.LoadSchedule(buildScheduleContext(root, loaded, sched)); !errors.Is(err, errFlowsDisabled) {
+		t.Fatalf("disabled Flow registered: %v", err)
+	}
+	if err := (&conditionService{}).current(ctx, productScheduleJob{Profile: agentprofiles.Profile{ID: "relays"}}, conditiontrigger.Config{}); !errors.Is(err, errFlowsDisabled) {
+		t.Fatalf("disabled Flow watcher reached its source: %v", err)
+	}
+	if err := validateExecutableSchedule(ctx, &ScheduleContext{}); err != nil {
+		t.Fatalf("ordinary workflow refused: %v", err)
 	}
 }

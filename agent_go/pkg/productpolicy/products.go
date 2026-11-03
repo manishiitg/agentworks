@@ -33,7 +33,14 @@ func ServerOnly(product string) bool {
 		return false
 	}
 }
+
+// Flows are parked for this refactor; saved data and the runtime remain.
+const FlowsDisabledMessage = "Flows are turned off. Use a Crew workflow instead."
+
 func InstallationAvailable(product string) bool {
+	if Canonical(product) == "relays" {
+		return false
+	}
 	return !Local() || LocalServerProducts() || (Canonical(product) == "agentworks" || Canonical(product) == "work" || Canonical(product) == "bullpen")
 }
 func Contains(list, product string) bool {

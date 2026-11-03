@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus, Route } from 'lucide-react'
 import { isAxiosError } from 'axios'
 import api from '../../services/api'
-import { followAppLink } from '../../utils/appNavigation'
-import { productRoutePath } from '../../utils/productRoutes'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { CrewExecutableEditor, type CrewExecutable } from './CrewExecutableEditor'
 
@@ -61,7 +59,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId }: { projectId: stri
       <p className="text-sm text-muted-foreground">Repeat a sequence of agents and scripts.</p>
       <button onClick={() => setCreating(true)} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><Plus className="h-4 w-4" />Add</button>
     </div>
-    {existingRelays.length > 0 && <p className="text-sm text-muted-foreground">Existing {existingRelays.length === 1 ? 'Relay' : 'Relays'}: {existingRelays.map((relay, index) => <span key={relay.id}>{index > 0 && ', '}<a className="underline" href={productRoutePath({ surface: 'relays', id: relay.id })} onClick={followAppLink}>{relay.label}</a></span>)}. Open in Relays to manage or stop them.</p>}
+    {existingRelays.length > 0 && <p className="text-sm text-muted-foreground">Flows are turned off. Your saved Relay data is kept.</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {creating && <form onSubmit={e => { e.preventDefault(); void create() }} className="space-y-3 rounded-lg border p-4">
       <label className="block text-sm">Name<input autoFocus required maxLength={120} value={name} onChange={e => setName(e.target.value)} className="mt-1 w-full rounded-md border bg-background p-2" /></label>

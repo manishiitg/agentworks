@@ -132,6 +132,10 @@ func currentUserCanCreateWorkflows(r *http.Request) bool {
 
 // requireCreateIn refuses the request unless the account may create in product (PLAT-767). It reports whether to go on.
 func requireCreateIn(w http.ResponseWriter, r *http.Request, product string) bool {
+	if product == "relays" && !productEnabled(product) {
+		http.Error(w, errFlowsDisabled.Error(), http.StatusForbidden)
+		return false
+	}
 	if userAccessForClaims(GetUserFromContext(r.Context())).CanCreateIn(product) {
 		return true
 	}

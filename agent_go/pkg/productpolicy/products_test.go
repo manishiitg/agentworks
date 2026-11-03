@@ -30,7 +30,10 @@ func TestInstallationSelection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			profile(t, tc.mode, tc.opt, tc.products, tc.surfaces)
-			for _, p := range []string{"code", "knowledgebase", "mcp-gateway", "llm-gateway", "relays", "caplayer", "brain", "example-product"} {
+			if Enabled("relays") || InstallationAvailable("relays") || (Selection{Allowed: func(string) bool { return true }}).AllowsTool("run_relay") {
+				t.Fatal("parked Flow was enabled by installation/caller settings")
+			}
+			for _, p := range []string{"code", "knowledgebase", "mcp-gateway", "llm-gateway", "caplayer", "brain", "example-product"} {
 				if Enabled(p) != tc.server {
 					t.Errorf("Enabled(%s)=%t", p, Enabled(p))
 				}
