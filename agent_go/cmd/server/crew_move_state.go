@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -249,6 +250,7 @@ func finishCrewMove(ctx context.Context, roots crewroot.Roots, binding *crewroot
 	if err = defaultProjectOwners().Remove("work", folder); err != nil {
 		return nil, err
 	}
+	log.Printf("[CREW_SYNC] project=%s phase=backup managed_renamed=%t selected_folder_preserved=%t", roots.ID, out.BackupPath != "", out.LocalFolderKept != "")
 	out.Complete = true
 	if err = fsutil.WriteJSONAtomic(p, out, 0600); err != nil {
 		return nil, err

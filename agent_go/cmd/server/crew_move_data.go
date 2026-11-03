@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -222,7 +223,11 @@ func disableCrewMoveSchedules(roots crewroot.Roots, statePath string) error {
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteJSONAtomic(p, projectactions.Schedules{Schedules: h.Schedules}, 0600)
+	if err = fsutil.WriteJSONAtomic(p, projectactions.Schedules{Schedules: h.Schedules}, 0600); err != nil {
+		return err
+	}
+	log.Printf("[CREW_SYNC] project=%s phase=schedules-paused count=%d", roots.ID, len(h.Schedules))
+	return nil
 }
 
 func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserClaims, roots crewroot.Roots, pair, transfer string, main ProductConversationRecord, statePath string) error {
@@ -436,7 +441,11 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 		if err != nil {
 			return err
 		}
-		return fsutil.WriteJSONAtomic(p, projectactions.Schedules{Schedules: h.Schedules}, 0600)
+		if err = fsutil.WriteJSONAtomic(p, projectactions.Schedules{Schedules: h.Schedules}, 0600); err != nil {
+			return err
+		}
+		log.Printf("[CREW_SYNC] project=%s phase=records-imported schedules=%d functions=%d webhooks=%d", roots.ID, len(h.Schedules), len(h.Functions), len(h.Webhooks))
+		return nil
 	})
 }
 
@@ -566,4 +575,25 @@ func rebindCrewMoveWatcher(s *projectactions.Schedule, h crewMoveHeader, destina
 	}
 	s.Input = raw
 	return nil
+}
+
+func crewMoveNotice(statePath string) string {
+	message := "Your agents, chats and schedules are available online."
+	_ = readCrewMoveData(statePath, func(h crewMoveHeader, chat *crewMoveChat) error {
+		if chat != nil {
+			return nil
+		}
+		if len(h.Webhooks) > 0 {
+			message += " Webhooks have new URLs and credentials; open Webhooks to connect callers."
+		}
+		for _, s := range h.Schedules {
+			var input scheduleExecutionInput
+			if json.Unmarshal(s.Input, &input) == nil && input.Condition != nil && (input.Condition.PersonalGmail() || input.Condition.GitHubPR != nil) {
+				message += " Account-based watchers are paused until you choose their accounts online."
+				break
+			}
+		}
+		return nil
+	})
+	return message
 }

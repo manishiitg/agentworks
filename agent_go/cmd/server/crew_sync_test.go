@@ -435,7 +435,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				for _, person := range []string{"owner", "other"} {
 					req := httptest.NewRequest("GET", "/api/sessions/"+moved.SessionID+"/events?durable_chat=1&limit=40&view=compact&workspace_path="+moved.WorkspacePath, nil)
 					req = mux.SetURLVars(req, map[string]string{"session_id": moved.SessionID})
-					req = req.WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person}))
+					req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: person}))
 					response := httptest.NewRecorder()
 					api.handleGetSessionEvents(response, req)
 					if person == "other" {
