@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useState, type ReactNode } from 'react'
+import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, RefreshCw, Smartphone, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl, setSlackSetupConnection } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
@@ -12,6 +12,7 @@ import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide
 import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
+import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
@@ -201,50 +202,51 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
           {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
           {!status ? 'Checking…' : moving ? (status.bytes_total ? `Moving online… ${sizeLabel(status.bytes_done || 0)} of ${sizeLabel(status.bytes_total)}` : 'Moving online…') : online ? 'Online' : binding ? ['On this Mac', networkName(binding.connection_id)].filter(Boolean).join(' · ') : 'On this Mac · Offline'}
         </p>
-        {binding && !online && !moving && open !== 'move' && <Button size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
+        {binding && !online && !moving && open !== 'move' && <Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
       </div>
       {(moving || online) && <p className="text-[13px] text-muted-foreground">{moving ? 'Your work is kept. If it stops, Retry Move online picks up where it left off.' : 'It works even when your Mac is off.'}</p>}
       {status?.schedules_paused && <p className="text-[13px] text-muted-foreground">{status.message || 'Its schedules wait until the move finishes.'}</p>}
-      {(status?.schedules_paused || binding?.pending_action === 'server') && !busy && <Button size="sm" variant="outline" className="mt-1" onClick={() => void move(false)}>Retry Move online</Button>}
-      {(moved || status?.backup_path || status?.local_folder_kept) && online && <div className="mt-2 flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-[13px]">
+      {(status?.schedules_paused || binding?.pending_action === 'server') && !busy && <Button size="sm" variant="outline" className="rounded-full px-3.5 mt-1" onClick={() => void move(false)}>Retry Move online</Button>}
+      {(moved || status?.backup_path || status?.local_folder_kept) && online && <div className="mt-2 flex items-center gap-2 rounded-2xl border border-border px-3 py-2 text-[13px]">
         <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
         <span className="min-w-0 flex-1 break-words">{(moved?.backup_path || status?.backup_path) ? `Moved online. Your Mac folder is kept as ${moved?.backup_path || status?.backup_path}` : 'Moved online. Your folder on this Mac is unchanged.'}</span>
-        {link && <Button size="sm" variant="outline" onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open online</Button>}
+        {link && <Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open online</Button>}
       </div>}
-      {status && !online && !moving && <label className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
+      {status && !online && !moving && <label className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-border px-3 py-2">
         <span className="text-sm">Reach it from your phone and the web</span>
         <Switch aria-label="Reach it from your phone and the web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
       </label>}
-      {asking && !binding && <div role="group" aria-label="Which network?" className="mt-2 space-y-1.5 rounded-xl border border-border p-3">
+      {asking && !binding && <div role="group" aria-label="Which network?" className="mt-2 space-y-1.5 rounded-2xl border border-border p-3">
         <p className="text-xs text-muted-foreground">Which network?</p>
-        {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
+        {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="rounded-full px-3.5 w-full justify-start" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
       </div>}
       {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
     {status && <section aria-label="Who can use it" className="space-y-1">
       {binding && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><span className="text-emerald-500">✓</span></div>}
-      <div aria-disabled={!binding} className={`overflow-hidden rounded-xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
-        {way(<Smartphone className="h-4 w-4" />, 'Phone', 'Scan to open on your phone', <Button size="sm" variant="outline" disabled={!link} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide code' : 'Show code'}</Button>)}
+      <div aria-disabled={!binding} className={`overflow-hidden rounded-2xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
+        {way(<Smartphone className="h-4 w-4" />, 'Phone', 'Scan to open on your phone', <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide code' : 'Show code'}</Button>)}
         {open === 'code' && link && <div className="flex justify-center border-b border-border p-3"><LinkCode link={link} /></div>}
-        {way(<Globe className="h-4 w-4" />, 'Website', 'Open it in any browser', <span className="flex items-center gap-2">{ready}<Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button></span>)}
-        {way(<MessageSquare className="h-4 w-4" />, 'ChatGPT or Claude', `Then just say "ask my ${name} Crew to…"`, <Button size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
+        {way(<Globe className="h-4 w-4" />, 'Website', 'Open it in any browser', <span className="flex items-center gap-2">{ready}<Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button></span>)}
+        {way(<MessageSquare className="h-4 w-4" />, 'ChatGPT or Claude', `Then just say "ask my ${name} Crew to…"`, <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
         {open === 'ai' && binding?.peer_server && <div className="border-b border-border p-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
-        {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
+        {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
         {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
       </div>
       {!binding && <p className="text-[12px] text-muted-foreground">Turn on Reach to use it from other places</p>}
       <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">People</span><span className="text-[13px] text-muted-foreground">{online ? 'Choose who can use it on its page online' : 'Nobody else yet'}</span>
         {online
-          ? <Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
-          : <Button size="sm" variant="outline" disabled={moving} onClick={() => setOpen(open === 'share' ? '' : 'share')}>Share…</Button>}
+          ? <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
+          : <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={moving} onClick={() => setOpen(open === 'share' ? '' : 'share')}>Share…</Button>}
       </div>
-      {binding && !online && binding.connection_id && <MacSharedAgents projectId={projectId} connection={binding.connection_id} />}
+      {binding && !online && binding.connection_id && <MacSharedAgents projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} />}
       {open === 'share' && !online && <ShareWithTeam name={name} workspacePath={workspacePath} facts={facts} canMove={!tooBig && !moving} onMoveAndShare={() => void move(true)} onCancel={() => setOpen('')} />}
     </section>}
   </div>
 }
 
-type SharedAgent = { tab: string; name: string; purpose: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string }
+type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string; agents?: boolean }
+type AgentRow = { tab: string; name: string; purpose: string }
 type Person = { id: string; username: string; email?: string }
 
 // Reads one JSON reply from the Crew's network through the Mac's saved sign-in.
@@ -254,11 +256,18 @@ async function viaConnection<T>(connection: string, path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-/** Who can message your agents (owner, 3 Nov, mockup local-cloud-agent-sharing): Main and each side
- * tab can be opened to chosen people or everyone, with one line about what it does. Saved as you go. Shown only when the
- * Crew's network supports it. */
-function MacSharedAgents({ projectId, connection }: { projectId: string; connection: string }) {
-  const [tabs, setTabs] = useState<{ tab: string; name: string }[] | null>(null)
+// The chat tab of one of this Crew's agents, to put the purpose request in its chat box.
+function agentChatTabId(projectId: string, tab: string) {
+  const tabs = Object.values(useChatStore.getState().chatTabs).filter(item => item.metadata?.agentProfileProjectId === projectId && !item.metadata?.isViewOnly)
+  const found = tab === 'main' ? tabs.find(item => item.metadata?.agentProfileIsMainChat) : tabs.find(item => item.metadata?.agentProfileConversationKey === `${projectId}:chat:${tab}`)
+  return found?.tabId
+}
+
+/** Who can message your agents (owner, 3 Nov mockup mac-share-card): one card per agent with three plain questions:
+ * is it shared (switch), who (chosen people from a list, or everyone), how they reach it (themselves always; their AI
+ * agents by a switch that shows the address). The purpose is the tab's own, set from its chat. Saved as you go. */
+function MacSharedAgents({ projectId, connection, network }: { projectId: string; connection: string; network: string }) {
+  const [rows, setRows] = useState<AgentRow[] | null>(null)
   const [shared, setShared] = useState<SharedAgent[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const [supported, setSupported] = useState(false)
@@ -266,67 +275,112 @@ function MacSharedAgents({ projectId, connection }: { projectId: string; connect
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState('')
   const endpoint = `/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`
   useEffect(() => {
     let live = true
     void viaConnection<{ shared_agents?: boolean }>(connection, '/api/crew-sync-capabilities').then(caps => { if (live) setSupported(Boolean(caps.shared_agents)) }).catch(() => {})
     void viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(data => { if (live) setPeople(data.users || []) }).catch(() => {})
-    void desktopRequest<{ tabs: { tab: string; name: string }[]; agents: SharedAgent[] }>(endpoint, 'POST', { action: 'agents' })
-      .then(data => { if (!live) return; setTabs(data.tabs || []); setShared(data.agents || []) })
-      .catch(cause => { if (live) { setTabs([]); setError(cause instanceof Error ? cause.message : "This Crew's agents could not be read.") } })
-    return () => { live = false }
+    // A purpose set from a tab's chat shows here on the next read.
+    const load = () => desktopRequest<{ tabs: AgentRow[]; agents: SharedAgent[] }>(endpoint, 'POST', { action: 'agents' })
+      .then(data => { if (!live) return; setRows(data.tabs || []); setShared(current => busyRef.current ? current : data.agents || []) })
+      .catch(cause => { if (live) { setRows(current => current || []); setError(cause instanceof Error ? cause.message : "This Crew's agents could not be read.") } })
+    void load()
+    const timer = window.setInterval(() => { void load() }, 15000)
+    window.addEventListener('focus', load)
+    return () => { live = false; window.clearInterval(timer); window.removeEventListener('focus', load) }
   }, [connection, projectId, endpoint])
-  if (!supported || !tabs) return null
-  // Saves the whole list; an agent waits to be saved until it has its one line and, for chosen people, someone.
+  const busyRef = useRef(false)
+  busyRef.current = busy
+  if (!supported || !rows) return null
+  const purposeOf = (tab: string) => rows.find(row => row.tab === tab)?.purpose?.trim() || ''
+  // Saves the whole list; an agent waits to be saved until its tab has a purpose and, for chosen people, someone.
   const save = async (next: SharedAgent[]) => {
     setShared(next)
-    const ready = next.filter(agent => agent.purpose.trim() && (agent.audience === 'everyone' || agent.people?.length))
+    const ready = next.filter(agent => purposeOf(agent.tab) && (agent.audience === 'everyone' || agent.people?.length))
+      .map(({ tab, audience, people, agents }) => ({ tab, audience, people, agents: Boolean(agents) }))
     setBusy(true); setError('')
-    try { await desktopRequest(endpoint, 'POST', { action: 'share_agents', agents: ready }) }
+    try {
+      const data = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'share_agents', agents: ready })
+      // Saved agents come back with their address; ones still waiting for a purpose or a person stay on screen.
+      setShared([...(data?.agents || []), ...next.filter(agent => !ready.some(item => item.tab === agent.tab))])
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It was not saved. Try again.') }
     finally { setBusy(false) }
   }
   const update = (tab: string, change: Partial<SharedAgent> | null, persist = true) => {
     const current = shared.find(agent => agent.tab === tab)
-    const base = current || { tab, name: tabs.find(row => row.tab === tab)?.name || tab, purpose: '', audience: 'chosen' as const, people: [] }
+    const base: SharedAgent = current || { tab, audience: 'chosen', people: [] }
     const next = change === null ? shared.filter(agent => agent.tab !== tab) : [...shared.filter(agent => agent.tab !== tab), { ...base, ...change }]
     if (persist) void save(next); else setShared(next)
   }
+  const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
   const personName = (id: string) => people.find(person => person.id === id)?.username || id
-  const matches = (agent: SharedAgent) => people.filter(person => !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 6)
-  return <section aria-label="Who can message your agents" className="mt-2 space-y-2 rounded-xl border border-border p-3">
+  const choices = (agent: SharedAgent) => people.filter(person => !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const heading = 'text-[11px] font-medium uppercase tracking-wide text-muted-foreground'
+  return <section aria-label="Who can message your agents" className="mt-2 space-y-2.5 rounded-2xl border border-border p-4">
     <p className="text-sm font-semibold">Who can message your agents</p>
-    {tabs.map(row => {
+    {rows.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
-      return <div key={row.tab} className="space-y-2 rounded-lg border border-border p-2.5">
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex min-w-0 items-center gap-2 text-sm font-medium"><MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="truncate">{row.name}</span></span>
-          {agent ? <label className="flex items-center gap-2 text-xs text-muted-foreground">Others can message this agent<Switch aria-label={`Others can message ${row.name}`} checked disabled={busy} onCheckedChange={() => update(row.tab, null)} /></label>
-            : <label className="flex items-center gap-2 text-xs text-muted-foreground">Only you<Switch aria-label={`Others can message ${row.name}`} checked={false} disabled={busy} onCheckedChange={() => update(row.tab, {}, false)} /></label>}
+      const purpose = purposeOf(row.tab)
+      const saved = Boolean(agent && purpose && (agent.audience === 'everyone' || agent.people?.length))
+      return <div key={row.tab} className={`rounded-xl border border-border px-3.5 py-3 ${agent ? '' : 'opacity-70'}`}>
+        <div className="flex items-center gap-2.5">
+          <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 truncate text-sm font-semibold">{row.name}</span>
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground">{!agent ? 'Only you' : saved ? 'Shared' : 'Not shared yet'}</span>
+          <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null, !on)} />
         </div>
+        {purpose
+          ? <p className="ml-6 mt-1 text-[13px] text-muted-foreground">{purpose} · <button type="button" className="text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Change purpose</button></p>
+          : agent && <p className="ml-6 mt-1 text-[13px] text-amber-600">Set this agent's purpose to share it. <button type="button" className="text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Set purpose</button></p>}
         {agent && <>
-          <input aria-label={`What ${row.name} does`} value={agent.purpose} maxLength={300} placeholder="What it does, in one line" onChange={event => update(row.tab, { purpose: event.target.value }, false)} onBlur={() => void save(shared)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" />
-          <div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
-            {(['chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`px-2.5 py-1 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'chosen' ? 'Chosen people' : 'Everyone'}</button>)}
+          <div className="mt-3 space-y-2 border-t border-border pt-3">
+            <p className={heading}>Who</p>
+            <div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-full border border-border text-xs">
+              {(['chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`rounded-full px-3 py-1 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'chosen' ? 'Chosen people' : 'Everyone'}</button>)}
+            </div>
+            {agent.audience === 'everyone' && <p className="text-xs text-muted-foreground">Everyone on {network || 'your team'}.</p>}
+            {agent.audience === 'chosen' && <div className="flex flex-wrap items-center gap-1.5">
+              {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
+              <button type="button" aria-expanded={adding === row.tab} onClick={() => { setAdding(adding === row.tab ? '' : row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-primary hover:bg-muted">+ Add</button>
+            </div>}
+            {agent.audience === 'chosen' && adding === row.tab && <div className="w-64 max-w-full overflow-hidden rounded-2xl border border-border bg-popover shadow">
+              <input autoFocus aria-label="Search people" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAdding(''); setSearch('') } }} placeholder="Search people" className="w-full border-b border-border bg-transparent px-3 py-1.5 text-xs outline-none" />
+              <div className="max-h-56 overflow-y-auto">
+                {choices(agent).map(person => <button key={person.id} type="button" onClick={() => { update(row.tab, { people: [...(agent.people || []), person.id] }); setSearch('') }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted">
+                  <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-[10px]">{person.username.slice(0, 2).toUpperCase()}</span>
+                  <span className="truncate">{person.username}</span>{person.email && person.email !== person.username && <span className="ml-auto truncate text-muted-foreground">{person.email}</span>}
+                </button>)}
+                {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{people.length ? 'Nobody found' : 'No people yet'}</p>}
+              </div>
+            </div>}
           </div>
-          {agent.audience === 'chosen' && <div className="flex flex-wrap items-center gap-1.5">
-            {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
-            {adding === row.tab ? <span className="relative">
-              <input autoFocus aria-label="Find a person" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAdding(''); setSearch('') } }} placeholder="Name or email" className="w-40 rounded-md border border-border bg-background px-2 py-0.5 text-xs" />
-              {search.trim() && <span className="absolute left-0 top-full z-10 mt-1 block w-56 overflow-hidden rounded-md border border-border bg-popover shadow">
-                {matches(agent).map(person => <button key={person.id} type="button" onClick={() => { update(row.tab, { people: [...(agent.people || []), person.id] }); setAdding(''); setSearch('') }} className="block w-full px-2 py-1 text-left text-xs hover:bg-muted">{person.username}{person.email && person.email !== person.username ? <span className="ml-1 text-muted-foreground">{person.email}</span> : null}</button>)}
-                {!matches(agent).length && <span className="block px-2 py-1 text-xs text-muted-foreground">Nobody found</span>}
-              </span>}
-            </span> : <button type="button" onClick={() => { setAdding(row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted">+ Add</button>}
-          </div>}
-          <ReachLines agent={agent} />
-          {row.tab === 'main' && <p className="text-[11px] text-muted-foreground">This is your main chat. Its answers to others can use what you've discussed here.</p>}
-          {!agent.purpose.trim() && <p className="text-[11px] text-amber-600">Write one line about what it does to share it.</p>}
+          <div className="mt-3 space-y-1 border-t border-border pt-3">
+            <p className={heading}>How they reach it</p>
+            <div className="flex items-start gap-2.5 py-1 text-[13px]">
+              <span aria-hidden="true" className="w-5 text-center">👤</span>
+              <span className="min-w-0 flex-1"><span className="block font-medium">Themselves</span><span className="block text-muted-foreground">From the website, their phone, ChatGPT or Claude. They find it under "Shared with me".</span></span>
+              <span className="shrink-0 text-xs text-emerald-500">Always</span>
+            </div>
+            <div className="flex items-start gap-2.5 py-1 text-[13px]">
+              <span aria-hidden="true" className="w-5 text-center">🤖</span>
+              <span className="min-w-0 flex-1"><span className="block font-medium">Their AI agents</span><span className="block text-muted-foreground">{agent.agents ? 'Claude Code, Codex and other agents they run can message it and get the answer back.' : 'Off: only people can message it, not their agents.'}</span></span>
+              <Switch aria-label={`Their AI agents can message ${row.name}`} checked={Boolean(agent.agents)} disabled={busy} onCheckedChange={on => update(row.tab, { agents: on })} />
+            </div>
+            {agent.agents && <>
+              {agent.address
+                ? <p className="ml-7 flex w-fit items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 font-mono text-xs">agent:{agent.address}
+                  <button type="button" className="rounded-full border border-border bg-background px-2 py-0.5 font-sans text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></p>
+                : <p className="ml-7 text-xs text-muted-foreground">Its address shows here once it is shared.</p>}
+              <p className="ml-7 text-xs text-muted-foreground">Only agents of the people above. Not anyone else.</p>
+            </>}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">{row.tab === 'main' ? "This is your main chat. Its answers to others can use what you've discussed here." : 'They can ask it anything it can see in this Crew. They never see your other chats. Works while this Mac is on.'}</p>
         </>}
       </div>
     })}
-    {tabs.length <= 1 && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
-    {shared.length > 0 && <p className="text-[12px] text-muted-foreground">They can ask these agents anything the agents can see in this Crew. They never see your other chats. Works while this Mac is on.</p>}
+    {rows.length <= 1 && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
     {error && <p className="text-xs text-amber-600">{error}</p>}
   </section>
 }
@@ -355,12 +409,12 @@ type MoveStep = 'confirm' | 'moving' | 'done'
 /** Move online, as one full-page step (owner, 3 Nov mockup): what moves and what stays, size and time, then progress
  * from the move's own report, then done. One-way, no extra gates. */
 function MoveOnlineScreen({ step, name, facts, tooBig, status, backup, error, onCancel, onMove, onOpen }: { step: MoveStep; name: string; facts?: { size: string; time: string }; tooBig: boolean; status: SyncStatus | null; backup?: string; error: string; onCancel: () => void; onMove: () => void; onOpen: () => void }) {
-  const box = (title: string, items: string[]) => <div className="flex-1 rounded-xl border border-border p-3"><p className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</p><ul className="space-y-1 text-[13px]">{items.map(item => <li key={item}>{item}</li>)}</ul></div>
+  const box = (title: string, items: string[]) => <div className="flex-1 rounded-2xl border border-border p-3"><p className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</p><ul className="space-y-1 text-[13px]">{items.map(item => <li key={item}>{item}</li>)}</ul></div>
   if (step === 'done') return <section aria-label="Moved online" className="flex flex-col items-center gap-3 py-10 text-center text-sm">
     <Cloud className="h-10 w-10 text-primary" aria-hidden="true" />
     <p className="text-base font-semibold">"{name}" is online</p>
     <p className="max-w-sm text-[13px] text-muted-foreground">It works even when your Mac is off.{backup ? ` This Mac keeps a backup copy in "${backup.split('/').pop()}".` : ''}</p>
-    <Button onClick={onOpen}>Open it</Button>
+    <Button className="rounded-full px-3.5" onClick={onOpen}>Open it</Button>
   </section>
   if (step === 'moving') {
     const total = status?.bytes_total || 0, done = status?.bytes_done || 0
@@ -391,7 +445,7 @@ function MoveOnlineScreen({ step, name, facts, tooBig, status, backup, error, on
       <p className="text-[13px] text-amber-600">You can't move it back to this Mac. Afterwards you open it from Online, like any online Crew.</p>
     </>}
     {error && <p className="text-[13px] text-amber-600">{error}</p>}
-    <div className="flex justify-end gap-2"><Button variant="outline" onClick={onCancel}>Cancel</Button><Button disabled={tooBig || !facts} onClick={onMove}>Move online</Button></div>
+    <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" disabled={tooBig || !facts} onClick={onMove}>Move online</Button></div>
   </section>
 }
 
@@ -421,7 +475,7 @@ function ConnectAiApp({ endpoint, name, onDone }: { endpoint: string; name: stri
     <HostedAiAppGuide app={app} endpoint={endpoint}>
       <p className="text-sm"><span className="font-medium">Try it:</span> "Ask my {name} Crew what changed today."</p>
     </HostedAiAppGuide>
-    <div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => setApp(app === 'chatgpt' ? 'cowork' : 'chatgpt')}>{app === 'chatgpt' ? 'Claude instead' : 'ChatGPT instead'}</Button><Button size="sm" onClick={onDone}>Done</Button></div>
+    <div className="flex gap-2"><Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={() => setApp(app === 'chatgpt' ? 'cowork' : 'chatgpt')}>{app === 'chatgpt' ? 'Claude instead' : 'ChatGPT instead'}</Button><Button className="rounded-full px-3.5" size="sm" onClick={onDone}>Done</Button></div>
   </div>
 }
 
@@ -439,13 +493,13 @@ function ShareWithTeam({ name, workspacePath, facts, canMove, onMoveAndShare, on
   }, [workspacePath])
   const pick = (value: 'team' | 'full', title: string, detail: string) => <button type="button" aria-pressed={kind === value} onClick={() => setKind(value)}
     className={`flex-1 rounded-md border p-2 text-left ${kind === value ? 'border-primary bg-primary/5' : 'border-border'}`}><span className="block text-sm font-medium">{title}</span><span className="block text-xs text-muted-foreground">{detail}</span></button>
-  return <section aria-label={`Share ${name} with your team`} className="mt-2 space-y-3 rounded-xl border border-border bg-background/40 p-3 text-xs">
+  return <section aria-label={`Share ${name} with your team`} className="mt-2 space-y-3 rounded-2xl border border-border bg-background/40 p-3 text-xs">
     <p className="text-sm font-semibold">Share "{name}" with your team</p>
     <div className="flex gap-2">{pick('team', 'Team', 'Everyone keeps their own files')}{pick('full', 'Full sync', 'Co-owners get everything')}</div>
     {kind === 'team' ? <>
       <div className="space-y-1">
         <p className="font-medium">Team folder</p>
-        <div className="flex items-center gap-2"><Folder aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><span className="flex-1 text-muted-foreground">Everyone gets this folder on their own Mac, kept in step. Everything else stays on each person's own Mac.</span><Button size="sm" variant="outline" disabled>Choose</Button></div>
+        <div className="flex items-center gap-2"><Folder aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><span className="flex-1 text-muted-foreground">Everyone gets this folder on their own Mac, kept in step. Everything else stays on each person's own Mac.</span><Button className="rounded-full px-3.5" size="sm" variant="outline" disabled>Choose</Button></div>
       </div>
       <div className="space-y-2">
         <p className="font-medium">Agents your team can ask</p>
@@ -458,9 +512,9 @@ function ShareWithTeam({ name, workspacePath, facts, canMove, onMoveAndShare, on
       </div>
       <p className="rounded-md bg-emerald-500/10 p-2 text-emerald-700 dark:text-emerald-400">These agents always answer: from your Mac while it's on, and online while it's off. Online they only see the team folder.</p>
       <p className="text-muted-foreground">Coming next: choosing the team folder and which agents your team can ask.</p>
-      <div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button size="sm" disabled>Share</Button></div>
+      <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" size="sm" disabled>Share</Button></div>
     </> : <>
-      <div className="flex items-center gap-2"><span className="flex-1"><span className="font-medium">Co-owners</span><span className="block text-muted-foreground">Add them on its page online after the move.</span></span><Button size="sm" variant="outline" disabled>+ Add</Button></div>
+      <div className="flex items-center gap-2"><span className="flex-1"><span className="font-medium">Co-owners</span><span className="block text-muted-foreground">Add them on its page online after the move.</span></span><Button className="rounded-full px-3.5" size="sm" variant="outline" disabled>+ Add</Button></div>
       <ul className="space-y-1">
         <li>✓ All agents, files and your chats with them move online. Everything works when your Mac is off.</li>
         <li>✓ Each co-owner gets the whole project on their Mac. <span className="text-muted-foreground">(coming next)</span></li>
@@ -469,7 +523,7 @@ function ShareWithTeam({ name, workspacePath, facts, canMove, onMoveAndShare, on
       <p className="text-muted-foreground">Code history (git) is not synced. Use push and pull as usual.</p>
       <p className="font-medium">Moves online first</p>
       <MoveFacts facts={facts} />
-      <div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button size="sm" disabled={!canMove || !facts} onClick={onMoveAndShare}>Move and share</Button></div>
+      <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" size="sm" disabled={!canMove || !facts} onClick={onMoveAndShare}>Move and share</Button></div>
     </>}
   </section>
 }
@@ -499,7 +553,7 @@ function LaptopCard({ sessionId }: { sessionId?: string }) {
 
 function Card({ icon, title, status, tone, children, details }: { icon: ReactNode; title: string; status: string; tone: 'ok' | 'off' | 'warn'; children?: ReactNode; details: ReactNode }) {
   const mark = tone === 'ok' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : tone === 'warn' ? <TriangleAlert className="h-4 w-4 text-amber-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />
-  return <section aria-label={title} className="rounded-lg border border-border">
+  return <section aria-label={title} className="rounded-2xl border border-border">
     <div className="space-y-2 p-4">
       <div className="flex items-center gap-2 text-sm font-semibold">{icon}{title}</div>
       <p role="status" className="flex items-center gap-2 text-sm">{mark}{status}</p>
@@ -540,14 +594,3 @@ export function useMacTabShareLine(projectId?: string, conversationKey?: string)
 }
 
 /** Where the people it is shared with reach a shared agent (owner, 3 Nov): one audience for all three ways. */
-function ReachLines({ agent }: { agent: SharedAgent }) {
-  const [copied, setCopied] = useState(false)
-  const owner = agent.address?.split('/')[0]
-  return <div className="space-y-0.5 text-[12px] text-muted-foreground">
-    <p className="text-[11px] font-medium">They can reach it:</p>
-    <p>👤 On the AgentWorks website or phone · under 'Shared with me'</p>
-    <p>💬 From their ChatGPT or Claude · "ask {owner ? `${owner}'s` : 'your'} {agent.name} …"</p>
-    {agent.address && <p className="flex items-center gap-1.5">🤖 From their own agents · <code className="rounded bg-muted px-1">agent:{agent.address}</code>
-      <button type="button" className="text-primary hover:underline" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500) })}>{copied ? 'Copied' : 'Copy'}</button></p>}
-  </div>
-}

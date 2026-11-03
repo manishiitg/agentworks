@@ -32,6 +32,10 @@ type AgentProfileSideChat struct {
 	Position int `json:"position,omitempty"`
 	// Pinned keeps the tab on the strip; the rest are in the Agents menu. Every tab starts pinned.
 	Pinned bool `json:"pinned"`
+	// Purpose is the agent's one line, set by its owner or by the agent itself (set_my_agent_identity).
+	Purpose string `json:"purpose,omitempty"`
+	// IsMain marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
+	IsMain bool `json:"is_main,omitempty"`
 }
 
 // handleListAgentProfileSideChats lists the caller's open side tabs of one project: GET /api/agent-profiles/{id}/side-chats
@@ -162,6 +166,7 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		return nil, err
 	}
 	out := []AgentProfileSideChat{}
+	var main *AgentProfileSideChat
 	for _, tab := range owned {
 		record := tab.Record
 		// Dashboard user-view chats belong to that page, not the Builder tab strip.
@@ -169,12 +174,15 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 			continue
 		}
 		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, userID))
+		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
+		}
 		if ownMain || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
 			continue
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(tab.Identity.Name, "Chat "+id)
-		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID}
+		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose}
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
 			row.Pinned = !own.Unpinned
 		}
@@ -196,6 +204,9 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		return out[i].ConversationKey < out[j].ConversationKey
 	})
+	if main != nil {
+		out = append([]AgentProfileSideChat{*main}, out...)
+	}
 	return out, nil
 }
 

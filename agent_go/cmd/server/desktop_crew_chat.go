@@ -19,22 +19,33 @@ import (
 
 // macCrewTabs is this Crew's side tabs as its owner's own screen lists them, the owner's tabs only.
 func (api *StreamingAPI) macCrewTabs(ctx context.Context, claims *UserClaims, project string) ([]AgentProfileSideChat, error) {
-	r, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/api/agent-profiles/work/side-chats?project_id="+url.QueryEscape(project), nil)
+	tabs, _, err := api.macCrewAgents(ctx, claims, project)
+	return tabs, err
+}
+
+// macCrewAgents is the owner's side tabs and their Main chat, each with its purpose.
+func (api *StreamingAPI) macCrewAgents(ctx context.Context, claims *UserClaims, project string) ([]AgentProfileSideChat, AgentProfileSideChat, error) {
+	r, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/api/agent-profiles/work/side-chats?with_main=1&project_id="+url.QueryEscape(project), nil)
 	r = mux.SetURLVars(r, map[string]string{"id": "work"})
 	capture := &internalResponseCapture{}
 	api.handleListAgentProfileSideChats(capture, r)
 	var all []AgentProfileSideChat
 	if capture.status >= 300 || json.Unmarshal(capture.body.Bytes(), &all) != nil {
-		return nil, fmt.Errorf("this Crew's tabs could not be read on your Mac")
+		return nil, AgentProfileSideChat{}, fmt.Errorf("this Crew's tabs could not be read on your Mac")
 	}
+	main := AgentProfileSideChat{Name: "Main"}
 	own := all[:0]
 	for _, tab := range all {
+		if tab.IsMain {
+			main = tab
+			continue
+		}
 		_, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker)
 		if ok && crewMacTabID(id) && tab.CanWrite && (tab.TabOwnerID == "" || tab.TabOwnerID == claims.UserID) && strings.HasPrefix(tab.ConversationKey, project+codeChatSideMarker) {
 			own = append(own, tab)
 		}
 	}
-	return own, nil
+	return own, main, nil
 }
 
 func (api *StreamingAPI) desktopCrewChatBinding(ctx context.Context, project string) (*UserClaims, *crewroot.SyncBinding, desktopConnection, error) {
@@ -316,6 +327,8 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		WaitSeconds int    `json:"wait_seconds"`
 		// Submission: read only the turn that answers this one message (an agent message's id).
 		Submission string `json:"submission"`
+		// FromAgent: sent by another person's AI agent at this agent's address, not typed by the person.
+		FromAgent bool `json:"from_agent"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -333,6 +346,9 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	}
 	if agent == nil {
 		return refuse("not_shared")
+	}
+	if args.FromAgent && !agent.Agents {
+		return refuse("agents_off")
 	}
 	key := macSharedAgentChatKey(project, call.Tab)
 	if call.Tab != macMainTab {
