@@ -62,6 +62,22 @@ func crewRelayBackoff(id string, failed bool) bool {
 	return true
 }
 
+// logCrewRelayTwinSkip logs the twin loop's state once each time it changes, not every minute.
+var crewRelayTwinLastSkip struct {
+	sync.Mutex
+	reason string
+}
+
+func logCrewRelayTwinSkip(reason string) {
+	crewRelayTwinLastSkip.Lock()
+	defer crewRelayTwinLastSkip.Unlock()
+	if crewRelayTwinLastSkip.reason == reason {
+		return
+	}
+	crewRelayTwinLastSkip.reason = reason
+	log.Printf("[CREW_RELAY] twins %s", reason)
+}
+
 // The server must know empty twins; an older one would create a real Crew instead.
 func desktopServerSupportsRelay(ctx context.Context, owner string, connection desktopConnection) bool {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, connection.Server+"/api/crew-sync-capabilities", nil)
@@ -85,13 +101,31 @@ func desktopServerSupportsRelay(ctx context.Context, owner string, connection de
 func (api *StreamingAPI) ensureDesktopCrewRelayTwins(ctx context.Context) {
 	owner := GetDefaultUserID()
 	connections, err := readDesktopConnections(owner)
-	if err != nil || len(connections) != 1 || !desktopServerSupportsRelay(ctx, owner, connections[0]) {
+	switch {
+	case err != nil:
+		logCrewRelayTwinSkip("saved sign-ins unreadable: " + err.Error())
+		return
+	case len(connections) != 1:
+		logCrewRelayTwinSkip(fmt.Sprintf("saved sign-ins=%d; the owner picks a Crew's network in Where it lives", len(connections)))
+		return
+	case !desktopServerSupportsRelay(ctx, owner, connections[0]):
+		logCrewRelayTwinSkip("server " + connections[0].Server + " did not confirm relay support")
 		return
 	}
 	crews, err := listCrewProjectsForOwner(ctx, owner, owner, "")
 	if err != nil {
+		logCrewRelayTwinSkip("Crew list failed: " + err.Error())
 		return
 	}
+	unpaired := 0
+	for _, crew := range crews {
+		if id, _ := crew["id"].(string); id != "" {
+			if b, e := crewroot.ReadSync(id); e == nil && b == nil {
+				unpaired++
+			}
+		}
+	}
+	logCrewRelayTwinSkip(fmt.Sprintf("checking crews=%d unpaired=%d connection=%s", len(crews), unpaired, connections[0].ID))
 	for _, crew := range crews {
 		id, _ := crew["id"].(string)
 		name, _ := crew["name"].(string)
