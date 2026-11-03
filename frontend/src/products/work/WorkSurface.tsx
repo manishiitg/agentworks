@@ -81,6 +81,8 @@ const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
   history: 'history', context: 'context', report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
+  // ?view=share opens the Access page on its Share section (the Mac app's "Move and share" lands here).
+  share: 'mcp',
   // Legacy agent + preference ids land on the consolidated Setup views.
   llm: 'identity', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
@@ -1142,11 +1144,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   // Capture the deep link's view on first render, before the URL projection
   // or any later effect can rewrite the address bar and hide it.
-  const initialRouteView = useRef<{ id: string; view: WorkWorkspaceView } | null | undefined>(undefined)
+  const initialRouteView = useRef<{ id: string; view: WorkWorkspaceView; share?: boolean } | null | undefined>(undefined)
   if (initialRouteView.current === undefined) {
     const route = currentProductRoute()
     const view = route?.surface === product.profileId && route.id ? normalizeWorkWorkspaceView(route.view) : null
-    initialRouteView.current = view && route?.id ? { id: route.id, view } : null
+    initialRouteView.current = view && route?.id ? { id: route.id, view, share: route.view === 'share' } : null
   }
   const routeSuppliedView = selected
     ? (initialRouteView.current?.id === selected.id ? initialRouteView.current.view : routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView))
@@ -1156,7 +1158,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     const savedView = routeSuppliedView ?? routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId)
     // The captured link view is spent once applied (and is keyed to its
     // project), so switching projects never reapplies an old ?view.
-    if (initialRouteView.current?.id === selected?.id) initialRouteView.current = null
+    if (initialRouteView.current?.id === selected?.id) {
+      if (initialRouteView.current?.share) setWorkspaceViewTarget('mcp', 'share')
+      initialRouteView.current = null
+    }
     setWorkspaceView(isWorkSessionRun(selected) ? 'dashboard' : savedView ?? (selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
