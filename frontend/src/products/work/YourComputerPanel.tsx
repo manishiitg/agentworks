@@ -68,8 +68,6 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string): Cl
   useEffect(() => {
     setState(undefined)
     if (!enabled || !projectId) return
-    // A Crew opened from a connected server in the Mac app lives online.
-    if (crewCloudMode() && getRawActiveWorkspaceId() !== 'local') { setState('online'); return }
     return watchCrewPlace(projectId, setState)
   }, [enabled, projectId])
   return state
@@ -79,7 +77,8 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string): Cl
  * so its online record is empty. Every panel decides from this, never from its own data. */
 export function useCrewLivesOnMac(projectId?: string): boolean {
   const place = useYourComputerSummary(Boolean(projectId), projectId)
-  return (place === 'mac' || place === 'mac_off') && !crewCloudMode()
+  // The Mac app's own local Crews are the Mac itself; the same Crew opened through a connected server is its online copy.
+  return (place === 'mac' || place === 'mac_off') && !(crewCloudMode() && getRawActiveWorkspaceId() === 'local')
 }
 
 export const cloudStateLabel: Record<CloudState, string> = { mac: 'On this Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online' }
@@ -178,12 +177,12 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
         </p>
         {binding && !online && !moving && open !== 'move' && <Button size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
       </div>
-      <p className="text-[13px] text-muted-foreground">{moving ? 'You can keep chatting. It picks up where it left off if interrupted.' : online ? 'It works even when your Mac is off.' : binding ? 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.' : 'Only in this app on this Mac.'}</p>
+      <p className="text-[13px] text-muted-foreground">{moving ? 'Your work is kept. If it stops, Retry Move online picks up where it left off.' : online ? 'It works even when your Mac is off.' : binding ? 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.' : 'Only in this app on this Mac.'}</p>
       {status && <p className="text-[13px] text-muted-foreground">{status.schedules_paused ? status.message || 'Its schedules wait until the move finishes.' : 'Its schedules run here too.'}</p>}
-      {status?.schedules_paused && !busy && <Button size="sm" variant="outline" className="mt-1" onClick={() => void move(false)}>Retry Move online</Button>}
-      {moved && online && <div className="mt-2 flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-[13px]">
+      {(status?.schedules_paused || binding?.pending_action === 'server') && !busy && <Button size="sm" variant="outline" className="mt-1" onClick={() => void move(false)}>Retry Move online</Button>}
+      {(moved || status?.backup_path || status?.local_folder_kept) && online && <div className="mt-2 flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-[13px]">
         <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-        <span className="min-w-0 flex-1 break-words">{moved.backup_path ? `Moved online. Your Mac folder is kept as ${moved.backup_path}` : 'Moved online. Your folder on this Mac is unchanged.'}</span>
+        <span className="min-w-0 flex-1 break-words">{(moved?.backup_path || status?.backup_path) ? `Moved online. Your Mac folder is kept as ${moved?.backup_path || status?.backup_path}` : 'Moved online. Your folder on this Mac is unchanged.'}</span>
         {link && <Button size="sm" variant="outline" onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open online</Button>}
       </div>}
       {status && !online && !moving && <label className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
