@@ -112,7 +112,7 @@ const crewOnMacSlackRefusal = "This Crew is on its owner's Mac. Ask them to shar
 // slackCrewOnMac answers a Slack message for a Crew that lives on its owner's Mac: the owner's own proven direct
 // message is asked on the Mac and its answer posted; a channel, a group message or anyone else gets a plain refusal.
 func (api *StreamingAPI) slackCrewOnMac(ctx context.Context, sender, project string, msg services.BotIncomingMessage) error {
-	if !msg.DirectMessage {
+	if !msg.DirectMessage || sender == "" {
 		return services.BotReplyText{Text: crewOnMacSlackRefusal}
 	}
 	binding, _, ok := api.resolveExternalWorkspace(ctx, &UserClaims{UserID: sender, Username: sender}, project)
