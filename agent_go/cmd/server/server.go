@@ -2434,6 +2434,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/crew-sync/{project}/dependencies", api.handleCrewDependencies).Methods("POST")
 	apiRouter.HandleFunc("/crew-sync/{project}/readiness", api.handleCrewSyncReadiness).Methods("GET")
 	apiRouter.HandleFunc("/crew-sync-capabilities", handleCrewSyncCapabilities).Methods("GET")
+	apiRouter.HandleFunc("/client-events", handleClientEvent).Methods("POST")
 	apiRouter.HandleFunc("/crew-sync/{project}", api.handleCrewSync).Methods("GET", "POST", "HEAD", "PUT")
 	apiRouter.HandleFunc("/crew-cloud-laptop/{project}", api.handleCloudLaptopStatus).Methods("GET")
 	apiRouter.HandleFunc("/crew-cloud-apps/{project}", api.handleCloudApps).Methods("GET")
@@ -3300,6 +3301,7 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Shutdown server before final process cleanup. If a handler is still stuck,
 	// continue cleanup anyway so detached tmux/browser sessions do not survive.
+	serverShuttingDown.Store(true)
 	fmt.Println("⏳ Waiting for HTTP handlers to stop (15s max)...")
 	httpStart, stopHTTPProgress := beginShutdownProgress("waiting for HTTP handlers")
 	if err := srv.Shutdown(ctx); err != nil {

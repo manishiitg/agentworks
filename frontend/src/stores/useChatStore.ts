@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PollingEvent, ExtendedLLMConfiguration, SessionStatusResponse, ActiveSessionInfo, DelegationTierConfig, SSEEventMessage, SSEStatusMessage, WorkflowScheduleSummary } from '../services/api-types'
 import { SSEConnection } from '../services/sse'
+import { reportClientEvent } from '../services/clientEvents'
 import type { SSEMessageState } from '../../shared/session/sse'
 import { shouldShowEventByMode } from '../components/events/eventModeUtils'
 import type { StoreActions } from './types'
@@ -2167,6 +2168,7 @@ export const useChatStore = create<ChatState>()(
             if (!isChatIdentityCurrent(identity) || get().sseLink[sessionId] === link) return
             set(s => ({ sseLink: { ...s.sseLink, [sessionId]: link } }))
           },
+          onDiagnostic: (kind, detail) => reportClientEvent(kind, { conversation: sessionId, detail }),
           onMessageState: message => {
             if (isChatIdentityCurrent(identity)) set(s => ({ messageStates: { ...s.messageStates, [sessionId]: message } }))
           },

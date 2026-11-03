@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { reportClientEvent } from '../../services/clientEvents'
 import api from '../../services/api'
 
 // A Mac Crew's chat runs on the owner's Mac; its files are not on the server.
@@ -36,7 +37,9 @@ export function MacFileRow({ sessionId, path, label }: { sessionId: string; path
       const { data } = await api.get<{ content_base64: string }>(`/api/sessions/${encodeURIComponent(sessionId)}/file`, { params: { path } })
       setLoaded(decode(data.content_base64 || '', path))
     } catch (cause) {
-      const body = (cause as { response?: { data?: { error?: string | { message?: string } } } })?.response?.data?.error
+      const failure = (cause as { response?: { status?: number; data?: { error?: string | { message?: string } } } })?.response
+      const body = failure?.data?.error
+      reportClientEvent('file_open_failed', { conversation: sessionId, detail: `status=${failure?.status ?? 0}` })
       setLoaded({ error: (typeof body === 'string' ? body : body?.message) || 'Could not open this file from your Mac. Try again.' })
     }
   }

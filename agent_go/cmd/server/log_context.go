@@ -405,6 +405,14 @@ func enrichServerLogLine(line string) string {
 	if missingUsername && logCtx.Username == "" {
 		logCtx.Username = serverLogFieldValue(line, "user")
 	}
+	// Mac Crew lines name the person (PLAT-856-509): the owner a server line carries, or this Mac's own account.
+	if missingUsername && logCtx.Username == "" {
+		if owner := serverLogFieldValue(line, "owner"); owner != "" {
+			logCtx.Username = logUsernameForUserID(owner)
+		} else if IsLocalMode() && (strings.Contains(line, "[CREW_") || strings.Contains(line, "[CHAT_STREAM]")) {
+			logCtx.Username = logUsernameForUserID(GetDefaultUserID())
+		}
+	}
 
 	fields := make([]string, 0, 2)
 	if missingUsername {

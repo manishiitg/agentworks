@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -8,6 +8,7 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { chatTabArrowTargetAllowed, workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
 import { workSideChatDisplayName } from '../../products/work/workProjectPresentation'
 import { markFeatureUsed } from '../../utils/featureUsage'
+import { copyToClipboard } from '../../utils/textUtils'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName, ownerShortName } from './chatTabName'
@@ -370,6 +371,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                 </div>
               })}
               </div>
+              {activeTab && <CopyDebugInfo tab={activeTab} />}
               {phone && allowSideChats && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
                 className="mt-1 flex min-h-11 shrink-0 items-center gap-2 border-t border-border px-2 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New tab</button>}
             </div>, document.body
@@ -397,4 +399,26 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       )}
     </div>
   )
+}
+
+/** Copies the IDs a bug report needs (Crew, conversation, last message, where it lives, time) so a report names the
+ * exact server lines (PLAT-856-509). IDs only, never message text. */
+function CopyDebugInfo({ tab }: { tab: ChatTab }) {
+  const [copied, setCopied] = useState(false)
+  const sessionId = tab.sessionId || ''
+  const lastMessage = useChatStore(state => (sessionId && state.messageStates[sessionId]?.submission_id) || tab.config?.pendingSubmission?.id || '-')
+  const copy = async () => {
+    const lines = [
+      `Crew: ${tab.metadata?.agentProfileProjectId || '-'}`,
+      `Conversation: ${sessionId || '-'}`,
+      `Last message: ${lastMessage}`,
+      `Place: ${tab.metadata?.agentProfileChatLocation === 'mac' ? 'mac' : 'online'}`,
+      `Time: ${new Date().toISOString()}`,
+    ]
+    setCopied(await copyToClipboard(lines.join('\n')))
+    window.setTimeout(() => setCopied(false), 2000)
+  }
+  return <button type="button" onClick={() => void copy()} className="mt-1 flex min-h-9 shrink-0 items-center gap-2 border-t border-border px-2 text-xs text-muted-foreground hover:text-foreground">
+    {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}{copied ? 'Copied' : 'Copy debug info'}
+  </button>
 }
