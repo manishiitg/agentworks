@@ -441,12 +441,12 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			}
 		}
 		if transfer.Editing == "server" && (prepared.Binding == nil || prepared.Binding.LastTransfer != transfer.TransferID) {
-			if e = disableCrewMoveSchedules(roots, transfer.Snapshot.StatePath); e != nil {
+			binding.SchedulesPaused = true
+			if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
 				fail(e)
 				return
 			}
-			binding.SchedulesPaused = true
-			if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
+			if e = disableCrewMoveSchedules(roots, transfer.Snapshot.StatePath); e != nil {
 				fail(e)
 				return
 			}

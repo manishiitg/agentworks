@@ -127,9 +127,8 @@ func desktopRelayCrews(connection string) []desktopRelayCrew {
 			continue
 		}
 		b, e := crewroot.ReadSync(id)
-		// An unfinished upload or download leaves editing on this Mac, so the Crew stays reachable from the
-		// phone; only a handoff in flight ("server", "local") hides it (PLAT-856-509).
-		if e != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction == "server" || b.PendingAction == "local" || b.ConnectionID == "" {
+		// A Crew being moved online is no longer offered by this Mac.
+		if e != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction == "server" || b.ConnectionID == "" {
 			continue
 		}
 		if connection != "" && b.ConnectionID != connection {
@@ -309,9 +308,6 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			call := *msg.Call
 			go func() {
 				callCtx, done := context.WithTimeout(context.WithoutCancel(session), 55*time.Second)
-				if call.Operation == "handoff" {
-					callCtx, done = context.WithTimeout(context.WithoutCancel(session), 15*time.Minute)
-				}
 				defer done()
 				result := crewChatResult{ID: call.ID, Status: 403, Body: json.RawMessage(`{"error":"This Mac does not offer that Crew."}`)}
 				if local != "" {
