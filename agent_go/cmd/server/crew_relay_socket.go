@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -396,6 +397,17 @@ func (s *crewRelayStreamSet) append(owner, project, conversation string, batch c
 		select {
 		case sub <- batch:
 		default: // a stalled viewer resumes from its last event number
+		}
+	}
+}
+
+// forget drops every cached chat of one Crew, so nothing of it is served after its online copy is removed.
+func (s *crewRelayStreamSet) forget(owner, project string) {
+	s.Lock()
+	defer s.Unlock()
+	for key := range s.streams {
+		if strings.HasPrefix(key, owner+"/"+project+"/") {
+			delete(s.streams, key)
 		}
 	}
 }
