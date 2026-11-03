@@ -55,11 +55,13 @@ workflows.
 
 - Each input names a declared, non-secret workflow variable (see
   `list.declared_variables`) and is set as that variable for the run.
-- Mark every input the run cannot do without as `required`, with a `type`
-  (`string`, `integer`, `number`, `boolean`) and a `description`. A call
-  missing a required input, or with an unknown or mistyped one, is refused
-  before anything runs. Never rely on a saved variable value for per-run
-  data such as a PR number: a stale saved value silently ran the wrong PR.
+- Define the type, description, required flag and optional default once in workflow
+  Inputs (`update_variable`). Function `inputs` is only an array of those names;
+  webhook `allowed_variables` is the corresponding explicit selection. Nested
+  object constraints also belong to the workflow input's optional `schema`.
+  Defaults make caller fields optional. Fixed inputs are hidden and cannot be
+  overridden by callers. Do not set a default for per-run IDs such as PR_NUMBER.
+  Missing, unknown and mistyped input is refused before execution.
 - Keep provider webhooks separate. A GitHub webhook on the same route keeps
   its signature check, raw payload and key validation; the function checks
   only its declared inputs. Both paths should feed the same variables, so
@@ -69,9 +71,7 @@ workflows.
 
 Example: `{"action":"create","kind":"function","name":"Review PR","enabled":true,
 "route_selections":{"router":"review"},"input_preset":"Production","function":{"name":
-"review_pr","description":"Review one pull request","inputs":[{"name":
-"GITHUB_OWNER","required":true},{"name":"GITHUB_REPO","required":true},{"name":
-"PR_NUMBER","type":"integer","required":true}]}}`
+"review_pr","description":"Review one pull request","inputs":["GITHUB_OWNER","GITHUB_REPO","PR_NUMBER"]}}`
 
 Builder chat calls a Crew or another workflow through its functions:
 `functions action=list`, then `functions action=call` (every Crew has `ask` for free-form
@@ -84,7 +84,7 @@ permission to change tool policy, user access or secret scope. Responses: 202
 accepted; 200 duplicate/ping; 401 invalid auth; 404 unknown; 410 disabled; 503 retry.
 
 
-Webhooks use dedicated iteration-<n>-hook/group folders and never run post-run
+Webhooks use dedicated immutable run folders and never run post-run
 AgentWorks, backup or publish. Omit route_selections for a full-workflow trigger.
 After terminal=true, inspect all generic steps[].outputs; do not equate completed
 with smoke-test success unless the output contract proves it. Artifact download

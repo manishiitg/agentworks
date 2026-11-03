@@ -2103,6 +2103,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			resolvedInputs := recordedInputs
 			if resolvedInputs == nil {
 				resolvedInputs, inputErr = ResolveWorkflowInputs(iwm.controller.variablesManifest, groupName, inputValues)
+				if inputErr == nil {
+					inputErr = ValidateWorkflowLaunchInputs(iwm.controller.variablesManifest, resolvedInputs)
+				}
 			}
 			if inputErr != nil {
 				return "", inputErr

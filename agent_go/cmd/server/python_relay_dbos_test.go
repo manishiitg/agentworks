@@ -78,7 +78,7 @@ func testDBOSRelayServerRecovery(t *testing.T, native bool) {
 	m.Kind, m.RelayRuntime, m.RelayDurability = "relay", "python", "dbos"
 	m.CreatedBy = "owner"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}}
-	m.Schedules = []WorkflowSchedule{{ID: "process", Name: "Process", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
+	m.Schedules = []WorkflowSchedule{{ID: "process", Name: "Process", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: "process", Inputs: []string{"INPUT"}}}}
 	write := func(rel, text string) {
 		t.Helper()
 		file := filepath.Join(docs, draft, rel)

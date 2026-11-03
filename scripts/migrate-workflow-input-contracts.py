@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""One-off conversion to workflow-owned input definitions. Review first; --apply backs up changed files."""
+import argparse
+import copy
+import json
+from pathlib import Path
+import shutil
+import tempfile
+
+
+def convert(root):
+    changes, errors = {}, []
+    for file in sorted(root.rglob('functions.json')):
+        if any(part in {'runs', '.relay_releases', '.git'} for part in file.relative_to(root).parts):
+            continue
+        document = json.loads(file.read_text())
+        definitions_file = file.parent / 'variables' / 'variables.json'
+        workflow_file = file.parent / 'workflow.json'
+        if not workflow_file.exists() or json.loads(workflow_file.read_text()).get('kind') == 'relay':
+            continue
+        functions = document.get('functions', [])
+        old = [fn for fn in functions if fn.get('action', {}).get('type') == 'run' and fn.get('input_schema') is not None and not fn.get('input_mapping')]
+        if not old:
+            continue
+        if not definitions_file.exists():
+            errors.append(f'{file.relative_to(root)}: no workflow Inputs definition')
+            continue
+        definitions = json.loads(definitions_file.read_text())
+        declared = {v['name']: v for v in definitions.get('variables', [])}
+        # Conflicting contracts cannot be guessed: stop without writing anything.
+        proposed = {}
+        for fn in old:
+            schema = fn['input_schema']
+            properties = schema.get('properties', {})
+            if schema.get('type') != 'object' or any(key not in {'type', 'properties', 'required', 'additionalProperties', 'description', 'title', '$schema'} for key in schema):
+                errors.append(f'{file.relative_to(root)} / {fn["name"]}: root constraints need an author decision')
+                continue
+            for name, property_schema in properties.items():
+                if name not in declared or not isinstance(property_schema, dict):
+                    errors.append(f'{file.relative_to(root)} / {fn["name"]}: cannot map input {name}')
+                    continue
+                field = copy.deepcopy(declared[name])
+                field['type'] = property_schema.get('type', 'string')
+                field['required'] = name in schema.get('required', [])
+                field['schema'] = copy.deepcopy(property_schema)
+                if 'default' in property_schema:
+                    default = property_schema['default']
+                    value = default if isinstance(default, str) else json.dumps(default, separators=(',', ':'))
+                    if field.get('value', '') not in ('', value):
+                        errors.append(f'{file.relative_to(root)} / {fn["name"]}: default conflicts for {name}')
+                    field['value'] = value
+                if name in proposed and proposed[name] != field or declared[name].get('schema') and declared[name]['schema'] != field['schema']:
+                    errors.append(f'{file.relative_to(root)} / {fn["name"]}: conflicting definition for {name}')
+                proposed[name] = field
+            fn['inputs'] = list(properties)
+            del fn['input_schema']
+        definitions['variables'] = [proposed.get(v['name'], v) for v in definitions.get('variables', [])]
+        changes[file] = document
+        changes[definitions_file] = definitions
+    return changes, errors
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, required=True, help='Workspace docs directory to convert')
+    parser.add_argument('--apply', action='store_true')
+    args = parser.parse_args()
+    root = args.root.resolve(strict=True)
+    changes, errors = convert(root)
+    if errors:
+        for error in errors:
+            print(error)
+        raise SystemExit('No changes written. Resolve the listed definitions first.')
+    print(f'{len(changes)} files ready to convert')
+    if args.apply and changes:
+        backup = Path(tempfile.mkdtemp(prefix='workflow-input-contracts-backup-'))
+        for file, document in changes.items():
+            destination = backup / file.relative_to(root)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file, destination)
+            file.write_text(json.dumps(document, indent=2) + '\n')
+        print(f'Backup: {backup}')
+
+
+if __name__ == '__main__':
+    main()

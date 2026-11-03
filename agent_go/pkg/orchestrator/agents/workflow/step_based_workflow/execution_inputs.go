@@ -50,10 +50,10 @@ func ValidateInputSetName(name string) error {
 // only fill values; they never select routes, create batches or supply authority.
 func ResolveWorkflowInputs(manifest *VariablesManifest, preset string, overrides map[string]string) (map[string]string, error) {
 	values := map[string]string{}
-	declared := map[string]bool{}
+	declared := map[string]Variable{}
 	if manifest != nil {
 		for _, variable := range manifest.Variables {
-			declared[variable.Name] = true
+			declared[variable.Name] = variable
 			values[variable.Name] = variable.Value
 		}
 	}
@@ -69,8 +69,11 @@ func ResolveWorkflowInputs(manifest *VariablesManifest, preset string, overrides
 				}
 				found = true
 				for name, value := range saved.Values {
-					if !declared[name] {
+					if _, found := declared[name]; !found {
 						return nil, fmt.Errorf("saved inputs contain undeclared input %q; add it to the workflow inputs first", name)
+					}
+					if _, err := WorkflowInputValue(declared[name], value); err != nil {
+						return nil, err
 					}
 					values[name] = value
 				}
@@ -81,12 +84,18 @@ func ResolveWorkflowInputs(manifest *VariablesManifest, preset string, overrides
 		}
 	}
 	for name, value := range overrides {
-		if !declared[name] {
+		if _, found := declared[name]; !found {
 			return nil, fmt.Errorf("unknown input %q; add it to the workflow inputs first", name)
 		}
 		values[name] = value
 	}
 	for name, value := range values {
+		_, explicit := overrides[name]
+		if value != "" || explicit {
+			if _, err := WorkflowInputValue(declared[name], value); err != nil {
+				return nil, err
+			}
+		}
 		if err := ValidatePlainWorkflowInput(name, value); err != nil {
 			return nil, err
 		}
@@ -219,6 +228,9 @@ func ValidateWorkflowInputDefinitions(manifest *VariablesManifest) error {
 	for _, variable := range manifest.Variables {
 		if strings.TrimSpace(variable.Name) == "" || names[variable.Name] {
 			return fmt.Errorf("inputs need unique non-empty names")
+		}
+		if _, err := WorkflowInputProperty(variable); err != nil {
+			return err
 		}
 		names[variable.Name] = true
 	}

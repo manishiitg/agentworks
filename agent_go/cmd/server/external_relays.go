@@ -130,7 +130,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 	manifest.RelayOutputStepID = ""
 	manifest.Capabilities.BrowserMode = "none"
 	manifest.Capabilities.LLMConfig = productDefaultWorkflowLLMConfig(r.Context())
-	manifest.Schedules = []WorkflowSchedule{{ID: uuid.NewSHA1(uuid.NameSpaceURL, []byte(identity+"/function")).String(), Name: function, ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: function, Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
+	manifest.Schedules = []WorkflowSchedule{{ID: uuid.NewSHA1(uuid.NameSpaceURL, []byte(identity+"/function")).String(), Name: function, ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: function, Inputs: []string{"INPUT"}}}}
 	if err = ValidateManifest(manifest); err != nil {
 		externalError(w, 400, "invalid_relay", err.Error())
 		return

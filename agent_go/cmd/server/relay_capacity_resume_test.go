@@ -19,7 +19,7 @@ func TestRelayCapacityResumeRestoresPublishedInputAndCheckpoint(t *testing.T) {
 	m.Kind = "relay"
 	m.CreatedBy = "owner"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"reader"}}
-	sched := WorkflowSchedule{ID: "call", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, GroupNames: []string{"original-group"}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}
+	sched := WorkflowSchedule{ID: "call", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, GroupNames: []string{"original-group"}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []string{"INPUT"}}}
 	m.Schedules = []WorkflowSchedule{sched}
 	now := time.Now().UTC()
 	run := schedulerstate.Run{RunID: "original", ScopeType: "workflow", ScopeID: release, ScheduleID: sched.ID, RunFolder: "original-folder", TriggerSource: "webhook", State: schedulerstate.StateWaitingForCapacity}

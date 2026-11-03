@@ -15,7 +15,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const webhook = { id: 'hook', name: 'GitHub PRs', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/hook', route_selections: {}, input_preset: undefined }
 const fn = { id: 'fn-1', name: 'Review PR', enabled: true, auth_mode: '' as never, path: '', route_selections: { router: 'review' }, input_preset: 'default', kind: 'function' as const,
-  function: { name: 'review_pr', description: 'Review one pull request', inputs: [{ name: 'PR_NUMBER', type: 'integer' as const, required: true }, { name: 'REVIEW_DEPTH' }] } }
+  input_schema: { properties: { PR_NUMBER: { type: 'integer' }, REVIEW_DEPTH: { type: 'string' } }, required: ['PR_NUMBER'] }, function: { name: 'review_pr', description: 'Review one pull request', inputs: ['PR_NUMBER', 'REVIEW_DEPTH'] } }
 const cleanups: (() => void)[] = []
 beforeEach(() => {
   vi.mocked(useCanWriteWorkflow).mockReturnValue(true)

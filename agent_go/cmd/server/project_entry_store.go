@@ -23,6 +23,7 @@ type projectFunctionDefinition struct {
 	Enabled        bool                        `json:"enabled"`
 	Action         projectactions.Action       `json:"action"`
 	Input          json.RawMessage             `json:"input"`
+	Inputs         []string                    `json:"inputs,omitempty"`
 	InputSchema    map[string]interface{}      `json:"input_schema,omitempty"`
 	ResultSchema   map[string]interface{}      `json:"result_schema,omitempty"`
 	InputMapping   *projectWebhookInputMapping `json:"input_mapping,omitempty"`
@@ -119,7 +120,7 @@ func writeProjectFunctionDefinitions(ctx context.Context, root string, functions
 
 // The Goal execution adapter still owns variable, group and route validation.
 // Its fixed inputs are separate from the caller's schema-checked function input.
-func workflowFunctionDefinition(schedule WorkflowSchedule) (projectFunctionDefinition, error) {
+func workflowFunctionDefinition(schedule WorkflowSchedule, frozen ...bool) (projectFunctionDefinition, error) {
 	input, err := json.Marshal(scheduleExecutionInput{Messages: schedule.Messages, InputPreset: schedule.InputPreset, Inputs: schedule.Inputs, Routes: schedule.RouteSelections, Payload: schedule.TriggerPayload, TeamAuthorizedBy: schedule.TeamAuthorizedBy, TeamPolicyRevision: schedule.TeamPolicyRevision})
 	if err != nil {
 		return projectFunctionDefinition{}, err
@@ -131,10 +132,14 @@ func workflowFunctionDefinition(schedule WorkflowSchedule) (projectFunctionDefin
 	if schedule.Webhook != nil {
 		step = schedule.Webhook.StepID
 	}
-	return projectFunctionDefinition{ID: schedule.ID, Name: schedule.Function.Name, Description: firstNonEmptyTrimmed(schedule.Function.Description, schedule.Name), Enabled: schedule.Enabled, Action: projectactions.Action{Type: "run", Step: step, Tab: schedule.ChatID}, Input: input, InputSchema: workflowFunctionInputSchema(schedule), ResultSchema: workflowFunctionResultSchema(), AllowedCallers: schedule.Function.AllowedCallers}, nil
+	var schema map[string]interface{}
+	if len(frozen) > 0 && frozen[0] {
+		schema = workflowFunctionInputSchema(schedule)
+	}
+	return projectFunctionDefinition{ID: schedule.ID, Name: schedule.Function.Name, Description: firstNonEmptyTrimmed(schedule.Function.Description, schedule.Name), Enabled: schedule.Enabled, Action: projectactions.Action{Type: "run", Step: step, Tab: schedule.ChatID}, Input: input, Inputs: schedule.Function.Inputs, InputSchema: schema, ResultSchema: workflowFunctionResultSchema(), AllowedCallers: schedule.Function.AllowedCallers}, nil
 }
 
-func workflowFunctionExecutionView(fn projectFunctionDefinition) (WorkflowSchedule, error) {
+func workflowFunctionExecutionView(ctx context.Context, root string, fn projectFunctionDefinition, frozen ...bool) (WorkflowSchedule, error) {
 	var input scheduleExecutionInput
 	if err := json.Unmarshal(fn.Input, &input); err != nil {
 		return WorkflowSchedule{}, err
@@ -142,46 +147,31 @@ func workflowFunctionExecutionView(fn projectFunctionDefinition) (WorkflowSchedu
 	if input.Groups != nil {
 		return WorkflowSchedule{}, fmt.Errorf("function groups are retired; save input_preset and inputs instead")
 	}
-	spec := &WorkflowFunctionSpec{Name: fn.Name, Description: fn.Description, AllowedCallers: fn.AllowedCallers, InputSchema: fn.InputSchema}
-	required := map[string]bool{}
-	// JSON decoding and native authoring may use either of these slice types.
-	switch values := fn.InputSchema["required"].(type) {
-	case []interface{}:
-		for _, value := range values {
-			if name, ok := value.(string); ok {
-				required[name] = true
+	spec := &WorkflowFunctionSpec{Name: fn.Name, Description: fn.Description, AllowedCallers: fn.AllowedCallers, Inputs: fn.Inputs}
+	if fn.InputMapping == nil {
+		if len(frozen) > 0 && frozen[0] {
+			spec.InputSchema = fn.InputSchema
+			// A frozen Flow's program schema is its complete callable contract.
+			spec.Inputs = nil
+			properties, _ := fn.InputSchema["properties"].(map[string]interface{})
+			for name := range properties {
+				spec.Inputs = append(spec.Inputs, name)
 			}
-		}
-	case []string:
-		for _, name := range values {
-			required[name] = true
-		}
-	}
-	properties, _ := fn.InputSchema["properties"].(map[string]interface{})
-	names := make([]string, 0, len(properties))
-	for name := range properties {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		if name == "group" && len(input.Groups) > 1 {
-			continue
-		}
-		property, _ := properties[name].(map[string]interface{})
-		kind, _ := property["type"].(string)
-		description, _ := property["description"].(string)
-		parameter := WorkflowFunctionInput{Name: name, Type: kind, Description: description, Required: required[name]}
-		switch values := property["enum"].(type) {
-		case []interface{}:
-			for _, value := range values {
-				if value, ok := value.(string); ok {
-					parameter.Enum = append(parameter.Enum, value)
-				}
+			sort.Strings(spec.Inputs)
+		} else {
+			if fn.InputSchema != nil {
+				return WorkflowSchedule{}, fmt.Errorf("function %q has a copied schema; convert it to workflow input names first", fn.Name)
 			}
-		case []string:
-			parameter.Enum = append(parameter.Enum, values...)
+			definitions, err := readWorkflowInputDefinitions(ctx, root)
+			if err != nil {
+				return WorkflowSchedule{}, err
+			}
+			schema, err := workflowCallerInputSchema(definitions, fn.Inputs, input.InputPreset, input.Inputs)
+			if err != nil {
+				return WorkflowSchedule{}, fmt.Errorf("function %q: %w", fn.Name, err)
+			}
+			spec.InputSchema = schema
 		}
-		spec.Inputs = append(spec.Inputs, parameter)
 	}
 	return WorkflowSchedule{ChatID: fn.Action.Tab, ID: fn.ID, Name: firstNonEmptyTrimmed(fn.Description, fn.Name), Enabled: fn.Enabled, ScheduleType: "webhook", Kind: triggerKindFunction, Function: spec, Webhook: &WorkflowWebhookConfig{StepID: fn.Action.Step}, Mode: "workshop", WorkshopMode: "run", InputPreset: input.InputPreset, Inputs: input.Inputs, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
 }
@@ -354,7 +344,7 @@ func loadWorkflowEntryActions(ctx context.Context, root string, manifest *Workfl
 		manifest.Schedules = append(manifest.Schedules, view)
 	}
 	for _, record := range functions {
-		view, err := workflowFunctionExecutionView(record)
+		view, err := workflowFunctionExecutionView(ctx, root, record, manifest.Kind == "relay")
 		if err != nil {
 			return err
 		}
@@ -390,7 +380,7 @@ func saveWorkflowEntryActions(ctx context.Context, root string, manifest *Workfl
 		}
 		switch {
 		case schedule.IsFunctionTrigger():
-			record, err := workflowFunctionDefinition(schedule)
+			record, err := workflowFunctionDefinition(schedule, manifest.Kind == "relay")
 			if err != nil {
 				return err
 			}

@@ -21,20 +21,13 @@ export interface WorkflowAPITrigger {
   kind?: '' | 'internal' | 'function'
   caller?: { type: string; id: string; profile_id?: string }
   function?: WorkflowFunctionSpec
-}
-
-export interface WorkflowFunctionInput {
-  name: string
-  type?: 'string' | 'integer' | 'number' | 'boolean' | 'object'
-  required?: boolean
-  description?: string
-  enum?: string[]
+  input_schema?: { properties?: Record<string, { type?: string; default?: unknown }>; required?: string[] }
 }
 
 export interface WorkflowFunctionSpec {
   name: string
   description?: string
-  inputs?: WorkflowFunctionInput[]
+  inputs?: string[]
   allowed_callers?: { type: string; id: string; profile_id?: string }[]
 }
 

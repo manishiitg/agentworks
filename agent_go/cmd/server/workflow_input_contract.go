@@ -1,0 +1,202 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+
+	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+)
+
+func readWorkflowInputDefinitions(ctx context.Context, root string) (*VariablesManifest, error) {
+	var definitions VariablesManifest
+	if err := readProjectEntryFile(ctx, root, "variables/variables.json", &definitions); err != nil {
+		return nil, err
+	}
+	return &definitions, nil
+}
+
+// Caller contracts select existing definitions. They cannot change the types,
+// override fixed values, choose a preset or expose a credential.
+func workflowCallerInputSchema(definitions *VariablesManifest, names []string, preset string, fixed map[string]string) (map[string]interface{}, error) {
+	values, err := workflow.ResolveWorkflowInputs(definitions, preset, fixed)
+	if err != nil {
+		return nil, err
+	}
+	declared := map[string]Variable{}
+	for _, input := range definitions.Variables {
+		declared[input.Name] = input
+	}
+	properties := map[string]interface{}{}
+	required := []interface{}{}
+	for _, name := range names {
+		input, ok := declared[name]
+		if !ok {
+			return nil, fmt.Errorf("input %q no longer exists; update the selected input names", name)
+		}
+		if err := validateWorkflowExposedInput(name); err != nil {
+			return nil, err
+		}
+		if _, fixedValue := fixed[name]; fixedValue {
+			continue
+		}
+		property, err := workflow.WorkflowInputProperty(input)
+		if err != nil {
+			return nil, err
+		}
+		if value := values[name]; value != "" {
+			var typed interface{} = value
+			if workflow.WorkflowInputType(input) != "string" {
+				decoder := json.NewDecoder(strings.NewReader(value))
+				decoder.UseNumber()
+				if err := decoder.Decode(&typed); err != nil {
+					return nil, err
+				}
+			}
+			property["default"] = typed
+		} else if input.Required {
+			required = append(required, name)
+		}
+		properties[name] = property
+	}
+	// Required values must be provided by a caller, a preset or a fixed value.
+	for _, input := range definitions.Variables {
+		_, fixedValue := fixed[input.Name]
+		if input.Required && strings.TrimSpace(values[input.Name]) == "" && (fixedValue || !slices.Contains(names, input.Name)) {
+			return nil, fmt.Errorf("input %q is needed to start; expose it or set a fixed value or default", input.Name)
+		}
+	}
+	schema := map[string]interface{}{"type": "object", "properties": properties, "additionalProperties": false, "description": "Types and defaults come from workflow Inputs. Fixed values are hidden and cannot be overridden."}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	if _, err := workflow.CompileInputSchema(schema); err != nil {
+		return nil, err
+	}
+	return schema, nil
+}
+
+func validateWorkflowExposedInput(name string) error {
+	upper := strings.ToUpper(name)
+	if slices.Contains([]string{"PATH", "HOME", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "NODE_OPTIONS", "BASH_ENV", "ENV", "SHELL"}, upper) {
+		return fmt.Errorf("input %q is protected", name)
+	}
+	for _, part := range []string{"SECRET", "TOKEN", "PASSWORD", "API_KEY", "CREDENTIAL", "AUTH_", "AGENTWORKS_", "WORKFLOW_", "GOG_"} {
+		if strings.Contains(upper, part) {
+			return fmt.Errorf("input %q is protected; use Vault", name)
+		}
+	}
+	for _, secret := range getGlobalSecrets() {
+		if secret.Name == name {
+			return fmt.Errorf("input %q is a Vault binding and cannot be exposed", name)
+		}
+	}
+	return nil
+}
+
+func init() { workflow.ValidateWorkflowInputReferences = validateWorkflowInputReferences }
+
+// Check saved consumers without reading a projected manifest (which itself
+// derives function schemas). Never silently drop references after an edit.
+func validateWorkflowInputReferences(ctx context.Context, root string, next *VariablesManifest) error {
+	previous, err := readWorkflowInputDefinitions(ctx, root)
+	if err != nil {
+		return err
+	}
+	old := map[string]Variable{}
+	current := map[string]Variable{}
+	for _, input := range previous.Variables {
+		old[input.Name] = input
+	}
+	for _, input := range next.Variables {
+		current[input.Name] = input
+	}
+	used := []string{}
+	check := func(label string, names []string, raw json.RawMessage) {
+		var fixed scheduleExecutionInput
+		if err := json.Unmarshal(raw, &fixed); err != nil {
+			used = append(used, label+": invalid saved inputs")
+			return
+		}
+		for name := range fixed.Inputs {
+			names = append(names, name)
+		}
+		for _, name := range names {
+			input, exists := current[name]
+			before, wasDefined := old[name]
+			if !exists || wasDefined && (workflow.WorkflowInputType(input) != workflow.WorkflowInputType(before) || !reflect.DeepEqual(input.Schema, before.Schema)) {
+				used = append(used, label)
+				return
+			}
+		}
+		if _, err := workflow.ResolveWorkflowInputs(next, fixed.InputPreset, fixed.Inputs); err != nil {
+			used = append(used, label+": "+err.Error())
+		}
+	}
+	functions, err := readProjectFunctionDefinitions(ctx, root)
+	if err != nil {
+		return err
+	}
+	for _, fn := range functions {
+		names := append([]string(nil), fn.Inputs...)
+		if fn.InputMapping != nil {
+			names = append(names, fn.InputMapping.Variables...)
+		}
+		check("function "+fn.Name, names, fn.Input)
+		if fn.InputMapping == nil {
+			var fixed scheduleExecutionInput
+			if json.Unmarshal(fn.Input, &fixed) == nil {
+				if _, err := workflowCallerInputSchema(next, fn.Inputs, fixed.InputPreset, fixed.Inputs); err != nil {
+					used = append(used, "function "+fn.Name+": "+err.Error())
+				}
+			}
+		}
+	}
+	hooks, err := readProjectWebhookDefinitions(ctx, root)
+	if err != nil {
+		return err
+	}
+	for _, hook := range hooks {
+		check("webhook "+hook.Name, append([]string(nil), hook.InputMapping.Variables...), hook.Input)
+	}
+	schedules, err := readProjectSchedules(ctx, root)
+	if err != nil {
+		return err
+	}
+	for _, schedule := range schedules {
+		check("schedule "+schedule.Name, nil, schedule.Input)
+	}
+	if len(used) > 0 {
+		slices.Sort(used)
+		used = slices.Compact(used)
+		return fmt.Errorf("these input changes affect saved entry points. Used by: %s. Update them first, then save Inputs", strings.Join(used, ", "))
+	}
+	return nil
+}
+
+func resolveWorkflowWebhookInputs(ctx context.Context, root string, sched WorkflowSchedule, delivery *WorkflowWebhookDelivery) error {
+	definitions, err := readWorkflowInputDefinitions(ctx, root)
+	if err != nil {
+		return err
+	}
+	for name := range delivery.Variables {
+		if _, fixed := sched.Inputs[name]; fixed {
+			return fmt.Errorf("input %q has a fixed value and cannot be overridden", name)
+		}
+	}
+	overrides := map[string]string{}
+	for name, value := range sched.Inputs {
+		overrides[name] = value
+	}
+	for name, value := range delivery.Variables {
+		overrides[name] = value
+	}
+	values, err := workflow.ResolveWorkflowInputs(definitions, sched.InputPreset, overrides)
+	if err != nil {
+		return err
+	}
+	return workflow.ValidateWorkflowLaunchInputs(definitions, values)
+}

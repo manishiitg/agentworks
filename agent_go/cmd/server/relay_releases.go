@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -281,12 +282,20 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 			if _, err := stepworkflow.ResolveRelayVariableValues(&variables, legacy); err != nil {
 				return nil, fmt.Errorf("function %q configuration: %w", sched.Function.Name, err)
 			}
-			inputOK := false
-			for _, input := range sched.Function.Inputs {
-				if input.Name == "INPUT" && workflowFunctionInputType(input) == "object" && input.Required {
-					inputOK = true
+			schema := workflowFunctionInputSchema(sched)
+			properties, _ := schema["properties"].(map[string]interface{})
+			property, _ := properties["INPUT"].(map[string]interface{})
+			required := false
+			switch names := schema["required"].(type) {
+			case []interface{}:
+				for _, name := range names {
+					required = required || name == "INPUT"
 				}
+			case []string:
+				required = slices.Contains(names, "INPUT")
 			}
+			inputOK := property["type"] == "object" && required
+
 			if !inputOK {
 				return nil, fmt.Errorf("function %q needs a required object INPUT argument", sched.Function.Name)
 			}

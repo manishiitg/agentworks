@@ -68,3 +68,19 @@ it('saves one sparse input preset without an enable flag or synthetic default gr
   await act(async () => { save.click() })
   expect(vi.mocked(agentApi.updateVariableGroups).mock.calls[1][1].groups).toEqual([])
 })
+
+// PLAT-746-265: the definition editor is the only place to author the input type.
+it('saves type and required once on the workflow definition', async () => {
+  const host = await mount([], false)
+  const type = host.querySelector<HTMLSelectElement>('[aria-label="ENDPOINT type"]')!
+  await act(async () => { type.value = 'integer'; type.dispatchEvent(new Event('change', { bubbles: true })) })
+  const required = host.querySelector<HTMLInputElement>('[aria-label="ENDPOINT needed to start"]')!
+  await act(async () => { required.click() })
+  const value = host.querySelector<HTMLTextAreaElement>('[aria-label="ENDPOINT value"]')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(value, '7')
+    value.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Save')!.click() })
+  expect(vi.mocked(agentApi.updateVariableGroups).mock.calls[0][1].variables[0]).toEqual(expect.objectContaining({ name: 'ENDPOINT', type: 'integer', required: true, value: '7' }))
+})

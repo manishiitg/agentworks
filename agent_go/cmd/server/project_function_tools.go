@@ -28,8 +28,9 @@ func projectFunctionAuthoringSchema() map[string]interface{} {
 			"step": externalString("Optional saved Goal step."), "tab": externalString("Crew tab; omit for the function's named tab."),
 			"conversation": map[string]interface{}{"type": "string", "enum": []interface{}{"fresh"}},
 		}},
-		"input":           map[string]interface{}{"type": "object", "description": "Fixed action inputs: messages (Crew instructions), groups, routes and payload for a Goal/Flow."},
-		"input_schema":    map[string]interface{}{"type": "object", "description": "JSON Schema for callers' input."},
+		"input":           map[string]interface{}{"type": "object", "description": "Fixed values: inputs, input_preset, routes and payload for a workflow; messages for a Crew chat. Fixed input names cannot be supplied by callers."},
+		"inputs":          map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Workflow input names callers may supply. Define types, defaults and required fields once in workflow Inputs. Empty exposes none."},
+		"input_schema":    map[string]interface{}{"type": "object", "description": "Only for Crew message functions. Workflow functions use inputs names instead."},
 		"result_schema":   map[string]interface{}{"type": "object", "description": "Crew result JSON Schema; Goals return their run outcome."},
 		"allowed_callers": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
 		"enabled":         map[string]interface{}{"type": "boolean"},
@@ -118,6 +119,21 @@ func manageProjectFunction(ctx context.Context, claims *UserClaims, target trigg
 				return nil, err
 			}
 		}
+		if target.Kind == triggerCallerWorkflow {
+			if _, present := args["input_schema"]; present {
+				return nil, fmt.Errorf("define types in workflow Inputs; select caller input names with inputs")
+			}
+			if names, present := args["inputs"]; present {
+				raw, err := json.Marshal(names)
+				if err != nil {
+					return nil, err
+				}
+				if err = json.Unmarshal(raw, &record.Inputs); err != nil {
+					return nil, fmt.Errorf("inputs must be an array of workflow input names")
+				}
+			}
+			record.InputSchema = nil
+		}
 		if schema, ok := args["input_schema"].(map[string]interface{}); ok {
 			record.InputSchema = schema
 		}
@@ -138,7 +154,7 @@ func manageProjectFunction(ctx context.Context, claims *UserClaims, target trigg
 			if record.Action.Type != "run" {
 				return nil, fmt.Errorf("a Goal or Flow function runs its saved plan")
 			}
-			view, err := workflowFunctionExecutionView(record)
+			view, err := workflowFunctionExecutionView(ctx, root, record, target.Manifest.Kind == "relay")
 			if err != nil {
 				return nil, err
 			}

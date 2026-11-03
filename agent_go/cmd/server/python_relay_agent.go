@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"path"
 	"path/filepath"
 	"strings"
@@ -292,40 +293,7 @@ func callBoundPythonRelayTool(agentCtx, toolCtx context.Context, tool relaypytho
 }
 
 func compilePythonRelaySchema(value map[string]interface{}) (*jsonschema.Schema, error) {
-	compiler := jsonschema.NewCompiler()
-	compiler.UseLoader(jsonschema.SchemeURLLoader{})
-	// Disallow external schema references: user schemas cannot read host files or
-	// fetch arbitrary URLs through validation. Local #/$defs references work.
-	if hasExternalPythonRelayRef(value) {
-		return nil, fmt.Errorf("only local schema references are supported")
-	}
-	if err := compiler.AddResource("https://relay.invalid/schema", value); err != nil {
-		return nil, err
-	}
-	return compiler.Compile("https://relay.invalid/schema")
-}
-func hasExternalPythonRelayRef(value interface{}) bool {
-	switch v := value.(type) {
-	case map[string]interface{}:
-		for key, item := range v {
-			if key == "$ref" || key == "$dynamicRef" || key == "$recursiveRef" {
-				text, _ := item.(string)
-				if !strings.HasPrefix(text, "#") {
-					return true
-				}
-			}
-			if hasExternalPythonRelayRef(item) {
-				return true
-			}
-		}
-	case []interface{}:
-		for _, item := range v {
-			if hasExternalPythonRelayRef(item) {
-				return true
-			}
-		}
-	}
-	return false
+	return stepworkflow.CompileInputSchema(value)
 }
 func (api *StreamingAPI) pythonRelayMCP(ctx context.Context, sctx *ScheduleContext, server, tool string, args map[string]interface{}) (interface{}, error) {
 	result, err := api.callMCPTool(ctx, map[string]interface{}{"server": server, "tool": tool, "arguments": args})

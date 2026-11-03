@@ -181,7 +181,7 @@ func TestRelayReaderCanExecuteAndPollOwnVersion(t *testing.T) {
 	m := NewWorkflowManifest("Reader API")
 	m.Kind, m.CreatedBy, m.RelayOutputStepID = "relay", "owner", "answer"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"reader", "other"}}
-	m.Schedules = []WorkflowSchedule{{ID: "call", Name: "Process", Enabled: true, WorkshopMode: "run", ScheduleType: "webhook", Kind: triggerKindFunction, GroupNames: []string{"default"}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
+	m.Schedules = []WorkflowSchedule{{ID: "call", Name: "Process", Enabled: true, WorkshopMode: "run", ScheduleType: "webhook", Kind: triggerKindFunction, GroupNames: []string{"default"}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []string{"INPUT"}}}}
 	raw, _ := json.Marshal(m)
 	plan := &stepworkflow.PlanningResponse{Steps: []stepworkflow.PlanStepInterface{&stepworkflow.AgentPlanStep{CommonStepFields: stepworkflow.CommonStepFields{ID: "answer", Title: "Answer", Description: "Return JSON"}, AuthoredPrompt: true, SystemPrompt: "Return JSON", NextStepID: "end", Items: []stepworkflow.AgentItem{{ID: "turn", Type: "user_message", Message: "{{input}}"}}}}}
 	planRaw, _ := json.Marshal(plan)
