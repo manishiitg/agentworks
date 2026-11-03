@@ -304,6 +304,8 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
+				// A shared agent on this Mac: its new line reaches the people it is shared with too.
+				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
 			}},
 		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat. Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{

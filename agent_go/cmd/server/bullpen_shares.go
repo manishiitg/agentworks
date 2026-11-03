@@ -352,7 +352,9 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		}
 	}
 	// An agent shared from a Crew on its owner's Mac, for the people in its audience (PLAT-856-509).
-	if target, ok := macSharedAgentByAddress(owner.ID, name, subjectID); ok {
+	if target, ok, err := macSharedAgentByAddress(owner.ID, name, subjectID); err != nil {
+		return triggerTarget{}, err
+	} else if ok {
 		return target, nil
 	}
 	return triggerTarget{}, denied

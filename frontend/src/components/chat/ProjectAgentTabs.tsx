@@ -17,6 +17,7 @@ import { useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../.
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
+import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 
 type AgentMenuState = 'waiting' | 'running' | 'failed' | 'done' | null
 const AGENT_STATE_WORD = { waiting: 'Needs you', running: 'Working', failed: 'Stopped with an error', done: 'Finished' } as const
@@ -47,10 +48,12 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 }
 
 /** One tab-management view; each product supplies its existing server operations. */
-export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, allowSideChats, opening, surface,
+export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
   onOrder, onPin, onRename, onOpen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
+  /** The person's own Main chat's purpose; undefined when Main is not theirs. */
+  mainPurpose?: string
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
   onOrder: (keys: string[]) => Promise<void>; onPin: (key: string, pinned: boolean) => Promise<void>
   onRename: (tab: ChatTab, name: string) => Promise<boolean | void>; onOpen: (name: string) => Promise<boolean | void>
@@ -85,6 +88,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     const owner = tab.metadata?.agentProfileTabOwnerName
     const name = compactOwnerChatName(tab.tabId === canonicalTabId ? 'Main' : sideChatName(tab), owner)
     return owner && !canControl(tab) ? `${name} · ${ownerShortName(owner)}` : name
+  }
+  // The purpose icon, for the tab's owner only (owner, 3 Nov): it fills the chat box; the agent saves the line itself.
+  const purposeOf = (tab: ChatTab): string | undefined => {
+    if (tab.tabId === canonicalTabId) return mainPurpose
+    const chat = listedFor(tab)
+    return chat && chat.can_write !== false && isAgentTab(tab) ? chat.purpose || '' : undefined
   }
   const sideChatPinned = (tab: ChatTab) => listedFor(tab)?.pinned !== false
   // The strip shows the main chat and the tabs the person pinned, as many as they pin (owner, 2026-10-20); the rest are
@@ -290,6 +299,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         isBlank={false}
         displayName={tabLabel(tab)}
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
+        purpose={purposeOf(tab)}
+        onSetPurpose={purposeOf(tab) === undefined ? undefined : () => fillAgentPurposeDraft(tab.tabId)}
         titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
         onTabClick={selectTab}
         onCloseTab={closeProjectTab}

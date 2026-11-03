@@ -9,7 +9,8 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
-import { cloudStateIcon, cloudStateLabel, useCrewLivesOnMac, useCrewSharedAgentCount, useYourComputerSummary } from './YourComputerPanel'
+import { cloudStateIcon, cloudStateLabel, useCrewLivesOnMac, useCrewSharedAgentCount, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
+import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -62,11 +63,11 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const automationItems = inventory.filter(item => item.view === 'schedules')
-  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' }>()
+  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' | 'access' }>()
   const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:access'), projectId)
   const sharedAgents = useCrewSharedAgentCount(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
   const macOnMacHere = useCrewLivesOnMac(projectId)
-  const showMenu = (view: 'full' | 'integrations' | 'automations') => {
+  const showMenu = (view: 'full' | 'integrations' | 'automations' | 'access') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
   }
@@ -84,6 +85,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     onOpen(item.view)
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
+  // A Crew on this Mac opens Access inside this same menu card, grown, with a back arrow (owner, 3 Nov: "same this just
+  // gets bigger"), not as the full side panel.
+  const accessInMenu = getRawActiveWorkspaceId() === 'local' && computerState !== undefined && computerState !== 'online'
+  if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard title="Access" onBack={() => setMenu(undefined)}>
+    <YourComputerPanel projectId={projectId} sessionId={reviewSessionId} canEdit />
+  </WorkspaceContextCard>
   if (menu?.scope === scope) {
     const renderItem = (item: CrewMenuItem) => {
       if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
@@ -93,7 +100,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
       return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{item.label}</Row>
     }
-    return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations', automations: 'Automations' }[menu.view]} onBack={() => setMenu(undefined)}>
+    return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations', automations: 'Automations', access: 'Access' }[menu.view]} onBack={() => setMenu(undefined)}>
       {menu.view !== 'full' ? <div className="space-y-0.5">{(menu.view === 'integrations' ? integrations : automationItems).map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
         const items = inventory.filter(item => item.group === group)
         if (!items.length) return null
@@ -117,7 +124,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const sharedText = sharedAgents ? `${sharedAgents} ${sharedAgents === 1 ? 'agent' : 'agents'} shared` : undefined
   // Offline is the whole answer: on this Mac, reached from nowhere else.
   const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, computerState === 'offline' ? undefined : sharedText || who].filter(Boolean).join(' · ') || undefined
-  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => open(item)}>{item.label}</Row>
+  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(accessRow)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>

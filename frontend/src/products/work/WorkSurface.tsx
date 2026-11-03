@@ -538,6 +538,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   // product-conversations record, also changed over MCP). A browser tab is only the open window of a listed chat: a tab
   // the server does not list is not shown, whatever this browser remembered about it. null = not loaded yet.
   const [listed, setListed] = useState<AgentProfileSideChat[] | null>(null)
+  // The person's own Main chat's purpose, for its purpose icon (undefined: not theirs or not loaded).
+  const [mainPurpose, setMainPurpose] = useState<string | undefined>()
   const ownedListed = (listed || []).filter(chat => chat.can_write !== false)
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
@@ -631,8 +633,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       if (openingRef.current || document.visibilityState === 'hidden') return
       busy = true
       try {
-        const listed = await agentApi.listAgentProfileSideChats(profileId, projectId)
+        const rows = await agentApi.listAgentProfileSideChats(profileId, projectId, true)
         if (cancelled) return
+        setMainPurpose(rows.find(chat => chat.is_main)?.purpose ?? (rows.some(chat => chat.is_main) ? '' : undefined))
+        const listed = rows.filter(chat => !chat.is_main)
         for (const chat of listed) {
           const state = useChatStore.getState()
           const primary = state.chatTabs[canonicalTabId]
@@ -704,7 +708,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       window.removeEventListener('focus', onFocus)
     }
   }, [allowSideChats, canonicalTabId, profileId, projectId])
-  return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName}
+  return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
     allowSideChats={allowSideChats} opening={opening} surface="work" projectActivity={projectActivity}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}

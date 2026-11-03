@@ -20,6 +20,8 @@ export interface AgentWorksChatTabItemProps {
   onRenameTab?: (tab: ChatTab, name: string) => Promise<boolean | void>
   onMakeInteractive?: (tabId: string) => void
   onUnpin?: () => void
+  purpose?: string
+  onSetPurpose?: () => void
 }
 
 /** Runtime adapter for the shared Chat tab presentation. */
