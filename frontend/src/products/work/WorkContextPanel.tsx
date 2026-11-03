@@ -11,6 +11,7 @@ import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowser
 import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
 import { cloudStateIcon, cloudStateLabel, useCrewLivesOnMac, useCrewSharedAgentCount, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
+import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -88,7 +89,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // A Crew on this Mac opens Access inside this same menu card, grown, with a back arrow (owner, 3 Nov: "same this just
   // gets bigger"), not as the full side panel.
   const accessInMenu = getRawActiveWorkspaceId() === 'local' && computerState !== undefined && computerState !== 'online'
-  if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard title="Access" onBack={() => setMenu(undefined)}>
+  const accessOpen = menu?.scope === scope && menu.view === 'access'
+  useEffect(() => { useContextMenuWideStore.getState().setWide(accessOpen); return () => useContextMenuWideStore.getState().setWide(false) }, [accessOpen])
+  if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard title="Access" noFooter onBack={() => setMenu(undefined)}>
     <YourComputerPanel projectId={projectId} sessionId={reviewSessionId} canEdit />
   </WorkspaceContextCard>
   if (menu?.scope === scope) {
