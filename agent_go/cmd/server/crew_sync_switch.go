@@ -27,7 +27,8 @@ func (api *StreamingAPI) ensureCrewNativeExecution(w http.ResponseWriter, r *htt
 		return false
 	}
 	b, err := crewroot.ReadSync(roots.ID)
-	if err != nil || b == nil || (b.Mode == "manual" || b.Mode == "off") {
+	// A relay pair moves only when its owner chooses Move online; a send never moves it (PLAT-856-509).
+	if err != nil || b == nil || (b.Mode == "manual" || b.Mode == "off" || b.Mode == "relay") {
 		return false
 	}
 	main, err := api.crewHandoffMain(r.Context(), claims, project)

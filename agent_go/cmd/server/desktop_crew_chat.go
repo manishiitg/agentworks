@@ -73,6 +73,10 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	method, path := http.MethodGet, "/api/sessions/"+conversation.SessionID
 	switch call.Operation {
 	case "handoff":
+		// Only the owner's own Move online on this Mac moves a relay pair, never a message from the website.
+		if b.Mode == "relay" {
+			return fail(409, "This Crew lives on your Mac. Move it online from the Mac app.")
+		}
 		roots, e := api.crewSyncRoots(ctx, claims, project)
 		if e != nil {
 			return fail(403, e.Error())
