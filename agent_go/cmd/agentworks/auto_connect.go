@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,8 +59,13 @@ func autoConnectChat(ctx context.Context, root string, o *options, req agentwork
 				if err != nil {
 					return err
 				}
-				host, err := codexDesktopProcessHost(ctx, remote)
-				if err != nil || host != req.HostKey || !codexDesktopOwnerReady(ctx, remote, req.SessionID) {
+				var coreErr error
+				if runtime.GOOS == "windows" {
+					coreErr = windowsCodexDesktopHasCore(ctx, remote, req.HostKey)
+				} else if host, err := codexDesktopProcessHost(ctx, remote); err != nil || host != req.HostKey {
+					coreErr = errors.New("not this chat's desktop core")
+				}
+				if coreErr != nil || !codexDesktopOwnerReady(ctx, remote, req.SessionID) {
 					return fmt.Errorf("waiting to verify this chat's current desktop process")
 				}
 			}

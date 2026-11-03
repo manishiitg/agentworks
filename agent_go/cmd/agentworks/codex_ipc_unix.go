@@ -16,3 +16,7 @@ func dialCodexDesktop(ctx context.Context, remote string) (net.Conn, error) {
 func windowsCodexDesktopHost(context.Context, string) (string, error) {
 	return "", errors.New("Windows desktop IPC is unavailable on this platform")
 }
+
+func windowsCodexDesktopHasCore(context.Context, string, string) error {
+	return errors.New("Windows desktop IPC is unavailable on this platform")
+}

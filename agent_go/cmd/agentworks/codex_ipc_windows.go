@@ -156,18 +156,45 @@ func windowsProcessPackageRoot(pid uint32) (string, error) {
 }
 
 func windowsCodexDesktopHost(ctx context.Context, remote string) (string, error) {
+	cores, err := windowsCodexDesktopCores(ctx, remote)
+	switch {
+	case err != nil:
+		return "", err
+	case len(cores) > 1:
+		return "", errors.New("Codex desktop has more than one local core")
+	}
+	return cores[0], nil
+}
+
+// windowsCodexDesktopHasCore reports whether host is one of the verified pipe
+// server's own codex.exe cores. The Codex app can run several (PLAT-874: the
+// owner's laptop had two), so a chat is matched by its own core, not by count.
+func windowsCodexDesktopHasCore(ctx context.Context, remote, host string) error {
+	cores, err := windowsCodexDesktopCores(ctx, remote)
+	if err != nil {
+		return err
+	}
+	for _, core := range cores {
+		if core == host {
+			return nil
+		}
+	}
+	return errors.New("the Codex core under the desktop pipe is not this chat's Codex process")
+}
+
+func windowsCodexDesktopCores(ctx context.Context, remote string) ([]string, error) {
 	conn, err := dialCodexDesktop(ctx, remote)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer conn.Close()
 	peer := conn.(*codexWindowsConn).serverPID
 	list, err := winProcList()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	serverCreated := winProcCreated(peer)
-	var host string
+	var cores []string
 	for _, process := range list {
 		// The core is the verified pipe server's own codex.exe child. Codex keeps it
 		// in the user's LocalAppData, which that user can write, so trust comes from
@@ -183,13 +210,10 @@ func windowsCodexDesktopHost(ctx context.Context, remote string) (string, error)
 		if process.Created == 0 || serverCreated == 0 || process.Created < serverCreated {
 			continue
 		}
-		if host != "" {
-			return "", errors.New("Codex desktop has more than one local core")
-		}
-		host = winHostKey(process)
+		cores = append(cores, winHostKey(process))
 	}
-	if host == "" {
-		return "", errors.New("Codex desktop core is unavailable")
+	if len(cores) == 0 {
+		return nil, errors.New("Codex desktop core is unavailable")
 	}
-	return host, nil
+	return cores, nil
 }
