@@ -61,3 +61,25 @@ func TestMigrateCrewSyncToRelayStopsSyncingAndKeepsWork(t *testing.T) {
 		t.Fatalf("backups: stage=%d bindings=%d, want 1 and 3", stage, bindings)
 	}
 }
+
+// Owner, 3 Nov: the owner's AI app talks in the Crew's Main chat but reads back only its own turns, never the rest of
+// the owner's Main history.
+func TestOwnerAppReadsOnlyItsOwnTurnsInMain(t *testing.T) {
+	items := []codeTurnItem{
+		{Turn: "t1", Role: "you", Text: "private plan for the launch"},
+		{Turn: "t1", Role: "assistant", Text: "owner's answer"},
+		{Turn: "t2", Role: "you", Sender: "via ChatGPT", Text: "what changed today?"},
+		{Turn: "t2", Role: "assistant", Text: "app's answer"},
+		{Turn: "t3", Role: "you", Text: "queued app question"},
+		{Turn: "t3", Role: "assistant", Text: "queued answer"},
+	}
+	got := ownerAppTurns(items, "via ChatGPT", "", "queued app question")
+	if len(got) != 4 {
+		t.Fatalf("got %d items, want the app's two turns: %+v", len(got), got)
+	}
+	for _, item := range got {
+		if item.Turn == "t1" {
+			t.Fatalf("the app saw the owner's own Main turn: %+v", item)
+		}
+	}
+}

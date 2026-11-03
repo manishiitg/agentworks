@@ -419,6 +419,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
+            {metadata?.source === 'owner_app' && typeof metadata.sender_label === 'string' && <span>{metadata.sender_label}</span>}
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
             <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
           </div>
@@ -441,6 +442,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         </button>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
           <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
+          {metadata?.source === 'owner_app' && typeof metadata.sender_label === 'string' && <span>{metadata.sender_label}</span>}
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
           <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
         </div>
