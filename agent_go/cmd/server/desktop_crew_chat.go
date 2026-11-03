@@ -363,15 +363,22 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
 			return reply(400, map[string]string{"error": "Give a message within the chat size limit."})
 		}
-		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": call.Caller, "sender_user_id": args.SenderID, "display_content": message, "shared_message_id": call.SubmissionID})
+		attribution := map[string]interface{}{"source": "agent_message", "sender_label": call.Caller, "sender_user_id": args.SenderID, "display_content": message, "shared_message_id": call.SubmissionID}
+		idempotency := ""
+		if call.SubmissionID != "" {
+			// The queued input carries this id as its client id; the sender is stamped only on the input with it.
+			idempotency = "shared:" + key + ":" + args.SenderID + ":" + call.SubmissionID
+			attribution["client_message_id"] = idempotency
+		}
+		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, attribution)
 		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, args.SenderID)
 		// Queued as its own turn, never steered into another sender's running turn: each sender reads only their own.
 		body, _ := json.Marshal(AgentProfileChatRequest{Message: crewMacSharedAgentText(call.Caller, message), ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"})
 		req, _ := http.NewRequestWithContext(askCtx, http.MethodPost, "http://localhost/api/agent-profiles/work/query", bytes.NewReader(body))
 		req = mux.SetURLVars(req, map[string]string{"id": "work"})
 		req.Header.Set("Content-Type", "application/json")
-		if call.SubmissionID != "" {
-			req.Header.Set("Idempotency-Key", "shared:"+key+":"+args.SenderID+":"+call.SubmissionID)
+		if idempotency != "" {
+			req.Header.Set("Idempotency-Key", idempotency)
 		}
 		capture := &internalResponseCapture{}
 		api.handleAgentProfileChatQuery(capture, req)

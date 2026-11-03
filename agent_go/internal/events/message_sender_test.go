@@ -39,3 +39,23 @@ func TestDeliveredAgentAttributionIsScopedAndDurable(t *testing.T) {
 		t.Fatalf("marked %d messages, want only the delivered root", marked)
 	}
 }
+
+// PLAT-856-509: a shared agent's ask is queued with a server-made client id; its sender must still be stamped, or the
+// sender reads none of their own answers. Another client id (a typed copy) is never stamped.
+func TestDeliveredAttributionKeepsServerClientID(t *testing.T) {
+	const session, text = "chat-shared", "[Message from b] hi"
+	store := openClientMessageTestStore(t, session)
+	clear := store.ExpectAgentMessageSender(session, text, map[string]interface{}{"source": "agent_message", "sender_user_id": "b", "client_message_id": "shared:p:b:1"})
+	typed := journalTestEvent("typed", text)
+	userMessageEventData(&typed).Metadata = map[string]interface{}{"client_message_id": "browser-1"}
+	store.AddEvent(session, typed)
+	asked := journalTestEvent("asked", text)
+	userMessageEventData(&asked).Metadata = map[string]interface{}{"client_message_id": "shared:p:b:1"}
+	store.AddEvent(session, asked)
+	clear()
+	for _, row := range durableRows(t, store, session) {
+		if got := userMessageMetadata(t, row)["sender_user_id"]; (row.ID == "asked") != (got == "b") {
+			t.Fatalf("%s: sender %v", row.ID, got)
+		}
+	}
+}
