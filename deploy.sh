@@ -208,6 +208,31 @@ post_deploy_smoke() {
   return 0
 }
 
+# --- Deploy notes in Slack (owner, 3 Nov) -------------------------------------
+# After a deploy goes live, one bot message in the company's Slack channel lists what changed since the release that was
+# live before. The private products/<name>/deploy-notes.env names the channel; without it nothing is posted.
+# DEPLOY_NOTES=0 skips it for one deploy. A failed post never fails the deploy.
+live_release_commit() { # product -> short commit of its live release, or nothing
+  local product="$1"
+  [[ -f "$(deployments_dir)/products/$product/deploy-notes.env" ]] || return 0
+  (
+    # shellcheck disable=SC1090
+    source "$(product_config_dir "$product")/product.env"
+    identity=(-i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}")
+    ssh -p "${SSH_PORT:-22}" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
+      "readlink /srv/$product/current" 2>/dev/null | sed -nE "s#.*/$product-([0-9a-f]{8})-[0-9]+\$#\\1#p"
+  ) || true
+}
+post_deploy_notes() { # product previous-commit
+  local product="$1" previous="$2" config current
+  config="$(deployments_dir)/products/$product/deploy-notes.env"
+  [[ "${DEPLOY_NOTES:-1}" != 0 && -f "$config" ]] || return 0
+  current="$(live_release_commit "$product")"
+  python3 -I "$REPO_ROOT/scripts/post-deploy-notes.py" --config "$config" --repo "$REPO_ROOT" --from "$previous" --to "$current" \
+    || echo "==> [$product] Could not post the deploy notes to Slack (the deploy itself succeeded)."
+  return 0
+}
+
 # --- Rootless Linux products -------------------------
 # Repeatable redeploy for a fixed-workspace product running as its own isolated
 # Linux account on the shared rootless-systemd Hetzner box. Only /srv/$PRODUCT
@@ -626,7 +651,9 @@ case "$SERVER" in
     # the Hetzner server; its account, units and product
     # folder are named "agents" on the host.
     reject_extra_arguments "$@"
+    previous_release="$(live_release_commit agents)"
     locked_deploy excellence deploy_rootless_product agents
+    post_deploy_notes agents "$previous_release"
     prune_builds_remote
     post_deploy_smoke agents
     ;;
@@ -655,7 +682,9 @@ case "$SERVER" in
   *)
     if [[ "$SERVER" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$SERVER/product.env" ]]; then
       reject_extra_arguments "$@"
+      previous_release="$(live_release_commit "$SERVER")"
       locked_deploy "$SERVER" deploy_rootless_product "$SERVER"
+      post_deploy_notes "$SERVER" "$previous_release"
       prune_builds_remote
       post_deploy_smoke "$SERVER"
     else
