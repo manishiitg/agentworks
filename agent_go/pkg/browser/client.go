@@ -76,6 +76,13 @@ type ExecuteOptions struct {
 
 // ExecuteCommand executes an agent-browser command via the workspace API
 func (c *Client) ExecuteCommand(ctx context.Context, args []string, opts *ExecuteOptions) (string, error) {
+	if output, handled, err := c.executeConditionWait(ctx, args, opts); handled {
+		return output, err
+	}
+	return c.executeCommandOnce(ctx, args, opts)
+}
+
+func (c *Client) executeCommandOnce(ctx context.Context, args []string, opts *ExecuteOptions) (string, error) {
 	timeout := 60 * time.Second
 	if opts != nil && opts.Timeout > 0 {
 		timeout = opts.Timeout
