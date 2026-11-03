@@ -183,6 +183,19 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 		if crewChatSessionID(project, current.ConversationID) == crewChatSessionID(project, "old-conversation") {
 			t.Fatal("new chat reused old history cursor address")
 		}
+		// PLAT-856-509: + New agent over the relay opens the Mac's own tab; its conversation is then addressable,
+		// and a tab id with path characters never reaches the resolver.
+		opened := api.runDesktopCrewChat(t.Context(), "local-id", pair, crewChatCall{ID: "tab", Operation: "resolve", Tab: "a1b2c3d4", Name: " Research "})
+		var tab AgentProfileConversationResponse
+		if opened.Status != 200 || json.Unmarshal(opened.Body, &tab) != nil || tab.IsMainChat || tab.ConversationID == "" || tab.ConversationID == current.ConversationID {
+			t.Fatalf("new tab over the relay: %d %s", opened.Status, opened.Body)
+		}
+		if got := api.runDesktopCrewChat(t.Context(), "local-id", pair, crewChatCall{ID: "tab-status", Operation: "status", ConversationID: tab.ConversationID}); got.Status == 409 || got.Status == 403 {
+			t.Fatalf("the Mac refused its own tab's conversation: %d %s", got.Status, got.Body)
+		}
+		if got := api.runDesktopCrewChat(t.Context(), "local-id", pair, crewChatCall{ID: "bad-tab", Operation: "resolve", Tab: "../x", Name: "x"}); got.Status != 400 {
+			t.Fatalf("a tab id with path characters was accepted: %d", got.Status)
+		}
 	})
 	t.Run("main website chat routes locally but other callers do not", func(t *testing.T) {
 		t.Setenv("LOCAL_MODE", "false")
@@ -192,7 +205,8 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 			want               bool
 		}{
 			{"main owner", "work", project, owner, true},
-			{"side chat", "work", project + ":chat:another", owner, false},
+			{"Mac tab", "work", project + ":chat:another", owner, true},
+			{"Mac tab, other user", "work", project + ":chat:another", &UserClaims{UserID: "other", Username: "other"}, false},
 			{"other user", "work", project, &UserClaims{UserID: "other", Username: "other"}, false},
 			{"personal token", "work", project, crewWriter("owner"), false},
 			{"Goal", "goal", project, owner, false},

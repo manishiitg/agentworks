@@ -7,11 +7,32 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
+
+// macCrewTabs is this Crew's side tabs as its owner's own screen lists them, the owner's tabs only.
+func (api *StreamingAPI) macCrewTabs(ctx context.Context, claims *UserClaims, project string) ([]AgentProfileSideChat, error) {
+	r, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/api/agent-profiles/work/side-chats?project_id="+url.QueryEscape(project), nil)
+	r = mux.SetURLVars(r, map[string]string{"id": "work"})
+	capture := &internalResponseCapture{}
+	api.handleListAgentProfileSideChats(capture, r)
+	var all []AgentProfileSideChat
+	if capture.status >= 300 || json.Unmarshal(capture.body.Bytes(), &all) != nil {
+		return nil, fmt.Errorf("this Crew's tabs could not be read on your Mac")
+	}
+	own := all[:0]
+	for _, tab := range all {
+		_, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker)
+		if ok && crewMacTabID(id) && tab.CanWrite && (tab.TabOwnerID == "" || tab.TabOwnerID == claims.UserID) && strings.HasPrefix(tab.ConversationKey, project+codeChatSideMarker) {
+			own = append(own, tab)
+		}
+	}
+	return own, nil
+}
 
 func (api *StreamingAPI) desktopCrewChatBinding(ctx context.Context, project string) (*UserClaims, *crewroot.SyncBinding, desktopConnection, error) {
 	if !IsLocalMode() {
@@ -61,6 +82,60 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if call.Operation == "workspace" {
 		return api.desktopCrewWorkspace(ctx, claims, project, call)
 	}
+	// The owner's tabs on the phone and the web (PLAT-856-509): a tab is this Crew's own side chat. Only its key, name
+	// and place on the strip leave the Mac; conversation_id addresses its events.
+	if call.Operation == "tabs" {
+		tabs, err := api.macCrewTabs(ctx, claims, project)
+		if err != nil {
+			return fail(409, err.Error())
+		}
+		type tabRow struct {
+			ConversationKey string `json:"conversation_key"`
+			ConversationID  string `json:"conversation_id"`
+			Name            string `json:"name"`
+			Position        int    `json:"position,omitempty"`
+			Pinned          bool   `json:"pinned"`
+		}
+		rows := []tabRow{}
+		for _, tab := range tabs {
+			rows = append(rows, tabRow{ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Position: tab.Position, Pinned: tab.Pinned})
+		}
+		data, _ := json.Marshal(rows)
+		return crewChatResult{ID: call.ID, Status: 200, Body: data}
+	}
+	if call.Tab != "" && !crewMacTabID(call.Tab) {
+		return fail(400, "This tab is unavailable.")
+	}
+	// A tab, or a session address that is not Main's: the conversation must be one of this Crew's own tabs. Only a
+	// resolve with a new tab id opens a new tab, as + New agent does on the Mac.
+	if call.Tab != "" || (call.Operation != "resolve" && call.Operation != "handoff" && call.ConversationID != conversation.ConversationID) {
+		tabs, err := api.macCrewTabs(ctx, claims, project)
+		if err != nil {
+			return fail(409, err.Error())
+		}
+		key, name := "", ""
+		for _, tab := range tabs {
+			if (call.Tab != "" && tab.ConversationKey == project+codeChatSideMarker+call.Tab) || (call.Tab == "" && call.ConversationID != "" && tab.ConversationID == call.ConversationID) {
+				key = tab.ConversationKey
+			}
+		}
+		creating := key == "" && call.Operation == "resolve" && call.Tab != ""
+		if creating {
+			if name = crewMacTabName(call.Name); name == "" {
+				return fail(400, "Give the new agent a name.")
+			}
+			key = project + codeChatSideMarker + call.Tab
+		}
+		if key == "" {
+			return fail(409, "The chat changed on your Mac. Reopen this Crew to continue it.")
+		}
+		if conversation, err = api.resolveAgentProfileConversation(r, profile, key, name); err != nil {
+			return fail(409, err.Error())
+		}
+		if creating {
+			log.Printf("[CREW_CHAT_RELAY] local project=%s operation=tab_create tab=%s conversation=%s request=%s", project, call.Tab, conversation.ConversationID, call.ID)
+		}
+	}
 	if call.Operation != "resolve" && call.Operation != "handoff" && call.ConversationID != conversation.ConversationID {
 		return fail(409, "The main chat changed on your Mac. Reopen this Crew to continue it.")
 	}
@@ -91,7 +166,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		}
 		return crewChatResult{ID: call.ID, Status: status, Body: capture.body.Bytes()}
 	case "resolve":
-		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsMainChat: true, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider, ModelID: conversation.ModelID, ReasoningEffort: conversation.ReasoningEffort})
+		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsMainChat: conversation.IsMainChat, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider, ModelID: conversation.ModelID, ReasoningEffort: conversation.ReasoningEffort})
 		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=resolve session=%s conversation=%s request=%s", project, conversation.SessionID, conversation.ConversationID, call.ID)
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	case "send":

@@ -13,9 +13,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -38,7 +41,31 @@ type crewChatCall struct {
 	Action string          `json:"action,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
 	Caller string          `json:"caller,omitempty"`
+	// Tab: one of the Mac Crew's own side tabs (the <id> of "<project>:chat:<id>"); empty is Main. Name names a new one.
+	Tab  string `json:"tab,omitempty"`
+	Name string `json:"name,omitempty"`
 }
+
+// One rule on both sides for a tab id carried over the relay: the ids the app makes (8 characters of a UUID, or
+// "agent-"/"asuser-" plus one), never path characters.
+var crewMacTabPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+func crewMacTabID(id string) bool { return crewMacTabPattern.MatchString(id) }
+
+// crewMacTabName is a new tab's name as the Mac's own + New agent takes it: plain text, trimmed, at most 60 characters.
+func crewMacTabName(name string) string {
+	name = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, name))
+	if utf8.RuneCountInString(name) > 60 {
+		name = string([]rune(name)[:60])
+	}
+	return name
+}
+
 type crewChatResult struct {
 	ID     string          `json:"id"`
 	Status int             `json:"status"`
@@ -141,13 +168,25 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" {
 		return false
 	}
-	resolved, err := api.agentProfiles.Resolve(profile, 0, GetUserIDFromContext(r.Context()))
-	if err != nil {
-		return false
-	}
-	binding, _, err := resolveConversationBindingForUser(r.Context(), GetUserIDFromContext(r.Context()), resolved, key)
-	if err != nil || binding.ConversationKey != binding.ProjectMainChatKey {
-		return false
+	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none.
+	if base, tab, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
+		if base != project || !crewMacTabID(tab) {
+			externalError(w, 400, "invalid_tab", "This tab is unavailable.")
+			return true
+		}
+		call.Tab = tab
+		if call.Operation == "resolve" {
+			call.Name = crewMacTabName(call.Name)
+		}
+	} else {
+		resolved, err := api.agentProfiles.Resolve(profile, 0, GetUserIDFromContext(r.Context()))
+		if err != nil {
+			return false
+		}
+		binding, _, err := resolveConversationBindingForUser(r.Context(), GetUserIDFromContext(r.Context()), resolved, key)
+		if err != nil || binding.ConversationKey != binding.ProjectMainChatKey {
+			return false
+		}
 	}
 	if call.Operation == "rotate" {
 		externalError(w, 409, "mac_main_chat", "Start a new main chat from your Mac, then reopen this Crew here.")
@@ -178,7 +217,7 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		var out map[string]any
 		if json.Unmarshal(result.Body, &out) == nil {
 			out["session_id"] = crewChatSessionID(project, fmt.Sprint(out["conversation_id"]))
-			out["conversation_key"] = project
+			out["conversation_key"] = strings.TrimSpace(key)
 			out["tab_owner_id"] = GetUserIDFromContext(r.Context())
 			out["tab_owner_name"] = GetUserFromContext(r.Context()).Username
 			out["chat_location"] = "mac"
@@ -493,4 +532,46 @@ func callCrewMacFor(ctx context.Context, owner, project string, call crewChatCal
 	}
 	log.Printf("[CREW_CHAT_RELAY] completed owner=%s project=%s operation=%s action=%s caller=%q status=%d", owner, project, call.Operation, call.Action, call.Caller, result.Status)
 	return result
+}
+
+// routeCrewMacTabs lists a Mac Crew's own side tabs for its owner on the website (PLAT-856-509): the Mac's tab keys with
+// the project part swapped to this server's copy. With the Mac off there are none here; Main still shows.
+func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request, project string) bool {
+	if IsLocalMode() || !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
+		return false
+	}
+	b, err := api.crewChatPair(r, project, "")
+	if err != nil || b.Mode != "relay" {
+		return false
+	}
+	owner := GetUserIDFromContext(r.Context())
+	tabs := []AgentProfileSideChat{}
+	if crewMacSocketFor(owner, project, b.PairID) != nil {
+		result := api.callCrewMac(r, project, crewChatCall{Operation: "tabs"})
+		var rows []AgentProfileSideChat
+		if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
+			writeCrewChatResult(w, result)
+			return true
+		}
+		for _, row := range rows {
+			base, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
+			if !ok || base != b.PeerProjectID || !crewMacTabID(id) || row.ConversationID == "" {
+				continue
+			}
+			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
+				ConversationKey: project + codeChatSideMarker + id, ConversationID: row.ConversationID, SessionID: crewChatSessionID(project, row.ConversationID),
+				Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
+		}
+	}
+	writeAgentProfileJSON(w, http.StatusOK, tabs)
+	return true
+}
+
+// crewMacTwinForOwner: the owner's website copy of a Crew that lives on the Mac, whose tabs are the Mac's.
+func (api *StreamingAPI) crewMacTwinForOwner(r *http.Request, project string) bool {
+	if IsLocalMode() || !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
+		return false
+	}
+	b, err := api.crewChatPair(r, project, "")
+	return err == nil && b.Mode == "relay"
 }
