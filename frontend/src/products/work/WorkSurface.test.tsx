@@ -11,6 +11,7 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import { routeView } from '../../utils/productRoutes'
 import { CREW_PRODUCT } from './projectProduct'
 import type { WorkSession } from './workSessions'
+import * as sessionRestore from '../../utils/sessionRestore'
 
 vi.mock('../../stores/useChatStore', async original => ({ ...await original<typeof import('../../stores/useChatStore')>(), waitForChatStoreHydration: async () => {} }))
 
