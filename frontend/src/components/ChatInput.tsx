@@ -43,6 +43,7 @@ import { CHAT_TOOL_COMMAND_EVENT, chatToolCommandFromEvent } from '../utils/chat
 import { loadAgentProfileCapabilityEnabled, loadAgentProfileProviderOptions, loadAgentProfileRuntime, type AgentProfileProviderOption, type AgentProfileRuntime } from '../utils/agentProfileCapabilities'
 import NewChatControl from './ui/NewChatControl'
 import { MicButton, type MicButtonHandle, type MicState } from '../voice/MicButton'
+import { markNextSubmissionVoice } from '../voice/voiceMessages'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { hasActiveSessionWork } from '../utils/activitySessions'
 import { shouldClearAcceptedChatDraft } from '../utils/chatSubmissionDraft'
@@ -723,6 +724,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // On a phone the spoken message is sent straight away (owner, 3 Nov), together with anything already typed; the
     // desktop keeps it in the box to edit.
     if (window.matchMedia('(max-width: 767px), (pointer: coarse)').matches && text.trim()) {
+      markNextSubmissionVoice()
       window.setTimeout(() => textareaRef.current?.form?.requestSubmit(), 60)
       return
     }

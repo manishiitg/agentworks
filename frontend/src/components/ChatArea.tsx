@@ -10,6 +10,8 @@ import { isForegroundSessionEvent } from '../../shared/session/foreground'
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo, useState, lazy, Suspense, type ComponentType, type ForwardedRef, type ReactNode } from 'react'
 import { normalizeEventViewMode } from '../stores/useChatStore'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
+import { useYourComputerSummary } from '../products/work/YourComputerPanel'
+import { rememberIfVoice } from '../voice/voiceMessages'
 import { intermediateUpdateFromTranscriptChunk, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
 import { applyLiveInputConfirmations, readLiveInputConfirmation, resolveLiveInputConfirmations, stampLiveInputIdentity, withLiveInputReceipt, withPendingProvider } from '../utils/liveInputReceipt'
 import { useRenderLogger, useMemoLogger } from '../utils/renderLogger'
@@ -1210,6 +1212,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Add ref for auto-scrolling
   const chatContentRef = useRef<HTMLDivElement>(null)
+  const macChatOff = useYourComputerSummary(activeTab?.metadata?.agentProfileChatLocation === 'mac', activeTab?.metadata?.agentProfileProjectId) === 'mac_off'
   // Phone: scrolling toward the latest messages slides the header away; a small scroll up (24 px) or reaching the top
   // brings it back (owner, 3 Nov). The message box never hides.
   useEffect(() => {
@@ -3306,6 +3309,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       ? useChatStore.getState().getTab(pending.targetTabId) : undefined
     const retry = retryTarget && retryTarget.sessionId === pending?.sessionId ? pending : undefined
     const submissionId = options?.submissionId ?? retry?.id ?? crypto.randomUUID()
+    rememberIfVoice(submissionId)
     const captured: ChatSubmissionOptions = { ...options, identity,
       deliveryMode: retry?.deliveryMode ?? options?.deliveryMode,
       sourceTabId: sourceTab?.tabId,
@@ -3639,6 +3643,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       <div ref={chatContentRef} className={`flex-1 ${shouldUseFullHeightContent ? 'overflow-hidden' : 'overflow-y-auto'} overflow-x-hidden min-w-0 relative overscroll-y-none ${compact ? 'text-sm' : ''}`} style={{ scrollBehavior: 'auto' }}>
 
         <div className={`min-w-0 ${shouldUseFullHeightContent ? 'flex h-full flex-col' : 'min-h-full'} ${EffectiveContentRenderer ? '' : compact ? 'px-2 pb-2' : 'px-3 pb-4'}`}>
+          {/* A Crew on a Mac that is off shows what the server kept; the rest of the history is on the Mac. */}
+          {macChatOff && <p className="px-1 pt-3 text-center text-[11px] text-muted-foreground">Earlier messages are on your Mac.</p>}
           {/* Loading indicator for historical events */}
           {!EffectiveContentRenderer && isLoadingHistory && (
             <div className={`flex items-center justify-center ${compact ? 'py-4' : 'py-8'}`}>

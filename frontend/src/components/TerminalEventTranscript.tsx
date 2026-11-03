@@ -11,7 +11,8 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Send, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Mic, Send, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { isVoiceMessage } from '../voice/voiceMessages'
 import { WorkspaceImage } from './ui/WorkspaceImage'
 import { isImageAttachmentPath } from '../utils/chatMessageContent'
 import { InspectExecutionButton } from './chat/InspectExecutionButton'
@@ -420,6 +421,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
             {metadata?.source === 'owner_app' && typeof metadata.sender_label === 'string' && <span>{metadata.sender_label}</span>}
+            {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
             <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
           </div>
@@ -443,6 +445,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
           <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
           {metadata?.source === 'owner_app' && typeof metadata.sender_label === 'string' && <span>{metadata.sender_label}</span>}
+            {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
           <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
         </div>
