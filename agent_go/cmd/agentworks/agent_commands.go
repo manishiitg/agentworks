@@ -573,6 +573,9 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	}
 	if !installPlugin && !out.NativeDelivery && o.switchPath == "" {
 		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName)
+		if reason := nativeRouteReason(); reason != "" && chosen.provider == "codex" {
+			fmt.Fprintf(o.stdout, "Live delivery was not selected because: %s\n", reason) // PLAT-874: say why, not only that
+		}
 		if help := pluginInstallHelp(chosen.provider); help != "" {
 			fmt.Fprintf(o.stdout, "For live delivery the person installs the %s plugin: %s\n", chosen.provider, help)
 		}
