@@ -1,8 +1,8 @@
 import { YourComputerPanel } from './YourComputerPanel'
-import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
+import { useMacCrew } from './useMacCrew'
 import { useProjectMode } from './codeLocalFiles'
-import { useState } from 'react'
-import { Cable, Server, Users } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Server, Users } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type ProjectSecretControls, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
@@ -23,7 +23,7 @@ import { integrationProductAvailable } from '../../components/integrations/integ
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
 
-export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'computer' | 'agentbridge' | 'computer-use'
+export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use'
 
 export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
   accessLoading?: boolean
@@ -39,39 +39,47 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   const product = useProjectProduct()
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const [tab, setTab] = useState<WorkIntegrationTab>('apps')
-  const [shareSection, setShareSection] = useState(false)
   const [integrationSection, setIntegrationSection] = useState<IntegrationSection>('connected')
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const projectMode = useProjectMode(sessionId ?? '')
   useWorkspaceViewTarget('mcp', target => {
-    if (target === 'share') { setShareSection(true); return }
-    // Sync and laptop tools share one page (Cloud in the Mac app, Laptop access on a server); old names still open it.
-    const next = target === 'slack-bot' ? 'slack' : ['laptop', 'sync', 'agents'].includes(target) ? 'computer' : target
+    // Sharing, where it lives (or laptop access) and connected agents are one Access page (owner, 3 Nov); old names open it.
+    const next = target === 'slack-bot' ? 'slack' : ['share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge'].includes(target) ? 'access' : target
     if (next === 'computer-use' && (!canEdit || !isLocalDeployment())) return
-    if (next === 'agentbridge' && !integrationProductAvailable('bullpen', allowedProducts)) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
-    if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setShareSection(false); setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
-    if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'computer', 'agentbridge', 'computer-use'].includes(next)) {
-      setShareSection(false); setTab(next as WorkIntegrationTab)
-    }
+    if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
+    if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'access', 'computer-use'].includes(next)) setTab(next as WorkIntegrationTab)
   })
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', computer: hasDesktopConnections() ? 'Where it lives' : 'Laptop access', agentbridge: 'Connected agents', 'computer-use': 'Computer use' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Access', 'computer-use': 'Computer use' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
-    <WorkspaceViewHeader icon={shareSection ? Users : tab === 'agentbridge' ? Cable : Server} title={shareSection ? 'Access' : labels[tab]} />
-    <div data-ui-view-section={shareSection ? 'share' : tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
-      {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={draft} /> : <>
-        {tab === 'computer' && (canEdit ? <YourComputerPanel projectId={projectId} sessionId={sessionId} canEdit={canEdit} /> : <ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section="laptop" canEdit={false} onAsk={draft} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} />)}
+    <WorkspaceViewHeader icon={tab === 'access' ? Users : Server} title={labels[tab]} />
+    <div data-ui-view-section={tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
+      <>
+        {tab === 'access' && <AccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} canEdit={canEdit} agentBridge={integrationProductAvailable('bullpen', allowedProducts)} agentTarget={`workspace:${product.profileId}:${projectId}`} onAsk={draft} laptopForRun={<ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section="laptop" canEdit={false} onAsk={draft} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} />} />}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
-        {tab === 'agentbridge' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} />}
         {tab === 'apps' && <ProjectIntegrationPanel github={projectMode === 'dev'} workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
-        {tab === 'folders' && <WorkFoldersSection onOpenComputer={canEdit ? () => setTab('computer') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
+        {tab === 'folders' && <WorkFoldersSection onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
         {tab === 'mac-folders' && <CodeLocalFilesSettings sessionId={sessionId} />}
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}
         {tab === 'slack' && <ProductSlackPanel workspacePath={workspacePath} noun="Crew" section="bot" tabId={tabId} />}
         {tab === 'whatsapp' && <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
-      </>}
+      </>
     </div>
+  </div>
+}
+
+/** One Access page (owner, 3 Nov): where the Crew lives, who can use it, and its connected agents. */
+function AccessPage({ projectId, sessionId, workspacePath, tabId, canEdit, agentBridge, agentTarget, onAsk, laptopForRun }: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; agentBridge: boolean; agentTarget: string; onAsk: (message: string) => void | Promise<unknown>; laptopForRun: ReactNode }) {
+  const { livesOnMac } = useMacCrew(projectId, 15000)
+  const heading = (text: string) => <h3 className="mb-2 text-xs font-medium text-muted-foreground">{text}</h3>
+  return <div className="max-w-2xl space-y-6">
+    <section aria-label="Where it lives">
+      {canEdit ? <YourComputerPanel projectId={projectId} sessionId={sessionId} canEdit={canEdit} /> : laptopForRun}
+    </section>
+    {/* A Crew on this Mac shows Who can use it inside its Where it lives card. */}
+    {!livesOnMac && <section aria-label="Who can use it">{heading('Who can use it')}<ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
+    {agentBridge && <section aria-label="Connected agents">{heading('Connected agents')}<ProjectAgentBridgePanel target={agentTarget} tabId={tabId} onAsk={onAsk} /></section>}
   </div>
 }

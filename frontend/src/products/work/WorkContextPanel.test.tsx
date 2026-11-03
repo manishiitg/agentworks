@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
 const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), user: { id: 'owner', allowed_products: null as string[] | null }, server: 'local', share: { can_share:true, mode:'private', people:[] as { id:string }[], unknown_emails:[] as string[] }, browser: { connected:true, label:'Connected', name:'Chrome' }, documents: [] as { id: string; path: string; title: string; order: number; artifact?: boolean; motion?: boolean }[], status: { apps: [], automations: [], errors: [], loaded: ['mcp:connected'] } as any }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
-vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: mocks.share }), get: async (url: string) => ({ data: url.includes('crew-sync') ? { binding: { side: 'local', editing: 'local', peer_project_id: 'server-copy' } } : { device_id: '', folders: [], commands: false } }) }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
+vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: mocks.share }), get: async (url: string) => ({ data: url.includes('crew-sync') ? { binding: { side: 'local', editing: 'local', peer_project_id: 'server-copy' }, place: 'online' } : { device_id: '', folders: [], commands: false } }) }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: mocks.user }), { getState: () => ({ user: mocks.user }) }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: mocks.server }), { getState: () => ({ activeWorkspaceId: mocks.server }) }) }))
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
@@ -26,7 +26,7 @@ beforeEach(() => {
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
-const accessDestinations = [['Laptop access','computer'],['Connected agents','agentbridge']]
+const accessDestinations = [['Access','access']]
 const inventory = (features?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels: features, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
 async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => Promise<void>) {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -171,29 +171,23 @@ it('keeps offline connections out of the icon strip but reachable through expans
 
 
 it('keeps footer sharing server-admitted and scoped to the current account', async () => {
- for (const [mode, detail] of [['private','Private'], ['everyone','Everyone'], ['people','2 people']]) {
+ for (const [mode, detail] of [['private','Only you'], ['everyone','Everyone'], ['people','Shared with 2']]) {
   mocks.share = { can_share:true, mode, people:[{id:'a'},{id:'b'},{id:'a'}], unknown_emails:['missing@example.test'] }
   await render('cowork', async host => {
    const footer = host.querySelector('footer')!
-   // Sharing, Your computer and Connected agents sit in the main menu with their status.
-   const sharingRow = [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Sharing')!
-   expect(sharingRow.textContent).toBe(`Sharing${detail}`)
-   expect(footer.querySelector('button')).toBe(sharingRow)
+   // One Access row: where it lives · who can use it, both from the server.
    await act(async () => {})
-   expect([...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Laptop access')?.textContent).toContain('Off')
+   const accessRow = [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Access')!
+   expect(accessRow.textContent).toBe(`AccessOnline · ${detail}`)
+   expect(footer.querySelectorAll('button')).toHaveLength(1)
    mocks.open.mockClear(); mocks.target.mockClear()
-   if (mode === 'private') for (const [label,target] of accessDestinations) {
-    await act(async () => [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!.click())
-    expect(mocks.target).toHaveBeenLastCalledWith('mcp',target)
-    expect(mocks.open).toHaveBeenLastCalledWith('mcp')
-   }
-   await act(async () => sharingRow.click())
-   expect(mocks.target).toHaveBeenLastCalledWith('mcp','share')
+   await act(async () => accessRow.click())
+   expect(mocks.target).toHaveBeenLastCalledWith('mcp','access')
    expect(mocks.open).toHaveBeenLastCalledWith('mcp')
    mocks.open.mockClear()
    const owner = mocks.user
    mocks.user = { ...owner, id:'another-user' }
-   await act(async () => sharingRow.click())
+   await act(async () => accessRow.click())
    expect(mocks.open).not.toHaveBeenCalled()
    mocks.user = owner
   })
@@ -201,9 +195,12 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
  mocks.share = { can_share:false, mode:'private', people:[], unknown_emails:[] }
  await render('cowork', async host => {
   const footer = host.querySelector('footer')!
-  expect([...footer.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Sharing')).toBe(false)
-  await act(async () => [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Laptop access')!.click())
-  expect(mocks.target).toHaveBeenLastCalledWith('mcp','computer')
+  // Someone else's Crew: the row still opens Access, and says it is shared with you.
+  await act(async () => {})
+  const accessRow = [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Access')!
+  expect(accessRow.textContent).toBe('AccessOnline · Shared with you')
+  await act(async () => accessRow.click())
+  expect(mocks.target).toHaveBeenLastCalledWith('mcp','access')
  })
 })
 

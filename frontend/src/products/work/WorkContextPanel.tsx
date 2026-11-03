@@ -47,7 +47,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       .then(({ data }) => {
         if (controller.signal.aborted) return
         const count = new Set((data.people || []).map(person => person.id)).size
-        setSharing({ scope, allowed: data.can_share === true, detail: data.mode === 'everyone' ? 'Everyone' : data.mode === 'private' ? 'Private' : data.mode === 'people' ? `${count} ${count === 1 ? 'person' : 'people'}` : undefined })
+        setSharing({ scope, allowed: data.can_share === true, detail: data.can_share !== true ? 'Shared with you' : data.mode === 'everyone' ? 'Everyone' : data.mode === 'people' && count > 0 ? `Shared with ${count}` : 'Only you' })
       })
       .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false }) })
     return () => controller.abort()
@@ -61,7 +61,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' }>()
-  const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:computer'), projectId, profileId)
+  const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:access'), projectId)
   const showMenu = (view: 'full' | 'integrations' | 'automations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
@@ -104,14 +104,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const automations = snapshot?.automations || []
   const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
   const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={() => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', 'review'); onOpen('files') }}/> : null
-  // Sharing, Where it lives (or Laptop access) and Connected agents sit in the main menu, each with its one-line status.
-  // A Crew that lives on this Mac is shared from Where it lives (People: Share…), so it has no separate Sharing row;
-  // that row says it is private (owner, 3 Nov). An online Crew keeps its Sharing row.
-  const onMac = computerState === 'mac'
-  const accessRows = onMac ? accessItems.filter(item => item.id !== 'mcp:share') : accessItems
-  const computerDetail = computerState ? cloudStateLabel[computerState] + (onMac ? ' · Private' : '') : undefined
-  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:computer' ? cloudStateIcon(item.icon, computerState) : item.icon} detail={item.id === 'mcp:share' ? (sharing?.scope === scope ? sharing.detail : undefined) : item.id === 'mcp:computer' ? computerDetail : undefined} onClick={() => open(item)}>{item.label}</Row>
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessRows.length > 0 && <div className="space-y-0.5">{accessRows.map(accessRow)}</div>}>
+  // One Access row (owner, 3 Nov): where it lives · who can use it, both as the server reports them.
+  const who = sharing?.scope === scope ? sharing.detail : undefined
+  const theirs = sharing?.scope === scope && !sharing.allowed
+  const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, who].filter(Boolean).join(' · ') || undefined
+  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => open(item)}>{item.label}</Row>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(accessRow)}</div>}>
     {changes}
     {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} workspacePath={workspacePath} profileId={profileId} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={(snapshot?.apps || []).filter(item => byId.has(item.destination))} loading={snapshot?.loaded.includes('mcp:connected') !== true} unavailable={snapshot?.errors.includes('Connections could not be loaded.') === true} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>

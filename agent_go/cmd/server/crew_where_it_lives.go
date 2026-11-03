@@ -187,3 +187,24 @@ func crewMacResultText(result crewChatResult) string {
 	}
 	return http.StatusText(result.Status)
 }
+
+// crewPlace is where a Crew lives, as its Access row shows it: on this Mac (or the Mac is off, seen from online),
+// moving online, or online. The pair's editing side decides it; the Mac's live connection decides on or off.
+func crewPlace(owner, project string, b *crewroot.SyncBinding) string {
+	switch {
+	case b == nil && IsLocalMode():
+		return "mac"
+	case b == nil:
+		return "online"
+	case b.PendingAction == "server":
+		return "moving"
+	case b.Editing == "server":
+		return "online"
+	case IsLocalMode():
+		return "mac"
+	}
+	if seen := crewMacLastSeen(owner, project, b.PairID); !seen.IsZero() && time.Since(seen) <= crewRelayDropAfter {
+		return "mac"
+	}
+	return "mac_off"
+}

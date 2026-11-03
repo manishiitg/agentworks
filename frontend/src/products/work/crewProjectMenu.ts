@@ -1,11 +1,11 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
-import { isLocalDeployment, visibleProductSurfaceIDs } from '../productSurfaceConfig'
+import { isLocalDeployment } from '../productSurfaceConfig'
 import { isWorkIdentityTabEnabled, isWorkIntegrationTabEnabled } from './workViewGating'
 import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
-import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
 
 export const CREW_MENU_GROUPS = PROJECT_MENU_GROUPS
 export type CrewMenuGroup = typeof CREW_MENU_GROUPS[number]
@@ -15,7 +15,7 @@ export type CrewMenuItem = {
 }
 
 /** One inventory for the Crew menu and panel search. All old feature gates apply. */
-export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, canShare = true, mode = 'cowork' }: {
+export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, mode = 'cowork' }: {
   panels: ProductPanel<WorkWorkspaceView>[]; allowedProducts?: string[] | null; enabledPanels?: Set<string>
   incomingEmail?: boolean; canShare?: boolean; projectId?: string; mode?: 'dev' | 'cowork'
 }): CrewMenuItem[] {
@@ -36,24 +36,19 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
-    if (has('dashboard') && canShare) {
-      add('mcp', 'Share', 'Sharing', UsersRound, 'share')
-    }
+    // One Access row for every Crew (owner, 3 Nov): where it lives, who can use it and connected agents on one page.
+    add('mcp', 'Share', 'Access', UsersRound, 'access', 'Access')
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
-      // Linked projects sit with the Crew's connections; the main menu keeps Sharing, Where it lives and Connected agents (owner, 3 Nov).
+      // Linked projects sit with the Crew's connections; the main menu keeps the Access row (owner, 3 Nov).
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (hasDesktopConnections()) add('mcp', 'Integrations', 'Folders on this Mac', Folder, 'mac-folders')
     if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
-    // In the Mac app a Crew lives on this Mac or online (shown once a network is connected); on a server it is Laptop access.
-    if (!hasDesktopConnections()) add('mcp', 'Share', 'Laptop access', Laptop, 'computer', 'Access')
-    else if (useConnectedWorkStore.getState().connections.some(item => item.id !== 'local')) add('mcp', 'Share', 'Where it lives', Laptop, 'computer', 'Access')
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
-    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Share', 'Connected agents', Cable, 'agentbridge', 'Access')
   }
   add('suggestions', 'Share', 'Suggestions', Hand)
   add('identity', 'Setup', 'Instructions & identity', Settings, 'general')

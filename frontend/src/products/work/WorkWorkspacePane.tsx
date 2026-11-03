@@ -82,7 +82,9 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group })),
   ], (key, section) => {
     if (key === 'context') { onViewChange('context'); return }
-    const legacy = key === 'mcp:slack' ? 'mcp:slack-bot' : section ? key + ':' + section : key
+    const raw = key === 'mcp:slack' ? 'mcp:slack-bot' : section ? key + ':' + section : key
+    // Sharing, Where it lives and Connected agents are one Access row now.
+    const legacy = ['mcp:share', 'mcp:computer', 'mcp:agentbridge'].includes(raw) ? 'mcp:access' : raw
     const current = useAuthStore.getState().user
     const item = crewProjectMenuItems({ mode: projectMode, panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === legacy)
     if (!item || current?.id !== user?.id) return

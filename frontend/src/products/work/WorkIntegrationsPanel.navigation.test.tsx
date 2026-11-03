@@ -48,7 +48,7 @@ it('opens familiar integration panels in the existing project workspace', async 
   expect(host.querySelector('header')?.textContent).toContain('MCPs')
   expect(host.querySelector('[data-content="connected"]')).not.toBeNull()
   expect(host.querySelector('nav, [aria-label="Integration sections"]')).toBeNull()
-  for (const target of ['brain', 'folders', 'whatsapp', 'cli', 'agentbridge', 'connected']) {
+  for (const target of ['brain', 'folders', 'whatsapp', 'cli', 'connected']) {
     await act(async () => state.target(target))
     expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual([target])
   }
@@ -56,7 +56,7 @@ it('opens familiar integration panels in the existing project workspace', async 
 })
 it('keeps bot channels and sharing separate from personal Vault accounts', async () => {
   const host = await mount()
-  for (const [target, content, section] of [['slack-bot', 'slack', 'bot'], ['share', 'sharing', null]] as const) {
+  for (const [target, content, section] of [['slack-bot', 'slack', 'bot']] as const) {
     await act(async () => state.target(target))
     expect(host.querySelector(`[data-content="${content}"]`)?.getAttribute('data-section')).toBe(section)
     expect(host.querySelectorAll('[data-content]')).toHaveLength(1)
@@ -78,14 +78,15 @@ it('opens each resource directly without a My Vault destination', async () => {
  }
 })
 
-// Sync and laptop tools are one page (Where it lives in the Mac app, Laptop access on a server); old links still open it.
-it('opens sync and laptop access together on Your computer', async () => {
+// One Access page (owner, 3 Nov): where it lives (or laptop access) and who can use it; old links still open it.
+it('opens where it lives and sharing together on the Access page', async () => {
  const host = await mount()
- for (const target of ['computer', 'sync', 'laptop', 'agents']) {
+ for (const target of ['access', 'share', 'computer', 'sync', 'laptop', 'agents', 'agentbridge']) {
   await act(async () => state.target('connected'))
   await act(async () => state.target(target))
-  expect(host.querySelector('header')?.textContent).toContain('Laptop access')
+  expect(host.querySelector('header')?.textContent).toContain('Access')
   expect(host.querySelector('[data-computer]')).not.toBeNull()
+  expect(host.querySelector('[data-content="sharing"]')).not.toBeNull()
  }
 })
 
