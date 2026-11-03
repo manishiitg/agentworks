@@ -395,6 +395,11 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		row.DisplayLabel = chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID)
 		effective = append(effective, row)
 	}
+	rows := make([]string, 0, len(effective))
+	for _, row := range effective {
+		rows = append(rows, fmt.Sprintf("%s=%s/%s/%s own=%t err=%q", strings.TrimPrefix(row.ConversationKey, projectID), row.Engine, row.ModelID, row.ReasoningEffort, row.OwnModel, row.Error))
+	}
+	log.Printf("[CHAT_MODELS] %s project=%s effective=[%s]", r.Method, projectID, strings.Join(rows, " "))
 	log.Printf("[CHAT_MODELS] %s project=%s tabs=%d slot=%s save=%s records=%s rows=%s", r.Method, projectID, len(allTabs),
 		slotDone.Sub(started).Round(time.Millisecond), saveDone.Sub(slotDone).Round(time.Millisecond),
 		recordsDone.Sub(saveDone).Round(time.Millisecond), time.Since(recordsDone).Round(time.Millisecond))
