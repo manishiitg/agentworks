@@ -2,8 +2,6 @@ import { YourComputerPanel } from './YourComputerPanel'
 import { useMacCrew } from './useMacCrew'
 import { useProjectMode } from './codeLocalFiles'
 import { useState, type ReactNode } from 'react'
-import { useShallow } from 'zustand/react/shallow'
-import { activateTab } from '../../utils/activateTab'
 import { Server, Users } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type ProjectSecretControls, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
@@ -75,7 +73,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   </div>
 }
 
-/** One Access page (owner, 3 Nov): where the Crew lives, who can use it, and its connected agents. */
+/** One Access page (owner, 3 Nov): where the Crew lives and who can use it. Its agents are the chat's tabs. */
 function AccessPage({ projectId, sessionId, workspacePath, tabId, canEdit, onAsk, laptopForRun }: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown>; laptopForRun: ReactNode }) {
   const { livesOnMac } = useMacCrew(projectId, 15000)
   const heading = (text: string) => <h3 className="mb-2 text-xs font-medium text-muted-foreground">{text}</h3>
@@ -85,27 +83,5 @@ function AccessPage({ projectId, sessionId, workspacePath, tabId, canEdit, onAsk
     </section>
     {/* A Crew on this Mac shows Who can use it inside its Where it lives card. */}
     {!livesOnMac && <section aria-label="Who can use it">{heading('Who can use it')}<ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
-    <section aria-label="Agents in this Crew">{heading('Agents in this Crew')}<CrewAgentsList projectId={projectId} /></section>
-  </div>
-}
-
-// A tab named after an AI app holds the questions asked from that app.
-const APP_TABS = new Set(['chatgpt', 'claude', 'slack', 'cursor', 'codex', 'gemini', 'ai app'])
-
-/** Agents in this Crew (owner, 3 Nov): its tabs by name, each with one plain line and Open. No account names or roles. */
-function CrewAgentsList({ projectId }: { projectId: string }) {
-  const tabs = useChatStore(useShallow(state => Object.values(state.chatTabs).filter(tab => tab.metadata?.agentProfileId === 'work' && tab.metadata?.agentProfileProjectId === projectId)))
-  const ordered = [...tabs].sort((a, b) => Number(Boolean(b.metadata?.agentProfileIsMainChat)) - Number(Boolean(a.metadata?.agentProfileIsMainChat)))
-  return <div className="max-w-2xl space-y-1 text-sm">
-    {ordered.map(tab => {
-      const main = Boolean(tab.metadata?.agentProfileIsMainChat)
-      const name = main ? 'Main' : tab.name
-      const line = main ? 'your main chat' : APP_TABS.has(tab.name.trim().toLowerCase()) ? `questions you asked from ${tab.name}` : ''
-      return <div key={tab.tabId} className="flex items-center gap-3 rounded-lg px-1 py-1.5">
-        <span className="min-w-0 flex-1"><span className="font-medium">{name}</span>{line && <span className="text-muted-foreground"> · {line}</span>}</span>
-        <button type="button" onClick={() => activateTab(tab.tabId)} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">Open</button>
-      </div>
-    })}
-    <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('agentworks:new-agent', { detail: { projectId } }))} className="px-1 py-1.5 text-xs text-primary hover:underline">+ New agent</button>
   </div>
 }

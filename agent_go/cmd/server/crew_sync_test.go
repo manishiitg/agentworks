@@ -474,7 +474,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				}
 				request := httptest.NewRequest("POST", "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, claims))
 				response := httptest.NewRecorder()
-				api.pairedCrewSyncAction(response, request, "local-id", "server")
+				api.pairedCrewSyncAction(response, request, "local-id", "server", "")
 				if response.Code != 403 {
 					t.Fatalf("%s token received saved-login authority: %d %s", kind, response.Code, response.Body.String())
 				}
