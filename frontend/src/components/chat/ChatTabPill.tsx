@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Loader2, MessageSquare, MessageSquareText, PenLine, Pencil, PinOff, X } from 'lucide-react'
+import { ChevronDown, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
@@ -10,6 +10,7 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { compactOwnerChatName, ownerInitials } from './chatTabName'
+import { AgentPurposeButton } from './AgentPurposeButton'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -172,15 +173,8 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
-        {/* An idle tab shows its owner the purpose icon in this spot instead (owner, 3 Nov). */}
-        {!isBlank && status === 'ready' && onSetPurpose && <button type="button" data-agent-purpose
-          aria-label={purpose ? `Purpose: ${purpose}. Change it` : "Set this agent's purpose"}
-          title={purpose ? `Purpose: ${purpose}\nClick to change it` : "Set this agent's purpose"}
-          onClick={event => { event.stopPropagation(); onSetPurpose() }}
-          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
-          className={`grid h-3.5 w-3.5 place-items-center rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${purpose ? 'text-muted-foreground/70' : 'text-[hsl(var(--warning))]'}`}>
-          <PenLine aria-hidden="true" className="h-3 w-3" />
-        </button>}
+        {/* An idle tab shows its owner a quiet purpose icon in this spot instead (owner, 3 Nov). */}
+        {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}
         {/* No dot for an idle chat (owner, 2 Nov): only Working, Needs you, Completed and Failed show; red means Failed only. */}
         {!isBlank && status !== 'ready' && (status === 'busy'
           ? <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
