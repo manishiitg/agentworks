@@ -111,6 +111,11 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 	for _, crew := range crews {
 		if err := api.crewRelayAdmit(ctx, sock.claims, crew); err != nil {
 			log.Printf("[CREW_RELAY] refused project=%s reason=%q", crew.Project, err.Error())
+			// The online copy is not this account's (the Mac signed in again as someone else, or it was removed):
+			// tell the Mac, which starts a new online copy for this account. The old one is never touched.
+			if err.Error() == "not the owner" && sock.send != nil {
+				_ = sock.send(crewRelayMessage{Type: "refused", Project: crew.Project, State: "not_owner"})
+			}
 			continue
 		}
 		twins[crew.Project] = crew.Pair

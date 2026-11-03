@@ -320,6 +320,10 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				}
 				_ = send(crewRelayMessage{Type: "ack", Project: msg.Project, Result: &result})
 			}()
+		case "refused":
+			if local != "" && msg.State == "not_owner" {
+				repairDesktopCrewTwin(local, pair, connectionID)
+			}
 		case "resume":
 			if local != "" && msg.Conversation != "" {
 				followers.watch(session, msg.Project, local, pair, msg.Conversation, msg.Since)
@@ -541,4 +545,31 @@ func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims
 	}
 	body, _ := json.Marshal(map[string]any{"path": rel, "size": len(data), "content_base64": data})
 	return crewChatResult{ID: call.ID, Status: 200, Body: body}
+}
+
+// repairDesktopCrewTwin forgets a Crew's online copy that the server says belongs to another account, so the twin
+// loop pairs the Crew again for the account this Mac is signed in with (PLAT-856-509). The pairing and its file
+// record are kept as .bak; the Crew's files and chats on this Mac are untouched, and nothing is sent to the old copy.
+func repairDesktopCrewTwin(local, pair, connection string) {
+	b, err := crewroot.ReadSync(local)
+	if err != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction != "" || b.PairID != pair {
+		return
+	}
+	state, err := workflowCLIStateRoot()
+	if err != nil {
+		return
+	}
+	stamp := time.Now().UTC().Format("20060102T150405Z")
+	dir := filepath.Join(state, "crew-sync")
+	for _, name := range []string{local + "-files.json", local + ".json"} {
+		path := filepath.Join(dir, name)
+		if _, e := os.Stat(path); e != nil {
+			continue
+		}
+		if e := os.Rename(path, path+"."+stamp+".bak"); e != nil {
+			log.Printf("[CREW_RELAY] project=%s could not repair twin: %v", local, e)
+			return
+		}
+	}
+	log.Printf("[CREW_RELAY] project=%s repaired twin for connection=%s old_pair=%s old_server_project=%s", local, connection, pair, b.PeerProjectID)
 }
