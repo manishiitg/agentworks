@@ -110,7 +110,7 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 	twins := map[string]string{}
 	for _, crew := range crews {
 		if err := api.crewRelayAdmit(ctx, sock.claims, crew); err != nil {
-			log.Printf("[CREW_RELAY] refused project=%s reason=%q", crew.Project, err.Error())
+			log.Printf("[CREW_RELAY] refused owner=%s device=%s project=%s reason=%q", sock.owner, sock.device, crew.Project, err.Error())
 			// The online copy is not this account's (the Mac signed in again as someone else, or it was removed):
 			// tell the Mac, which starts a new online copy for this account. The old one is never touched.
 			if err.Error() == "not the owner" && sock.send != nil {
@@ -203,7 +203,7 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 		return
 	}
 	if !offered {
-		log.Printf("[CREW_RELAY] refused project=%s reason=%q", msg.Project, "not offered by this connection")
+		log.Printf("[CREW_RELAY] refused owner=%s device=%s project=%s reason=%q", sock.owner, sock.device, msg.Project, "not offered by this connection")
 		return
 	}
 	switch msg.Type {
@@ -220,9 +220,9 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 		sock.mu.Lock()
 		delete(sock.twins, msg.Project)
 		sock.mu.Unlock()
-		log.Printf("[CREW_RELAY] removed project=%s pair=%s", msg.Project, pair)
+		log.Printf("[CREW_RELAY] removed owner=%s device=%s project=%s pair=%s", sock.owner, sock.device, msg.Project, pair)
 	default:
-		log.Printf("[CREW_RELAY] refused project=%s reason=%q", msg.Project, "unknown message "+msg.Type)
+		log.Printf("[CREW_RELAY] refused owner=%s device=%s project=%s reason=%q", sock.owner, sock.device, msg.Project, "unknown message "+msg.Type)
 	}
 }
 
@@ -451,7 +451,7 @@ func crewRelayMessageState(owner, project, conversation, submission, state, reas
 		delete(crewRelaySubmissions.latest, owner+"/"+project)
 	}
 	crewRelaySubmissions.Unlock()
-	log.Printf("[CREW_RELAY] message project=%s submission=%s state=%s", project, submission, state)
+	log.Printf("[CREW_RELAY] message owner=%s project=%s conversation=%s submission=%s state=%s", owner, project, conversation, submission, state)
 }
 
 func (s *crewRelaySubmissionSet) working(owner, project string) {

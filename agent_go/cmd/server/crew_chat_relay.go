@@ -283,6 +283,8 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	since := crewRelaySince(r)
+	streamLog := newChatStreamLog(r, project, generation, since)
+	defer streamLog.close()
 	replay, gap, sub, stop := crewRelayStreams.subscribe(owner, project, generation, since)
 	defer stop()
 	sock := crewMacSocketFor(owner, project, b.PairID)
@@ -310,7 +312,12 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 		}
 		_, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", last, kind, bytes.TrimSpace(body))
 		flusher.Flush()
-		return err == nil
+		if err != nil {
+			streamLog.reason = "write_error"
+			return false
+		}
+		streamLog.sent++
+		return true
 	}
 	if first != nil {
 		var envelope struct {
@@ -321,7 +328,7 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 		if !write("event", envelope.LastProcessedIndex, first.Body) {
 			return
 		}
-		log.Printf("[CREW_RELAY] resume project=%s since=%d source=mac", project, since)
+		streamLog.resume(since, last, 1, false, "mac")
 	} else if gap || sock == nil && (since == 0 || len(replay) == 0) {
 		// The viewer is older than the cache, or the Mac is off: replace, not append.
 		// With nothing cached (a server restart) the saved state still greys the Crew.
@@ -351,14 +358,14 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 		if !write("snapshot", lastSeq, body) {
 			return
 		}
-		log.Printf("[CREW_RELAY] snapshot project=%s since=%d", project, since)
+		streamLog.resume(since, lastSeq, len(events), true, map[bool]string{true: "cache", false: "saved_state"}[len(replay) > 0])
 	} else {
 		for _, batch := range replay {
 			if !write(batch.Kind, batch.Seq, batch.Body) {
 				return
 			}
 		}
-		log.Printf("[CREW_RELAY] cache hit project=%s since=%d batches=%d", project, since, len(replay))
+		streamLog.resume(since, last, len(replay), false, "cache")
 	}
 	resume := func() {
 		if sock := crewMacSocketFor(owner, project, b.PairID); sock != nil {
@@ -383,6 +390,7 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 			}
 		case <-heartbeat.C:
 			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+				streamLog.keepaliveMiss()
 				return
 			}
 			flusher.Flush()

@@ -287,7 +287,7 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 		Key     string `json:"agent_profile_conversation_key"`
 	}
 	if json.Unmarshal(body, &target) == nil && crewLivesOnMac(target.Profile, target.Key) {
-		log.Printf("[CREW_RELAY] refused server turn project=%s user=%s reason=crew_on_mac", crewResourceProjectID(target.Key), userID)
+		log.Printf("[CREW_RELAY] refused server turn owner=%s project=%s reason=crew_on_mac", userID, crewResourceProjectID(target.Key))
 		return internalSessionTurnResult{}, fmt.Errorf("%s", crewOnMacRefusal)
 	}
 	var queuedTurnID string

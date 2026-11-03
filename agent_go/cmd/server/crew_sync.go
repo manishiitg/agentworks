@@ -569,7 +569,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if input.Action == "push" {
 		cleanupCrewPayloads(roots.ID, binding.PairID, input.TransferID, "upload")
 	}
-	log.Printf("[CREW_SYNC] project=%s action=%s editing=%s transfer=%s", roots.ID, input.Action, binding.Editing, input.TransferID)
+	log.Printf("[CREW_SYNC] owner=%s project=%s action=%s editing=%s transfer=%s", claims.UserID, roots.ID, input.Action, binding.Editing, input.TransferID)
 	return out, nil
 }
 
@@ -685,7 +685,7 @@ func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair strin
 	started := time.Now()
 	size := snapshot.Payloads["content"].Size
 	defer func() {
-		log.Printf("[CREW_SYNC] project=%s pair=%s phase=apply bytes=%d paths=%d duration_ms=%d success=%t reason=%q", roots.ID, pair, size, len(snapshot.Changes), time.Since(started).Milliseconds(), err == nil, fmt.Sprint(err))
+		log.Printf("[CREW_SYNC] owner=%s project=%s pair=%s phase=apply bytes=%d paths=%d duration_ms=%d success=%t reason=%q", GetUserIDFromContext(ctx), roots.ID, pair, size, len(snapshot.Changes), time.Since(started).Milliseconds(), err == nil, fmt.Sprint(err))
 	}()
 	defer snapshot.Close()
 	if err := (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).DecodeSync(ctx, pair, snapshot); err != nil {

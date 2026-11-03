@@ -107,6 +107,10 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Each chat stream's life is logged with the person and device class (PLAT-856-509).
+	streamLog := newChatStreamLog(r, "-", sessionID, sinceIndex)
+	defer streamLog.close()
+
 	// 3. Disable write timeout for SSE connections — they are long-lived streams.
 	// The server's global WriteTimeout (30s) would kill the connection prematurely.
 	rc := http.NewResponseController(w)
@@ -382,6 +386,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 		case <-heartbeatTicker.C:
 			// SSE comment heartbeat to keep connection alive
 			if _, err := fmt.Fprintf(w, ": heartbeat %s\n\n", time.Now().Format(time.RFC3339)); err != nil {
+				streamLog.keepaliveMiss()
 				return
 			}
 			flusher.Flush()

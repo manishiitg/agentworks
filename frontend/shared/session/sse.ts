@@ -19,6 +19,8 @@ export interface SSECallbacks {
   onMessageState?: (msg: SSEMessageState) => void
   /** The cursor fell behind the server cache: replace the view, never append. */
   onSnapshot?: (msg: SSESnapshot) => void
+  /** What this device saw on the connection, for the server's log only (PLAT-856-509). Codes, never content. */
+  onDiagnostic?: (kind: 'network_offline' | 'network_online' | 'page_hidden' | 'page_visible' | 'reconnect_attempt' | 'reconnect_gave_up', detail?: string) => void
 }
 
 export type SSEMessageState = { submission_id: string; conversation?: string; state: 'sent' | 'received' | 'working' | 'failed'; at?: string; reason?: string }
@@ -61,7 +63,10 @@ export class SSEConnection {
   private open = false
   private activityAt = Date.now()
   private wake: (() => void) | null = null
-  private readonly onWake = () => {
+  private readonly onOffline = () => this.opts.callbacks.onDiagnostic?.('network_offline')
+  private readonly onWake = (event?: Event) => {
+    if (event?.type === 'online') this.opts.callbacks.onDiagnostic?.('network_online')
+    if (event?.type === 'visibilitychange') this.opts.callbacks.onDiagnostic?.(document.visibilityState === 'hidden' ? 'page_hidden' : 'page_visible')
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
     this.consecutiveErrors = 0
     if (!this.open) { this.wake?.(); return }
@@ -76,7 +81,7 @@ export class SSEConnection {
     this.sinceIndex = opts.sinceIndex
     this.maxConsecutiveErrors = opts.maxConsecutiveErrors ?? 5
     this.log = opts.log ?? silent
-    if (typeof window !== 'undefined') window.addEventListener('online', this.onWake)
+    if (typeof window !== 'undefined') { window.addEventListener('online', this.onWake); window.addEventListener('offline', this.onOffline) }
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onWake)
     this.connect()
   }
@@ -125,6 +130,7 @@ export class SSEConnection {
     this.log.warn('SSE', `Connection error for session ${this.opts.sessionId} (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`)
     if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
       this.log.error('SSE', `Too many consecutive errors for session ${this.opts.sessionId}, triggering fallback`)
+      this.opts.callbacks.onDiagnostic?.('reconnect_gave_up', `n=${this.consecutiveErrors}`)
       this.close()
       this.opts.callbacks.onError?.(e)
       return false
@@ -181,8 +187,10 @@ export class SSEConnection {
         this.log.debug('SSE', `retrying after: ${err instanceof Error ? err.message : String(err)}`)
       }
       // Back off 1 s, 2 s, 4 s … up to 30 s; coming online or back into view retries at once.
+      const delay = Math.min(1000 * 2 ** this.consecutiveErrors, MAX_BACKOFF_MS)
+      this.opts.callbacks.onDiagnostic?.('reconnect_attempt', `n=${this.consecutiveErrors},delay=${delay}`)
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(done, Math.min(1000 * 2 ** this.consecutiveErrors, MAX_BACKOFF_MS))
+        const timer = setTimeout(done, delay)
         function done() { clearTimeout(timer); resolve() }
         this.wake = done
       })
@@ -193,7 +201,7 @@ export class SSEConnection {
   /** Close the connection permanently. */
   close() {
     this.closed = true
-    if (typeof window !== 'undefined') window.removeEventListener('online', this.onWake)
+    if (typeof window !== 'undefined') { window.removeEventListener('online', this.onWake); window.removeEventListener('offline', this.onOffline) }
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onWake)
     this.wake?.()
     this.open = false
