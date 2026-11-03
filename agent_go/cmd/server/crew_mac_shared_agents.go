@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -27,6 +29,10 @@ type macSharedAgent struct {
 	Audience string   `json:"audience"` // everyone | chosen
 	People   []string `json:"people,omitempty"`
 	Since    string   `json:"since,omitempty"`
+	// Address is how other people's agents message it: agent:<owner>/<address>. The server gives it once and keeps it
+	// across renames; Off keeps a turned-off entry only to keep its address for this owner.
+	Address string `json:"address,omitempty"`
+	Off     bool   `json:"off,omitempty"`
 }
 
 const macSharedAgentsMax = externalCrewMaxSideChats
@@ -39,7 +45,18 @@ func macSharedAgentsPath(project string) (string, error) {
 	return filepath.Join(state, "crew-sync", project+"-agents.json"), err
 }
 
+// readMacSharedAgents is the Crew's shared agents now (turned-off entries left out).
 func readMacSharedAgents(project string) []macSharedAgent {
+	out := []macSharedAgent{}
+	for _, agent := range readAllMacSharedAgents(project) {
+		if !agent.Off {
+			out = append(out, agent)
+		}
+	}
+	return out
+}
+
+func readAllMacSharedAgents(project string) []macSharedAgent {
 	path, err := macSharedAgentsPath(project)
 	if err != nil {
 		return nil
@@ -100,7 +117,7 @@ func writeMacSharedAgents(project string, agents []macSharedAgent) error {
 		return err
 	}
 	if len(agents) == 0 {
-		if err = os.Remove(path); os.IsNotExist(err) {
+		if err = os.Remove(path); err == nil || os.IsNotExist(err) {
 			return nil
 		}
 		return err
@@ -139,17 +156,19 @@ func (api *StreamingAPI) shareMacCrewAgents(w http.ResponseWriter, r *http.Reque
 			}
 		}
 	}
-	agents, err := cleanMacSharedAgents(input.Agents, readMacSharedAgents(roots.ID))
+	previous := readAllMacSharedAgents(roots.ID)
+	agents, err := cleanMacSharedAgents(input.Agents, previous)
 	if err != nil {
 		externalError(w, 400, "invalid_agents", err.Error())
 		return
 	}
+	agents = assignMacAgentAddresses(r.Context(), claims.UserID, roots.ID, agents, previous)
 	if err = writeMacSharedAgents(roots.ID, agents); err != nil {
 		externalError(w, 500, "save_failed", "The shared agents could not be saved. Try again.")
 		return
 	}
 	log.Printf("[CREW_SHARED_AGENT] project=%s owner=%s shared=%d action=set", roots.ID, logUsernameForUserID(claims.UserID), len(agents))
-	externalJSON(w, map[string]any{"project_id": roots.ID, "agents": agents})
+	externalJSON(w, map[string]any{"project_id": roots.ID, "agents": readMacSharedAgents(roots.ID), "agent_owner": shareOwnerLabel(claims.UserID)})
 }
 
 func directoryUsers(dir *userDirectory) []string {
@@ -385,9 +404,18 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 			externalError(w, 400, "invalid_agents", err.Error())
 			return
 		}
-		if _, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "share_agents", PairID: binding.PairID, Agents: clean}); err != nil {
+		reply, err := desktopCrewSyncCall(r.Context(), claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "share_agents", PairID: binding.PairID, Agents: clean})
+		if err != nil {
 			externalError(w, 409, crewSyncErrorCode(err), err.Error())
 			return
+		}
+		// The server names each agent's address; the Mac shows it on the card.
+		for i := range clean {
+			for _, named := range reply.Agents {
+				if named.Tab == clean[i].Tab && named.Address != "" && reply.AgentOwner != "" {
+					clean[i].Address = reply.AgentOwner + "/" + named.Address
+				}
+			}
 		}
 		if err = writeMacSharedAgents(project, clean); err != nil {
 			externalError(w, 500, "save_failed", "The shared agents could not be saved. Try again.")
@@ -415,4 +443,236 @@ func (api *StreamingAPI) handleSharedWithMe(w http.ResponseWriter, r *http.Reque
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, map[string]any{"agents": agents})
+}
+
+// assignMacAgentAddresses gives each shared agent its address for other people's agents (agent:<owner>/<address>): kept
+// when it already has one (also after a rename or being turned off and on), otherwise made from its name and unique
+// among this owner's agents. Agents turned off stay as reserved entries so their address is never reused.
+func assignMacAgentAddresses(ctx context.Context, owner, project string, agents, previous []macSharedAgent) []macSharedAgent {
+	taken := map[string]bool{}
+	if s, err := readAgentMessageSnapshot(ctx); err == nil {
+		for _, a := range s.Agents {
+			if a.UserID == owner {
+				taken[a.Name] = true
+			}
+		}
+	}
+	state, _ := crewroot.StateRoot()
+	files, _ := filepath.Glob(filepath.Join(state, "crew-sync", "*-agents.json"))
+	for _, file := range files {
+		other := strings.TrimSuffix(filepath.Base(file), "-agents.json")
+		if other == project || ownerOfCrewProjectID(other) != owner {
+			continue
+		}
+		for _, agent := range readAllMacSharedAgents(other) {
+			taken[agent.Address] = true
+		}
+	}
+	kept := map[string]string{}
+	for _, agent := range previous {
+		if agent.Address != "" {
+			kept[agent.Tab] = agent.Address
+			taken[agent.Address] = true
+		}
+	}
+	out := []macSharedAgent{}
+	for _, agent := range agents {
+		if address := kept[agent.Tab]; address != "" {
+			agent.Address = address
+		} else {
+			base := macAgentSlug(agent.Name)
+			agent.Address = base
+			for n := 2; taken[agent.Address]; n++ {
+				agent.Address = fmt.Sprintf("%s-%d", base, n)
+			}
+			taken[agent.Address] = true
+		}
+		out = append(out, agent)
+	}
+	for _, agent := range previous {
+		if agent.Address != "" && !slices.ContainsFunc(out, func(a macSharedAgent) bool { return a.Tab == agent.Tab }) {
+			out = append(out, macSharedAgent{Tab: agent.Tab, Name: agent.Name, Address: agent.Address, Off: true})
+		}
+	}
+	return out
+}
+
+// macAgentSlug is a plain address from a name: lowercase letters, digits and single hyphens, at most 40 characters.
+func macAgentSlug(name string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
+			b.WriteRune(r)
+			dash = false
+		case b.Len() > 0 && !dash:
+			b.WriteByte('-')
+			dash = true
+		}
+		if b.Len() >= 40 {
+			break
+		}
+	}
+	slug := strings.Trim(b.String(), "-")
+	if slug == "" {
+		slug = "agent"
+	}
+	return slug
+}
+
+// macSharedAgentByAddress finds the shared agent at <owner>/<address> that this person may message, as a Crew target.
+func macSharedAgentByAddress(owner, address, subject string) (triggerTarget, bool) {
+	state, err := crewroot.StateRoot()
+	if err != nil {
+		return triggerTarget{}, false
+	}
+	files, _ := filepath.Glob(filepath.Join(state, "crew-sync", "*-agents.json"))
+	for _, file := range files {
+		project := strings.TrimSuffix(filepath.Base(file), "-agents.json")
+		for _, agent := range readMacSharedAgents(project) {
+			if agent.Address != address || !crewRelayTwin(project) || ownerOfCrewProjectID(project) != owner {
+				continue
+			}
+			if _, reason := macSharedAgentFor(project, agent.Tab, subject, owner); reason != "" {
+				log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=address refused reason=%s user=%s", project, agent.Tab, reason, logUsernameForUserID(subject))
+				return triggerTarget{}, false
+			}
+			key := macSharedAgentChatKey(project, agent.Tab)
+			return triggerTarget{Kind: triggerCallerCrew, CrewID: project, CrewProfile: crewProfileID, CrewOwner: owner, Label: agent.Name,
+				Chat: &codeChat{OwnerID: owner, Key: key, ID: key, Name: agent.Name, Purpose: agent.Purpose}}, true
+		}
+	}
+	return triggerTarget{}, false
+}
+
+// macAgentReplyWindow bounds how long the server waits for a Mac agent's answer to another person's message.
+const macAgentReplyWindow = 30 * time.Minute
+
+// deliverToMacSharedAgent runs another person's agent message in the shared tab on its owner's Mac and sends the
+// agent's final answer back to the same inbox. The person behind the sending agent must be in the audience.
+func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
+	tab := macSharedAgentTab(dest.ID, dest.ChatKey)
+	if _, reason := macSharedAgentFor(dest.ID, tab, source.UserID, dest.UserID); reason != "" {
+		log.Printf("[CREW_SHARED_AGENT] project=%s tab=%q action=message refused reason=%s sender_agent=%s user=%s", dest.ID, tab, reason, source.NamedAgentID, logUsernameForUserID(source.UserID))
+		return fmt.Errorf("This agent isn't shared with you.")
+	}
+	sender := shareOwnerLabel(source.UserID)
+	read := func(after, wait int) (map[string]any, int) {
+		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait})
+		result := callCrewMacFor(context.Background(), dest.UserID, dest.ID, crewChatCall{Operation: "agent_read", Tab: tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
+		var out map[string]any
+		_ = json.Unmarshal(result.Body, &out)
+		return out, result.Status
+	}
+	baseline, status := read(0, 0)
+	if status == http.StatusOK {
+		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID})
+		result := callCrewMacFor(context.WithoutCancel(ctx), dest.UserID, dest.ID, crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}, 60*time.Second)
+		status = result.Status
+	}
+	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status)
+	from := 1 - m.From
+	if status == http.StatusServiceUnavailable {
+		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off. Try again later.")
+		return nil
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("the agent could not take this message; try again shortly")
+	}
+	after := 0
+	if next, ok := baseline["next_after"].(float64); ok {
+		after = int(next)
+	}
+	go api.awaitMacAgentAnswer(c.ID, from, after, read)
+	return nil
+}
+
+// awaitMacAgentAnswer sends only the agent's final answer to this sender's turn back to the inbox: once "Still
+// working" if it takes long, then the answer. Never its tool steps.
+func (api *StreamingAPI) awaitMacAgentAnswer(inbox string, from, after int, read func(after, wait int) (map[string]any, int)) {
+	started, toldWorking := time.Now(), false
+	answer := ""
+	for time.Since(started) < macAgentReplyWindow {
+		out, status := read(after, 25)
+		if status != http.StatusOK {
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		if items, ok := out["messages"].([]any); ok {
+			for _, item := range items {
+				if row, ok := item.(map[string]any); ok && row["role"] == "assistant" {
+					answer, _ = row["text"].(string)
+				}
+			}
+		}
+		if working, _ := out["working"].(bool); !working && strings.TrimSpace(answer) != "" {
+			api.appendMacAgentReply(inbox, from, answer)
+			return
+		}
+		if !toldWorking && time.Since(started) > 2*time.Minute {
+			api.appendMacAgentReply(inbox, from, "Still working; I'll reply when done.")
+			toldWorking = true
+		}
+	}
+	log.Printf("[CREW_SHARED_AGENT] inbox=%s answer not ready within %s", inbox, macAgentReplyWindow)
+}
+
+// appendMacAgentReply adds the Mac agent's words to the inbox as a message from the agent's side, like any reply.
+func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string) {
+	ctx := context.Background()
+	agentMessageMu.Lock()
+	s, err := readAgentMessageStore(ctx)
+	if err != nil {
+		agentMessageMu.Unlock()
+		return
+	}
+	index := slices.IndexFunc(s.Conversations, func(c agentConversation) bool { return c.ID == inbox })
+	if index < 0 {
+		agentMessageMu.Unlock()
+		return
+	}
+	c := &s.Conversations[index]
+	if len(c.Messages) >= agentMessageKeep {
+		c.Messages = c.Messages[1:]
+	}
+	c.Next++
+	reply := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: from, Text: text, SentAt: time.Now().UTC(), Delivery: "pending"}
+	if dest := c.Endpoints[1-from]; dest.External {
+		reply.Delivery = "stored"
+		if dest.NamedAgentID != "" {
+			s.NextAgentSequence++
+			reply.AgentSequence = s.NextAgentSequence
+		}
+	}
+	c.Messages = append(c.Messages, reply)
+	err = saveAgentMessageStore(ctx, s)
+	agentMessageMu.Unlock()
+	if err == nil {
+		api.kickAgentMessages(inbox)
+	}
+}
+
+// macSharedAgentDirectoryItems lists, among the agents a person's agents can message, those shared from Mac Crews to
+// that person, with their address and whether the owner's Mac is on.
+func macSharedAgentDirectoryItems(user string) []map[string]interface{} {
+	items := []map[string]interface{}{}
+	if IsLocalMode() {
+		return items
+	}
+	for _, row := range macSharedAgentRows(user) {
+		project, _ := row["crew_id"].(string)
+		owner := ownerOfCrewProjectID(project)
+		tab := macSharedAgentTab(project, fmt.Sprint(row["chat_id"]))
+		for _, agent := range readMacSharedAgents(project) {
+			if agent.Tab != tab || agent.Address == "" {
+				continue
+			}
+			label := shareOwnerLabel(owner)
+			online, _ := row["available"].(bool)
+			items = append(items, map[string]interface{}{"agent_name": label + "/" + agent.Address, "target": "agent:" + label + "/" + agent.Address, "owner": label, "shared": true,
+				"label": agent.Name, "purpose": agent.Purpose, "online": online, "presence": row["presence"], "delivery_mode": "answer"})
+		}
+	}
+	return items
 }

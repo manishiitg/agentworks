@@ -56,6 +56,9 @@ type crewSyncReply struct {
 	Snapshot           *crewsync.Snapshot    `json:"snapshot,omitempty"`
 	// Place is where the Crew lives for the Access row: mac, mac_off, moving or online (the server decides).
 	Place string `json:"place,omitempty"`
+	// Agents: share_agents' answer, each with the address the server gave it.
+	Agents     []macSharedAgent `json:"agents,omitempty"`
+	AgentOwner string           `json:"agent_owner,omitempty"` // the owner's name in each agent's address: agent:<owner>/<address>
 	// SharedAgents is how many of a Mac Crew's agents others can message (PLAT-856-509).
 	SharedAgents int `json:"shared_agents,omitempty"`
 }
