@@ -28,6 +28,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
@@ -88,6 +89,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			t.Cleanup(eventStore.Stop)
 			eventStore.SetDurableJournal(journal)
 			api := &StreamingAPI{agentProfiles: registry, activeSessions: map[string]*ActiveSessionInfo{}, eventStore: eventStore, runtimeCoordinator: NewRuntimeCoordinator()}
+			api.projectActions = NewProjectActionDispatcher(api, registry)
 			owner := &UserClaims{UserID: "owner", Username: "owner"}
 			ctx := context.WithValue(t.Context(), UserContextKey, owner)
 			options := crewCreationOptions{}
@@ -291,6 +293,26 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			watcherKey := owner.UserID + "/" + projectScheduleJobID(crewProfileID, local.ID, schedule.ID)
 			ledger := conditiontrigger.Ledger{State: json.RawMessage(`{"cursor":7}`), Rows: []conditiontrigger.Row{{Event: conditiontrigger.Event{ID: "already-sent"}, Revision: watcher.Revision(), Status: "dispatched", Receipt: "accepted"}}, Tombstones: map[string]time.Time{conditiontrigger.Hash("older-event"): time.Now().Add(24 * time.Hour)}}
 			if err = fsutil.WriteJSONAtomic(filepath.Join(docs, conditionLedgerPath(watcherKey)), ledger, 0600); err != nil {
+				t.Fatal(err)
+			}
+			callerCfg := watcher
+			callerCfg.Target.Name = local.Virtual
+			caller := conditionCallerDefinition{Source: conditionSource{ProfileID: crewProfileID, ProjectID: local.ID, Path: local.Virtual, Label: "Example"}, Schedule: productschedule.Schedule{ID: "private-watcher", Name: "Private watcher", Enabled: true, CronExpression: "0 9 * * *", Timezone: "UTC", Condition: &callerCfg}}
+			callerJob := conditionCallerJob(owner.UserID, caller, productScheduleUserState{})
+			if err = api.projectActions.updateStateByKey(ctx, owner.UserID, scheduleStateKey(callerJob), func(st *productScheduleUserState) { st.Watcher = &caller }); err != nil {
+				t.Fatal(err)
+			}
+			if err = api.projectActions.writeFile(ctx, conditionScriptRoot(callerJob)+"/"+callerCfg.Script, "print('{}')"); err != nil {
+				t.Fatal(err)
+			}
+			callerLedger := ledger
+			callerLedger.Rows = append([]conditiontrigger.Row{}, ledger.Rows...)
+			callerLedger.Rows[0].Revision = callerCfg.Revision()
+			if err = fsutil.WriteJSONAtomic(filepath.Join(docs, conditionLedgerPath(conditionKey(callerJob))), callerLedger, 0600); err != nil {
+				t.Fatal(err)
+			}
+			wake := conditionWake{Owner: owner.UserID, JobID: callerJob.ID(), Received: 4, Checked: 4}
+			if err = fsutil.WriteJSONAtomic(filepath.Join(docs, conditionWakePath(conditionWakeID(callerJob))), wake, 0600); err != nil {
 				t.Fatal(err)
 			}
 			if err = writeProjectSchedules(ctx, local.Virtual, []projectactions.Schedule{schedule}); err != nil {
@@ -510,6 +532,34 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			movedKey := owner.UserID + "/" + projectScheduleJobID(crewProfileID, serverRoots.ID, schedules[0].ID)
 			if err = readCrewMoveWatcherJSON(conditionLedgerPath(movedKey), &movedLedger); err != nil || movedLedger == nil || !bytes.Contains(movedLedger.State, []byte(`"cursor": 7`)) || len(movedLedger.Rows) != 1 || movedLedger.Rows[0].Status != "dispatched" || movedLedger.Rows[0].Revision != movedInput.Condition.Revision() || len(movedLedger.Tombstones) != 1 {
 				t.Fatalf("watcher would replay delivered events: %+v %v", movedLedger, err)
+			}
+			states, err := api.projectActions.loadState(ctx, owner.UserID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if states[scheduleStateKey(callerJob)].Watcher.Schedule.Enabled {
+				t.Fatal("Mac watcher stayed enabled")
+			}
+			var movedCaller productScheduleJob
+			for _, job := range conditionCallerJobs(owner.UserID, states) {
+				if job.ProjectID == serverRoots.ID {
+					movedCaller = job
+					break
+				}
+			}
+			if movedCaller.WatcherSource == nil || movedCaller.WatcherSource.Path != serverRoots.Virtual || !movedCaller.Schedule.Enabled || movedCaller.Schedule.Condition.Target.Name != serverRoots.Virtual {
+				t.Fatalf("caller not rebound: %+v", movedCaller)
+			}
+			if script, found, e := api.projectActions.readFile(ctx, conditionScriptRoot(movedCaller)+"/"+movedCaller.Schedule.Condition.Script); e != nil || !found || script != "print('{}')" {
+				t.Fatalf("private caller script missing: %q %v", script, e)
+			}
+			var callerAfter *conditiontrigger.Ledger
+			if err = readCrewMoveWatcherJSON(conditionLedgerPath(conditionKey(movedCaller)), &callerAfter); err != nil || callerAfter == nil || len(callerAfter.Rows) != 1 || callerAfter.Rows[0].Status != "dispatched" || callerAfter.Rows[0].Revision != movedCaller.Schedule.Condition.Revision() {
+				t.Fatalf("caller delivery lost: %+v %v", callerAfter, err)
+			}
+			var wakeAfter *conditionWake
+			if err = readCrewMoveWatcherJSON(conditionWakePath(conditionWakeID(movedCaller)), &wakeAfter); err != nil || wakeAfter == nil || wakeAfter.JobID != movedCaller.ID() || wakeAfter.Received != 4 || wakeAfter.Checked != 4 {
+				t.Fatalf("caller wake lost: %+v %v", wakeAfter, err)
 			}
 			onlineMain, err := api.crewHandoffMain(ctx, owner, serverRoots.ID)
 			if err != nil {

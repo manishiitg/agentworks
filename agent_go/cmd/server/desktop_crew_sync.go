@@ -449,7 +449,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(e)
 				return
 			}
-			if e = disableCrewMoveSchedules(roots, transfer.Snapshot.StatePath); e != nil {
+			if e = api.disableCrewMoveSchedules(r.Context(), roots, transfer.Snapshot.StatePath); e != nil {
 				fail(e)
 				return
 			}

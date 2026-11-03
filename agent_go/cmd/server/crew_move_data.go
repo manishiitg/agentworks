@@ -24,6 +24,7 @@ import (
 // ownership, access, app-account IDs and filesystem routing. NDJSON lets a long
 // collection of chats use the same resumable disk transport as project files.
 type crewMoveHeader struct {
+	Callers     []crewMoveCaller                      `json:"callers,omitempty"`
 	Watchers    map[string]crewMoveWatcherState       `json:"watchers,omitempty"`
 	Webhooks    []projectWebhookDefinition            `json:"webhooks"`
 	SourceID    string                                `json:"source_id"`
@@ -103,6 +104,9 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 		}
 	}
 	h.Schedules = schedules
+	if err = api.captureCrewMoveCallers(ctx, roots, &h); err != nil {
+		return err
+	}
 	if err = captureCrewMoveWatchers(&h); err != nil {
 		return err
 	}
@@ -210,7 +214,7 @@ func crewMoveKey(key string, h crewMoveHeader, destination, main string) (string
 	return destination + strings.TrimPrefix(key, h.SourceID), nil
 }
 
-func disableCrewMoveSchedules(roots crewroot.Roots, statePath string) error {
+func (api *StreamingAPI) disableCrewMoveSchedules(ctx context.Context, roots crewroot.Roots, statePath string) error {
 	var h crewMoveHeader
 	f, err := os.Open(statePath)
 	if err != nil {
@@ -222,6 +226,9 @@ func disableCrewMoveSchedules(roots crewroot.Roots, statePath string) error {
 	}
 	if h.SourceID != roots.ID || h.SourceOwner != roots.Owner {
 		return fmt.Errorf("move schedules do not belong to this Crew")
+	}
+	if err = api.pauseCrewMoveCallers(ctx, h); err != nil {
+		return err
 	}
 	for i := range h.Schedules {
 		h.Schedules[i].Enabled = false
@@ -300,6 +307,9 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			}
 			current.handoffAgentToolsMode = main.handoffAgentToolsMode
 			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current)
+		}
+		if err := api.importCrewMoveCallers(ctx, claims, roots, h, pair, main.ConversationKey); err != nil {
+			return err
 		}
 		for name, selected := range h.Settings {
 			if name != "product.json" && name != "workflow.json" {
@@ -480,6 +490,9 @@ func validateCrewMoveData(p, source, destination, main string) error {
 				return chat.Conversation.Native.Validate()
 			}
 			return nil
+		}
+		if err := validateCrewMoveCallers(h); err != nil {
+			return err
 		}
 		for name, selected := range h.Settings {
 			if name != "product.json" && name != "workflow.json" {
