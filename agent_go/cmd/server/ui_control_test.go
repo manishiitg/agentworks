@@ -50,19 +50,15 @@ func TestUIControlHTTPPlanReceiptRoundTrip(t *testing.T) {
 		}
 		return call(body)
 	}
-	a, _, err := b.submit("s", "flow", "open", "livekit-quality", "", nil)
+	a, _, err := b.submit("s", "report", "open", "livekit-quality", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	w = request("sync", map[string]interface{}{"state": uiSnapshot{View: "flow", Revision: 1, Visible: true}})
+	w = request("sync", map[string]interface{}{"state": uiSnapshot{View: "report", Revision: 1, Visible: true}})
 	if w.Code != 200 || !strings.Contains(w.Body.String(), a.RequestID) {
 		t.Fatalf("sync: %d %s", w.Code, w.Body.String())
 	}
-	w = request("ack", map[string]interface{}{"request_id": a.RequestID, "status": "applied", "state": uiSnapshot{View: "flow", Revision: 2, Visible: true}})
-	if w.Code == 200 {
-		t.Fatal("view shell alone must not acknowledge selected step")
-	}
-	w = request("ack", map[string]interface{}{"request_id": a.RequestID, "status": "applied", "state": uiSnapshot{View: "flow", Target: "livekit-quality", Revision: 2, Visible: true}})
+	w = request("ack", map[string]interface{}{"request_id": a.RequestID, "status": "applied", "state": uiSnapshot{View: "report", Target: "livekit-quality", Revision: 2, Visible: true}})
 	if w.Code != 200 {
 		t.Fatalf("ack: %d %s", w.Code, w.Body.String())
 	}
@@ -115,13 +111,13 @@ func TestUIControlHTTPRestoresCrewScopeAndAcceptsCrewViews(t *testing.T) {
 		t.Fatalf("restored workspace = %#v", binding["workspace"])
 	}
 
-	a, _, err := api.uiBroker().submitForContract("work:project:crew-1", workUIControlContract, "memory", "open", "", "", nil)
+	a, _, err := api.uiBroker().submitForContract("work:project:crew-1", workUIControlContract, "report", "open", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	w = call("user-a", "work:project:crew-1", map[string]interface{}{
 		"operation": "sync", "version": 1, "binding": binding["binding"], "token": binding["token"],
-		"state": map[string]interface{}{"view": "memory", "revision": 1, "visible": true},
+		"state": map[string]interface{}{"view": "report", "revision": 1, "visible": true},
 	})
 	if w.Code != 200 || !strings.Contains(w.Body.String(), a.RequestID) {
 		t.Fatalf("memory sync: %d %s", w.Code, w.Body.String())
@@ -136,7 +132,7 @@ func TestUIControlHTTPRestoresCrewScopeAndAcceptsCrewViews(t *testing.T) {
 
 // In someone else's Crew a Run person's screen shows only the chat and the dashboard (AGENTS.md, one company per
 // server): their bound page lists only the dashboard and their agent's open of Files is refused; the owner gets Files.
-func TestUIControlRunPersonGetsOnlyRunViews(t *testing.T) {
+func TestUIControlEveryoneGetsOnlyTheDashboard(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"user-a","username":"user-a","products":["work"]},{"id":"user-c","username":"user-c","products":["work"]}]}`)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	stubCrewLookups(t, map[string]string{"Crew/crew-1": "user-a"}, nil)
@@ -164,8 +160,8 @@ func TestUIControlRunPersonGetsOnlyRunViews(t *testing.T) {
 	if got := bindViews("user-c", "work:project:crew-1-c"); strings.Join(got, ",") != "report" {
 		t.Fatalf("Run person's page views = %v, want only report", got)
 	}
-	if got := strings.Join(bindViews("user-a", "work:project:crew-1"), ","); !strings.Contains(got, "files") {
-		t.Fatalf("owner's page views = %s, want files", got)
+	if got := strings.Join(bindViews("user-a", "work:project:crew-1"), ","); got != "report" {
+		t.Fatalf("owner's page views = %s, want only report", got)
 	}
 
 	reg := &recordingRegistrar{}
@@ -176,8 +172,8 @@ func TestUIControlRunPersonGetsOnlyRunViews(t *testing.T) {
 	if !strings.Contains(out, `"code":"unsupported_view"`) {
 		t.Fatalf("Run person's agent opened Files: %s", out)
 	}
-	if err := validateUIActionForContract(projectUIControlContract("Crew/crew-1", true), "files", "open", ""); err != nil {
-		t.Fatalf("owner's agent cannot open Files: %v", err)
+	if err := validateUIActionForContract(projectUIControlContract("Crew/crew-1", true), "files", "open", ""); err == nil {
+		t.Fatal("owner's agent may open Files; only the Dashboard is offered")
 	}
 }
 
@@ -201,7 +197,7 @@ func TestUIControlHTTPDoesNotRestoreAutomatedCrewScope(t *testing.T) {
 func TestUIControlScopeChangeInvalidatesBindings(t *testing.T) {
 	b, c := boundUI(t)
 	b.setScope(c.session, "Workflow/first")
-	a, _, _ := b.submit(c.session, "flow", "open", "", "", nil)
+	a, _, _ := b.submit(c.session, "report", "open", "", "", nil)
 	b.setScope(c.session, "Workflow/second")
 	if _, err := b.syncClient(c.session, c.id, c.token, uiSnapshot{}); err == nil {
 		t.Fatal("old workspace binding survived")
@@ -221,64 +217,24 @@ func boundUI(t *testing.T) (*uiControlBroker, *uiBinding) {
 	}
 	return b, c
 }
+
+// Owner, 3 Nov: Goals and Flows offer only the Dashboard, with open and refresh.
 func TestUIControlOnlyAdvertisesActualActions(t *testing.T) {
-	if err := validateUIAction("identity", "open", "laptop"); err != nil {
-		t.Fatalf("Goal laptop panel cannot be opened from Builder: %v", err)
+	if len(uiControlContract.Views) != 1 || uiControlContract.Views[0].ID != "report" {
+		t.Fatalf("Goal UI views = %v, want only report", uiContractViewIDs(uiControlContract))
 	}
-	// 25 views before the knowledge/bots/llm consolidation; 18 after it, with
-	// workflow upgrades inside Identity rather than a standalone view; 19 with
-	// the Human actions view; 20 with compact context.
-	if len(uiControlContract.Views) != 20 {
-		t.Fatal("registry coverage changed")
-	}
-	for _, v := range uiControlContract.Views {
-		if err := validateUIAction(v.ID, "open", ""); err != nil {
-			t.Fatal(err)
-		}
-		if err := validateUIAction(v.ID, "delete", ""); err == nil {
-			t.Fatal("mutation advertised")
-		}
-		if err := validateUIAction(v.ID, "refresh", ""); err != nil {
-			t.Fatalf("refresh missing for %s: %v", v.ID, err)
-		}
-		if err := validateUIAction(v.ID, "open", "arbitrary target"); err == nil && v.ID != "flow" && v.ID != "report" && v.ID != "files" {
-			t.Fatal("ignored target")
+	for _, action := range []string{"open", "refresh"} {
+		if err := validateUIAction("report", action, ""); err != nil {
+			t.Fatalf("report %s: %v", action, err)
 		}
 	}
-	if validateUIAction("files", "open", "code/shared/helpers.py") != nil {
-		t.Fatal("workspace-relative file target missing")
+	if validateUIAction("report", "delete", "") == nil {
+		t.Fatal("mutation advertised")
 	}
-	for _, section := range []string{"schedules", "webhooks"} {
-		if validateUIAction("schedules", "open", section) != nil {
-			t.Fatalf("schedule section missing: %q", section)
+	for _, view := range []string{"flow", "files", "identity", "notify"} {
+		if validateUIAction(view, "open", "") == nil {
+			t.Fatalf("%s is still offered", view)
 		}
-	}
-	if validateUIAction("schedules", "open", "guessed") == nil {
-		t.Fatal("unknown schedule section accepted")
-	}
-	for _, section := range []string{"chats", "schedules", "conditions", "triggers", "functions", "email"} {
-		if validateUIAction("workshop", "open", section) != nil {
-			t.Fatalf("automation section missing: %q", section)
-		}
-	}
-	if validateUIAction("workshop", "open", "guessed") == nil {
-		t.Fatal("unknown automation section accepted")
-	}
-	for _, tab := range []string{"knowledgebase", "database"} {
-		if validateUIAction("knowledge", "open", tab) != nil {
-			t.Fatalf("knowledge tab missing: %q", tab)
-		}
-	}
-	if validateUIAction("knowledge", "open", "guessed") == nil {
-		t.Fatal("unknown knowledge tab accepted")
-	}
-	for _, invalid := range []string{"/etc/passwd", "../other/file", `code\\file.py`} {
-		if err := validateUIAction("files", "open", invalid); err == nil {
-			t.Fatalf("unsafe file target accepted: %q", invalid)
-		}
-	}
-	if validateUIAction("notify", "expand", "run_summary") != nil {
-		t.Fatal("notify disclosure missing")
 	}
 }
 
@@ -332,40 +288,40 @@ func TestProductUIControlSkillsCoverTheirOwnContracts(t *testing.T) {
 }
 func TestUIControlDisconnectedAndAmbiguousClients(t *testing.T) {
 	b := newUIControlBroker()
-	if _, _, err := b.submit("session-a", "flow", "open", "", "", nil); err == nil || err.Error() != "browser_disconnected" {
+	if _, _, err := b.submit("session-a", "report", "open", "", "", nil); err == nil || err.Error() != "browser_disconnected" {
 		t.Fatal(err)
 	}
 	_, _ = b.bind("session-a")
 	second, _ := b.bind("session-a")
-	if _, _, err := b.submit("session-a", "flow", "open", "", "", nil); err == nil || err.Error() != "ambiguous_client" {
+	if _, _, err := b.submit("session-a", "report", "open", "", "", nil); err == nil || err.Error() != "ambiguous_client" {
 		t.Fatal(err)
 	}
 	// The chat open in several tabs (PLAT-664): the visible one is the one in use.
-	if _, err := b.syncClient("session-a", second.id, second.token, uiSnapshot{View: "flow", Visible: true}); err != nil {
+	if _, err := b.syncClient("session-a", second.id, second.token, uiSnapshot{View: "report", Visible: true}); err != nil {
 		t.Fatal(err)
 	}
-	a, _, err := b.submit("session-a", "flow", "open", "", "", nil)
+	a, _, err := b.submit("session-a", "report", "open", "", "", nil)
 	if err != nil || a.binding != second.id {
 		t.Fatalf("action went to %q, %v; want the visible tab %q", a.binding, err, second.id)
 	}
 }
 func TestUIControlDeduplicationAndReceiptIsolation(t *testing.T) {
 	b, c := boundUI(t)
-	a, fresh, err := b.submit(c.session, "notify", "expand", "run_summary", "same", nil)
+	a, fresh, err := b.submit(c.session, "report", "refresh", "", "same", nil)
 	if err != nil || !fresh {
 		t.Fatal(err)
 	}
-	duplicate, fresh, err := b.submit(c.session, "notify", "expand", "run_summary", "same", nil)
+	duplicate, fresh, err := b.submit(c.session, "report", "refresh", "", "same", nil)
 	if err != nil || fresh || duplicate.RequestID != a.RequestID {
 		t.Fatal("not idempotent")
 	}
-	if _, _, err := b.submit(c.session, "flow", "open", "", "same", nil); err == nil {
+	if _, _, err := b.submit(c.session, "report", "open", "", "same", nil); err == nil {
 		t.Fatal("key reused for different action")
 	}
 	if _, err := b.result("other-session", a.RequestID); err == nil {
 		t.Fatal("cross-session result")
 	}
-	state := uiSnapshot{View: "notify", Revision: 1, Visible: true}
+	state := uiSnapshot{View: "report", Revision: 1, Visible: true}
 	if _, err := b.syncClient("other-session", c.id, c.token, state); err == nil {
 		t.Fatal("cross-session claim")
 	}
@@ -383,9 +339,6 @@ func TestUIControlDeduplicationAndReceiptIsolation(t *testing.T) {
 	if len(commands) != 0 {
 		t.Fatal("duplicate claim on reconnect")
 	}
-	if err := b.ack(c.session, c.id, c.token, a.RequestID, "applied", "", uiSnapshot{View: "flow", Revision: 1, Visible: true}); err == nil {
-		t.Fatal("wrong view accepted")
-	}
 	if err := b.ack(c.session, c.id, c.token, a.RequestID, "applied", "", state); err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +346,7 @@ func TestUIControlDeduplicationAndReceiptIsolation(t *testing.T) {
 	if result.Status != "applied" || !result.Visible {
 		t.Fatal(result)
 	}
-	duplicate, _, _ = b.submit(c.session, "notify", "expand", "run_summary", "same", nil)
+	duplicate, _, _ = b.submit(c.session, "report", "refresh", "", "same", nil)
 	if duplicate.Status != "applied" {
 		t.Fatal("completed retry executed")
 	}
@@ -402,14 +355,14 @@ func TestUIControlRevisionAndLeaseExpiry(t *testing.T) {
 	b, c := boundUI(t)
 	now := time.Now()
 	b.now = func() time.Time { return now }
-	_, _ = b.syncClient(c.session, c.id, c.token, uiSnapshot{View: "flow", Revision: 2})
+	_, _ = b.syncClient(c.session, c.id, c.token, uiSnapshot{View: "report", Revision: 2})
 	old := int64(1)
-	if _, _, err := b.submit(c.session, "flow", "open", "", "", &old); err == nil || err.Error() != "stale_state" {
+	if _, _, err := b.submit(c.session, "report", "open", "", "", &old); err == nil || err.Error() != "stale_state" {
 		t.Fatal(err)
 	}
 	current := int64(2)
-	a, _, _ := b.submit(c.session, "flow", "open", "", "", &current)
-	commands, err := b.syncClient(c.session, c.id, c.token, uiSnapshot{View: "flow", Revision: 3})
+	a, _, _ := b.submit(c.session, "report", "open", "", "", &current)
+	commands, err := b.syncClient(c.session, c.id, c.token, uiSnapshot{View: "report", Revision: 3})
 	if err != nil || len(commands) != 0 {
 		t.Fatal(err)
 	}
@@ -417,7 +370,7 @@ func TestUIControlRevisionAndLeaseExpiry(t *testing.T) {
 	if r.Code != "stale_state" {
 		t.Fatal(r)
 	}
-	a, _, _ = b.submit(c.session, "flow", "open", "", "", nil)
+	a, _, _ = b.submit(c.session, "report", "open", "", "", nil)
 	now = now.Add(11 * time.Second)
 	r, _ = b.result(c.session, a.RequestID)
 	if r.Status != "expired" || r.Visible {
@@ -434,7 +387,7 @@ func TestUIControlRevisionAndLeaseExpiry(t *testing.T) {
 }
 func TestUIControlUnbindCancelsWithoutReplay(t *testing.T) {
 	b, c := boundUI(t)
-	a, _, _ := b.submit(c.session, "flow", "open", "", "", nil)
+	a, _, _ := b.submit(c.session, "report", "open", "", "", nil)
 	if err := b.unbind(c.session, c.id, c.token); err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +422,7 @@ func TestPerformUIActionCancellationReturnsTerminalReceipt(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	args := map[string]interface{}{"view": "flow", "action": "open", "idempotency_key": "cancel-test"}
+	args := map[string]interface{}{"view": "report", "action": "open", "idempotency_key": "cancel-test"}
 	out, err := api.performUIAction(ctx, "s", "Workflow/test", args)
 	if err != nil {
 		t.Fatal(err)
@@ -499,17 +452,14 @@ func TestPerformUIActionCancellationReturnsTerminalReceipt(t *testing.T) {
 // and the agent saw "browser disconnected".
 func TestUIContractForScopeIgnoresUserPrefix(t *testing.T) {
 	for _, scope := range []string{"Chats/Code/projects/hi", "_users/manish/Chats/Code/projects/hi"} {
-		if !validUIViewForContract(uiContractForScope(scope), "database") {
-			t.Errorf("%s: a Code project must accept the Code-only view \"database\"", scope)
+		if !validUIViewForContract(uiContractForScope(scope), "report") {
+			t.Errorf("%s: a Code project must accept the Dashboard", scope)
 		}
 	}
 	for _, scope := range []string{"Chats/Work/projects/site", "_users/manish/Chats/Work/projects/site"} {
-		if !validUIViewForContract(uiContractForScope(scope), "memory") {
-			t.Errorf("%s: a Crew project must accept the Crew view \"memory\"", scope)
+		if !validUIViewForContract(uiContractForScope(scope), "report") {
+			t.Errorf("%s: a Crew project must accept the Dashboard", scope)
 		}
-	}
-	if validUIViewForContract(uiContractForScope("Workflow/w"), "database") {
-		t.Error("a workflow must keep the workflow contract")
 	}
 }
 
@@ -546,7 +496,7 @@ func TestPerformUIActionWakesOwnerThroughLiveFeed(t *testing.T) {
 	defer livefeed.Default.Unsubscribe(sub)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := api.performUIAction(ctx, "s-live", "Workflow/test", map[string]interface{}{"view": "flow", "action": "open"}); err != nil {
+	if _, err := api.performUIAction(ctx, "s-live", "Workflow/test", map[string]interface{}{"view": "report", "action": "open"}); err != nil {
 		t.Fatal(err)
 	}
 	notices, _ := sub.Drain()

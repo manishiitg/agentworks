@@ -29,13 +29,10 @@ func uiContractViewIDs(contract uiContract) []string {
 func (api *StreamingAPI) registerUIControlToolsForContract(registrar definitionToolRegistrar, session, workspace string, contract uiContract) error {
 	b := api.uiBroker()
 	b.setScope(session, workspace)
-	targetDescription := "For flow/open: exact plan step ID. For report/open: exact top-level report tab label. For files/open: workspace-relative file path (for example code/shared/helpers.py). For notify/expand: run_summary. Omit for other view openings."
-	if isProjectProfileID(contract.Product) {
-		targetDescription = "For section targets (for example memory/skills or mcp/slack), use only the exact targets from list_ui_capabilities. Omit target to open a whole panel."
-	}
+	targetDescription := "Optional: the exact dashboard tab label, when list_ui_capabilities offers one."
 	props := map[string]interface{}{
 		"view":                    map[string]interface{}{"type": "string", "enum": uiContractViewIDs(contract)},
-		"action":                  map[string]interface{}{"type": "string", "enum": []string{"open", "expand", "refresh"}},
+		"action":                  map[string]interface{}{"type": "string", "enum": []string{"open", "refresh"}},
 		"target":                  map[string]interface{}{"type": "string", "maxLength": 1024, "description": targetDescription},
 		"idempotency_key":         map[string]interface{}{"type": "string", "maxLength": 128, "description": "Reuse for a retry of this exact action; omit to generate a fresh request."},
 		"expected_state_revision": map[string]interface{}{"type": "integer", "minimum": 0},
@@ -62,7 +59,7 @@ func (api *StreamingAPI) registerUIControlToolsForContract(registrar definitionT
 	}, "workflow_ui"); err != nil {
 		return err
 	}
-	if err := registrar.RegisterCustomTool("perform_ui_action", "Open or refresh a workspace view, or expand supported instructions, using one semantic presentation action and wait up to 10 seconds for a browser receipt. Discover capabilities first. applied confirms the view shell rendered and the requested refresh was invoked, not that every data request succeeded. Notify expand confirms its instructions are visible. accepted/applying/expired are NOT success. Returns the completion receipt directly. For an uncertain outcome, repeat the same action with the same idempotency_key to inspect its retained receipt; never use a new key. Does not send, save, run, delete or connect anything.", schema(props, "view", "action"), func(ctx context.Context, args map[string]interface{}) (string, error) {
+	if err := registrar.RegisterCustomTool("perform_ui_action", "Show (open) or reload (refresh) the project Dashboard in the person's side pane and wait up to 10 seconds for a browser receipt. The Dashboard is the only view. applied confirms the pane showed it, not that every data request succeeded. accepted/applying/expired are NOT success. Returns the completion receipt directly. For an uncertain outcome, repeat the same action with the same idempotency_key to inspect its retained receipt; never use a new key. Does not send, save, run, delete or connect anything.", schema(props, "view", "action"), func(ctx context.Context, args map[string]interface{}) (string, error) {
 		return api.performUIActionForContract(ctx, session, workspace, contract, args)
 	}, "workflow_ui"); err != nil {
 		return err
