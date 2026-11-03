@@ -217,7 +217,7 @@ func (api *StreamingAPI) captureCrewMirror(ctx context.Context, claims *UserClai
 }
 
 func (api *StreamingAPI) syncCrewNativeMirror(ctx context.Context, claims *UserClaims, roots crewroot.Roots, b *crewroot.SyncBinding, connection desktopConnection) error {
-	if b.Mode != "continuous" || b.PendingAction != "" {
+	if b.Mode == "manual" || b.Mode == "off" || b.Mode == "relay" || b.PendingAction != "" {
 		return nil
 	}
 	var err error

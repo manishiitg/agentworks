@@ -385,7 +385,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		return out, nil
 	case "activate":
-		if binding.Mode != "continuous" {
+		if binding.Mode == "manual" || binding.Mode == "relay" {
 			return out, fmt.Errorf("move this Crew online from your Mac first")
 		}
 		if binding.Editing == "server" {
