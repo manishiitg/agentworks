@@ -91,7 +91,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const accessInMenu = getRawActiveWorkspaceId() === 'local' && computerState !== undefined && computerState !== 'online'
   const accessOpen = menu?.scope === scope && menu.view === 'access'
   useEffect(() => { useContextMenuWideStore.getState().setWide(accessOpen); return () => useContextMenuWideStore.getState().setWide(false) }, [accessOpen])
-  if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard title="Access" noFooter onBack={() => setMenu(undefined)}>
+  if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard title="Access" noFooter page onBack={() => setMenu(undefined)}>
     <YourComputerPanel projectId={projectId} sessionId={reviewSessionId} canEdit />
   </WorkspaceContextCard>
   if (menu?.scope === scope) {
