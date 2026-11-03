@@ -591,4 +591,22 @@ export function useMacTabShareLine(projectId?: string, conversationKey?: string)
   return line
 }
 
+/** Which of a Mac Crew's agents others can message ("main" or a side tab's id), read when the agents menu opens. */
+export function useMacSharedTabs(projectId?: string, enabled = true): string[] {
+  const [tabs, setTabs] = useState<string[]>([])
+  useEffect(() => {
+    if (!enabled || !projectId || !crewCloudMode() || getRawActiveWorkspaceId() !== 'local') return
+    let live = true
+    void (async () => {
+      const { data } = await api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { skipSessionContext: true })
+      const connection = data.binding?.connection_id
+      if (!connection || !live) return
+      const { agents } = await desktopRequest<{ agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'agents' })
+      if (live) setTabs((agents || []).map(agent => agent.tab))
+    })().catch(() => {})
+    return () => { live = false }
+  }, [projectId, enabled])
+  return tabs
+}
+
 /** Where the people it is shared with reach a shared agent (owner, 3 Nov): one audience for all three ways. */
