@@ -40,8 +40,9 @@ func migrateCrewSyncToRelay() {
 			log.Printf("[CREW_SYNC] project=%s migrate=skipped reason=%q", id, "binding backup failed")
 			continue
 		}
-		old, pending := b.Mode, b.PendingAction
-		if pending == "update" || pending == "download" {
+		old, dropped := b.Mode, ""
+		if b.PendingAction == "update" || b.PendingAction == "download" {
+			dropped = b.PendingAction
 			if p, e := crewSyncManifestPath(id); e == nil {
 				if _, e = os.Stat(p + ".pending"); e == nil {
 					_, _ = moveOldCrewTransfer(p+".pending", id)
@@ -54,6 +55,6 @@ func migrateCrewSyncToRelay() {
 			log.Printf("[CREW_SYNC] project=%s migrate=failed reason=%q", id, e.Error())
 			continue
 		}
-		log.Printf("[CREW_SYNC] project=%s side=%s editing=%s migrate=relay old_mode=%q dropped_pending=%q", id, b.Side, b.Editing, old, map[bool]string{true: pending}[pending == "update" || pending == "download"])
+		log.Printf("[CREW_SYNC] project=%s side=%s editing=%s migrate=relay old_mode=%q dropped_pending=%q", id, b.Side, b.Editing, old, dropped)
 	}
 }
