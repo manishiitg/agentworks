@@ -859,12 +859,10 @@ func refreshNativeRoute(provider, session, hostKey, remote string) string {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		actual, err := codexDesktopProcessHost(ctx, remote)
+		err := windowsCodexDesktopHasCore(ctx, remote, hostKey)
 		switch {
 		case err != nil:
 			return windowsRouteRefused(err.Error())
-		case actual != hostKey:
-			return windowsRouteRefused("the Codex core under the desktop pipe is not this chat's Codex process")
 		case recovering && !codexDesktopOwnerReady(ctx, remote, session):
 			return windowsRouteRefused("the Codex app did not confirm this chat as its own")
 		}
