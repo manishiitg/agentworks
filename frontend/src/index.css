@@ -1855,12 +1855,26 @@
 
 /* Phone workspaces: touch targets and scrolling stay inside the active pane. */
 @media (max-width: 767px) {
+  /* The page itself never scrolls under the app (iOS and in-app browsers otherwise move the header and input away):
+     only a pane's own list scrolls, and its scroll never chains to the page. */
+  html:has([data-app-shell]), html:has([data-app-shell]) body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  /* Keyboard shortcut hints mean nothing on a phone. */
+  [data-app-shell] kbd { display: none; }
+  [data-app-shell] [class*="overflow-y-auto"], [data-app-shell] [class*="overflow-auto"] {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
   [data-app-shell] {
     position: fixed;
     top: var(--app-viewport-top, 0px);
     inset-inline: 0;
     height: var(--app-viewport-height, 100dvh);
     padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
   [data-app-main] input, [data-app-main] textarea, [data-app-main] select { font-size: 16px; }
   [data-terminal-focus-chrome="toolbar"] button,

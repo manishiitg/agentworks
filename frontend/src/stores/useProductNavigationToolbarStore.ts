@@ -11,4 +11,6 @@ export const useProductNavigationToolbarStore = create<{
   compactSettingsTarget: HTMLDivElement | null
   sidebarWidth: number
   pickerOpen: boolean
-}>(() => ({ target: null, targetKind: null, leadingTarget: null, workspaceTrigger: null, settingsTarget: null, sidebarSettingsTarget: null, compactSettingsTarget: null, sidebarWidth: 0, pickerOpen: false }))
+  /** Phone only: the chat scrolled toward its latest messages, so the header slides away (owner, 3 Nov). */
+  phoneHeaderHidden: boolean
+}>(() => ({ target: null, targetKind: null, leadingTarget: null, workspaceTrigger: null, settingsTarget: null, sidebarSettingsTarget: null, compactSettingsTarget: null, sidebarWidth: 0, pickerOpen: false, phoneHeaderHidden: false }))

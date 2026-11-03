@@ -38,6 +38,10 @@ export const ChatComposerTextarea = forwardRef<HTMLTextAreaElement, React.Compon
   ({ product = false, className, ...props }, ref) => <Textarea
     ref={ref}
     rows={1}
+    // A message box, not a form field: no AutoFill bar (keys, cards, places) above the phone keyboard.
+    autoComplete="off"
+    autoCorrect="on"
+    enterKeyHint="send"
     className={cn('!text-base placeholder:!text-base md:!text-sm md:placeholder:!text-sm', product ? '!min-h-[32px] max-h-[100px] !border-0 !bg-transparent !px-1.5 !py-1 text-sm text-foreground !shadow-none focus-visible:!ring-0 placeholder:text-sm placeholder:text-muted-foreground resize-none overflow-y-auto leading-[1.3]' : '!min-h-[36px] max-h-[100px] !border-0 !bg-transparent !py-1.5 !px-2 text-xs !shadow-none focus-visible:!ring-0 placeholder:text-xs resize-none overflow-y-auto leading-[1.3]', className)}
     {...props}
   />,

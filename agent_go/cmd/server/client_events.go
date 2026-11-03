@@ -15,7 +15,7 @@ import (
 // never message text; rate-limited per person.
 var clientEventKinds = map[string]bool{
 	"network_offline": true, "network_online": true, "page_hidden": true, "page_visible": true,
-	"reconnect_attempt": true, "reconnect_gave_up": true, "send_stuck": true, "file_open_failed": true, "mac_off_notice": true,
+	"reconnect_attempt": true, "reconnect_gave_up": true, "send_stuck": true, "file_open_failed": true, "mac_off_notice": true, "app_reloaded": true,
 }
 
 var (

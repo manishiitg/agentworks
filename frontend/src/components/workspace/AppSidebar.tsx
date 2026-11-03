@@ -164,7 +164,8 @@ export function AppSidebar() {
           }}
           className="absolute inset-y-0 -right-1 z-50 hidden w-2 cursor-col-resize touch-none hover:bg-primary/15 focus-visible:bg-primary/15 focus-visible:outline-none md:block" />}
       </div>
-      {(isMobile || !open) && (leadingTarget ? createPortal(leading, leadingTarget) : <div data-terminal-focus-chrome="header" className="absolute left-3 top-2 z-40 rounded-lg bg-background/95">{leading}</div>)}
+      {/* One sidebar button: while the phone drawer is open, its own close button is the only one. */}
+      {(isMobile ? !mobileOpen : !open) && (leadingTarget ? createPortal(leading, leadingTarget) : <div data-terminal-focus-chrome="header" className="absolute left-3 top-2 z-40 rounded-lg bg-background/95">{leading}</div>)}
   </CompactProductNavigationContext.Provider>
 }
 

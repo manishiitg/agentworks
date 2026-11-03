@@ -93,7 +93,7 @@ it('website lists Mac Crews under their Mac, greyed with their last state when t
     ]} />))
     const macGroup = host.querySelector('section[aria-label="On your Mac: MacBook Air"]')!
     expect(macGroup.textContent).toContain('Login fixes')
-    expect(macGroup.textContent).toContain('Off · last seen')
+    expect(macGroup.textContent).toContain('off · last seen')
     expect(macGroup.textContent).toContain('Idle · last reply')
     expect(macGroup.querySelector('.opacity-60')).not.toBeNull()
     expect(macGroup.textContent).not.toContain('QA agent')

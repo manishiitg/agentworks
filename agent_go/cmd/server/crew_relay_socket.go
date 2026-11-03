@@ -119,6 +119,13 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 			continue
 		}
 		twins[crew.Project] = crew.Pair
+		// A pair made before Macs were named learns its Mac from the Mac that offers it, so lists group it there.
+		if b, e := crewroot.ReadSync(crew.Project); e == nil && b != nil && b.MacID == "" && sock.device != "" {
+			b.MacID, b.MacName = sock.device, sock.name
+			if e = crewroot.WriteSync(crew.Project, *b); e == nil {
+				log.Printf("[CREW_RELAY] named mac owner=%s device=%s project=%s", sock.owner, sock.device, crew.Project)
+			}
+		}
 	}
 	sock.mu.Lock()
 	sock.twins = twins
