@@ -174,6 +174,8 @@ func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath st
 			text, sender := d.Content, ""
 			if d.Metadata.Source == "agent_message" {
 				text, sender = d.Metadata.DisplayContent, d.Metadata.SenderLabel
+			} else if d.Metadata.Source == "owner_app" {
+				sender = d.Metadata.SenderLabel
 			}
 			items = append(items, codeTurnItem{Seq: e.Sequence, Turn: d.Metadata.TurnID, Role: "you", Sender: sender, Text: clip(text), At: e.Timestamp})
 		case "unified_completion":

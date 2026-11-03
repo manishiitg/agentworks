@@ -740,7 +740,7 @@ func agentMessageInstructions(inboxID string) string {
 	return fmt.Sprintf("Replies are optional. To send a message back, use the send_message tool with inbox_id=%q and message=... . If your tools are listed by get_api_spec and send_message is not a direct tool, call POST /tools/custom/send_message from the shell with those fields. Your final chat answer is NOT forwarded. Decide yourself whether to reply, set a one-time schedule, follow up or continue work.", inboxID)
 }
 
-// This key is set only by admitted agent delivery, never from HTTP/JSON fields.
+// This key is set only by admitted agent delivery or the owner's own AI app ask, never from HTTP/JSON fields.
 type deliveredAgentMessageKey struct{}
 
 func (api *StreamingAPI) expectDeliveredAgentMessage(ctx context.Context, sessionID, query string) func() {

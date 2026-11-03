@@ -32,7 +32,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		}
 	}
 	// A Crew that lives on its owner's Mac answers there (PLAT-856-509): the owner's own AI app reaches it through
-	// the owner's Mac connection, as its named tab; nobody else does.
+	// the owner's Mac connection, in its Main chat; nobody else does.
 	if !IsLocalMode() && crewRelayTwin(manifest.ID) {
 		if project.OwnerID != claims.UserID || project.CoOwner {
 			externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
@@ -49,11 +49,25 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		externalFailure(w, err)
 		return
 	}
+	// The owner's own AI apps talk in the Crew's Main chat, labelled "via <app>" (owner, 3 Nov); on the Mac the server
+	// already checked the owner and named the app. Everyone else's callers keep their own named tabs.
+	ownerApp, appName := false, ""
+	if name, _ := r.Context().Value(crewMacCallerKey{}).(string); name != "" {
+		ownerApp, appName = true, externalCallerTabName(r.Context(), claims)
+	} else if claims.AccessToken != nil && project.OwnerID == claims.UserID && !project.CoOwner {
+		ownerApp, appName = true, externalCallerTabName(r.Context(), claims)
+	}
+	appLabel := "via " + appName
 	chatID := strings.TrimSpace(externalArg(args, "chat_id"))
+	if chatID == "" && ownerApp && findCodeChat(chats, manifest.ID) != nil {
+		chatID = manifest.ID
+	}
 	if chatID == "" {
 		chatID = externalCallerTabName(r.Context(), claims)
 	}
 	chat := findCodeChat(chats, chatID)
+	// In Main the app reads back only its own turns, never the rest of the owner's Main history.
+	appInMain := ownerApp && chat != nil && chat.Key == manifest.ID
 	if chat == nil && action == "ask" && externalArg(args, "chat_id") == "" {
 		id, status, message := api.externalCodeRunOpenTab(r, claims, project.Binding, manifest.ID, chats, chatID, manifest.Product)
 		if id == "" {
@@ -94,6 +108,9 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		user, connection := mcpTaskPrincipal(r)
 		scope := &crewAskInputScope{User: user, Connection: connection, Workspace: workspaceID, Chat: chat.ID, Session: chat.SessionID, Query: fmt.Sprintf("query_%d", time.Now().UnixNano())}
 		askContext := context.WithValue(r.Context(), crewAskInputKey{}, scope)
+		if appInMain {
+			askContext = context.WithValue(askContext, deliveredAgentMessageKey{}, map[string]interface{}{"source": "owner_app", "sender_label": appLabel})
+		}
 		req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/"+manifest.Product+"/query", bytes.NewReader(body)).WithContext(askContext)
 		req = mux.SetURLVars(req, map[string]string{"id": manifest.Product})
 		req.Header.Set("Content-Type", "application/json")
@@ -117,6 +134,9 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	deadline := time.Now().Add(externalCrewWait(args))
 	for {
 		items, last, readErr := codeChatTranscript(r.Context(), claims.UserID, chat.SessionID, project.Binding.WorkspacePath, after, 100)
+		if appInMain {
+			items = ownerAppTurns(items, appLabel, queryID, strings.TrimSpace(externalArg(args, "message")))
+		}
 		execution := api.externalWorkspaceTurnExecution(chat.SessionID, queryID)
 		if execution != nil && queryID == "" {
 			queryID = execution.ExecutionID
@@ -196,4 +216,23 @@ func (api *StreamingAPI) workspaceOwnerChats(r *http.Request, user, project stri
 		out = append(out, codeChat{OwnerID: chat.OwnerID, IsMain: chat.IsMain, Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt})
 	}
 	return out, nil
+}
+
+// ownerAppTurns keeps the turns the owner's AI app sent into Main (its "via <app>" messages and their answers), its
+// just-asked message, or one exact turn when the app names its query.
+func ownerAppTurns(items []codeTurnItem, label, queryID, asked string) []codeTurnItem {
+	turns := map[string]bool{}
+	for _, item := range items {
+		// The label, or (for the ask itself) the app's own words: a queued send may reach Main without the label.
+		if item.Role == "you" && item.Turn != "" && (item.Sender == label || asked != "" && strings.TrimSpace(item.Text) == asked) {
+			turns[item.Turn] = true
+		}
+	}
+	out := items[:0:0]
+	for _, item := range items {
+		if (queryID != "" && item.Turn == queryID) || turns[item.Turn] {
+			out = append(out, item)
+		}
+	}
+	return out
 }
