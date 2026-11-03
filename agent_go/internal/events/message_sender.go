@@ -60,7 +60,8 @@ func (es *EventStore) stampExpectedSender(sessionID string, event *Event) {
 	if message == nil || strings.TrimSpace(message.Content) != expected.content {
 		return
 	}
-	if message.Metadata["source"] == "coding_agent_live_input" || message.Metadata["source"] == "execution_prompt" || message.Metadata["client_message_id"] != nil {
+	// A browser-typed copy carries its own client id; the delivered input may carry only the id the server gave it.
+	if id := message.Metadata["client_message_id"]; message.Metadata["source"] == "coding_agent_live_input" || message.Metadata["source"] == "execution_prompt" || (id != nil && id != expected.metadata["client_message_id"]) {
 		return
 	}
 	delete(es.expectedSenders, sessionID)
