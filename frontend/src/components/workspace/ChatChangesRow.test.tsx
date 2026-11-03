@@ -48,7 +48,7 @@ it('keeps chat totals visible beside a warning about uncaptured files', async ()
   const reply = savedChat()
   get.mockResolvedValue({ data: { ...reply.data, comparison: { note: warning, skipped_count: 1 } } })
   try {
-    await act(async () => root.render(<ChatChangesRow workspacePath="Crew/example" sessionId="chat-a" onOpen={() => undefined} />))
+    await act(async () => root.render(<ChatChangesRow workspacePath="Crew/example" sessionId="chat-warning" onOpen={() => undefined} />))
     const row = host.querySelector<HTMLButtonElement>('button')!
     expect(row.textContent).toContain('4 files')
     expect(row.textContent).toContain('+50')

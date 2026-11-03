@@ -14,23 +14,38 @@ type Snapshot = { scope: string; apps?: WorkspaceStatusRow[]; automations?: Work
 const accountState = (item: ProjectVaultItem) => item.status === 'connected' || item.status === 'online' ? 'Connected' : item.status === 'needs_attention' ? 'Needs attention' : item.status === 'offline' ? 'Offline' : 'Saved'
 export const nextSchedule = (enabled: boolean, next?: string) => !enabled ? 'Paused' : next && Number.isFinite(Date.parse(next)) ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(next)) : 'On'
 
+// The menu opens on every page change. Reuse a recent answer instead of asking the server for every
+// source again; a schedule change or Retry still reloads at once.
+const FRESH_MS = 60_000
+const recent = new Map<string, { snapshot: Snapshot; at: number }>()
+const listeners = new Set<(requestScope: string) => void>()
+
 /** Read existing, server-scoped selections. Visits never promote settings into this panel. */
 export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }: { scope: string; workspacePath: string; projectId: string; admitted: string[] }) {
- const [snapshot, setSnapshot] = useState<Snapshot>()
- const [revision, setRevision] = useState(0)
  const admission = admitted.join(',')
  const requestScope = JSON.stringify([scope, workspacePath, projectId, admission])
- useLiveRefetch(() => setRevision(value => value + 1), { kinds: ['sessions', 'schedules', 'report'], workflow: workspacePath, fallbackMs: 0, safetyMs: 0, minIntervalMs: 1500 })
+ const [snapshot, setSnapshot] = useState<Snapshot | undefined>(() => recent.get(requestScope)?.snapshot)
+ const [revision, setRevision] = useState(0)
+ useLiveRefetch(() => setRevision(value => value + 1), { kinds: ['schedules'], workflow: workspacePath, fallbackMs: 0, safetyMs: 0, minIntervalMs: 5000 })
  useEffect(() => {
   let alive = true
+  const cached = recent.get(requestScope)
+  setSnapshot(cached?.snapshot)
+  const listener = (changed: string) => { if (alive && changed === requestScope) setSnapshot(recent.get(requestScope)?.snapshot) }
+  listeners.add(listener)
   let loading = false
   const has = (id: string) => admitted.includes(id)
   const load = async () => {
    if (loading) return
    loading = true
-   // Keep same-scope results while refreshing; each source replaces only its own rows.
+   // Keep same-scope results while refreshing; each source replaces only its own rows. Results land in
+   // the shared cache even after the menu closed, so the next open shows them.
+   const at = Date.now()
    const publish = (update: (previous: Snapshot) => Snapshot) => {
-    if (alive) setSnapshot(previous => update(previous?.scope === requestScope ? previous : { scope: requestScope, errors: [], loaded: [] }))
+    const previous = recent.get(requestScope)?.snapshot
+    const next = update(previous?.scope === requestScope ? previous : { scope: requestScope, errors: [], loaded: [] })
+    recent.set(requestScope, { snapshot: next, at })
+    listeners.forEach(notify => notify(requestScope))
    }
    const apps = (destinations: string[], rows: WorkspaceStatusRow[]) => publish(previous => ({
     ...previous, loaded: [...new Set([...previous.loaded, ...destinations])],
@@ -40,7 +55,7 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
     ...previous, loaded: [...new Set([...previous.loaded, destination])], automations: [...(previous.automations || []).filter(row => row.destination !== destination), ...rows],
    }))
    const error = (message: string) => publish(previous => ({ ...previous, errors: [...new Set([...previous.errors, message])] }))
-   if (alive) setSnapshot(previous => previous?.scope === requestScope ? { ...previous, errors: [] } : undefined)
+   publish(previous => ({ ...previous, errors: [] }))
    const jobs: Promise<void>[] = []
    if (has('mcp:connected') || has('mcp:gmail') || has('mcp:slack-account')) jobs.push(loadProjectVault(workspacePath).then(inventory => {
     const selected = inventory.vaults.flatMap(vault => vault.items).filter(item => item.selected && ['mcp','google','slack'].includes(item.kind)).flatMap(item => {
@@ -72,11 +87,11 @@ export function useWorkspaceStatus({ scope, workspacePath, projectId, admitted }
    loading = false
    if (!jobs.length) publish(previous => previous)
   }
-  void load()
+  if (revision > 0 || !cached || Date.now() - cached.at >= FRESH_MS) void load()
   const githubChanged = () => { void load() }
   if (has('mcp:github')) window.addEventListener(githubConnectionChanged, githubChanged)
   if (has('mcp:computer-use')) window.addEventListener('computer-use-changed', githubChanged)
-  return () => { alive = false; window.removeEventListener(githubConnectionChanged, githubChanged); window.removeEventListener('computer-use-changed', githubChanged) }
+  return () => { alive = false; listeners.delete(listener); window.removeEventListener(githubConnectionChanged, githubChanged); window.removeEventListener('computer-use-changed', githubChanged) }
  }, [scope, workspacePath, projectId, admission, requestScope, revision])
  return { snapshot: snapshot?.scope === requestScope ? snapshot : undefined, refresh: () => setRevision(value => value + 1) }
 }
