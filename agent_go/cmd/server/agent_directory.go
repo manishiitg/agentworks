@@ -20,6 +20,19 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	filterAgentDirectory(out, r.URL.Query().Get("query"))
+	// "Message other agents" (owner, 3 Nov): your own agents, agents others published, and Crews you own or that are
+	// shared with you (Everyone or you by name) with their shared agents. Not every Goal or Flow you can open.
+	if r.URL.Query().Get("view") == "message" {
+		if list, ok := out["agents"].([]map[string]interface{}); ok {
+			kept := list[:0]
+			for _, row := range list {
+				if kind, _ := row["kind"].(string); kind != "goal" && kind != "relay" {
+					kept = append(kept, row)
+				}
+			}
+			out["agents"] = kept
+		}
+	}
 	externalJSON(w, out)
 }
 
