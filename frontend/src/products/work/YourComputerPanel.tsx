@@ -25,11 +25,11 @@ type LaptopSettings = { device_id: string; folders: { id: string; path: string; 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
 export const crewCloudMode = () => hasDesktopConnections()
 
-export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online'
+export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 
 // One reading per Crew for the whole page (owner, 3 Nov: the page takes ONE flag): every panel that asks where a
 // Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
-type PlaceEntry = { place?: CloudState; shared?: number; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController }
+type PlaceEntry = { place?: CloudState; shared?: number; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -50,6 +50,7 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
           created.listeners.forEach(notify => notify(data.place))
         }).catch(() => {})
     }
+    created.load = load
     load()
     created.timer = window.setInterval(load, 5000)
   }
@@ -63,6 +64,9 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     placeCache.delete(projectId)
   }
 }
+
+/** Reads a Crew's place again at once, after an action changed it (Reach on/off, Move online), so every panel agrees. */
+export function refreshCrewPlace(projectId: string) { placeCache.get(projectId)?.load?.() }
 
 /** Where the Crew lives, as the server reports it (crew-sync status "place"); the page only shows it. */
 export function useYourComputerSummary(enabled: boolean, projectId?: string): CloudState | undefined {
@@ -93,12 +97,12 @@ export function useCrewLivesOnMac(projectId?: string): boolean {
   return (place === 'mac' || place === 'mac_off') && !(crewCloudMode() && getRawActiveWorkspaceId() === 'local')
 }
 
-export const cloudStateLabel: Record<CloudState, string> = { mac: 'On this Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online' }
+export const cloudStateLabel: Record<CloudState, string> = { mac: 'On this Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'On this Mac · Offline' }
 /** The Access row icon: a laptop while it lives on a Mac, a cloud online, people for someone else's Crew, with a dot:
  * green reachable now, grey Mac off, amber moving. */
 export function cloudStateIcon(state?: CloudState, theirs = false): LucideIcon {
   const Icon = theirs ? Users : state === 'online' ? Cloud : Laptop
-  const dot = !state ? '' : state === 'mac_off' ? 'bg-muted-foreground' : state === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
+  const dot = !state || state === 'offline' ? '' : state === 'mac_off' ? 'bg-muted-foreground' : state === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
   const key = `${theirs}:${state}`
   let Marked = tintedIcons.get(key)
   if (!Marked) {
@@ -165,7 +169,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       return true
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
-    finally { setBusy(false); setBusyAction(''); setReload(value => value + 1) }
+    finally { setBusy(false); setBusyAction(''); setReload(value => value + 1); refreshCrewPlace(projectId) }
   }
   const move = async (share: boolean) => {
     setOpen('')
@@ -185,12 +189,12 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       <div className="flex items-center justify-between gap-2.5">
         <p role="status" className="flex items-center gap-2 text-base font-semibold">
           {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
-          {!status ? 'Checking…' : moving ? (status.bytes_total ? `Moving online… ${sizeLabel(status.bytes_done || 0)} of ${sizeLabel(status.bytes_total)}` : 'Moving online…') : online ? 'Online' : binding ? ['On this Mac', networkName(binding.connection_id), 'Only you'].filter(Boolean).join(' · ') : 'On this Mac · Offline'}
+          {!status ? 'Checking…' : moving ? (status.bytes_total ? `Moving online… ${sizeLabel(status.bytes_done || 0)} of ${sizeLabel(status.bytes_total)}` : 'Moving online…') : online ? 'Online' : binding ? ['On this Mac', networkName(binding.connection_id)].filter(Boolean).join(' · ') : 'On this Mac · Offline'}
         </p>
         {binding && !online && !moving && open !== 'move' && <Button size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
       </div>
-      <p className="text-[13px] text-muted-foreground">{moving ? 'Your work is kept. If it stops, Retry Move online picks up where it left off.' : online ? 'It works even when your Mac is off.' : binding ? 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.' : 'Only in this app on this Mac.'}</p>
-      {status && <p className="text-[13px] text-muted-foreground">{status.schedules_paused ? status.message || 'Its schedules wait until the move finishes.' : 'Its schedules run here too.'}</p>}
+      {(moving || online) && <p className="text-[13px] text-muted-foreground">{moving ? 'Your work is kept. If it stops, Retry Move online picks up where it left off.' : 'It works even when your Mac is off.'}</p>}
+      {status?.schedules_paused && <p className="text-[13px] text-muted-foreground">{status.message || 'Its schedules wait until the move finishes.'}</p>}
       {(status?.schedules_paused || binding?.pending_action === 'server') && !busy && <Button size="sm" variant="outline" className="mt-1" onClick={() => void move(false)}>Retry Move online</Button>}
       {(moved || status?.backup_path || status?.local_folder_kept) && online && <div className="mt-2 flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-[13px]">
         <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
@@ -210,8 +214,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
     </section>
     {status && <section aria-label="Who can use it" className="space-y-1 px-4 py-3">
       <p className="mb-1.5 text-xs text-muted-foreground">Who can use it</p>
-      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : binding ? 'From anywhere while your Mac is on' : 'Only in this app on this Mac'}</span><span className="text-emerald-500">✓</span></div>
-      {!binding && <p className="text-[13px] text-muted-foreground">Turn on Reach it from your phone and the web first.</p>}
+      {binding && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><span className="text-emerald-500">✓</span></div>}
       <div aria-disabled={!binding} className={`overflow-hidden rounded-xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
         {way(<Smartphone className="h-4 w-4" />, 'Phone', 'Scan to open on your phone', <Button size="sm" variant="outline" disabled={!link} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide code' : 'Show code'}</Button>)}
         {open === 'code' && link && <div className="flex justify-center border-b border-border p-3"><LinkCode link={link} /></div>}
@@ -221,6 +224,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
         {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
         {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
       </div>
+      {!binding && <p className="text-[12px] text-muted-foreground">Turn on Reach to use it from other places</p>}
       <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">People</span><span className="text-[13px] text-muted-foreground">{online ? 'Choose who can use it on its page online' : 'Nobody else yet'}</span>
         {online
           ? <Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>

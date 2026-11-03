@@ -437,12 +437,12 @@ function CopyDebugInfo({ tab }: { tab: ChatTab }) {
   </button>
 }
 
-const PHONE_PLACE: Record<CloudState, string> = { mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online' }
+const PHONE_PLACE: Record<CloudState, string> = { mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */
 function CrewPlaceBadge({ place }: { place?: CloudState }) {
   if (!place) return null
-  const dot = place === 'mac_off' ? 'bg-muted-foreground' : place === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
+  const dot = place === 'mac_off' || place === 'offline' ? 'bg-muted-foreground' : place === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
   return <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />{PHONE_PLACE[place]}</span>
 }
 
