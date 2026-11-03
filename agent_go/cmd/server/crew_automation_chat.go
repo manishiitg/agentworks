@@ -14,9 +14,17 @@ import (
 // Saved work retains its own run identity; the chat is its durable destination,
 // never a replacement for a workflow checkpoint or a provider session handle.
 func validateExecutableSchedule(ctx context.Context, sctx *ScheduleContext) error {
-	if sctx.WorkflowKind != "relay" && sctx.Schedule.GroupNames != nil && len(normalizeScheduleGroupNames(sctx.Schedule.GroupNames)) == 0 {
-		return fmt.Errorf("choose at least one input set, or omit the selection for automatic execution")
+	if sctx.WorkflowKind != "relay" {
+		if sctx.Schedule.GroupNames != nil {
+			return fmt.Errorf(retiredWorkflowGroupsMessage)
+		}
+		if sctx.Schedule.InputPreset != "" || len(sctx.Schedule.Inputs) > 0 {
+			if _, err := resolveWorkflowInvocationInputs(ctx, sctx.WorkspacePath, sctx.Schedule.InputPreset, sctx.Schedule.Inputs); err != nil {
+				return err
+			}
+		}
 	}
+
 	if sctx.CrewExecutable == nil {
 		return nil
 	}

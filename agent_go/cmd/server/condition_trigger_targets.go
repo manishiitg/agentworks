@@ -100,7 +100,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 		if t.Manifest == nil || t.Manifest.Kind == "relay" {
 			return errors.New("route targets must be workflows; call a published Flow function instead")
 		}
-		if _, err := validateScheduleGroupNamesForWorkspace(ctx, t.Path, cfg.Target.Groups); err != nil {
+		if _, err := resolveWorkflowInvocationInputs(ctx, t.Path, cfg.Target.InputPreset, cfg.Target.Inputs); err != nil {
 			return err
 		}
 		return validateWebhookTarget(ctx, t.Path, "", cfg.Target.Routes)
@@ -197,7 +197,7 @@ func conditionRouteSchedule(job productScheduleJob, cfg conditiontrigger.Config)
 	if job.WatcherSource != nil {
 		stamp = triggerCaller{Type: triggerCallerUser, ID: job.UserID}
 	}
-	return WorkflowSchedule{ID: "condition-" + conditiontrigger.Hash(conditionKey(job)), Name: job.Schedule.Name, Enabled: true, ScheduleType: "webhook", Kind: triggerKindInternal, Caller: &stamp, GroupNames: cfg.Target.Groups, RouteSelections: cfg.Target.Routes, Webhook: &WorkflowWebhookConfig{InputMode: "raw"}}
+	return WorkflowSchedule{ID: "condition-" + conditiontrigger.Hash(conditionKey(job)), Name: job.Schedule.Name, Enabled: true, ScheduleType: "webhook", Kind: triggerKindInternal, Caller: &stamp, InputPreset: cfg.Target.InputPreset, Inputs: cfg.Target.Inputs, RouteSelections: cfg.Target.Routes, Webhook: &WorkflowWebhookConfig{InputMode: "raw"}}
 }
 
 func (s *SchedulerService) conditionRoute(ctx context.Context, workspacePath, id string, input *WorkflowWebhookDelivery) (*WorkflowSchedule, error) {

@@ -90,8 +90,8 @@ For steps in scripted mode, the saved Python script at `<script-dir>/main.py` is
 - If diagnosis revealed the fix (e.g., a selector changed), apply it directly. If the issue is complex, use your live MCP access to prototype the fix interactively before patching.
 
 **3. Test** — Run the patched script:
-- Use `execute_step(step_id, group_name, fast_path_only=true)` to test the fix directly — this runs ONLY the saved script without invoking the step agent, so you see exactly what your patch does
-- Or use `execute_step(step_id, group_name)` to let the selected step agent handle a script failure
+- Use `execute_step(step_id, input_preset?, inputs?, fast_path_only=true)` to test the fix directly — this runs ONLY the saved script without invoking the step agent, so you see exactly what your patch does
+- Or use `execute_step(step_id, input_preset?, inputs?)` to let the selected step agent handle a script failure
 - After running, use `agent_browser(command="snapshot", args=["-i"])` to confirm the expected page state, or read output files to check correctness
 - Check the output files and logs to confirm the fix
 
@@ -105,7 +105,7 @@ For steps in scripted mode, the saved Python script at `<script-dir>/main.py` is
 
 **Force complete rewrite**: If the saved script has fundamental issues (wrong approach, bad patterns like JavaScript injection instead of ref-based browser interaction), delete the learnings script to force the LLM to write from scratch:
 - `rm <script-dir>/main.py` — deletes the saved script
-- Then run `execute_step(step_id, group_name)` — the LLM will generate a fresh main.py using the step description, skill files, and proper tool discovery via get_api_spec
+- Then run `execute_step(step_id, input_preset?, inputs?)` — the LLM will generate a fresh main.py using the step description, skill files, and proper tool discovery via get_api_spec
 - Do NOT just delete `execution/{step-id}/code/main.py` — in legacy workflows this disposable copy is restored from saved source; version 1 has no such copy
 
 ### 4. Server & Tool Scoping
@@ -128,7 +128,7 @@ In tiered mode, prefer a persistent `execution_tier` when a step should usually 
 
 - **Use `execution_tier` for persistent behavior**: `update_step_config(step_id, execution_tier="medium", execution_tier_reason="Finding, evidence, and approved decision")` or `"low"` when the step is stable and you want future runs to default to that tier.
 - **Use `execution_llm` only when you need an exact model**: this pins a specific provider/model and overrides tier selection entirely.
-- **Use `execute_step(step_id, group_name, tier="...")` for one-off trials**: this is for testing a single run without changing the step's persistent config.
+- **Use `execute_step(step_id, input_preset?, inputs?, tier="...")` for one-off trials**: this is for testing a single run without changing the step's persistent config.
 - **Prefer `execution_tier` over exact-model pinning for mature steps**: if the goal is "this step can usually run on medium/low", set the tier, don't hardcode a model.
 - **Do not force a cheaper tier while material goals are below target**: preserve the current model/reasoning tier for outcome-bearing, planning, judgment, diagnostic, recovery, eval, and verification work. First make the workflow reliable and achieve representative at-target evidence. Only a mechanical deterministic non-bottleneck step with proven quality-equivalent outputs and no downstream outcome loss may be proposed as an explicitly approved reversible downgrade trial.
 - **If a step has `execution_llm` set, `execution_tier` is ignored** until the exact-model override is cleared.

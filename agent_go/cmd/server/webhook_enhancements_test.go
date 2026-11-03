@@ -13,12 +13,12 @@ import (
 )
 
 func TestWebhookEnvelopeOptions(t *testing.T) {
-	s := WorkflowSchedule{GroupNames: []string{"dev"}, Webhook: &WorkflowWebhookConfig{InputMode: "envelope", AllowedVariables: []string{"base_url"}}}
+	s := WorkflowSchedule{InputPreset: "Development", Webhook: &WorkflowWebhookConfig{InputMode: "envelope", AllowedVariables: []string{"base_url"}}}
 	for _, tc := range []struct {
 		body string
 		ok   bool
 	}{
-		{`{"group":"dev","variables":{"base_url":"https://example.test"},"payload":{"pr":12}}`, true},
+		{`{"variables":{"base_url":"https://example.test"},"payload":{"pr":12}}`, true},
 		{`{"group":"prod"}`, false}, {`{"variables":{"TOKEN":"bad"}}`, false}, {`{"variables":{"base_url":false}}`, false},
 	} {
 		d := &WorkflowWebhookDelivery{Payload: json.RawMessage(tc.body)}
@@ -26,7 +26,7 @@ func TestWebhookEnvelopeOptions(t *testing.T) {
 		if (err == nil) != tc.ok {
 			t.Fatalf("%s: %v", tc.body, err)
 		}
-		if tc.ok && (d.Group != "dev" || d.Variables["base_url"] != "https://example.test" || string(d.Payload) != `{"pr":12}`) {
+		if tc.ok && (d.Group != "" || d.Variables["base_url"] != "https://example.test" || string(d.Payload) != `{"pr":12}`) {
 			t.Fatalf("bad envelope: %+v", d)
 		}
 	}
@@ -37,12 +37,11 @@ func TestWebhookEnvelopeOptions(t *testing.T) {
 	}
 }
 
-func TestWebhookRawPayloadMappingsSelectGroupAndNestedBranch(t *testing.T) {
+func TestWebhookRawPayloadMappingsKeepPresetAndSelectNestedBranch(t *testing.T) {
 	s := WorkflowSchedule{
-		GroupNames:      []string{"customer-prod", "customer-staging"},
+		InputPreset:     "Production",
 		RouteSelections: map[string]string{"workflow-route": "regression"},
 		Webhook: &WorkflowWebhookConfig{InputMode: "raw", PayloadMappings: &WorkflowWebhookPayloadMappings{
-			Group: &WorkflowWebhookValueMapping{Source: "$.env", Values: map[string]string{"prod": "customer-prod", "staging": "customer-staging"}},
 			Routes: map[string]WorkflowWebhookValueMapping{
 				"regression-component-branch": {Source: "component", Values: map[string]string{"service/review": "review"}},
 			},
@@ -53,8 +52,8 @@ func TestWebhookRawPayloadMappingsSelectGroupAndNestedBranch(t *testing.T) {
 	if err := resolveWebhookDeliveryOptions(s, delivery); err != nil {
 		t.Fatal(err)
 	}
-	if delivery.Group != "customer-prod" {
-		t.Fatalf("group = %q, want customer-prod", delivery.Group)
+	if delivery.Group != "" || s.InputPreset != "Production" {
+		t.Fatalf("delivery unexpectedly selected a preset: %q", delivery.Group)
 	}
 	if got := delivery.RouteSelections["regression-component-branch"]; got != "review" {
 		t.Fatalf("mapped branch = %q, want review", got)
@@ -84,7 +83,7 @@ func TestWebhookRawPayloadMappingsCanSelectSingleStep(t *testing.T) {
 
 func TestWebhookRawPayloadMappingsRejectUnknownOrMissingValues(t *testing.T) {
 	s := WorkflowSchedule{Webhook: &WorkflowWebhookConfig{InputMode: "raw", PayloadMappings: &WorkflowWebhookPayloadMappings{
-		Group: &WorkflowWebhookValueMapping{Source: "env", Values: map[string]string{"prod": "customer-prod"}},
+		Step: &WorkflowWebhookValueMapping{Source: "env", Values: map[string]string{"prod": "analyze"}},
 	}}}
 	for _, payload := range []string{`{"env":"qa"}`, `{"component":"service/review"}`} {
 		delivery := &WorkflowWebhookDelivery{Payload: json.RawMessage(payload)}

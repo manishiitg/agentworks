@@ -224,26 +224,8 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		},
 	)
 
-	workspaceClient := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
-	filtered := &agentProfileWorkflowRegistrar{
-		target: registrar,
-		prepare: func(callCtx context.Context, _ string, args map[string]interface{}) error {
-			groupName, _ := args["group_name"].(string)
-			groupName = strings.TrimSpace(groupName)
-			if groupName == "" {
-				return nil
-			}
-			// The profile metadata keeps a user-relative workspace name for display,
-			// while the workflow session and its folder guard use the canonical
-			// per-user project root. Group preparation must use that same guarded
-			// root; it needs access only to this project's variables/ folder.
-			if err := ensureAgentProfileWorkflowGroup(callCtx, workspaceClient, runtimeWorkspacePath, groupName); err != nil {
-				return err
-			}
-			workshopSession.UpdateEnabledGroupNames(callCtx, []string{groupName})
-			return nil
-		},
-	}
+	filtered := &agentProfileWorkflowRegistrar{target: registrar}
+
 	todo_creation_human.RegisterWorkshopChatTools(filtered, workshopSession, api.logger)
 	todo_creation_human.RegisterRunFullWorkflowTool(filtered, workshopSession, api.logger)
 	return nil

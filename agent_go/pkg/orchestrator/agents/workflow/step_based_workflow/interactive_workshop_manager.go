@@ -1946,9 +1946,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "string",
 					"description": "The step ID from plan.json or orphan_steps[] (e.g., 'step-create-report', 'validate-environment') or positional reference (e.g., '1', 'step-1', 'step1')",
 				},
-				"group_name": map[string]interface{}{
+				"inputs":     map[string]interface{}{"type": "object", "description": "Explicit workflow input values overriding defaults and saved inputs.", "additionalProperties": map[string]interface{}{"type": "string"}},
+				"run_folder": map[string]interface{}{"type": "string", "description": "Existing run identity for continuing its steps; omit for a new run."},
+				"input_preset": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional variable group ID. Omit it when this product has one default execution group; otherwise read variables/variables.json and provide a group name.",
+					"description": "Optional exact saved input name. Omit to use workflow defaults. Does not select a route or run folder.",
 				},
 				"instructions": map[string]interface{}{
 					"type":        "string",
@@ -1990,49 +1992,90 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				return "step_id must be a non-empty string", nil
 			}
 
+			if _, supplied := args["group_name"]; supplied {
+				return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
+			}
 			// Extract group_name and other options
-			groupNameRaw, _ := args["group_name"]
+			groupNameRaw, _ := args["input_preset"]
 			groupName, _ := groupNameRaw.(string)
 
-			if value, supplied := args["group_name"]; supplied {
+			if value, supplied := args["input_preset"]; supplied {
 				if _, ok := value.(string); !ok {
-					return "group_name must be a string", nil
+					return "input_preset must be a string", nil
 				}
 			}
-			if !iwm.controller.isRelayExecution() {
+			requestedFolder := ""
+			if raw, present := args["run_folder"]; present {
+				var ok bool
+				requestedFolder, ok = raw.(string)
+				if !ok {
+					return "", fmt.Errorf("run_folder must be a string")
+				}
+			}
+			boundSchedule := iwm.workshopConfig != nil && iwm.workshopConfig.ScheduleInvocation != nil
+			var recordedInputs map[string]string
+			if requestedFolder != "" && !boundSchedule {
+				if iwm.isRunModeRestricted() || (iwm.workshopConfig != nil && iwm.workshopConfig.WebhookInvocation != nil) {
+					return "", fmt.Errorf("only a Builder can continue an existing run; omit run_folder to start a new run")
+				}
+				if err := ValidateWorkflowRunFolder(requestedFolder); err != nil {
+					return "", err
+				}
+				if !iwm.controller.isRelayExecution() {
+					var err error
+					recordedInputs, err = iwm.controller.readExistingRunInputs(ctx, requestedFolder)
+					if err != nil {
+						return "", err
+					}
+				} else {
+					folders, err := iwm.controller.listRunFolders(ctx, filepath.Join(iwm.controller.GetWorkspacePath(), "runs"))
+					found := false
+					for _, folder := range folders {
+						if folder == requestedFolder {
+							found = true
+						}
+					}
+					if err != nil || !found {
+						return "", fmt.Errorf("run is unavailable; choose an existing run or omit run_folder")
+					}
+				}
+			}
+			if !iwm.controller.isRelayExecution() && recordedInputs == nil {
 				var inputErr error
-				groupName, inputErr = iwm.controller.resolveWorkshopInputGroup(ctx, groupName, iwm.controller.enabledGroupNames)
+				groupName, inputErr = iwm.controller.resolveWorkshopInputGroup(ctx, groupName, func() []string {
+					if iwm.workshopConfig != nil && iwm.workshopConfig.InputPreset != "" {
+						return []string{iwm.workshopConfig.InputPreset}
+					}
+					return nil
+				}())
 				if inputErr != nil {
 					return "", inputErr
 				}
 			}
 
-			iteration := "iteration-0"
+			iteration, _ := args["run_folder"].(string)
+			if iteration == "" {
+				iteration = "run-" + workflowExecutionIDToken()
+			}
 			if iwm.workshopConfig != nil && iwm.workshopConfig.ScheduleInvocation != nil {
 				iteration = iwm.workshopConfig.ScheduleInvocation.BoundRunFolder()
 			}
-
-			// Build run_folder from iteration + group folder name
-			// Refresh manifest from file to avoid stale group data
-			iwm.refreshVariablesManifest(ctx)
-			// Resolve group folder name from name (uses sanitized name)
-			groupFolderName := groupName
-			resolvedGroupName := ""
-			if iwm.controller.variablesManifest != nil && groupName != "" {
-				for _, g := range iwm.controller.variablesManifest.Groups {
-					if g.Name == groupName || iwm.controller.sanitizeDisplayNameForFolder(g.Name) == groupName {
-						if g.Name != "" {
-							resolvedGroupName = g.Name
-							sanitized := iwm.controller.sanitizeDisplayNameForFolder(g.Name)
-							if sanitized != "" {
-								groupFolderName = sanitized
-							}
-						}
-						break
+			runFolder := iteration
+			resolvedGroupName := groupName
+			inputValues, inputErr := parseWorkflowStepStringMap(args, "inputs")
+			if inputErr != nil {
+				return "", inputErr
+			}
+			if inputValues == nil {
+				inputValues = map[string]string{}
+			}
+			if iwm.workshopConfig != nil {
+				for name, value := range iwm.workshopConfig.Inputs {
+					if _, supplied := inputValues[name]; !supplied {
+						inputValues[name] = value
 					}
 				}
 			}
-			runFolder := filepath.Join(iteration, groupFolderName)
 			if iwm.controller.isRelayExecution() {
 				runFolder, _ = args["run_folder"].(string)
 				if runFolder == "" {
@@ -2045,6 +2088,24 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if _, err := iwm.controller.relayVariableValues(); err != nil {
 					return "", err
 				}
+			}
+			if iwm.workshopConfig != nil && iwm.workshopConfig.WebhookInvocation != nil {
+				if _, present := args["inputs"]; present {
+					return "", fmt.Errorf("inputs are fixed by this function or webhook invocation")
+				}
+				if _, present := args["input_preset"]; present {
+					return "", fmt.Errorf("input_preset is fixed by this function or webhook invocation")
+				}
+				for name, value := range iwm.workshopConfig.WebhookInvocation.Variables {
+					inputValues[name] = value
+				}
+			}
+			resolvedInputs := recordedInputs
+			if resolvedInputs == nil {
+				resolvedInputs, inputErr = ResolveWorkflowInputs(iwm.controller.variablesManifest, groupName, inputValues)
+			}
+			if inputErr != nil {
+				return "", inputErr
 			}
 
 			// Optional orchestrator instructions for inner steps
@@ -2098,6 +2159,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 			execOpts := &WorkshopExecuteOptions{
 				GroupName:       resolvedGroupName,
+				Inputs:          inputValues,
+				ResolvedInputs:  resolvedInputs,
 				Iteration:       iteration,
 				RunFolder:       runFolder,
 				SavedScriptOnly: fastPathOnly,
@@ -2234,7 +2297,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"step_id":        stepID,
 				"run_folder":     execOpts.RunFolder,
 				"iteration":      iteration,
-				"group_name":     resolvedGroupName,
+				"input_preset":   resolvedGroupName,
 			}
 			registerWorkshopExecutionBeforeLaunch(iwm.executionNotifier, WorkshopExecutionStart{
 				ID:                execID,
@@ -2247,6 +2310,22 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			execCtx = virtualtools.WithBackgroundAgentID(execCtx, execID)
 			execCtx = context.WithValue(execCtx, orchestrator_events.ParentExecutionIDKey, execID)
 			releaseRunningStep := RegisterRunningWorkflowStep(iwm.controller.GetWorkspacePath(), stepID, execID, iwm.mainSessionID)
+
+			if iwm.workshopConfig == nil {
+				cancel()
+				releaseRunningStep()
+				return "", fmt.Errorf("workflow session configuration is unavailable")
+			}
+			runConfig := *iwm.workshopConfig
+			runConfig.InputPreset, runConfig.Inputs = groupName, cloneWorkflowStringMap(inputValues)
+			if recordedInputs != nil {
+				runConfig.InputPreset, runConfig.Inputs = "", nil
+			}
+			runConfig.RunFolder = runFolder
+			runConfig.WorkspaceEnvRef = iwm.controller.snapshotWorkspaceEnv()
+			if runConfig.WorkspaceEnvRef == nil {
+				runConfig.WorkspaceEnvRef = map[string]string{}
+			}
 
 			go func() {
 				defer releaseRunningStep()
@@ -2274,12 +2353,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					skipNotify := finalizeExecStatus(exec, execCtx, &result, &execErr)
 					if !skipNotify && iwm.executionNotifier != nil {
 						execMeta := map[string]string{
-							"iteration":  iteration,
-							"group_name": groupName,
+							"iteration":    iteration,
+							"input_preset": groupName,
 						}
 						execMeta["run_folder"] = execOpts.RunFolder
 						if iwm.controller.isRelayExecution() {
-							delete(execMeta, "group_name")
+							delete(execMeta, "input_preset")
 						}
 						if isLockCode {
 							execMeta["lock_code"] = "true"
@@ -2305,7 +2384,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					inputData := map[string]string{}
 					if execOpts != nil {
 						if execOpts.GroupName != "" {
-							inputData["group_name"] = execOpts.GroupName
+							inputData["input_preset"] = execOpts.GroupName
 						}
 						if execOpts.Iteration != "" {
 							inputData["iteration"] = execOpts.Iteration
@@ -2335,7 +2414,19 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					})
 				}
 
-				result, execErr = iwm.controller.ExecuteStepForWorkshop(execCtx, stepID, execOpts)
+				stepSession, setupErr := NewWorkshopChatSession(execCtx, &runConfig)
+				if setupErr != nil {
+					execErr = setupErr
+					return
+				}
+				defer stepSession.Close()
+				stepSession.SetWorkshopExecutionNotifier(iwm.executionNotifier)
+				childSessionID := stepSession.controller.GetMCPSessionID()
+				if parent := virtualtools.GetParentChat(agentSessionID); parent != nil {
+					virtualtools.RegisterParentChat(childSessionID, parent)
+					defer virtualtools.UnregisterParentChat(childSessionID)
+				}
+				result, execErr = stepSession.controller.ExecuteStepForWorkshop(execCtx, stepID, execOpts)
 
 				// Capture step lock flags so the auto-notification can tailor
 				// recovery guidance (e.g. fast-path failure on a locked step has only two
@@ -2639,12 +2730,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "string",
 					"description": "The step ID from plan.json (e.g., 'step-create-report') or positional reference (e.g., '1', 'step-1')",
 				},
-				"group_name": map[string]interface{}{
+				"input_preset": map[string]interface{}{
 					"type":        "string",
 					"description": "Variable group ID (e.g., 'group-1', 'saurabh'). Required. Read variables/variables.json to see available groups.",
 				},
 			},
-			"required": []string{"step_id", "group_name"},
+			"required": []string{"step_id", "input_preset"},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			stepIDRaw, ok := args["step_id"]
@@ -2657,7 +2748,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			// Extract group_name
-			groupName, _ := args["group_name"].(string)
+			groupName, _ := args["input_preset"].(string)
 
 			iteration := "iteration-0"
 			if value, ok := args["iteration"].(string); ok && value != "" {
@@ -3281,7 +3372,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						"type":        "string",
 						"description": "Optional iteration folder (e.g., 'iteration-3'). If omitted, the selected run folder is used when present; otherwise the reviewer finds the latest meaningful run evidence.",
 					},
-					"group_name": map[string]interface{}{
+					"input_preset": map[string]interface{}{
 						"type":        "string",
 						"description": "Optional group/user subfolder within the iteration (e.g., 'saurabh'). Use together with iteration for grouped workflows.",
 					},
@@ -3298,7 +3389,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if iter, ok := args["iteration"]; ok && iter != nil {
 					if s, ok := iter.(string); ok && strings.TrimSpace(s) != "" {
 						targetRunFolder = strings.TrimSpace(s)
-						if gid, ok := args["group_name"]; ok && gid != nil {
+						if gid, ok := args["input_preset"]; ok && gid != nil {
 							if g, ok := gid.(string); ok && strings.TrimSpace(g) != "" {
 								targetRunFolder += "/" + strings.TrimSpace(g)
 							}
@@ -3420,7 +3511,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						"type":        "string",
 						"description": "Optional iteration folder (e.g., 'iteration-3'). If omitted, the selected run folder is used when present; otherwise the reviewer finds the latest meaningful cost/run evidence.",
 					},
-					"group_name": map[string]interface{}{
+					"input_preset": map[string]interface{}{
 						"type":        "string",
 						"description": "Optional group/user subfolder within the iteration (e.g., 'saurabh'). Use together with iteration for grouped workflows.",
 					},
@@ -3437,7 +3528,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if iter, ok := args["iteration"]; ok && iter != nil {
 					if s, ok := iter.(string); ok && strings.TrimSpace(s) != "" {
 						targetRunFolder = strings.TrimSpace(s)
-						if gid, ok := args["group_name"]; ok && gid != nil {
+						if gid, ok := args["input_preset"]; ok && gid != nil {
 							if g, ok := gid.(string); ok && strings.TrimSpace(g) != "" {
 								targetRunFolder += "/" + strings.TrimSpace(g)
 							}
@@ -3771,7 +3862,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip add_group registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"add_group",
-		"Create a new variable group. Optionally provide a name and initial values. The new group will have all defined variables with empty values by default.",
+		"Create a new variable group. Optionally provide a name and initial values. Only explicit overrides are saved; omitted values inherit workflow defaults.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -3781,7 +3872,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"values": map[string]interface{}{
 					"type":        "object",
-					"description": "Optional initial variable values as key-value pairs (e.g., {\"API_URL\": \"https://prod.example.com\"}). Variables not specified will have empty values.",
+					"description": "Optional initial variable values as key-value pairs (e.g., {\"API_URL\": \"https://prod.example.com\"}). Unspecified inputs use workflow defaults.",
 					"additionalProperties": map[string]interface{}{
 						"type": "string",
 					},
@@ -3840,7 +3931,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip update_group registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"update_group",
-		"Update a variable group. Provide name (required) and fields to change: new_name, values (key-value map), enabled (true/false). Only provided fields are updated.",
+		"Update a variable group. Provide name (required) and fields to change: new_name, values (key-value map). Only provided fields are updated.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -3858,10 +3949,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"additionalProperties": map[string]interface{}{
 						"type": "string",
 					},
-				},
-				"enabled": map[string]interface{}{
-					"type":        "boolean",
-					"description": "Enable or disable the group for execution",
 				},
 			},
 			"required": []interface{}{"name"},
@@ -3905,10 +3992,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				changes = append(changes, fmt.Sprintf("name=%s", newName))
 			}
 
-			// Update enabled
-			if enabled, ok := args["enabled"].(bool); ok {
-				manifest.Groups[groupIdx].Enabled = enabled
-				changes = append(changes, fmt.Sprintf("enabled=%v", enabled))
+			if _, supplied := args["enabled"]; supplied {
+				return "", fmt.Errorf("saved input values have no enabled state; enable or pause the schedule instead")
 			}
 
 			// Update values (merge, don't replace)
@@ -3919,7 +4004,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				for k, v := range values {
 					if strVal, ok := v.(string); ok {
 						manifest.Groups[groupIdx].Values[k] = strVal
-						changes = append(changes, fmt.Sprintf("%s=%s", k, strVal))
+						changes = append(changes, k)
 					}
 				}
 			}
@@ -5413,11 +5498,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "string",
 					"description": "Required IANA timezone (e.g. 'UTC', 'America/New_York', 'Asia/Kolkata'). Do not use abbreviations like EST, PST, or IST.",
 				},
-				"group_names": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Required. Variable group names to run (e.g., 'group-1', 'group-2'). Read variables/variables.json to see available groups. Do not leave empty.",
-				},
+				"input_preset": map[string]interface{}{"type": "string", "description": "Optional exact saved-input preset. Omit for defaults; pass an empty string to clear an existing selection."},
+				"inputs":       map[string]interface{}{"type": "object", "description": "Explicit workflow inputs for each scheduled invocation.", "additionalProperties": map[string]interface{}{"type": "string"}},
 				"mode": map[string]interface{}{
 					"type":        "string",
 					"description": "Execution mode. Only 'workshop' is supported for workflow schedules; legacy 'workflow' input is normalized to 'workshop'.",
@@ -5507,15 +5589,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			cronExpr, _ := args["cron_expression"].(string)
 			timezone, _ := args["timezone"].(string)
 			var groupNames []string
-			if raw, ok := args["group_names"]; ok && raw != nil {
-				if arr, ok := raw.([]interface{}); ok {
-					for _, v := range arr {
-						if s, ok := v.(string); ok {
-							groupNames = append(groupNames, s)
-						}
-					}
-				}
+			if _, retired := args["group_names"]; retired {
+				return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
 			}
+
 			mode, _ := args["mode"].(string)
 			routeSelections := map[string]string{}
 			if raw, ok := args["route_selections"].(map[string]interface{}); ok {
@@ -5555,11 +5632,13 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := validateWorkshopScheduleTimezone(timezone); err != nil {
 				return err.Error(), nil
 			}
-			if len(groupNames) == 0 {
-				return "group_names is required. Read variables/variables.json and provide at least one explicit group_name, e.g. ['group-1'].", nil
-			}
 
 			policy := ScheduleRuntimePolicy{}
+			preset, inputs, inputErr := parseSavedInputArguments(args)
+			if inputErr != nil {
+				return "", inputErr
+			}
+			policy.InputPreset, policy.Inputs = preset, inputs
 
 			policy.ExecutionMode, _ = args["execution_mode"].(string)
 			policy.CollisionPolicy, _ = args["collision_policy"].(string)
@@ -5593,9 +5672,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			"type": "object",
 			"properties": map[string]interface{}{
 
-				"name":        map[string]interface{}{"type": "string", "description": "Display name for the calendar schedule."},
-				"timezone":    map[string]interface{}{"type": "string", "description": "Required IANA timezone (e.g. 'UTC', 'America/New_York', 'Asia/Kolkata')."},
-				"group_names": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Required variable group names to run."},
+				"name":         map[string]interface{}{"type": "string", "description": "Display name for the calendar schedule."},
+				"timezone":     map[string]interface{}{"type": "string", "description": "Required IANA timezone (e.g. 'UTC', 'America/New_York', 'Asia/Kolkata')."},
+				"input_preset": map[string]interface{}{"type": "string", "description": "Optional exact saved-input preset. Omit for defaults; pass an empty string to clear an existing selection."},
+				"inputs":       map[string]interface{}{"type": "object", "description": "Explicit workflow inputs for each scheduled invocation.", "additionalProperties": map[string]interface{}{"type": "string"}},
 				"calendar_items": map[string]interface{}{
 					"type": "array",
 					"items": map[string]interface{}{
@@ -5626,7 +5706,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"after_delay_minutes":   map[string]interface{}{"type": "integer", "minimum": 0, "description": "Delay after every prerequisite terminal receipt."},
 				"dependency_deadline":   map[string]interface{}{"type": "string", "description": "Optional local HH:MM deadline for prerequisite release."},
 			},
-			"required": []string{"name", "timezone", "calendar_items", "group_names"},
+			"required": []string{"name", "timezone", "calendar_items"},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			if iwm.schedulerFuncs == nil || iwm.schedulerFuncs.CreateCalendarSchedule == nil {
@@ -5652,17 +5732,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				return "", err
 			}
 			var groupNames []string
-			if raw, ok := args["group_names"]; ok && raw != nil {
-				if arr, ok := raw.([]interface{}); ok {
-					for _, v := range arr {
-						if s, ok := v.(string); ok {
-							groupNames = append(groupNames, s)
-						}
-					}
-				}
-			}
-			if len(groupNames) == 0 {
-				return "group_names is required. Read variables/variables.json and provide at least one explicit group_name.", nil
+			if _, retired := args["group_names"]; retired {
+				return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
 			}
 			mode, _ := args["mode"].(string)
 			var messages []string
@@ -5681,6 +5752,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			directMessagesReason, _ := args["direct_messages_reason"].(string)
 			policy := ScheduleRuntimePolicy{}
+			preset, inputs, inputErr := parseSavedInputArguments(args)
+			if inputErr != nil {
+				return "", inputErr
+			}
+			policy.InputPreset, policy.Inputs = preset, inputs
 
 			policy.CollisionPolicy, _ = args["collision_policy"].(string)
 			policy.ConcurrencyMode, _ = args["concurrency_mode"].(string)
@@ -5726,11 +5802,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "string",
 					"description": "New IANA timezone (e.g. 'UTC', 'America/New_York', 'Asia/Kolkata'). Do not use abbreviations like EST, PST, or IST.",
 				},
-				"group_names": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Explicit variable group names for the schedule (e.g., 'group-1', 'group-2'). Read variables/variables.json to see available groups. Omit to keep the current groups; do not pass an empty array.",
-				},
+				"input_preset": map[string]interface{}{"type": "string", "description": "Optional exact saved-input preset. Omit for defaults; pass an empty string to clear an existing selection."},
+				"inputs":       map[string]interface{}{"type": "object", "description": "Explicit workflow inputs for each scheduled invocation.", "additionalProperties": map[string]interface{}{"type": "string"}},
 				"enabled": map[string]interface{}{
 					"type":        "boolean",
 					"description": "Enable or disable the schedule.",
@@ -5822,19 +5895,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			var groupNames []string
 			setGroupNames := false
-			if raw, ok := args["group_names"]; ok && raw != nil {
-				setGroupNames = true
-				if arr, ok := raw.([]interface{}); ok {
-					for _, v := range arr {
-						if s, ok := v.(string); ok {
-							groupNames = append(groupNames, s)
-						}
-					}
-				}
+			if _, retired := args["group_names"]; retired {
+				return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
 			}
-			if setGroupNames && len(groupNames) == 0 {
-				return "group_names cannot be empty. Provide at least one explicit group_name from variables/variables.json, or omit group_names to keep the current selection.", nil
-			}
+
 			setRouteSelections := false
 			var routeSelections map[string]string
 			if raw, supplied := args["route_selections"]; supplied && raw != nil {
@@ -5921,6 +5985,16 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					policy = &ScheduleRuntimePolicy{}
 				}
 				policy.RunDestination, policy.ChatID = destination, chatID
+			}
+			preset, inputs, inputErr := parseSavedInputArguments(args)
+			if inputErr != nil {
+				return "", inputErr
+			}
+			if preset != nil || inputs != nil {
+				if policy == nil {
+					policy = &ScheduleRuntimePolicy{}
+				}
+				policy.InputPreset, policy.Inputs = preset, inputs
 			}
 			if policy != nil {
 

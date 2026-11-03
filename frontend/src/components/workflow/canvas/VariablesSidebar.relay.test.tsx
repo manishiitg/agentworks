@@ -10,14 +10,14 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); vi.clearAllMocks() })
 
-async function mount(groups: { name: string; values: Record<string, string>; enabled: boolean }[]) {
+async function mount(groups: { name: string; values: Record<string, string>; enabled?: boolean }[], relayMode = true) {
   vi.mocked(agentApi.getVariableGroups).mockResolvedValue({ success: true, manifest: {
     objective: '', extraction_date: '', variables: [{ name: 'ENDPOINT', description: 'Custom service', value: 'old' }], groups,
   } })
   vi.mocked(agentApi.updateVariableGroups).mockResolvedValue({ success: true, message: 'Saved' })
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
-  await act(async () => { root.render(<VariablesSidebar workspacePath="Workflow/relay" relayMode onClose={() => {}} />) })
+  await act(async () => { root.render(<VariablesSidebar workspacePath="Workflow/relay" relayMode={relayMode} onClose={() => {}} />) })
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   return host
 }
@@ -49,4 +49,22 @@ it('saves Flow configuration and sample INPUT without groups, preserving legacy 
   expect(ambiguous.textContent).toContain('multiple variable groups')
   expect(ambiguous.querySelector<HTMLInputElement>('[aria-label="ENDPOINT"]')?.disabled).toBe(true)
   expect(ambiguous.querySelector<HTMLTextAreaElement>('[aria-label="Sample INPUT JSON"]')?.disabled).toBe(true)
+})
+
+// PLAT-746-265: saving an optional preset must not manufacture a baseline
+// group or copy defaults into the preset (which would freeze shared values).
+it('saves one sparse input preset without an enable flag or synthetic default group', async () => {
+  const host = await mount([], false)
+  const add = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Save another set'))!
+  await act(async () => { add.click() })
+  expect(host.querySelector('[aria-label="Delete saved inputs"]')).not.toBeNull()
+  expect(host.querySelector('[title="Enable group"]')).toBeNull()
+  const save = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Save')!
+  await act(async () => { save.click() })
+  const saved = vi.mocked(agentApi.updateVariableGroups).mock.calls[0][1]
+  expect(saved.variables[0].value).toBe('old')
+  expect(saved.groups).toEqual([{ name: 'Saved inputs 1', values: {} }])
+  await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Delete saved inputs"]')!.click() })
+  await act(async () => { save.click() })
+  expect(vi.mocked(agentApi.updateVariableGroups).mock.calls[1][1].groups).toEqual([])
 })

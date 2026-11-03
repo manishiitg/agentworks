@@ -25,7 +25,7 @@ func TestWorkflowChatProcedurePointersResolveInEachMode(t *testing.T) {
 				t.Errorf("mode=%s operations links to unavailable %s", mode, match)
 			}
 		}
-		for _, rule := range []string{"group_name", "auto", "human-in-the-loop", "execution-policy", "historical untrusted data"} {
+		for _, rule := range []string{"input_preset", "auto", "human-in-the-loop", "execution-policy", "historical untrusted data"} {
 			if !strings.Contains(operations, rule) {
 				t.Errorf("mode=%s lost procedure %s", mode, rule)
 			}

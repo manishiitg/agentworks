@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -277,6 +276,8 @@ type SchedulerCallbacks struct {
 // enforced by the runtime rather than inferred from a natural-language
 // message or a conveniently spaced cron expression.
 type ScheduleRuntimePolicy struct {
+	InputPreset              *string
+	Inputs                   map[string]string
 	ExecutionMode            string
 	CollisionPolicy          string
 	ConcurrencyMode          string
@@ -614,6 +615,8 @@ type WorkshopConfig struct {
 	// EnabledGroupNames holds the group names selected from the workspace toolbar.
 	// When set, the session auto-resolves variable values and run folder for these groups.
 	EnabledGroupNames []string
+	InputPreset       string
+	Inputs            map[string]string
 	// ToolCallQueryFunc provides live tool call query capability for query_step_tools.
 	// Set by server.go which has access to the EventStore.
 	ToolCallQueryFunc ToolCallQueryFunc
@@ -763,51 +766,30 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	bindCrewRunner(controller, cfg.CrewRunner)
 	bindAgentFunctionTools(controller, cfg.AgentFunctionTools)
 
-	// Preserve nil (automatic) versus explicit empty selection before any
-	// variable-context initialization.
-	controller.enabledGroupNames = cfg.EnabledGroupNames
-
-	// Load variables manifest so execute_step can resolve variable values.
+	controller.enabledGroupNames = nil
 	variablesPath := fmt.Sprintf("%s/variables/variables.json", cfg.WorkspacePath)
 	_, existingManifest, varErr := controller.variableManager.checkExistingVariables(ctx, variablesPath)
 	if varErr != nil {
-		logger.Warn(fmt.Sprintf("[WORKSHOP] Failed to check variables: %v — proceeding without", varErr))
-	} else if existingManifest != nil {
-		controller.variablesManifest = existingManifest
-		logger.Debug(fmt.Sprintf("[WORKSHOP] Loaded variables manifest with %d groups", len(existingManifest.Groups)))
-
-		// Auto-set variable values from the enabled group selected in the toolbar.
-		// This ensures execute_step always uses the correct group values without
-		// requiring the agent to pass a group name on each call.
-		if controller.isRelayExecution() {
-			values, err := controller.relayVariableValues()
-			if err != nil {
-				logger.Warn(fmt.Sprintf("[WORKSHOP] Flow configuration needs migration: %v", err))
-			} else {
-				controller.variableValues = values
-				SyncExactVariablesToWorkspaceEnv(controller.BaseOrchestrator, values)
-			}
-			controller.enabledGroupNames = nil
-		} else if merged, groupName, ok := ResolveWorkshopVariableValues(existingManifest, cfg.EnabledGroupNames); ok {
-			controller.variableValues = merged
-			SyncExactVariablesToWorkspaceEnv(controller.BaseOrchestrator, merged)
-			controller.enabledGroupNames = []string{groupName}
-			logger.Info(fmt.Sprintf("[WORKSHOP] Loaded builder shell variables from group %q (%d resolved values)", groupName, len(merged)))
-		} else if len(cfg.EnabledGroupNames) > 0 {
-			groupName := cfg.EnabledGroupNames[0]
-			{
-				logger.Warn(fmt.Sprintf("[WORKSHOP] Toolbar-selected group %q not found in manifest — falling back to base values", groupName))
-				vals, loadErr := LoadVariableValues(ctx, controller.BaseOrchestrator, cfg.WorkspacePath, cfg.WorkspacePath)
-				if loadErr == nil && vals != nil {
-					controller.variableValues = vals
-					SyncExactVariablesToWorkspaceEnv(controller.BaseOrchestrator, vals)
-				}
-			}
-			controller.enabledGroupNames = cfg.EnabledGroupNames
-		} else if existingManifest.HasGroups() {
-			logger.Warn("[WORKSHOP] No toolbar-selected group available — variable group selection is required for workshop context")
+		return nil, fmt.Errorf("read workflow inputs: %w", varErr)
+	}
+	controller.variablesManifest = existingManifest
+	if controller.isRelayExecution() {
+		values, err := controller.relayVariableValues()
+		if err != nil {
+			logger.Warn(fmt.Sprintf("[WORKSHOP] Flow configuration needs migration: %v", err))
 		} else {
-			logger.Warn("[WORKSHOP] Variables manifest has no groups — group configuration is required for workshop context")
+			controller.variableValues = values
+			SyncExactVariablesToWorkspaceEnv(controller.BaseOrchestrator, values)
+		}
+	} else {
+		values, err := ResolveWorkflowInputs(existingManifest, cfg.InputPreset, cfg.Inputs)
+		if err != nil {
+			return nil, err
+		}
+		controller.variableValues = values
+		SyncExactVariablesToWorkspaceEnv(controller.BaseOrchestrator, values)
+		if cfg.InputPreset != "" {
+			controller.enabledGroupNames = []string{cfg.InputPreset}
 		}
 	}
 
@@ -989,49 +971,24 @@ func (s *WorkshopChatSession) UpdateBrowserRuntime(mode string, cdpPorts []int) 
 	s.controller.SetCdpPorts(cdpPorts)
 }
 
-// UpdateEnabledGroupNames refreshes the toolbar-selected group names and reloads variable values.
-// Called when reusing a cached workshop session to pick up any group selection changes.
-func (s *WorkshopChatSession) UpdateEnabledGroupNames(ctx context.Context, enabledGroupNames []string) {
-	s.controller.enabledGroupNames = enabledGroupNames
-
-	// Reload variables manifest from disk (may have changed since session was created)
-	variablesPath := fmt.Sprintf("%s/variables/variables.json", s.controller.GetWorkspacePath())
-	_, manifest, err := s.controller.variableManager.checkExistingVariables(ctx, variablesPath)
+// UpdateInvocationInputs replaces the next invocation's optional values. An
+// omitted preset means defaults; cached chats never retain a previous choice.
+func (s *WorkshopChatSession) UpdateInvocationInputs(ctx context.Context, preset string, inputs map[string]string) error {
+	_, manifest, err := s.controller.variableManager.checkExistingVariables(ctx, s.controller.GetWorkspacePath()+"/variables/variables.json")
 	if err != nil {
-		s.controller.GetLogger().Warn(fmt.Sprintf("[WORKSHOP] Failed to reload variables: %v", err))
-		return
+		return err
 	}
-	if manifest != nil {
-		s.controller.variablesManifest = manifest
+	values, err := ResolveWorkflowInputs(manifest, preset, inputs)
+	if err != nil {
+		return err
 	}
-
-	if s.controller.isRelayExecution() {
-		s.controller.variablesManifest = manifest
-		s.controller.enabledGroupNames = nil
-		values, resolveErr := s.controller.relayVariableValues()
-		if resolveErr != nil {
-			s.controller.GetLogger().Warn(fmt.Sprintf("[WORKSHOP] Flow configuration needs migration: %v", resolveErr))
-			values = nil
-		}
-		s.controller.variableValues = values
-		SyncExactVariablesToWorkspaceEnv(s.controller.BaseOrchestrator, values)
-		return
+	s.controller.variablesManifest = manifest
+	if s.config != nil {
+		s.config.InputPreset, s.config.Inputs = preset, cloneWorkflowStringMap(inputs)
 	}
-
-	// Re-resolve variable values from the selected group
-	if manifest != nil && len(enabledGroupNames) > 0 {
-		groupName := enabledGroupNames[0]
-		groupValues := manifest.GetVariableValues(groupName)
-		if groupValues != nil {
-			merged := MergeGroupWithDefaults(manifest, groupValues)
-			s.controller.variableValues = merged
-			s.controller.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Refreshed variable values from group %q (%d vars, %d after merge with defaults)", groupName, len(groupValues), len(merged)))
-		} else {
-			s.controller.GetLogger().Warn(fmt.Sprintf("[WORKSHOP] Group %q not found in manifest during refresh", groupName))
-		}
-	} else if manifest != nil && manifest.HasGroups() {
-		s.controller.GetLogger().Warn("[WORKSHOP] No selected group during refresh — preserving existing workshop variable values")
-	}
+	s.controller.variableValues = values
+	SyncExactVariablesToWorkspaceEnv(s.controller.BaseOrchestrator, values)
+	return nil
 }
 
 // RegisterWorkshopChatTools registers the complete workshop-only tool surface on
@@ -1618,13 +1575,13 @@ func RegisterRunFullWorkflowTool(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"run_full_workflow",
-		"Execute the complete workflow for real with its normal permissions, live database and actual tool actions. A person's request to run or test authorizes this execution; do not ask again for the same request. Load the plan, resolve variables, and run all steps for a single variable group. Interactive Builder runs use iteration-0; a saved schedule or webhook uses its server-bound immutable run folder. Starts from the beginning and runs in background - you will be notified when complete. Use send_step_message with the returned execution_id to steer whichever workflow child-agent turn is currently active. Use human_inputs for run-specific instructions or responses, keyed by the exact target step ID; each value is visible only to that step. If the plan contains deterministic routing steps and the user's request already selected a branch, pass route_selections keyed by routing step ID.",
+		"Execute the complete workflow for real with its normal permissions, live database and actual tool actions. A person's request to run or test authorizes this execution; do not ask again for the same request. Resolve defaults, optional saved inputs, and explicit inputs once, then run all steps in a unique run folder. A saved schedule or webhook retains its server-bound run identity. Starts from the beginning and runs in background - you will be notified when complete. Use send_step_message with the returned execution_id to steer whichever workflow child-agent turn is currently active. Use human_inputs for run-specific instructions or responses, keyed by the exact target step ID; each value is visible only to that step. If the plan contains deterministic routing steps and the user's request already selected a branch, pass route_selections keyed by routing step ID.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"group_name": map[string]interface{}{
+				"input_preset": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional input-set name. Omit when no input sets are configured or exactly one is enabled. Only one input set runs at a time.",
+					"description": "Optional exact saved-input preset name. Omit to use workflow defaults. This only fills input values; route selections are separate.",
 				},
 				"human_inputs": map[string]interface{}{
 					"type":        "object",
@@ -1640,9 +1597,9 @@ func RegisterRunFullWorkflowTool(
 						"type": "string",
 					},
 				},
-				"variables": map[string]interface{}{
+				"inputs": map[string]interface{}{
 					"type":        "object",
-					"description": "Per-run values for this run only, keyed by declared variable name (see variables/variables.json), overriding the group's saved values. Use for per-run data such as a PR number, URL or ID the user gave; never rely on a saved value for it. Unknown names are refused. Not allowed for a run started by a webhook or function, whose values are fixed by the trigger. Example: {\"PR_NUMBER\": \"149\"}.",
+					"description": "Per-run values for this run only, keyed by declared variable name (see variables/variables.json), overriding optional saved input values. Use for per-run data such as a PR number, URL or ID the user gave; never rely on a saved value for it. Unknown names are refused. Not allowed for a run started by a webhook or function, whose values are fixed by the trigger. Example: {\"PR_NUMBER\": \"149\"}.",
 					"additionalProperties": map[string]interface{}{
 						"type": "string",
 					},
@@ -1653,11 +1610,15 @@ func RegisterRunFullWorkflowTool(
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 
 			cfg := session.config
+			if cfg != nil {
+				snapshot := *cfg
+				cfg = &snapshot
+			}
 			if cfg == nil {
 				return "session config not available — cannot create workflow controller", nil
 			}
 
-			iteration := "iteration-0"
+			iteration := "run-" + workflowExecutionIDToken()
 			if cfg.WebhookInvocation != nil {
 				iteration = cfg.WebhookInvocation.RunFolder
 			} else if cfg.ScheduleInvocation != nil {
@@ -1665,16 +1626,31 @@ func RegisterRunFullWorkflowTool(
 			}
 			strategy := "start_from_beginning_no_human"
 
-			groupName, _ := args["group_name"].(string)
-			if value, supplied := args["group_name"]; supplied {
+			for _, retired := range []string{"group_name", "enabled_group_names", "variables"} {
+				if _, supplied := args[retired]; supplied {
+					return "", fmt.Errorf("%s is retired; use input_preset and inputs", retired)
+				}
+			}
+			if cfg.WebhookInvocation != nil {
+				if _, present := args["input_preset"]; present {
+					return "", fmt.Errorf("input_preset is fixed by this function or webhook invocation")
+				}
+			}
+			groupName, _ := args["input_preset"].(string)
+			if value, supplied := args["input_preset"]; supplied {
 				if _, ok := value.(string); !ok {
-					return "group_name must be a string", nil
+					return "input_preset must be a string", nil
 				}
 			}
 			var enabledGroupNames []string
 			if !session.controller.isRelayExecution() {
 				var inputErr error
-				groupName, inputErr = session.controller.resolveWorkshopInputGroup(ctx, groupName, session.controller.enabledGroupNames)
+				groupName, inputErr = session.controller.resolveWorkshopInputGroup(ctx, groupName, func() []string {
+					if cfg.InputPreset != "" {
+						return []string{cfg.InputPreset}
+					}
+					return nil
+				}())
 				if inputErr != nil {
 					return "", inputErr
 				}
@@ -1712,7 +1688,7 @@ func RegisterRunFullWorkflowTool(
 				}
 			}
 
-			runVariables, parseErr := parseWorkflowStepStringMap(args, "variables")
+			runVariables, parseErr := parseWorkflowStepStringMap(args, "inputs")
 			if parseErr != nil {
 				return parseErr.Error(), nil
 			}
@@ -1723,6 +1699,23 @@ func RegisterRunFullWorkflowTool(
 				if problem := undeclaredRunVariables(session.controller.variablesManifest, runVariables); problem != "" {
 					return problem, nil
 				}
+			}
+
+			invocationInputs := cloneWorkflowStringMap(cfg.Inputs)
+			if invocationInputs == nil {
+				invocationInputs = map[string]string{}
+			}
+			if cfg.WebhookInvocation != nil {
+				for name, value := range cfg.WebhookInvocation.Variables {
+					invocationInputs[name] = value
+				}
+			}
+			for name, value := range runVariables {
+				invocationInputs[name] = value
+			}
+			resolvedInputs, inputErr := ResolveWorkflowInputs(session.controller.variablesManifest, groupName, invocationInputs)
+			if inputErr != nil {
+				return "", inputErr
 			}
 
 			if cfg.WebhookInvocation != nil {
@@ -1768,27 +1761,7 @@ func RegisterRunFullWorkflowTool(
 				}
 				var legacyRoutingSteps []string
 				validationSteps := plan.Steps
-				variableValues := workflowRunValidationVariableValues(ctx, session, groupName)
-				if session.controller.isRelayExecution() {
-					variableValues, err = session.controller.relayVariableValues()
-					if err != nil {
-						return "", err
-					}
-				}
-				if cfg.WebhookInvocation != nil {
-					if variableValues == nil {
-						variableValues = map[string]string{}
-					}
-					for k, v := range cfg.WebhookInvocation.Variables {
-						variableValues[k] = v
-					}
-				}
-				if variableValues == nil {
-					variableValues = map[string]string{}
-				}
-				for name, value := range runVariables {
-					variableValues[name] = value
-				}
+				variableValues := resolvedInputs
 				if err := validateRequiredLaunchVariables(plan.Steps, variableValues, routeSelections, 0, false); err != nil {
 					return err.Error(), nil
 				}
@@ -1863,7 +1836,7 @@ func RegisterRunFullWorkflowTool(
 			//    resolve against the same session ID step agents actually use.
 			workflowGroup := ""
 			if len(enabledGroupNames) > 0 {
-				workflowGroup = enabledGroupNames[0]
+				workflowGroup = ""
 			}
 			workflowSessionID := session.controller.GetMCPSessionID()
 			if workflowSessionID != "" {
@@ -1900,12 +1873,12 @@ func RegisterRunFullWorkflowTool(
 				execMeta["iteration"] = iteration
 			}
 			if len(enabledGroupNames) > 0 {
-				execMeta["group_name"] = enabledGroupNames[0]
+				execMeta["input_preset"] = enabledGroupNames[0]
 			}
 			if iteration != "" {
 				runFolder := iteration
 				if len(enabledGroupNames) > 0 {
-					runFolder = filepath.Join(iteration, enabledGroupNames[0])
+					runFolder = iteration
 				}
 				execMeta["run_folder"] = runFolder
 			}
@@ -1959,7 +1932,7 @@ func RegisterRunFullWorkflowTool(
 					ownedSubAgents: &workshopSubAgentCleanup{},
 				}
 				if len(enabledGroupNames) > 0 {
-					progressBridge.groupName = enabledGroupNames[0]
+					progressBridge.groupName = ""
 				}
 
 				workflowController, err := NewStepBasedWorkflowOrchestrator(
@@ -2011,15 +1984,12 @@ func RegisterRunFullWorkflowTool(
 				if len(cfg.Secrets) > 0 {
 					workflowController.SetSecrets(cfg.Secrets)
 				}
-				if cfg.WorkspaceEnvRef != nil {
-					if session.controller.isRelayExecution() {
-						// A background test owns its inputs; Builder edits or another
-						// invocation must not replace its live environment map.
-						workflowController.SetWorkspaceEnvRef(session.controller.snapshotWorkspaceEnv())
-					} else {
-						workflowController.SetWorkspaceEnvRef(cfg.WorkspaceEnvRef)
-					}
+				env := session.controller.snapshotWorkspaceEnv()
+				if env == nil {
+					env = map[string]string{}
 				}
+				workflowController.SetWorkspaceEnvRef(env)
+
 				if skills := session.controller.GetSelectedSkills(); len(skills) > 0 {
 					workflowController.SetSelectedSkills(skills)
 				}
@@ -2032,11 +2002,14 @@ func RegisterRunFullWorkflowTool(
 
 				// Set execution options
 				execOpts := &ExecutionOptions{
-					SelectedRunFolder: iteration,
-					ExecutionStrategy: strategy,
-					EnabledGroupNames: enabledGroupNames,
-					HumanInputs:       humanInputs,
-					RouteSelections:   routeSelections,
+					SelectedRunFolder:  iteration,
+					RunFolderAllocated: true,
+					ExecutionStrategy:  strategy,
+					InputPreset:        groupName,
+					Inputs:             invocationInputs,
+					ResolvedInputs:     resolvedInputs,
+					HumanInputs:        humanInputs,
+					RouteSelections:    routeSelections,
 					// Fresh controllers start with no options: without the
 					// session runner, crew steps fail as unbound here.
 					CrewRunner:         cfg.CrewRunner,
@@ -2090,13 +2063,13 @@ func RegisterRunFullWorkflowTool(
 
 			groupInfo := ""
 			if len(enabledGroupNames) > 0 {
-				groupInfo = fmt.Sprintf("\nGroup: %s", enabledGroupNames[0])
+				groupInfo = fmt.Sprintf("\nSaved inputs: %s", enabledGroupNames[0])
 			}
 			iterInfo := "\nIteration: new (auto-created)"
 			if session.controller.isRelayExecution() {
 				iterInfo = fmt.Sprintf("\nrun_folder: %q", iteration)
 			} else if iteration != "" {
-				iterInfo = fmt.Sprintf("\nIteration: %s (reusing)", iteration)
+				iterInfo = fmt.Sprintf("\nrun_folder: %q", iteration)
 			}
 			return fmt.Sprintf("Full workflow execution started.\nexecution_id: %q\nStrategy: %s%s%s\nAll steps will be executed end-to-end. Use send_step_message(execution_id=%q, message=...) for a live correction while a child-agent turn is active.\nYou will be automatically notified when it completes.", execID, strategy, groupInfo, iterInfo, execID), nil
 		},

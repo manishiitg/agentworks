@@ -10,7 +10,7 @@ The Webhooks panel is for URLs, status and existing-trigger controls, not creati
 
 1. List triggers/routes/groups. Reuse an existing binding when appropriate; do not
    duplicate it. Resolve actual routing step IDs and route IDs, preserving prerequisites.
-2. Create with name, enabled, auth_mode, route_selections and group_names. Use bearer
+2. Create with name, enabled, auth_mode, route_selections and optional input_preset/inputs. Use bearer
    for GitHub Actions/custom POSTs and github for GitHub's signed event deliveries.
    The platform generates the secret. Never invent ciphertext or credentials.
 3. Explain/store the returned one-time credential only where the user authorized.
@@ -47,7 +47,7 @@ Crews, other workflows and MCP/CLI tools call this workflow through its
 **functions**. Free text goes to `ask`, which reaches this workflow's
 assistant in Run mode (one continuing thread per caller), never straight into
 a run; the assistant picks the route and variables itself. A function is a trigger with
-`kind: "function"`: the same fixed `route_selections` and `group_names` as a
+`kind: "function"`: the same fixed `route_selections` and optional `input_preset`/`inputs` as a
 webhook, plus `function: {name, description, inputs}`. It has no URL and no
 secret; the platform identifies the caller, who must be able to run this
 workflow. Optionally `function.allowed_callers` limits it to named Crews or
@@ -68,7 +68,7 @@ workflows.
   Make a step that skips say why in its output.
 
 Example: `{"action":"create","kind":"function","name":"Review PR","enabled":true,
-"route_selections":{"router":"review"},"group_names":["prod"],"function":{"name":
+"route_selections":{"router":"review"},"input_preset":"Production","function":{"name":
 "review_pr","description":"Review one pull request","inputs":[{"name":
 "GITHUB_OWNER","required":true},{"name":"GITHUB_REPO","required":true},{"name":
 "PR_NUMBER","type":"integer","required":true}]}}`
@@ -158,36 +158,32 @@ Rules that keep a multi-path trigger debuggable:
 - Raw input is the default and keeps arbitrary external provider JSON unchanged.
   Configure input_mode="envelope" only for callers you control (e.g. CI), with
   allowed_variables listing exact declared non-secret workflow variable names.
-  group_names is both the allowed group list and the default execution groups.
-  With an envelope, an omitted group runs the configured default groups; supplying
-  group selects exactly one of them. Explicitly explain this if prod is allowed.
-- Envelope body: {"group":"dev","variables":{"base_url":"https://staging.example.com"},"payload":{"pr_number":123}}.
-  Variables use string values, at most 16 KiB each, and apply only to this run.
-  Unknown groups, undeclared/disallowed/protected variables and malformed envelopes
-  fail with 400 before execution. Never allow tokens, passwords, credentials or
-  runtime environment controls as overridable variables. Saved variables and
-  secrets are not modified. Raw event fields named group/variables are only data.
+  The saved input preset is fixed by the owner; deliveries cannot select a preset.
+- Envelope body: {"variables":{"base_url":"https://staging.example.com"},"payload":{"pr_number":123}}.
+  Declared, allowed variables apply only to this run and override its defaults or
+  saved inputs. Unknown/disallowed/protected variables, a retired group selector,
+  and malformed envelopes fail before execution. Credentials stay in Vault.
+  Raw event fields named group/variables remain ordinary payload data.
 - For create/update supply input_mode and allowed_variables; preserve existing
   values when editing unrelated configuration. An empty allowed_variables array
   removes override permission. Choose raw to restore native provider payloads.
 - When the sender's raw JSON shape cannot change, configure `payload_mappings`.
   Each mapping has `source` (a top-level or dotted field such as `env`,
   `$.component`, or `deployment.environment`), `values` (incoming scalar value
-  to saved ID), and an optional `default`. `group` maps to one allowed
-  `group_names` entry. `routes` is keyed by routing/branch step ID and maps to a
+  to saved ID), and an optional `default`. Group mappings are retired. `routes` is keyed by routing/branch step ID and maps to a
   route ID on that exact step; fixed outer `route_selections` and mapped inner
   branches are merged before execution. `step` maps to a standalone executable
   step and cannot be combined with fixed or mapped routes. Missing, non-scalar,
   or unmapped values fail with 400 unless a valid default is configured.
   Mappings require `input_mode="raw"`; they never mutate the stored payload.
 - Validate with a harmless authorized dev test, check action=status, verify the
-  chosen group and changed input through a step result, inspect progress and
-  download an artifact. Also verify an unauthorized group/variable is rejected.
+  chosen route and changed input through a step result, inspect progress and
+  download an artifact. Also verify an unauthorized variable is rejected.
   A GitHub ping checks authentication only; it cannot prove envelope execution.
 
 ### Direct route execution
 
-Webhook deliveries dispatch directly to the workflow plan executor with the saved route selections and validated group/variable inputs. They do not start a Builder chat or ask an agent to call `run_full_workflow`. Plan prerequisites and agent steps still run normally. An empty route selection runs the full plan. Scheduled jobs retain their existing execution path.
+Webhook deliveries dispatch directly to the workflow plan executor with the saved route selections and validated declared inputs. They do not start a Builder chat or ask an agent to call `run_full_workflow`. Plan prerequisites and agent steps still run normally. An empty route selection runs the full plan. Scheduled jobs retain their existing execution path.
 
 Prepare and upgrade the workflow in Builder before testing the trigger; a webhook never edits or upgrades the plan. Poll the returned status URL (or use `manage_workflow_webhook` action `status`) for progress, step outputs, final success/failure and artifact links. The isolated `iteration-<n>-hook` folders, last-10 retention, cancellation, authentication, idempotency and isolated execution policy still apply.
 
@@ -204,7 +200,7 @@ For a payload such as:
 {"component":"service/review","env":"prod","commit_sha":"abc123"}
 ```
 
-configure a fixed outer route plus mapped group and inner branch like this:
+configure a fixed inputs and outer route plus a mapped inner branch like this:
 
 ```json
 {
@@ -214,18 +210,11 @@ configure a fixed outer route plus mapped group and inner branch like this:
   "enabled": true,
   "auth_mode": "bearer",
   "input_mode": "raw",
-  "group_names": ["customer-prod", "customer-staging"],
+  "input_preset": "Production",
   "route_selections": {
     "MAIN_ROUTING_STEP_ID": "regression"
   },
   "payload_mappings": {
-    "group": {
-      "source": "env",
-      "values": {
-        "prod": "customer-prod",
-        "staging": "customer-staging"
-      }
-    },
     "routes": {
       "COMPONENT_BRANCH_STEP_ID": {
         "source": "component",

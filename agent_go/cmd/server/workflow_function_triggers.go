@@ -157,13 +157,7 @@ func workflowFunctionInputSchema(sched WorkflowSchedule) map[string]interface{} 
 			required = append(required, input.Name)
 		}
 	}
-	if len(sched.GroupNames) > 1 {
-		values := make([]interface{}, 0, len(sched.GroupNames))
-		for _, group := range sched.GroupNames {
-			values = append(values, group)
-		}
-		properties["group"] = map[string]interface{}{"type": "string", "enum": values, "description": "Variable group to run with; omit for the default."}
-	}
+
 	schema := map[string]interface{}{"type": "object", "properties": properties}
 	if len(required) > 0 {
 		schema["required"] = required
@@ -272,6 +266,9 @@ func sharedFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionS
 // and turns them into the run's variables and group. Unknown, missing or
 // mistyped inputs fail before anything runs.
 func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (map[string]string, string, error) {
+	if _, present := args["group"]; present {
+		return nil, "", fmt.Errorf("group is retired; configure input_preset on the function and pass its declared inputs")
+	}
 	if sched.Function.InputSchema != nil {
 		schema, err := compilePythonRelaySchema(sched.Function.InputSchema)
 		if err != nil {
@@ -292,15 +289,7 @@ func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (
 	group := ""
 	problems := []string{}
 	for name, raw := range args {
-		if name == "group" && len(sched.GroupNames) > 1 {
-			value, ok := raw.(string)
-			if !ok || !slices.Contains(sched.GroupNames, value) {
-				problems = append(problems, fmt.Sprintf("group must be one of %s", strings.Join(sched.GroupNames, ", ")))
-				continue
-			}
-			group = value
-			continue
-		}
+
 		input, known := inputs[name]
 		if !known {
 			problems = append(problems, fmt.Sprintf("unknown input %q", name))

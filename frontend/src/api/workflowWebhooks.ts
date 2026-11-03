@@ -11,7 +11,9 @@ export interface WorkflowAPITrigger {
   auth_mode: 'bearer' | 'github' | ''
   path: string
   route_selections: Record<string, string>
-  group_names: string[]
+  input_preset?: string
+  inputs?: Record<string, string>
+  group_names?: string[]
   max_concurrency?: number
   payload_mappings?: WebhookPayloadMappings
   secret?: string
@@ -43,7 +45,6 @@ export interface WebhookValueMapping {
 }
 
 export interface WebhookPayloadMappings {
-  group?: WebhookValueMapping
   routes?: Record<string, WebhookValueMapping>
   step?: WebhookValueMapping
 }
@@ -53,7 +54,7 @@ export interface APITriggerOptions {
   steps?: { step_id: string; title: string }[]
   triggers: WorkflowAPITrigger[]
   routes: { step_id: string; step_title: string; route_id: string; route_name: string }[]
-  groups: string[]
+  input_presets: string[]
   route_error?: string
 }
 
@@ -74,7 +75,7 @@ export interface RelayReleasesResponse {
   releases: RelayRelease[]
 }
 
-export type APITriggerRequest = Pick<WorkflowAPITrigger, 'name' | 'enabled' | 'auth_mode' | 'route_selections' | 'group_names'> & {
+export type APITriggerRequest = Pick<WorkflowAPITrigger, 'name' | 'enabled' | 'auth_mode' | 'route_selections' | 'input_preset' | 'inputs'> & {
   workspace_path: string
   chat_id?: string
   step_id?: string

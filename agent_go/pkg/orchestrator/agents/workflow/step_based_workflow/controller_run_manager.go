@@ -14,9 +14,8 @@ const (
 	defaultRunRetentionCount = 10
 )
 
-// prepareCurrentRun rotates the previous iteration-0 into an archive, then
-// returns the fresh current run slot. The platform keeps ten completed
-// archives in each run family.
+// prepareCurrentRun allocates one run identity or continues a server-authorized
+// existing run. Input labels never determine its folder.
 func (hcpo *StepBasedWorkflowOrchestrator) prepareCurrentRun(ctx context.Context, workspacePath string) (string, error) {
 	if opts := hcpo.GetExecutionOptions(); opts != nil && opts.WebhookInputFile != "" {
 		if !regexp.MustCompile(`^iteration-[0-9]+-(?:hook|slack-[a-f0-9]+)$`).MatchString(opts.SelectedRunFolder) {
@@ -30,13 +29,29 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCurrentRun(ctx context.Context
 		}
 		return opts.SelectedRunFolder, hcpo.createRunFolderStructure(ctx, filepath.Join(workspacePath, "runs", opts.SelectedRunFolder))
 	}
-	runsPath := fmt.Sprintf("%s/runs", workspacePath)
-	runRetentionCount := defaultRunRetentionCount
-	if err := hcpo.rotateIterationZero(ctx, runsPath, runRetentionCount); err != nil {
+	opts := hcpo.GetExecutionOptions()
+	folder := ""
+	if opts != nil {
+		folder = opts.SelectedRunFolder
+	}
+	if folder == "" || folder == currentWorkflowRunFolder || (opts != nil && !opts.RunFolderAllocated && opts.ResumeFromStep <= 0) {
+		folder = "run-" + workflowExecutionIDToken()
+	}
+	if err := ValidateWorkflowRunFolder(folder); err != nil {
 		return "", err
 	}
-	hcpo.GetLogger().Info(fmt.Sprintf("Using iteration-0 for workflow execution (keeping %d backup iteration(s))", runRetentionCount))
-	return currentWorkflowRunFolder, nil
+	if opts != nil && opts.ResumeFromStep > 0 {
+		if !opts.AllowRunContinuation {
+			return "", fmt.Errorf("only a Builder can continue an existing run; start a new run instead")
+		}
+		if _, err := hcpo.readExistingRunInputs(ctx, folder); err != nil {
+			return "", err
+		}
+	}
+	if opts != nil {
+		opts.SelectedRunFolder = folder
+	}
+	return folder, hcpo.createRunFolderStructure(ctx, filepath.Join(workspacePath, "runs", folder))
 }
 
 // rotateIterationZero rotates the workflow runs tree's iteration-0 to the next

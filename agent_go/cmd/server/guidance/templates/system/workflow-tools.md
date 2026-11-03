@@ -65,14 +65,14 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 
 ## Step Execution & Inspection
 
-- **`runs(action="step", step_id, group_name, instructions?, human_input?, tier?, agent_restart?, script_parameters?)`** — Start a single step in the background; returns `execution_id`. In interactive Workshop mode this is the primary way to test one step after adding or editing it and uses `iteration-0`; inside a saved schedule/webhook invocation the server forces its bound `iteration-N-sched`/`iteration-N-hook` folder. For a scripted step, `script_parameters` is an object validated against the step's declared contract and passed through `STEP_PARAMS_JSON`; it is rejected for non-scripted steps. A standalone `agent` always starts its configured queue from the beginning; `human_input` is inserted as an initial user message and never mutates the system-level description charter. LLM specialist routes are retired; persistent specialist work belongs to Crew. It is high-priority runtime context scoped to this executable step.
-- **`runs(action="step", step_id, group_name, fast_path_only=true)`** *(Workshop mode only)* — Run the step's saved Python `<script-dir>/main.py` directly with the same workflow env, args, output folder, and validation behavior as a real workflow run. Never falls back to LLM. Used to quickly test `scripted` main.py patches. Without `fast_path_only`, your own `runs action=step` of a scripted step may write or repair its `main.py`; a run never does.
+- **`runs(action="step", step_id, input_preset?, inputs?, instructions?, human_input?, tier?, agent_restart?, script_parameters?)`** — Start a single step in the background; returns `execution_id`. In interactive Workshop mode this is the primary way to test one step after adding or editing it and creates a unique run folder; inside a saved schedule/webhook invocation the server forces its bound `iteration-N-sched`/`iteration-N-hook` folder. For a scripted step, `script_parameters` is an object validated against the step's declared contract and passed through `STEP_PARAMS_JSON`; it is rejected for non-scripted steps. A standalone `agent` always starts its configured queue from the beginning; `human_input` is inserted as an initial user message and never mutates the system-level description charter. LLM specialist routes are retired; persistent specialist work belongs to Crew. It is high-priority runtime context scoped to this executable step.
+- **`runs(action="step", step_id, input_preset?, inputs?, fast_path_only=true)`** *(Workshop mode only)* — Run the step's saved Python `<script-dir>/main.py` directly with the same workflow env, args, output folder, and validation behavior as a real workflow run. Never falls back to LLM. Used to quickly test `scripted` main.py patches. Without `fast_path_only`, your own `runs action=step` of a scripted step may write or repair its `main.py`; a run never does.
 - **`runs(action="step_status", step_id, tool_call_id?)`** — One-off live status check for a running single step. Resolves the latest execution for that step and shows execution status plus structured MCP tool calls and tool-call details captured so far. For coding-CLI providers, terminal/TUI progress does not appear as MCP tool calls — but when the step runs in tmux, `runs action=step_status` **inlines the latest lines of the live terminal pane** and also returns the tmux session name + a `tmux capture-pane -pt <session> -S -200` command for deeper history (same session as the UI terminal). Do **not** combine `sleep`, `runs action=active`, and `runs action=step_status` into a polling loop. After launching background work, use at most one immediate status check, then yield; `[AUTO-NOTIFICATION]` will resume the conversation when the work completes.
 - **`runs(action="message", execution_id, message)`** — Send a correction or follow-up to the exact active child-agent turn inside a running step or full-workflow execution. Use the ID returned by `runs action=step` / `runs action=start`; never guess from the step ID. Coding CLIs receive native live input, while non-coding agents queue the message for the next safe turn boundary. This does not start or resume work. `no_active_agent` means the execution is between agent turns or running validation/script work; wait instead of retrying in a loop.
 - **`runs(action="debug", step_id, iteration, group_name)`** — Rich insights: learning status, validation result, log paths.
 - **`runs(action="active", status_filter?)`** — List all background executions. Use it to find an execution id or debug ambiguity, not as a repeated progress poll.
 - **`runs(action="stop_step", execution_id)` / `runs(action="stop_all")`** — Cancel running steps.
-- **`runs(action="start", group_name, variables?, human_inputs?, route_selections?)`** — Execute the complete workflow (all steps) for a single variable group in background and start from the beginning. Interactive Builder runs use `iteration-0`; saved schedules and webhooks use their server-bound immutable `iteration-N-sched` / `iteration-N-hook` folder. Supply known values as declared `variables`; missing `required_variables` fail before work starts on the selected route. Use `human_inputs` keyed by exact step ID for scoped instructions. For deterministic routers, pass `route_selections` keyed by routing or branch step ID, with each value as a `route_id` or unique `next_step_id`. Returns `execution_id`. In scheduled/run-mode flows, call it once for the intended group, then stop instead of polling substeps; auto-notifications report progress/completion.
+- **`runs(action="start", input_preset?, inputs?, human_inputs?, route_selections?)`** — Execute the complete workflow (all steps) once with the resolved inputs in background and start from the beginning. Interactive Builder runs get a unique run folder; saved schedules and webhooks use their server-bound immutable `iteration-N-sched` / `iteration-N-hook` folder. Supply known values as declared `inputs`; missing `required_variables` fail before work starts on the selected route. Use `human_inputs` keyed by exact step ID for scoped instructions. For deterministic routers, pass `route_selections` keyed by routing or branch step ID, with each value as a `route_id` or unique `next_step_id`. Returns `execution_id`. In scheduled/run-mode flows, call it once for the intended inputs, then stop instead of polling substeps; auto-notifications report progress/completion.
 
 {{if ne .WorkshopMode "run"}}
 ## Step Config & Analysis (Workshop mode)
@@ -135,10 +135,10 @@ Run mode consumes existing attachments; configuration changes require Workshop.
   { "id": "...", "name": "...", "description": "...",
     "cron_expression": "0 9 * * 1-5", "timezone": "UTC",
     "enabled": true, "trigger_payload": {},
-    "group_names": ["customer-prod"],
+    "input_preset": "Production",
     "mode": "workshop", "workshop_mode": "workshop" }
   ```
-  Fields: `id` (auto-assigned), `name` (display label), `description` (optional), `cron_expression` (standard 5-field cron), `timezone` (IANA tz e.g. `America/New_York`), `enabled` (bool), `trigger_payload` (arbitrary JSON passed to the run), `group_names` (required array of one or more explicit group names from `variables/variables.json`), `mode` (`workshop` for workflow schedules), `workshop_mode` (`workshop` for writable scheduled sessions; the server derives `run` only for read-only access).
+  Fields: `id` (auto-assigned), `name` (display label), `description` (optional), `cron_expression` (standard 5-field cron), `timezone` (IANA tz e.g. `America/New_York`), `enabled` (bool), `trigger_payload` (arbitrary JSON passed to the run), `input_preset` (optional saved input name) and `inputs` (optional declared key/value overrides), `mode` (`workshop` for workflow schedules), `workshop_mode` (`workshop` for writable scheduled sessions; the server derives `run` only for read-only access).
 - Schedule management is available in **Workshop mode**. If the user asks in Run mode, tell them to switch.
 
 ### Two schedule types: cron vs calendar
@@ -154,7 +154,7 @@ Every schedule in `workflow.json` has a `schedule_type` — `"cron"` (default) o
 
 ```
 { "name": "March content calendar", "timezone": "Asia/Kolkata",
-  "group_names": ["group-1"], "mode": "workshop", "workshop_mode": "workshop",
+  "input_preset": "Saved values", "mode": "workshop", "workshop_mode": "workshop",
   "calendar_items": [
     { "date": "2026-03-03", "time": "09:00", "description": "Optional note" },
     { "date": "2026-03-07", "time": "18:30" }
@@ -162,7 +162,7 @@ Every schedule in `workflow.json` has a `schedule_type` — `"cron"` (default) o
 ```
 
 - `calendar_items` (required): each needs `date` (`YYYY-MM-DD`) and `time` (`HH:MM`), both interpreted in the schedule's `timezone`. `description` is an optional per-item note; `messages` is an optional per-item message queue.
-- `timezone` (required, IANA — e.g. `Asia/Kolkata`, not `IST`) and `group_names` (required) work exactly as for cron schedules.
+- `timezone` (required, IANA — e.g. `Asia/Kolkata`, not `IST`) and `input_preset` and `inputs` (optional) work exactly as for cron schedules.
 - **Mode is the same as cron**: workflow schedules use `mode="workshop"`. Supply per-item `messages` or a top-level default `messages` array when the default full-workflow run instruction is not specific enough.
 - Past-dated items are skipped — only future items get registered. To change a calendar schedule, update its `calendar_items` (add/remove dates); editing tools (`automations` action=update, delete, run_now or runs with scope=schedule) work on calendar schedules too.
 
@@ -170,7 +170,7 @@ Every schedule in `workflow.json` has a `schedule_type` — `"cron"` (default) o
 
 Workflow schedules always use the workshop builder execution path. Do not create direct `mode="workflow"` schedules; legacy manifests with that value are normalized to workshop execution.
 
-- **Workshop** (`mode=workshop`, `workshop_mode=workshop`) — writable scheduled execution for approved human-decision application and normal workflow work. Scheduled sessions never authorize, apply, or stamp contract migrations; pending upgrades are started manually in the interactive Builder chat and do not block schedules. Prefer an empty queue plus `group_names`/`route_selections` for durable workflow behavior: canonical steps receive their normal learning, validation/retry, repair, and run attribution lifecycle. The server pins read-only workflow users to Run.
+- **Workshop** (`mode=workshop`, `workshop_mode=workshop`) — writable scheduled execution for approved human-decision application and normal workflow work. Scheduled sessions never authorize, apply, or stamp contract migrations; pending upgrades are started manually in the interactive Builder chat and do not block schedules. Prefer an empty queue plus optional inputs and `route_selections` for durable workflow behavior: canonical steps receive their normal learning, validation/retry, repair, and run attribution lifecycle. The server pins read-only workflow users to Run.
 
 **Default mode rule:** create workflow schedules with `mode="workshop"`. New schedules should never use `mode="workflow"`.
 
@@ -191,16 +191,16 @@ Confirm with the user before skipping backup on a recurring schedule.
 `messages` is an ordered queue of strings sent to the workshop LLM one-by-one as user turns. The LLM completes all tool calls triggered by message N before message N+1 is sent.
 
 - Write each message as a plain instruction, like you would type in chat: `"Run the full workflow"`, `"Generate the final report"`.
-- **Route-backed mode (default)**: select planned work through `group_names` plus optional `route_selections`, and keep `messages` empty. Use this for durable workflow behavior so one canonical plan owns its lifecycle.
+- **Route-backed mode (default)**: select planned work through optional `input_preset`/`inputs` plus `route_selections`, and keep `messages` empty. Use this for durable workflow behavior so one canonical plan owns its lifecycle.
 - A route schedule already runs the workflow; any saved messages are only follow-ups after it. Do not add another `runs action=start` message.
 - **Direct-sequence mode (supported exception)**: use one or more messages when the conversation itself is genuinely schedule-specific and should not become reusable plan behavior. Set `direct_messages_reason` with the concrete tradeoff. These turns run in the workshop but are not canonical steps, so step learnings, validation/retry, repair, and run attribution are weaker or unavailable unless the sequence explicitly invokes planned work.
 - Never choose solely from message length. Compare behavior, inputs/outputs, external side effects, approval boundaries, failure behavior, and expected reuse.
-- Read `variables/variables.json` for available group names and include them explicitly in the message if needed.
+- Read `variables/variables.json` for input names and optional saved values. A schedule needs no preset when defaults suffice.
 
 **CRITICAL — schedules run unattended; messages must never require human input:**
 
 - Explicitly tell the agent to make all decisions autonomously: `"Do not ask for confirmation, proceed automatically"`.
-- Provide all required parameters upfront in the message (group names, run folders, step IDs) so the agent never needs to ask.
+- Provide all required parameters upfront (declared inputs and step IDs); run folders are server-bound so the agent never needs to ask.
 - Tell the agent to skip or use defaults for anything unclear rather than pausing to ask.
 - Never include open-ended questions or `"let me know"` style instructions.
 - **Bad**: `"Run the workflow and ask me which steps to optimize"`.

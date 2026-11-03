@@ -106,8 +106,8 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span>{cronDesc}</span>
               {executionScope && <span title={executionScope.title}>{executionScope.label}</span>}
-              {job.group_names && job.group_names.length > 1 && (
-                <span title={job.group_names.join(', ')}>Groups: {job.group_names.join(', ')}</span>
+              {job.input_preset && (
+                <span title={job.input_preset}>Saved inputs: {job.input_preset}</span>
               )}
               {(job.entity_type === 'product' || Boolean(job.run_destinations?.length)) && (
                 <label className="inline-flex items-center gap-1.5">

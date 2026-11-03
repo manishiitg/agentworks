@@ -29,7 +29,7 @@ with the correct approach.
    unless the user asks you to stop or check again. Do not poll in a
    tight loop.
 3. If a step already completed or failed, use
-   `debug_step(step_id, group_name=...)` plus targeted reads of run
+   `debug_step(step_id, iteration="<returned run_folder>")` plus targeted reads of run
    outputs/log summaries. For whole-run questions, use
    the relevant timing, cost, eval, report, and goal reviews.
 4. Explain the observed failure or data gap in plain English and offer

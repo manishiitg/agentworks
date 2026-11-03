@@ -62,8 +62,14 @@ type ExecutionOptions struct {
 	// PaceThresholdPercent > 0 enables quota pacing for this run.
 	PaceThresholdPercent int `json:"pace_threshold_percent,omitempty"`
 
-	// Variable group execution options (for batch execution with multiple groups)
-	EnabledGroupNames []string `json:"enabled_group_names"` // nil selects enabled groups (or one ungrouped invocation); [] selects no work
+	// Optional saved input values; neither field selects routes or execution roots.
+	InputPreset          string            `json:"input_preset,omitempty"`
+	Inputs               map[string]string `json:"inputs,omitempty"`
+	AllowRunContinuation bool              `json:"-"`
+	RunFolderAllocated   bool              `json:"-"`
+	ResolvedInputs       map[string]string `json:"-"` // Admission snapshot; never supplied by public JSON.
+	// Retained only to reject the retired batch selector with an actionable error.
+	EnabledGroupNames []string `json:"enabled_group_names,omitempty"`
 
 	// Operator instructions, keyed by step ID and scoped to that executable step.
 	HumanInputs map[string]string `json:"human_inputs,omitempty"`

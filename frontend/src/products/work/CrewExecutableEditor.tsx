@@ -8,6 +8,7 @@ import { useWorkspaceState } from '../../components/workflow/hooks/useWorkspaceS
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 
+const Inputs = lazy(() => import('../../components/workflow/canvas/VariablesSidebar'))
 const Canvas = lazy(() => import('../../components/workflow/canvas/WorkspaceViewHost'))
 const Logs = lazy(() => import('../../components/workflow/ExecutionLogsPopup'))
 const RelayLogs = lazy(() => import('../../components/workflow/RelayExecutionLogsView'))
@@ -42,7 +43,7 @@ export function CrewExecutableEditor({
   const [file, setFile] = useState<string | null>(null)
   const [runFolder, setRunFolder] = useState<string | null>(null)
   const [detail, setDetail] = useState<'logs' | 'inspect' | 'costs'>('logs')
-  const [settings, setSettings] = useState<'schedules' | 'functions' | 'webhooks'>('schedules')
+  const [settings, setSettings] = useState<'inputs' | 'schedules' | 'functions' | 'webhooks'>('inputs')
   const [error, setError] = useState('')
   const workspace = useWorkspaceState(item.workspace_path, runFolder, false)
   const folders = workspace.state?.run_folders ?? []
@@ -257,18 +258,20 @@ export function CrewExecutableEditor({
           ) : (
             <div className="flex h-full min-h-0 flex-col">
               <nav aria-label="Workflow settings" className="flex shrink-0 gap-1 border-b p-2">
-                {(['schedules', 'functions', 'webhooks'] as const).map((value) => (
+                {(['inputs', 'schedules', 'functions', 'webhooks'] as const).map((value) => (
                   <button
                     key={value}
                     className={`${button} ${settings === value ? 'bg-muted' : ''}`}
                     onClick={() => setSettings(value)}
                   >
-                    {value === 'webhooks' ? 'Webhooks' : value === 'functions' ? 'Functions' : 'Schedules'}
+                    {value === 'inputs' ? 'Inputs' : value === 'webhooks' ? 'Webhooks' : value === 'functions' ? 'Functions' : 'Schedules'}
                   </button>
                 ))}
               </nav>
               <div className="min-h-0 flex-1 overflow-auto">
-                {settings === 'schedules' ? (
+                {settings === 'inputs' ? (
+ <Inputs embedded workspacePath={item.workspace_path} relayMode={item.kind === 'relay'} onClose={onBack} onUpdate={() => void workspace.refresh()} />
+ ) : settings === 'schedules' ? (
                   <Schedules
                     embedded
                 workflowScope={{ presetQueryId: item.id, workspacePath: item.workspace_path, label: item.manifest.label }}

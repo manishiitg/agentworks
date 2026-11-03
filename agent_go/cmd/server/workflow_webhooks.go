@@ -14,7 +14,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -121,6 +120,8 @@ type webhookRouteOption struct {
 }
 
 type workflowWebhookResponse struct {
+	InputPreset      string                          `json:"input_preset,omitempty"`
+	Inputs           map[string]string               `json:"inputs,omitempty"`
 	ChatID           string                          `json:"chat_id,omitempty"`
 	StepID           string                          `json:"step_id,omitempty"`
 	InputMode        string                          `json:"input_mode,omitempty"`
@@ -132,7 +133,7 @@ type workflowWebhookResponse struct {
 	AuthMode         string                          `json:"auth_mode"`
 	Path             string                          `json:"path"`
 	RouteSelections  map[string]string               `json:"route_selections"`
-	GroupNames       []string                        `json:"group_names"`
+	GroupNames       []string                        `json:"group_names,omitempty"`
 	MaxConcurrency   int                             `json:"max_concurrency"`
 	Secret           string                          `json:"secret,omitempty"`
 	Kind             string                          `json:"kind,omitempty"`
@@ -141,6 +142,8 @@ type workflowWebhookResponse struct {
 }
 
 type workflowWebhookRequest struct {
+	InputPreset      string                          `json:"input_preset,omitempty"`
+	Inputs           map[string]string               `json:"inputs,omitempty"`
 	ChatID           string                          `json:"chat_id,omitempty"`
 	StepID           *string                         `json:"step_id,omitempty"`
 	InputMode        string                          `json:"input_mode,omitempty"`
@@ -151,7 +154,7 @@ type workflowWebhookRequest struct {
 	Enabled          bool                            `json:"enabled"`
 	AuthMode         string                          `json:"auth_mode"`
 	RouteSelections  map[string]string               `json:"route_selections"`
-	GroupNames       []string                        `json:"group_names"`
+	GroupNames       []string                        `json:"group_names,omitempty"`
 	RotateSecret     bool                            `json:"rotate_secret"`
 	Kind             string                          `json:"kind,omitempty"`
 	Caller           *triggerCaller                  `json:"caller,omitempty"`
@@ -232,7 +235,7 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 	if s.IsInternalTrigger() {
 		path = ""
 	}
-	out := workflowWebhookResponse{ChatID: s.ChatID, ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, GroupNames: s.GroupNames, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function}
+	out := workflowWebhookResponse{ChatID: s.ChatID, ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, InputPreset: s.InputPreset, Inputs: s.Inputs, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function}
 	if s.Webhook != nil {
 		out.StepID = s.Webhook.StepID
 		out.InputMode = s.Webhook.InputMode
@@ -332,15 +335,7 @@ func validateWebhookPayloadMappings(ctx context.Context, workspacePath string, c
 		return errors.New("payload route mappings cannot be combined with a fixed step")
 	}
 	if mappings.Group != nil {
-		targets, err := webhookMappingTargets(*mappings.Group)
-		if err != nil {
-			return fmt.Errorf("group mapping: %w", err)
-		}
-		for _, group := range targets {
-			if !slices.Contains(groups, group) {
-				return fmt.Errorf("group mapping target %q is not allowed by this trigger", group)
-			}
-		}
+		return fmt.Errorf("group payload mappings are retired; map declared inputs instead")
 	}
 	for stepID, mapping := range mappings.Routes {
 		stepID = strings.TrimSpace(stepID)
@@ -473,7 +468,7 @@ func (s *SchedulerService) listWorkflowWebhooks(w http.ResponseWriter, r *http.R
 		routes = []webhookRouteOption{}
 	}
 	steps, _ := workflowWebhookSteps(r.Context(), path)
-	groups := []string{}
+	presets := []string{}
 	variableNames := []string{}
 	content, exists, err := readFileFromWorkspace(r.Context(), path+"/variables/variables.json")
 	if err == nil && exists {
@@ -484,13 +479,13 @@ func (s *SchedulerService) listWorkflowWebhooks(w http.ResponseWriter, r *http.R
 			}
 			if manifest.Kind != "relay" {
 				for _, g := range vars.Groups {
-					groups = append(groups, g.Name)
+					presets = append(presets, g.Name)
 				}
 			}
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{"triggers": hooks, "routes": routes, "groups": groups, "declared_variables": variableNames, "route_error": routeError, "steps": steps}
+	response := map[string]interface{}{"triggers": hooks, "routes": routes, "input_presets": presets, "declared_variables": variableNames, "route_error": routeError, "steps": steps}
 	level := workflowAccessForManifest(GetUserFromContext(r.Context()), manifest)
 	if level == WorkflowAccessOwner || level == WorkflowAccessWrite {
 		response["chat_choices"] = crewExecutableChatChoices(manifest)
@@ -520,7 +515,10 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "auth_mode must be bearer or github", 400)
 		return
 	}
-	groups := normalizeScheduleGroupNames(req.GroupNames)
+	if req.GroupNames != nil {
+		http.Error(w, retiredWorkflowGroupsMessage, 400)
+		return
+	}
 	workflowWebhookConfigMu.Lock()
 	defer workflowWebhookConfigMu.Unlock()
 	manifest, found, err := ReadWorkflowManifest(r.Context(), req.WorkspacePath)
@@ -528,13 +526,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "workflow not found", 404)
 		return
 	}
-	if manifest.Kind != "relay" && req.Enabled {
-		groups, err = validateScheduleGroupNamesForWorkspace(r.Context(), req.WorkspacePath, groups)
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-	}
+
 	id := mux.Vars(r)["id"]
 	index := -1
 	for i, sched := range manifest.Schedules {
@@ -563,15 +555,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 			caller = manifest.Schedules[index].Caller
 		}
 	}
-	if manifest.Kind == "relay" {
-		if len(groups) != 0 {
-			http.Error(w, "Flows do not accept group_names; configure variables directly", 400)
-			return
-		}
-		if index >= 0 {
-			groups = manifest.Schedules[index].GroupNames
-		}
-	}
+
 	function := isFunctionTriggerKind(effectiveKind)
 	spec := req.Function
 	if function && spec == nil && index >= 0 {
@@ -633,7 +617,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	if err := validateWebhookPayloadMappings(r.Context(), req.WorkspacePath, cfg, groups, req.RouteSelections); err != nil {
+	if err := validateWebhookPayloadMappings(r.Context(), req.WorkspacePath, cfg, nil, req.RouteSelections); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}
@@ -681,7 +665,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 	} else {
 		caller = nil
 	}
-	sched := WorkflowSchedule{ChatID: req.ChatID, ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, GroupNames: groups, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller}
+	sched := WorkflowSchedule{ChatID: req.ChatID, ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, InputPreset: req.InputPreset, Inputs: req.Inputs, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller}
 	if function {
 		sched.Function = spec
 	}

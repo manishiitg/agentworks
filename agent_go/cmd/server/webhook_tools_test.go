@@ -34,7 +34,7 @@ func TestBuilderWebhookToolCreatesAndTestsSignedPing(t *testing.T) {
 		t.Fatal(err)
 	}
 	tool := reg.tools["manage_workflow_webhook"]
-	args := map[string]interface{}{"action": "create", "name": "PR smoke", "enabled": true, "auth_mode": "github", "route_selections": map[string]string{"route": "issue"}, "group_names": []string{"default"}, "input_mode": "envelope", "allowed_variables": []string{"base_url"}}
+	args := map[string]interface{}{"action": "create", "name": "PR smoke", "enabled": true, "auth_mode": "github", "route_selections": map[string]string{"route": "issue"}, "input_mode": "envelope", "allowed_variables": []string{"base_url"}}
 	output, err := tool.exec(context.Background(), args)
 	if err != nil {
 		t.Fatal(err)
@@ -72,9 +72,8 @@ func TestBuilderWebhookToolCreatesAndTestsSignedPing(t *testing.T) {
 	}
 	mappedOutput, mappedErr := tool.exec(context.Background(), map[string]interface{}{
 		"action": "create", "name": "Mapped raw delivery", "enabled": true, "auth_mode": "bearer", "input_mode": "raw",
-		"group_names": []string{"default"}, "route_selections": map[string]string{"route": "issue"},
+		"route_selections": map[string]string{"route": "issue"},
 		"payload_mappings": map[string]interface{}{
-			"group":  map[string]interface{}{"source": "env", "values": map[string]string{"prod": "default"}},
 			"routes": map[string]interface{}{"component-branch": map[string]interface{}{"source": "component", "values": map[string]string{"service/review": "review"}}},
 		},
 	})
@@ -82,7 +81,7 @@ func TestBuilderWebhookToolCreatesAndTestsSignedPing(t *testing.T) {
 		t.Fatal(mappedErr)
 	}
 	var mapped workflowWebhookResponse
-	if json.Unmarshal([]byte(mappedOutput), &mapped) != nil || mapped.PayloadMappings == nil || mapped.PayloadMappings.Group == nil || mapped.PayloadMappings.Routes["component-branch"].Values["service/review"] != "review" {
+	if json.Unmarshal([]byte(mappedOutput), &mapped) != nil || mapped.PayloadMappings == nil || mapped.PayloadMappings.Group != nil || mapped.PayloadMappings.Routes["component-branch"].Values["service/review"] != "review" {
 		t.Fatalf("payload mappings were not saved: %s", mappedOutput)
 	}
 	output, err = tool.exec(context.Background(), map[string]interface{}{"action": "test", "id": created.ID, "event": "ping", "payload": map[string]interface{}{}})

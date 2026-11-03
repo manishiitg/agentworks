@@ -41,15 +41,35 @@ func (e PermanentError) Error() string { return e.Err.Error() }
 func (e PermanentError) Unwrap() error { return e.Err }
 
 type Target struct {
-	Kind      string                 `json:"kind"` // agent, function, trigger
-	Name      string                 `json:"name,omitempty"`
-	Function  string                 `json:"function,omitempty"`
-	TriggerID string                 `json:"trigger_id,omitempty"`
-	ChatID    string                 `json:"chat_id,omitempty"`
-	Message   string                 `json:"message,omitempty"`
-	Arguments map[string]interface{} `json:"arguments,omitempty"`
-	Routes    map[string]string      `json:"route_selections,omitempty"`
-	Groups    []string               `json:"group_names,omitempty"`
+	InputPreset string                 `json:"input_preset,omitempty"`
+	Inputs      map[string]string      `json:"inputs,omitempty"`
+	Kind        string                 `json:"kind"` // agent, function, trigger
+	Name        string                 `json:"name,omitempty"`
+	Function    string                 `json:"function,omitempty"`
+	TriggerID   string                 `json:"trigger_id,omitempty"`
+	ChatID      string                 `json:"chat_id,omitempty"`
+	Message     string                 `json:"message,omitempty"`
+	Arguments   map[string]interface{} `json:"arguments,omitempty"`
+	Routes      map[string]string      `json:"route_selections,omitempty"`
+	Groups      []string               `json:"group_names,omitempty"`
+}
+
+// Old selectors must refuse even when explicitly null; omission means defaults.
+func (t *Target) UnmarshalJSON(data []byte) error {
+	type plain Target
+	var value plain
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if _, old := fields["group_names"]; old {
+		return fmt.Errorf("group selection is retired; use optional input_preset and inputs for one run")
+	}
+	*t = Target(value)
+	return nil
 }
 
 // Payload becomes named function arguments, or event data for messages/triggers.
@@ -180,8 +200,11 @@ func (c Config) Validate() error {
 			return errors.New("route target needs name and an existing internal trigger_id")
 		}
 	case "route":
-		if c.Target.Name == "" || len(c.Target.Groups) == 0 {
-			return errors.New("route target needs a workflow name and saved group_names")
+		if c.Target.Groups != nil {
+			return errors.New("group_names is retired; use input_preset and inputs")
+		}
+		if c.Target.Name == "" {
+			return errors.New("route target needs a workflow name")
 		}
 	default:
 		return errors.New("target kind must be agent, function, route or trigger")

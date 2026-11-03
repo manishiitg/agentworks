@@ -221,10 +221,13 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			// Use mergedAPIKeys loaded before goroutine (r.Context() is canceled inside goroutine)
 			workshopSession.UpdateAPIKeys(mergedAPIKeys)
 
-			// Refresh enabled group IDs from current request (toolbar selection may have changed)
-			if syntheticReq.ExecutionOptions != nil && len(syntheticReq.ExecutionOptions.EnabledGroupNames) > 0 {
-				workshopSession.UpdateEnabledGroupNames(ctx, syntheticReq.ExecutionOptions.EnabledGroupNames)
-				log.Printf("[WORKFLOW_PHASE] Refreshed enabled group names: %v", syntheticReq.ExecutionOptions.EnabledGroupNames)
+			preset := ""
+			var inputs map[string]string
+			if syntheticReq.ExecutionOptions != nil {
+				preset, inputs = syntheticReq.ExecutionOptions.InputPreset, syntheticReq.ExecutionOptions.Inputs
+			}
+			if err := workshopSession.UpdateInvocationInputs(ctx, preset, inputs); err != nil {
+				return err
 			}
 
 			// WorkshopMode is set unconditionally below on workshopSession, from
@@ -238,7 +241,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 					log.Printf("[WORKFLOW_PHASE] Warning: Failed to reload manifest: %v", refreshErr)
 				} else if refreshFound {
 					if refreshManifest.Kind == "relay" {
-						workshopSession.UpdateEnabledGroupNames(ctx, nil)
+						_ = workshopSession.UpdateInvocationInputs(ctx, "", nil)
 					}
 					caps := refreshManifest.Capabilities
 					selectedServers = caps.RuntimeServers()

@@ -48,7 +48,7 @@ Set via `update_step_config(step_id, ...)`:
 - **`validation_llm`** — same shape, overrides the model used for that step's validation. There is no separate learning turn or `learning_llm` setting.
 
 **Precedence (highest wins):**
-1. `execute_step(step_id, group_name, tier="...")` — a one-off tier for a single trial run; changes nothing persistent.
+1. `execute_step(step_id, input_preset?, inputs?, tier="...")` — a one-off tier for a single trial run; changes nothing persistent.
 2. `execution_llm` — if set, it pins the model and **`execution_tier` is ignored** until the exact-model override is cleared.
 3. `execution_tier` — persistent tier for the step.
 4. Maturity-based default tier selection — what tiered mode does on its own.

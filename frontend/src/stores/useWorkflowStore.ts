@@ -775,19 +775,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
         // Include save validation responses flag (always send to ensure backend knows user preference)
         options.save_validation_responses = state.saveValidationResponses
 
-        // Prefer explicit group selection from the UI, but fall back to enabled groups
-        // from the manifest so workflow builder chat still works before the user has
-        // manually clicked a group selector in the canvas.
-        if (!relayMode && state.selectedGroupIds.length > 0) {
-          options.enabled_group_names = state.selectedGroupIds
-        } else if (!relayMode) {
-          const enabledManifestGroupIds = (state.variablesManifest?.groups || [])
-            .filter(group => group.enabled)
-            .map(group => group.name)
-
-          if (enabledManifestGroupIds.length > 0) {
-            options.enabled_group_names = enabledManifestGroupIds
-          }
+        // A saved set fills inputs for one invocation. Omission uses defaults.
+        if (!relayMode && state.selectedGroupIds.length === 1) {
+          options.input_preset = state.selectedGroupIds[0]
         }
 
         // Read feature toggles from preset and include when disabled (backend defaults to enabled)

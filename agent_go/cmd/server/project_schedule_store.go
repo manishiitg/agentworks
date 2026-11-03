@@ -17,7 +17,9 @@ import (
 // work, not a second scheduler policy. Team stamps remain server-owned.
 type scheduleExecutionInput struct {
 	Messages           []string                 `json:"messages,omitempty"`
-	Groups             []string                 `json:"groups"`
+	Groups             []string                 `json:"groups,omitempty"` // Refused on read; no legacy execution adapter.
+	InputPreset        string                   `json:"input_preset,omitempty"`
+	Inputs             map[string]string        `json:"inputs,omitempty"`
 	Routes             map[string]string        `json:"routes,omitempty"`
 	Payload            json.RawMessage          `json:"payload,omitempty"`
 	Condition          *conditiontrigger.Config `json:"condition,omitempty"`
@@ -80,10 +82,13 @@ func workflowScheduleFromAction(record projectactions.Schedule) (WorkflowSchedul
 	if err := json.Unmarshal(record.Input, &input); err != nil {
 		return WorkflowSchedule{}, err
 	}
+	if input.Groups != nil {
+		return WorkflowSchedule{}, fmt.Errorf("schedule groups are retired; save input_preset and inputs instead")
+	}
 	s := WorkflowSchedule{ID: record.ID, Name: record.Name, Enabled: record.Enabled,
 		CronExpression: record.When.Cron, Timezone: record.When.Timezone,
 		Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "queue_latest",
-		Messages: input.Messages, GroupNames: input.Groups, RouteSelections: input.Routes,
+		Messages: input.Messages, InputPreset: input.InputPreset, Inputs: input.Inputs, RouteSelections: input.Routes,
 		ChatID: record.Action.Tab, TriggerPayload: input.Payload, TeamAuthorizedBy: input.TeamAuthorizedBy,
 		TeamPolicyRevision: input.TeamPolicyRevision, RunAs: record.RunAs}
 	if record.Action.Type == "message" {
@@ -113,7 +118,7 @@ func workflowScheduleFromAction(record projectactions.Schedule) (WorkflowSchedul
 }
 
 func actionFromWorkflowSchedule(project projectactions.Project, caller string, s WorkflowSchedule) (projectactions.Schedule, error) {
-	input := scheduleExecutionInput{Messages: s.Messages, Groups: s.GroupNames, Routes: s.RouteSelections,
+	input := scheduleExecutionInput{Messages: s.Messages, InputPreset: s.InputPreset, Inputs: s.Inputs, Routes: s.RouteSelections,
 		Payload: s.TriggerPayload, TeamAuthorizedBy: s.TeamAuthorizedBy, TeamPolicyRevision: s.TeamPolicyRevision}
 	raw, err := json.Marshal(input)
 	if err != nil {

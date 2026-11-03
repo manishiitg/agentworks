@@ -1260,8 +1260,8 @@ func (s *SchedulerService) TriggerNowFromSession(workspacePath, scheduleID, orig
 // against the trigger as saved now. A function trigger's variables are its
 // declared inputs; any other trigger's are its allowed_variables.
 func webhookDeliveryStartError(sched WorkflowSchedule, input *WorkflowWebhookDelivery) error {
-	if input.Group != "" && !slices.Contains(sched.GroupNames, input.Group) {
-		return errors.New("group is no longer allowed by this trigger")
+	if input.Group != "" {
+		return errors.New(retiredWorkflowGroupsMessage)
 	}
 	if sched.Webhook == nil && !sched.IsFunctionTrigger() {
 		return nil
@@ -1326,9 +1326,6 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		sctx.WebhookInput = input
 		if err := webhookDeliveryStartError(*sched, input); err != nil {
 			return "", err
-		}
-		if input.Group != "" && manifest.Kind != "relay" {
-			sctx.Schedule.GroupNames = []string{input.Group}
 		}
 		resolvedStepID, resolvedRoutes := resolvedWebhookExecutionTarget(*sched, input)
 		sctx.Schedule.RouteSelections = resolvedRoutes
@@ -1648,7 +1645,8 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	// and the run restarts from step 1 (PLAT-101).
 	freshCtx.WebhookInput = sctx.WebhookInput
 	if sctx.WebhookInput != nil {
-		freshCtx.Schedule.GroupNames = sctx.Schedule.GroupNames
+		freshCtx.Schedule.InputPreset = sctx.Schedule.InputPreset
+		freshCtx.Schedule.Inputs = sctx.Schedule.Inputs
 		freshCtx.RelayLegacyGroupName = sctx.RelayLegacyGroupName
 		freshCtx.Schedule.RouteSelections = sctx.Schedule.RouteSelections
 		freshCtx.Schedule.Webhook = sctx.Schedule.Webhook
@@ -2663,17 +2661,17 @@ func scheduledWorkshopMessages(sctx *ScheduleContext) []string {
 	// (if anything) it should run.  Always put the canonical route turn first;
 	// retained schedule-specific messages are follow-ups, never replacements.
 	if len(sctx.Schedule.RouteSelections) > 0 {
-		groups, _ := json.Marshal(sctx.Schedule.GroupNames)
+		preset, _ := json.Marshal(sctx.Schedule.InputPreset)
 		routes, err := json.Marshal(sctx.Schedule.RouteSelections)
-		instruction := fmt.Sprintf("Run the full workflow once for each configured schedule group %s using run_full_workflow.", string(groups))
+		instruction := fmt.Sprintf("Run the workflow once using run_full_workflow with input_preset=%s. Omit input_preset when it is empty.", string(preset))
 		if err == nil {
-			instruction = fmt.Sprintf("Run the full workflow once for each configured schedule group %s using run_full_workflow with route_selections=%s. Do not substitute a schedule-local procedure for the selected plan route.", string(groups), string(routes))
+			instruction = fmt.Sprintf("Run the workflow once using run_full_workflow with input_preset=%s and route_selections=%s. Omit an empty input_preset. Do not substitute a schedule-local procedure for the selected plan route.", string(preset), string(routes))
 		}
 		return append([]string{instruction + " " + scheduledBackgroundNoPollingInstruction}, messages...)
 	}
 	if len(messages) == 0 {
-		groups, _ := json.Marshal(sctx.Schedule.GroupNames)
-		instruction := fmt.Sprintf("Run the full workflow once for each configured schedule group %s using run_full_workflow.", string(groups))
+		preset, _ := json.Marshal(sctx.Schedule.InputPreset)
+		instruction := fmt.Sprintf("Run the workflow once using run_full_workflow with input_preset=%s. Omit input_preset when it is empty.", string(preset))
 		return []string{instruction + " " + scheduledBackgroundNoPollingInstruction}
 	}
 	if mode := strings.TrimSpace(sctx.Schedule.ExecutionMode); mode != "" {
@@ -3507,9 +3505,11 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		execOpts["capacity_account_key"] = accountKey
 		execOpts["pace_threshold_percent"] = threshold
 	}
-	if sctx.WorkflowKind != "relay" && sctx.Schedule.GroupNames != nil {
-		execOpts["enabled_group_names"] = sctx.Schedule.GroupNames
+	if sctx.WorkflowKind != "relay" {
+		execOpts["input_preset"] = sctx.Schedule.InputPreset
+		execOpts["inputs"] = sctx.Schedule.Inputs
 	}
+
 	if mode := strings.TrimSpace(sctx.Schedule.ExecutionMode); mode != "" {
 		execOpts["execution_mode"] = mode
 	}
