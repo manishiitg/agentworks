@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"time"
 
@@ -47,21 +45,6 @@ func pruneCrewNativeStage(stage string, b *sessiontransfer.Bundle) error {
 		}
 		return nil
 	})
-}
-func pruneOldCrewNativeStages(roots crewroot.Roots, id string) {
-	root := filepath.Join(roots.Private, "native-sync")
-	entries, _ := os.ReadDir(root)
-	for _, entry := range entries {
-		if entry.Name() == id {
-			continue
-		}
-		lock := crewNativeLock(roots, entry.Name())
-		if !lock.TryLock() {
-			continue
-		}
-		os.RemoveAll(filepath.Join(root, entry.Name()))
-		lock.Unlock()
-	}
 }
 
 // This private directory is outside both the project file snapshot and the
@@ -158,11 +141,6 @@ func bindCrewNativeStage(roots crewroot.Roots, b *sessiontransfer.Bundle) error 
 	if b == nil {
 		return nil
 	}
-	// Only an application-loaded complete mirror can set Root: it is excluded
-	// from JSON. Keep its immutable files instead of rebinding to live staging.
-	if b.Root != "" && crewroot.Within(filepath.Join(roots.Private, "native-mirrors"), b.Root) {
-		return b.ValidateFiles()
-	}
 	stage, err := crewNativeStage(roots, b)
 	if err != nil {
 		return err
@@ -180,7 +158,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	}
 	binding, err := crewroot.ReadSync(roots.ID)
 	direction := r.URL.Query().Get("direction")
-	if err != nil || binding == nil || binding.ArchiveOnly || binding.Mode == "off" || binding.Side != "server" || binding.PairID != r.URL.Query().Get("pair") || (direction != "push" && direction != "pull") || (direction == "push" && binding.Editing != "local") {
+	if err != nil || binding == nil || binding.ArchiveOnly || binding.Side != "server" || binding.PairID != r.URL.Query().Get("pair") || direction != "push" || binding.Editing != "local" {
 		externalError(w, 409, "native_sync_unavailable", "Use the project's current sync connection.")
 		return
 	}
@@ -193,7 +171,7 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	}
 	binding, err = crewroot.ReadSync(roots.ID)
 	unlock()
-	if err != nil || binding == nil || binding.Mode == "off" || binding.PairID != r.URL.Query().Get("pair") || (direction == "push" && binding.Editing != "local") {
+	if err != nil || binding == nil || binding.PairID != r.URL.Query().Get("pair") || binding.Editing != "local" {
 		externalError(w, 409, "native_sync_unavailable", "The active computer changed; sync again.")
 		return
 	}
@@ -230,19 +208,11 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 		conn.WriteJSON(crewNativeErrorReply(err))
 		return
 	}
-	if direction == "pull" {
-		var saved sessiontransfer.Bundle
-		raw, e := os.ReadFile(filepath.Join(filepath.Dir(stage), "manifest.json"))
-		if e != nil || json.Unmarshal(raw, &saved) != nil || !reflect.DeepEqual(saved, b) {
-			conn.WriteJSON(map[string]string{"error": "The session changed; sync it again."})
-			return
-		}
-	}
 	if err = conn.WriteJSON(map[string]bool{"ready": true}); err != nil {
 		return
 	}
 	stream := &nativersync.Socket{Conn: conn}
-	err = nativersync.Server(ctx, stage, direction == "pull", stream)
+	err = nativersync.Server(ctx, stage, false, stream)
 	if err == nil && direction == "push" {
 		b.Root = stage
 		err = pruneCrewNativeStage(stage, &b)
@@ -277,9 +247,6 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 				briefUnlock()
 			}
 		}
-		if err == nil {
-			pruneOldCrewNativeStages(roots, b.Provider+"-"+b.SessionID)
-		}
 	}
 	result := map[string]any{"complete": err == nil}
 	if err != nil {
@@ -290,12 +257,9 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 	log.Printf("[NATIVE_SYNC] project=%s provider=%s native_session=%s direction=%s sent=%d received=%d complete=%t", roots.ID, b.Provider, b.SessionID, direction, stream.Sent, stream.Received, err == nil)
 }
 
-func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *sessiontransfer.Bundle, upload bool) error {
+func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *sessiontransfer.Bundle) error {
 	if crewArchiveOnly(roots) {
 		return fmt.Errorf("this computer continues from saved conversation history")
-	}
-	if err := crewSyncOn(roots.ID); err != nil {
-		return err
 	}
 	if b == nil {
 		return nil
@@ -307,13 +271,11 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 	if err != nil {
 		return err
 	}
-	if upload {
-		if b.Root != stage {
-			return fmt.Errorf("native export is not staged")
-		}
-		if err = b.ValidateFiles(); err != nil {
-			return err
-		}
+	if b.Root != stage {
+		return fmt.Errorf("native export is not staged")
+	}
+	if err = b.ValidateFiles(); err != nil {
+		return err
 	}
 	server, err := desktopServerURL(connection.Server)
 	if err != nil {
@@ -321,10 +283,7 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 	}
 	server.Scheme = map[string]string{"https": "wss", "http": "ws"}[server.Scheme]
 	server.Path = "/api/crew-sync/" + url.PathEscape(binding.PeerProjectID) + "/native"
-	direction := "pull"
-	if upload {
-		direction = "push"
-	}
+	direction := "push"
 	server.RawQuery = url.Values{"pair": {binding.PairID}, "direction": {direction}}.Encode()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
@@ -356,7 +315,7 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 		return crewSyncPeerError(ready.Code, ready.Error)
 	}
 	stream := &nativersync.Socket{Conn: conn}
-	if err = nativersync.Client(ctx, stage, upload, stream); err != nil {
+	if err = nativersync.Client(ctx, stage, true, stream); err != nil {
 		return err
 	}
 	var result struct {
@@ -380,7 +339,6 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 	if err = fsutil.WriteJSONAtomic(filepath.Join(filepath.Dir(stage), "manifest.json"), b, 0600); err != nil {
 		return err
 	}
-	pruneOldCrewNativeStages(roots, b.Provider+"-"+b.SessionID)
 	log.Printf("[NATIVE_SYNC] project=%s provider=%s native_session=%s direction=%s sent=%d received=%d complete=true", roots.ID, b.Provider, b.SessionID, direction, stream.Sent, stream.Received)
 	return nil
 }

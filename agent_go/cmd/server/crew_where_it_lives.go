@@ -19,7 +19,7 @@ import (
 )
 
 // A Mac Crew lives either on the Mac or online (owner, 3 Nov, the decisions log): where it lives is the binding's
-// Editing side, and "Move online" / "Move back to this Mac" are the only transfers. Nothing syncs in the
+// Editing side, and "Move online" is a one-way transfer. Nothing syncs in the
 // background, so every pair is a relay pair.
 
 // migrateCrewSyncToRelay turns each older synced pair (continuous, manual or off) into a relay pair once: it stops
@@ -40,7 +40,7 @@ func migrateCrewSyncToRelay() {
 			continue
 		}
 		b, e := crewroot.ReadSync(id)
-		if e != nil || b == nil || (b.Mode == "relay" && b.PendingAction != "update" && b.PendingAction != "download") {
+		if e != nil || b == nil || (b.Mode == "relay" && (b.PendingAction == "" || b.PendingAction == "server")) {
 			continue
 		}
 		raw, e := os.ReadFile(filepath.Join(dir, entry.Name()))
@@ -49,7 +49,7 @@ func migrateCrewSyncToRelay() {
 			continue
 		}
 		old, dropped := b.Mode, ""
-		if b.PendingAction == "update" || b.PendingAction == "download" {
+		if b.PendingAction != "" && b.PendingAction != "server" {
 			dropped = b.PendingAction
 			if p, e := crewSyncManifestPath(id); e == nil {
 				if _, e = os.Stat(p + ".pending"); e == nil {

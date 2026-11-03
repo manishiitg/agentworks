@@ -380,14 +380,6 @@ export function useWorkChatTab(
   sessionRef.current = session
   legacyRuntimeHandlerRef.current = onLegacyRuntimeDiscovered
   const projectId = session?.id
-  const [handoffRevision, setHandoffRevision] = useState(0)
-  useEffect(() => {
-    const onHandoff = (event: Event) => {
-      if ((event as CustomEvent<{ projectId: string }>).detail?.projectId === projectId) setHandoffRevision(value => value + 1)
-    }
-    window.addEventListener('agentworks:crew-handoff', onHandoff)
-    return () => window.removeEventListener('agentworks:crew-handoff', onHandoff)
-  }, [projectId])
   useWorkChatModels(product.profileId, projectId, session?.llmConfig, canonicalTabId)
 
   useEffect(() => {
@@ -478,7 +470,7 @@ export function useWorkChatTab(
     }
     void prepare()
     return () => { cancelled = true }
-  }, [product, projectId, handoffRevision])
+  }, [product, projectId])
 
   // Manifest changes (identity, model, MCPs, or skills) update the existing
   // local tab in place. They must not restart the expensive conversation
@@ -704,17 +696,11 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     void sync()
     const timer = window.setInterval(() => { void sync() }, 15000)
     const onFocus = () => { void sync() }
-    const onHandoff = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectId: string }>).detail
-      if (detail?.projectId === projectId) void sync()
-    }
     window.addEventListener('focus', onFocus)
-    window.addEventListener('agentworks:crew-handoff', onHandoff)
     return () => {
       cancelled = true
       window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
-      window.removeEventListener('agentworks:crew-handoff', onHandoff)
     }
   }, [allowSideChats, canonicalTabId, profileId, projectId])
   return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName}

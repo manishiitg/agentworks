@@ -64,13 +64,6 @@ func ReadSync(id string) (*SyncBinding, error) {
 func WriteSync(id string, binding SyncBinding) error {
 	syncSettingsMu.Lock()
 	defer syncSettingsMu.Unlock()
-	// Off is immediate, including during a slow transfer. A transfer may
-	// finish its admitted write, but its old snapshot cannot turn sync on.
-	if current, err := ReadSync(id); err != nil {
-		return err
-	} else if current != nil && current.PairID == binding.PairID && current.Mode == "off" {
-		binding.Mode = "off"
-	}
 	return writeSync(id, binding)
 }
 
@@ -79,25 +72,6 @@ func ReplaceSync(id string, binding SyncBinding) error {
 	syncSettingsMu.Lock()
 	defer syncSettingsMu.Unlock()
 	return writeSync(id, binding)
-}
-
-// SetSyncMode is the explicit person action; ordinary transfer writes cannot
-// undo it. This lock covers only the private settings write, never networking.
-func SetSyncMode(id, pair, mode string) (*SyncBinding, error) {
-	if mode != "off" && mode != "continuous" && mode != "manual" {
-		return nil, fmt.Errorf("choose on or off")
-	}
-	syncSettingsMu.Lock()
-	defer syncSettingsMu.Unlock()
-	b, err := ReadSync(id)
-	if err != nil {
-		return nil, err
-	}
-	if b == nil || b.PairID != pair {
-		return nil, fmt.Errorf("this project's sync connection is unavailable")
-	}
-	b.Mode = mode
-	return b, writeSync(id, *b)
 }
 
 func writeSync(id string, binding SyncBinding) error {
@@ -133,7 +107,7 @@ func (r Roots) SeparateFiles() bool { return r.Files != r.Resources }
 // This is an editing-location rule, not a new grant for Run callers.
 func (r Roots) SourceLocked() (bool, error) {
 	b, err := ReadSync(r.ID)
-	return b != nil && b.Mode != "off" && b.Side != b.Editing, err
+	return b != nil && b.Side != b.Editing, err
 }
 
 func CheckSyncWrite(docs, physical string) error {
@@ -148,7 +122,7 @@ func CheckSyncWrite(docs, physical string) error {
 	if Within(roots.Private, physical) || roots.syncRuntimePath(physical) {
 		return nil
 	}
-	return fmt.Errorf("project files are being edited on the other computer; use Work on this Mac or Work on server to bring editing here")
+	return fmt.Errorf("this Crew is moving online; open its online copy when the move finishes")
 }
 
 // SyncWriteGrants also handles physical aliases used by native CLIs. Dropping

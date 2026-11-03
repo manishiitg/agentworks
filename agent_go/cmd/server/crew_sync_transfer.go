@@ -39,7 +39,7 @@ func crewTransferDigest(value string) string {
 }
 
 func crewTransferDir(id, pair, transfer, direction string) (string, error) {
-	if pair == "" || transfer == "" || len(pair) > 128 || len(transfer) > 128 || (direction != "upload" && direction != "download") {
+	if pair == "" || transfer == "" || len(pair) > 128 || len(transfer) > 128 || direction != "upload" {
 		return "", fmt.Errorf("invalid sync transfer")
 	}
 	p, err := crewSyncManifestPath(id)
@@ -59,7 +59,9 @@ func crewTransferDir(id, pair, transfer, direction string) (string, error) {
 	}
 	return dir, nil
 }
-func crewPayloadName(name string) bool { return name == "content" || name == "git" || name == "index" }
+func crewPayloadName(name string) bool {
+	return name == "content" || name == "git" || name == "index" || name == "state"
+}
 func crewPayloadValid(p crewsync.Payload) bool {
 	b, e := hex.DecodeString(p.Hash)
 	return e == nil && len(b) == 32 && p.Hash == strings.ToLower(p.Hash) && p.Size >= 0 && p.Size <= crewSyncPayloadBytes
@@ -69,7 +71,7 @@ func crewPayloadAllowed(name string, p crewsync.Payload) bool {
 		return false
 	}
 	switch name {
-	case "content":
+	case "content", "state":
 		return true
 	case "git":
 		return p.Size <= 256<<20
@@ -83,13 +85,16 @@ func checkLocalCrewTransfer(id string, expected *crewroot.SyncBinding) error {
 	if e != nil {
 		return e
 	}
-	if current == nil || current.PairID != expected.PairID || current.Side != "local" || current.ConnectionID != expected.ConnectionID || current.PeerProjectID != expected.PeerProjectID || current.Editing != expected.Editing || current.Mode == "off" || current.Mode == "relay" {
+	if current == nil || current.PairID != expected.PairID || current.Side != "local" || current.ConnectionID != expected.ConnectionID || current.PeerProjectID != expected.PeerProjectID || current.Editing != expected.Editing {
 		return fmt.Errorf("sync state changed; retry from the current paired connection")
 	}
 	return nil
 }
 func crewPayloadPaths(s *crewsync.Snapshot) map[string]*string {
 	out := map[string]*string{}
+	if s.StatePath != "" || s.Payloads["state"].Hash != "" {
+		out["state"] = &s.StatePath
+	}
 	if s.Content != nil {
 		out["content"] = &s.Content.BundlePath
 	}
@@ -278,13 +283,10 @@ func (api *StreamingAPI) crewTransferBinding(ctx context.Context, claims *UserCl
 	if b == nil || b.PairID != pair || b.Side != "server" {
 		return roots, nil, &crewSyncFailure{Status: 409, Code: "wrong_pair", Message: "use this Crew's paired connection"}
 	}
-	if b.Mode == "off" {
-		return roots, nil, fmt.Errorf("file sync is off for this Crew")
-	}
 	return roots, b, nil
 }
 func validateCrewPayloads(s *crewsync.Snapshot) error {
-	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 3 || len(s.Files) > publication.MaxFiles || len(s.Changes) > publication.MaxFiles {
+	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 4 || len(s.Files) > publication.MaxFiles || len(s.Changes) > publication.MaxFiles {
 		return fmt.Errorf("send a snapshot with binary artifact descriptors")
 	}
 	if _, ok := s.Payloads["content"]; !ok {
@@ -343,6 +345,20 @@ func (api *StreamingAPI) prepareCrewTransfer(ctx context.Context, claims *UserCl
 	if b.Editing != "local" {
 		return out, fmt.Errorf("editing is on the server")
 	}
+	if len(in.Native) > 4096 {
+		return out, fmt.Errorf("too many native sessions")
+	}
+	seen := map[string]bool{}
+	for _, bundle := range in.Native {
+		if e = bundle.Validate(); e != nil {
+			return out, e
+		}
+		key := bundle.Provider + "/" + bundle.SessionID
+		if seen[key] {
+			return out, fmt.Errorf("duplicate native session")
+		}
+		seen[key] = true
+	}
 	if e = validateCrewPayloads(in.Snapshot); e != nil {
 		return out, e
 	}
@@ -366,6 +382,9 @@ func (api *StreamingAPI) prepareCrewTransfer(ctx context.Context, claims *UserCl
 		}
 	} else if os.IsNotExist(e) {
 		e = fsutil.WriteJSONAtomic(path, in.Snapshot, 0600)
+	}
+	if e == nil {
+		e = saveCrewMoveProgress(id, in.PairID, in.TransferID, in.Snapshot.Payloads, in.Native)
 	}
 	return out, e
 }
@@ -399,7 +418,7 @@ func (api *StreamingAPI) handleCrewSyncPiece(w http.ResponseWriter, r *http.Requ
 		}
 		externalError(w, status, crewSyncErrorCode(e), e.Error())
 	}
-	roots, b, e := api.crewTransferBinding(r.Context(), GetUserFromContext(r.Context()), id, pair)
+	_, b, e := api.crewTransferBinding(r.Context(), GetUserFromContext(r.Context()), id, pair)
 	if e != nil {
 		fail(e)
 		return
@@ -425,24 +444,13 @@ func (api *StreamingAPI) handleCrewSyncPiece(w http.ResponseWriter, r *http.Requ
 		fail(e)
 		return
 	}
-	var snapshot *crewsync.Snapshot
-	if direction == "upload" {
-		if b.Editing != "local" {
-			fail(fmt.Errorf("editing is on the server"))
-			return
-		}
-		var s crewsync.Snapshot
-		e = readCrewTransfer(filepath.Join(dir, "snapshot.json"), &s)
-		snapshot = &s
-	} else {
-		p, _ := crewSyncManifestPath(roots.ID)
-		var pending crewSyncReply
-		e = readCrewTransfer(p+".return", &pending)
-		if e == nil && (pending.TransferID != transfer || pending.Binding == nil || pending.Binding.PairID != pair || pending.Binding.Editing != b.Editing) {
-			e = fmt.Errorf("this return transfer is no longer current")
-		}
-		snapshot = pending.Snapshot
+	if direction != "upload" || b.Editing != "local" {
+		fail(fmt.Errorf("this Crew is not receiving a move"))
+		return
 	}
+	var s crewsync.Snapshot
+	e = readCrewTransfer(filepath.Join(dir, "snapshot.json"), &s)
+	snapshot := &s
 	if e != nil || snapshot == nil {
 		fail(fmt.Errorf("sync transfer is unavailable"))
 		return
@@ -474,24 +482,6 @@ func (api *StreamingAPI) handleCrewSyncPiece(w http.ResponseWriter, r *http.Requ
 	wanted, e := strconv.ParseInt(q.Get("offset"), 10, 64)
 	if e != nil || wanted < 0 || wanted > payload.Size {
 		fail(fmt.Errorf("invalid sync offset"))
-		return
-	}
-	if r.Method == http.MethodGet && direction == "download" {
-		if offset != payload.Size {
-			fail(fmt.Errorf("sync artifact unavailable"))
-			return
-		}
-		f, e := os.Open(path)
-		if e != nil {
-			fail(e)
-			return
-		}
-		defer f.Close()
-		count := min(crewSyncPieceBytes, payload.Size-wanted)
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Length", strconv.FormatInt(count, 10))
-		n, copyErr := io.CopyN(w, io.NewSectionReader(f, wanted, count), count)
-		log.Printf("[CREW_SYNC_PIECE] project=%s transfer=%s direction=download bytes=%d offset=%d total=%d complete=%t", id, transfer, n, wanted+n, payload.Size, copyErr == nil)
 		return
 	}
 	if r.Method != http.MethodPut || direction != "upload" {
@@ -566,14 +556,11 @@ func crewPieceRequest(ctx context.Context, c desktopConnection, project, pair, t
 	}
 	return res, nil
 }
-func desktopCrewPayloads(ctx context.Context, id string, c desktopConnection, b *crewroot.SyncBinding, transfer string, s *crewsync.Snapshot, upload bool) error {
+func desktopCrewPayloads(ctx context.Context, id string, c desktopConnection, b *crewroot.SyncBinding, transfer string, s *crewsync.Snapshot) error {
 	if e := validateCrewPayloads(s); e != nil {
 		return e
 	}
-	direction := "download"
-	if upload {
-		direction = "upload"
-	}
+	direction := "upload"
 	dir, e := crewTransferDir(id, b.PairID, transfer, direction)
 	if e != nil {
 		return e
@@ -583,89 +570,42 @@ func desktopCrewPayloads(ctx context.Context, id string, c desktopConnection, b 
 			return e
 		}
 		path := filepath.Join(dir, name)
-		if upload {
-			if e = crewCheckPayloadFile(path, p); e != nil {
+		if e = crewCheckPayloadFile(path, p); e != nil {
+			return e
+		}
+		res, e := crewPieceRequest(ctx, c, b.PeerProjectID, b.PairID, transfer, direction, name, http.MethodHead, 0, nil, 0)
+		if e != nil {
+			return e
+		}
+		res.Body.Close()
+		offset, e := strconv.ParseInt(res.Header.Get("Upload-Offset"), 10, 64)
+		if e != nil || offset < 0 || offset > p.Size || res.Header.Get("X-Sync-Hash") != p.Hash {
+			return fmt.Errorf("invalid sync resume response")
+		}
+		f, e := os.Open(path)
+		if e != nil {
+			return e
+		}
+		for offset < p.Size {
+			if e = checkLocalCrewTransfer(id, b); e != nil {
+				f.Close()
 				return e
 			}
-			res, e := crewPieceRequest(ctx, c, b.PeerProjectID, b.PairID, transfer, direction, name, http.MethodHead, 0, nil, 0)
+			count := min(crewSyncPieceBytes, p.Size-offset)
+			res, e = crewPieceRequest(ctx, c, b.PeerProjectID, b.PairID, transfer, direction, name, http.MethodPut, offset, io.NewSectionReader(f, offset, count), count)
 			if e != nil {
+				f.Close()
 				return e
 			}
 			res.Body.Close()
-			offset, e := strconv.ParseInt(res.Header.Get("Upload-Offset"), 10, 64)
-			if e != nil || offset < 0 || offset > p.Size || res.Header.Get("X-Sync-Hash") != p.Hash {
-				return fmt.Errorf("invalid sync resume response")
-			}
-			f, e := os.Open(path)
-			if e != nil {
-				return e
-			}
-			for offset < p.Size {
-				if e = checkLocalCrewTransfer(id, b); e != nil {
-					f.Close()
-					return e
-				}
-				count := min(crewSyncPieceBytes, p.Size-offset)
-				res, e = crewPieceRequest(ctx, c, b.PeerProjectID, b.PairID, transfer, direction, name, http.MethodPut, offset, io.NewSectionReader(f, offset, count), count)
-				if e != nil {
-					f.Close()
-					return e
-				}
-				res.Body.Close()
-				next, err := strconv.ParseInt(res.Header.Get("Upload-Offset"), 10, 64)
-				if err != nil || next != offset+count {
-					f.Close()
-					return fmt.Errorf("server did not confirm sync piece")
-				}
-				offset = next
-			}
-			f.Close()
-		} else {
-			f, e := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
-			if e != nil {
-				return e
-			}
-			info, e := f.Stat()
-			if e != nil || info.Size() > p.Size {
+			next, err := strconv.ParseInt(res.Header.Get("Upload-Offset"), 10, 64)
+			if err != nil || next != offset+count {
 				f.Close()
-				return fmt.Errorf("invalid partial sync artifact")
+				return fmt.Errorf("server did not confirm sync piece")
 			}
-			offset := info.Size()
-			for offset < p.Size {
-				if e = checkLocalCrewTransfer(id, b); e != nil {
-					f.Close()
-					return e
-				}
-				res, e := crewPieceRequest(ctx, c, b.PeerProjectID, b.PairID, transfer, direction, name, http.MethodGet, offset, nil, 0)
-				if e != nil {
-					f.Close()
-					return e
-				}
-				count := min(crewSyncPieceBytes, p.Size-offset)
-				if res.Header.Get("X-Sync-Hash") != p.Hash || res.ContentLength != count {
-					res.Body.Close()
-					f.Close()
-					return fmt.Errorf("server returned different sync bytes")
-				}
-				_, e = f.Seek(offset, io.SeekStart)
-				var n int64
-				if e == nil {
-					n, e = io.CopyN(f, res.Body, count)
-				}
-				res.Body.Close()
-				syncErr := f.Sync()
-				offset += n
-				if e != nil || syncErr != nil {
-					f.Close()
-					return fmt.Errorf("download interrupted; retry resumes saved bytes")
-				}
-			}
-			f.Close()
-			if e = crewCheckPayloadFile(path, p); e != nil {
-				_ = os.Remove(path)
-				return e
-			}
+			offset = next
 		}
+		f.Close()
 	}
 	return nil
 }

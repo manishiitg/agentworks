@@ -2436,12 +2436,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/crew-sync-capabilities", handleCrewSyncCapabilities).Methods("GET")
 	apiRouter.HandleFunc("/client-events", handleClientEvent).Methods("POST")
 	apiRouter.HandleFunc("/crew-sync/{project}", api.handleCrewSync).Methods("GET", "POST", "HEAD", "PUT")
-	apiRouter.HandleFunc("/crew-cloud-laptop/{project}", api.handleCloudLaptopStatus).Methods("GET")
-	apiRouter.HandleFunc("/crew-cloud-apps/{project}", api.handleCloudApps).Methods("GET")
 	apiRouter.HandleFunc("/work/mac-downloads", api.handleMacDownloadsAccess).Methods("GET", "PUT")
 	loadMacDownloadsAccess()
 	apiRouter.HandleFunc("/desktop-connections/{connection}/crew-sync/{project}", api.handleDesktopCrewSync).Methods("GET", "POST")
-	apiRouter.HandleFunc("/desktop-connections/{connection}/crew-sync/{project}/open-local", api.handleDesktopCrewOpen).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections", api.handleDesktopConnections).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections/sign-in/{state}", api.handleDesktopSignInStatus).Methods("GET")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/inventory", api.handleDesktopConnectionInventory).Methods("GET")
@@ -3190,8 +3187,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	migrateCrewSyncToRelay()
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
-	stopDesktopCrewSync := api.startDesktopCrewSync()
-	defer stopDesktopCrewSync()
 	SetShareTunnelServerPort(actualPort)
 
 	// Dynamically serve runtime-config.js so the frontend learns the real ports.

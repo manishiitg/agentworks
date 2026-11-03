@@ -4,18 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -27,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/nativersync"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -34,8 +32,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-// PLAT-856-387: use real HTTP handlers and files to prove ownership, both root
-// shapes, a lost handoff response, and the locked-source/runtime distinction.
+// PLAT-856-509: actual HTTP and disk paths prove one-way move, owner-only
+// archives, resumable pieces, lost receipts, schedule rebinding and Mac preservation.
 func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		t.Run(map[bool]string{false: "managed", true: "selected-folder"}[split], func(t *testing.T) {
@@ -108,39 +106,6 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			oldTransfer := func(path string, value any) []byte {
-				t.Helper()
-				raw, err := json.Marshal(value)
-				if err != nil {
-					t.Fatal(err)
-				}
-				var legacy map[string]any
-				if err = json.Unmarshal(raw, &legacy); err != nil {
-					t.Fatal(err)
-				}
-				snapshot := legacy["snapshot"].(map[string]any)
-				delete(snapshot, "payloads")
-				snapshot["content"].(map[string]any)["bundle"] = "b2xkLWJ1bmRsZQ=="
-				raw, err = json.Marshal(legacy)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err = os.WriteFile(path, raw, 0600); err != nil {
-					t.Fatal(err)
-				}
-				return raw
-			}
-			checkOldBackup := func(path string, want []byte) {
-				t.Helper()
-				backups, err := filepath.Glob(path + ".*.bak")
-				if err != nil || len(backups) != 1 {
-					t.Fatalf("old transfer backup: %v %v", backups, err)
-				}
-				got, err := os.ReadFile(backups[0])
-				if err != nil || !bytes.Equal(got, want) {
-					t.Fatal("old transfer backup changed bytes")
-				}
-			}
 			write(local.Files, "note.txt", "local work")
 			// PLAT-856-509: an empty Git index must roundtrip without requiring
 			// a zero-byte upload that the binary-piece endpoint cannot send.
@@ -159,7 +124,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatalf("local resource listing: %d %s", listing.Code, listing.Body.String())
 			}
 			loseResponse := false
-			dropUpload, dropDownload := false, false
+			dropUpload := false
 			var pieceHook func(*http.Request)
 			var offline atomic.Bool
 			var forcedErrorCode atomic.Value
@@ -202,11 +167,6 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					w.Header()[key] = values
 				}
 				w.WriteHeader(response.Code)
-				if dropDownload && r.Method == http.MethodGet && r.URL.Query().Get("transfer") != "" && response.Code == 200 {
-					dropDownload = false
-					_, _ = w.Write(response.Body.Bytes()[:response.Body.Len()/2])
-					return
-				}
 				_, _ = w.Write(response.Body.Bytes())
 			}))
 			defer remote.Close()
@@ -233,98 +193,63 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				api.handleDesktopCrewSync(w, r)
 				return w
 			}
-			if w := call("update", "owner", false); w.Code != 403 {
+			if w := call("server", "owner", false); w.Code != 403 {
 				t.Fatalf("desktop proof: %d", w.Code)
 			}
-			if w := call("update", "other", true); w.Code < 400 {
-				t.Fatal("another owner paired private Crew")
+			if w := call("server", "other", true); w.Code < 400 {
+				t.Fatal("another owner moved a private Crew")
 			}
-			w := call("update", "owner", true)
-			if w.Code != 200 {
-				t.Fatalf("pair: %d %s", w.Code, w.Body.String())
-			}
-			var out crewSyncReply
-			if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-				t.Fatal(err)
-			}
-			serverRoots, err := api.crewSyncRoots(ctx, owner, out.Binding.PeerProjectID)
+			main, err := api.crewHandoffMain(ctx, owner, local.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if serverRoots.SeparateFiles() != split {
-				t.Fatal("root shape changed")
-			}
-			checkCrewChatRelayOwnerBoundary(t, api, serverRoots.ID, out.Binding.PairID)
-			checkCrewRelaySocketEndToEnd(t, api, serverRoots.ID, out.Binding.PairID)
-			for _, item := range []struct{ root, name, want string }{{serverRoots.Files, "note.txt", "local work"}, {serverRoots.Resources, "skills/example/SKILL.md", "Useful skill"}} {
-				raw, err := os.ReadFile(filepath.Join(item.root, item.name))
-				if err != nil || string(raw) != item.want {
-					t.Fatalf("file %s: %q %v", item.name, raw, err)
-				}
-			}
-			// Owner 2 Nov (PLAT-856-509): the owner's own server gets the project's secret files; other hidden state stays.
-			if _, err := os.Stat(filepath.Join(serverRoots.Files, ".env")); err != nil {
-				t.Fatal("secret file did not reach the owner's server")
-			}
-			if _, err := os.Stat(filepath.Join(serverRoots.Files, ".cache/state")); !os.IsNotExist(err) {
-				t.Fatal("copied private file")
-			}
-			// PLAT-856-509: a retried relay create (lost reply) returns the same empty twin; it lives on the Mac until moved online.
-			twin, err := api.crewSync(ctx, owner, "", crewSyncRequest{Action: "create", Mode: "relay", PairID: "relay-pair", SourceID: "mac-crew", Name: "Mac Crew"})
+			store := defaultProductConversationRegistryStore()
+			doc, err := store.loadDocument(ctx, productConversationRegistryPath(owner.UserID))
 			if err != nil {
 				t.Fatal(err)
 			}
-			again, err := api.crewSync(ctx, owner, "", crewSyncRequest{Action: "create", Mode: "relay", PairID: "retry-pair", SourceID: "mac-crew", Name: "Mac Crew"})
-			if err != nil || again.ProjectID != twin.ProjectID || again.Binding == nil || again.Binding.PairID != "relay-pair" || again.Binding.Mode != "relay" {
-				t.Fatalf("a retried relay create made a second twin: %+v %v", again, err)
+			side := main
+			side.ConversationKey = local.ID + ":chat:helper"
+			side.ConversationID = "conversation-helper"
+			side.SessionID = "product-helper"
+			key := productConversationRegistryEntryKey("work", side.ConversationKey)
+			doc.Entries[key] = side
+			if doc.Agents == nil {
+				doc.Agents = map[string]ProductAgentIdentity{}
 			}
-			if !crewRelayTwin(twin.ProjectID) {
-				t.Fatal("a new twin is not on the Mac")
+			doc.Agents[key] = ProductAgentIdentity{Name: "Helper", Purpose: "Remember the second chat"}
+			if err = store.writeDocument(ctx, productConversationRegistryPath(owner.UserID), doc); err != nil {
+				t.Fatal(err)
 			}
-			checkCrewReachOff(t, api, owner, twin.ProjectID, "relay-pair", serverRoots.ID, out.Binding.PairID)
-			if _, err := api.crewSync(t.Context(), crewWriter("other"), serverRoots.ID, crewSyncRequest{Action: "status"}); err == nil {
-				t.Fatal("other owner accessed sync")
-			}
-			// PLAT-856-509: old abandoned upload bytes are pruned while the
-			// receipt, recent stages and a resumed current stage survive.
-			pruneBinding, err := crewroot.ReadSync(serverRoots.ID)
-			if err != nil || pruneBinding.LastTransfer == "" {
-				t.Fatal("missing initial receipt")
-			}
-			staleTime := time.Now().Add(-25 * time.Hour)
-			stageDir := func(id string, old bool) string {
-				t.Helper()
-				dir, err := crewTransferDir(serverRoots.ID, pruneBinding.PairID, id, "upload")
-				if err != nil {
+			for _, record := range []ProductConversationRecord{main, side} {
+				path, ok := workProjectChatHistoryConversationPath("owner", record.WorkspacePath, record.SessionID, time.Now())
+				if !ok {
+					t.Fatal("chat path")
+				}
+				raw, _ := json.Marshal(map[string]any{"user_id": "owner", "session_id": record.SessionID, "conversation_history": []map[string]any{{"Role": "human", "Parts": []map[string]any{{"Type": "text", "Text": "marker " + record.ConversationID}}}}, "terminal_snapshots": []string{"do-not-transfer-terminal"}})
+				if err = writeRawFileToWorkspace(ctx, path, string(raw)); err != nil {
 					t.Fatal(err)
 				}
-				if err = os.WriteFile(filepath.Join(dir, "content"), []byte("scratch"), 0600); err != nil {
-					t.Fatal(err)
-				}
-				if old {
-					if err = os.Chtimes(dir, staleTime, staleTime); err != nil {
-						t.Fatal(err)
-					}
-				}
-				return dir
 			}
-			abandoned := stageDir("abandoned-upload", true)
-			recent := stageDir("recent-upload", false)
-			lastReceipt := stageDir(pruneBinding.LastTransfer, true)
-			// PLAT-856-509: lose a piece reply after durable storage. Retry
-			// resumes that exact artifact; the working-folder lock is free.
-			largePath := filepath.Join(local.Files, "resumable.bin")
-			large, e := os.Create(largePath)
-			if e != nil {
-				t.Fatal(e)
+			schedule := projectactions.Schedule{ID: "morning", Name: "Morning", Project: projectactions.Project{Kind: "crew", ID: local.ID}, When: projectactions.When{Cron: "0 9 * * *", Timezone: "UTC"}, Action: projectactions.Action{Type: "message", Tab: side.ConversationKey}, Input: json.RawMessage(`{"message":"check"}`), RunAs: "owner", Enabled: true}
+			if err = writeProjectSchedules(ctx, local.Virtual, []projectactions.Schedule{schedule}); err != nil {
+				t.Fatal(err)
 			}
-			if _, e = io.CopyN(large, rand.Reader, 12<<20); e != nil {
-				t.Fatal(e)
+			// Incompressible bytes guarantee multiple resumable pieces.
+			large := make([]byte, 10<<20)
+			if _, err = rand.Read(large); err != nil {
+				t.Fatal(err)
 			}
-			large.Close()
+			write(local.Files, "resumable.bin", string(large))
+			api.activeSessions[main.SessionID] = &ActiveSessionInfo{SessionID: main.SessionID, WorkspacePath: local.Virtual, Status: "running"}
+			if w := call("server", "owner", true); w.Code != 409 {
+				t.Fatal("moved a running Crew")
+			}
+			delete(api.activeSessions, main.SessionID)
+			dropUpload = true
 			lockChecked := false
-			pieceHook = func(r *http.Request) {
-				if r.Method != http.MethodPut || lockChecked {
+			pieceHook = func(req *http.Request) {
+				if req.Method != http.MethodPut || lockChecked {
 					return
 				}
 				lockChecked = true
@@ -332,612 +257,153 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				defer cancel()
 				release, e := wf.LockWorkspace(check, local.Files)
 				if e != nil {
-					t.Errorf("upload holds chat's folder lock: %v", e)
+					t.Errorf("upload holds working folder: %v", e)
 					return
 				}
 				release()
-				if _, e = api.crewHandoffMain(check, owner, local.ID); e != nil {
-					t.Errorf("chat unavailable during upload: %v", e)
-				} else {
-					t.Logf("[CREW_SYNC_PROOF] at=%s chat_open_during_upload=ok", time.Now().UTC().Format(time.RFC3339Nano))
-				}
-				write(local.Files, "saved-during-upload.txt", "newer work stays local until next capture")
 			}
-			dropUpload = true
-			if w = call("update", "owner", true); w.Code != 409 || dropUpload || !lockChecked {
-				t.Fatalf("did not exercise interrupted upload: %d %s", w.Code, w.Body.String())
+			if w := call("server", "owner", true); w.Code != 409 || dropUpload || !lockChecked {
+				t.Fatalf("interrupt: %d %s", w.Code, w.Body.String())
 			}
 			pieceHook = nil
-			if _, err := os.Stat(abandoned); !os.IsNotExist(err) {
-				t.Fatal("abandoned upload was not pruned")
+			binding, err := crewroot.ReadSync(local.ID)
+			if err != nil || binding == nil {
+				t.Fatal("missing interrupted binding")
 			}
-			for _, kept := range []string{recent, lastReceipt} {
-				if _, err := os.Stat(kept); err != nil {
-					t.Fatal("recent upload or receipt was pruned")
-				}
+			serverRoots, err := api.crewSyncRoots(ctx, owner, binding.PeerProjectID)
+			if err != nil {
+				t.Fatal(err)
 			}
-			pendingPath, _ := crewSyncManifestPath(local.ID)
+			checkCrewNativeSyncAdmission(t, api, ctx, owner, serverRoots)
+			pending, _ := crewSyncManifestPath(local.ID)
 			var upload crewSyncRequest
-			if e = readCrewTransfer(pendingPath+".pending", &upload); e != nil {
-				t.Fatal(e)
+			if err = readCrewTransfer(pending+".pending", &upload); err != nil {
+				t.Fatal(err)
 			}
-			probe := func(who, pair string) *httptest.ResponseRecorder {
-				q := url.Values{"transfer": {upload.TransferID}, "pair": {pair}, "direction": {"upload"}, "blob": {"content"}}
-				req := httptest.NewRequest("HEAD", "/?"+q.Encode(), nil).WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: who, Username: who}))
+			// Query status while holding the destination apply lock: progress must not block.
+			release, err := wf.LockWorkspace(ctx, serverRoots.Files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			check, cancel := context.WithTimeout(ctx, time.Second)
+			progress, err := api.crewSync(check, owner, serverRoots.ID, crewSyncRequest{Action: "status"})
+			cancel()
+			release()
+			if err != nil || progress.BytesDone == 0 || progress.BytesDone >= progress.BytesTotal {
+				t.Fatalf("progress: %+v %v", progress, err)
+			}
+			for _, person := range []string{"owner", "other"} {
+				q := url.Values{"transfer": {upload.TransferID}, "pair": {upload.PairID}, "direction": {"upload"}, "blob": {"content"}}
+				req := httptest.NewRequest("HEAD", "/?"+q.Encode(), nil).WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person, Username: person}))
 				req = mux.SetURLVars(req, map[string]string{"project": serverRoots.ID})
-				result := httptest.NewRecorder()
-				api.handleCrewSync(result, req)
-				return result
-			}
-			if got := probe("other", upload.PairID); got.Code != 403 {
-				t.Fatalf("other owner piece: %d", got.Code)
-			}
-			if got := probe("owner", "wrong-pair"); got.Code != 409 {
-				t.Fatalf("wrong pair piece: %d", got.Code)
-			} else {
-				t.Logf("[CREW_SYNC_PROOF] at=%s wrong_pair_status=%d", time.Now().UTC().Format(time.RFC3339Nano), got.Code)
-			}
-			got := probe("owner", upload.PairID)
-			offset, _ := strconv.ParseInt(got.Header().Get("Upload-Offset"), 10, 64)
-			if got.Code != 200 || offset != crewSyncPieceBytes {
-				t.Fatalf("saved offset: %d %d", got.Code, offset)
-			}
-			t.Logf("[CREW_SYNC_PROOF] at=%s interrupted_upload_saved_offset=%d", time.Now().UTC().Format(time.RFC3339Nano), offset)
-			currentStage, err := crewTransferDir(serverRoots.ID, upload.PairID, upload.TransferID, "upload")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = os.Chtimes(currentStage, staleTime, staleTime); err != nil {
-				t.Fatal(err)
-			}
-			// An independently edited destination is never overwritten at apply.
-			write(serverRoots.Files, "resumable.bin", "destination work")
-			if w = call("update", "owner", true); w.Code != 409 {
-				t.Fatal("overwrote independent destination file")
-			}
-			actual, _ := os.ReadFile(filepath.Join(serverRoots.Files, "resumable.bin"))
-			if string(actual) != "destination work" {
-				t.Fatal("lost destination work")
-			}
-			if e = os.Remove(filepath.Join(serverRoots.Files, "resumable.bin")); e != nil {
-				t.Fatal(e)
-			}
-			if w = call("update", "owner", true); w.Code != 200 {
-				t.Fatalf("resumed upload: %d %s", w.Code, w.Body.String())
-			}
-			digest := func(path string) [32]byte {
-				f, e := os.Open(path)
-				if e != nil {
-					t.Fatal(e)
-				}
-				defer f.Close()
-				h := sha256.New()
-				if _, e = io.Copy(h, f); e != nil {
-					t.Fatal(e)
-				}
-				var result [32]byte
-				copy(result[:], h.Sum(nil))
-				return result
-			}
-			if digest(largePath) != digest(filepath.Join(serverRoots.Files, "resumable.bin")) {
-				t.Fatal("resumed bytes differ")
-			}
-			t.Logf("[CREW_SYNC_PROOF] at=%s resumed_upload=ok sha256_match=true", time.Now().UTC().Format(time.RFC3339Nano))
-			if _, e = os.Stat(filepath.Join(serverRoots.Files, "saved-during-upload.txt")); !os.IsNotExist(e) {
-				t.Fatal("acknowledged uncaptured newer work")
-			}
-			if w = call("update", "owner", true); w.Code != 200 {
-				t.Fatalf("next capture: %d %s", w.Code, w.Body.String())
-			}
-			if _, e = os.Stat(filepath.Join(serverRoots.Files, "saved-during-upload.txt")); e != nil {
-				t.Fatal("newer source edit never synced")
-			}
-
-			// PLAT-856-509: a no-change scan must not keep a new scratch bundle.
-			if w = call("update", "owner", true); w.Code != 200 {
-				t.Fatalf("unchanged scan: %d %s", w.Code, w.Body.String())
-			}
-			if scratch, err := filepath.Glob(filepath.Join(local.Private, "file-snapshots", "sync-bundle-*")); err != nil || len(scratch) != 0 {
-				t.Fatalf("unchanged sync retained capture bundles: %v %v", scratch, err)
-			}
-
-			// PLAT-856-509: upgrading an interrupted inline upload automatically
-			// preserves its old record and recaptures current working files.
-			legacyPath, _ := crewSyncManifestPath(local.ID)
-			legacyPath += ".pending"
-			legacyBytes := oldTransfer(legacyPath, upload)
-			legacyBinding, _ := crewroot.ReadSync(local.ID)
-			legacyBinding.PendingAction, legacyBinding.Editing = "update", "server"
-			if err := crewroot.WriteSync(local.ID, *legacyBinding); err != nil {
-				t.Fatal(err)
-			}
-			write(local.Files, "after-upgrade.txt", "current working file")
-			if w = call("update", "owner", true); w.Code != 200 {
-				t.Fatalf("old upload recapture: %d %s", w.Code, w.Body.String())
-			}
-			checkOldBackup(legacyPath, legacyBytes)
-			if got, err := os.ReadFile(filepath.Join(serverRoots.Files, "after-upgrade.txt")); err != nil || string(got) != "current working file" {
-				t.Fatalf("upgrade lost source work: %q %v", got, err)
-			}
-			legacyBinding, _ = crewroot.ReadSync(local.ID)
-			if legacyBinding.PendingAction != "" || legacyBinding.Editing != "local" {
-				t.Fatal("old upload kept stale execution state")
-			}
-
-			for _, kind := range []string{"bound-agent", "product"} {
-				claims := crewWriter("owner")
-				if kind == "bound-agent" {
-					claims.AccessToken.BoundAgentID = "native-agent"
-				} else {
-					claims.AccessToken.ProjectKind = "crew"
-					claims.AccessToken.ProjectIdentity = "local-id"
-				}
-				request := httptest.NewRequest("POST", "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, claims))
 				response := httptest.NewRecorder()
-				api.pairedCrewSyncAction(response, request, "local-id", "server", "")
-				if response.Code != 403 {
-					t.Fatalf("%s token received saved-login authority: %d %s", kind, response.Code, response.Body.String())
+				api.handleCrewSync(response, req)
+				want := 200
+				if person == "other" {
+					want = 403
 				}
-			}
-			checkWrite := func(path string, want int) {
-				t.Helper()
-				data, _ := json.Marshal(map[string]string{"content": "changed"})
-				w := httptest.NewRecorder()
-				files.ServeHTTP(w, httptest.NewRequest("PUT", "/api/documents/"+path, bytes.NewReader(data)))
-				if w.Code != want {
-					t.Fatalf("write %s: %d %s", path, w.Code, w.Body.String())
-				}
-			}
-			checkWrite(serverRoots.FilesPath()+"/note.txt", 409)
-			checkWrite(serverRoots.Virtual+"/outputs/result.txt", 200)
-			checkWrite(serverRoots.Virtual+"/runs/example/result.txt", 200)
-			grants := crewroot.SyncWriteGrants(docs, []string{serverRoots.Files, serverRoots.Resources, filepath.Join(serverRoots.Private, "runs")})
-			for _, p := range grants {
-				if p == serverRoots.Files || p == serverRoots.Resources {
-					t.Fatal("locked native source still writable")
-				}
-			}
-			api.activeSessions["busy"] = &ActiveSessionInfo{WorkspacePath: local.Virtual, Status: "running"}
-			if w := call("server", "owner", true); w.Code != 409 {
-				t.Fatal("handoff under active turn")
-			}
-			delete(api.activeSessions, "busy")
-			// PLAT-856-442: the same logical conversation must survive both
-			// editing handoffs, without importing a native runtime or another tab.
-			main, err := api.crewHandoffMain(ctx, owner, local.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			writeHistory := func(record ProductConversationRecord, text string) {
-				t.Helper()
-				p, ok := workProjectChatHistoryConversationPath("owner", record.WorkspacePath, record.SessionID, time.Now())
-				if !ok {
-					t.Fatal("private main chat path missing")
-				}
-				data := map[string]any{"user_id": "owner", "session_id": record.SessionID,
-					"conversation_history": []map[string]any{{"Role": "human", "Parts": []map[string]any{{"Type": "text", "Text": text}}}},
-					"runtime":              map[string]any{"provider": "claude-code", "external_session_id": "do-not-transfer-native-session"},
-					"terminal_snapshots":   []string{"do-not-transfer-terminal"},
-					"ui_events":            []map[string]any{{"type": "streaming_chunk", "data": map[string]any{"type": "streaming_chunk", "content": "do-not-transfer-terminal-event", "metadata": map[string]any{"kind": "terminal", "tmux_session": "do-not-transfer-native-handle"}}}}}
-				raw, _ := json.Marshal(data)
-				if err := writeRawFileToWorkspace(ctx, p, string(raw)); err != nil {
-					t.Fatal(err)
-				}
-			}
-			// A background receipt racing a local turn must retry without
-			// replacing its registry or falling back to a fresh native chat.
-			api.activeSessions[main.SessionID] = &ActiveSessionInfo{SessionID: main.SessionID, WorkspacePath: local.Virtual, Status: "running"}
-			busy := &crewHandoffConversation{ConversationID: main.ConversationID}
-			if err := api.importCrewHandoffConversation(ctx, owner, local, "busy-pair", "busy-transfer", busy, main); !errors.Is(err, errCrewNativeDestinationBusy) {
-				t.Fatalf("running destination import must retry: %v", err)
-			}
-			unchanged, err := api.crewHandoffMain(ctx, owner, local.ID)
-			if err != nil || unchanged.SessionID != main.SessionID || unchanged.FreshNative != main.FreshNative {
-				t.Fatal("busy import replaced the current conversation")
-			}
-			delete(api.activeSessions, main.SessionID)
-			writeHistory(main, "Remember the project marker: blue lantern")
-			// PLAT-856-442: imported JSON alone returned 404 to the actual chat
-			// screen. The same events endpoint must show it only to its owner.
-			checkTranscript := func(record ProductConversationRecord, marker string) {
-				t.Helper()
-				projectID := strings.Split(record.ConversationKey, ":")[0]
-				request := httptest.NewRequest("GET", "/api/workspace-state", nil).WithContext(ctx)
-				restored, ok := api.validateWorkspaceReturn(request, &workspaceDestination{Surface: "work", ID: projectID, SessionID: record.SessionID}, []homeWork{{Surface: "work", ID: projectID, WorkspacePath: record.WorkspacePath}})
-				if !ok || restored == nil || restored.SessionID != record.SessionID {
-					t.Fatalf("imported archive without native runtime cannot reopen: %+v", restored)
-				}
-				for _, person := range []string{"owner", "other"} {
-					r := httptest.NewRequest("GET", "/api/sessions/"+record.SessionID+"/events?durable_chat=1&limit=40&view=compact&workspace_path="+record.WorkspacePath, nil)
-					r = mux.SetURLVars(r, map[string]string{"session_id": record.SessionID})
-					r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: person}))
-					w := httptest.NewRecorder()
-					api.handleGetSessionEvents(w, r)
-					if person == "other" {
-						if w.Code != 404 {
-							t.Fatalf("imported transcript exposed: %d %s", w.Code, w.Body.String())
-						}
-					} else if w.Code != 200 || !strings.Contains(w.Body.String(), marker) || strings.Contains(w.Body.String(), "do-not-transfer") {
-						t.Fatalf("imported transcript missing or contains source runtime: %d %s", w.Code, w.Body.String())
-					}
+				if response.Code != want {
+					t.Fatalf("piece %s: %d %s", person, response.Code, response.Body.String())
 				}
 			}
 			loseResponse = true
-			if w := call("server", "owner", true); w.Code != 409 {
-				t.Fatal("lost response not reported")
+			if w := call("server", "owner", true); w.Code != 409 || loseResponse {
+				t.Fatalf("lost receipt: %d %s", w.Code, w.Body.String())
 			}
-			pending, _ := crewroot.ReadSync(local.ID)
-			if pending.PendingAction != "server" {
-				t.Fatal("lost retry state")
-			}
-			serverChat, err := api.crewHandoffMain(ctx, owner, serverRoots.ID)
-			if err != nil || serverChat.ConversationID != main.ConversationID || serverChat.SessionID == main.SessionID {
-				t.Fatalf("handoff identity: %+v %v", serverChat, err)
-			}
-			checkTranscript(serverChat, "blue lantern")
-			// PLAT-856-442: the browser marks an automatic-switch send as a
-			// continuation. Removing its old session header caused a real 422.
-			profile, err := api.agentProfiles.Resolve("work", 0, owner.UserID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			continued := httptest.NewRequest("POST", "/api/agent-profiles/work/query", nil).WithContext(ctx)
-			continued.Header.Set("X-Conversation-Continuation", "true")
-			if _, err = api.resolveAgentProfileConversation(continued, profile, serverRoots.ID, ""); err == nil || !strings.Contains(err.Error(), "explicit session ID") {
-				t.Fatalf("missing continuation header did not reproduce: %v", err)
-			}
-			if err = api.bindCrewHandoffContinuation(continued, serverRoots.ID); err != nil {
-				t.Fatal(err)
-			}
-			bound, err := api.resolveAgentProfileConversation(continued, profile, serverRoots.ID, "")
-			if err != nil || bound.SessionID != serverChat.SessionID {
-				t.Fatalf("handoff continuation did not bind: %+v %v", bound, err)
-			}
-			target, found, err := resolveProductResumeTarget("owner", serverChat)
-			if err != nil || !found || target.Runtime != nil || len(target.History) == 0 {
-				t.Fatalf("archive continuation missing: %+v %v", target, err)
-			}
-			saved, err := ReadChatHistoryConversation("owner", serverChat.SessionID, serverChat.WorkspacePath)
-			if err != nil || !bytes.Contains(saved, []byte("blue lantern")) || bytes.Contains(saved, []byte("do-not-transfer")) {
-				t.Fatalf("history allowlist failed: %v", err)
-			}
-			writeHistory(serverChat, "Remember the project marker: blue lantern; server continued")
-			write(serverRoots.Files, "note.txt", "server work after handoff")
 			if w := call("server", "owner", true); w.Code != 200 {
 				t.Fatalf("retry: %d %s", w.Code, w.Body.String())
 			}
-			saved, _ = ReadChatHistoryConversation("owner", serverChat.SessionID, serverChat.WorkspacePath)
-			if !bytes.Contains(saved, []byte("server continued")) {
-				t.Fatal("handoff retry replaced the newer server turn")
+			receipt, err := readCrewMoveReceipt(local.ID)
+			if err != nil || receipt == nil || !receipt.Complete {
+				t.Fatalf("retirement: %+v %v", receipt, err)
 			}
-			checkWrite(local.FilesPath()+"/note.txt", 409)
-			// Authority refresh must not write an old snapshot over a transfer
-			// that recorded PendingAction after the refresh read its binding.
-			stale, _ := crewroot.ReadSync(local.ID)
-			stale.Editing, stale.PendingAction = "local", ""
-			fresh, _ := crewroot.ReadSync(local.ID)
-			fresh.PendingAction = "download"
-			if err := crewroot.WriteSync(local.ID, *fresh); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := api.refreshCrewSyncAuthority(ctx, owner, local, stale); err != nil {
-				t.Fatal(err)
-			}
-			preserved, _ := crewroot.ReadSync(local.ID)
-			if preserved.PendingAction != "download" || stale.PendingAction != "download" {
-				t.Fatal("stale authority refresh dropped the pending transfer")
-			}
-			// A stale local authority reply must not roll back a completed
-			// handoff and unlock source writes while the server owns editing.
-			beforeHandoff := *preserved
-			beforeHandoff.Editing, beforeHandoff.LastTransfer = "local", "old-transfer"
-			if _, err := updateCrewSyncEditing(ctx, local, beforeHandoff, "local"); err != nil {
-				t.Fatal(err)
-			}
-			stillServer, _ := crewroot.ReadSync(local.ID)
-			if stillServer.Editing != "server" || stillServer.PendingAction != "download" {
-				t.Fatal("stale authority rolled back the completed handoff")
-			}
-			serverLarge, e := os.OpenFile(filepath.Join(serverRoots.Files, "resumable.bin"), os.O_WRONLY|os.O_TRUNC, 0600)
-			if e != nil {
-				t.Fatal(e)
-			}
-			if _, e = io.CopyN(serverLarge, rand.Reader, 12<<20); e != nil {
-				t.Fatal(e)
-			}
-			serverLarge.Close()
-			dropDownload = true
-			if w := call("download", "owner", true); w.Code != 409 || dropDownload {
-				t.Fatalf("interrupted download: %d %s", w.Code, w.Body.String())
-			}
-			resumedDownload := false
-			pieceHook = func(r *http.Request) {
-				if r.Method == http.MethodGet && r.URL.Query().Get("direction") == "download" {
-					offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
-					if offset > 0 {
-						resumedDownload = true
-						t.Logf("[CREW_SYNC_PROOF] at=%s resumed_download_offset=%d", time.Now().UTC().Format(time.RFC3339Nano), offset)
-					}
-				}
-			}
-			if w := call("download", "owner", true); w.Code != 200 {
-				t.Fatalf("background return: %d %s", w.Code, w.Body.String())
-			}
-			pieceHook = nil
-			if !resumedDownload || digest(largePath) != digest(filepath.Join(serverRoots.Files, "resumable.bin")) {
-				t.Fatal("download did not resume correct bytes")
-			}
-			t.Logf("[CREW_SYNC_PROOF] at=%s resumed_download=ok sha256_match=true", time.Now().UTC().Format(time.RFC3339Nano))
-			mirror, _ := crewroot.ReadSync(local.ID)
-			if mirror.Editing != "server" {
-				t.Fatal("background copy moved editing")
-			}
-			mirrored, _ := os.ReadFile(filepath.Join(local.Files, "note.txt"))
-			if string(mirrored) != "server work after handoff" {
-				t.Fatal("server edit did not reach Mac")
-			}
-			write(serverRoots.Files, "note.txt", "latest server work")
-			// A newer return is real work even after the server has switched
-			// editing to local: download must serve it until it is acknowledged.
-			serverBinding, _ := crewroot.ReadSync(serverRoots.ID)
-			pendingReturn, err := api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "pull", PairID: serverBinding.PairID})
-			if err != nil || pendingReturn.Snapshot == nil {
-				t.Fatalf("prepare pending return: %+v %v", pendingReturn, err)
-			}
-			stillPending, err := api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "download", PairID: serverBinding.PairID})
-			if err != nil || stillPending.Snapshot == nil || stillPending.TransferID != pendingReturn.TransferID {
-				t.Fatalf("newer return was discarded: %+v %v", stillPending, err)
-			}
-
-			// A pre-upgrade return is recaptured even after editing has already
-			// moved locally. Its saved conversation must still accompany it.
-			legacyReturn, _ := crewSyncManifestPath(serverRoots.ID)
-			legacyReturn += ".return"
-			legacyReturnBytes := oldTransfer(legacyReturn, pendingReturn)
-			// PR838 regression: if recapture fails after the rename, the next
-			// download must still find the return, including its conversation.
-			oversizePath := filepath.Join(serverRoots.Files, "upgrade-too-large.bin")
-			oversize, err := os.Create(oversizePath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = oversize.Truncate(65 << 20); err != nil {
-				t.Fatal(err)
-			}
-			if err = oversize.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "download", PairID: serverBinding.PairID}); err == nil {
-				t.Fatal("oversize recapture unexpectedly succeeded")
-			}
-			if active, err := os.ReadFile(legacyReturn); err != nil || !bytes.Equal(active, legacyReturnBytes) {
-				t.Fatal("failed upgrade hid the pending return")
-			}
-			if err = os.Remove(oversizePath); err != nil {
-				t.Fatal(err)
-			}
-			upgradedReturn, err := api.crewSync(ctx, owner, serverRoots.ID, crewSyncRequest{Action: "download", PairID: serverBinding.PairID})
-			if err != nil || upgradedReturn.Snapshot == nil || len(upgradedReturn.Snapshot.Payloads) == 0 || upgradedReturn.TransferID == pendingReturn.TransferID {
-				t.Fatalf("old return recapture failed: %v", err)
-			}
-			beforeChat, _ := json.Marshal(pendingReturn.Conversation)
-			afterChat, _ := json.Marshal(upgradedReturn.Conversation)
-			if !bytes.Equal(beforeChat, afterChat) {
-				t.Fatal("old return lost its conversation")
-			}
-			checkOldBackup(legacyReturn, legacyReturnBytes)
-
-			// Server Editing is already local, but the Mac has not imported or
-			// acknowledged the return. A send must finish it before choosing a CLI.
-			pendingLocal, _ := crewroot.ReadSync(local.ID)
-			pendingLocal.PendingAction = "local"
-			pendingLocal.Editing = "local"
-			if err := crewroot.WriteSync(local.ID, *pendingLocal); err != nil {
-				t.Fatal(err)
-			}
-			send := httptest.NewRequest("POST", "/api/agent-profiles/work/query", nil).WithContext(ctx)
-			send.Header.Set("X-Session-ID", main.SessionID)
-			offline.Store(true)
-			blocked := httptest.NewRecorder()
-			if !api.ensureCrewNativeExecution(blocked, send, "work", local.ID) || blocked.Code != 409 {
-				t.Fatal("interrupted pending return allowed a stale offline send")
-			}
-			offline.Store(false)
-			gate := httptest.NewRecorder()
-			if api.ensureCrewNativeExecution(gate, send, "work", local.ID) {
-				t.Fatalf("pending return did not finish before send: %d %s", gate.Code, gate.Body.String())
-			}
-			returned, err := api.crewHandoffMain(ctx, owner, local.ID)
-			if err != nil || returned.ConversationID != main.ConversationID || returned.SessionID == main.SessionID || returned.SessionID == serverChat.SessionID {
-				t.Fatalf("return identity: %+v %v", returned, err)
-			}
-			if send.Header.Get("X-Session-ID") != returned.SessionID {
-				t.Fatal("send would run on stale session before pending import")
-			}
-			pendingLocal, _ = crewroot.ReadSync(local.ID)
-			if pendingLocal.PendingAction != "" {
-				t.Fatal("pending return was not acknowledged before send")
-			}
-			// PLAT-856-485 / PR633: an ordinary stale tab must still fail
-			// continuation validation, rather than join the current conversation.
-			staleSend := httptest.NewRequest("POST", "/api/agent-profiles/work/query", nil).WithContext(ctx)
-			staleSend.Header.Set("X-Session-ID", main.SessionID)
-			if api.ensureCrewNativeExecution(httptest.NewRecorder(), staleSend, "work", local.ID) {
-				t.Fatal("ordinary local continuation unexpectedly required a handoff")
-			}
-			if staleSend.Header.Get("X-Session-ID") != main.SessionID {
-				t.Fatal("ordinary stale continuation was rebound to a different conversation")
-			}
-			// PLAT-856-442: a background download queued before the return
-			// must not retry forever after editing is back on the Mac.
-			staleDownload, _ := crewroot.ReadSync(local.ID)
-			staleDownload.PendingAction = "download"
-			if err := crewroot.WriteSync(local.ID, *staleDownload); err != nil {
-				t.Fatal(err)
-			}
-			if w := call("download", "owner", true); w.Code != 200 {
-				t.Fatalf("obsolete background download: %d %s", w.Code, w.Body.String())
-			}
-			settled, _ := crewroot.ReadSync(local.ID)
-			if settled.PendingAction != "" || settled.Editing != "local" {
-				t.Fatalf("obsolete download was not settled: %+v", settled)
-			}
-			offline.Store(true)
-			if api.ensureCrewNativeExecution(httptest.NewRecorder(), send, "work", local.ID) {
-				t.Fatal("completed local handoff blocked ordinary offline work")
-			}
-			offline.Store(false)
-			checkTranscript(returned, "server continued")
-			// A failed binding write leaves journal rows behind. Retrying the same
-			// transfer must finish without duplicates, including beyond the normal
-			// builder restore's twelve-message window.
-			replay, err := api.captureCrewHandoffConversation(ctx, owner, local, returned)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for len(replay.History) < 15 {
-				replay.History = append(replay.History, replay.History[0])
-			}
-			failRegistryWrite.Store(true)
-			if err = api.importCrewHandoffConversation(ctx, owner, local, "test-pair", "journal-retry", replay, returned); err == nil || !strings.Contains(err.Error(), "write product conversation registry") {
-				t.Fatalf("expected failure after journal import: %v", err)
-			}
-			if err = api.importCrewHandoffConversation(ctx, owner, local, "test-pair", "journal-retry", replay, returned); err != nil {
-				t.Fatal(err)
-			}
-			retried, err := api.crewHandoffMain(ctx, owner, local.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			page, err := eventStore.ReadDurableChatPage(retried.SessionID, events.DurableEventPageOptions{Limit: 100})
-			if err != nil || len(page.Events) != 15 {
-				t.Fatalf("journal retry duplicated or truncated dialogue: %d %v", len(page.Events), err)
-			}
-			checkTranscript(retried, "server continued")
-			t.Run("Muse native import", func(t *testing.T) {
-				if _, err := exec.LookPath("muse"); err != nil {
-					t.Skip("Muse native import needs Muse installed; archive, owner and secret checks still run")
-				}
-				checkCrewMuseNativeHandoff(t, api, ctx, owner, local, retried, replay)
-			})
-			saved, err = ReadChatHistoryConversation("owner", returned.SessionID, returned.WorkspacePath)
-			if err != nil || !bytes.Contains(saved, []byte("server continued")) || bytes.Contains(saved, []byte("do-not-transfer")) {
-				t.Fatalf("return lost conversation or copied runtime: %v", err)
-			}
-			raw, err := os.ReadFile(filepath.Join(local.Files, "note.txt"))
-			if err != nil || string(raw) != "latest server work" {
-				t.Fatalf("returned file: %q %v", raw, err)
-			}
-			checkWrite(local.FilesPath()+"/new.txt", 200)
-			// Exercise the actual watcher, saved-login HTTP and real files.
-			// PLAT-856-440: an unavailable selected drive at startup must recover
-			// when it returns, without restarting the app or changing its pairing.
+			localFiles := receipt.BackupPath
 			if split {
-				crewAutoStates.Delete(local.ID)
-				if err := os.Rename(local.Files, local.Files+"-unavailable"); err != nil {
-					t.Fatal(err)
+				localFiles = local.Files
+				if receipt.LocalFolderKept != local.Files || receipt.BackupPath != "" {
+					t.Fatal("selected folder moved")
 				}
 			}
-			stop := api.startDesktopCrewSync()
-			defer stop()
-			if split {
-				deadline := time.Now().Add(5 * time.Second)
-				for crewAutoStatus(local.ID) == nil && time.Now().Before(deadline) {
-					time.Sleep(50 * time.Millisecond)
-				}
-				if status := crewAutoStatus(local.ID); status == nil || status.State != "attention" {
-					t.Fatalf("missing folder was not reported: %+v", status)
-				}
-				if err := os.Rename(local.Files+"-unavailable", local.Files); err != nil {
-					t.Fatal(err)
+			for _, root := range []string{localFiles, serverRoots.Files} {
+				data, e := os.ReadFile(filepath.Join(root, "resumable.bin"))
+				if e != nil || !bytes.Equal(data, large) {
+					t.Fatal("move lost file bytes", e)
 				}
 			}
-			awaitFile := func(root, name, want string) {
-				t.Helper()
-				deadline := time.Now().Add(15 * time.Second)
-				for time.Now().Before(deadline) {
-					data, _ := os.ReadFile(filepath.Join(root, name))
-					if string(data) == want {
-						return
-					}
-					time.Sleep(50 * time.Millisecond)
-				}
-				t.Fatalf("automatic copy missing %s; status=%+v", name, crewAutoStatus(local.ID))
+			if b, _ := crewroot.ReadSync(local.ID); b != nil {
+				t.Fatal("retired Crew kept a relay binding")
 			}
-			write(local.Files, "automatic.txt", "saved locally")
-			awaitFile(serverRoots.Files, "automatic.txt", "saved locally")
-			offline.Store(true)
-			write(local.Files, "automatic.txt", "saved offline")
-			time.Sleep(3500 * time.Millisecond)
-			if data, _ := os.ReadFile(filepath.Join(local.Files, "automatic.txt")); string(data) != "saved offline" {
-				t.Fatal("offline local edit lost")
-			}
-			offline.Store(false)
-			awaitFile(serverRoots.Files, "automatic.txt", "saved offline")
-			// PLAT-856-509: force a status refresh in the released-lock window.
-			// Its old server authority must not reverse a pending handoff.
-			refreshedPending := false
-			pieceHook = func(r *http.Request) {
-				observed, err := crewroot.ReadSync(local.ID)
-				if err != nil || observed == nil || observed.PendingAction != "server" || r.Method != http.MethodPut {
-					return
-				}
-				refreshedPending = true
-				updated, err := updateCrewSyncEditing(ctx, local, *observed, "local")
-				if err != nil || updated.Editing != "server" || updated.PendingAction != "server" {
-					t.Errorf("status reversed the pending handoff: %+v %v", updated, err)
-				}
+			if _, _, ok := api.resolveExternalWorkspace(ctx, owner, local.ID); ok {
+				t.Fatal("retired Crew remains listed")
 			}
 			if w := call("server", "owner", true); w.Code != 200 {
-				t.Fatalf("automatic handoff: %s", w.Body.String())
+				t.Fatalf("retirement retry: %s", w.Body.String())
 			}
-			pieceHook = nil
-			if !refreshedPending {
-				t.Fatal("pending handoff authority refresh was not exercised")
+			if w := call("status", "other", true); w.Code < 400 {
+				t.Fatal("other owner read move receipt")
 			}
-			write(serverRoots.Files, "automatic.txt", "saved on server")
-			awaitFile(local.Files, "automatic.txt", "saved on server")
-
-			// PLAT-856-442: a private-history symlink must not redirect the
-			// under-lock direct writer outside the admitted destination Crew.
-			stop()
-			// The watcher may have applied bytes before its receipt was cancelled.
-			if w := call("download", "owner", true); w.Code != 200 {
-				t.Fatalf("settle watcher receipt: %d %s", w.Code, w.Body.String())
+			raw, err := os.ReadFile(filepath.Join(local.Private, "schedules.json"))
+			var stopped projectactions.Schedules
+			json.Unmarshal(raw, &stopped)
+			if err != nil || len(stopped.Schedules) != 1 || stopped.Schedules[0].Enabled {
+				t.Fatal("Mac schedule still enabled", err)
 			}
-			builder := filepath.Join(local.Private, "builder")
-			if err := os.Rename(builder, builder+"-saved"); err != nil {
+			schedules, err := readProjectSchedules(ctx, serverRoots.Virtual)
+			if err != nil || len(schedules) != 1 || !schedules[0].Enabled || schedules[0].Project.ID != serverRoots.ID || schedules[0].Action.Tab != serverRoots.ID+":chat:helper" {
+				t.Fatalf("online schedule: %+v %v", schedules, err)
+			}
+			doc, err = store.loadDocument(ctx, productConversationRegistryPath(owner.UserID))
+			if err != nil {
 				t.Fatal(err)
 			}
-			outside := t.TempDir()
-			if err := os.Symlink(outside, builder); err != nil {
+			for _, original := range []ProductConversationRecord{main, side} {
+				key := serverRoots.ID + strings.TrimPrefix(original.ConversationKey, local.ID)
+				moved := doc.Entries[productConversationRegistryEntryKey("work", key)]
+				if moved.ConversationID != original.ConversationID || moved.SessionID == original.SessionID {
+					t.Fatalf("chat identity: %+v", moved)
+				}
+				for _, person := range []string{"owner", "other"} {
+					req := httptest.NewRequest("GET", "/api/sessions/"+moved.SessionID+"/events?durable_chat=1&limit=40&view=compact&workspace_path="+moved.WorkspacePath, nil)
+					req = mux.SetURLVars(req, map[string]string{"session_id": moved.SessionID})
+					req = req.WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person}))
+					response := httptest.NewRecorder()
+					api.handleGetSessionEvents(response, req)
+					if person == "other" {
+						if response.Code != 404 {
+							t.Fatal("private transcript leaked")
+						}
+					} else if response.Code != 200 || !strings.Contains(response.Body.String(), original.ConversationID) || strings.Contains(response.Body.String(), "do-not-transfer") {
+						t.Fatalf("transcript: %d %s", response.Code, response.Body.String())
+					}
+				}
+			}
+			onlineMain, err := api.crewHandoffMain(ctx, owner, serverRoots.ID)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if w := call("local", "owner", true); w.Code != 409 || !strings.Contains(w.Body.String(), "outside the Crew") {
-				t.Fatalf("history symlink accepted or wrong refusal: %d %s", w.Code, w.Body.String())
-			}
-			if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
-				t.Fatal("handoff wrote outside private storage")
-			}
-			if err := os.Remove(builder); err != nil {
+			history, err := api.captureCrewHandoffConversation(ctx, owner, serverRoots, onlineMain)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Rename(builder+"-saved", builder); err != nil {
+			checkCrewMuseNativeHandoff(t, api, ctx, owner, serverRoots, onlineMain, history)
+			// Delete cleanup must match one Crew exactly, retaining a similarly named Crew.
+			otherPath, _ := crewSyncManifestPath(serverRoots.ID + "-other")
+			write(filepath.Dir(otherPath), filepath.Base(otherPath), "keep")
+			if err = removeCrewSyncState(serverRoots.ID); err != nil {
 				t.Fatal(err)
 			}
-			if w := call("local", "owner", true); w.Code != 200 {
-				t.Fatalf("history retry after removing symlink: %d %s", w.Code, w.Body.String())
+			paths, err := crewSyncStatePaths(serverRoots.ID)
+			if err != nil || len(paths) != 0 {
+				t.Fatal("transfer state remains", paths, err)
 			}
-
-			checkCrewNativeSyncAdmission(t, api, ctx, owner, serverRoots)
-			checkCrewDependencySecretBoundary(t, api, ctx, owner, local, serverRoots)
-			checkCrewSyncOff(t, api, ctx, local, serverRoots, &offline)
-
+			if raw, err := os.ReadFile(otherPath); err != nil || string(raw) != "keep" {
+				t.Fatal("deleted another Crew's state")
+			}
+			t.Logf("[CREW_SYNC_PROOF] managed=%t interrupted_upload=resumed lost_receipt=recovered chats=2 schedules=online local_files=preserved", !split)
 		})
 	}
 }
 
-// The existing HTTP fixture supplies both managed and selected-folder Crews.
 // Pin the new private-store/owner/conflict rules without another server fixture.
 func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Context, owner *UserClaims, roots crewroot.Roots, current ProductConversationRecord, history *crewHandoffConversation) {
 	t.Helper()
@@ -983,45 +449,6 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err = stageCrewNative(roots, moved.Native); err != nil {
 		t.Fatal(err)
 	}
-	// PLAT-856-442: a failed next transfer must not invalidate offline resume.
-	if err = saveCrewNativeMirror(roots, &moved); err != nil {
-		t.Fatal(err)
-	}
-	staged := filepath.Join(moved.Native.Root, "session.jsonl")
-	if err = os.WriteFile(staged+".partial", []byte("interrupted replacement"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Rename(staged+".partial", staged); err != nil {
-		t.Fatal(err)
-	}
-	mirror, err := readCrewNativeMirror(roots)
-	if err != nil {
-		t.Fatalf("last complete native mirror lost: %v", err)
-	}
-	// The same native ID with rewritten history must not quietly replace the
-	// completed mirror when an offline branch reconnects.
-	var forkRow map[string]any
-	json.Unmarshal(row, &forkRow)
-	forkRow["offline_fork"] = true
-	forkBytes, _ := json.Marshal(forkRow)
-	if err = os.WriteFile(sourcePath, append(forkBytes, '\n'), 0600); err != nil {
-		t.Fatal(err)
-	}
-	fork := moved
-	fork.Native, err = sessiontransfer.ExportMuse(sourceHome, id, source, "structured")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = stageCrewNative(roots, fork.Native); err != nil {
-		t.Fatal(err)
-	}
-	if err = saveCrewNativeMirror(roots, &fork); !errors.Is(err, sessiontransfer.ErrDiverged) {
-		t.Fatalf("offline fork replaced mirror: %v", err)
-	}
-	if _, err = readCrewNativeMirror(roots); err != nil {
-		t.Fatal(err)
-	}
-	moved = *mirror.Conversation
 	if err = api.importCrewHandoffConversation(ctx, owner, roots, "native-pair", "native-first", &moved, current); err != nil {
 		t.Fatal(err)
 	}
@@ -1072,22 +499,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if data, _ := os.ReadFile(path); !bytes.Equal(data, advanced) {
 		t.Fatal("native conflict overwrote the destination copy")
 	}
-	// Caching metadata must never turn a corrupt journal into a valid resume.
-	if _, err := readCrewNativeMirrorManifest(roots); err != nil {
-		t.Fatal(err)
-	}
-	mirrorFile := filepath.Join(mirror.Conversation.Native.Root, "session.jsonl")
-	original, err := os.ReadFile(mirrorFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.WriteFile(mirrorFile, original, 0600)
-	if err := os.WriteFile(mirrorFile, []byte("corrupt journal"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := readCrewNativeMirror(roots); err == nil {
-		t.Fatal("cached manifest bypassed journal validation")
-	}
+
 }
 
 // The allowed upgrade proves these refusals are the owner/pair/location rules,

@@ -425,6 +425,13 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		return
 	}
 
+	if profile.ID == crewProfileID {
+		if err := removeCrewSyncState(projectID); err != nil {
+			writeAgentProfileError(w, 500, "The Crew was removed, but its transfer cleanup needs a retry.")
+			return
+		}
+	}
+
 	if id, ok := projectIdentityOf(binding.WorkspacePath); ok {
 		// The project is gone: so is its registry entry (best effort; a stale entry only reserves a folder name).
 		if err := defaultProjectOwners().Remove(id.Product, id.Folder); err != nil {

@@ -125,11 +125,6 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 	if sync != nil && sync.Side == "server" && sync.SplitFiles {
 		files = filepath.Join(files, FilesSegment)
 	}
-	// A server-first pair keeps the existing hosted folder layout. Flat
-	// project content stays at the chosen local root, not in .agentworks.
-	if r.LocalRoot != "" && sync != nil && sync.Side == "local" && !sync.SplitFiles {
-		resources = files
-	}
 	for _, dir := range []string{files, resources, private} {
 		if err := unchangedDirectory(dir, allowMissing); err != nil {
 			return Roots{}, err
