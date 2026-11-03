@@ -332,10 +332,12 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	if agent == nil {
 		return refuse("not_shared")
 	}
-	key := project + codeChatSideMarker + call.Tab
-	tabs, err := api.macCrewTabs(ctx, claims, project)
-	if err != nil || !slices.ContainsFunc(tabs, func(tab AgentProfileSideChat) bool { return tab.ConversationKey == key }) {
-		return refuse("no_tab")
+	key := macSharedAgentChatKey(project, call.Tab)
+	if call.Tab != macMainTab {
+		tabs, err := api.macCrewTabs(ctx, claims, project)
+		if err != nil || !slices.ContainsFunc(tabs, func(tab AgentProfileSideChat) bool { return tab.ConversationKey == key }) {
+			return refuse("no_tab")
+		}
 	}
 	r, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/api/agent-profiles/work/conversation", nil)
 	r = mux.SetURLVars(r, map[string]string{"id": "work"})

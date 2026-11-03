@@ -254,7 +254,7 @@ async function viaConnection<T>(connection: string, path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-/** Who can message your agents (owner, 3 Nov, mockup local-cloud-agent-sharing): Main is always only yours; each side
+/** Who can message your agents (owner, 3 Nov, mockup local-cloud-agent-sharing): Main and each side
  * tab can be opened to chosen people or everyone, with one line about what it does. Saved as you go. Shown only when the
  * Crew's network supports it. */
 function MacSharedAgents({ projectId, connection }: { projectId: string; connection: string }) {
@@ -296,7 +296,6 @@ function MacSharedAgents({ projectId, connection }: { projectId: string; connect
   const matches = (agent: SharedAgent) => people.filter(person => !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 6)
   return <section aria-label="Who can message your agents" className="mt-2 space-y-2 rounded-xl border border-border p-3">
     <p className="text-sm font-semibold">Who can message your agents</p>
-    <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-2.5 py-2 text-[13px]"><span aria-hidden="true">🔒</span><span><span className="font-medium">Main</span> is always only yours.</span></div>
     {tabs.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
       return <div key={row.tab} className="space-y-2 rounded-lg border border-border p-2.5">
@@ -320,11 +319,12 @@ function MacSharedAgents({ projectId, connection }: { projectId: string; connect
               </span>}
             </span> : <button type="button" onClick={() => { setAdding(row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted">+ Add</button>}
           </div>}
+          {row.tab === 'main' && <p className="text-[11px] text-muted-foreground">This is your main chat. Its answers to others can use what you've discussed here.</p>}
           {!agent.purpose.trim() && <p className="text-[11px] text-amber-600">Write one line about what it does to share it.</p>}
         </>}
       </div>
     })}
-    {!tabs.length && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
+    {tabs.length <= 1 && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
     {shared.length > 0 && <p className="text-[12px] text-muted-foreground">They can ask these agents anything the agents can see in this Crew. They never see your other chats. Works while this Mac is on.</p>}
     {error && <p className="text-xs text-amber-600">{error}</p>}
   </section>
@@ -517,7 +517,8 @@ export function useMacTabShareLine(projectId?: string, conversationKey?: string)
   const [line, setLine] = useState('')
   useEffect(() => {
     setLine('')
-    const tab = conversationKey?.split(':chat:')[1]
+    // Main's key is the project itself; the shared list calls it "main".
+    const tab = conversationKey === projectId ? 'main' : conversationKey?.split(':chat:')[1]
     if (!projectId || !tab || !crewCloudMode() || getRawActiveWorkspaceId() !== 'local') return
     let live = true
     void (async () => {
