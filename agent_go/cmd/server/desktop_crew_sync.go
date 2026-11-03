@@ -56,7 +56,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	id := mux.Vars(r)["project"]
-	if input.Action != "status" && input.Action != "server" && input.Action != "relay" && input.Action != "offline" {
+	switch input.Action {
+	case "status", "server", "relay", "offline", "agents", "share_agents":
+	default:
 		externalError(w, 400, "invalid_action", "Choose Move online.")
 		return
 	}
