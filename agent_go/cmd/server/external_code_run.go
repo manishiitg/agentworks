@@ -262,6 +262,12 @@ func codeChatNameTaken(chats []codeChat, name, exceptID string) bool {
 
 // externalCallerTabName names the tab a call without a tab gets: the attached agent's name, else the app that signed in.
 func externalCallerTabName(ctx context.Context, claims *UserClaims) string {
+	// The owner's AI app reaching a Crew on their Mac: the server named the app; the Mac uses that name.
+	if name, _ := ctx.Value(crewMacCallerKey{}).(string); name != "" {
+		if title, err := normalizeChatHistoryTitle(name); err == nil && title != "" {
+			return title
+		}
+	}
 	token := claims.AccessToken
 	if token == nil {
 		return "Website"

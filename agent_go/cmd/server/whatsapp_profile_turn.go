@@ -187,6 +187,13 @@ func (api *StreamingAPI) botProfileTurn(ctx context.Context, userID string, msg 
 		return nil, "", false, fmt.Errorf("%s no longer takes WhatsApp messages", profile.Name)
 	}
 	productInteractions.Note(ctx, workspaceUserID, profile.Product)
+	// A Crew that lives on its owner's Mac answers in Slack only the owner's own direct message, on the Mac
+	// (PLAT-856-509). A channel means other people, which needs the Crew shared.
+	if msg.Platform == "slack" && msg.PresetProfile != nil && strings.EqualFold(profile.ID, crewProfileID) && !IsLocalMode() {
+		if project := crewResourceProjectID(conversationKey); crewRelayTwin(project) {
+			return nil, "", false, api.slackCrewOnMac(ctx, workspaceUserID, project, msg)
+		}
+	}
 	// A Code talks 1:1 only: a Slack DM or WhatsApp (which admits 1:1 chats
 	// only), each sender in their own chat of it, and only people with
 	// access to it (senderProfileTurn refuses anyone else and viewers).

@@ -31,6 +31,18 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 			return
 		}
 	}
+	// A Crew that lives on its owner's Mac answers there (PLAT-856-509): the owner's own AI app reaches it through
+	// the owner's Mac connection, as its named tab; nobody else does.
+	if !IsLocalMode() && crewRelayTwin(manifest.ID) {
+		if project.OwnerID != claims.UserID || project.CoOwner {
+			externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
+			return
+		}
+		raw, _ := json.Marshal(args)
+		call := crewChatCall{Operation: "workspace", Action: action, Args: raw, Caller: externalCallerTabName(r.Context(), claims)}
+		writeCrewChatResult(w, callCrewMacFor(r.Context(), claims.UserID, manifest.ID, call, externalCrewWait(args)+40*time.Second))
+		return
+	}
 
 	chats, err := api.workspaceOwnerChats(r, claims.UserID, manifest.ID, project.Binding)
 	if err != nil {
