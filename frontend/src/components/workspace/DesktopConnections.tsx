@@ -46,7 +46,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     return rank(a) - rank(b) || a.name.localeCompare(b.name)
   })
   const renderProject = ({ location, mac, state, ...project }: SidebarProject) => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project}
-    stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onOpen={() => {
+    stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onMac={location === 'mac' ? (mac?.online ? 'on' : 'off') : undefined} onOpen={() => {
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
   }} />

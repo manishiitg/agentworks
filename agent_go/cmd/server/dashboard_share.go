@@ -57,6 +57,8 @@ type runShareState struct {
 	// CanShare tells the screen whether to offer sharing: only the project's owner can.
 	CanShare       bool `json:"can_share"`
 	NeedsDashboard bool `json:"needs_dashboard,omitempty"`
+	// Owner says the caller owns the project (a Crew on their Mac is theirs even while sharing is blocked).
+	Owner bool `json:"owner,omitempty"`
 	// ShareBlocked is the plain reason sharing is unavailable, shown as given.
 	ShareBlocked string `json:"share_blocked,omitempty"`
 	// Note says anything the owner should know about what the share did.
@@ -365,7 +367,8 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		dashboardError(w, err)
 		return
 	}
-	state.CanShare = api.dashboardShareOwner(r.Context(), claims, target) && dashboardAuthoringAllowed(claims, &target) && !macTwin
+	state.Owner = api.dashboardShareOwner(r.Context(), claims, target)
+	state.CanShare = state.Owner && dashboardAuthoringAllowed(claims, &target) && !macTwin
 	if macTwin {
 		state.ShareBlocked = macCrewShareBlocked
 	}

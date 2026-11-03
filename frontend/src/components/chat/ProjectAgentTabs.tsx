@@ -14,7 +14,7 @@ import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
-import { useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
+import { useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -93,6 +93,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   // can be seen and dragged.
   const onStrip = (tab: ChatTab) => tab.tabId === canonicalTabId || !listedFor(tab) || sideChatPinned(tab)
   const activeTab = tabs.find(tab => tab.tabId === activeTabId)
+  const mainTab = tabs.find(tab => tab.tabId === canonicalTabId) ?? activeTab
+  const placeProject = mainTab?.metadata?.agentProfileId === 'work' ? mainTab.metadata?.agentProfileProjectId : undefined
+  const place = useYourComputerSummary(Boolean(placeProject), placeProject)
+  // On the website a Crew that lives on its owner's Mac has no tabs of its own online; a new one would be empty.
+  const sideChatsHere = allowSideChats && !useCrewLivesOnMac(placeProject)
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
   const [reordering, setReordering] = useState(false)
@@ -199,7 +204,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const visibleTabsRef = useRef(visibleTabs)
   visibleTabsRef.current = visibleTabs
   useEffect(() => {
-    if (!allowSideChats) return
+    if (!sideChatsHere) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || useProductSurfaceStore.getState().productSurface !== surface) return
       if (event.target instanceof Element && event.target.closest('.xterm')) return
@@ -227,7 +232,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [allowSideChats, surface, onSelectTab, isTabActive])
+  }, [sideChatsHere, surface, onSelectTab, isTabActive])
   // With many tabs the strip scrolls sideways (tabs keep their width, "+" stays in view) and the
   // active tab is brought into view when it changes.
   const stripRef = useRef<HTMLDivElement>(null)
@@ -235,7 +240,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     const active = stripRef.current?.querySelector('[data-tab-active="true"]')
     if (active && typeof (active as HTMLElement).scrollIntoView === 'function') (active as HTMLElement).scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [activeTabId, tabs.length])
-  const newTabForm = allowSideChats && newTabName !== null && (
+  const newTabForm = sideChatsHere && newTabName !== null && (
     <form
       className="absolute inset-x-3 top-full z-40 flex items-center rounded-lg border border-border bg-background p-2 shadow-lg md:static md:shrink-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none"
       onSubmit={event => { event.preventDefault(); void submitNewAgent(newTabName) }}
@@ -259,6 +264,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
+      {!phone && <CrewPlaceBadge place={place} />}
       <div ref={stripRef} className="hidden min-w-[84px] items-center gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
@@ -302,7 +308,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
           >
             {phone && activeTab ? <>
               <AgentMenuActivity tabId={activeTab.tabId} workspaceActivity={activeTab.tabId === canonicalTabId ? projectActivity : undefined} />
-              <PhoneCrewTitle name={projectName} tabName={activeTab.tabId === canonicalTabId ? '' : tabLabel(activeTab)} projectId={activeTab.metadata?.agentProfileId === 'work' ? activeTab.metadata?.agentProfileProjectId : undefined} />
+              <PhoneCrewTitle name={projectName} tabName={activeTab.tabId === canonicalTabId ? '' : tabLabel(activeTab)} place={place} />
               <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${moreOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
             </> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
@@ -373,7 +379,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
               })}
               </div>
               {activeTab && <CopyDebugInfo tab={activeTab} />}
-              {phone && allowSideChats && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
+              {phone && sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
                 className="mt-1 flex min-h-11 shrink-0 items-center gap-2 border-t border-border px-2 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New tab</button>}
             </div>, document.body
           )}
@@ -381,7 +387,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       )}
 
       {newTabForm}
-      {allowSideChats && newTabName === null && (
+      {sideChatsHere && newTabName === null && (
         <button
           type="button"
           onClick={() => setNewTabName('')}
@@ -426,12 +432,17 @@ function CopyDebugInfo({ tab }: { tab: ChatTab }) {
 
 const PHONE_PLACE: Record<CloudState, string> = { mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online' }
 
-/** The phone chat title (owner, 3 Nov): the Crew's name and where it lives, as the server reports it. */
-function PhoneCrewTitle({ name, tabName, projectId }: { name: string; tabName: string; projectId?: string }) {
-  const place = useYourComputerSummary(Boolean(projectId), projectId)
+/** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */
+function CrewPlaceBadge({ place }: { place?: CloudState }) {
+  if (!place) return null
   const dot = place === 'mac_off' ? 'bg-muted-foreground' : place === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
+  return <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />{PHONE_PLACE[place]}</span>
+}
+
+/** The phone chat title: the Crew's name and where it lives. */
+function PhoneCrewTitle({ name, tabName, place }: { name: string; tabName: string; place?: CloudState }) {
   return <span className="flex min-w-0 items-center gap-1.5 truncate">
     <span className="truncate font-medium text-foreground">{name}{tabName ? ` · ${tabName}` : ''}</span>
-    {place && <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />{PHONE_PLACE[place]}</span>}
+    <CrewPlaceBadge place={place} />
   </span>
 }
