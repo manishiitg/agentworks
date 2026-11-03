@@ -823,7 +823,27 @@ func nativeRouteReason() string {
 }
 
 // windowsRouteRefused logs and keeps the reason; the caller gets no route.
+// lastWindowsRouteOK makes the selected-route line appear once per route change,
+// not on every check (PLAT-874: success must leave a log line too).
+var lastWindowsRouteOK struct {
+	sync.Mutex
+	key string
+}
+
+func logWindowsRouteOK(key string) {
+	lastWindowsRouteOK.Lock()
+	defer lastWindowsRouteOK.Unlock()
+	if lastWindowsRouteOK.key == key {
+		return
+	}
+	lastWindowsRouteOK.key = key
+	log.Printf("[BRIDGE-ROUTE] provider=codex transport=desktop_pipe outcome=ok")
+}
+
 func windowsRouteRefused(reason string) string {
+	lastWindowsRouteOK.Lock()
+	lastWindowsRouteOK.key = ""
+	lastWindowsRouteOK.Unlock()
 	log.Printf("[BRIDGE-ROUTE] provider=codex transport=desktop_pipe outcome=refused reason=%q", reason)
 	setNativeRouteReason(reason)
 	return ""
@@ -867,6 +887,7 @@ func refreshNativeRoute(provider, session, hostKey, remote string) string {
 			return windowsRouteRefused("the Codex app did not confirm this chat as its own")
 		}
 		setNativeRouteReason("")
+		logWindowsRouteOK(hostKey + " " + remote)
 		return remote
 	}
 	recovering := remote == ""
