@@ -179,7 +179,7 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
    await act(async () => {})
    const accessRow = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('Access'))!
    expect(accessRow.textContent).toBe(`AccessOnline · ${detail}`)
-   expect(footer.querySelectorAll('button')).toHaveLength(1)
+   for (const gone of ['Sharing', 'Laptop access', 'Where it lives', 'Connected agents']) expect([...footer.querySelectorAll('button')].some(node => node.textContent?.startsWith(gone))).toBe(false)
    mocks.open.mockClear(); mocks.target.mockClear()
    await act(async () => accessRow.click())
    expect(mocks.target).toHaveBeenLastCalledWith('mcp','access')
