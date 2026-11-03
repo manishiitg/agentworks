@@ -228,6 +228,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			side := main
+			side.IsMainChat = false
 			side.ConversationKey = local.ID + ":chat:helper"
 			side.ConversationID = "conversation-helper"
 			side.SessionID = "product-helper"
@@ -421,10 +422,15 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, original := range []ProductConversationRecord{main, side} {
-				key := serverRoots.ID + strings.TrimPrefix(original.ConversationKey, local.ID)
-				moved := doc.Entries[productConversationRegistryEntryKey("work", key)]
+				var moved ProductConversationRecord
+				for _, record := range doc.Entries {
+					if record.WorkspacePath == serverRoots.Virtual && record.ConversationID == original.ConversationID {
+						moved = record
+						break
+					}
+				}
 				if moved.ConversationID != original.ConversationID || moved.SessionID == original.SessionID {
-					t.Fatalf("chat identity: %+v", moved)
+					t.Fatalf("chat identity source=%s wanted=%s: %+v", original.ConversationKey, original.ConversationID, moved)
 				}
 				for _, person := range []string{"owner", "other"} {
 					req := httptest.NewRequest("GET", "/api/sessions/"+moved.SessionID+"/events?durable_chat=1&limit=40&view=compact&workspace_path="+moved.WorkspacePath, nil)

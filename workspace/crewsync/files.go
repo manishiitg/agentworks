@@ -66,6 +66,10 @@ func rootFor(roots crewroot.Roots, key string) (string, string, error) {
 	}
 	area, rel, _ := strings.Cut(key, "/")
 	if area == "knowledge" {
+		physical, err := crewroot.ResolveContained(roots.Private, rel)
+		if err != nil || !crewroot.Within(filepath.Join(roots.Private, "knowledgebase"), physical) {
+			return "", "", fmt.Errorf("knowledge path leaves its Crew knowledge folder")
+		}
 		return roots.Private, rel, nil
 	}
 	if area == "files" {

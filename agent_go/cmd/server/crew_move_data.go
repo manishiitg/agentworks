@@ -259,6 +259,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			if !exists {
 				current = main
 				current.ConversationKey = key
+				current.IsMainChat = key == main.ConversationKey
 				current.SessionID = "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/"+key)).String()
 				current.ConversationID = "conversation-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/initial/"+key)).String()
 				doc.Entries[entry] = current
