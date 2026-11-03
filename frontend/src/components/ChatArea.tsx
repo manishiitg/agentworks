@@ -1575,13 +1575,29 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
 
   // Get polling management actions from store (before pollEvents callback)
-  const { startPolling, stopPolling, getActiveSessions, connectSSE, disconnectSSE } = useChatStore(useShallow(state => ({
+  const { startPolling, stopPolling, getActiveSessions, openSessionSSE, disconnectSSE } = useChatStore(useShallow(state => ({
     startPolling: state.startPolling,
     stopPolling: state.stopPolling,
     getActiveSessions: state.getActiveSessions,
-    connectSSE: state.connectSSE,
+    openSessionSSE: state.connectSSE,
     disconnectSSE: state.disconnectSSE,
   })))
+  // Long-lived streams belong to the visible conversation. Background activity
+  // still comes from the server inventory/recovery reads. Guard every caller,
+  // including delayed query replies and restore callbacks after a tab switch.
+  const connectSSE = useCallback((...args: Parameters<typeof openSessionSSE>) => {
+    if (args[0] !== activeSessionIdRef.current) return
+    openSessionSSE(...args)
+  }, [openSessionSSE])
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId
+    return () => {
+      if (activeSessionIdRef.current === activeSessionId) activeSessionIdRef.current = undefined
+      if (activeSessionId) disconnectSSE(activeSessionId)
+    }
+  }, [activeSessionId, disconnectSSE])
+
   const buildExecutionOptions = useWorkflowStore(state => state.buildExecutionOptions)
 
   // Get active sessions from cache (shared across all components)
@@ -2527,25 +2543,17 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // NOTE: sseConnections is intentionally NOT in the dependency array to avoid infinite loops
   // (connectSSE updates the store → sseConnections changes → effect re-fires → connectSSE again)
   useEffect(() => {
-    // Read SSE state fresh from store (not from React state to avoid dep cycle)
+    // An inactive mounted surface must not close the foreground surface's stream.
+    if (!targetTabId) return
+    const visibleTabs = tabsWithActiveSessions.filter(tab => tab.sessionId === activeSessionId)
+    // Switching/unmounting releases this surface's previous visible stream in
+    // its ownership effect above. Never close other surfaces' streams: a
+    // dashboard Ask pane can be visible alongside this chat.
     const currentSSE = useChatStore.getState().sseConnections
-    // Determine which session IDs need SSE connections.
-    // Terminal view mode used to skip SSE — the assumption was that
-    // TerminalCenter's /api/terminals poll covered everything. That was
-    // true while every coding-agent provider was tmux-backed (live pane
-    // state came from polling). For structured CLI providers, the synthetic terminal is
-    // built from streaming_chunk events, so skipping SSE means the pane
-    // never updates and user messages appear lost. Connect SSE for every
-    // active tab regardless of view mode.
-    const neededSessionIds = new Set<string>()
-    for (const tab of tabsWithActiveSessions) {
-      if (!tab.sessionId) continue
-      neededSessionIds.add(tab.sessionId)
-    }
     const connectSessionStream = (sessionId: string) => {
       const store = useChatStore.getState()
       const stillOwnsTab = Object.values(store.chatTabs).some(tab => tab.sessionId === sessionId)
-      if (!stillOwnsTab || store.sseConnections[sessionId]) return
+      if (activeSessionIdRef.current !== sessionId || !stillOwnsTab || store.sseConnections[sessionId]) return
       connectSSE(
         sessionId,
         (msg: SSEEventMessage) => handleSSEMessage(msg, sessionId),
@@ -2554,10 +2562,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         !isExecutionConversationTab(Object.values(store.chatTabs).find(tab => tab.sessionId === sessionId)),
       )
     }
-    // Connect SSE for sessions that don't have a connection yet (any
-    // view mode — see neededSessionIds comment for why terminal mode
-    // can no longer skip this).
-    for (const tab of tabsWithActiveSessions) {
+    // Catch up the visible conversation before connecting its live stream.
+    for (const tab of visibleTabs) {
       if (!tab.sessionId) continue
       const sid = tab.sessionId
       if (currentSSE[sid]) {
@@ -2593,32 +2599,15 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       connectSessionStream(sid)
     }
 
-    // Disconnect SSE for sessions that are no longer active.
-    // Safety guard: never disconnect a session whose tab still has isStreaming=true —
-    // tabsWithActiveSessions may have computed before the latest setTabStreaming(true) call,
-    // and disconnecting mid-execution would make the stop button disappear.
-    const freshChatTabs = useChatStore.getState().chatTabs
-    for (const sid of Object.keys(currentSSE)) {
-      if (!neededSessionIds.has(sid)) {
-        const stillStreaming = Object.values(freshChatTabs).some(
-          t => t.sessionId === sid && t.isStreaming === true && !t.isCompleted
-        )
-        if (!stillStreaming) {
-          disconnectSSE(sid)
-        }
-      }
-    }
-
     // Stop polling when no active sessions
-    if (neededSessionIds.size === 0 && pollingInterval) {
+    if (tabsWithActiveSessions.length === 0 && pollingInterval) {
       stopPolling()
     }
 
-  }, [tabsWithActiveSessions, activeSessionId, activeEventViewMode, activeHistoryLoaded, connectSSE, disconnectSSE, handleSSEMessage, handleSSEStatus, handleSSEFallback, pollingInterval, startPolling, stopPolling, pollEvents])
+  }, [targetTabId, tabsWithActiveSessions, activeSessionId, activeEventViewMode, activeHistoryLoaded, connectSSE, disconnectSSE, handleSSEMessage, handleSSEStatus, handleSSEFallback, pollingInterval, startPolling, stopPolling, pollEvents])
 
-  // The account-scoped store owns session transports. Closing a tab or changing
-  // accounts tears them down there; unmounting a view must not disconnect the
-  // other open conversations or cancel their fallback poller.
+  // The visible surface releases only its own stream on unmount. Account/tab
+  // teardown remains store-owned; background recovery is not cancelled here.
 
 
   const stopStreamingInFlightRef = useRef(false)
