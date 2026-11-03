@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -282,6 +283,12 @@ func botMessageRouteKey(msg BotIncomingMessage) string {
 	}
 	return botRouteKey(msg.PresetWorkflow)
 }
+
+// BotReplyText is a profile turn's answer given in place of a turn (a Crew answered on its owner's Mac, or a plain
+// refusal); the bot posts its text as is.
+type BotReplyText struct{ Text string }
+
+func (r BotReplyText) Error() string { return r.Text }
 
 func botMetaFromMsg(msg BotIncomingMessage, threadID ThreadID) *chathistory.BotMetadata {
 	return &chathistory.BotMetadata{
@@ -2536,7 +2543,12 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 		if err != nil {
 			log.Printf("[BOT_MANAGER] Profile turn failed for thread %s: %v", threadID.Key(), err)
 			if connector := m.GetConnector(msg.Platform); connector != nil {
-				connector.SendThreadMessage(context.Background(), threadID, fmt.Sprintf("Couldn't start that chat: %v", err))
+				var reply BotReplyText
+				if errors.As(err, &reply) {
+					connector.SendThreadMessage(context.Background(), threadID, reply.Text)
+				} else {
+					connector.SendThreadMessage(context.Background(), threadID, fmt.Sprintf("Couldn't start that chat: %v", err))
+				}
 			}
 			return
 		}

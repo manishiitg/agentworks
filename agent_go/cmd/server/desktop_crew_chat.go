@@ -58,6 +58,9 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if call.Operation == "file" {
 		return api.desktopCrewFile(ctx, claims, project, call)
 	}
+	if call.Operation == "workspace" {
+		return api.desktopCrewWorkspace(ctx, claims, project, call)
+	}
 	if call.Operation != "resolve" && call.Operation != "handoff" && call.ConversationID != conversation.ConversationID {
 		return fail(409, "The main chat changed on your Mac. Reopen this Crew to continue it.")
 	}

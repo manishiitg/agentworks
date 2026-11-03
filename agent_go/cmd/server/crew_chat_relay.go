@@ -34,6 +34,10 @@ type crewChatCall struct {
 	Query          url.Values      `json:"query,omitempty"`
 	Answer         json.RawMessage `json:"answer,omitempty"`
 	Path           string          `json:"path,omitempty"`
+	// Workspace: the owner's own AI app call (ask, read_chat, reply_input), run on the Mac as its named tab.
+	Action string          `json:"action,omitempty"`
+	Args   json.RawMessage `json:"args,omitempty"`
+	Caller string          `json:"caller,omitempty"`
 }
 type crewChatResult struct {
 	ID     string          `json:"id"`
@@ -75,7 +79,7 @@ func (api *StreamingAPI) callCrewMac(r *http.Request, project string, call crewC
 	}
 	sock := crewMacSocketFor(GetUserIDFromContext(r.Context()), project, b.PairID)
 	if sock == nil {
-		return failure(503, "Your Mac is offline. Open AgentWorks on it, or use Project sync on your Mac to switch editing to the server.")
+		return failure(503, crewMacOffMessage)
 	}
 	timeout := 55 * time.Second
 	if call.Operation == "handoff" {
@@ -416,4 +420,32 @@ func crewChatResultError(result crewChatResult) string {
 		return body.Error
 	}
 	return http.StatusText(result.Status)
+}
+
+const crewMacOffMessage = "Your Mac is off. Your message will be answered when it's back on."
+
+// callCrewMacFor sends one call to the Mac of a Crew's actual owner, for the owner's own callers that are not a
+// website sign-in (their AI apps, a Slack direct message, their online schedules). The caller has already been
+// checked to be that owner; the call goes only to the owner's own Mac connection.
+func callCrewMacFor(ctx context.Context, owner, project string, call crewChatCall, timeout time.Duration) crewChatResult {
+	failure := func(code int, message string) crewChatResult {
+		data, _ := json.Marshal(map[string]any{"error": message})
+		return crewChatResult{Status: code, Body: data}
+	}
+	b, err := crewroot.ReadSync(project)
+	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" || b.PendingAction != "" {
+		return failure(409, "This Crew is not on its Mac right now.")
+	}
+	sock := crewMacSocketFor(owner, project, b.PairID)
+	if sock == nil {
+		return failure(503, crewMacOffMessage)
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	result, _, err := sock.command(ctx, project, call)
+	if err != nil {
+		return failure(504, "Your Mac did not answer in time. Ask again to see whether your message arrived.")
+	}
+	log.Printf("[CREW_CHAT_RELAY] completed owner=%s project=%s operation=%s action=%s caller=%q status=%d", owner, project, call.Operation, call.Action, call.Caller, result.Status)
+	return result
 }
