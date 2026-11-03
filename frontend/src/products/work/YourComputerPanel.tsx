@@ -84,7 +84,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'share'>('')
+  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'share'>('')
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
@@ -112,80 +112,82 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
     finally { setBusy(false); setReload(value => value + 1) }
   }
-  const moveAndShare = async () => {
+  const move = async (share: boolean) => {
     setOpen('')
-    if (await run('server') && link) window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')
+    if (await run('server') && share && link) window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')
   }
   const minutes = readiness ? Math.max(1, Math.round(readiness.estimated_seconds / 60)) : 0
-  const moveSummary = readiness ? `${sizeLabel(readiness.measurement.bytes)} · about ${minutes} ${minutes > 1 ? 'minutes' : 'minute'}` : ''
-  return <div className="space-y-5">
-    <section aria-label="Where it lives" className="space-y-2">
-      <h3 className="text-sm font-semibold">Where it lives</h3>
-      <div className="flex items-center gap-3">
-        <p role="status" className="flex flex-1 items-center gap-2 text-sm font-medium">
-          {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : online ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Laptop className="h-4 w-4 text-muted-foreground" />}
+  const facts = readiness && !tooBig ? { size: sizeLabel(readiness.measurement.bytes), time: `about ${minutes} ${minutes > 1 ? 'minutes' : 'minute'}` } : undefined
+  const way = (icon: ReactNode, title: string, line: string, action: ReactNode) => <div className="grid grid-cols-[22px_1fr_auto] items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
+    <span aria-hidden="true" className="flex justify-center text-muted-foreground">{icon}</span>
+    <span className="min-w-0"><span className="block text-sm font-medium">{title}</span><span className="block text-xs text-muted-foreground">{line}</span></span>
+    {action}
+  </div>
+  const ready = <span className="text-xs text-emerald-500">✓ Ready</span>
+  return <div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
+    <section aria-label="Where it lives" className="space-y-1 border-b border-border px-4 py-3">
+      <p className="mb-1.5 text-xs text-muted-foreground">Where it lives</p>
+      <div className="flex items-center justify-between gap-2.5">
+        <p role="status" className="flex items-center gap-2 text-base font-semibold">
+          {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
           {!status ? 'Checking…' : moving ? 'Moving online…' : online ? 'Online' : 'On this Mac'}
         </p>
-        {binding && !online && !moving && <Button size="sm" variant="outline" disabled={tooBig} onClick={() => void run('server')}>Move online</Button>}
+        {binding && !online && !moving && open !== 'move' && <Button size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
       </div>
-      <p className="text-xs text-muted-foreground">{moving ? 'You can keep chatting. It picks up where it left off if interrupted.' : online ? 'It works even when your Mac is off.' : 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.'}</p>
-      {status && <p className="text-xs text-muted-foreground">Its schedules run here too.</p>}
-      {!binding && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => { setChoice(event.target.value); if (event.target.value) void run('relay', event.target.value) }} className="w-full rounded-md border border-border bg-background p-2 text-sm">
+      <p className="text-[13px] text-muted-foreground">{moving ? 'You can keep chatting. It picks up where it left off if interrupted.' : online ? 'It works even when your Mac is off.' : 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.'}</p>
+      {status && <p className="text-[13px] text-muted-foreground">Its schedules run here too.</p>}
+      {!binding && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => { setChoice(event.target.value); if (event.target.value) void run('relay', event.target.value) }} className="mt-2 w-full rounded-md border border-border bg-background p-2 text-sm">
         <option value="">Choose a network</option>
         {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>}
-      {!online && !moving && readiness && <details className={`text-xs ${tooBig ? 'text-amber-600' : 'text-muted-foreground'}`} open={tooBig}>
-        <summary className="cursor-pointer">Moving online: {sizeLabel(readiness.measurement.bytes)} · {readiness.measurement.files.toLocaleString()} files{tooBig ? ' · too big' : `, about ${minutes} ${minutes > 1 ? 'minutes' : 'minute'}`}</summary>
-        <div className="mt-1 space-y-1">
-          {tooBig
-            ? <>
-              <p className="font-medium">Too big to move online (up to {sizeLabel(readiness.measurement.max_bytes)} and {readiness.measurement.max_files.toLocaleString()} files). Move large folders out of this Crew, or add them to .gitignore.</p>
-              {(readiness.measurement.largest_folders?.length ?? 0) > 0 && <p>Biggest folders: {readiness.measurement.largest_folders!.map(folder => `${folder.path} (${sizeLabel(folder.bytes)})`).join(', ')}</p>}
-              {(readiness.measurement.files_over_limit?.length ?? 0) > 0 && <p>Files over {sizeLabel(readiness.measurement.max_file_bytes)}: {readiness.measurement.files_over_limit!.join(', ')}</p>}
-            </>
-            : <>
-              <p>Your files, including .env and keys{(readiness.secrets ?? 0) > 0 ? `, and ${readiness.secrets} selected ${readiness.secrets === 1 ? 'secret' : 'secrets'}` : ''}, and your chats go with it. After the move it lives online only; this Mac keeps a copy of the folder as a backup.</p>
-              {(readiness.measurement.dependency_files?.length ?? 0) > 0 && <p>Packages are installed again online ({readiness.measurement.dependency_files!.join(', ')}).</p>}
-              <p>Programs and tools only on your Mac don't go with it.</p>
-            </>}
-        </div>
-      </details>}
-      {binding?.pending_action === 'local' && !busy && <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last move didn't finish. Your work is kept.</span><Button size="sm" variant="outline" onClick={() => void run('local')}>Finish</Button></div>}
-      {error && <div className="space-y-1">
-        <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept.</span></div>
-        <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Details</summary><p className="mt-1 break-all">{error}</p></details>
-      </div>}
+      {open === 'move' && <MoveOnline name={name} facts={facts} tooBig={tooBig} onCancel={() => setOpen('')} onMove={() => void move(false)} />}
+      {binding?.pending_action === 'local' && !busy && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last move didn't finish. Your work is kept.</span><Button size="sm" variant="outline" onClick={() => void run('local')}>Finish</Button></div>}
+      {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
-    {binding && <section aria-label="Who can use it" className="space-y-3 border-t border-border pt-4 text-sm">
-      <h3 className="font-semibold">Who can use it</h3>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2"><span className="font-medium">You</span><span className="flex-1 text-xs text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><CheckCircle2 aria-label="Ready" className="h-4 w-4 text-emerald-500" /></div>
-        <ul className="space-y-2 border-l border-border pl-3 text-xs">
-          {link && <li className="space-y-2">
-            <div className="flex items-center gap-2"><Smartphone aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><span className="flex-1"><span className="font-medium">Phone</span> · Scan to open on your phone</span><Button size="sm" variant="outline" onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide code' : 'Show code'}</Button></div>
-            {open === 'code' && <LinkCode link={link} />}
-          </li>}
-          {link && <li className="flex items-center gap-2"><Globe aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><span className="min-w-0 flex-1 truncate"><span className="font-medium">Website</span> · <a className="underline" href={link} target="_blank" rel="noopener noreferrer">{link.replace(/^https?:\/\//, '')}</a></span><span className="text-emerald-600">✓ Ready</span></li>}
-          {binding.peer_server && <li className="space-y-2">
-            <div className="flex items-center gap-2"><MessageSquare aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><span className="flex-1"><span className="font-medium">ChatGPT or Claude</span> · Then just say "ask my {name} Crew to…"</span><Button size="sm" variant="outline" onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button></div>
-            {open === 'ai' && <ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} />}
-          </li>}
-          {link && <li className="flex items-center gap-2"><Hash aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><span className="flex-1"><span className="font-medium">Slack</span> · Direct message it in Slack. Only you; to use it in channels, share it with people.</span><Button size="sm" variant="outline" onClick={() => window.open(`${link}?view=slack`, '_blank', 'noopener,noreferrer')}>Connect</Button></li>}
-        </ul>
+    {binding && <section aria-label="Who can use it" className="space-y-1 px-4 py-3">
+      <p className="mb-1.5 text-xs text-muted-foreground">Who can use it</p>
+      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><span className="text-emerald-500">✓</span></div>
+      <div className="overflow-hidden rounded-xl border border-border">
+        {way(<Smartphone className="h-4 w-4" />, 'Phone', 'Scan to open on your phone', <Button size="sm" variant="outline" disabled={!link} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide code' : 'Show code'}</Button>)}
+        {open === 'code' && link && <div className="flex justify-center border-b border-border p-3"><LinkCode link={link} /></div>}
+        {way(<Globe className="h-4 w-4" />, 'Website', 'Open it in any browser', <span className="flex items-center gap-2">{ready}<Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button></span>)}
+        {way(<MessageSquare className="h-4 w-4" />, 'ChatGPT or Claude', `Then just say "ask my ${name} Crew to…"`, <Button size="sm" variant="outline" disabled={!binding.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
+        {open === 'ai' && binding.peer_server && <div className="border-b border-border p-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
+        {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=slack`, '_blank', 'noopener,noreferrer')}>Connect</Button>)}
       </div>
-      <div className="flex items-center gap-2">
-        <span className="flex-1"><span className="font-medium">Assistants</span><span className="block text-xs text-muted-foreground">Other people's AI assistants can ask it questions while your Mac is on. Coming next.</span></span>
-        <button type="button" role="switch" aria-checked={false} aria-label="Assistants" disabled className="relative h-6 w-11 shrink-0 rounded-full bg-muted-foreground/30 opacity-50"><span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white" /></button>
+      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">Assistants</span><span className="text-[13px] text-muted-foreground">Other people's AI assistants can ask it questions while your Mac is on · coming next</span>
+        <span aria-label="Assistants: off, coming next" className="inline-flex overflow-hidden rounded-lg border border-border text-[13px] opacity-60"><span className="bg-muted px-2.5 py-1">Off</span><span className="px-2.5 py-1 text-muted-foreground">On</span></span></div>
+      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">People</span><span className="text-[13px] text-muted-foreground">{online ? 'Choose who can use it on its page online' : 'Nobody else yet'}</span>
+        {online
+          ? <Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
+          : <Button size="sm" variant="outline" disabled={moving} onClick={() => setOpen(open === 'share' ? '' : 'share')}>Share…</Button>}
       </div>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2"><span className="flex-1"><span className="font-medium">People</span><span className="block text-xs text-muted-foreground">{online ? 'Choose who can use it on its page online.' : 'Nobody else yet'}</span></span>
-          {online
-            ? link && <Button size="sm" variant="outline" onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
-            : <Button size="sm" variant="outline" disabled={moving} onClick={() => setOpen(open === 'share' ? '' : 'share')}>{open === 'share' ? 'Close' : 'Share…'}</Button>}
-        </div>
-        {open === 'share' && !online && <ShareWithTeam name={name} workspacePath={workspacePath} moveSummary={moveSummary} canMove={!tooBig && !moving} onMoveAndShare={() => void moveAndShare()} onCancel={() => setOpen('')} />}
-      </div>
+      {open === 'share' && !online && <ShareWithTeam name={name} workspacePath={workspacePath} facts={facts} canMove={!tooBig && !moving} onMoveAndShare={() => void move(true)} onCancel={() => setOpen('')} />}
     </section>}
+  </div>
+}
+
+/** The Move online step: size and time, what moves, then the owner's click. One-way (owner, 3 Nov). */
+function MoveOnline({ name, facts, tooBig, onCancel, onMove }: { name: string; facts?: { size: string; time: string }; tooBig: boolean; onCancel: () => void; onMove: () => void }) {
+  return <div className="mt-2 space-y-3 rounded-xl border border-border bg-background/40 p-3">
+    <p className="font-semibold">Move "{name}" online</p>
+    {tooBig
+      ? <p className="text-[13px] text-amber-600">It's too big to move online. Move large folders out of this Crew first.</p>
+      : <>
+        <p className="text-[13px] text-muted-foreground">It will work even when your Mac is off. After the move it lives online only.</p>
+        <MoveFacts facts={facts} />
+        <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">What moves</summary><p className="mt-1">Its files and your chats move; apps installed only on this Mac don't, and this Mac keeps a backup copy of the folder.</p></details>
+      </>}
+    <div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button size="sm" disabled={tooBig || !facts} onClick={onMove}>Move online</Button></div>
+  </div>
+}
+
+function MoveFacts({ facts }: { facts?: { size: string; time: string } }) {
+  if (!facts) return <p className="text-xs text-muted-foreground">Checking its size…</p>
+  return <div className="space-y-0.5 rounded-lg bg-muted/40 px-3 py-2 text-[13px]">
+    <div className="flex justify-between"><span className="text-muted-foreground">Size</span>{facts.size}</div>
+    <div className="flex justify-between"><span className="text-muted-foreground">Time</span>{facts.time}</div>
+    <div className="flex justify-between"><span className="text-muted-foreground">Your chats</span>move with it</div>
   </div>
 }
 
@@ -214,7 +216,7 @@ function ConnectAiApp({ endpoint, name, onDone }: { endpoint: string; name: stri
 type ShareAgent = { chat_id: string; name: string; purpose: string; selected: boolean }
 
 /** Share with your team (owner, 3 Nov): Team or Full sync. Only the move is built; the rest shows what comes next. */
-function ShareWithTeam({ name, workspacePath, moveSummary, canMove, onMoveAndShare, onCancel }: { name: string; workspacePath: string; moveSummary: string; canMove: boolean; onMoveAndShare: () => void; onCancel: () => void }) {
+function ShareWithTeam({ name, workspacePath, facts, canMove, onMoveAndShare, onCancel }: { name: string; workspacePath: string; facts?: { size: string; time: string }; canMove: boolean; onMoveAndShare: () => void; onCancel: () => void }) {
   const [kind, setKind] = useState<'team' | 'full'>('team')
   const [agents, setAgents] = useState<ShareAgent[]>()
   useEffect(() => {
@@ -225,7 +227,7 @@ function ShareWithTeam({ name, workspacePath, moveSummary, canMove, onMoveAndSha
   }, [workspacePath])
   const pick = (value: 'team' | 'full', title: string, detail: string) => <button type="button" aria-pressed={kind === value} onClick={() => setKind(value)}
     className={`flex-1 rounded-md border p-2 text-left ${kind === value ? 'border-primary bg-primary/5' : 'border-border'}`}><span className="block text-sm font-medium">{title}</span><span className="block text-xs text-muted-foreground">{detail}</span></button>
-  return <section aria-label={`Share ${name} with your team`} className="space-y-3 rounded-md border border-border p-3 text-xs">
+  return <section aria-label={`Share ${name} with your team`} className="mt-2 space-y-3 rounded-xl border border-border bg-background/40 p-3 text-xs">
     <p className="text-sm font-semibold">Share "{name}" with your team</p>
     <div className="flex gap-2">{pick('team', 'Team', 'Everyone keeps their own files')}{pick('full', 'Full sync', 'Co-owners get everything')}</div>
     {kind === 'team' ? <>
@@ -253,8 +255,9 @@ function ShareWithTeam({ name, workspacePath, moveSummary, canMove, onMoveAndSha
         <li>✓ The newest change wins everywhere, your Mac included. Earlier versions are kept in history. <span className="text-muted-foreground">(coming next)</span></li>
       </ul>
       <p className="text-muted-foreground">Code history (git) is not synced. Use push and pull as usual.</p>
-      {moveSummary && <p>Moves online first · {moveSummary}</p>}
-      <div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button size="sm" disabled={!canMove} onClick={onMoveAndShare}>Move and share</Button></div>
+      <p className="font-medium">Moves online first</p>
+      <MoveFacts facts={facts} />
+      <div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button size="sm" disabled={!canMove || !facts} onClick={onMoveAndShare}>Move and share</Button></div>
     </>}
   </section>
 }
