@@ -211,10 +211,38 @@ func macSharedAgentTab(project, chatID string) string {
 
 // externalMacSharedAgent answers another person's ask or read for an agent shared from a Crew on its owner's Mac.
 func (api *StreamingAPI) externalMacSharedAgent(w http.ResponseWriter, r *http.Request, action string, args map[string]any, project crewProjectBinding, manifest productProjectManifest) bool {
-	claims := GetUserFromContext(r.Context())
-	if project.OwnerID == claims.UserID && !project.CoOwner {
+	if project.OwnerID == GetUserFromContext(r.Context()).UserID && !project.CoOwner {
 		return false
 	}
+	return api.macSharedAgentCall(w, r, action, args, project.OwnerID, manifest.ID)
+}
+
+// externalMacSharedAgentByID serves a person who has no access to the Crew itself, only to agents shared from it:
+// their ask and read reach the same audience check (PLAT-856-509). Anything else stays "not found".
+func (api *StreamingAPI) externalMacSharedAgentByID(w http.ResponseWriter, r *http.Request, action string, args map[string]any) bool {
+	if IsLocalMode() || (action != "ask" && action != "read_chat") || externalArg(args, "chat_id") == "" {
+		return false
+	}
+	id := workspaceTokenProjectID(strings.TrimSpace(externalArg(args, "workspace_id")))
+	claims := GetUserFromContext(r.Context())
+	if id == "" || !crewRelayTwin(id) || !workspaceOriginAllowed(claims, crewProfileID) {
+		return false
+	}
+	// A connection limited to some Crews keeps that limit here too.
+	if claims.AccessToken != nil && !workspaceDashboardTokenAllows(claims, crewProfileID, id) {
+		return false
+	}
+	owner := ownerOfCrewProjectID(id)
+	if owner == "" || owner == claims.UserID {
+		return false
+	}
+	return api.macSharedAgentCall(w, r, action, args, owner, id)
+}
+
+func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Request, action string, args map[string]any, owner, projectID string) bool {
+	claims := GetUserFromContext(r.Context())
+	manifest := productProjectManifest{ID: projectID, Product: crewProfileID}
+	project := crewProjectBinding{OwnerID: owner}
 	tab := macSharedAgentTab(manifest.ID, externalArg(args, "chat_id"))
 	agent, reason := macSharedAgentFor(manifest.ID, tab, claims.UserID, project.OwnerID)
 	if reason != "" {
@@ -276,6 +304,7 @@ func macSharedAgentRows(caller string) []map[string]any {
 			continue
 		}
 		online := crewMacSocketFor(owner, project, b.PairID) != nil
+		ownerShort := strings.SplitN(logUsernameForUserID(owner), "@", 2)[0]
 		for _, agent := range readMacSharedAgents(project) {
 			if _, reason := macSharedAgentFor(project, agent.Tab, caller, owner); reason != "" {
 				continue
@@ -286,8 +315,9 @@ func macSharedAgentRows(caller string) []map[string]any {
 			}
 			target := "workspace:" + crewProfileID + ":" + project
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
-				"chat_id": project + codeChatSideMarker + agent.Tab, "name": agent.Name, "crew_name": crewOwnerDisplayName(owner), "purpose": agent.Purpose, "presence": presence, "your_access": "run",
-				"reach": "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer"})
+				"chat_id": project + codeChatSideMarker + agent.Tab, "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "presence": presence, "your_access": "run",
+				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
+				"owner_short": ownerShort, "available": online})
 		}
 	}
 	return rows
@@ -351,4 +381,23 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 		log.Printf("[CREW_SHARED_AGENT] local project=%s server_project=%s shared=%d action=set", project, binding.PeerProjectID, len(clean))
 	}
 	externalJSON(w, map[string]any{"tabs": rows, "agents": readMacSharedAgents(project)})
+}
+
+// handleSharedWithMe is the recipient's "Shared with me" list (PLAT-856-509): each agent someone shared with this
+// person from a Crew on their Mac, decided by the server from each agent's audience. The Crew itself is not listed.
+func (api *StreamingAPI) handleSharedWithMe(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || claims.UserID == "" {
+		externalError(w, 401, "sign_in", "Sign in first.")
+		return
+	}
+	agents := []map[string]any{}
+	if !IsLocalMode() {
+		for _, row := range macSharedAgentRows(claims.UserID) {
+			agents = append(agents, map[string]any{"workspace_id": crewProfileID + ":" + fmt.Sprint(row["crew_id"]), "chat_id": row["chat_id"], "name": row["name"],
+				"owner_name": row["owner_short"], "purpose": row["purpose"], "available": row["available"]})
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	externalJSON(w, map[string]any{"agents": agents})
 }

@@ -9,7 +9,7 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
-import { cloudStateIcon, cloudStateLabel, useCrewLivesOnMac, useYourComputerSummary } from './YourComputerPanel'
+import { cloudStateIcon, cloudStateLabel, useCrewLivesOnMac, useCrewSharedAgentCount, useYourComputerSummary } from './YourComputerPanel'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -64,6 +64,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' }>()
   const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:access'), projectId)
+  const sharedAgents = useCrewSharedAgentCount(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
   const macOnMacHere = useCrewLivesOnMac(projectId)
   const showMenu = (view: 'full' | 'integrations' | 'automations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
@@ -113,7 +114,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // On the website, a Crew that lives on its owner's Mac has only an empty online record: show none of its own
   // changes, dashboards, connections or automations (they would mislead, and could run on the server).
   const macElsewhere = macOnMacHere
-  const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, who].filter(Boolean).join(' · ') || undefined
+  const sharedText = sharedAgents ? `${sharedAgents} ${sharedAgents === 1 ? 'agent' : 'agents'} shared` : undefined
+  const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, sharedText || who].filter(Boolean).join(' · ') || undefined
   const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => open(item)}>{item.label}</Row>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(accessRow)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">

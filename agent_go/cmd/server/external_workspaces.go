@@ -171,6 +171,9 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 	}
 	binding, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, externalArg(args, "workspace_id"))
 	if !ok {
+		if api.externalMacSharedAgentByID(w, r, action, args) {
+			return
+		}
 		externalError(w, 404, "not_found", "Project unavailable; use workspace action=list to choose one you can use.")
 		return
 	}
@@ -302,6 +305,10 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
 			}
 			item["location"] = "server"
+			// The owner sees how many of this Crew's agents others can message (PLAT-856-509).
+			if n := len(readMacSharedAgents(doc.ID)); n > 0 && binding.OwnerID == claims.UserID {
+				item["shared_agents"] = n
+			}
 			if relay != nil {
 				lastSeen, seenAt := crewMacLastSeen(binding.OwnerID, doc.ID, relay.PairID), ""
 				if !lastSeen.IsZero() {

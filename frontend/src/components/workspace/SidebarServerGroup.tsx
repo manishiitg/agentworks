@@ -6,7 +6,7 @@ import { LayoutDashboard, Laptop } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
-export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, owned_by_caller, owner_name, stateLine, offline, onMac, onOpen }: { name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
+export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, owned_by_caller, owner_name, stateLine, offline, onMac, shared_agents, onOpen }: { shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
   const sharedDashboard = kind === 'crew' && mode === 'run'
   const label = sharedDashboard ? 'Shared dashboard' : kind === 'crew' ? 'Crew' : 'Goal'
   return <div className={`flex ${stateLine ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${selected ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
@@ -16,6 +16,7 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
       <span className="min-w-0 flex-1"><span className={`block truncate text-[13px] leading-5 ${selected ? 'font-medium' : 'font-normal'}`}>{name}</span>{owned_by_caller === false && owner_name && <span className="block truncate text-[11px] leading-3 text-muted-foreground">{owner_name}</span>}{stateLine && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{stateLine}</span>}</span>
     </button>
     {/* A Crew that lives on its owner's Mac (the server's row says so): a laptop with the Mac's on/off dot. */}
+    {shared_agents ? <span title={`${shared_agents} ${shared_agents === 1 ? 'agent' : 'agents'} others can message`} className="mr-1.5 shrink-0 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground">{shared_agents} shared</span> : null}
     {onMac && <span title={onMac === 'on' ? 'On your Mac' : 'On your Mac · Mac off'} aria-label={onMac === 'on' ? 'On your Mac' : 'On your Mac, Mac off'} className="relative mr-2 inline-flex shrink-0 text-muted-foreground">
       <Laptop className="h-3.5 w-3.5" aria-hidden="true" />
       <span aria-hidden="true" className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${onMac === 'on' ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />

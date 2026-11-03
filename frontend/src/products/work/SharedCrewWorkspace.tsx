@@ -3,8 +3,8 @@ import { ArrowLeft, Bot, Loader2, Send } from 'lucide-react'
 import api from '../../services/api'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 
-type SharedCrewScope = { workspace_id: string } | { workspace: string }
-type SharedAgent = { chat_id: string; name: string; purpose?: string; shared?: boolean }
+export type SharedCrewScope = { workspace_id: string } | { workspace: string }
+export type SharedAgent = { chat_id: string; name: string; purpose?: string; shared?: boolean }
 type ChatLine = { seq: number; role: string; text: string; sender?: string; at?: string }
 type ChatPage = { messages?: ChatLine[]; next_after?: number; working?: boolean; has_earlier?: boolean; first_seq?: number }
 
@@ -40,7 +40,7 @@ export function SharedCrewWorkspace({ projectId, workspacePath, enabled, childre
   </div>
 }
 
-function SharedAgentConversation({ scope: crewScope, agent, onBack }: { scope: SharedCrewScope; agent: SharedAgent; onBack: () => void }) {
+export function SharedAgentConversation({ scope: crewScope, agent, onBack, ownerName }: { scope: SharedCrewScope; agent: SharedAgent; onBack: () => void; ownerName?: string }) {
   const [messages, setMessages] = useState<ChatLine[]>([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -77,8 +77,11 @@ function SharedAgentConversation({ scope: crewScope, agent, onBack }: { scope: S
           setLoading(false)
           setError('')
         }
-      } catch {
-        if (!controller.signal.aborted) { setMessages([]); setError('This conversation could not be loaded. Its sharing may have changed.'); setLoading(false) }
+      } catch (cause) {
+        if (controller.signal.aborted) return
+        // A shared agent on someone's Mac answers only while that Mac is on (the server says 503).
+        if ((cause as { response?: { status?: number } })?.response?.status === 503) { setError(`${ownerName || 'Its owner'}'s Mac is off. Try again later.`); setLoading(false); return }
+        setMessages([]); setError('This conversation could not be loaded. Its sharing may have changed.'); setLoading(false)
       }
     }
     void read()
@@ -91,7 +94,9 @@ function SharedAgentConversation({ scope: crewScope, agent, onBack }: { scope: S
     try {
       await api.post('/api/crew-agents', { action: 'ask', ...scope, message: draft.trim(), submission_id: crypto.randomUUID() }, { skipSessionContext: true })
       setDraft(''); setRefresh(value => value + 1)
-    } catch { setError('Your message was not accepted. Check that this agent is still shared with you.') }
+    } catch (cause) {
+      setError((cause as { response?: { status?: number } })?.response?.status === 503 ? `${ownerName || 'Its owner'}'s Mac is off. Try again later.` : 'Your message was not accepted. Check that this agent is still shared with you.')
+    }
     finally { setSending(false) }
   }
   const loadEarlier = async () => {
@@ -118,7 +123,7 @@ function SharedAgentConversation({ scope: crewScope, agent, onBack }: { scope: S
       {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" onClick={() => { setLoading(true); setRefresh(value => value + 1) }} className="underline">Try again</button></p>}
       <div className="flex items-end gap-2"><textarea aria-label={`Message ${agent.name}`} placeholder={`Ask ${agent.name}…`} value={draft} onChange={event => setDraft(event.target.value)} maxLength={20000} rows={2} className="max-h-40 min-h-16 min-w-0 flex-1 resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
         <button type="submit" disabled={sending || !draft.trim() || loading} aria-label="Send message" className="rounded-lg bg-primary p-2.5 text-primary-foreground disabled:opacity-50"><Send className="h-4 w-4" /></button></div>
-      <p className="text-[11px] text-muted-foreground">Your message joins this agent's shared conversation.</p>
+      <p className="text-[11px] text-muted-foreground">Only you see your messages and its answers.</p>
     </form>
   </section>
 }
