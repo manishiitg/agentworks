@@ -258,6 +258,15 @@ export function getApiBaseUrl(): string {
   return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${id}`
 }
 
+// In the Mac app a Crew's Slack setup happens on its online copy, through the Mac's saved sign-in (owner, 3 Nov). While
+// that sheet is open, only Slack setup calls go to that network; everything else stays where it was.
+let slackSetupConnection = ''
+export function setSlackSetupConnection(id: string) { slackSetupConnection = id }
+const SLACK_SETUP_PATH = /^\/api\/(integrations\/slack|human-feedback\/slack|admin\/slack)(\/|$)/
+function requestBaseUrl(url = ''): string {
+  return slackSetupConnection && SLACK_SETUP_PATH.test(url) ? `${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(slackSetupConnection)}` : getApiBaseUrl()
+}
+
 export function getLocalApiBaseUrl(): string {
   const runtime = getRuntimeConfig()
   if (runtime.apiBaseUrl) {
@@ -516,7 +525,7 @@ export function clearAuthToken(): void {
 // Only adds session ID if not already provided in headers
 api.interceptors.request.use((config) => {
   if (config.chatIdentityGeneration !== undefined) assertChatIdentityCurrent(config.chatIdentityGeneration)
-  config.baseURL = getApiBaseUrl()
+  config.baseURL = requestBaseUrl(config.url)
   config.headers = config.headers || {}
 
   // Only add session ID if not already provided

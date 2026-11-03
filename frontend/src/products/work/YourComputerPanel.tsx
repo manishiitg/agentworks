@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useState, type ReactNode } from 'react'
 import { CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, RefreshCw, Smartphone, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
-import api from '../../services/api'
+import api, { getAuthToken, getDesktopApiBaseUrl, setSlackSetupConnection } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
 import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { Switch } from '../../components/ui/Switch'
 import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide'
+import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 
@@ -115,7 +116,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
   const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'share'>('')
+  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'share' | 'slack'>('')
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
@@ -181,16 +182,18 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       {open === 'move' && <MoveOnline name={name} facts={facts} tooBig={tooBig} onCancel={() => setOpen('')} onMove={() => void move(false)} />}
       {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
-    {binding && <section aria-label="Who can use it" className="space-y-1 px-4 py-3">
+    {status && <section aria-label="Who can use it" className="space-y-1 px-4 py-3">
       <p className="mb-1.5 text-xs text-muted-foreground">Who can use it</p>
-      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><span className="text-emerald-500">✓</span></div>
-      <div className="overflow-hidden rounded-xl border border-border">
+      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : binding ? 'From anywhere while your Mac is on' : 'Only in this app on this Mac'}</span><span className="text-emerald-500">✓</span></div>
+      {!binding && <p className="text-[13px] text-muted-foreground">Turn on Reach it from your phone and the web first.</p>}
+      <div aria-disabled={!binding} className={`overflow-hidden rounded-xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
         {way(<Smartphone className="h-4 w-4" />, 'Phone', 'Scan to open on your phone', <Button size="sm" variant="outline" disabled={!link} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide code' : 'Show code'}</Button>)}
         {open === 'code' && link && <div className="flex justify-center border-b border-border p-3"><LinkCode link={link} /></div>}
         {way(<Globe className="h-4 w-4" />, 'Website', 'Open it in any browser', <span className="flex items-center gap-2">{ready}<Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button></span>)}
-        {way(<MessageSquare className="h-4 w-4" />, 'ChatGPT or Claude', `Then just say "ask my ${name} Crew to…"`, <Button size="sm" variant="outline" disabled={!binding.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
-        {open === 'ai' && binding.peer_server && <div className="border-b border-border p-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
-        {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=slack`, '_blank', 'noopener,noreferrer')}>Connect</Button>)}
+        {way(<MessageSquare className="h-4 w-4" />, 'ChatGPT or Claude', `Then just say "ask my ${name} Crew to…"`, <Button size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
+        {open === 'ai' && binding?.peer_server && <div className="border-b border-border p-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
+        {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
+        {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
       </div>
       <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">People</span><span className="text-[13px] text-muted-foreground">{online ? 'Choose who can use it on its page online' : 'Nobody else yet'}</span>
         {online
@@ -200,6 +203,24 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       {open === 'share' && !online && <ShareWithTeam name={name} workspacePath={workspacePath} facts={facts} canMove={!tooBig && !moving} onMoveAndShare={() => void move(true)} onCancel={() => setOpen('')} />}
     </section>}
   </div>
+}
+
+/** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */
+function MacCrewSlack({ connection, project }: { connection: string; project: string }) {
+  const [workspace, setWorkspace] = useState('')
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    setSlackSetupConnection(connection)
+    const abort = new AbortController()
+    void fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(connection)}/api/crew-sync/${encodeURIComponent(project)}`, { signal: abort.signal, headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error(String(response.status))))
+      .then((data: { workspace?: string }) => { if (data.workspace) setWorkspace(data.workspace); else setFailed(true) })
+      .catch(() => { if (!abort.signal.aborted) setFailed(true) })
+    return () => { abort.abort(); setSlackSetupConnection('') }
+  }, [connection, project])
+  if (failed) return <p className="text-xs text-muted-foreground">Slack setup could not be opened. Check that you are signed in, then try again.</p>
+  if (!workspace) return <p role="status" className="text-xs text-muted-foreground">Opening Slack setup…</p>
+  return <ProductSlackPanel workspacePath={workspace} noun="Crew" section="bot" />
 }
 
 /** The Move online step: size and time, what moves, then the owner's click. One-way (owner, 3 Nov). */

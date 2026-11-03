@@ -48,6 +48,7 @@ type crewSyncReply struct {
 	TransferID         string                   `json:"transfer_id,omitempty"`
 	Auto               *crewAutoSyncStatus      `json:"auto,omitempty"`
 	ProjectID          string                   `json:"project_id"`
+	Workspace          string                   `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
 	Binding            *crewroot.SyncBinding    `json:"binding"`
 	Snapshot           *crewsync.Snapshot       `json:"snapshot,omitempty"`
 	Conversation       *crewHandoffConversation `json:"conversation,omitempty"`
@@ -308,7 +309,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if err != nil {
 		return crewSyncReply{}, err
 	}
-	out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID)}
+	out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID), Workspace: roots.Virtual}
 	if input.Action == "inspect" || input.Action == "pair" {
 		out.Project, err = api.crewSyncProject(ctx, claims, roots)
 		if err != nil {
