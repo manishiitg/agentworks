@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -25,6 +26,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/nativersync"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
@@ -125,6 +128,21 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			write(local.Private, "knowledgebase/documents/guide.md", "Crew knowledge")
 			write(local.Private, "builder/private.txt", "private runtime")
+			dbPath, err := crewMoveRecordPath(local, "db/db.sqlite")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.MkdirAll(filepath.Dir(dbPath), 0700); err != nil {
+				t.Fatal(err)
+			}
+			liveDB, err := sql.Open("sqlite", dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer liveDB.Close()
+			if _, err = liveDB.Exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE items (value TEXT); INSERT INTO items VALUES ('committed in WAL')"); err != nil {
+				t.Fatal(err)
+			}
 
 			listing := httptest.NewRecorder()
 			files.ServeHTTP(listing, httptest.NewRequest("GET", "/api/documents?folder="+local.Virtual+"&max_depth=5", nil))
@@ -268,6 +286,13 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				}
 			}
 			schedule := projectactions.Schedule{ID: "morning", Name: "Morning", Project: projectactions.Project{Kind: "crew", ID: local.ID}, When: projectactions.When{Cron: "0 9 * * *", Timezone: "UTC"}, Action: projectactions.Action{Type: "message", Tab: side.ConversationKey}, Input: json.RawMessage(`{"message":"check"}`), RunAs: "owner", Enabled: true}
+			watcher := conditiontrigger.Config{Script: "code/triggers/watch.py", SHA256: conditiontrigger.Hash("print('{}')"), Target: conditiontrigger.Target{Kind: "agent", ChatID: side.ConversationKey, Message: "check"}}
+			schedule.Input, _ = json.Marshal(scheduleExecutionInput{Messages: []string{"check"}, Condition: &watcher})
+			watcherKey := owner.UserID + "/" + projectScheduleJobID(crewProfileID, local.ID, schedule.ID)
+			ledger := conditiontrigger.Ledger{State: json.RawMessage(`{"cursor":7}`), Rows: []conditiontrigger.Row{{Event: conditiontrigger.Event{ID: "already-sent"}, Revision: watcher.Revision(), Status: "dispatched", Receipt: "accepted"}}, Tombstones: map[string]time.Time{conditiontrigger.Hash("older-event"): time.Now().Add(24 * time.Hour)}}
+			if err = fsutil.WriteJSONAtomic(filepath.Join(docs, conditionLedgerPath(watcherKey)), ledger, 0600); err != nil {
+				t.Fatal(err)
+			}
 			if err = writeProjectSchedules(ctx, local.Virtual, []projectactions.Schedule{schedule}); err != nil {
 				t.Fatal(err)
 			}
@@ -400,6 +425,20 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if _, e := os.Stat(filepath.Join(serverRoots.Private, "builder/private.txt")); !os.IsNotExist(e) {
 				t.Fatal("private runtime copied")
 			}
+			destinationDB, e := crewMoveRecordPath(serverRoots, "db/db.sqlite")
+			if e != nil {
+				t.Fatal(e)
+			}
+			onlineDB, e := sql.Open("sqlite", destinationDB)
+			if e != nil {
+				t.Fatal(e)
+			}
+			var databaseValue string
+			e = onlineDB.QueryRow("SELECT value FROM items").Scan(&databaseValue)
+			onlineDB.Close()
+			if e != nil || databaseValue != "committed in WAL" {
+				t.Fatalf("Crew database WAL data missing: %q %v", databaseValue, e)
+			}
 			hooks, e := readProjectWebhookDefinitions(ctx, serverRoots.Virtual)
 			if e != nil || len(hooks) != 1 || !hooks[0].Enabled || hooks[0].Project.ID != serverRoots.ID || hooks[0].Auth.EncryptedSecret == hook.Auth.EncryptedSecret {
 				t.Fatalf("webhook: %+v %v", hooks, e)
@@ -463,6 +502,15 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					}
 				}
 			}
+			var movedInput scheduleExecutionInput
+			if err = json.Unmarshal(schedules[0].Input, &movedInput); err != nil {
+				t.Fatal(err)
+			}
+			var movedLedger *conditiontrigger.Ledger
+			movedKey := owner.UserID + "/" + projectScheduleJobID(crewProfileID, serverRoots.ID, schedules[0].ID)
+			if err = readCrewMoveWatcherJSON(conditionLedgerPath(movedKey), &movedLedger); err != nil || movedLedger == nil || !bytes.Contains(movedLedger.State, []byte(`"cursor": 7`)) || len(movedLedger.Rows) != 1 || movedLedger.Rows[0].Status != "dispatched" || movedLedger.Rows[0].Revision != movedInput.Condition.Revision() || len(movedLedger.Tombstones) != 1 {
+				t.Fatalf("watcher would replay delivered events: %+v %v", movedLedger, err)
+			}
 			onlineMain, err := api.crewHandoffMain(ctx, owner, serverRoots.ID)
 			if err != nil {
 				t.Fatal(err)
@@ -498,7 +546,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if raw, err := os.ReadFile(otherPath); err != nil || string(raw) != "keep" {
 				t.Fatal("deleted another Crew's state")
 			}
-			t.Logf("[CREW_SYNC_PROOF] managed=%t interrupted_upload=resumed lost_receipt=recovered chats=2 schedules=online local_files=preserved", !split)
+			t.Logf("[CREW_SYNC_PROOF] managed=%t interrupted_upload=resumed lost_receipt=recovered chats=2 schedules=online database=wal-preserved watchers=deduplicated local_files=preserved", !split)
 		})
 	}
 }
@@ -506,6 +554,12 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 // Pin the new private-store/owner/conflict rules without another server fixture.
 func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Context, owner *UserClaims, roots crewroot.Roots, current ProductConversationRecord, history *crewHandoffConversation) {
 	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "muse"), []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// This fixture tests journal import; it never launches a model.
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	oldOS := cliHostOS
 	cliHostOS = "linux"
 	defer func() { cliHostOS = oldOS }()

@@ -252,7 +252,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if e != nil {
 			return crewSyncReply{}, e
 		}
-		out := crewSyncReply{ProjectID: id, Binding: b, Place: crewPlace(claims.UserID, id, b)}
+		out := crewSyncReply{ProjectID: id, Binding: b, Workspace: roots.Virtual, Place: crewPlace(claims.UserID, id, b)}
 		out.BytesDone, out.BytesTotal = crewMoveBytes(roots, b)
 		if b != nil && b.SchedulesPaused {
 			out.SchedulesPaused = true
@@ -336,6 +336,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, err
 		}
 		if input.Editing == "server" {
+			if err = importCrewMoveDatabase(ctx, roots, input.Snapshot.DatabasePath); err != nil {
+				return out, err
+			}
 			if err = api.importCrewMoveData(ctx, claims, roots, binding.PairID, input.TransferID, main, input.Snapshot.StatePath); err != nil {
 				return out, err
 			}

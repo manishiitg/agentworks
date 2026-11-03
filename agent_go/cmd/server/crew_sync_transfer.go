@@ -60,7 +60,7 @@ func crewTransferDir(id, pair, transfer, direction string) (string, error) {
 	return dir, nil
 }
 func crewPayloadName(name string) bool {
-	return name == "content" || name == "git" || name == "index" || name == "state"
+	return name == "content" || name == "git" || name == "index" || name == "state" || name == "database"
 }
 func crewPayloadValid(p crewsync.Payload) bool {
 	b, e := hex.DecodeString(p.Hash)
@@ -71,7 +71,7 @@ func crewPayloadAllowed(name string, p crewsync.Payload) bool {
 		return false
 	}
 	switch name {
-	case "content", "state":
+	case "content", "state", "database":
 		return true
 	case "git":
 		return p.Size <= 256<<20
@@ -92,6 +92,9 @@ func checkLocalCrewTransfer(id string, expected *crewroot.SyncBinding) error {
 }
 func crewPayloadPaths(s *crewsync.Snapshot) map[string]*string {
 	out := map[string]*string{}
+	if s.DatabasePath != "" || s.Payloads["database"].Hash != "" {
+		out["database"] = &s.DatabasePath
+	}
 	if s.StatePath != "" || s.Payloads["state"].Hash != "" {
 		out["state"] = &s.StatePath
 	}
@@ -286,7 +289,7 @@ func (api *StreamingAPI) crewTransferBinding(ctx context.Context, claims *UserCl
 	return roots, b, nil
 }
 func validateCrewPayloads(s *crewsync.Snapshot) error {
-	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 4 || len(s.Files) > publication.MaxFiles || len(s.Changes) > publication.MaxFiles {
+	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 5 || len(s.Files) > publication.MaxFiles || len(s.Changes) > publication.MaxFiles {
 		return fmt.Errorf("send a snapshot with binary artifact descriptors")
 	}
 	if _, ok := s.Payloads["content"]; !ok {

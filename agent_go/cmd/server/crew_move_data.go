@@ -24,6 +24,7 @@ import (
 // ownership, access, app-account IDs and filesystem routing. NDJSON lets a long
 // collection of chats use the same resumable disk transport as project files.
 type crewMoveHeader struct {
+	Watchers    map[string]crewMoveWatcherState       `json:"watchers,omitempty"`
 	Webhooks    []projectWebhookDefinition            `json:"webhooks"`
 	SourceID    string                                `json:"source_id"`
 	SourceOwner string                                `json:"source_owner"`
@@ -51,6 +52,9 @@ func crewMoveRecordPath(roots crewroot.Roots, name string) (string, error) {
 }
 
 func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserClaims, roots crewroot.Roots, main ProductConversationRecord, snapshot *crewsync.Snapshot) error {
+	if err := captureCrewMoveDatabase(ctx, roots, snapshot); err != nil {
+		return err
+	}
 	h := crewMoveHeader{SourceID: roots.ID, SourceOwner: claims.UserID, MainKey: main.ConversationKey, Settings: map[string]map[string]json.RawMessage{}}
 	for _, name := range []string{"product.json", "workflow.json"} {
 		p, err := crewMoveRecordPath(roots, name)
@@ -99,6 +103,9 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 		}
 	}
 	h.Schedules = schedules
+	if err = captureCrewMoveWatchers(&h); err != nil {
+		return err
+	}
 	h.Functions, err = readProjectFunctionDefinitions(ctx, roots.Virtual)
 	if err != nil {
 		return err
@@ -411,6 +418,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 		}
 		for i := range h.Schedules {
 			s := &h.Schedules[i]
+			original := *s
 			if s.Project.Kind != "crew" || s.Project.ID != h.SourceID || s.RunAs != h.SourceOwner {
 				return fmt.Errorf("a schedule does not belong to the moving owner")
 			}
@@ -435,6 +443,11 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			}
 			if err = s.Validate(); err != nil {
 				return err
+			}
+			if state, ok := h.Watchers[original.ID]; ok {
+				if err = importCrewMoveWatcher(state, claims.UserID, original, *s); err != nil {
+					return err
+				}
 			}
 		}
 		p, err = crewMoveRecordPath(roots, "schedules.json")
@@ -486,7 +499,18 @@ func validateCrewMoveData(p, source, destination, main string) error {
 			}
 			ids[s.ID] = true
 		}
+		for id, state := range h.Watchers {
+			if !ids[id] || (state.Wake != nil && (state.Wake.Owner != h.SourceOwner || state.Wake.JobID != projectScheduleJobID(crewProfileID, h.SourceID, id))) {
+				return fmt.Errorf("watcher state does not belong to the moving Crew")
+			}
+		}
 		for _, s := range h.Schedules {
+			if _, ok := h.Watchers[s.ID]; ok {
+				var input scheduleExecutionInput
+				if json.Unmarshal(s.Input, &input) != nil || input.Condition == nil {
+					return fmt.Errorf("moved watcher state has no watcher")
+				}
+			}
 			if s.Project.Kind != "crew" || s.Project.ID != source || s.RunAs != h.SourceOwner {
 				return fmt.Errorf("a schedule does not belong to the moving owner")
 			}
