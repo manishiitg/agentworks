@@ -55,6 +55,7 @@ import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspa
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
+import { useCrewLivesOnMac } from './YourComputerPanel'
 import { productMode, updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode } from '../../platform/chat/productProjects'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
@@ -972,6 +973,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // workspace. People the Crew is only shared with use its dashboard.
   const showShell = product.hasTerminal && !isWorkSessionRun(selected) && selectedMode !== 'cowork'
   const isShared = isWorkSessionRun(selected)
+  // A Crew that lives on its owner's Mac, seen from the website or phone (owner, 3 Nov): only the chat, no right
+  // panel, because its work area is on the Mac. The Mac app itself keeps the full panel.
+  const macOnly = useCrewLivesOnMac(selected?.id)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   useEffect(() => {
@@ -1387,13 +1391,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               divider={null}
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
-              toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
-              showToolbar={!isShared}
-              chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
+              toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !macOnly}
+              showToolbar={!isShared && !macOnly}
+              chatOpen={!isShared && (chatOpen || macOnly)} panelOpen={isShared || (panelOpen && !macOnly)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               retainWorkspace
-              onCloseWorkspace={isShared ? undefined : () => setPanelOpen(false)}
-              showChatReopenControl={!isShared}
-              mobilePane={mobilePane}
+              onCloseWorkspace={isShared || macOnly ? undefined : () => setPanelOpen(false)}
+              showChatReopenControl={!isShared && !macOnly}
+              mobilePane={macOnly ? 'chat' : mobilePane}
               onMobilePaneChange={pane => { if (pane === 'chat') openChatPane(); else selectWorkspaceView('context') }}
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}

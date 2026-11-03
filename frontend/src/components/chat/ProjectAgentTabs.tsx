@@ -97,7 +97,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const placeProject = mainTab?.metadata?.agentProfileId === 'work' ? mainTab.metadata?.agentProfileProjectId : undefined
   const place = useYourComputerSummary(Boolean(placeProject), placeProject)
   // On the website a Crew that lives on its owner's Mac has no tabs of its own online; a new one would be empty.
-  const sideChatsHere = allowSideChats && !useCrewLivesOnMac(placeProject)
+  const livesOnMac = useCrewLivesOnMac(placeProject)
+  const sideChatsHere = allowSideChats && !livesOnMac
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
   const [reordering, setReordering] = useState(false)
@@ -264,7 +265,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {!phone && <CrewPlaceBadge place={place} />}
+      {!phone && place && <button type="button" onClick={() => setMoreOpen(open => !open)} className="rounded px-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Where it lives and agents"><CrewPlaceBadge place={place} /></button>}
       <div ref={stripRef} className="hidden min-w-[84px] items-center gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
@@ -294,7 +295,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       />{renderAfterTab?.(tab)}</div>
       })}
       </div>
-      {(tabs.length > 1 || phone) && (
+      {(tabs.length > 1 || phone || livesOnMac) && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
@@ -319,6 +320,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                 {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}
               </div>
               {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
+              {place && <div className="shrink-0 space-y-0.5 border-b border-border px-2 py-2 text-xs">
+                <p className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Where it lives</span><CrewPlaceBadge place={place} /></p>
+                {livesOnMac && <p className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Who can use it</span><span>Only you</span></p>}
+                {livesOnMac && <p className="text-[11px] text-muted-foreground">Its files, tools and settings are on your Mac.</p>}
+              </div>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
               {tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
