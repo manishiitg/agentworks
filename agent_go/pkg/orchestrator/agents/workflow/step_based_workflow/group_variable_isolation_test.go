@@ -45,16 +45,18 @@ func TestResolvedGroupClearsPriorExecutionOverride(t *testing.T) {
 		t.Fatal("an explicitly empty group override must stay present and empty")
 	}
 
-	// The batch manager receives raw overrides, unlike the other resolved
-	// callers. It must restore defaults before replacing the group snapshot.
+	// Execution consumes an already resolved snapshot, without re-reading defaults.
 	second.variablesManifest = manifest
-	second.GetExecutionManager().ApplyExecutionContext(&ExecutionSetup{
-		Context: &ExecutionContext{}, VariableValues: map[string]string{},
-	})
-	batchEnv := second.snapshotWorkspaceEnv()
-	if _, exists := batchEnv["VAR_FILTER"]; exists || batchEnv["VAR_REGION"] != "default-region" || second.variableValues["REGION"] != "default-region" {
-		t.Fatal("batch group resolution must clear the optional override and retain shared defaults")
+	resolved, err := ResolveWorkflowInputs(manifest, "", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
+	second.GetExecutionManager().ApplyExecutionContext(&ExecutionSetup{Context: &ExecutionContext{}, VariableValues: resolved})
+	env = second.snapshotWorkspaceEnv()
+	if env["VAR_FILTER"] != "" || env["VAR_REGION"] != "default-region" {
+		t.Fatal("resolved snapshot inherited a prior override")
+	}
+
 }
 
 // PLAT-746-265: omission may run once; an empty/disabled/unknown selection
@@ -73,14 +75,14 @@ func TestOptionalInputSetsDoNotEnableUnselectedWork(t *testing.T) {
 	}{
 		{"absent inputs", nil, nil, 1, false},
 		{"defaults only", &VariablesManifest{Variables: manifest.Variables}, nil, 1, false},
-		{"explicit empty", nil, []string{}, 0, false},
-		{"enabled only", manifest, nil, 1, false},
-		{"disabled batch", &VariablesManifest{Groups: manifest.Groups[1:]}, nil, 0, false},
+		{"explicit empty", nil, []string{}, 0, true},
+		{"omitted preset uses defaults", manifest, nil, 1, false},
+		{"saved presets never auto-run", &VariablesManifest{Groups: manifest.Groups[1:]}, nil, 1, false},
 		{"unknown without groups", nil, []string{"missing"}, 0, true},
 		{"partly unknown", manifest, []string{"one", "missing"}, 0, true},
 		{"explicit selection", manifest, []string{"two"}, 1, false},
-		{"reserved run folder", &VariablesManifest{Groups: []VariableGroup{{Name: " Execution! ", Enabled: true}}}, nil, 0, true},
-		{"private run folder", &VariablesManifest{Groups: []VariableGroup{{Name: ".temporary", Enabled: true}}}, nil, 0, true},
+		{"label is not a run folder", &VariablesManifest{Groups: []VariableGroup{{Name: " Execution! ", Enabled: true}}}, nil, 1, false},
+		{"dot label is plain data", &VariablesManifest{Groups: []VariableGroup{{Name: ".temporary", Enabled: true}}}, nil, 1, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,9 +102,5 @@ func TestOptionalInputSetsDoNotEnableUnselectedWork(t *testing.T) {
 	items[0].Values["region"] = "modified"
 	if manifest.Groups[0].Values["region"] != "one" {
 		t.Fatal("run changed saved inputs")
-	}
-	c := &StepBasedWorkflowOrchestrator{}
-	if got := c.createGroupRunFolder("iteration-0", "", 1); got != "iteration-0" {
-		t.Fatal(got)
 	}
 }

@@ -5,31 +5,28 @@ read `read_skill(skills=[{"name":"builder-reference","path":"references/human-in
 to choose the interaction and distinguish a saved answer from permission to
 execute. Do not prefill an approval the user has not given.
 
-## Iterations & Groups
+## Inputs and runs
 
-**Iterations** are output folders. Interactive Builder/Workshop work uses
-**iteration-0**. A saved schedule is instead server-bound to one immutable
-**iteration-N-sched** folder, and a webhook to **iteration-N-hook**; in those
-invocations use the bound folder and never choose, rotate, or substitute a
-different iteration. Every `runs action=step` re-reads the **latest**
-`plan.json` — no caching or snapshotting.
+A call runs once. Inputs use workflow defaults, then optional named saved values
+(`input_preset`), then explicit `inputs`. Omit both to use defaults. Presets are
+just reusable values: they do not choose routes or launch several runs.
 
-When running a step or the full workflow:
+Each invocation has its own run folder and saves the resolved inputs there.
+Read the returned `run_folder` when inspecting results. In Builder mode only,
+you can pass that existing `run_folder` to continue its steps; it keeps the
+original inputs even if defaults or presets change. Run-mode calls and
+functions start new runs. Saved schedules and webhooks use their server-bound
+run folder; never choose or substitute another one.
 
-- **Before running anything, read `cat variables/variables.json`** to
-  find available `group_name` values.
-- Always use `runs action=step` with an explicit `group_name`. Never guess
-  or silently default if multiple groups exist.
-- Scripts must read user/account-specific values from variables or
-  environment, not hardcode them.
-- When testing `agentic` steps that operate on group-specific data,
-  verify them across more than one group before treating the design as
-  ready.
+Read `variables/variables.json` when you need input names or a saved preset.
+Scripts read input values from their configured environment, not hardcoded
+accounts or preset labels. Business identity, such as a campaign ID, is an
+ordinary explicit input and never inferred from a folder name.
 
 ## Execution procedure
 
-1. User says "run step-X" → determine group → call
-   `runs(action="step", step_id="step-id", group_name=group_name)` → get
+1. User says "run step-X" → call
+   `runs(action="step", step_id="step-id", inputs={...})` (inputs optional) → get
    `execution_id`.
    - Prefer the directly exposed `runs action=step` tool. If you must call its
      per-tool HTTP endpoint through `terminal action=execute`, do not pipe or

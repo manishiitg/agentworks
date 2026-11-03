@@ -120,7 +120,7 @@ func writeProjectFunctionDefinitions(ctx context.Context, root string, functions
 // The Goal execution adapter still owns variable, group and route validation.
 // Its fixed inputs are separate from the caller's schema-checked function input.
 func workflowFunctionDefinition(schedule WorkflowSchedule) (projectFunctionDefinition, error) {
-	input, err := json.Marshal(scheduleExecutionInput{Messages: schedule.Messages, Groups: schedule.GroupNames, Routes: schedule.RouteSelections, Payload: schedule.TriggerPayload, TeamAuthorizedBy: schedule.TeamAuthorizedBy, TeamPolicyRevision: schedule.TeamPolicyRevision})
+	input, err := json.Marshal(scheduleExecutionInput{Messages: schedule.Messages, InputPreset: schedule.InputPreset, Inputs: schedule.Inputs, Routes: schedule.RouteSelections, Payload: schedule.TriggerPayload, TeamAuthorizedBy: schedule.TeamAuthorizedBy, TeamPolicyRevision: schedule.TeamPolicyRevision})
 	if err != nil {
 		return projectFunctionDefinition{}, err
 	}
@@ -138,6 +138,9 @@ func workflowFunctionExecutionView(fn projectFunctionDefinition) (WorkflowSchedu
 	var input scheduleExecutionInput
 	if err := json.Unmarshal(fn.Input, &input); err != nil {
 		return WorkflowSchedule{}, err
+	}
+	if input.Groups != nil {
+		return WorkflowSchedule{}, fmt.Errorf("function groups are retired; save input_preset and inputs instead")
 	}
 	spec := &WorkflowFunctionSpec{Name: fn.Name, Description: fn.Description, AllowedCallers: fn.AllowedCallers, InputSchema: fn.InputSchema}
 	required := map[string]bool{}
@@ -180,7 +183,7 @@ func workflowFunctionExecutionView(fn projectFunctionDefinition) (WorkflowSchedu
 		}
 		spec.Inputs = append(spec.Inputs, parameter)
 	}
-	return WorkflowSchedule{ChatID: fn.Action.Tab, ID: fn.ID, Name: firstNonEmptyTrimmed(fn.Description, fn.Name), Enabled: fn.Enabled, ScheduleType: "webhook", Kind: triggerKindFunction, Function: spec, Webhook: &WorkflowWebhookConfig{StepID: fn.Action.Step}, Mode: "workshop", WorkshopMode: "run", GroupNames: input.Groups, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
+	return WorkflowSchedule{ChatID: fn.Action.Tab, ID: fn.ID, Name: firstNonEmptyTrimmed(fn.Description, fn.Name), Enabled: fn.Enabled, ScheduleType: "webhook", Kind: triggerKindFunction, Function: spec, Webhook: &WorkflowWebhookConfig{StepID: fn.Action.Step}, Mode: "workshop", WorkshopMode: "run", InputPreset: input.InputPreset, Inputs: input.Inputs, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
 }
 
 func crewFunctionDefinition(root string, fn crewFunction) (projectFunctionDefinition, error) {
@@ -216,7 +219,7 @@ func webhookExecutionConfig(record projectWebhookDefinition) *WorkflowWebhookCon
 }
 
 func workflowWebhookDefinition(project projectactions.Project, caller string, schedule WorkflowSchedule) (projectWebhookDefinition, error) {
-	input, err := json.Marshal(scheduleExecutionInput{Messages: schedule.Messages, Groups: schedule.GroupNames, Routes: schedule.RouteSelections, Payload: schedule.TriggerPayload, TeamAuthorizedBy: schedule.TeamAuthorizedBy, TeamPolicyRevision: schedule.TeamPolicyRevision})
+	input, err := json.Marshal(scheduleExecutionInput{Messages: schedule.Messages, InputPreset: schedule.InputPreset, Inputs: schedule.Inputs, Routes: schedule.RouteSelections, Payload: schedule.TriggerPayload, TeamAuthorizedBy: schedule.TeamAuthorizedBy, TeamPolicyRevision: schedule.TeamPolicyRevision})
 	if err != nil {
 		return projectWebhookDefinition{}, err
 	}
@@ -240,7 +243,7 @@ func workflowWebhookExecutionView(record projectWebhookDefinition) (WorkflowSche
 	if record.Action.Type == "message" {
 		mode = "workshop"
 	}
-	return WorkflowSchedule{ChatID: record.Action.Tab, ID: record.ID, Name: record.Name, Enabled: record.Enabled, ScheduleType: "webhook", Mode: "workshop", WorkshopMode: mode, Webhook: webhookExecutionConfig(record), GroupNames: input.Groups, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, RunAs: record.RunAs, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
+	return WorkflowSchedule{ChatID: record.Action.Tab, ID: record.ID, Name: record.Name, Enabled: record.Enabled, ScheduleType: "webhook", Mode: "workshop", WorkshopMode: mode, Webhook: webhookExecutionConfig(record), InputPreset: input.InputPreset, Inputs: input.Inputs, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, RunAs: record.RunAs, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
 }
 
 func crewWebhookDefinition(project projectactions.Project, caller string, trigger productWebhookTrigger) (projectWebhookDefinition, error) {
@@ -271,7 +274,7 @@ func internalFunctionName(id string) string { return "binding_" + strings.Replac
 // Explicit bindings referenced by saved steps become callable records with the
 // same ID and caller list. Their input mapping belongs to the target adapter.
 func workflowBindingDefinition(schedule WorkflowSchedule) (projectFunctionDefinition, error) {
-	input, err := json.Marshal(scheduleExecutionInput{Messages: schedule.Messages, Groups: schedule.GroupNames, Routes: schedule.RouteSelections, Payload: schedule.TriggerPayload, TeamAuthorizedBy: schedule.TeamAuthorizedBy, TeamPolicyRevision: schedule.TeamPolicyRevision})
+	input, err := json.Marshal(scheduleExecutionInput{Messages: schedule.Messages, InputPreset: schedule.InputPreset, Inputs: schedule.Inputs, Routes: schedule.RouteSelections, Payload: schedule.TriggerPayload, TeamAuthorizedBy: schedule.TeamAuthorizedBy, TeamPolicyRevision: schedule.TeamPolicyRevision})
 	if err != nil {
 		return projectFunctionDefinition{}, err
 	}

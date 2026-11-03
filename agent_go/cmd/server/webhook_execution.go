@@ -75,7 +75,8 @@ func configureDirectWebhookRequest(req map[string]interface{}, sctx *ScheduleCon
 		opts.EnabledGroupNames = nil
 		opts.RelayLegacyGroupName = sctx.RelayLegacyGroupName
 	} else {
-		opts.EnabledGroupNames = sctx.Schedule.GroupNames
+		opts.InputPreset = sctx.Schedule.InputPreset
+		opts.Inputs = sctx.Schedule.Inputs
 	}
 	opts.WebhookInputFile = webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)
 	opts.WebhookVariables = sctx.WebhookInput.Variables

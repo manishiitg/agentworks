@@ -33,7 +33,6 @@ func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDel
 		return nil
 	}
 	var envelope struct {
-		Group     string            `json:"group"`
 		Variables map[string]string `json:"variables"`
 		Payload   json.RawMessage   `json:"payload"`
 	}
@@ -43,11 +42,9 @@ func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDel
 		return fmt.Errorf("webhook envelope must be an object")
 	}
 	if err := decoder.Decode(&envelope); err != nil {
-		return fmt.Errorf("invalid webhook envelope: group must be a string and variables must be string values")
+		return fmt.Errorf("invalid webhook envelope: use declared string variables and payload; group selection is retired")
 	}
-	if envelope.Group != "" && !slices.Contains(s.GroupNames, envelope.Group) {
-		return fmt.Errorf("group is not allowed by this trigger")
-	}
+
 	for k, v := range envelope.Variables {
 		if !slices.Contains(s.Webhook.AllowedVariables, k) {
 			return fmt.Errorf("variable %q is not allowed by this trigger", k)
@@ -56,7 +53,6 @@ func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDel
 			return fmt.Errorf("variable %q exceeds 16 KiB", k)
 		}
 	}
-	input.Group = envelope.Group
 	input.Variables = envelope.Variables
 	if len(envelope.Payload) == 0 {
 		input.Payload = json.RawMessage(`{}`)
@@ -85,11 +81,7 @@ func resolveWebhookPayloadMappings(mappings *WorkflowWebhookPayloadMappings, inp
 		return nil
 	}
 	if mappings.Group != nil {
-		group, err := webhookMappingValue(input.Payload, *mappings.Group)
-		if err != nil {
-			return fmt.Errorf("group mapping: %w", err)
-		}
-		input.Group = group
+		return fmt.Errorf(retiredWorkflowGroupsMessage)
 	}
 	if len(mappings.Routes) > 0 {
 		input.RouteSelections = make(map[string]string, len(mappings.Routes))

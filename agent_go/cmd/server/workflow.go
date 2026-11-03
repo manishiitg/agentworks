@@ -518,108 +518,35 @@ func readProgressForFolder(ctx context.Context, stepsFilePath string) (*StepProg
 	return &progress, nil
 }
 
-// A run's payload and private working folders are never input sets. In an
-// ungrouped run execution/ and logs/ sit directly below the iteration root.
-func isRunInternalSubfolder(name string) bool {
-	base := name[strings.LastIndex(name, "/")+1:]
-	return strings.HasPrefix(base, ".") || base == "execution" || base == "logs"
+// Runs are flat children. Preset labels and execution/log subfolders are
+// never additional runs, for workflows and Relays alike.
+func workflowRunName(path string) string {
+	name := path
+	if i := strings.Index(path, "/runs/"); i >= 0 {
+		name = path[i+6:]
+	}
+	if strings.Contains(name, "/") || todo_creation_human.ValidateWorkflowRunFolder(name) != nil {
+		return ""
+	}
+	if strings.HasPrefix(name, "run-") || strings.HasPrefix(name, "iteration-") || strings.HasPrefix(name, "relay-") {
+		return name
+	}
+	return ""
 }
 
-// extractIterationFoldersFromTypedChildren extracts iteration folder names from typed WorkspaceFolderItem array
-// Supports both top-level (iteration-X) and nested (iteration-X/group-Y) folders
-func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceFolderItem, existingFolders []string, flatRuns ...bool) []string {
+func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceFolderItem, existingFolders []string, _ ...bool) []string {
 	for _, child := range children {
-		// Check type field using typed struct
-		isDir := child.Type == "folder"
-
-		// Get name from FilePath field
-		name := ""
-		if child.FilePath != "" {
-			// Extract relative path from runs folder (e.g., "Workflow/HDFC Personal Accounts/runs/iteration-3/group-1" -> "iteration-3/group-1")
-			// Find "runs/" in the path and extract everything after it
-			runsIndex := strings.Index(child.FilePath, "/runs/")
-			if runsIndex >= 0 {
-				relativePath := child.FilePath[runsIndex+6:] // Skip "/runs/"
-				name = relativePath
-			} else {
-				// Fallback: extract last part
-				parts := strings.Split(child.FilePath, "/")
-				if len(parts) > 0 {
-					name = parts[len(parts)-1]
-				}
-			}
-		}
-
-		if len(flatRuns) > 0 && flatRuns[0] {
-			if isDir && !strings.Contains(name, "/") && (strings.HasPrefix(name, "iteration-") || strings.HasPrefix(name, "relay-")) {
-				existingFolders = append(existingFolders, name)
-			}
-			continue
-		}
-		if isDir && name != "" {
-			// Include iteration folders (both top-level and nested)
-			// Top-level: iteration-X
-			// Nested: iteration-X/group-Y
-			if strings.HasPrefix(name, "iteration-") {
-				// If this is a top-level iteration folder, check for nested group folders first
-				if !strings.Contains(name, "/") {
-					if len(child.Children) > 0 {
-						// Check if this iteration has group subfolders
-						hasGroups := false
-						groupFolders := []string{}
-
-						for _, groupChild := range child.Children {
-							if groupChild.Type == "folder" {
-								groupName := ""
-								if groupChild.FilePath != "" {
-									// Extract relative path
-									runsIndex := strings.Index(groupChild.FilePath, "/runs/")
-									if runsIndex >= 0 {
-										groupName = groupChild.FilePath[runsIndex+6:]
-									} else {
-										parts := strings.Split(groupChild.FilePath, "/")
-										if len(parts) > 0 {
-											groupName = parts[len(parts)-1]
-										}
-									}
-								}
-								// Check if this is a group subfolder (nested under iteration-X)
-								// Accepts both "group-X" format (backward compatibility) and display names (e.g., "production", "staging")
-								if groupName != "" && !isRunInternalSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
-									// Any nested folder under iteration-X is considered a group folder
-									hasGroups = true
-									groupFolders = append(groupFolders, groupName)
-								}
-							}
-						}
-
-						// If iteration has group subfolders, only add the groups (not the parent)
-						if hasGroups {
-							existingFolders = append(existingFolders, groupFolders...)
-						} else {
-							// No groups found, add the parent iteration folder (backward compatibility)
-							existingFolders = append(existingFolders, name)
-						}
-					} else {
-						// No children, add the parent iteration folder
-						existingFolders = append(existingFolders, name)
-					}
-				} else {
-					// Nested folder (already a group folder) - add it directly
-					existingFolders = append(existingFolders, name)
-				}
-			}
+		if name := workflowRunName(child.FilePath); child.Type == "folder" && name != "" {
+			existingFolders = append(existingFolders, name)
 		}
 	}
 	return existingFolders
 }
 
-// extractIterationFoldersFromInterfaceArray extracts from array of interface{} (backward compatibility)
 func extractIterationFoldersFromInterfaceArray(dataArray []interface{}, existingFolders []string, flatRuns ...bool) []string {
 	for _, elem := range dataArray {
-		if elemMap, ok := elem.(map[string]interface{}); ok {
-			// Check if this element has children (the iteration folders)
-			if children, ok := elemMap["children"].([]interface{}); ok {
+		if item, ok := elem.(map[string]interface{}); ok {
+			if children, ok := item["children"].([]interface{}); ok {
 				existingFolders = extractIterationFoldersFromChildren(children, existingFolders, flatRuns...)
 			}
 		}
@@ -627,101 +554,15 @@ func extractIterationFoldersFromInterfaceArray(dataArray []interface{}, existing
 	return existingFolders
 }
 
-// extractIterationFoldersFromChildren extracts iteration folder names from children array (interface{} version for backward compatibility)
-// Supports both top-level (iteration-X) and nested (iteration-X/group-Y or iteration-X/display-name) folders
-func extractIterationFoldersFromChildren(children []interface{}, existingFolders []string, flatRuns ...bool) []string {
-	for _, child := range children {
-		if childMap, ok := child.(map[string]interface{}); ok {
-			// Check type field
-			isDir := false
-			if t, ok := childMap["type"].(string); ok {
-				isDir = (t == "folder")
+func extractIterationFoldersFromChildren(children []interface{}, existingFolders []string, _ ...bool) []string {
+	for _, raw := range children {
+		if item, ok := raw.(map[string]interface{}); ok && item["type"] == "folder" {
+			path, _ := item["filepath"].(string)
+			if path == "" {
+				path, _ = item["name"].(string)
 			}
-
-			// Get name from filepath or name field
-			name := ""
-			if filepath, ok := childMap["filepath"].(string); ok {
-				// Extract relative path from runs folder (e.g., "Workflow/HDFC Personal Accounts/runs/iteration-3/group-1" -> "iteration-3/group-1")
-				runsIndex := strings.Index(filepath, "/runs/")
-				if runsIndex >= 0 {
-					relativePath := filepath[runsIndex+6:] // Skip "/runs/"
-					name = relativePath
-				} else {
-					// Fallback: extract last part
-					parts := strings.Split(filepath, "/")
-					if len(parts) > 0 {
-						name = parts[len(parts)-1]
-					}
-				}
-			} else if n, ok := childMap["name"].(string); ok {
-				name = n
-			}
-
-			if len(flatRuns) > 0 && flatRuns[0] {
-				if isDir && !strings.Contains(name, "/") && (strings.HasPrefix(name, "iteration-") || strings.HasPrefix(name, "relay-")) {
-					existingFolders = append(existingFolders, name)
-				}
-				continue
-			}
-			if isDir && name != "" {
-				// Include iteration folders (both top-level and nested)
-				if strings.HasPrefix(name, "iteration-") {
-					// If this is a top-level iteration folder, check for nested group folders first
-					if !strings.Contains(name, "/") {
-						childrenArray, hasChildren := childMap["children"].([]interface{})
-						if hasChildren && len(childrenArray) > 0 {
-							// Check if this iteration has group subfolders
-							hasGroups := false
-							groupFolders := []string{}
-
-							for _, groupChild := range childrenArray {
-								if groupMap, ok := groupChild.(map[string]interface{}); ok {
-									groupIsDir := false
-									if t, ok := groupMap["type"].(string); ok {
-										groupIsDir = (t == "folder")
-									}
-									if groupIsDir {
-										groupName := ""
-										if groupFilePath, ok := groupMap["filepath"].(string); ok {
-											runsIndex := strings.Index(groupFilePath, "/runs/")
-											if runsIndex >= 0 {
-												groupName = groupFilePath[runsIndex+6:]
-											} else {
-												parts := strings.Split(groupFilePath, "/")
-												if len(parts) > 0 {
-													groupName = parts[len(parts)-1]
-												}
-											}
-										} else if n, ok := groupMap["name"].(string); ok {
-											groupName = n
-										}
-										// Check if this is a group subfolder (nested under iteration-X)
-										// Accepts both "group-X" format (backward compatibility) and display names (e.g., "production", "staging")
-										if groupName != "" && !isRunInternalSubfolder(groupName) && strings.HasPrefix(groupName, name+"/") {
-											// Any nested folder under iteration-X is considered a group folder
-											hasGroups = true
-											groupFolders = append(groupFolders, groupName)
-										}
-									}
-								}
-							}
-
-							// If iteration has group subfolders, only add the groups (not the parent)
-							if hasGroups {
-								existingFolders = append(existingFolders, groupFolders...)
-							} else {
-								// No groups found, add the parent iteration folder (backward compatibility)
-								existingFolders = append(existingFolders, name)
-							}
-						} else {
-							// No children or empty children, add the parent iteration folder
-							existingFolders = append(existingFolders, name)
-						}
-					} else {
-						// Nested folder (already a group folder) - add it directly
-						existingFolders = append(existingFolders, name)
-					}
-				}
+			if name := workflowRunName(path); name != "" {
+				existingFolders = append(existingFolders, name)
 			}
 		}
 	}
@@ -824,7 +665,9 @@ type ExecutionOptions struct {
 	ResumeFromStep    int    `json:"resume_from_step,omitempty"`    // 1-based step number to resume from
 	PlanChangeAction  string `json:"plan_change_action,omitempty"`  // "keep_old_progress" or "delete_old_progress"
 
-	// Variable group execution options (for batch execution with multiple groups)
+	InputPreset string            `json:"input_preset,omitempty"`
+	Inputs      map[string]string `json:"inputs,omitempty"`
+	// Retired batch selector is decoded only to return an actionable refusal.
 	EnabledGroupNames []string `json:"enabled_group_names"` // nil uses configured enabled sets; an explicit empty slice selects no work
 
 	// Logging options
@@ -1277,7 +1120,7 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 type VariableGroup struct {
 	Name    string            `json:"name"` // Unique identifier and display label (e.g., "Production", "Staging")
 	Values  map[string]string `json:"values"`
-	Enabled bool              `json:"enabled"`
+	Enabled bool              `json:"-"`
 }
 
 // Variable represents a single variable definition
@@ -1452,6 +1295,16 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 	var manifest VariablesManifest
 	if err := json.NewDecoder(r.Body).Decode(&manifest); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	rawInputs, _ := json.Marshal(manifest)
+	var inputDefinitions todo_creation_human.VariablesManifest
+	if err := json.Unmarshal(rawInputs, &inputDefinitions); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	if err := todo_creation_human.ValidateWorkflowInputDefinitions(&inputDefinitions); err != nil {
+		http.Error(w, err.Error(), 400)
 		return
 	}
 	for _, group := range manifest.Groups {

@@ -648,6 +648,8 @@ export interface SlackRouteTrigger {
   contains?: string
   route_selections?: Record<string, string>
   step_id?: string
+  input_preset?: string | null
+  inputs?: Record<string, string>
   group_names?: string[] | null
 }
 
@@ -1881,6 +1883,8 @@ export interface ExecutionOptions {
   // Tool access control (global configuration)
 
   // Variable group execution options (for batch execution with multiple groups)
+  input_preset?: string;
+  inputs?: Record<string, string>;
   enabled_group_names?: string[] | null;  // Omitted/null selects configured enabled sets; [] selects no work.
 
   // Feature toggles (runtime configuration)
@@ -1912,7 +1916,7 @@ export interface Variable {
 export interface VariableGroup {
   name: string;  // Unique identifier and display label
   values: Record<string, string>;  // Variable name -> value mapping
-  enabled: boolean;
+  enabled?: boolean; // Retired execution flag; saved values have no enabled state.
 }
 
 export interface VariablesManifest {
@@ -2744,6 +2748,8 @@ export interface ScheduledJob {
   workflow_id?: string
   workflow_label?: string
   trigger_payload?: Record<string, unknown>
+  input_preset?: string | null
+  inputs?: Record<string, string>
   group_names?: string[] | null  // undefined/null = automatic selection; [] selects no work
   // Deterministic route choices for a workflow schedule. The scheduler passes
   // these to the canonical full-workflow run; they are useful schedule context
@@ -2822,6 +2828,8 @@ export interface CreateScheduledJobRequest {
   preset_query_id?: string
   workspace_path?: string
   trigger_payload?: Record<string, unknown>
+  input_preset?: string | null
+  inputs?: Record<string, string>
   group_names?: string[] | null  // undefined/null = automatic selection; [] selects no work
   mode?: 'workshop' | 'multi-agent'
   messages?: string[]
@@ -2851,6 +2859,8 @@ export interface UpdateScheduledJobRequest {
   name?: string
   description?: string
   trigger_payload?: Record<string, unknown>
+  input_preset?: string | null
+  inputs?: Record<string, string>
   group_names?: string[] | null       // undefined = don't change; null = automatic; [] = no work; [...] = specific sets
   set_group_names?: boolean    // must be true to actually update group_names
   mode?: 'workshop' | 'multi-agent'
@@ -2910,6 +2920,8 @@ export interface ScheduledJobRun {
   /** Exact assistant answer produced by this execution. */
   final_response?: string
   duration_ms?: number
+  input_preset?: string | null
+  inputs?: Record<string, string>
   group_names?: string[] | null
   started_at: string
   completed_at?: string
@@ -3044,6 +3056,8 @@ export interface WorkflowScheduleEntry {
   enabled: boolean
   trigger_payload?: Record<string, unknown>
   calendar_items?: CalendarScheduleItem[]
+  input_preset?: string | null
+  inputs?: Record<string, string>
   group_names?: string[] | null
   mode?: 'workshop' | 'multi-agent' | string
   messages?: string[]

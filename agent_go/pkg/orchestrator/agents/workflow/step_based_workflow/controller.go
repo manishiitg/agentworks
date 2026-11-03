@@ -629,15 +629,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) HasBrowserCapability() bool {
 // - Skips cleanup phase
 // - Simple direct planning approach
 // - NEW: Includes human approval loop with iterative plan refinement
-// isPartialGroupRun reports whether this run refreshes only some enabled groups.
-// Such a run must retain iteration-0 so the untouched groups stay live.
-func (hcpo *StepBasedWorkflowOrchestrator) isPartialGroupRun() bool {
-	if hcpo.executionOptions == nil || len(hcpo.executionOptions.EnabledGroupNames) == 0 || hcpo.variablesManifest == nil {
-		return false
-	}
-	return len(hcpo.executionOptions.EnabledGroupNames) < len(hcpo.variablesManifest.GetEnabledGroups())
-}
-
 func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, objective, workspacePath string) (string, error) {
 	hcpo.ApplyWorkflowLogContext(workspacePath, orchestrator.SingleSelectedGroupName(func() []string {
 		if hcpo.executionOptions == nil {
@@ -711,80 +702,45 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 		return "", fmt.Errorf(fmt.Sprintf("existing plan has no steps"), nil)
 	}
 
-	// Load runtime variable values if provided and switch to templated objective
-	// If a specific group is selected via execution options, use that group's values
+	// Validate inputs before creating a run or dispatching a step.
 	var variableValues map[string]string
 	if hcpo.isRelayExecution() {
 		variableValues, err = hcpo.relayVariableValues()
-		if err != nil {
-			return "", err
-		}
-	} else if hcpo.executionOptions != nil && len(hcpo.executionOptions.EnabledGroupNames) > 0 && hcpo.variablesManifest != nil {
-		// Specific group(s) selected - use the first group's values (for single group execution)
-		requestedGroupName := hcpo.executionOptions.EnabledGroupNames[0]
-
-		// Log available groups for debugging
-		availableGroupNames := make([]string, len(hcpo.variablesManifest.Groups))
-		for i, g := range hcpo.variablesManifest.Groups {
-			availableGroupNames[i] = g.Name
-		}
-
-		variableValues = hcpo.variablesManifest.GetVariableValues(requestedGroupName)
-		if variableValues == nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [VARIABLE LOADING] Group %s not found in manifest, falling back to LoadVariableValues", requestedGroupName))
-			var err error
-			variableValues, err = LoadVariableValues(ctx, hcpo.BaseOrchestrator, hcpo.GetWorkspacePath(), hcpo.GetWorkspacePath())
-			if err != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [VARIABLE LOADING] Failed to load variable values: %v", err))
-			} else {
-				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [VARIABLE LOADING] Loaded from fallback LoadVariableValues (may not match requested group %s)", requestedGroupName))
+	} else {
+		opts := hcpo.executionOptions
+		preset := ""
+		var inputs map[string]string
+		if opts != nil {
+			if opts.EnabledGroupNames != nil {
+				return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
 			}
+			preset, inputs = opts.InputPreset, cloneWorkflowStringMap(opts.Inputs)
+			if inputs == nil {
+				inputs = map[string]string{}
+			}
+			for name, value := range opts.WebhookVariables {
+				inputs[name] = value
+			}
+		}
+		if opts != nil && opts.ResumeFromStep > 0 {
+			if !opts.AllowRunContinuation {
+				return "", fmt.Errorf("only a Builder can continue an existing run; start a new run instead")
+			}
+			variableValues, err = hcpo.readExistingRunInputs(ctx, opts.SelectedRunFolder)
+		} else if opts != nil && opts.ResolvedInputs != nil {
+			variableValues = cloneWorkflowStringMap(opts.ResolvedInputs)
 		} else {
-			hcpo.GetLogger().Info(fmt.Sprintf("✅ [VARIABLE LOADING] Loaded variable values for selected group: %s (values: %v)", requestedGroupName, variableValues))
-
-			// Validate: Double-check that we got the right group's values plus shared defaults.
-			// Find the group in manifest to verify.
-			for _, g := range hcpo.variablesManifest.Groups {
-				if g.Name == requestedGroupName {
-					expectedValues := MergeGroupWithDefaults(hcpo.variablesManifest, g.Values)
-					// Compare values to ensure they match
-					valuesMatch := true
-					if len(variableValues) != len(expectedValues) {
-						valuesMatch = false
-					} else {
-						for k, v := range variableValues {
-							if expectedValues[k] != v {
-								valuesMatch = false
-								hcpo.GetLogger().Error(fmt.Sprintf("❌ [VARIABLE LOADING] Value mismatch for key %s: expected %s, got %s", k, expectedValues[k], v), nil)
-								break
-							}
-						}
-					}
-					if !valuesMatch {
-						hcpo.GetLogger().Error(fmt.Sprintf("❌ [VARIABLE LOADING] Variable values don't match merged values for group %s! Expected: %v, Got: %v", requestedGroupName, expectedValues, variableValues), nil)
-					} else {
-						hcpo.GetLogger().Info(fmt.Sprintf("✅ [VARIABLE LOADING] Verified variable values match merged values for group %s", requestedGroupName))
-					}
-					break
-				}
-			}
-		}
-	} else {
-		// No specific group selected - use default LoadVariableValues (backward compatibility)
-		var err error
-		variableValues, err = LoadVariableValues(ctx, hcpo.BaseOrchestrator, hcpo.GetWorkspacePath(), hcpo.GetWorkspacePath())
-		if err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [VARIABLE LOADING] Failed to load variable values: %v", err))
+			variableValues, err = ResolveWorkflowInputs(hcpo.variablesManifest, preset, inputs)
 		}
 	}
-
-	if variableValues != nil {
-		hcpo.variableValues = variableValues
-		SyncGroupVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, hcpo.variablesManifest, variableValues)
-		hcpo.GetLogger().Info(fmt.Sprintf("✅ [VARIABLE LOADING] Set hcpo.variableValues with %d variables", len(variableValues)))
-	} else {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [VARIABLE LOADING] variableValues is nil - no variables loaded"))
+	if err != nil {
+		return "", err
 	}
+	if hcpo.GetWorkspaceEnvRef() == nil {
+		hcpo.SetWorkspaceEnvRef(map[string]string{})
+	}
+	hcpo.variableValues = variableValues
+	SyncGroupVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, hcpo.variablesManifest, variableValues)
 
 	// Switch to templated objective for all subsequent phases
 	hcpo.SetObjective(templatedObjective)
@@ -815,32 +771,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 
 	// Note: Learning integration phase removed - execution agent now auto-discovers learning files and scripts
 
-	// Resolve iteration folder.
-	// When running a subset of groups, keep iteration-0 in place so other groups' output is preserved.
-	// Batch execution handles per-group cleanup independently.
 	execOpts := hcpo.executionOptions
-	isPartialGroupRun := hcpo.isPartialGroupRun() && (execOpts == nil || (execOpts.WebhookInputFile == "" && execOpts.RunKind != "schedule" && execOpts.RunKind != "slack"))
-	var selectedRunFolder string
-	if isPartialGroupRun {
-		// Partial group run — reuse iteration-0 without backup
-		hcpo.GetLogger().Info(fmt.Sprintf("📦 Partial group run (%d of %d groups) — reusing iteration-0 without backup", len(execOpts.EnabledGroupNames), len(hcpo.variablesManifest.GetEnabledGroups())))
-		selectedRunFolder = currentWorkflowRunFolder
-		// Ensure iteration-0 structure exists (no-op if already there)
-		iteration0Path := fmt.Sprintf("%s/runs/%s", hcpo.GetWorkspacePath(), currentWorkflowRunFolder)
-		if mkErr := hcpo.createRunFolderStructure(ctx, iteration0Path); mkErr != nil {
-			return "", fmt.Errorf("failed to ensure iteration-0: %w", mkErr)
-		}
-		if indexErr := hcpo.writeRunIndex(ctx, "partial_group_reuse"); indexErr != nil {
-			return "", fmt.Errorf("failed to publish partial-group run provenance: %w", indexErr)
-		}
-	} else {
-		// Full run — back up iteration-0 to iteration-N as before
-		selectedRunFolder, err = hcpo.prepareCurrentRun(ctx, hcpo.GetWorkspacePath())
-	}
+	selectedRunFolder, err := hcpo.prepareCurrentRun(ctx, hcpo.GetWorkspacePath())
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve run folder: %w", err)
 	}
 	hcpo.selectedRunFolder = selectedRunFolder
+	preset := ""
+	if execOpts != nil {
+		preset = execOpts.InputPreset
+	}
+	hcpo.variableValues, err = hcpo.resolveRunInputs(ctx, selectedRunFolder, preset, variableValues)
+	if err != nil {
+		return "", err
+	}
+	SyncGroupVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, hcpo.variablesManifest, hcpo.variableValues)
 	hcpo.GetLogger().Info(fmt.Sprintf("Using run folder: %s", selectedRunFolder))
 	// Set iteration folder for real-time token persistence
 	hcpo.SetIterationFolder(selectedRunFolder)
@@ -849,334 +794,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 		common.SetSessionWorkingDir(hcpo.httpSessionID, fmt.Sprintf("%s/runs/%s/execution", hcpo.GetWorkspacePath(), selectedRunFolder))
 	}
 
-	// EARLY PROGRESS CHECK: Load progress from the selected run folder
-	// Note: We no longer check if all steps are completed - execution will proceed regardless
-
-	earlyProgress, err := hcpo.loadStepProgress(ctx)
-	planChangeHandled := false // Track if we already handled plan change to avoid duplicate prompts
-	if err == nil && earlyProgress != nil && len(earlyProgress.CompletedStepIndices) > 0 {
-		hcpo.GetLogger().Info(fmt.Sprintf("📊 Found early progress: %d/%d steps completed", len(earlyProgress.CompletedStepIndices), earlyProgress.TotalSteps))
-
-		// Check if total steps match
-		if earlyProgress.TotalSteps == len(breakdownSteps) {
-			// Plan matches - proceed with execution (no longer checking if all steps are completed)
-			hcpo.GetLogger().Info(fmt.Sprintf("📊 Plan matches existing progress - will proceed with execution"))
-		} else {
-			// Plan changed - handle based on frontend options or ask user
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Total steps changed (previous: %d, current: %d)", earlyProgress.TotalSteps, len(breakdownSteps)))
-
-			// The current run slot is always reused for interactive execution.
-			shouldAsk := hcpo.shouldAskDeleteOldProgress(ctx, hcpo.GetWorkspacePath())
-			if !shouldAsk {
-				hcpo.GetLogger().Info("📁 No current run progress to reconcile")
-				earlyProgress = nil
-				planChangeHandled = true
-			} else if execOpts != nil && execOpts.PlanChangeAction != "" {
-				// Use frontend-provided action
-				planChangeHandled = true
-				switch execOpts.PlanChangeAction {
-				case PlanChangeActionKeepOldProgress:
-					hcpo.GetLogger().Info(fmt.Sprintf("✅ Frontend chose to keep old progress (will try to match steps)"))
-					// Keep earlyProgress as-is
-				case PlanChangeActionDeleteOldProgress:
-					hcpo.GetLogger().Info(fmt.Sprintf("🔄 Frontend chose to delete old progress and start fresh"))
-					execManager := hcpo.GetExecutionManager()
-					if err := execManager.CleanupForPlanChange(ctx, len(breakdownSteps), hcpo.GetWorkspacePath()); err != nil {
-						hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Plan change cleanup failed: %v", err))
-					}
-					earlyProgress = nil
-				default:
-					hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Unknown plan_change_action: %s, keeping old progress", execOpts.PlanChangeAction))
-				}
-			} else {
-				// No frontend action provided - default to keeping old progress
-				// User can select "start from beginning" from frontend if they want to start fresh
-				planChangeHandled = true
-				hcpo.GetLogger().Info(fmt.Sprintf("ℹ️ No plan_change_action provided, defaulting to keep old progress (user can select 'start from beginning' from frontend if needed)"))
-				// Keep earlyProgress as-is
-			}
-		}
-	}
-
-	// Process execution strategy early to set controller state
-	// This ensures skipHumanInput is set regardless of code path
-	// All execution strategies now skip human input
-	if execOpts != nil && execOpts.ExecutionStrategy != "" {
-		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Processing execution strategy early: %s", execOpts.ExecutionStrategy))
-		hcpo.SetSkipHumanInput(true)
-
-		// Apply human input overrides for executable steps.
-		// Previously this was only set via PrepareExecution → ApplyExecutionContext,
-		// which is only called for resume strategies. For start_from_beginning strategies
-		// humanInputOverrides was never populated, causing routing steps to miss
-		// injected human_input and fall through to their default route.
-		if len(execOpts.HumanInputs) > 0 {
-			hcpo.humanInputOverrides = execOpts.HumanInputs
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Set humanInputOverrides for %d step(s) (early apply)", len(execOpts.HumanInputs)))
-		}
-	}
-
-	// Determine if user wants to resume or start from beginning
-	// Frontend always sends either: start from beginning (selectedStartPoint = 0) or resume from step X
-	var startFromStep int // 0-based index; the zero value means start from beginning
-	var existingProgress *StepProgress
-	isResuming := false
-
-	// Check if user explicitly wants to resume
-	// CRITICAL: Also check execution strategy, because resume strategy with ResumeFromStep=0
-	// should still be treated as resuming (so validation can catch it)
-	if execOpts != nil {
-		// Check if it's a resume strategy
-		isResumeStrategy := execOpts.ExecutionStrategy == ExecutionStrategyResumeFromStepNoHuman ||
-			execOpts.ExecutionStrategy == ExecutionStrategyRunSingleStep
-
-		if execOpts.ResumeFromStep > 0 || isResumeStrategy {
-			isResuming = true
-			hcpo.GetLogger().Info(fmt.Sprintf("🎯 User chose to resume from step (ResumeFromStep=%d, strategy=%s)", execOpts.ResumeFromStep, execOpts.ExecutionStrategy))
-		}
-	}
-
-	// Use earlyProgress if available, otherwise load it
-	if earlyProgress != nil {
-		existingProgress = earlyProgress
-		hcpo.GetLogger().Info(fmt.Sprintf("✅ Using early progress (avoided reload)"))
-	} else {
-		// Check if there's existing progress (only if we haven't already handled plan change)
-		if !planChangeHandled {
-			existingProgress, err = hcpo.loadStepProgress(ctx)
-			if err != nil {
-				// File doesn't exist - this is normal for first run, log and continue
-				hcpo.GetLogger().Info(fmt.Sprintf("ℹ️ No existing progress file found (this is normal for first run), will start fresh execution"))
-				existingProgress = nil
-			}
-		} else {
-			// Plan change was already handled, don't reload to avoid duplicate prompts
-			hcpo.GetLogger().Info(fmt.Sprintf("ℹ️ Plan change already handled, skipping reload to avoid duplicate prompts"))
-			existingProgress = nil
-		}
-	}
-
-	// Handle two cases: Start from beginning OR Resume from step X
-	if !isResuming {
-		// Case 1: Start from beginning
-		hcpo.GetLogger().Info(fmt.Sprintf("🆕 Starting from beginning"))
-
-		// Clean up execution folder when starting from beginning
-		execManager := hcpo.GetExecutionManager()
-		if err := execManager.CleanupForStartFromBeginning(ctx, hcpo.GetWorkspacePath()); err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Start from beginning cleanup failed: %v", err))
-		}
-		// Reset progress to nil to ensure fresh initialization (this will reset RoutingEvaluationCounts)
-		existingProgress = nil
-		earlyProgress = nil // Also clear earlyProgress to ensure old counts don't persist
-		// startFromStep is already 0 from initialization
-	} else {
-		// Case 2: Resume from step X
-		hcpo.GetLogger().Info(fmt.Sprintf("🔄 Resuming from step"))
-
-		// Load existing progress if available
-		if existingProgress == nil {
-			existingProgress, err = hcpo.loadStepProgress(ctx)
-			if err != nil {
-				hcpo.GetLogger().Info(fmt.Sprintf("ℹ️ No existing progress file found, will start from step specified by frontend"))
-				existingProgress = nil
-			}
-		}
-
-		// Handle plan change if steps don't match
-		if existingProgress != nil && !planChangeHandled && existingProgress.TotalSteps != len(breakdownSteps) {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Plan has changed (previous: %d steps, current: %d steps)", existingProgress.TotalSteps, len(breakdownSteps)))
-
-			// Use frontend-provided plan change action if available
-			if execOpts != nil && execOpts.PlanChangeAction != "" {
-				switch execOpts.PlanChangeAction {
-				case PlanChangeActionKeepOldProgress:
-					hcpo.GetLogger().Info(fmt.Sprintf("✅ Frontend chose to keep old progress"))
-					// Keep existingProgress as-is
-				case PlanChangeActionDeleteOldProgress:
-					hcpo.GetLogger().Info(fmt.Sprintf("🔄 Frontend chose to delete old progress and start fresh"))
-					execManager := hcpo.GetExecutionManager()
-					if err := execManager.CleanupForPlanChange(ctx, len(breakdownSteps), hcpo.GetWorkspacePath()); err != nil {
-						hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Plan change cleanup failed: %v", err))
-					}
-					existingProgress = nil
-				}
-			} else {
-				// No frontend action provided - default to keeping old progress
-				// User can select "start from beginning" from frontend if they want to start fresh
-				hcpo.GetLogger().Info(fmt.Sprintf("ℹ️ No plan_change_action provided, defaulting to keep old progress (user can select 'start from beginning' from frontend if needed)"))
-			}
-		}
-
-		// Process resume logic if we have existing progress
-		if existingProgress != nil {
-
-			hcpo.GetLogger().Info(fmt.Sprintf("📊 Found existing progress: %d/%d steps completed", len(existingProgress.CompletedStepIndices), existingProgress.TotalSteps))
-
-			// Find next incomplete step (used as fallback if resume_from_step not specified)
-			nextIncompleteStep := 0
-			maxStepsToCheck := existingProgress.TotalSteps
-			if maxStepsToCheck > len(breakdownSteps) {
-				maxStepsToCheck = len(breakdownSteps)
-			}
-			for i := 0; i < maxStepsToCheck; i++ {
-				completed := false
-				for _, completedIdx := range existingProgress.CompletedStepIndices {
-					if completedIdx == i {
-						completed = true
-						break
-					}
-				}
-				if !completed {
-					nextIncompleteStep = i + 1
-					break
-				}
-			}
-			if nextIncompleteStep == 0 && len(breakdownSteps) > existingProgress.TotalSteps {
-				nextIncompleteStep = existingProgress.TotalSteps + 1
-			}
-
-			// Use resume_from_step from the frontend when resuming.
-			if execOpts != nil {
-				if execOpts.ResumeFromStep > 0 {
-					// Use explicit step from frontend
-					startFromStep = execOpts.ResumeFromStep - 1 // Convert to 0-based
-					hcpo.GetLogger().Info(fmt.Sprintf("🎯 Resuming from step %d (from frontend)", execOpts.ResumeFromStep))
-				} else if nextIncompleteStep > 0 {
-					// Fallback to next incomplete step
-					startFromStep = nextIncompleteStep - 1
-					hcpo.GetLogger().Info(fmt.Sprintf("🎯 Resuming from next incomplete step %d", nextIncompleteStep))
-				} else {
-					// No incomplete step found, start from beginning
-					hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ No incomplete step found, starting from beginning"))
-					startFromStep = 0
-				}
-
-				// Handle execution strategy (fast execute, skip human input, etc.)
-				if execOpts.ExecutionStrategy != "" {
-					switch execOpts.ExecutionStrategy {
-					case ExecutionStrategyRunSingleStep:
-						hcpo.SetRunSingleStepMode(true, startFromStep)
-					default:
-						hcpo.SetSkipHumanInput(true)
-					}
-				}
-			} else {
-				// No execOpts - next incomplete step would be used as fallback
-				// but startFromStep will be set by PrepareExecution if needed
-			}
-		} else {
-			// No existing progress - startFromStep will be set by PrepareExecution if needed
-			if execOpts != nil && execOpts.ResumeFromStep > 0 {
-				hcpo.GetLogger().Info(fmt.Sprintf("🎯 Resuming from step %d (no existing progress)", execOpts.ResumeFromStep))
-			}
-		}
-	}
-
-	// Apply cleanup if explicitly resuming from a step.
-	// This ensures step N and all subsequent steps are cleaned up before execution
-	// CRITICAL: Also call PrepareExecution when resume strategy is selected even if ResumeFromStep=0
-	// This allows validation to catch invalid resume_from_step=0 and request human feedback
-	isResumeStrategy := false
-	if execOpts != nil && execOpts.ExecutionStrategy != "" {
-		isResumeStrategy = execOpts.ExecutionStrategy == ExecutionStrategyResumeFromStepNoHuman ||
-			execOpts.ExecutionStrategy == ExecutionStrategyRunSingleStep
-	}
-
-	// Call PrepareExecution if:
-	// 1. Resume strategy is selected (even if ResumeFromStep=0, so validation can catch it), OR
-	// 2. ResumeFromStep > 0
-	if execOpts != nil && (isResumeStrategy || execOpts.ResumeFromStep > 0) {
-		execManager := hcpo.GetExecutionManager()
-
-		// Use ExecutionManager to prepare execution setup (includes cleanup scope)
-		// This will validate resume_from_step and request human feedback if invalid
-		setup, err := execManager.PrepareExecution(ctx, execOpts, existingProgress, len(breakdownSteps), hcpo.selectedRunFolder)
-		if err != nil {
-			// If PrepareExecution returns error (e.g., user rejected human feedback), stop execution
-			hcpo.GetLogger().Error(fmt.Sprintf("❌ Failed to prepare execution setup: %v", err), err)
-			return "", fmt.Errorf("execution preparation failed: %w", err)
-		} else if setup != nil {
-			// Apply cleanup: delete step folders and update progress
-			if err := execManager.ApplyCleanup(ctx, setup); err != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to apply cleanup for resume from step %d: %v (continuing anyway)", execOpts.ResumeFromStep, err))
-			} else {
-				// Log appropriate message based on cleanup scope
-				if setup.Cleanup.CleanSpecificStep > 0 {
-					hcpo.GetLogger().Info(fmt.Sprintf("✅ Cleaned up step %d for single step execution", setup.Cleanup.CleanSpecificStep))
-				} else if setup.Cleanup.CleanFromStep > 0 {
-					hcpo.GetLogger().Info(fmt.Sprintf("✅ Cleaned up step %d and all subsequent steps for resume", setup.Cleanup.CleanFromStep))
-				} else {
-					hcpo.GetLogger().Info(fmt.Sprintf("✅ Applied cleanup for resume (scope: %s)", execManager.GetCleanupDescription(setup.Cleanup)))
-				}
-
-				// Reload progress after cleanup to get updated state
-				updatedProgress, err := hcpo.loadStepProgress(ctx)
-				if err == nil && updatedProgress != nil {
-					existingProgress = updatedProgress
-					hcpo.GetLogger().Info(fmt.Sprintf("📊 Reloaded progress after cleanup: %d/%d steps completed", len(existingProgress.CompletedStepIndices), existingProgress.TotalSteps))
-				}
-
-				// Update startFromStep from setup (in case it was adjusted)
-				if setup.StartFromStep >= 0 {
-					startFromStep = setup.StartFromStep
-					hcpo.GetLogger().Info(fmt.Sprintf("🎯 Updated startFromStep to %d (0-based) from execution setup", startFromStep))
-				}
-			}
-		}
-	}
-
-	// Phase 2: Execute plan steps one by one (with validation after each step)
-
-	// Safety check: Ensure breakdownSteps is not empty
-	if len(breakdownSteps) == 0 {
-		return "", fmt.Errorf(fmt.Sprintf("no steps to execute: breakdownSteps is empty (this should not happen - plan was approved but has no steps)"), nil)
-	}
-
-	hcpo.GetLogger().Info(fmt.Sprintf("✅ Proceeding to execution phase with %d steps", len(breakdownSteps)))
-
-	// Build execution context once from current controller state
-	execCtx := hcpo.buildExecutionContext()
-
-	// The same runner handles an ordinary invocation and named input sets.
-	enabledGroups, err := hcpo.getEnabledGroupsForExecution()
-	if err != nil {
+	if err := hcpo.runResolvedExecution(ctx, breakdownSteps, hcpo.buildExecutionContext()); err != nil {
 		return "", err
 	}
-
-	// NOTE: Progress initialization is skipped here because batch execution will handle it per group
-	// Each group has its own run folder and progress file, initialized by ApplyCleanup in runBatchExecution
-	// This prevents duplicate progress initialization before batch execution starts
-
-	if len(enabledGroups) == 0 {
-		return "", fmt.Errorf("no enabled variable groups found for execution")
-	}
-
-	if len(enabledGroups) > 1 {
-		hcpo.GetLogger().Info(fmt.Sprintf("🔄 Multiple variable groups detected (%d groups), using batch execution mode", len(enabledGroups)))
-	} else {
-		hcpo.GetLogger().Info(fmt.Sprintf("🔄 Single variable group detected (%s), using batch execution mode for consistent session ID and folder structure", enabledGroups[0].Name))
-	}
-
-	batchResult, err := hcpo.runBatchExecution(ctx, breakdownSteps, 1, execCtx)
-	if err != nil {
-		return "", fmt.Errorf("batch execution failed: %w", err)
-	}
-	if !batchResult.Success {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Batch execution completed with %d failed groups", batchResult.FailedGroups))
-		duration := time.Since(hcpo.GetStartTime())
-		hcpo.GetLogger().Info(fmt.Sprintf("⚠️ Human-controlled todo planning completed with failures in %v", duration))
-		errMsg := batchResult.Error
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("failed group(s): %v", batchResult.FailedGroupNames)
-		}
-		return "", fmt.Errorf("%s", errMsg)
-	}
-
-	duration := time.Since(hcpo.GetStartTime())
-	hcpo.GetLogger().Info(fmt.Sprintf("✅ Human-controlled todo planning completed in %v", duration))
-
-	return "Todo planning complete.", nil
+	return "Workflow execution completed.", nil
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) Execute(ctx context.Context, objective string, workspacePath string, options map[string]interface{}) (string, error) {

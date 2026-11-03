@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -32,17 +31,18 @@ func validateSlackTrigger(ctx context.Context, route ChannelRoute) error {
 		return fmt.Errorf("trusted app trigger requires exact app_id or bot_id")
 	}
 	if route.WorkflowID == "" {
-		if trigger.StepID != "" || len(trigger.RouteSelections) > 0 || len(trigger.GroupNames) > 0 || trigger.PayloadMappings != nil {
+		if trigger.StepID != "" || len(trigger.RouteSelections) > 0 || trigger.InputPreset != "" || len(trigger.Inputs) > 0 || trigger.GroupNames != nil || trigger.PayloadMappings != nil {
 			return fmt.Errorf("profile triggers cannot select workflow steps, routes, or groups")
 		}
 		return nil
 	}
-	if len(trigger.GroupNames) == 0 {
-		return fmt.Errorf("workflow trigger requires saved variable groups")
+	if trigger.GroupNames != nil {
+		return fmt.Errorf(retiredWorkflowGroupsMessage)
 	}
-	if _, err := validateScheduleGroupNamesForWorkspace(ctx, route.WorkspacePath, trigger.GroupNames); err != nil {
+	if _, err := resolveWorkflowInvocationInputs(ctx, route.WorkspacePath, trigger.InputPreset, trigger.Inputs); err != nil {
 		return err
 	}
+
 	if err := validateWebhookPayloadMappings(ctx, route.WorkspacePath, &WorkflowWebhookConfig{InputMode: "raw", StepID: trigger.StepID, PayloadMappings: trigger.PayloadMappings}, trigger.GroupNames, trigger.RouteSelections); err != nil {
 		return err
 	}
@@ -247,17 +247,15 @@ func slackTriggerActorEmail(connID, user string) string {
 
 func resolveSlackTriggerDelivery(ctx context.Context, route ChannelRoute, id string, payload []byte) (WorkflowSchedule, *WorkflowWebhookDelivery, error) {
 	t := route.Trigger
-	schedule := WorkflowSchedule{ID: id, Name: "Slack trigger", GroupNames: t.GroupNames, RouteSelections: t.RouteSelections, Webhook: &WorkflowWebhookConfig{InputMode: "raw", StepID: t.StepID, PayloadMappings: t.PayloadMappings}}
+	schedule := WorkflowSchedule{ID: id, Name: "Slack trigger", InputPreset: t.InputPreset, Inputs: t.Inputs, RouteSelections: t.RouteSelections, Webhook: &WorkflowWebhookConfig{InputMode: "raw", StepID: t.StepID, PayloadMappings: t.PayloadMappings}}
 	input := &WorkflowWebhookDelivery{RunID: id, DeliveryID: id, Payload: json.RawMessage(payload)}
 	if err := resolveWebhookDeliveryOptions(schedule, input); err != nil {
 		return schedule, nil, err
 	}
 	if input.Group != "" {
-		if !slices.Contains(t.GroupNames, input.Group) {
-			return schedule, nil, fmt.Errorf("mapped Slack group is not allowed")
-		}
-		schedule.GroupNames = []string{input.Group}
+		return schedule, nil, fmt.Errorf("group mappings are retired; use declared inputs")
 	}
+
 	step, routes := resolvedWebhookExecutionTarget(schedule, input)
 	if err := validateWebhookTarget(ctx, route.WorkspacePath, step, routes); err != nil {
 		return schedule, nil, err

@@ -14,12 +14,12 @@ vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: vi.fn((
 vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: { getState: () => ({ refreshWorkflows: vi.fn().mockResolvedValue(undefined) }) } }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView: vi.fn() }) } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-const trigger = { id: 'trigger-1', name: 'Issues', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/trigger-1', route_selections: { router: 'issues' }, group_names: ['prod'] }
+const trigger = { id: 'trigger-1', name: 'Issues', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/trigger-1', route_selections: { router: 'issues' }, input_preset: 'prod' }
 const cleanups: (() => void)[] = []
 beforeEach(() => {
   useCapabilitiesStore.setState({ capabilities: { providers: [], streaming: true, sse: true, agent_modes: [], tracing: { enabled: false, provider: 'noop' }, workspace: {}, servers: [], local_mode: false } })
   vi.mocked(useCanWriteWorkflow).mockReturnValue(true)
-  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [trigger], groups: ['prod'], routes: [{ step_id: 'router', step_title: 'Choose work', route_id: 'issues', route_name: 'Process issues' }] })
+  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [trigger], input_presets: ['prod'], routes: [{ step_id: 'router', step_title: 'Choose work', route_id: 'issues', route_name: 'Process issues' }] })
   vi.mocked(workflowWebhooksApi.save).mockImplementation(async value => ({ ...trigger, ...value }))
 })
 afterEach(() => { cleanups.splice(0).forEach(clean => clean()); vi.clearAllMocks() })
@@ -46,25 +46,23 @@ function button(host: HTMLElement, label: string) {
   if (!found) throw new Error(`Missing button ${label}`)
   return found
 }
-it('shows endpoint, saved route, authentication and group', async () => {
+it('shows endpoint, saved route, authentication and saved inputs', async () => {
   const host = await mount()
   expect(host.textContent).toContain('https://agent.example/api/hooks/workflow/trigger-1')
   expect(host.textContent).toContain('Choose work → Process issues')
   expect(host.textContent).toContain('GitHub signature')
-  expect(host.textContent).toContain('Groups: prod')
+  expect(host.textContent).toContain('Saved inputs: prod')
   expect(host.textContent).toContain('up to 4 deliveries at once')
 })
 it('shows payload mappings configured by the builder', async () => {
   vi.mocked(workflowWebhooksApi.list).mockResolvedValue({
     triggers: [{ ...trigger, payload_mappings: {
-      group: { source: 'env', values: { prod: 'customer-prod' } },
       routes: { 'component-branch': { source: 'component', values: { 'service/review': 'review' } } },
     } }],
-    groups: ['customer-prod'],
+    input_presets: ['customer-prod'],
     routes: [{ step_id: 'router', step_title: 'Choose work', route_id: 'issues', route_name: 'Process issues' }],
   })
   const host = await mount()
-  expect(host.textContent).toContain('Payload env → group (prod → customer-prod)')
   expect(host.textContent).toContain('Payload component → component-branch branch (service/review → review)')
 })
 it('disables a trigger while retaining its route binding', async () => {
@@ -100,13 +98,13 @@ it('directs creation and configuration to the builder chat without a manual form
 })
 it('renders older webhooks whose optional maps were stored as null', async () => {
   vi.mocked(workflowWebhooksApi.list).mockResolvedValue({
-    triggers: [{ ...trigger, route_selections: null, group_names: null, payload_mappings: { routes: { legacy: { source: 'kind', values: null } } } } as unknown as typeof trigger],
-    groups: [],
+    triggers: [{ ...trigger, route_selections: null, input_preset: null, payload_mappings: { routes: { legacy: { source: 'kind', values: null } } } } as unknown as typeof trigger],
+    input_presets: [],
     routes: [],
   })
   const host = await mount()
   expect(host.textContent).toContain('Full workflow')
-  expect(host.textContent).toContain('Default access')
+  expect(host.textContent).toContain('Workflow defaults')
 })
 it('removes only the selected trigger', async () => {
   const host = await mount()
@@ -138,9 +136,9 @@ it('reloads and reports counts when the hub bumps its refresh token', async () =
   expect(onCounts).toHaveBeenLastCalledWith({ active: 1, paused: 0 })
 })
 it('keeps functions out of the webhooks list and points to the Functions tab', async () => {
-  const fn = { id: 'fn-1', name: 'Review PR', enabled: true, auth_mode: '' as never, path: '', route_selections: { router: 'issues' }, group_names: ['prod'], kind: 'function' as const,
+  const fn = { id: 'fn-1', name: 'Review PR', enabled: true, auth_mode: '' as never, path: '', route_selections: { router: 'issues' }, input_preset: 'prod', kind: 'function' as const,
     function: { name: 'review_pr', inputs: [{ name: 'PR_NUMBER', type: 'integer' as const, required: true }] } }
-  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [trigger, fn], groups: ['prod'], routes: [] })
+  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [trigger, fn], input_presets: ['prod'], routes: [] })
   const host = await mount()
   expect(host.textContent).toContain('Issues')
   expect(host.textContent).not.toContain('review_pr')

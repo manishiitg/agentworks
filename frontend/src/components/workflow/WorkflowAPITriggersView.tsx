@@ -9,7 +9,7 @@ import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations } f
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 
-const emptyOptions: APITriggerOptions = { triggers: [], routes: [], groups: [] }
+const emptyOptions: APITriggerOptions = { triggers: [], routes: [], input_presets: [] }
 const buttonClass = 'rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50'
 
 function errorMessage(error: unknown): string {
@@ -122,7 +122,6 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
       {options.triggers.filter(trigger => !trigger.kind).length > 0 && <AutomationListBox>
         {options.triggers.filter(trigger => !trigger.kind).map(trigger => {
           const routeSelections = trigger.route_selections || {}
-          const groupNames = trigger.group_names || []
           const concurrency = trigger.max_concurrency || 4
           const starts = Object.entries(routeSelections).map(([stepId, routeId]) => (options.routes || []).find(option => option.step_id === stepId && option.route_id === routeId)?.route_name || routeId).join(', ')
           return <AutomationRow key={trigger.id} icon={Webhook} tone="amber" open={openId === trigger.id} onToggle={() => setOpenId(openId === trigger.id ? null : trigger.id)}
@@ -141,12 +140,11 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
               const route = (options.routes || []).find(option => option.step_id === stepId && option.route_id === routeId)
               return <li key={stepId}>{route ? `${route.step_title} → ${route.route_name || routeId}` : `${stepId} → ${routeId} (route unavailable)`}</li>
             })}</ul></div></div>
-              <div className="flex min-w-0 items-start gap-2"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" /><div className="min-w-0"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Security and access</p><p className="mt-1">{trigger.auth_mode === 'github' ? 'GitHub signature' : 'Bearer token'}</p><p className="mt-0.5 truncate text-muted-foreground" title={groupNames.join(', ')}>{groupNames.length ? `Groups: ${groupNames.join(', ')}` : 'Default access'}</p></div></div>
+              <div className="flex min-w-0 items-start gap-2"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" /><div className="min-w-0"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Security and access</p><p className="mt-1">{trigger.auth_mode === 'github' ? 'GitHub signature' : 'Bearer token'}</p><p className="mt-0.5 truncate text-muted-foreground" title={trigger.input_preset ?? ''}>{trigger.input_preset ? `Saved inputs: ${trigger.input_preset}` : 'Workflow defaults'}</p></div></div>
             </div>
             {trigger.payload_mappings && <details className="border-t border-border px-4 py-2.5 text-xs">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Payload mappings</summary>
               <ul className="mt-2 space-y-1 text-muted-foreground">
-                {trigger.payload_mappings.group && <li>Payload {trigger.payload_mappings.group.source} → group ({Object.entries(trigger.payload_mappings.group.values || {}).map(([value, group]) => `${value} → ${group}`).join(', ')})</li>}
                 {Object.entries(trigger.payload_mappings.routes || {}).map(([stepId, mapping]) => <li key={stepId}>Payload {mapping.source} → {stepId} branch ({Object.entries(mapping.values || {}).map(([value, route]) => `${value} → ${route}`).join(', ')})</li>)}
                 {trigger.payload_mappings.step && <li>Payload {trigger.payload_mappings.step.source} → single step ({Object.entries(trigger.payload_mappings.step.values || {}).map(([value, step]) => `${value} → ${step}`).join(', ')})</li>}
               </ul>

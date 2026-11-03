@@ -27,6 +27,8 @@ type ScheduleRunDestination struct {
 // ScheduledJobResponse is the API response for a scheduled job.
 // Designed to be backward-compatible with the old DB-based ScheduledJob shape.
 type ScheduledJobResponse struct {
+	InputPreset string            `json:"input_preset,omitempty"`
+	Inputs      map[string]string `json:"inputs,omitempty"`
 	// ChatKey is the Code side chat (tab) a project schedule runs in; empty is the main chat.
 	ChatKey string `json:"chat_key,omitempty"`
 	// ChatID is the tab's id (the part of ChatKey after ":chat:"); empty is the main chat.
@@ -45,7 +47,7 @@ type ScheduledJobResponse struct {
 	WorkflowLabel        string                   `json:"workflow_label,omitempty"`
 	PresetQueryID        string                   `json:"preset_query_id,omitempty"` // empty — kept for frontend compat
 	TriggerPayload       json.RawMessage          `json:"trigger_payload,omitempty"`
-	GroupNames           []string                 `json:"group_names"`
+	GroupNames           []string                 `json:"group_names,omitempty"`
 	RouteSelections      map[string]string        `json:"route_selections,omitempty"`
 	Mode                 string                   `json:"mode,omitempty"`
 	Messages             []string                 `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -106,6 +108,8 @@ type ScheduledJobResponse struct {
 
 // CreateScheduleRequest is the request body for creating a schedule.
 type CreateScheduleRequest struct {
+	InputPreset              string                 `json:"input_preset,omitempty"`
+	Inputs                   map[string]string      `json:"inputs,omitempty"`
 	EntityType               string                 `json:"entity_type,omitempty"`
 	ProductProfileID         string                 `json:"product_profile_id,omitempty"`
 	ProductProjectID         string                 `json:"product_project_id,omitempty"`
@@ -119,7 +123,7 @@ type CreateScheduleRequest struct {
 	RunAt                    string                 `json:"run_at,omitempty"` // Crew one-time: an RFC3339 moment, as in the Crew chat tool
 	Enabled                  bool                   `json:"enabled"`
 	TriggerPayload           json.RawMessage        `json:"trigger_payload,omitempty"`
-	GroupNames               []string               `json:"group_names"`
+	GroupNames               []string               `json:"group_names,omitempty"`
 	RouteSelections          map[string]string      `json:"route_selections,omitempty"`
 	Mode                     string                 `json:"mode,omitempty"`
 	Messages                 []string               `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -144,6 +148,8 @@ type CreateScheduleRequest struct {
 
 // UpdateScheduleRequest is the request body for updating a schedule.
 type UpdateScheduleRequest struct {
+	InputPreset              *string                `json:"input_preset"`
+	Inputs                   map[string]string      `json:"inputs"`
 	Name                     string                 `json:"name,omitempty"`
 	Description              string                 `json:"description,omitempty"`
 	ScheduleType             string                 `json:"schedule_type,omitempty"`
@@ -153,7 +159,7 @@ type UpdateScheduleRequest struct {
 	RunAt                    string                 `json:"run_at,omitempty"` // Crew one-time: replaces the current timing
 	Enabled                  *bool                  `json:"enabled,omitempty"`
 	TriggerPayload           json.RawMessage        `json:"trigger_payload,omitempty"`
-	GroupNames               []string               `json:"group_names"`
+	GroupNames               []string               `json:"group_names,omitempty"`
 	RouteSelections          map[string]string      `json:"route_selections,omitempty"`
 	Mode                     string                 `json:"mode,omitempty"`
 	Messages                 []string               `json:"messages,omitempty"` // Predefined messages for workshop schedules
@@ -190,23 +196,23 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 	}
 	destination, chatKey, chatID, destinations := goalScheduleDestinationView(manifest, workspacePath, sched)
 	return ScheduledJobResponse{
-		RunDestination:           destination,
-		ChatKey:                  chatKey,
-		ChatID:                   chatID,
-		RunDestinations:          destinations,
-		pauseProduct:             pauseProduct,
-		Kind:                     normalizeTriggerKind(sched.Kind),
-		StepID:                   workflowWebhookDTO(sched).StepID,
-		ID:                       sched.ID,
-		Name:                     sched.Name,
-		Description:              sched.Description,
-		EntityType:               "workflow",
-		WorkspacePath:            workspacePath,
-		WorkflowID:               manifest.ID,
-		WorkflowLabel:            manifest.Label,
-		PresetQueryID:            manifest.ID,
-		TriggerPayload:           sched.TriggerPayload,
-		GroupNames:               sched.GroupNames,
+		RunDestination:  destination,
+		ChatKey:         chatKey,
+		ChatID:          chatID,
+		RunDestinations: destinations,
+		pauseProduct:    pauseProduct,
+		Kind:            normalizeTriggerKind(sched.Kind),
+		StepID:          workflowWebhookDTO(sched).StepID,
+		ID:              sched.ID,
+		Name:            sched.Name,
+		Description:     sched.Description,
+		EntityType:      "workflow",
+		WorkspacePath:   workspacePath,
+		WorkflowID:      manifest.ID,
+		WorkflowLabel:   manifest.Label,
+		PresetQueryID:   manifest.ID,
+		TriggerPayload:  sched.TriggerPayload,
+		InputPreset:     sched.InputPreset, Inputs: sched.Inputs,
 		RouteSelections:          sched.RouteSelections,
 		Mode:                     "workshop",
 		Messages:                 sched.Messages,
@@ -752,18 +758,24 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		// Create new schedule
+		if manifest.Kind != "relay" {
+			if _, err := resolveWorkflowInvocationInputs(r.Context(), req.WorkspacePath, req.InputPreset, req.Inputs); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
 		newSched := WorkflowSchedule{
-			ChatID:                   req.ChatID,
-			ID:                       uuid.New().String(),
-			Name:                     req.Name,
-			Description:              req.Description,
-			ScheduleType:             scheduleTypeOrDefault(req.ScheduleType),
-			CronExpression:           req.CronExpression,
-			Timezone:                 req.Timezone,
-			CalendarItems:            normalizeCalendarScheduleItems(req.CalendarItems),
-			Enabled:                  req.Enabled,
-			TriggerPayload:           req.TriggerPayload,
-			GroupNames:               req.GroupNames,
+			ChatID:         req.ChatID,
+			ID:             uuid.New().String(),
+			Name:           req.Name,
+			Description:    req.Description,
+			ScheduleType:   scheduleTypeOrDefault(req.ScheduleType),
+			CronExpression: req.CronExpression,
+			Timezone:       req.Timezone,
+			CalendarItems:  normalizeCalendarScheduleItems(req.CalendarItems),
+			Enabled:        req.Enabled,
+			TriggerPayload: req.TriggerPayload,
+			InputPreset:    req.InputPreset, Inputs: req.Inputs,
 			RouteSelections:          req.RouteSelections,
 			Mode:                     mode,
 			Messages:                 req.Messages,
@@ -929,6 +941,18 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				return
 			}
 			sched.GroupNames = validGroupNames
+		}
+		if req.InputPreset != nil {
+			sched.InputPreset = *req.InputPreset
+		}
+		if req.Inputs != nil {
+			sched.Inputs = req.Inputs
+		}
+		if manifest.Kind != "relay" {
+			if _, err := resolveWorkflowInvocationInputs(r.Context(), workspacePath, sched.InputPreset, sched.Inputs); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		if req.RouteSelections != nil {
 			sched.RouteSelections = req.RouteSelections
@@ -1340,7 +1364,7 @@ func getScheduledJobRunsHandler(svc *SchedulerService) http.HandlerFunc {
 			Status                   string              `json:"status"`
 			Error                    string              `json:"error,omitempty"`
 			DurationMs               *int64              `json:"duration_ms,omitempty"`
-			GroupNames               []string            `json:"group_names"`
+			GroupNames               []string            `json:"group_names,omitempty"`
 			StartedAt                time.Time           `json:"started_at"`
 			CompletedAt              *time.Time          `json:"completed_at,omitempty"`
 		}

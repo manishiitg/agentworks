@@ -11,6 +11,8 @@ import (
 
 // SlackTrigger is configured by the route owner, never by message payloads.
 type SlackTrigger struct {
+	InputPreset     string                           `json:"input_preset,omitempty"`
+	Inputs          map[string]string                `json:"inputs,omitempty"`
 	Match           *workflowtrigger.Match           `json:"match,omitempty"`
 	PayloadMappings *workflowtrigger.PayloadMappings `json:"payload_mappings,omitempty"`
 	Context         *SlackTriggerContext             `json:"context,omitempty"`
@@ -62,6 +64,24 @@ func SlackTriggerMatches(trigger *SlackTrigger, event *slackevents.MessageEvent,
 	}
 	payload, err := json.Marshal(event)
 	return err == nil && trigger.Match.Matches(payload)
+}
+
+// Old selectors must refuse even when explicitly null; omission means defaults.
+func (t *SlackTrigger) UnmarshalJSON(data []byte) error {
+	type plain SlackTrigger
+	var value plain
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if _, old := fields["group_names"]; old {
+		return fmt.Errorf("group selection is retired; use optional input_preset and inputs for one run")
+	}
+	*t = SlackTrigger(value)
+	return nil
 }
 
 // Context is restricted to the triggering channel and excludes later messages.

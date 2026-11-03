@@ -636,7 +636,7 @@ func (api *StreamingAPI) registerSlackBotTools(registrar definitionToolRegistrar
 				"context": map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"limit", "lookback_minutes"}, "properties": map[string]interface{}{
 					"limit": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100}, "lookback_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 1440}, "include_threads": map[string]interface{}{"type": "boolean"},
 				}},
-				"step_id": map[string]interface{}{"type": "string"}, "route_selections": map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}}, "group_names": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
+				"step_id": map[string]interface{}{"type": "string"}, "route_selections": map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}}, "input_preset": map[string]interface{}{"type": "string"}, "inputs": map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}},
 			}}
 		}
 

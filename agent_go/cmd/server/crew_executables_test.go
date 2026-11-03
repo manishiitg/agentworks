@@ -283,19 +283,19 @@ func TestCrewKnowledgeSourceUsesInheritedAudienceAtEndpoint(t *testing.T) {
 
 // PR498: a saved empty group selection must refuse before request construction,
 // ledger admission or a worker capable of choosing its own group.
-func TestScheduleEmptySelectionRefusedBeforeLaunch(t *testing.T) {
+func TestRetiredScheduleGroupsRefusedBeforeLaunch(t *testing.T) {
 	svc := NewSchedulerService(&StreamingAPI{})
 	sc := &ScheduleContext{WorkflowKind: "", Schedule: WorkflowSchedule{ID: "no-work", Name: "No work", CronExpression: "0 9 * * *", Timezone: "UTC", GroupNames: []string{}}}
-	if err := svc.LoadSchedule(sc); err == nil || !strings.Contains(err.Error(), "choose at least one input set") {
+	if err := svc.LoadSchedule(sc); err == nil || !strings.Contains(err.Error(), "input_preset") {
 		t.Fatal("empty selection did not refuse at admission", err)
 	}
-	if _, _, err := svc.executeJob(context.Background(), sc, "empty-run"); err == nil || !strings.Contains(err.Error(), "choose at least one input set") {
+	if _, _, err := svc.executeJob(context.Background(), sc, "empty-run"); err == nil || !strings.Contains(err.Error(), "input_preset") {
 		t.Fatal("empty selection did not refuse before execution", err)
 	}
 	request := svc.buildWorkshopRequest(context.Background(), sc, "")
 	options := request["execution_options"].(map[string]interface{})
-	groups, ok := options["enabled_group_names"].([]string)
-	if !ok || groups == nil || len(groups) != 0 {
-		t.Fatal("empty selection collapsed to automatic", options)
+	if _, present := options["enabled_group_names"]; present {
+		t.Fatal("retired batch selection was forwarded", options)
 	}
+
 }

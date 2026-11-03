@@ -1,497 +1,133 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { X, Plus, Trash2, Save, Check, Circle, Loader2, AlertCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { X, Plus, Trash2, Save, Loader2 } from 'lucide-react'
 import { agentApi } from '../../../services/api'
-import type { VariablesManifest, VariableGroup } from '../../../services/api-types'
+import type { VariablesManifest } from '../../../services/api-types'
 
 interface VariablesSidebarProps {
   workspacePath: string | null
   relayMode?: boolean
   onClose: () => void
   onUpdate?: (manifest: VariablesManifest) => void
-  showChatArea?: boolean  // When true, use lower z-index so ChatArea appears on top
+  showChatArea?: boolean
+  embedded?: boolean
 }
 
-const getGroupValues = (group: VariableGroup): Record<string, string> => {
-  return group.values && typeof group.values === 'object' ? group.values : {}
-}
-
-export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
-  workspacePath,
-  onClose,
-  onUpdate,
-  showChatArea = false,
-  relayMode = false
-}) => {
+export function VariablesSidebar({ workspacePath, relayMode = false, onClose, onUpdate, showChatArea = false, embedded = false }: VariablesSidebarProps) {
   const [manifest, setManifest] = useState<VariablesManifest | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [hasChanges, setHasChanges] = useState(false)
-  const [migrationBlocked, setMigrationBlocked] = useState(false)
-
-  // Escape closes the drawer and focus returns to whatever opened it.
+  const [preset, setPreset] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [blocked, setBlocked] = useState(false)
+  const [error, setError] = useState('')
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.() }
-  }, [onClose])
-
-  // Load variable groups
-  useEffect(() => {
-    if (!workspacePath) {
-      setIsLoading(false)
-      return
-    }
-
-    const loadVariables = async () => {
-      setIsLoading(true)
-      setError(null)
-      setMigrationBlocked(false)
-      try {
-        const response = await agentApi.getVariableGroups(workspacePath)
-        if (!response.success) throw new Error(response.error || 'Failed to load variables')
-        if (response.success && response.manifest) {
-          if (relayMode && (response.manifest.groups?.length ?? 0) > 1) {
-            setManifest(response.manifest)
-            setMigrationBlocked(true)
-            setError('This legacy Flow has multiple variable groups. Ask the Builder to choose the configuration values to keep and remove the groups before editing here.')
-          } else if (relayMode) {
-            const normalized = { ...response.manifest, variables: (response.manifest.variables ?? []).map(variable => ({ ...variable })) }
-            for (const [name, value] of Object.entries(response.manifest.groups?.[0]?.values ?? {})) {
-              const existing = normalized.variables.find(variable => variable.name === name)
-              if (existing) existing.value = value
-              else normalized.variables.push({ name, value, description: '' })
-            }
-            delete normalized.groups
-            setManifest(normalized)
-          } else {
-            setManifest(response.manifest)
-          }
-        } else {
-          setManifest(null)
+    let current = true
+    if (!workspacePath) { setLoading(false); return }
+    setLoading(true)
+    void agentApi.getVariableGroups(workspacePath).then(response => {
+      if (!current) return
+      if (!response.success) throw new Error(response.error || 'Could not load inputs.')
+      const data = response.manifest ?? { objective: '', extraction_date: '', variables: [] }
+      if (relayMode && (data.groups?.length ?? 0) > 1) {
+        setManifest({ ...data, variables: [...data.variables, ...(!data.variables.some(variable => variable.name === 'INPUT') ? [{ name: 'INPUT', value: '{}', description: '' }] : [])] })
+        setBlocked(true)
+        throw new Error('This legacy Flow has multiple variable groups. Ask the Builder to choose the configuration values to keep and remove the groups before editing here.')
+      }
+      const normalized = { ...data, variables: (data.variables ?? []).map(variable => ({ ...variable })) }
+      if (relayMode) {
+        for (const [name, value] of Object.entries(data.groups?.[0]?.values ?? {})) {
+          const variable = normalized.variables.find(variable => variable.name === name)
+          if (variable) variable.value = value
+          else normalized.variables.push({ name, value, description: '' })
         }
-      } catch (err) {
-        console.error('[VariablesSidebar] Failed to load variables:', err)
-        const responseMessage = (err as { response?: { data?: unknown } })?.response?.data
-        setError(typeof responseMessage === 'string' ? responseMessage : err instanceof Error ? err.message : 'Failed to load variables')
-        // Never overwrite legacy configuration after an ambiguous or failed read.
-        if (relayMode) setMigrationBlocked(true)
-      } finally {
-        setIsLoading(false)
+        delete normalized.groups
+        if (!normalized.variables.some(variable => variable.name === 'INPUT')) normalized.variables.push({ name: 'INPUT', value: '{}', description: 'Sample input object for testing the program.' })
       }
-    }
-
-    loadVariables()
+      setManifest(normalized)
+      setPreset(null)
+      setDirty(false)
+    }).catch(cause => { if (current) { setError(cause instanceof Error ? cause.message : 'Could not load inputs.'); setBlocked(true) } })
+      .finally(() => { if (current) setLoading(false) })
+    return () => { current = false }
   }, [workspacePath, relayMode])
-
-  // Get groups (handling single-group backward compatibility)
-  const getGroups = useCallback((): VariableGroup[] => {
-    if (!manifest) return []
-    // If groups exist, use them directly
-    if (manifest.groups && manifest.groups.length > 0) {
-      return manifest.groups
-    }
-    // Single group mode - create virtual group from variables
-    // Only create virtual group if we have variables but no groups
-    if (manifest.variables && manifest.variables.length > 0) {
-      const values: Record<string, string> = {}
-      manifest.variables.forEach(v => {
-        values[v.name] = v.value || ''
-      })
-      return [{
-        name: 'group-1',
-        values,
-        enabled: true
-      }]
-    }
-    return []
-  }, [manifest])
-
-  const groups = getGroups()
-
-  // Add new group
-  const handleAddGroup = useCallback(() => {
-    if (!manifest) {
-      // No manifest yet — create one with empty variables and a first group
-      const newManifest: VariablesManifest = {
-        objective: '',
-        extraction_date: new Date().toISOString(),
-        variables: [],
-        groups: [{ name: 'group-1', values: {}, enabled: true }]
-      }
-      setManifest(newManifest)
-      setHasChanges(true)
-      return
-    }
-
-    // If this is the first group being added, migrate existing values to group-1
-    const isFirstGroup = !manifest.groups || manifest.groups.length === 0
-    const variables = manifest.variables ?? []
-
-    let newGroupId: string
-    let updatedGroups: VariableGroup[]
-
-    if (isFirstGroup) {
-      // Migrate existing values to group-1, new group will be group-2
-      const existingValues: Record<string, string> = {}
-      variables.forEach(v => {
-        existingValues[v.name] = v.value || ''
-      })
-
-      const newValues: Record<string, string> = {}
-      variables.forEach(v => {
-        newValues[v.name] = '' // Empty values for new group
-      })
-
-      newGroupId = 'group-2'
-      updatedGroups = [
-        { name: 'group-1', values: existingValues, enabled: true },
-        { name: newGroupId, values: newValues, enabled: true }
-      ]
-    } else {
-      // Add to existing groups
-      const existingGroups = manifest.groups || []
-      newGroupId = `group-${existingGroups.length + 1}`
-      const newValues: Record<string, string> = {}
-      variables.forEach(v => {
-        newValues[v.name] = '' // Empty values for new group
-      })
-
-      updatedGroups = [
-        ...existingGroups,
-        { name: newGroupId, values: newValues, enabled: true }
-      ]
-    }
-
-    const updatedManifest: VariablesManifest = {
-      ...manifest,
-      groups: updatedGroups
-    }
-
-    setManifest(updatedManifest)
-    setHasChanges(true)
-  }, [manifest])
-
-  // Toggle group enabled/disabled
-  const handleToggleGroup = useCallback((groupName: string) => {
-    if (!manifest?.groups) return
-
-    const updatedGroups = manifest.groups.map(g =>
-      g.name === groupName ? { ...g, enabled: !g.enabled } : g
-    )
-    
-    const updatedManifest = { ...manifest, groups: updatedGroups }
-    setManifest(updatedManifest)
-    setHasChanges(true)
-  }, [manifest])
-
-  // Delete group
-  const handleDeleteGroup = useCallback((groupName: string) => {
-    if (!manifest?.groups || manifest.groups.length <= 1) return
-
-    const updatedGroups = manifest.groups.filter(g => g.name !== groupName)
-    const updatedManifest = { ...manifest, groups: updatedGroups }
-    setManifest(updatedManifest)
-    setHasChanges(true)
-  }, [manifest])
-
-  // Update variable value in single-group mode
-  const handleUpdateValue = useCallback((variableName: string, newValue: string) => {
-    if (!manifest) return
-    
-    // Single-group mode - update Variables[].value directly
-    const updatedVariables = (manifest.variables ?? []).map(v =>
-      v.name === variableName ? { ...v, value: newValue } : v
-    )
-    const updatedManifest = { ...manifest, variables: updatedVariables }
-    setManifest(updatedManifest)
-    setHasChanges(true)
-  }, [manifest])
-
-  const handleSampleInput = useCallback((value: string) => {
-    const current = manifest ?? { objective: '', extraction_date: new Date().toISOString(), variables: [] }
-    const variables = current.variables ?? []
-    setManifest({
-      ...current,
-      variables: variables.some(variable => variable.name === 'INPUT')
-        ? variables.map(variable => variable.name === 'INPUT' ? { ...variable, value } : variable)
-        : [...variables, { name: 'INPUT', description: 'Sample input for Builder test runs', value }],
-    })
-    setHasChanges(true)
-  }, [manifest])
-
-  // Save changes
-  const handleSave = useCallback(async () => {
-    if (!manifest || !workspacePath || !hasChanges || migrationBlocked) return
-    
-    setIsSaving(true)
-    setError(null)
+  useEffect(() => {
+    if (embedded) return
+    const opener = document.activeElement as HTMLElement | null
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', close)
+    return () => { document.removeEventListener('keydown', close); opener?.focus?.() }
+  }, [embedded, onClose])
+  function update(next: VariablesManifest) { setManifest(next); setDirty(true) }
+  async function save() {
+    if (!manifest || !workspacePath) return
+    setSaving(true); setError('')
     try {
+      if (relayMode) {
+        const sample = manifest.variables.find(variable => variable.name === 'INPUT')?.value ?? '{}'
+        const parsed: unknown = JSON.parse(sample)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Sample INPUT must be a JSON object.')
+      }
       const response = await agentApi.updateVariableGroups(workspacePath, manifest)
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to save changes')
-      }
-      setHasChanges(false)
-      if (onUpdate) {
-        onUpdate(manifest)
-      }
-    } catch (err) {
-      console.error('[VariablesSidebar] Failed to save:', err)
-      let errorMessage = 'Failed to save changes'
-      if (err instanceof Error) {
-        errorMessage = err.message
-      } else if (typeof err === 'object' && err !== null && 'response' in err) {
-        const axiosError = err as { response?: { data?: { message?: string } } }
-        errorMessage = axiosError.response?.data?.message || errorMessage
-      }
-      setError(errorMessage)
-    } finally {
-      setIsSaving(false)
-    }
-  }, [manifest, workspacePath, hasChanges, onUpdate, migrationBlocked])
-
-
-  // Count enabled groups
-  const enabledCount = groups.filter(g => g.enabled).length
-  const isMultiGroup = groups.length > 1
-
-  return (
-    <div className={`absolute right-0 top-0 bottom-0 w-[450px] bg-background border-l border-border flex flex-col shadow-lg ${showChatArea ? 'z-30' : 'z-50'}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background">
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold text-foreground">{relayMode ? 'Inputs & configuration' : 'Variables'}</h2>
-          {!relayMode && isMultiGroup && (
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-              {enabledCount}/{groups.length} groups enabled
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {hasChanges && (
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded
-                       bg-purple-600 dark:bg-purple-500 text-white hover:bg-purple-700 dark:hover:bg-purple-600 
-                       disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isSaving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Save className="w-3.5 h-3.5" />
-              )}
-              Save
-            </button>
-          )}
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Error display */}
-      {error && (
-        <div className="mx-4 mt-3 p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive text-sm flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Loading state */}
-      {isLoading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : relayMode ? (
-        <div className="flex-1 overflow-y-auto space-y-6 p-4">
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Sample input</h3>
-            <p className="text-xs text-muted-foreground">JSON INPUT for testing in Builder chat. API calls supply their own input for each run.</p>
-            <textarea
-              aria-label="Sample INPUT JSON"
-              disabled={migrationBlocked}
-              value={manifest?.variables?.find(variable => variable.name === 'INPUT')?.value ?? ''}
-              onChange={event => handleSampleInput(event.target.value)}
-              placeholder={'{ "example": "value" }'}
-              rows={6}
-              className="w-full rounded border border-border bg-muted/30 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </section>
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold">Configuration</h3>
-            <p className="text-xs text-muted-foreground">Reusable values for this Flow. Ask the Builder to add or change configuration variables. Manage credentials in Secrets.</p>
-            {(manifest?.variables ?? []).filter(variable => variable.name !== 'INPUT').map(variable => (
-              <label key={variable.name} className="block space-y-1 text-xs">
-                <span className="font-mono font-medium">{variable.name}</span>
-                {variable.description && <span className="block text-muted-foreground">{variable.description}</span>}
-                <input
-                  aria-label={variable.name}
-                  disabled={migrationBlocked}
-                  value={variable.value ?? ''}
-                  onChange={event => handleUpdateValue(variable.name, event.target.value)}
-                  className="w-full rounded border border-border bg-muted/30 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-              </label>
-            ))}
-          </section>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto flex flex-col">
-          {/* Add group button */}
-          <div className="px-4 py-2 border-b border-border flex-shrink-0">
-            <button
-              onClick={handleAddGroup}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium
-                       bg-muted text-muted-foreground hover:bg-muted/80 transition-colors w-full justify-center"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              {isMultiGroup ? 'Add Group' : 'Add Variable Group'}
-            </button>
-            {!isMultiGroup && (
-              <p className="text-xs text-muted-foreground mt-1.5 text-center">
-                {(!manifest || (manifest.variables ?? []).length === 0)
-                  ? 'No variables extracted. You can still add groups as named execution runs.'
-                  : 'Add multiple groups to run automation with different values'}
-              </p>
-            )}
-          </div>
-
-          {/* All groups list */}
-          <div className="p-4 space-y-4">
-            {groups.map((group, index) => (
-              <div
-                key={`${group.name}-${index}`}
-                className={`border rounded-lg p-3 space-y-3 ${
-                  !group.enabled ? 'opacity-60 border-border/50' : 'border-border'
-                }`}
-              >
-                {/* Group header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <button
-                      onClick={() => handleToggleGroup(group.name)}
-                      className="flex items-center gap-1.5 hover:scale-110 transition-transform flex-shrink-0"
-                      title={group.enabled ? 'Disable group' : 'Enable group'}
-                    >
-                      {group.enabled ? (
-                        <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                      )}
-                    </button>
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <input
-                        type="text"
-                        value={group.name}
-                        onChange={(e) => {
-                          // Update name for this specific group
-                          // Handle both cases: when groups exist in manifest, and when we're in single-group mode
-                          if (!manifest) return
-                          if (manifest.groups && manifest.groups.length > 0) {
-                            // Multi-group mode: update existing groups
-                            const updatedGroups = manifest.groups.map(g => {
-                              if (g.name === group.name) {
-                                return { ...g, name: e.target.value }
-                              }
-                              return g
-                            })
-                            const updatedManifest = { ...manifest, groups: updatedGroups }
-                            setManifest(updatedManifest)
-                            setHasChanges(true)
-                          } else {
-                            // Single-group mode: create groups array from virtual group
-                            // Migrate existing values to a proper group structure
-                            const values: Record<string, string> = {}
-                            ;(manifest.variables ?? []).forEach(v => {
-                              values[v.name] = v.value || ''
-                            })
-                            const updatedGroups = [{
-                              ...group,
-                              name: e.target.value,
-                              values
-                            }]
-                            const updatedManifest = { ...manifest, groups: updatedGroups }
-                            setManifest(updatedManifest)
-                            setHasChanges(true)
-                          }
-                        }}
-                        placeholder="Group name"
-                        className="flex-1 px-2 py-1 rounded border border-border bg-background text-sm font-semibold text-foreground
-                                 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary
-                                 placeholder:text-muted-foreground/50 min-w-0"
-                        title="Edit group name"
-                      />
-                    </div>
-                    {!group.enabled && (
-                      <span className="text-xs text-muted-foreground flex-shrink-0">(Disabled)</span>
-                    )}
-                  </div>
-                  {groups.length > 1 && (
-                    <button
-                      onClick={() => handleDeleteGroup(group.name)}
-                      className="p-1 hover:text-red-500 transition-colors flex-shrink-0 ml-2"
-                      title="Delete group"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Variables for this group */}
-                <div className="space-y-2">
-                  {(manifest?.variables ?? []).map((variable) => (
-                    <div key={variable.name} className="space-y-1">
-                      <label className="flex items-center gap-2 text-xs font-medium text-foreground">
-                        <span className="font-mono text-purple-600 dark:text-purple-400">
-                          {variable.name}
-                        </span>
-                        {variable.description && (
-                          <span className="text-xs text-muted-foreground font-normal">
-                            ({variable.description})
-                          </span>
-                        )}
-                      </label>
-                      <input
-                        type="text"
-                        value={getGroupValues(group)[variable.name] || ''}
-                        onChange={(e) => {
-                          // Update value for this specific group
-                          if (!manifest) return
-                          if (manifest.groups && manifest.groups.length > 0) {
-                            const updatedGroups = manifest.groups.map(g => {
-                              if (g.name === group.name) {
-                                return { ...g, values: { ...getGroupValues(g), [variable.name]: e.target.value } }
-                              }
-                              return g
-                            })
-                            const updatedManifest = { ...manifest, groups: updatedGroups }
-                            setManifest(updatedManifest)
-                            setHasChanges(true)
-                          } else {
-                            // Single group mode
-                            handleUpdateValue(variable.name, e.target.value)
-                          }
-                        }}
-                        disabled={!group.enabled}
-                        className="w-full px-3 py-2 rounded border border-border bg-muted/30 text-foreground text-sm
-                                 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary focus:bg-background
-                                 font-mono placeholder:text-muted-foreground/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        placeholder={`Enter value for ${variable.name}`}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      if (!response.success) throw new Error(response.message || 'Could not save inputs.')
+      setDirty(false); onUpdate?.(manifest)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save inputs.') }
+    finally { setSaving(false) }
+  }
+  const saved = preset === null ? null : manifest?.groups?.[preset]
+  const content = <>
+    <div className="flex items-center gap-2 border-b p-4">
+      <h3 className="flex-1 text-sm font-medium">{relayMode ? 'Configuration' : 'Inputs'}</h3>
+      <button className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm disabled:opacity-50" disabled={!dirty || saving || blocked} onClick={() => void save()}>
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+      </button>
+      {!embedded && <button onClick={onClose} aria-label="Close inputs"><X className="h-4 w-4" /></button>}
     </div>
-  )
+    <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {loading ? <p className="text-sm text-muted-foreground">Loading inputs…</p> : manifest && <>
+        {!relayMode && <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm">Values <select aria-label="Edit input values" className="ml-2 rounded border bg-background p-2" value={preset ?? ''} onChange={event => setPreset(event.target.value === '' ? null : Number(event.target.value))}>
+            <option value="">Workflow defaults</option>
+            {(manifest.groups ?? []).map((group, index) => <option key={index} value={index}>{group.name}</option>)}
+          </select></label>
+          <button className="rounded border px-3 py-2 text-sm" disabled={blocked} onClick={() => {
+            const groups = manifest.groups ?? []
+            let number = groups.length + 1
+            while (groups.some(group => group.name === `Saved inputs ${number}`)) number++
+            update({ ...manifest, groups: [...groups, { name: `Saved inputs ${number}`, values: {} }] })
+            setPreset(groups.length)
+          }}>Save another set</button>
+        </div>}
+        {saved && preset !== null && <div className="flex items-center gap-2">
+          <input aria-label="Saved input name" className="min-w-0 flex-1 rounded border bg-background p-2 text-sm" value={saved.name} onChange={event => update({ ...manifest, groups: manifest.groups?.map((group, index) => index === preset ? { ...group, name: event.target.value } : group) })} />
+          <button aria-label="Delete saved inputs" onClick={() => { update({ ...manifest, groups: manifest.groups?.filter((_, index) => index !== preset) }); setPreset(null) }}><Trash2 className="h-4 w-4" /></button>
+        </div>}
+        <p className="text-sm text-muted-foreground">{saved ? 'Only changed values are saved here. Other values use the workflow defaults.' : relayMode ? 'Configuration values for this program. Keep credentials in Vault.' : 'Inputs are optional. A run uses defaults, then a selected saved set, then any values supplied for that run. Keep credentials in Vault.'}</p>
+        {!manifest.variables.length && <p className="text-sm text-muted-foreground">No inputs needed. This workflow can run as it is.</p>}
+        {manifest.variables.map((variable, index) => <div key={index} className="space-y-2 border-b pb-4">
+          {saved ? <label className="block text-sm font-medium" htmlFor={`input-value-${index}`}>{variable.name}</label> : <div className="flex items-center gap-2">
+            <input disabled={blocked} aria-label={`Input ${index + 1} name`} className="min-w-0 flex-1 rounded border bg-background p-2 text-sm" value={variable.name} onChange={event => {
+              const name = event.target.value
+              update({ ...manifest, variables: manifest.variables.map((entry, i) => i === index ? { ...entry, name } : entry), groups: manifest.groups?.map(group => {
+                const values = { ...group.values }
+                if (Object.hasOwn(values, variable.name)) { values[name] = values[variable.name]; delete values[variable.name] }
+                return { ...group, values }
+              }) })
+            }} />
+            <button aria-label={`Delete input ${variable.name}`} onClick={() => update({ ...manifest, variables: manifest.variables.filter((_, i) => i !== index), groups: manifest.groups?.map(group => { const values = { ...group.values }; delete values[variable.name]; return { ...group, values } }) })}><Trash2 className="h-4 w-4" /></button>
+          </div>}
+          <textarea id={`input-value-${index}`} disabled={blocked} aria-label={relayMode ? variable.name === 'INPUT' ? 'Sample INPUT JSON' : variable.name : `${variable.name || 'New input'} value`} className="min-h-16 w-full rounded border bg-background p-2 text-sm" value={saved ? saved.values[variable.name] ?? variable.value ?? '' : variable.value ?? ''} onChange={event => {
+            if (saved) update({ ...manifest, groups: manifest.groups?.map((group, i) => i === preset ? { ...group, values: { ...group.values, [variable.name]: event.target.value } } : group) })
+            else update({ ...manifest, variables: manifest.variables.map((entry, i) => i === index ? { ...entry, value: event.target.value } : entry) })
+          }} />
+          {saved && Object.hasOwn(saved.values, variable.name) && <button className="text-xs text-muted-foreground underline" onClick={() => update({ ...manifest, groups: manifest.groups?.map((group, i) => { if (i !== preset) return group; const values = { ...group.values }; delete values[variable.name]; return { ...group, values } }) })}>Use workflow default</button>}
+          {variable.description && <p className="text-xs text-muted-foreground">{variable.description}</p>}
+        </div>)}
+        {!saved && <button className="flex items-center gap-2 rounded border px-3 py-2 text-sm" disabled={blocked} onClick={() => update({ ...manifest, variables: [...manifest.variables, { name: '', value: '', description: '' }] })}><Plus className="h-4 w-4" /> Add input</button>}
+      </>}
+    </div>
+  </>
+  if (embedded) return <div className="flex h-full min-h-0 flex-col">{content}</div>
+  return <aside role="dialog" aria-label="Workflow inputs" className={`fixed bottom-0 right-0 top-0 flex w-[min(28rem,100vw)] flex-col border-l bg-background shadow-xl ${showChatArea ? 'z-30' : 'z-50'}`}>{content}</aside>
 }
+export default VariablesSidebar

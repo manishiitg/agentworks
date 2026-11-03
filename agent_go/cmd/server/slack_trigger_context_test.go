@@ -47,20 +47,20 @@ func TestSlackTriggerSharesWebhookMappingExecutor(t *testing.T) {
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	workspace.files["Workflow/example/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"analyze","title":"Analyze","description":"Analyze"}]}`
-	route := ChannelRoute{WorkspacePath: "Workflow/example", Trigger: &services.SlackTrigger{GroupNames: []string{"prod", "staging"}, PayloadMappings: &workflowtrigger.PayloadMappings{Group: &workflowtrigger.ValueMapping{Source: "message.attachments.0.title", Values: map[string]string{"Production": "prod"}}, Step: &workflowtrigger.ValueMapping{Source: "text", Values: map[string]string{"incident": "analyze"}}}}}
+	route := ChannelRoute{WorkspacePath: "Workflow/example", Trigger: &services.SlackTrigger{InputPreset: "Production", Inputs: map[string]string{"REGION": "west"}, PayloadMappings: &workflowtrigger.PayloadMappings{Step: &workflowtrigger.ValueMapping{Source: "text", Values: map[string]string{"incident": "analyze"}}}}}
 	payload := []byte(`{"text":"incident","message":{"attachments":[{"title":"Production"}]},"group":"unauthorized","variables":{"SECRET":"untrusted"}}`)
 	schedule, input, err := resolveSlackTriggerDelivery(context.Background(), route, "delivery", payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(schedule.GroupNames) != 1 || schedule.GroupNames[0] != "prod" || schedule.Webhook.StepID != "analyze" || input.Variables != nil || string(input.Payload) != string(payload) {
+	if schedule.InputPreset != "Production" || schedule.Inputs["REGION"] != "west" || schedule.Webhook.StepID != "analyze" || input.Variables != nil || string(input.Payload) != string(payload) {
 		t.Fatalf("bad resolved delivery: %+v %+v", schedule, input)
 	}
 	if _, _, err = resolveSlackTriggerDelivery(context.Background(), route, "delivery", []byte(`{"text":"other"}`)); err == nil {
 		t.Fatal("unknown source selected execution target")
 	}
-	route.Trigger.PayloadMappings.Group.Values["Production"] = "outside"
+	route.Trigger.PayloadMappings.Group = &workflowtrigger.ValueMapping{Source: "text", Values: map[string]string{"incident": "outside"}}
 	if _, _, err = resolveSlackTriggerDelivery(context.Background(), route, "delivery", payload); err == nil {
-		t.Fatal("group escaped configured scope")
+		t.Fatal("retired group mapping selected execution")
 	}
 }

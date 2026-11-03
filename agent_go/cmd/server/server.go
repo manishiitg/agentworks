@@ -5362,22 +5362,25 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Interactive runs rotate iteration-0; webhooks retain their bound folder.
 				if directWebhookOptions != nil {
 					req.ExecutionOptions.SelectedRunFolder = directWebhookOptions.SelectedRunFolder
-				} else {
-					req.ExecutionOptions.SelectedRunFolder = "iteration-0"
+				} else if req.ExecutionOptions.ResumeFromStep <= 0 {
+					req.ExecutionOptions.SelectedRunFolder = ""
 				}
 
-				log.Printf("[EXECUTION_OPTIONS_DEBUG] [Backend] Execution options received: %+v", req.ExecutionOptions)
+				log.Printf("[EXECUTION_OPTIONS_DEBUG] [Backend] Execution input count: %d", len(req.ExecutionOptions.Inputs))
 				log.Printf("[WORKFLOW EXECUTION] Frontend execution options provided: strategy=%s, run_folder=%s, resume_from_step=%d, enabled_group_names=%v, save_validation_responses=%v",
 					req.ExecutionOptions.ExecutionStrategy, req.ExecutionOptions.SelectedRunFolder, req.ExecutionOptions.ResumeFromStep, req.ExecutionOptions.EnabledGroupNames, req.ExecutionOptions.SaveValidationResponses)
 
 				// Convert to controller ExecutionOptions and pass to workflow orchestrator
 				controllerOpts := &todo_creation_human.ExecutionOptions{
-					SelectedRunFolder: req.ExecutionOptions.SelectedRunFolder,
-					ExecutionStrategy: req.ExecutionOptions.ExecutionStrategy,
-					ResumeFromStep:    req.ExecutionOptions.ResumeFromStep,
-					PlanChangeAction:  req.ExecutionOptions.PlanChangeAction,
-					EnabledGroupNames: req.ExecutionOptions.EnabledGroupNames,
-					RouteSelections:   req.ExecutionOptions.RouteSelections,
+					SelectedRunFolder:    req.ExecutionOptions.SelectedRunFolder,
+					ExecutionStrategy:    req.ExecutionOptions.ExecutionStrategy,
+					ResumeFromStep:       req.ExecutionOptions.ResumeFromStep,
+					AllowRunContinuation: !currentUserIsReadOnly && (access == WorkflowAccessOwner || access == WorkflowAccessWrite),
+					PlanChangeAction:     req.ExecutionOptions.PlanChangeAction,
+					InputPreset:          req.ExecutionOptions.InputPreset,
+					Inputs:               req.ExecutionOptions.Inputs,
+					EnabledGroupNames:    req.ExecutionOptions.EnabledGroupNames,
+					RouteSelections:      req.ExecutionOptions.RouteSelections,
 				}
 
 				// Internal webhook bindings cannot be supplied by public request JSON.
@@ -12682,6 +12685,18 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		Logger:            api.logger,
 		SessionID:         sessionID,
 		EnabledGroupNames: enabledGroupNames,
+		InputPreset: func() string {
+			if req.ExecutionOptions != nil {
+				return req.ExecutionOptions.InputPreset
+			}
+			return ""
+		}(),
+		Inputs: func() map[string]string {
+			if req.ExecutionOptions != nil {
+				return req.ExecutionOptions.Inputs
+			}
+			return nil
+		}(),
 	}
 
 	if productEnabled("knowledgebase") && req.PhaseID == "workflow-builder" {
@@ -13056,11 +13071,17 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				}
 			}
 			newSched := WorkflowSchedule{
-				ID:                   generateScheduleID(),
-				Name:                 name,
-				CronExpression:       cronExpr,
-				Timezone:             timezone,
-				GroupNames:           groupNames,
+				ID:             generateScheduleID(),
+				Name:           name,
+				CronExpression: cronExpr,
+				Timezone:       timezone,
+				InputPreset: func() string {
+					if policy.InputPreset != nil {
+						return *policy.InputPreset
+					}
+					return ""
+				}(),
+				Inputs:               policy.Inputs,
 				RouteSelections:      routeSelections,
 				Enabled:              true,
 				Mode:                 mode,
@@ -13079,6 +13100,9 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				AfterTerminalStatus:      strings.TrimSpace(policy.AfterTerminalStatus),
 				AfterDelayMinutes:        policy.AfterDelayMinutes,
 				DependencyDeadline:       strings.TrimSpace(policy.DependencyDeadline),
+			}
+			if _, err := resolveWorkflowInvocationInputs(ctx, workspacePath, newSched.InputPreset, newSched.Inputs); err != nil {
+				return "", err
 			}
 			if err := validateScheduleRuntimePolicy(newSched); err != nil {
 				return "", err
@@ -13147,12 +13171,18 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				return "", err
 			}
 			newSched := WorkflowSchedule{
-				ID:                   generateScheduleID(),
-				Name:                 name,
-				ScheduleType:         "calendar",
-				Timezone:             timezone,
-				CalendarItems:        calendarItems,
-				GroupNames:           groupNames,
+				ID:            generateScheduleID(),
+				Name:          name,
+				ScheduleType:  "calendar",
+				Timezone:      timezone,
+				CalendarItems: calendarItems,
+				InputPreset: func() string {
+					if policy.InputPreset != nil {
+						return *policy.InputPreset
+					}
+					return ""
+				}(),
+				Inputs:               policy.Inputs,
 				Enabled:              true,
 				Mode:                 mode,
 				Messages:             messages,
@@ -13167,6 +13197,9 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				AfterTerminalStatus:      strings.TrimSpace(policy.AfterTerminalStatus),
 				AfterDelayMinutes:        policy.AfterDelayMinutes,
 				DependencyDeadline:       strings.TrimSpace(policy.DependencyDeadline),
+			}
+			if _, err := resolveWorkflowInvocationInputs(ctx, workspacePath, newSched.InputPreset, newSched.Inputs); err != nil {
+				return "", err
 			}
 			if err := validateScheduleRuntimePolicy(newSched); err != nil {
 				return "", err
@@ -13275,6 +13308,13 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			}
 
 			if policy != nil {
+				if policy.InputPreset != nil {
+					sched.InputPreset = *policy.InputPreset
+				}
+				if policy.Inputs != nil {
+					sched.Inputs = policy.Inputs
+				}
+
 				if policy.SetExecutionMode {
 					sched.ExecutionMode = strings.TrimSpace(policy.ExecutionMode)
 				}

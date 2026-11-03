@@ -1398,20 +1398,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
       return
     }
 
-    const preferredGroupId = relayMode ? null : (selectedGroupIds[0]
-      || variablesManifest?.groups?.find(group => group.enabled !== false)?.name
-      || null)
-
-    const builderGroupRunFolder = preferredGroupId
-      ? buildGroupFolderPath(preferredGroupId, 'iteration-0', variablesManifest)
-      : null
-
-    const fallbackBuilderRunFolder = relayMode
-      ? workspaceState.run_folders[0]?.name ?? null
-      : (builderGroupRunFolder && availableRunFolders.has(builderGroupRunFolder) && builderGroupRunFolder)
-      || (availableRunFolders.has('iteration-0') ? 'iteration-0' : null)
-      || workspaceState.run_folders.find(folder => folder.name.startsWith('iteration-0/'))?.name
-      || null
+    const fallbackBuilderRunFolder = workspaceState.run_folders[0]?.name ?? null
 
     if (fallbackBuilderRunFolder) {
       setSelectedRunFolder(fallbackBuilderRunFolder)

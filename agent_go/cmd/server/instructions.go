@@ -176,7 +176,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
   - the execution model itself is the plan step type, not a config field: a ` + "`scripted`" + ` step runs its persistent code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy), a ` + "`agent`" + ` step is conversational (ephemeral per-run scripts when ` + "`use_code_execution_mode`" + ` is on).
 
 **Variables:**
-- ` + "`variables/variables.json`" + ` — **the only** source of runtime variable values. Shape: ` + "`{variables:[{name,value,group}], groups:[{id,name,enabled}]}`" + `. Groups enable batch execution with different value sets. ` + "`workflow.json`" + ` does NOT carry variable definitions.
+- ` + "`variables/variables.json`" + ` — **the only** source of runtime variable values. Shape: ` + "`{variables:[{name,value}], groups:[{name,values:{key:value}}]}`" + `. Named saved values are optional presets; one invocation resolves defaults, then input_preset, then inputs, and records that snapshot in its own run folder. Presets never select routes or launch batches. ` + "`workflow.json`" + ` does NOT carry variable definitions.
 
 **Workflow skills and saved code:**
 - ` + "`skills/<name>/SKILL.md`" + ` — short index of reusable methods, with detail in references. Builder maintain it; steps consume selected skills. Facts belong in the knowledge base and results in the database. Contract 1.0.51 moves existing guides into local skills explicitly; old learning files remain history.
@@ -184,10 +184,10 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - ` + "`code/<step-id>/script_metadata.json (legacy: learnings/<step-id>/script_metadata.json)`" + ` — version history + run stats for the saved script
 
 **Runs (execution output):**
-- ` + "`runs/iteration-0/`" + ` — mutable Builder/manual-workflow slot. A new Builder full run rotates the previous slot to plain ` + "`iteration-{N}`" + `. Producing saved schedules use immutable ` + "`iteration-{N}-sched`" + ` folders and webhooks use ` + "`iteration-{N}-hook`" + `. The server keeps ten completed run folders independently for each family.
-- ` + "`runs/iteration-{N}/{group-name}/execution/{step-id}/`" + ` — per-step execution outputs, keyed by the declared ID in ` + "`planning/plan.json`" + ` (when variable groups are in use, each group runs in its own subfolder)
-- ` + "`runs/iteration-{N}/{group-name}/execution/{step-id}/code/main.py`" + ` — per-run working copy of the ` + "`scripted`" + ` script
-- ` + "`runs/iteration-{N}/{group-name}/logs/{step-id}/`" + ` — per-step logs (see Log Layout below). Generated nested routes may use composite folders; inspect the actual directory for those executions.
+- ` + "`runs/run-<id>/`" + ` — one invocation with recorded ` + "`inputs.json`" + `, progress, outputs and logs. Builder continuation uses the existing run and its original inputs.
+- ` + "`runs/<run-folder>/execution/<step-id>/`" + ` — per-step outputs keyed by the declared step ID. Preset names never become subfolders.
+- ` + "`runs/<run-folder>/logs/<step-id>/`" + ` — per-step logs. Inspect the returned run identity.
+- Producing schedules and webhooks retain their server-bound immutable run folders; never choose a different folder for those invocations.
 
 **Reports & measurement:**
 - ` + "`db/reports/*.html`" + ` — workflow-owned live report documents. ` + "`index.html`" + ` is the default; the shared toolbar discovers other documents and optional ` + "`views.json`" + ` controls titles/order/default. Each document owns its internal layout and reads ` + "`db/db.sqlite`" + ` through ` + "`window.report`" + `.
@@ -203,7 +203,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 **Operating model and run history:**
 - ` + "`/setup-goals`" + ` records the confirmed operating-model assessment (primary type, secondary traits, plan stability, runtime mode, business-context accumulation, and cadence) as a typed decision record. It is historical reasoning, not a permanent Goal/Profile card. Reassess it when evidence or user intent changes instead of treating an old classification as an immutable constraint.
-### Log Layout (inside ` + "`runs/iteration-{N}/{group-name}/logs/{step-id}/`" + `)
+### Log Layout (inside ` + "`runs/<run-folder>/logs/<step-id>/`" + `)
 - ` + "`validation-{N}.json`" + ` — validation attempts for the step
 - ` + "`execution/execution-attempt-{A}-iteration-{I}.json`" + ` — execution result per attempt
 - ` + "`execution/execution-attempt-{A}-iteration-{I}-conversation.json`" + ` — full LLM conversation for that attempt
@@ -216,7 +216,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - **Step list (IDs + titles):** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; steps=json.load(open('" + absWorkflow + "/<name>/planning/plan.json')).get('steps',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s.get(\\\\\\\"label\\\\\\\",s.get(\\\\\\\"title\\\\\\\",\\\\\\\"\\\\\\\"))}') for s in steps]\\\"\")`" + `
 - **Step execution modes:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/planning/step_config.json\")`" + ` — look at each step's ` + "`agent_configs.use_code_execution_mode`" + ` and the step's plan type (scripted = scripted main.py, agent = conversational)
 - **Schedules:** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; scheds=json.load(open('" + absWorkflow + "/<name>/workflow.json')).get('schedules',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s[\\\\\\\"cron_expression\\\\\\\"]} enabled={s.get(\\\\\\\"enabled\\\\\\\",True)}') for s in scheds]\\\"\")`" + `
-- **Variables + groups:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/variables/variables.json\")`" + `
+- **Inputs and saved values:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/variables/variables.json\")`" + `
 - **Saved step code (scripted steps only):** Read workflow.json first. For code_layout_version=1: ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/code/<step-id>/main.py\")`" + `. For absent/zero layout versions use learnings instead of code.
 - **Run logs:** start with ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/<name>/runs/iteration-0/\")`" + ` for the latest active run, then inspect older retained ` + "`iteration-{N}`" + ` folders when AgentWorks decision timestamps indicate a relevant before-after window.
 - **Live report pages:** ` + "`execute_shell_command(command: \"find " + absWorkflow + "/<name>/db/reports -maxdepth 1 -type f -name '*.html' -print\")`" + `
@@ -279,7 +279,7 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
 **Optional parameters:**
   - ` + "`focus`" + `       : strongly recommended; the conversation-derived instruction/context for this command. Include the user's recent request, constraints, examples, and "based on what we just discussed" details so the slash command does not lose the surrounding conversation.
   - ` + "`iteration`" + `   : run iteration to use as evidence (e.g. "iteration-3")
-  - ` + "`run_folder`" + `  : full run folder path (e.g. "iteration-3/group-a")
+  - ` + "`run_folder`" + `  : full run folder path (e.g. "run-<id>")
 
 **Mode validation.** Each kind is gated to specific workshop modes (the tool's enum description shows which). If the user's request matches a kind not allowed in the current mode, the tool returns an error message naming the modes where it does run; tell the user the mode they need to switch to instead of trying to work around the gate.
 
@@ -306,7 +306,7 @@ The ` + "`Workflow/`" + ` folder is read-only via raw shell writes — but sever
 **Cron schedules** — fully managed from chat. Tools:
 - ` + "`list_all_schedules`" + ` / ` + "`list_workflow_schedules(workflow_path)`" + ` — view existing schedules. Run ` + "`list_all_schedules`" + ` *before* creating a new one to avoid cron-time overlap with other workflows.
 - ` + "`create_workflow_schedule(workflow_path, name, cron_expression, ...)`" + ` — add a new schedule to a workflow.json. Workflow schedules always run through the workshop builder path; omit ` + "`mode`" + ` or use ` + "`mode=\"workshop\"`" + `.
-- ` + "`update_workflow_schedule(job_id, ...)`" + ` — change cron/timezone/enabled/groups.
+- ` + "`update_workflow_schedule(job_id, ...)`" + ` — change cron/timezone/enabled and optional input_preset/inputs.
 - ` + "`delete_workflow_schedule(job_id)`" + ` — remove.
 - ` + "`trigger_workflow_schedule(job_id)`" + ` — manual run-now.
 - ` + "`get_workflow_schedule_runs(job_id)`" + ` — execution history.
@@ -364,7 +364,7 @@ Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1
 - ` + "`llm_config`" + ` — set to ` + "`null`" + ` unless the user asked for a specific provider/model
 
 
-**` + "`schedules`" + `** is an array; leave empty ` + "`[]`" + ` unless the user asked for cron scheduling. Each schedule (if any) needs: ` + "`id`" + `, ` + "`name`" + `, ` + "`cron_expression`" + `, ` + "`timezone`" + `, ` + "`enabled`" + ` (bool), ` + "`group_names`" + ` (array).
+**` + "`schedules`" + `** is an array; leave empty ` + "`[]`" + ` unless the user asked for cron scheduling. Each schedule (if any) needs: ` + "`id`" + `, ` + "`name`" + `, ` + "`cron_expression`" + `, ` + "`timezone`" + `, ` + "`enabled`" + ` (bool). Optional ` + "`input_preset`" + ` and ` + "`inputs`" + ` fill values for one run.
 
 ### File 2: ` + "`Workflow/<kebab-name>/planning/plan.json`" + `
 

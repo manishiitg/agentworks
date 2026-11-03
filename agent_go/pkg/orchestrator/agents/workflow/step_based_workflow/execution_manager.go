@@ -524,11 +524,9 @@ func (em *ExecutionManager) ApplyExecutionContext(setup *ExecutionSetup) {
 
 	// Set variable values for batch execution
 	if setup.VariableValues != nil {
-		// PrepareForBatchGroup receives raw group overrides. Resolve defaults
-		// before replacing the environment so shared defaults remain available.
-		values := MergeGroupWithDefaults(orch.variablesManifest, setup.VariableValues)
+		values := cloneWorkflowStringMap(setup.VariableValues)
 		orch.variableValues = values
-		SyncGroupVariablesToWorkspaceEnv(orch.BaseOrchestrator, orch.variablesManifest, values)
+		SyncExactVariablesToWorkspaceEnv(orch.BaseOrchestrator, values)
 	}
 
 	orch.GetLogger().Info(fmt.Sprintf("🔧 Applied execution context: skipHuman=%v, singleStep=%v",

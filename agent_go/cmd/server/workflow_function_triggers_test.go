@@ -14,7 +14,7 @@ import (
 func reviewPRTrigger() WorkflowSchedule {
 	return WorkflowSchedule{
 		ID: "fn-review", Name: "Review PR", ScheduleType: "webhook", Enabled: true, Kind: triggerKindFunction,
-		GroupNames: []string{"prod", "staging"}, WorkshopMode: "run", Webhook: &WorkflowWebhookConfig{},
+		InputPreset: "Production", WorkshopMode: "run", Webhook: &WorkflowWebhookConfig{},
 		Function: &WorkflowFunctionSpec{Name: "review_pr", Description: "Review one pull request", Inputs: []WorkflowFunctionInput{
 			{Name: "GITHUB_OWNER", Required: true},
 			{Name: "GITHUB_REPO", Required: true},
@@ -69,14 +69,14 @@ func TestWorkflowFunctionArgs(t *testing.T) {
 	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(1), "REVIEW_DEPTH": "deep"}); err == nil || !strings.Contains(err.Error(), "must be one of quick, full") {
 		t.Fatalf("enum: err = %v", err)
 	}
-	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(1), "group": "dev"}); err == nil || !strings.Contains(err.Error(), "group must be one of prod, staging") {
+	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(1), "group": "dev"}); err == nil || !strings.Contains(err.Error(), "retired") {
 		t.Fatalf("group: err = %v", err)
 	}
-	variables, group, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(149), "group": "staging"})
+	variables, group, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(149)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if variables["PR_NUMBER"] != "149" || variables["GITHUB_OWNER"] != "acme" || group != "staging" {
+	if variables["PR_NUMBER"] != "149" || variables["GITHUB_OWNER"] != "acme" || group != "" {
 		t.Fatalf("variables = %v group = %q", variables, group)
 	}
 	schema := workflowFunctionInputSchema(sched)
@@ -84,8 +84,8 @@ func TestWorkflowFunctionArgs(t *testing.T) {
 	if len(required) != 3 {
 		t.Fatalf("required = %v, want the three required inputs", required)
 	}
-	if _, ok := schema["properties"].(map[string]interface{})["group"]; !ok {
-		t.Fatal("a multi-group function offers group")
+	if _, ok := schema["properties"].(map[string]interface{})["group"]; ok {
+		t.Fatal("a function must not offer group selection")
 	}
 }
 
@@ -113,11 +113,11 @@ func TestDeliverFunctionSetsRunVariables(t *testing.T) {
 		},
 	}
 	sched := reviewPRTrigger()
-	result, err := receiver.deliverFunction(context.Background(), "gate", "Workflow/gate", sched, "call-1", []byte(`{"function":"review_pr"}`), map[string]string{"PR_NUMBER": "149"}, "staging")
+	result, err := receiver.deliverFunction(context.Background(), "gate", "Workflow/gate", sched, "call-1", []byte(`{"function":"review_pr"}`), map[string]string{"PR_NUMBER": "149"}, "")
 	if err != nil || result.Status != "accepted" {
 		t.Fatalf("deliver = %+v err=%v", result, err)
 	}
-	if got == nil || got.Variables["PR_NUMBER"] != "149" || got.Group != "staging" || got.Event != "agentworks.function.review_pr" {
+	if got == nil || got.Variables["PR_NUMBER"] != "149" || got.Group != "" || got.Event != "agentworks.function.review_pr" {
 		t.Fatalf("delivery = %+v", got)
 	}
 }
@@ -232,7 +232,7 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 // triggers have no allowed_variables list).
 func TestFunctionTriggerVariablesPassRunStartCheck(t *testing.T) {
 	sched := reviewPRTrigger()
-	input := &WorkflowWebhookDelivery{Variables: map[string]string{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": "149"}, Group: "staging"}
+	input := &WorkflowWebhookDelivery{Variables: map[string]string{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": "149"}}
 	if err := webhookDeliveryStartError(sched, input); err != nil {
 		t.Fatalf("function inputs rejected at run start: %v", err)
 	}

@@ -15,19 +15,19 @@ import (
 // Variable represents a single variable definition
 type Variable struct {
 	Name        string `json:"name"`        // e.g., "AWS_ACCOUNT_ID"
-	Value       string `json:"value"`       // Original value from objective (used in single-group mode)
+	Value       string `json:"value"`       // Workflow default; an explicit empty string is a value.
 	Description string `json:"description"` // e.g., "AWS account number for deployment"
 }
 
-// VariableGroup represents a single set of variable values for batch execution
+// VariableGroup stores an optional named set of sparse input overrides.
 type VariableGroup struct {
-	Name    string            `json:"name"`    // Unique identifier and display label (e.g., "Production", "Staging")
-	Values  map[string]string `json:"values"`  // Variable name -> value mapping
-	Enabled bool              `json:"enabled"` // Whether to include in execution
+	Name    string            `json:"name"`   // Unique identifier and display label (e.g., "Production", "Staging")
+	Values  map[string]string `json:"values"` // Variable name -> value mapping
+	Enabled bool              `json:"-"`      // Inert internal field; never serialized or consulted for execution.
 }
 
 // VariablesManifest contains all extracted variables
-// Supports both single-group (backward compatible) and multi-group modes
+// Defaults and optional saved values share one invocation schema.
 type VariablesManifest struct {
 	Variables      []Variable      `json:"variables"`        // List of variable definitions
 	Groups         []VariableGroup `json:"groups,omitempty"` // Array of variable groups (multi-group mode)
@@ -37,21 +37,6 @@ type VariablesManifest struct {
 // HasGroups returns true if the manifest has multiple variable groups
 func (m *VariablesManifest) HasGroups() bool {
 	return len(m.Groups) > 0
-}
-
-// GetEnabledGroups returns only the enabled groups
-func (m *VariablesManifest) GetEnabledGroups() []VariableGroup {
-	if !m.HasGroups() {
-		return nil
-	}
-
-	var enabled []VariableGroup
-	for _, g := range m.Groups {
-		if g.Enabled {
-			enabled = append(enabled, g)
-		}
-	}
-	return enabled
 }
 
 // GetVariableValues returns variable values for a specific group.
@@ -86,25 +71,17 @@ func (m *VariablesManifest) GetVariableNames() []string {
 	return names
 }
 
-// AddGroup adds a new variable group pre-populated with current global variable values.
-// Values are copied from Variables[].Value so the group is immediately usable.
-// The caller can override specific values after creation.
+// AddGroup adds empty saved values; unspecified keys inherit workflow defaults.
 func (m *VariablesManifest) AddGroup() *VariableGroup {
 	// Generate next group name
 	nextID := len(m.Groups) + 1
 	name := fmt.Sprintf("group-%d", nextID)
 
-	// Pre-populate values from global variable definitions so the group is ready to use.
-	// Empty string is only used when the global variable has no value set.
 	values := make(map[string]string)
-	for _, v := range m.Variables {
-		values[v.Name] = v.Value
-	}
 
 	newGroup := VariableGroup{
-		Name:    name,
-		Values:  values,
-		Enabled: true,
+		Name:   name,
+		Values: values,
 	}
 
 	m.Groups = append(m.Groups, newGroup)
@@ -116,17 +93,6 @@ func (m *VariablesManifest) DeleteGroup(groupName string) bool {
 	for i, g := range m.Groups {
 		if g.Name == groupName {
 			m.Groups = append(m.Groups[:i], m.Groups[i+1:]...)
-			return true
-		}
-	}
-	return false
-}
-
-// ToggleGroup enables or disables a group
-func (m *VariablesManifest) ToggleGroup(groupName string, enabled bool) bool {
-	for i := range m.Groups {
-		if m.Groups[i].Name == groupName {
-			m.Groups[i].Enabled = enabled
 			return true
 		}
 	}
@@ -266,11 +232,10 @@ func readVariablesFromFile(ctx context.Context, workspacePath string, readFile f
 
 // writeVariablesToFile writes VariablesManifest to variables.json in the workspace using BaseOrchestrator's WriteWorkspaceFile
 func writeVariablesToFile(ctx context.Context, workspacePath string, manifest *VariablesManifest, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error, logger loggerv2.Logger) error {
-	for _, group := range manifest.Groups {
-		if err := ValidateInputSetName(group.Name); err != nil {
-			return err
-		}
+	if err := ValidateWorkflowInputDefinitions(manifest); err != nil {
+		return err
 	}
+
 	// Use relative path only - WriteWorkspaceFile auto-prepends workspacePath
 	variablesPath := filepath.Join("variables", "variables.json")
 

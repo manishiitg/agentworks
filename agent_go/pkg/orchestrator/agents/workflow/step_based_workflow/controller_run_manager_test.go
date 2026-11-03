@@ -6,25 +6,6 @@ import (
 	"testing"
 )
 
-func TestIsPartialGroupRun(t *testing.T) {
-	hcpo := &StepBasedWorkflowOrchestrator{
-		variablesManifest: &VariablesManifest{Groups: []VariableGroup{
-			{Name: "instagram", Enabled: true},
-			{Name: "linkedin", Enabled: true},
-		}},
-	}
-
-	hcpo.executionOptions = &ExecutionOptions{EnabledGroupNames: []string{"instagram"}}
-	if !hcpo.isPartialGroupRun() {
-		t.Fatal("one of two enabled groups should reuse the current run")
-	}
-
-	hcpo.executionOptions.EnabledGroupNames = []string{"instagram", "linkedin"}
-	if hcpo.isPartialGroupRun() {
-		t.Fatal("all enabled groups should rotate the current run")
-	}
-}
-
 func TestRetainedIterationNamesExcludesActiveAndSortsNumerically(t *testing.T) {
 	got := retainedIterationNames([]string{"iteration-12", "draft", "iteration-0", "iteration-3", "iteration-2"})
 	want := []string{"iteration-2", "iteration-3", "iteration-12"}

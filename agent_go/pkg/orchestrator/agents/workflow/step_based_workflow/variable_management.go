@@ -195,26 +195,12 @@ func SyncExactVariablesToWorkspaceEnv(bo *orchestrator.BaseOrchestrator, variabl
 // session may safely expose to its shell tools. An explicit toolbar selection
 // wins. With no selection, a single group is unambiguous and is auto-selected;
 // multiple groups remain unset until the user chooses one.
-func ResolveWorkshopVariableValues(manifest *VariablesManifest, enabledGroupNames []string) (map[string]string, string, bool) {
-	if enabledGroupNames != nil && len(enabledGroupNames) == 0 {
+func ResolveWorkshopVariableValues(manifest *VariablesManifest, selected []string) (map[string]string, string, bool) {
+	resolved, err := ResolveExecutionInputs(manifest, selected)
+	if err != nil {
 		return nil, "", false
 	}
-	if manifest == nil || len(manifest.Groups) == 0 {
-		return nil, "", false
-	}
-	groupName := ""
-	if len(enabledGroupNames) > 0 {
-		groupName = enabledGroupNames[0]
-	} else if len(manifest.Groups) == 1 {
-		groupName = manifest.Groups[0].Name
-	} else {
-		return nil, "", false
-	}
-	groupValues := manifest.GetVariableValues(groupName)
-	if groupValues == nil {
-		return nil, groupName, false
-	}
-	return MergeGroupWithDefaults(manifest, groupValues), groupName, true
+	return resolved[0].Values, resolved[0].Name, true
 }
 
 // snapshotWorkspaceEnv returns a shallow copy of the workspace env map.

@@ -393,22 +393,7 @@ export function computeNewEventCount(
 // validateExecutionGroups — check enabled_group_names for workflow mode
 // ---------------------------------------------------------------------------
 
-export function validateExecutionGroups(
-  executionOptions: ExecutionOptions | undefined
-): string | null {
-  if (!executionOptions) return null
-
-  const workflowStore = useWorkflowStore.getState()
-  const variablesManifest = workflowStore.variablesManifest
-
-  if (!variablesManifest?.groups || variablesManifest.groups.length === 0) {
-    return null
-  }
-
-  const enabledGroupNames = executionOptions.enabled_group_names
-  if (!enabledGroupNames || enabledGroupNames.length === 0) {
-    return 'Please select at least one group before using automation builder or execution.'
-  }
-
+// Input admission belongs to the backend. No mandatory saved set in chat.
+export function validateExecutionGroups(_executionOptions: ExecutionOptions | undefined): string | null {
   return null
 }

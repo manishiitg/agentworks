@@ -13,13 +13,13 @@ vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: vi.fn(() => 'http://localhost:8000'), getAuthToken: () => '' }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-const webhook = { id: 'hook', name: 'GitHub PRs', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/hook', route_selections: {}, group_names: [] }
-const fn = { id: 'fn-1', name: 'Review PR', enabled: true, auth_mode: '' as never, path: '', route_selections: { router: 'review' }, group_names: ['default'], kind: 'function' as const,
+const webhook = { id: 'hook', name: 'GitHub PRs', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/hook', route_selections: {}, input_preset: undefined }
+const fn = { id: 'fn-1', name: 'Review PR', enabled: true, auth_mode: '' as never, path: '', route_selections: { router: 'review' }, input_preset: 'default', kind: 'function' as const,
   function: { name: 'review_pr', description: 'Review one pull request', inputs: [{ name: 'PR_NUMBER', type: 'integer' as const, required: true }, { name: 'REVIEW_DEPTH' }] } }
 const cleanups: (() => void)[] = []
 beforeEach(() => {
   vi.mocked(useCanWriteWorkflow).mockReturnValue(true)
-  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [webhook, fn], groups: ['default'], routes: [{ step_id: 'router', step_title: 'Review or skip', route_id: 'review', route_name: 'Review' }] })
+  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [webhook, fn], input_presets: ['default'], routes: [{ step_id: 'router', step_title: 'Review or skip', route_id: 'review', route_name: 'Review' }] })
   vi.mocked(workflowWebhooksApi.save).mockResolvedValue(fn)
   vi.mocked(workflowWebhooksApi.relayReleases).mockResolvedValue({ active_version: 'v1', releases: [{ version: 'v1', workspace_path: 'Workflow/.relay_releases/test/v1', hash: 'abc', published_at: '2026-09-28T00:00:00Z', functions: ['review_pr'], output_step_id: 'answer', file_count: 3 }] })
 })
@@ -45,7 +45,7 @@ it('pauses a function and routes edits to the Builder chat', async () => {
 })
 
 it('offers to add a function when there is none', async () => {
-  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [webhook], groups: [], routes: [] })
+  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [webhook], input_presets: [], routes: [] })
   const onAsk = vi.fn()
   const host = await mount(onAsk)
   const add = [...host.querySelectorAll('button')].find(button => button.textContent === 'Add a function in chat')!
@@ -81,7 +81,7 @@ it('shows a broken active release instead of claiming draft only', async () => {
 // PLAT-746-265: changing the destination preserves the saved function;
 // Run people have no authoring control for the owner's chats.
 it('saves the chosen chat without changing the callable function', async () => {
-  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [fn], groups: ['default'], routes: [], chat_choices: [{ id: 'main', label: 'Main chat' }, { id: 'reporting', label: 'Reporting' }] })
+  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [fn], input_presets: ['default'], routes: [], chat_choices: [{ id: 'main', label: 'Main chat' }, { id: 'reporting', label: 'Reporting' }] })
   const host = await mount()
   const select = host.querySelector('select[aria-label="Chat for review_pr"]') as HTMLSelectElement
   expect(select.value).toBe('main')

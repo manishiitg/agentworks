@@ -20,7 +20,7 @@ func TestCommonProjectScheduleStorePreservesWorkAndCaller(t *testing.T) {
 	record := projectactions.Schedule{ID: "daily", Name: "Daily", Project: projectactions.Project{Kind: "goal", ID: "example"},
 		When:   projectactions.When{Cron: "0 9 * * *", Timezone: "UTC", After: &projectactions.After{Schedules: []string{"collect"}, Outcome: "any_terminal", DelayMinutes: 5, Deadline: "12:00"}},
 		Action: projectactions.Action{Type: "message"}, RunAs: "owner", Enabled: false,
-		Input: json.RawMessage(`{"messages":["Collect evidence.","Check it.","Report it."],"groups":[],"routes":{"router":"report"}}`)}
+		Input: json.RawMessage(`{"messages":["Collect evidence.","Check it.","Report it."],"input_preset":"Sales","inputs":{"DEPARTMENT":"Sales"},"routes":{"router":"report"}}`)}
 	if err := writeProjectSchedules(ctx, root, []projectactions.Schedule{record}); err != nil {
 		t.Fatal(err)
 	}
@@ -42,14 +42,12 @@ func TestCommonProjectScheduleStorePreservesWorkAndCaller(t *testing.T) {
 	if err := loadWorkflowTimerActions(ctx, root, manifest); err != nil {
 		t.Fatal(err)
 	}
-	// PLAT-746-265: persistence must not turn "select no work" into the
-	// omitted selection that automatically chooses enabled input sets.
-	if manifest.Schedules[1].GroupNames == nil || len(manifest.Schedules[1].GroupNames) != 0 {
-		t.Fatal("empty selection became automatic selection")
+	if manifest.Schedules[1].InputPreset != "Sales" || manifest.Schedules[1].Inputs["DEPARTMENT"] != "Sales" {
+		t.Fatal("saved inputs were lost on schedule round-trip")
 	}
 	// Saved-work actions retain a chat too, even with no message queue.
 	record.Action = projectactions.Action{Type: "run", Tab: "reporting"}
-	record.Input = json.RawMessage(`{"groups":null}`)
+	record.Input = json.RawMessage(`{}`)
 	if err := writeProjectSchedules(ctx, root, []projectactions.Schedule{record}); err != nil {
 		t.Fatal(err)
 	}
@@ -217,5 +215,36 @@ func TestProjectEntryFilesPreserveContractsAndEncryptedAuthentication(t *testing
 	manifest.CreatedBy = "other"
 	if err := loadWorkflowEntryActions(ctx, root, manifest); err == nil {
 		t.Fatal("a webhook file supplied another owner's authority")
+	}
+}
+
+// PLAT-746-265 / PR498: clearing a saved preset must reach the persisted
+// schedule, while an omitted selection must leave the current value alone.
+func TestSchedulePresetClearIsDifferentFromOmission(t *testing.T) {
+	for _, test := range []struct {
+		body    string
+		present bool
+		want    string
+	}{
+		{`{"name":"renamed"}`, false, ""},
+		{`{"input_preset":null}`, true, ""},
+		{`{"input_preset":""}`, true, ""},
+		{`{"input_preset":"Sales"}`, true, "Sales"},
+	} {
+		var req UpdateScheduleRequest
+		if err := json.Unmarshal([]byte(test.body), &req); err != nil {
+			t.Fatal(err)
+		}
+		if (req.InputPreset != nil) != test.present || req.InputPreset != nil && *req.InputPreset != test.want {
+			t.Fatalf("request %s lost explicit input choice: %+v", test.body, req)
+		}
+	}
+	var input scheduleExecutionInput
+	if err := json.Unmarshal([]byte(`{"groups":null}`), &input); err == nil {
+		t.Fatal("old group selector silently became a default invocation")
+	}
+	var options ExecutionOptions
+	if err := json.Unmarshal([]byte(`{"enabled_group_names":null}`), &options); err == nil {
+		t.Fatal("old batch selector silently became a default invocation")
 	}
 }

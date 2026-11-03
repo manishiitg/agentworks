@@ -101,7 +101,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
                     </div>}
                   </div>
                   {isWebhook && <WebhookEndpoint id={job.id} name={job.name} />}
-                  {job.group_names?.length ? <p className="text-xs text-muted-foreground">Groups: {job.group_names.join(', ')}</p> : null}
+                  {job.input_preset ? <p className="text-xs text-muted-foreground">Saved inputs: {job.input_preset}</p> : null}
                   {hasRuntimePolicy && <div className="max-w-4xl space-y-1 rounded-md border border-border bg-background/70 p-3 text-xs text-muted-foreground">
                     <h4 className="font-medium text-foreground">Coordination and runtime policy</h4>
                     {dependencyNames.length > 0 && <p>Waits for: {dependencyNames.join(', ')} · Release: {job.after_terminal_status || 'completed'}{job.after_delay_minutes ? ` + ${job.after_delay_minutes}m delay` : ''}{job.dependency_deadline ? ` · Deadline: ${job.dependency_deadline} local` : ''}</p>}

@@ -356,7 +356,9 @@ type WorkflowSchedule struct {
 	Enabled            bool                   `json:"enabled"`
 	TriggerPayload     json.RawMessage        `json:"trigger_payload,omitempty"`
 	CalendarItems      []CalendarScheduleItem `json:"calendar_items,omitempty"`
-	GroupNames         []string               `json:"group_names"`
+	InputPreset        string                 `json:"input_preset,omitempty"`
+	Inputs             map[string]string      `json:"inputs,omitempty"`
+	GroupNames         []string               `json:"group_names,omitempty"`
 	// RouteSelections selects deterministic routing-step branches for the scheduled
 	// full workflow. It is the same shape accepted by run_full_workflow; keeping it
 	// as data prevents a schedule from becoming a second, free-text workflow.
@@ -452,6 +454,9 @@ type CalendarScheduleItem struct {
 }
 
 func validateScheduleRuntimePolicy(schedule WorkflowSchedule) error {
+	if schedule.GroupNames != nil {
+		return fmt.Errorf(retiredWorkflowGroupsMessage)
+	}
 	if err := validateWebhookSchedule(schedule); err != nil {
 		return err
 	}
@@ -832,55 +837,10 @@ func normalizeScheduleGroupNames(groupNames []string) []string {
 }
 
 func validateScheduleGroupNamesForWorkspace(ctx context.Context, workspacePath string, groupNames []string) ([]string, error) {
-	normalized := normalizeScheduleGroupNames(groupNames)
-	if normalized != nil && len(normalized) == 0 {
-		return nil, fmt.Errorf("choose at least one input set, or omit the selection for automatic execution")
+	if groupNames != nil {
+		return nil, fmt.Errorf(retiredWorkflowGroupsMessage)
 	}
-
-	content, exists, err := readFileFromWorkspace(ctx, workspacePath+"/variables/variables.json")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read variables.json: %w", err)
-	}
-	if !exists {
-		if len(normalized) == 0 {
-			return normalized, nil
-		}
-		return nil, fmt.Errorf("no input sets are configured for %s", workspacePath)
-	}
-
-	var manifest VariablesManifest
-	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-		return nil, fmt.Errorf("failed to parse variables.json: %w", err)
-	}
-	if len(manifest.Groups) == 0 {
-		if len(normalized) == 0 {
-			return normalized, nil
-		}
-		return nil, fmt.Errorf("workflow has no saved input sets")
-	}
-
-	validGroups := make(map[string]struct{}, len(manifest.Groups))
-	available := make([]string, 0, len(manifest.Groups))
-	for _, group := range manifest.Groups {
-		groupName := strings.TrimSpace(group.Name)
-		if groupName == "" {
-			continue
-		}
-		if _, exists := validGroups[groupName]; exists {
-			continue
-		}
-		validGroups[groupName] = struct{}{}
-		available = append(available, groupName)
-	}
-	sort.Strings(available)
-
-	for _, groupName := range normalized {
-		if _, ok := validGroups[groupName]; !ok {
-			return nil, fmt.Errorf("unknown group name %q; available groups: %s", groupName, strings.Join(available, ", "))
-		}
-	}
-
-	return normalized, nil
+	return nil, nil
 }
 
 // --- Default factory ---
