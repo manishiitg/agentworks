@@ -168,7 +168,7 @@ func handleCrewSyncCapabilities(w http.ResponseWriter, r *http.Request) {
 	externalJSON(w, map[string]bool{"relay": true})
 }
 
-const macCrewShareBlocked = "This Crew runs on your Mac. To share its dashboard and Ask, move it to the server first: turn on Work with my Mac off in Cloud."
+const macCrewShareBlocked = "This Crew lives on your Mac. So people can use it any time, even when your Mac is off, move it online first from the Mac app: Where it lives, then Move online."
 
 // crewRelayTwin reports a server Crew that is only the empty twin of a Mac Crew.
 func crewRelayTwin(id string) bool {
@@ -176,7 +176,7 @@ func crewRelayTwin(id string) bool {
 		return false
 	}
 	b, err := crewroot.ReadSync(id)
-	return err == nil && b != nil && b.Side == "server" && b.Mode == "relay"
+	return err == nil && b != nil && b.Side == "server" && b.Editing == "local"
 }
 
 // handleCrewSyncReadiness tells the owner, before Cloud turns on, whether this

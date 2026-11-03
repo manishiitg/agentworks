@@ -55,7 +55,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
       setShareSection(false); setTab(next as WorkIntegrationTab)
     }
   })
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', computer: hasDesktopConnections() ? 'Cloud' : 'Laptop access', agentbridge: 'Connected agents', 'computer-use': 'Computer use' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', computer: hasDesktopConnections() ? 'Where it lives' : 'Laptop access', agentbridge: 'Connected agents', 'computer-use': 'Computer use' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <WorkspaceViewHeader icon={shareSection ? Users : tab === 'agentbridge' ? Cable : Server} title={shareSection ? 'Access' : labels[tab]} />

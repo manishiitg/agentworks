@@ -74,6 +74,13 @@ func WriteSync(id string, binding SyncBinding) error {
 	return writeSync(id, binding)
 }
 
+// ReplaceSync writes the binding as given, for the one-off move of older pairs to relay pairs.
+func ReplaceSync(id string, binding SyncBinding) error {
+	syncSettingsMu.Lock()
+	defer syncSettingsMu.Unlock()
+	return writeSync(id, binding)
+}
+
 // SetSyncMode is the explicit person action; ordinary transfer writes cannot
 // undo it. This lock covers only the private settings write, never networking.
 func SetSyncMode(id, pair, mode string) (*SyncBinding, error) {

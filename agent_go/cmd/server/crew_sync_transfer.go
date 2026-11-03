@@ -278,7 +278,7 @@ func (api *StreamingAPI) crewTransferBinding(ctx context.Context, claims *UserCl
 	if b == nil || b.PairID != pair || b.Side != "server" {
 		return roots, nil, &crewSyncFailure{Status: 409, Code: "wrong_pair", Message: "use this Crew's paired connection"}
 	}
-	if b.Mode == "off" || b.Mode == "relay" {
+	if b.Mode == "off" {
 		return roots, nil, fmt.Errorf("file sync is off for this Crew")
 	}
 	return roots, b, nil

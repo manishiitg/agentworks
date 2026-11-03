@@ -339,9 +339,6 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if binding.Mode == "off" && input.Action != "mode" {
 		return out, fmt.Errorf("sync is off for this project; turn on Cloud before syncing")
 	}
-	if binding.Mode == "relay" && input.Action != "mode" {
-		return out, fmt.Errorf("this Crew's files are only on the Mac; turn on Work with my Mac off to copy them here")
-	}
 	previous, err := readCrewSyncManifest(roots.ID)
 	if err != nil {
 		return out, err
@@ -388,8 +385,8 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		return out, nil
 	case "activate":
-		if binding.Mode == "manual" {
-			return out, fmt.Errorf("send this project to the server from your Mac first")
+		if binding.Mode != "continuous" {
+			return out, fmt.Errorf("move this Crew online from your Mac first")
 		}
 		if binding.Editing == "server" {
 			return out, nil

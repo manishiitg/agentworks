@@ -11,20 +11,18 @@ import { ServerProjectLocalOpen } from './ServerProjectLocalOpen'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 
-type Binding = { archive_only?: boolean; mode?: 'continuous' | 'manual' | 'off' | 'relay'; connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
-type SyncStatus = { binding: Binding | null; auto?: { state: string; message?: string } }
-type Readiness = { fits: boolean; estimated_seconds: number; secrets?: number; connections?: { kind: string; name: string }[]; measurement: { dependency_files?: string[]; files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
+type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
+type SyncStatus = { binding: Binding | null }
+type Readiness = { fits: boolean; estimated_seconds: number; secrets?: number; measurement: { dependency_files?: string[]; files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
 const sizeLabel = (bytes: number) => bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : bytes >= 1 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : 'under 1 MB'
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
-/** In the AgentWorks app a Crew is either in the cloud (on a network) or only on this computer; on a server the page is its laptop access. */
+/** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
 export const crewCloudMode = () => hasDesktopConnections()
-// Most people have one network, so its name is shown only when there are several.
-const networkName = (binding: Binding | null | undefined, connections: { id: string; name: string }[]) =>
-  connections.filter(item => item.id !== 'local').length > 1 ? connections.find(item => item.id === binding?.connection_id)?.name || '' : ''
 
-export type CloudState = 'on' | 'syncing' | 'check' | 'off'
-/** The menu row's state: on, syncing, check or off. The row's own icon shows it; the network name stays on the page. */
+// Laptop access (a Crew on a server) keeps its on/off.
+export type CloudState = 'mac' | 'online' | 'moving' | 'check' | 'on' | 'off'
+/** The menu row's state. The server decides where the Crew lives (its pair's editing side); the row only shows it. */
 export function useYourComputerSummary(enabled: boolean, projectId?: string, profileId?: string): CloudState | undefined {
   const [state, setState] = useState<CloudState>()
   useEffect(() => {
@@ -32,13 +30,11 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
     if (!enabled || !projectId) return
     const abort = new AbortController(), options = { signal: abort.signal, skipSessionContext: true }
     const load = () => {
-      const request: Promise<CloudState> = crewCloudMode() && getRawActiveWorkspaceId() !== 'local' ? Promise.resolve('on') : crewCloudMode()
+      const request: Promise<CloudState> = crewCloudMode() && getRawActiveWorkspaceId() !== 'local' ? Promise.resolve('online') : crewCloudMode()
         ? api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, options).then(({ data }) => {
-          // A relay twin moves no files: the Crew is used from the phone while the Mac is on.
-          if (!data.binding || data.binding.mode === 'off' || data.binding.mode === 'relay') return 'off'
-          if (data.auto?.state === 'syncing') return 'syncing'
-          if (data.binding.pending_action || (data.auto?.state && !['synced', 'idle'].includes(data.auto.state))) return 'check'
-          return 'on'
+          if (!data.binding) return 'mac'
+          if (data.binding.pending_action === 'server' || data.binding.pending_action === 'local') return 'check'
+          return data.binding.editing === 'server' ? 'online' : 'mac'
         })
         : api.get<LaptopSettings>(laptopSettingsEndpoint(undefined, profileId, projectId), options).then(({ data }) => data.device_id ? 'on' : 'off')
       void request.then(value => { if (!abort.signal.aborted) setState(value) }).catch(() => {})
@@ -49,10 +45,10 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string, pro
   }, [enabled, projectId, profileId])
   return state
 }
-export const cloudStateLabel: Record<CloudState, string> = { on: 'On', syncing: 'Syncing', check: 'Check', off: 'Off' }
-/** The row icon in the state's colour: light green when on, pulsing while it syncs, amber to check, grey when off. */
+export const cloudStateLabel: Record<CloudState, string> = { mac: 'On this Mac', online: 'Online', moving: 'Moving…', check: 'Check', on: 'On', off: 'Off' }
+/** The row icon in the state's colour: green online, pulsing while it moves, amber to check, plain on this Mac. */
 export function cloudStateIcon(Icon: LucideIcon, state?: CloudState): LucideIcon {
-  const tone = state === 'on' ? '!text-emerald-400/90' : state === 'syncing' ? '!text-emerald-400/90 animate-pulse' : state === 'check' ? '!text-amber-500' : ''
+  const tone = state === 'online' || state === 'on' ? '!text-emerald-400/90' : state === 'moving' ? '!text-emerald-400/90 animate-pulse' : state === 'check' ? '!text-amber-500' : ''
   if (!tone) return Icon
   // One component per icon and state, so a re-render does not restart the pulse.
   const key = `${Icon.displayName || 'icon'}:${state}`
@@ -68,111 +64,108 @@ const tintedIcons = new Map<string, LucideIcon>()
 
 export function YourComputerPanel({ projectId, sessionId }: { projectId: string; sessionId?: string; canEdit: boolean }) {
   if (!crewCloudMode()) return <div><LaptopCard sessionId={sessionId} /></div>
-  // A Crew opened from a connected server is already in the cloud; the AgentWorks app offers to open it here.
+  // A Crew opened from a connected server already lives online; the AgentWorks app offers to open it here.
   const connection = getRawActiveWorkspaceId()
-  if (connection !== 'local') return <section aria-label="Cloud" className="space-y-3 text-sm">
-    <p role="status" className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-500" />In the cloud</p>
+  if (connection !== 'local') return <section aria-label="Where it lives" className="space-y-3 text-sm">
+    <p role="status" className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-500" />Online</p>
     <ServerProjectLocalOpen projectId={projectId} connection={connection} />
   </section>
-  return <div><CloudCard projectId={projectId} /></div>
+  return <div><WhereItLivesCard projectId={projectId} /></div>
 }
 
-function Switch({ on, disabled, label, onChange }: { on: boolean; disabled?: boolean; label: string; onChange: () => void }) {
-  return <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={onChange}
-    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}>
-    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
-  </button>
-}
-
-function CloudCard({ projectId }: { projectId: string }) {
+function WhereItLivesCard({ projectId }: { projectId: string }) {
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [choice, setChoice] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [laptop, setLaptop] = useState<{ state: string; message?: string }>()
-  const [cloudUses, setCloudUses] = useState<{ apps: { name: string; status?: string }[]; secrets: string[]; accounts: { name: string; kind: string }[] }>()
+  const [sharing, setSharing] = useState(false)
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
-    const loadLaptop = () => void api.get<{ state: string; message?: string }>(`/api/crew-cloud-laptop/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setLaptop(data) }).catch(() => {})
-    load(); loadLaptop()
-    void api.get<NonNullable<typeof cloudUses>>(`/api/crew-cloud-apps/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setCloudUses(data) }).catch(() => {})
-    const timer = window.setInterval(() => { load(); loadLaptop() }, 5000)
+    load()
+    const timer = window.setInterval(load, 5000)
     return () => { window.clearInterval(timer); abort.abort() }
   }, [projectId, reload])
-  // A paired Crew turned off keeps its pair (both copies stay); the switch reads the server's saved mode.
-  const paired = status?.binding
-  const binding = paired && paired.mode !== 'off' && paired.mode !== 'relay' ? paired : null
-  const relay = paired?.mode === 'relay'
-  // Before Cloud is on, the Mac says whether this Crew fits a first upload (the server decides the numbers).
+  const binding = status?.binding
+  const online = binding?.editing === 'server'
+  const unfinished = binding?.pending_action === 'server' || binding?.pending_action === 'local' ? binding.pending_action : undefined
+  // Before moving online, the Mac says whether this Crew fits (the server decides the numbers).
   const [readiness, setReadiness] = useState<Readiness>()
-  const inCloud = Boolean(binding)
   useEffect(() => {
-    if (inCloud) return
+    if (online) return
     const abort = new AbortController()
     void api.get<Readiness>(`/api/crew-sync/${encodeURIComponent(projectId)}/readiness`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setReadiness(data) }).catch(() => {})
     return () => abort.abort()
-  }, [projectId, inCloud])
-  const tooBig = !inCloud && readiness?.fits === false
-  const network = networkName(binding, connections)
-  const target = paired?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
-  const run = async (action: 'update' | 'server' | 'local' | 'download' | 'mode' | 'relay', mode?: 'continuous' | 'off', via = target) => {
+  }, [projectId, online])
+  const tooBig = !online && readiness?.fits === false
+  const target = binding?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
+  const link = binding?.peer_server ? `${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}` : ''
+  const run = async (action: 'server' | 'local' | 'relay', via = target) => {
     setBusy(true); setError('')
-    try { await desktopRequest(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', mode ? { action, mode } : { action }) }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.') }
+    try { await desktopRequest(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action }); return true }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
     finally { setBusy(false); setReload(value => value + 1) }
   }
-  const problem = error || (status?.auto?.state && !['syncing', 'synced', 'idle'].includes(status.auto.state) ? status.auto.message || '' : '')
-  const syncing = busy || status?.auto?.state === 'syncing'
-  return <section aria-label="Cloud" className="space-y-3">
-    {binding?.archive_only && <p className="text-sm text-muted-foreground">Your conversation is restored into a new AI session when you switch computers. Files finish syncing before the next reply.</p>}
-    <div className="flex items-center gap-3">
-      <div className="min-w-0 flex-1">
-        <p role="status" className="flex items-center gap-2 text-sm font-semibold">
-          {syncing ? <RefreshCw aria-label="Syncing" className="h-4 w-4 animate-spin text-muted-foreground" /> : binding ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
-          {!status ? 'Checking…' : binding ? (network ? `In the cloud on ${network}` : 'In the cloud') : 'Only on this computer'}
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">{binding ? 'Use this Crew from the website or your phone.' : relay ? 'You can use this Crew from the website or your phone while this Mac is on. Turn on to keep working when your Mac is off.' : connections.length > 1 ? 'Choose a server to use this Crew from the website or your phone.' : 'Turn on to use this Crew from the website or your phone.'}</p>
-        {binding && <p className="mt-1 text-xs text-muted-foreground">{laptop?.state === 'existing' || laptop?.state === 'needs_app' ? laptop.message : 'While Cloud is on, people using this Crew run commands in this folder on your computer.'}</p>}
+  const moveAndShare = async () => {
+    setSharing(false)
+    if (await run('server') && link) window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')
+  }
+  return <div className="space-y-5">
+    <section aria-label="Where it lives" className="space-y-3">
+      <h3 className="text-sm font-semibold">Where it lives</h3>
+      <p role="status" className="flex items-center gap-2 text-sm font-medium">
+        {busy ? <RefreshCw aria-label="Moving" className="h-4 w-4 animate-spin text-muted-foreground" /> : online ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Laptop className="h-4 w-4 text-muted-foreground" />}
+        {!status ? 'Checking…' : busy ? 'Moving…' : online ? 'Online' : 'On this Mac'}
+      </p>
+      <p className="text-xs text-muted-foreground">{online ? 'It works even when your Mac is off.' : 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.'}</p>
+      {!binding && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => { setChoice(event.target.value); if (event.target.value) void run('relay', event.target.value) }} className="w-full rounded-md border border-border bg-background p-2 text-sm">
+        <option value="">Choose a network</option>
+        {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>}
+      {!online && readiness && <div className={`space-y-1 text-xs ${tooBig ? 'text-amber-600' : 'text-muted-foreground'}`}>
+        <p>Size {sizeLabel(readiness.measurement.bytes)} of {sizeLabel(readiness.measurement.max_bytes)} · {readiness.measurement.files.toLocaleString()} of {readiness.measurement.max_files.toLocaleString()} files</p>
+        {tooBig
+          ? <>
+            <p className="font-medium">Too big to move online. Move large folders out of this Crew, or add them to .gitignore.</p>
+            {(readiness.measurement.largest_folders?.length ?? 0) > 0 && <p>Biggest folders: {readiness.measurement.largest_folders!.map(folder => `${folder.path} (${sizeLabel(folder.bytes)})`).join(', ')}</p>}
+            {(readiness.measurement.files_over_limit?.length ?? 0) > 0 && <p>Files over {sizeLabel(readiness.measurement.max_file_bytes)}: {readiness.measurement.files_over_limit!.join(', ')}</p>}
+          </>
+          : <>
+            <p>Moving takes about {Math.max(1, Math.round(readiness.estimated_seconds / 60))} {Math.round(readiness.estimated_seconds / 60) > 1 ? 'minutes' : 'minute'}. Your files, including .env and keys{(readiness.secrets ?? 0) > 0 ? `, and ${readiness.secrets} selected ${readiness.secrets === 1 ? 'secret' : 'secrets'}` : ''}, go with it.</p>
+            {(readiness.measurement.dependency_files?.length ?? 0) > 0 && <p>Packages are installed again online ({readiness.measurement.dependency_files!.join(', ')}).</p>}
+            <p>Programs and tools only on your Mac don't go with it.</p>
+          </>}
+      </div>}
+      {unfinished && !busy
+        ? <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last move didn't finish. Your work is kept.</span><Button size="sm" variant="outline" onClick={() => void run(unfinished)}>Finish</Button></div>
+        : binding && <Button size="sm" variant="outline" disabled={busy || (!online && tooBig)} onClick={() => void run(online ? 'local' : 'server')}>{online ? 'Move back to this Mac' : 'Move online'}</Button>}
+      {error && <div className="space-y-1">
+        <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept.</span></div>
+        <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Details</summary><p className="mt-1 break-all">{error}</p></details>
+      </div>}
+    </section>
+    {binding && <section aria-label="Who can use it" className="space-y-3 border-t border-border pt-4 text-sm">
+      <h3 className="font-semibold">Who can use it</h3>
+      <div className="space-y-1">
+        <p className="flex items-center gap-2 font-medium"><CheckCircle2 className="h-4 w-4 text-emerald-500" />You</p>
+        <p className="text-xs text-muted-foreground">{online ? 'From anywhere.' : 'From anywhere while your Mac is on.'}</p>
+        {link && <p className="text-xs">Website and phone: <a className="underline" href={link} target="_blank" rel="noopener noreferrer">{link.replace(/^https?:\/\//, '')}</a> ✓ Ready</p>}
       </div>
-      <Switch on={Boolean(binding)} disabled={!status || busy || !target || tooBig} label="Cloud" onChange={() => void (binding ? run('mode', 'off') : paired ? run('mode', 'continuous') : run('update'))} />
-    </div>
-    {!inCloud && readiness && <div className={`space-y-1 text-xs ${tooBig ? 'text-amber-600' : 'text-muted-foreground'}`}>
-      <p>Size {sizeLabel(readiness.measurement.bytes)} of {sizeLabel(readiness.measurement.max_bytes)} · {readiness.measurement.files.toLocaleString()} of {readiness.measurement.max_files.toLocaleString()} files</p>
-      {tooBig
-        ? <>
-          <p className="font-medium">Too big to work with your Mac off. Move large folders out of this Crew, or add them to .gitignore.</p>
-          {(readiness.measurement.largest_folders?.length ?? 0) > 0 && <p>Biggest folders: {readiness.measurement.largest_folders!.map(folder => `${folder.path} (${sizeLabel(folder.bytes)})`).join(', ')}</p>}
-          {(readiness.measurement.files_over_limit?.length ?? 0) > 0 && <p>Files over {sizeLabel(readiness.measurement.max_file_bytes)}: {readiness.measurement.files_over_limit!.join(', ')}</p>}
-        </>
-        : <>
-          <p>First upload about {Math.max(1, Math.round(readiness.estimated_seconds / 60))} {Math.round(readiness.estimated_seconds / 60) > 1 ? 'minutes' : 'minute'}, in the background.</p>
-          <p>Works with your Mac off: your files, including .env and keys{(readiness.secrets ?? 0) > 0 ? `, and ${readiness.secrets} selected ${readiness.secrets === 1 ? 'secret' : 'secrets'}` : ''}.</p>
-          {(readiness.connections?.length ?? 0) > 0 && <p>Checked on the server when you turn this on: {readiness.connections!.map(item => item.name).join(', ')}.</p>}
-          {(readiness.measurement.dependency_files?.length ?? 0) > 0 && <p>Packages are installed again on the server ({readiness.measurement.dependency_files!.join(', ')}).</p>}
-          <p>Programs and tools only on your Mac don't run there.</p>
-        </>}
-    </div>}
-    {!paired && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => { setChoice(event.target.value); if (event.target.value) void run('relay', undefined, event.target.value) }} className="w-full rounded-md border border-border bg-background p-2 text-sm">
-      <option value="">Choose a network</option>
-      {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-    </select>}
-        {binding?.pending_action && !busy && <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last update was interrupted.</span><Button size="sm" variant="outline" onClick={() => void run(binding.pending_action!)}>Finish</Button></div>}
-    {problem && !binding?.pending_action && !syncing && <div className="space-y-1">
-      <div className="flex items-center gap-2 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last update didn’t finish. Your work is kept.</span>{binding && <Button size="sm" variant="outline" onClick={() => void run('update')}>Try again</Button>}</div>
-      <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Details</summary><p className="mt-1 break-all">{problem}</p></details>
-    </div>}
-    {binding && cloudUses && (cloudUses.apps.length + cloudUses.secrets.length + cloudUses.accounts.length > 0) && <div className="space-y-1 border-t border-border pt-3 text-xs">
-      <p className="font-medium">In the cloud this Crew uses</p>
-      {cloudUses.apps.length > 0 && <p><span className="text-muted-foreground">Apps: </span>{cloudUses.apps.map(app => app.name).join(', ')}</p>}
-      {cloudUses.secrets.length > 0 && <p><span className="text-muted-foreground">Secrets: </span>{cloudUses.secrets.join(', ')}</p>}
-      {cloudUses.accounts.length > 0 && <p><span className="text-muted-foreground">Accounts: </span>{cloudUses.accounts.map(account => `${account.kind === 'google' ? 'Google' : 'Slack'} · ${account.name}`).join(', ')}</p>}
-      <p className="text-muted-foreground">They run on the server with its sign-ins. Secret values stay there.</p>
-    </div>}
-    {binding?.peer_server && <a className="inline-block text-xs underline" href={`${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}`} target="_blank" rel="noopener noreferrer">{network ? `Open on ${network}` : 'Open on the website'}</a>}
-  </section>
+      <div className="space-y-1">
+        <p className="font-medium">People</p>
+        {online
+          ? <><p className="text-xs text-muted-foreground">Choose who can use it on its page online.</p>{link && <Button size="sm" variant="outline" onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>}</>
+          : sharing
+            ? <div className="space-y-2 rounded-md border border-border p-3 text-xs">
+              <p>So people can use it any time, even when your Mac is off, it moves online first. Nothing runs on your Mac for them.</p>
+              <div className="flex gap-2"><Button size="sm" disabled={busy || tooBig} onClick={() => void moveAndShare()}>Move and share</Button><Button size="sm" variant="outline" onClick={() => setSharing(false)}>Cancel</Button></div>
+            </div>
+            : <><p className="text-xs text-muted-foreground">Nobody else yet.</p><Button size="sm" variant="outline" disabled={busy} onClick={() => setSharing(true)}>Share…</Button></>}
+      </div>
+    </section>}
+  </div>
 }
 
 function LaptopCard({ sessionId }: { sessionId?: string }) {
