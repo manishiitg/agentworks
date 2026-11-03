@@ -77,11 +77,13 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
 function AccessPage({ projectId, sessionId, workspacePath, tabId, canEdit, onAsk, laptopForRun }: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown>; laptopForRun: ReactNode }) {
   const { livesOnMac } = useMacCrew(projectId, 15000)
   const heading = (text: string) => <h3 className="mb-2 text-xs font-medium text-muted-foreground">{text}</h3>
+  // Move online takes the whole page while it is open (owner, 3 Nov).
+  const [moveScreen, setMoveScreen] = useState(false)
   return <div className="max-w-2xl space-y-6">
     <section aria-label="Where it lives">
-      {canEdit ? <YourComputerPanel projectId={projectId} sessionId={sessionId} canEdit={canEdit} /> : laptopForRun}
+      {canEdit ? <YourComputerPanel projectId={projectId} sessionId={sessionId} canEdit={canEdit} onFullScreen={setMoveScreen} /> : laptopForRun}
     </section>
     {/* A Crew on this Mac shows Who can use it inside its Where it lives card. */}
-    {!livesOnMac && <section aria-label="Who can use it">{heading('Who can use it')}<ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
+    {!livesOnMac && !moveScreen && <section aria-label="Who can use it">{heading('Who can use it')}<ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
   </div>
 }
