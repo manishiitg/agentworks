@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -13,7 +13,7 @@ import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
-import { useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
+import { useCrewLivesOnMac, useMacSharedTabs, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -114,6 +114,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const placeWord = place === 'mac' ? 'On your Mac' : place === 'mac_off' ? 'Mac off' : place === 'moving' ? 'Moving online' : ''
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
+  // Which agents others can message, for the menu's "Shared" mark (a Crew on this Mac).
+  const sharedTabs = useMacSharedTabs(placeProject, moreOpen && livesOnMacHere(place))
+  const sharedHere = (tab: ChatTab) => tab.tabId === canonicalTabId ? sharedTabs.includes('main') : sharedTabs.some(id => sideChatKey(tab)?.endsWith(`:chat:${id}`))
+  const [actionsFor, setActionsFor] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
   const canReorderInMenu = tabs.length > 5
   useEffect(() => { if (!moreOpen || !canReorderInMenu) setReordering(false) }, [moreOpen, canReorderInMenu])
@@ -328,17 +332,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
             </> : <ChevronDown className={`h-3.5 w-3.5 ${arrowTone}`} aria-hidden="true" />}
           </button>
           {moreOpen && createPortal(
-            <div ref={menuRef} style={menuPosition} className="fixed z-[100] flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-2 pb-2 pt-1">
-                <h2 className="text-xs font-semibold">Agents & activity</h2>
-                {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}
+            <div ref={menuRef} style={menuPosition} className="fixed z-[100] flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-2xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
+              <div className="flex shrink-0 items-center gap-3 px-2.5 pb-2 pt-1.5">
+                <h2 className="text-sm font-semibold">Agents</h2>
+                <span className="ml-auto flex items-center gap-2"><CrewPlaceBadge place={place} />
+                {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}</span>
               </div>
               {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
-              {place && <div className="shrink-0 space-y-0.5 border-b border-border px-2 py-2 text-xs">
-                <p className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Where it lives</span><CrewPlaceBadge place={place} /></p>
-                {livesOnMac && <p className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Who can use it</span><span>Only you</span></p>}
-                {livesOnMac && <p className="text-[11px] text-muted-foreground">Its files, tools and settings are on your Mac.</p>}
-              </div>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
               {tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
@@ -354,9 +354,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                   onDragOver={event => overTab(event, key || listed?.[0]?.conversation_key)}
                   onDrop={event => dropTab(event, key || listed?.[0]?.conversation_key)}
                   onDragEnd={endDrag}
-                  className={`group flex min-h-10 items-center gap-1 rounded-lg px-1 ${tab.tabId === activeTabId ? 'bg-muted/70' : 'hover:bg-muted/50'} ${dropKey === key && draggingKey !== key ? 'ring-1 ring-inset ring-primary' : ''}`}
+                  className={`group flex min-h-11 items-center gap-1 rounded-xl px-1.5 ${tab.tabId === activeTabId ? 'bg-muted/70' : 'hover:bg-muted/50'} ${dropKey === key && draggingKey !== key ? 'ring-1 ring-inset ring-primary' : ''}`}
                 >
-                  {reordering && key ? <GripVertical aria-hidden="true" className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" /> : <span className="flex w-4 shrink-0 justify-center">{tab.tabId === activeTabId && <Check aria-hidden="true" className="h-3.5 w-3.5 text-primary" />}</span>}
+                  {reordering && key ? <GripVertical aria-hidden="true" className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" /> : <span className="flex w-4 shrink-0 justify-center"><AgentMenuActivity tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} /></span>}
                   {renaming === tab.tabId ? <input
                     autoFocus
                     aria-label={`New name for ${label}`}
@@ -374,13 +374,18 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                     title={[label, tab.metadata?.agentProfileTabOwnerName].filter(Boolean).join(' · ')}
                     className={`min-w-0 flex-1 rounded py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-foreground/85'}`}
                   >
-                    <span className="flex min-w-0 items-center gap-2"><AgentMenuActivity tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} /><span className="truncate">{label}</span>{phone && <AgentMenuStateWord tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} />}</span>
-                    {!isAgentTab(tab) && <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>}
+                    <span className="flex min-w-0 items-center gap-2"><span className="truncate text-[13px]">{label}</span>{sharedHere(tab) && <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary">Shared</span>}{phone && <AgentMenuStateWord tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} />}</span>
+                    {!isAgentTab(tab) ? <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>
+                      : purposeOf(tab) ? <span className="block truncate text-[11px] font-normal text-muted-foreground">{purposeOf(tab)}</span> : null}
                   </button>}
                   {reordering && key ? <div className="flex shrink-0 items-center">
                     <button type="button" aria-label={`Move ${label} earlier`} disabled={position <= 0} onClick={() => { const target = ownedListed[position - 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
                     <button type="button" aria-label={`Move ${label} later`} disabled={position < 0 || position === ownedListed.length - 1} onClick={() => { const target = ownedListed[position + 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
                   </div> : <>
+                  {/* Actions show on hover, or after ⋯ (owner, 3 Nov mockup): the rows stay quiet. */}
+                  {renaming !== tab.tabId && <button type="button" aria-label={`More for ${label}`} aria-expanded={actionsFor === tab.tabId} onClick={() => setActionsFor(actionsFor === tab.tabId ? null : tab.tabId)} className={`h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted ${actionsFor === tab.tabId ? 'hidden' : 'inline-flex group-hover:hidden group-focus-within:hidden'}`}><MoreHorizontal className="h-3.5 w-3.5" /></button>}
+                  <span className={`shrink-0 items-center ${actionsFor === tab.tabId ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'}`}>
+                  {purposeOf(tab) !== undefined && renaming !== tab.tabId && <button type="button" aria-label={`Change ${label}'s purpose`} title="Change purpose" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setMoreOpen(false); fillAgentPurposeDraft(tab.tabId) }}><Info className="h-3.5 w-3.5" /></button>}
                   {key && renaming !== tab.tabId && <button type="button" aria-label={`Rename ${label}`} title="Rename" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setRenameDraft(sideChatName(tab)); setRenaming(tab.tabId) }}><Pencil className="h-3.5 w-3.5" /></button>}
                   {pinKey && <button type="button" aria-pressed={sideChatPinned(tab)} aria-label={sideChatPinned(tab) ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={sideChatPinned(tab) ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring ${sideChatPinned(tab) ? 'text-foreground' : 'text-muted-foreground'}`} onClick={() => { void pinSideChat(pinKey, !sideChatPinned(tab)) }}>{sideChatPinned(tab) ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
                   {tab.tabId !== canonicalTabId && canControl(tab) && (
@@ -394,12 +399,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                       <X className="h-3 w-3" />
                     </button>
                   )}
+                  </span>
                   </>}
                 </div>
               })}
               </div>
-              {phone && sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
-                className="mt-1 flex min-h-11 shrink-0 items-center gap-2 border-t border-border px-2 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New tab</button>}
+              {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
+                className="mt-1 flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-2.5 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New agent</button>}
             </div>, document.body
           )}
         </div>
@@ -430,6 +436,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 const PHONE_PLACE: Record<CloudState, string> = { mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */
+const livesOnMacHere = (place?: CloudState) => place === 'mac' || place === 'mac_off' || place === 'offline' || place === 'moving'
+
 function CrewPlaceBadge({ place }: { place?: CloudState }) {
   if (!place) return null
   const dot = place === 'mac_off' || place === 'offline' ? 'bg-muted-foreground' : place === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
