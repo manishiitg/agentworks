@@ -1126,6 +1126,11 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		}
 		reqMap["pin_run_mode"] = runMode
 		reqMap["triggered_by"] = "agent_message"
+		// Another person's message is its own turn, never steered into a running one: each sender reads back only
+		// their own turns (PLAT-856-509).
+		if source.UserID != dest.UserID {
+			reqMap["delivery_mode"] = "queue"
+		}
 	}
 	// Bind the receiving address before its turn: it can explicitly reply from
 	// that trusted session while the delivery operation is still running.
