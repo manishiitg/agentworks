@@ -982,6 +982,7 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 		tool.Description = skills.WorkspacePanelToolGuidance(tool.Name, tool.Description, w.definition.Skills)
 	}
 	runtime := platformtools.BridgeRuntime(projected, w.runtime)
+	logPromptSize(w.config.SessionID, string(w.config.Provider), w.definition)
 	w.logger.Info("Finalized native tool bridge catalog",
 		loggerv2.String("session_id", w.config.SessionID),
 		loggerv2.Int("direct_tool_count", len(projected)),
