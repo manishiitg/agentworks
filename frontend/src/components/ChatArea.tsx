@@ -3846,8 +3846,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         </div>
       </div>
 
-      {activeTab?.metadata?.agentProfileChatLocation === 'mac' && <p className="px-4 py-2 text-xs text-muted-foreground" role="status">Connected to your Mac · Same agent and conversation. Keep AgentWorks open on your Mac.</p>}
-      <ChatLinkStatus sessionId={activeSessionId ?? undefined} tabId={activeTab?.tabId} />
+      <ChatLinkStatus sessionId={activeSessionId ?? undefined} tabId={activeTab?.tabId} macProjectId={activeTab?.metadata?.agentProfileChatLocation === 'mac' ? activeTab?.metadata?.agentProfileProjectId : undefined} />
       {/* Input Area - completely isolated from event updates. AgentWorks keeps
           this composer on its one persistent Chat; Workshop history is rendered
           outside ChatArea and therefore never exposes a composer. */}

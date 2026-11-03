@@ -14,6 +14,7 @@ import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
+import { useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -301,7 +302,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
           >
             {phone && activeTab ? <>
               <AgentMenuActivity tabId={activeTab.tabId} workspaceActivity={activeTab.tabId === canonicalTabId ? projectActivity : undefined} />
-              <span className="truncate">{tabLabel(activeTab)}</span>
+              <PhoneCrewTitle name={projectName} tabName={activeTab.tabId === canonicalTabId ? '' : tabLabel(activeTab)} projectId={activeTab.metadata?.agentProfileId === 'work' ? activeTab.metadata?.agentProfileProjectId : undefined} />
               <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${moreOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
             </> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
@@ -421,4 +422,16 @@ function CopyDebugInfo({ tab }: { tab: ChatTab }) {
   return <button type="button" onClick={() => void copy()} className="mt-1 flex min-h-9 shrink-0 items-center gap-2 border-t border-border px-2 text-xs text-muted-foreground hover:text-foreground">
     {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}{copied ? 'Copied' : 'Copy debug info'}
   </button>
+}
+
+const PHONE_PLACE: Record<CloudState, string> = { mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online' }
+
+/** The phone chat title (owner, 3 Nov): the Crew's name and where it lives, as the server reports it. */
+function PhoneCrewTitle({ name, tabName, projectId }: { name: string; tabName: string; projectId?: string }) {
+  const place = useYourComputerSummary(Boolean(projectId), projectId)
+  const dot = place === 'mac_off' ? 'bg-muted-foreground' : place === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
+  return <span className="flex min-w-0 items-center gap-1.5 truncate">
+    <span className="truncate font-medium text-foreground">{name}{tabName ? ` · ${tabName}` : ''}</span>
+    {place && <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />{PHONE_PLACE[place]}</span>}
+  </span>
 }
