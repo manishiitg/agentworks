@@ -1838,11 +1838,14 @@ func (s *SlackService) handleSocketModeEvent(evt socketmode.Event) {
 		innerEvent := eventsAPIEvent.InnerEvent
 		switch ev := innerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			if evt.Request != nil && slackPostedByReceivingApp(evt.Request.Payload) {
+			if evt.Request != nil && slackPostedByReceivingApp(evt.Request.Payload, s.botUserID) {
 				return
 			}
 			s.handleSocketModeMessage(ev)
 		case *slackevents.AppMentionEvent:
+			if evt.Request != nil && slackPostedByReceivingApp(evt.Request.Payload, s.botUserID) {
+				return
+			}
 			s.handleAppMentionEvent(ev, slackMentionFiles(evt))
 		default:
 		}
@@ -2489,15 +2492,42 @@ func slackMentionFiles(evt socketmode.Event) *slack.Msg {
 
 // slackPostedByReceivingApp reports a message this app posted, as its bot or
 // as a person through the app's personal Slack sign-in (app_id set, no
-// bot_id). Such a message is never input to the same app.
-func slackPostedByReceivingApp(payload json.RawMessage) bool {
+// bot_id). Such a message is never input to the same app. A file shared that
+// way can arrive without app_id; Slack still adds its "Sent using @<bot>"
+// line naming this app's bot user, so that marks it too.
+func slackPostedByReceivingApp(payload json.RawMessage, botUserID string) bool {
 	var envelope struct {
 		APIAppID string `json:"api_app_id"`
 		Event    struct {
-			AppID string `json:"app_id"`
+			AppID  string `json:"app_id"`
+			Blocks []struct {
+				Type     string `json:"type"`
+				Elements []struct {
+					Text string `json:"text"`
+				} `json:"elements"`
+			} `json:"blocks"`
 		} `json:"event"`
 	}
-	return json.Unmarshal(payload, &envelope) == nil && envelope.Event.AppID != "" && envelope.Event.AppID == envelope.APIAppID
+	if json.Unmarshal(payload, &envelope) != nil {
+		return false
+	}
+	if envelope.Event.AppID != "" && envelope.Event.AppID == envelope.APIAppID {
+		return true
+	}
+	if botUserID == "" {
+		return false
+	}
+	for _, block := range envelope.Event.Blocks {
+		if block.Type != "context" {
+			continue
+		}
+		for _, element := range block.Elements {
+			if strings.HasPrefix(element.Text, "*Sent using*") && strings.Contains(element.Text, "<@"+botUserID+">") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // handleAppMentionEvent handles @mention events. raw carries the mention's
