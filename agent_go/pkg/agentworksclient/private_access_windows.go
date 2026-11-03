@@ -98,3 +98,6 @@ func SecurePrivateFile(f *os.File) error {
 }
 
 func privateConfigAccessHint() string { return "" }
+
+// slotGroupDir: Windows has no slot groups.
+func slotGroupDir(os.FileInfo) bool { return false }
