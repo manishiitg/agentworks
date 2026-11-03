@@ -1,14 +1,11 @@
-## Workflow UI control
+## Dashboard pane
 
-Use `list_ui_capabilities`, `get_ui_state` and `perform_ui_action` only in a
-supported interactive Goal or Flow chat that exposes them. Scheduled, bot
-and background turns must not manipulate the foreground workspace.
-Use the calling product's live contract; a skill never adds a view or access.
-
-`perform_ui_action(view, action="open")` requests a destination; `refresh`
-reloads it. Only an `applied` receipt confirms the visible shell acknowledged
-the action. It does not prove every data request completed or the user read it.
-Prefer one relevant open per reply and respect a view the person selected.
+In an interactive Goal or Flow chat that offers them, `perform_ui_action(view="report",
+action="open")` shows the Dashboard in the side pane and `refresh` reloads it; `get_ui_state`
+reports what the pane shows. The Dashboard is the only view the agent opens (a `report` target is
+a real dashboard tab label, when offered). Only an `applied` receipt means it opened. For every
+other destination below, tell the person where it is in the project menu. Scheduled, bot and
+background turns must not change the person's pane.
 
 ## Menu and panel guidance
 
@@ -23,7 +20,9 @@ Ask AI prepares a contextual question in the current project's chat. There
 are no Help popups or tours. Explain directly and load the relevant attached
 `panel-*` skill for an action; opening a panel is not completing that action.
 
-## Goal destinations
+## Goal menu destinations
+
+Where things are, for guiding the person through the menu (the agent opens only `report`).
 
 | View ID | Current content |
 |---|---|
@@ -49,37 +48,11 @@ shared panel skill for other tasks. Inspect the actual question before answering
 a decision. Discussion alone does not select an option; saving an answer and
 implementing the chosen change are separate results.
 
-## Targets
-
-These describe destinations, not an exhaustive allowlist. Use a target only
-when `list_ui_capabilities` advertises it for this chat and product.
-
-| View | Target meaning |
-|---|---|
-| `report` | A real dashboard tab label, when offered. |
-| `flow` | A saved Goal step ID; Flow graph/code/run targets use the Flow contract. |
-| `files` | Safe workflow-relative file path. |
-| `knowledge` | `knowledgebase` or `database`; these are separate menu items. |
-| `workshop` | `chats`, `schedules`, `conditions` (Watchers), `triggers` (Webhooks), `functions`, or supported `email`. |
-| `goals` | Goal purpose and metrics. Decisions use the existing Decisions destination. |
-| `mcp` | `vault`, `skills`, `brain`, `folders`, `slack`, `whatsapp`, `cli` (MCP access), `share` (Access), or `agentbridge`, when offered. |
-| `identity` | Advertised General, Models or Upgrades section. |
-| `notify` expand | Advertised run-summary section. |
-
-The website can offer a destination before a running server advertises its
-UI target. Do not invent support or retry a rejected target under another name.
-Explain the concrete limitation and use the project's visible menu if useful.
-Vault holds app/Google/Slack account selections, secret names and computers;
-MCP access connects an external AI app to AgentWorks. Read `panel-access` and
-`panel-access` for those distinct jobs. Do not send people to retired
-Connected/Available/Secrets tab rows merely because an older target still exists.
-
 ## Flows and boundaries
 
 Flows use `relay-builder`, `panel-plan` and `panel-runs`: a Python/DBOS
-graph, source code and versioned calls, not a Goal step plan.
-Only the Flow's advertised inventory is available. Crew navigation belongs
-to the separate `work-ui-control` skill and its own panel IDs.
+graph, source code and versioned calls, not a Goal step plan. Crew uses the
+separate `work-ui-control` skill.
 
 - Opening or refreshing a panel changes presentation only. Use the existing
   authorized management tool for configuration, files, data or execution.

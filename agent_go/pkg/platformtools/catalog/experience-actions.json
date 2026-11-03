@@ -421,14 +421,6 @@
   },
   {
     "family": "ui",
-    "name": "expand",
-    "member": "perform_ui_action__expand",
-    "description": "Use the current ui expand operation.",
-    "source": "perform_ui_action",
-    "source_action": "expand"
-  },
-  {
-    "family": "ui",
     "name": "refresh",
     "member": "perform_ui_action__refresh",
     "description": "Use the current ui refresh operation.",

@@ -6,80 +6,30 @@ import (
 	"testing"
 )
 
-func TestWorkUIRegistersSamePresentationToolFamilyWithWorkViews(t *testing.T) {
+// Owner, 3 Nov: the agent's UI tool shows only the Dashboard; every other panel is refused.
+func TestWorkUIRegistersDashboardOnly(t *testing.T) {
 	api := &StreamingAPI{}
 	reg := &recordingRegistrar{}
 	if err := api.registerOpenWorkWorkspaceViewTool(reg, "user-1", "work-chat", "Crew/demo", true); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
-		if _, ok := reg.tools[name]; !ok {
-			t.Fatalf("missing Work UI tool %q", name)
-		}
-	}
 	if len(reg.tools) != 3 {
-		t.Fatalf("expected exactly three Crew UI tools, got %d", len(reg.tools))
-	}
-	for _, contract := range []uiContract{uiControlContract, workUIControlContract} {
-		for _, view := range contract.Views {
-			if err := validateUIActionForContract(contract, view.ID, "refresh", ""); err != nil {
-				t.Fatalf("refresh %s/%s: %v", contract.Product, view.ID, err)
-			}
-		}
+		t.Fatalf("expected the three Crew UI tools, got %d", len(reg.tools))
 	}
 	capabilities, err := reg.tools["list_ui_capabilities"].exec(context.Background(), map[string]interface{}{})
-	if err != nil || !strings.Contains(capabilities, `"product":"work"`) || !strings.Contains(capabilities, `"id":"report"`) {
+	if err != nil || !strings.Contains(capabilities, `"id":"report"`) || strings.Count(capabilities, `"id":`) != 1 {
 		t.Fatalf("capabilities=%s err=%v", capabilities, err)
-	}
-	if !strings.Contains(capabilities, `"targets":["schedules","webhooks"]`) {
-		t.Fatalf("Crew schedule sections missing from capabilities: %s", capabilities)
-	}
-	if !strings.Contains(capabilities, `"targets":["schedules","conditions","triggers","functions","email"]`) {
-		t.Fatalf("Crew Automation center sections missing from capabilities: %s", capabilities)
-	}
-	for _, currentPanel := range []string{`"id":"memory"`, `"id":"identity"`} {
-		if !strings.Contains(capabilities, currentPanel) {
-			t.Fatalf("Crew current panel missing from capabilities: %s", currentPanel)
-		}
-	}
-	for _, workflowOnly := range []string{`"id":"flow"`, `"id":"pulse"`, `"id":"evaluation"`, `"id":"playbooks"`} {
-		if strings.Contains(capabilities, workflowOnly) {
-			t.Fatalf("Work advertised workflow-only capability %s: %s", workflowOnly, capabilities)
-		}
 	}
 	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "report", "action": "open"}); err != nil || !strings.Contains(out, "browser_disconnected") {
 		t.Fatalf("report open=%s err=%v", out, err)
 	}
-	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "memory", "action": "open"}); err != nil || !strings.Contains(out, "browser_disconnected") {
-		t.Fatalf("memory open=%s err=%v", out, err)
-	}
-	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "schedules", "action": "open", "target": "webhooks"}); err != nil || !strings.Contains(out, "browser_disconnected") {
-		t.Fatalf("webhooks open=%s err=%v", out, err)
-	}
-	for _, target := range []string{"slack", "share", "agentbridge"} {
-		if !strings.Contains(capabilities, `"`+target+`"`) {
-			t.Fatalf("Crew panel %s missing from advertised capabilities: %s", target, capabilities)
-		}
-		if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "mcp", "action": "open", "target": target}); err != nil || !strings.Contains(out, "browser_disconnected") {
-			t.Fatalf("panel %s open=%s err=%v", target, out, err)
+	for _, view := range []string{"memory", "files", "mcp", "flow"} {
+		if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": view, "action": "open"}); err != nil || !strings.Contains(out, "unsupported_view") {
+			t.Fatalf("%s open=%s err=%v", view, out, err)
 		}
 	}
-	if strings.Contains(capabilities, `"share-owners"`) {
-		t.Fatalf("Crew advertised the retired separate Owners panel: %s", capabilities)
-	}
-	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "mcp", "action": "open", "target": "share-owners"}); err != nil || !strings.Contains(out, "unsupported_target") {
-		t.Fatalf("retired Owners target was accepted: %s err=%v", out, err)
-	}
-	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "flow", "action": "open"}); err != nil || !strings.Contains(out, "unsupported_view") {
-		t.Fatalf("workflow-only view was accepted: %s err=%v", out, err)
-	}
-}
-
-func TestWorkUIContractCoversCurrentCrewPanels(t *testing.T) {
-	for _, view := range []string{"report", "memory", "database", "browser", "costs", "workshop", "schedules", "files", "identity", "mcp", "history"} {
-		if !validUIViewForContract(workUIControlContract, view) {
-			t.Errorf("Crew UI contract does not accept current panel %q", view)
-		}
+	if err := validateUIActionForContract(uiContractForScope("Workflow/example"), "flow", "open", ""); err == nil {
+		t.Fatal("Goal accepted a view other than the Dashboard")
 	}
 }
 
@@ -119,39 +69,5 @@ func TestWorkUIOnlyRegistersForInteractiveWorkChat(t *testing.T) {
 				t.Fatalf("allowed=%v want=%v", got, test.want)
 			}
 		})
-	}
-}
-
-func TestWorkUIVaultUsesSharedPanel(t *testing.T) {
-	for _, contract := range []uiContract{workUIControlContract} {
-		if err := validateUIActionForContract(contract, "mcp", "open", "vault"); err != nil {
-			t.Fatalf("%s Vault refused: %v", contract.Product, err)
-		}
-		if err := validateUIActionForContract(contract, "secrets", "open", ""); err == nil {
-			t.Fatalf("%s retained standalone Secrets alias", contract.Product)
-		}
-		if err := validateUIActionForContract(contract, "mcp", "open", "guessed"); err == nil {
-			t.Fatalf("%s accepted unknown Connections target", contract.Product)
-		}
-	}
-}
-
-func TestProjectUIScopeUsesSameSectionsOnServer(t *testing.T) {
-	for _, scope := range []string{"Crew/demo"} {
-		contract := uiContractForScope(scope)
-		if err := validateUIActionForContract(contract, "memory", "open", "skills"); err != nil {
-			t.Fatalf("%s refused its Skills section: %v", scope, err)
-		}
-		if err := validateUIActionForContract(contract, "memory", "open", "guessed"); err == nil {
-			t.Fatalf("%s accepted a guessed section", scope)
-		}
-	}
-	for _, scope := range []string{"Crew/demo", "Workflow/example"} {
-		if err := validateUIActionForContract(uiContractForScope(scope), "mcp", "open", "vault"); err != nil {
-			t.Fatalf("%s refused Vault: %v", scope, err)
-		}
-	}
-	if err := validateUIActionForContract(uiContractForScope("Workflow/example"), "memory", "open", "skills"); err == nil {
-		t.Fatal("Goal accepted a Crew-only view")
 	}
 }
