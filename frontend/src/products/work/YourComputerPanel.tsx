@@ -14,7 +14,10 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
-type SyncStatus = { binding: Binding | null }
+// Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
+// and, when it finished, where the Mac folder is kept.
+type MoveReport = { place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string }
+type SyncStatus = MoveReport & { binding: Binding | null }
 type Readiness = { fits: boolean; estimated_seconds: number; secrets?: number; measurement: { dependency_files?: string[]; files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
 const sizeLabel = (bytes: number) => bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : bytes >= 1 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : 'under 1 MB'
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
@@ -112,6 +115,8 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [busy, setBusy] = useState(false)
+  const [busyAction, setBusyAction] = useState('')
+  const [moved, setMoved] = useState<MoveReport | null>(null)
   const [reaching, setReaching] = useState(false)
   const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
@@ -126,7 +131,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
   }, [projectId, reload])
   const binding = status?.binding
   const online = binding?.editing === 'server'
-  const moving = busy || binding?.pending_action === 'server'
+  const moving = busyAction === 'server' || binding?.pending_action === 'server' || status?.place === 'moving'
   // Before moving online, the Mac says whether this Crew fits (the server decides the numbers).
   const [readiness, setReadiness] = useState<Readiness>()
   useEffect(() => {
@@ -142,10 +147,14 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
   const reach = (via: string) => { setAsking(false); setReaching(true); void run('relay', via).finally(() => setReaching(false)) }
   const link = binding?.peer_server ? `${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}` : ''
   const run = async (action: 'server' | 'relay' | 'offline', via = target) => {
-    setBusy(true); setError('')
-    try { await desktopRequest(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action }); return true }
+    setBusy(true); setBusyAction(action); setError('')
+    try {
+      const reply = await desktopRequest<MoveReport>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
+      if (action === 'server' && reply?.place === 'online') setMoved(reply)
+      return true
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
-    finally { setBusy(false); setReload(value => value + 1) }
+    finally { setBusy(false); setBusyAction(''); setReload(value => value + 1) }
   }
   const move = async (share: boolean) => {
     setOpen('')
@@ -165,12 +174,18 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       <div className="flex items-center justify-between gap-2.5">
         <p role="status" className="flex items-center gap-2 text-base font-semibold">
           {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
-          {!status ? 'Checking…' : moving ? 'Moving online…' : online ? 'Online' : binding ? ['On this Mac', networkName(binding.connection_id), 'Only you'].filter(Boolean).join(' · ') : 'On this Mac · Offline'}
+          {!status ? 'Checking…' : moving ? (status.bytes_total ? `Moving online… ${sizeLabel(status.bytes_done || 0)} of ${sizeLabel(status.bytes_total)}` : 'Moving online…') : online ? 'Online' : binding ? ['On this Mac', networkName(binding.connection_id), 'Only you'].filter(Boolean).join(' · ') : 'On this Mac · Offline'}
         </p>
         {binding && !online && !moving && open !== 'move' && <Button size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
       </div>
       <p className="text-[13px] text-muted-foreground">{moving ? 'You can keep chatting. It picks up where it left off if interrupted.' : online ? 'It works even when your Mac is off.' : binding ? 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.' : 'Only in this app on this Mac.'}</p>
-      {status && <p className="text-[13px] text-muted-foreground">Its schedules run here too.</p>}
+      {status && <p className="text-[13px] text-muted-foreground">{status.schedules_paused ? status.message || 'Its schedules wait until the move finishes.' : 'Its schedules run here too.'}</p>}
+      {status?.schedules_paused && !busy && <Button size="sm" variant="outline" className="mt-1" onClick={() => void move(false)}>Retry Move online</Button>}
+      {moved && online && <div className="mt-2 flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-[13px]">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+        <span className="min-w-0 flex-1 break-words">{moved.backup_path ? `Moved online. Your Mac folder is kept as ${moved.backup_path}` : 'Moved online. Your folder on this Mac is unchanged.'}</span>
+        {link && <Button size="sm" variant="outline" onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open online</Button>}
+      </div>}
       {status && !online && !moving && <label className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
         <span className="text-sm">Reach it from your phone and the web</span>
         <Switch aria-label="Reach it from your phone and the web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
