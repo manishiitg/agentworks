@@ -314,6 +314,8 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		SenderID    string `json:"sender_id"`
 		After       int    `json:"after"`
 		WaitSeconds int    `json:"wait_seconds"`
+		// Submission: read only the turn that answers this one message (an agent message's id).
+		Submission string `json:"submission"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -350,7 +352,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
 			return reply(400, map[string]string{"error": "Give a message within the chat size limit."})
 		}
-		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": call.Caller, "sender_user_id": args.SenderID, "display_content": message})
+		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": call.Caller, "sender_user_id": args.SenderID, "display_content": message, "shared_message_id": call.SubmissionID})
 		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, args.SenderID)
 		// Queued as its own turn, never steered into another sender's running turn: each sender reads only their own.
 		body, _ := json.Marshal(AgentProfileChatRequest{Message: crewMacSharedAgentText(call.Caller, message), ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"})
@@ -383,7 +385,11 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 			return reply(409, map[string]string{"error": "This agent's answers could not be read."})
 		}
 		own := []codeTurnItem{}
-		for _, item := range senderOwnTurns(items, args.SenderID) {
+		mine := senderOwnTurns(items, args.SenderID)
+		if args.Submission != "" {
+			mine = submissionTurn(mine, args.Submission)
+		}
+		for _, item := range mine {
 			if at, e := time.Parse(time.RFC3339Nano, item.At); e == nil && !since.IsZero() && !at.Before(since) {
 				own = append(own, item)
 			}
