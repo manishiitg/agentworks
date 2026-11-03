@@ -1,8 +1,12 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -54,6 +58,42 @@ func logPromptSize(sessionID, provider string, def mcpagent.AgentDefinition) {
 		}
 		top = append(top, fmt.Sprintf("%q:%d", title, s.chars))
 	}
+	dumpPrompt(sessionID, provider, def)
 	log.Printf("[PROMPT_SIZE] session=%s provider=%s instructions_chars=%d sections=%d skills=%d skill_listing_chars=%d direct_tools=%d direct_tool_chars=%d largest=[%s]",
 		sessionID, provider, len(def.Instructions), len(sections), len(def.Skills), skillChars, len(def.Tools.Direct), toolChars, strings.Join(top, " "))
+}
+
+var promptDumpName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+// dumpPrompt writes the chat's full instructions, skill listing and direct tools to
+// ~/.local/state/agentworks/prompts/<session>.md (the latest start of each chat), so the text every model step
+// re-reads can be inspected on the server. Claude Code and other CLIs add their own built-in prompt on top.
+func dumpPrompt(sessionID, provider string, def mcpagent.AgentDefinition) {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	dir := filepath.Join(home, ".local", "state", "agentworks", "prompts")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "<!-- session=%s provider=%s -->\n\n=== INSTRUCTIONS (%d chars) ===\n\n%s\n", sessionID, provider, len(def.Instructions), def.Instructions)
+	fmt.Fprintf(&b, "\n=== SKILLS (%d) ===\n\n", len(def.Skills))
+	for _, skill := range def.Skills {
+		if skill != nil {
+			fmt.Fprintf(&b, "- %s: %s\n", skill.Name, skill.Description)
+		}
+	}
+	fmt.Fprintf(&b, "\n=== DIRECT TOOLS (%d) ===\n\n", len(def.Tools.Direct))
+	for _, tool := range def.Tools.Direct {
+		schema, _ := json.Marshal(tool.InputSchema)
+		fmt.Fprintf(&b, "## %s\n%s\nschema: %s\n\n", tool.Name, tool.Description, schema)
+	}
+	path := filepath.Join(dir, promptDumpName.ReplaceAllString(sessionID, "_")+".md")
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		log.Printf("[PROMPT_SIZE] session=%s full prompt not saved: %v", sessionID, err)
+		return
+	}
+	log.Printf("[PROMPT_SIZE] session=%s full prompt saved to %s (%d bytes)", sessionID, path, b.Len())
 }
