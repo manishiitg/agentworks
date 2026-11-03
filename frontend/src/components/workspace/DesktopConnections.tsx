@@ -81,6 +81,9 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const { refresh, error: directoryError } = state
   const { recent, visit } = useWorkHistory(projects)
   const [filter, setFilter] = useState('all')
+  // Agents shared with you on the server this window shows (the local app lists none).
+  const [openAgent, setOpenAgent] = useState<SharedWithMeAgent | null>(null)
+  const sharedAgentRows = useSharedWithMe().map(agent => <SharedAgentRow key={`${agent.workspace_id}:${agent.chat_id}`} agent={agent} selected={openAgent?.chat_id === agent.chat_id} onOpen={() => setOpenAgent(agent)} />)
   useEffect(() => { if (!['all', 'crew', 'goal', 'dashboard'].includes(filter) && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   useEffect(() => {
     void refresh()
@@ -117,8 +120,9 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} workTypes />
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <div className="space-y-1"><OwnershipGroups projects={visible} render={renderProject} /></div>
+      <div className="space-y-1"><OwnershipGroups projects={visible} render={renderProject} sharedAgents={sharedAgentRows} /></div>
       {(filter === 'all' || filter === active) && children}
+      {openAgent && <SharedAgentSheet agent={openAgent} onClose={() => setOpenAgent(null)} />}
       {locations.map(connection => {
         const status = inventory[connection.id]?.status
         if (!status) return <p key={connection.id} role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading {connection.name}…</p>
