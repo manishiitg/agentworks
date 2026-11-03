@@ -136,11 +136,22 @@ func TestSlackMessageSentThroughOwnAppIsIgnored(t *testing.T) {
 	event := func(receivingApp, postingApp string) json.RawMessage {
 		return json.RawMessage(`{"api_app_id":"` + receivingApp + `","event":{"type":"message","user":"UPERSON","app_id":"` + postingApp + `","channel":"C123","thread_ts":"1.1","ts":"1.2"}}`)
 	}
-	if !slackPostedByReceivingApp(event("AOWN", "AOWN")) {
+	if !slackPostedByReceivingApp(event("AOWN", "AOWN"), "UBOT") {
 		t.Fatal("the app answered a message it sent itself")
 	}
-	if slackPostedByReceivingApp(event("AOTHER", "AOWN")) || slackPostedByReceivingApp(event("AOWN", "")) {
+	if slackPostedByReceivingApp(event("AOTHER", "AOWN"), "UBOT") || slackPostedByReceivingApp(event("AOWN", ""), "UBOT") {
 		t.Fatal("a message from a person or another app was dropped")
+	}
+	// A file shared through the personal sign-in arrived with no app_id, only Slack's
+	// "Sent using @bot" line, and the app answered it with a picker.
+	shared := func(botUser string) json.RawMessage {
+		return json.RawMessage(`{"api_app_id":"AOWN","event":{"type":"message","subtype":"file_share","user":"UPERSON","channel":"C123","thread_ts":"1.1","ts":"1.3","blocks":[{"type":"context","elements":[{"type":"mrkdwn","text":"*Sent using* <@` + botUser + `>"}]}]}}`)
+	}
+	if !slackPostedByReceivingApp(shared("UBOT"), "UBOT") {
+		t.Fatal("the app answered a file it shared as the person")
+	}
+	if slackPostedByReceivingApp(shared("UOTHERBOT"), "UBOT") {
+		t.Fatal("a message sent through another app was dropped")
 	}
 }
 
