@@ -72,7 +72,7 @@ func crewShareAgents(ctx context.Context, caller, root string, includeUnselected
 		// Only named project agents; automation/caller conversations are not
 		// silently published by selecting their parent project.
 		short, side := strings.CutPrefix(key, manifest.ID+codeChatSideMarker)
-		if key != manifest.ID && (!side || short == "" || strings.Contains(short, ":")) {
+		if key != manifest.ID && (!side || short == "" || strings.Contains(short, ":") || hiddenFromTabStrip(key)) {
 			continue
 		}
 		shared := containsID(selected, key)

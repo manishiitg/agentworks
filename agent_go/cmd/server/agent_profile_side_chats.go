@@ -170,7 +170,7 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 	for _, tab := range owned {
 		record := tab.Record
 		// Dashboard user-view chats belong to that page, not the Builder tab strip.
-		if isUserViewConversationKey(record.ConversationKey) {
+		if hiddenFromTabStrip(record.ConversationKey) {
 			continue
 		}
 		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, userID))

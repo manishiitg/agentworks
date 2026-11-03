@@ -256,7 +256,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   </div>
 }
 
-type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string }
+type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string; can_change?: boolean }
 type AgentRow = { tab: string; name: string; purpose: string }
 type Person = { id: string; username: string; email?: string }
 
@@ -310,7 +310,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   const save = async (next: SharedAgent[]) => {
     setShared(next)
     const ready = next.filter(agent => purposeOf(agent.tab) && (agent.audience === 'everyone' || agent.people?.length))
-      .map(({ tab, audience, people }) => ({ tab, audience, people }))
+      .map(({ tab, audience, people, can_change }) => ({ tab, audience, people, can_change: Boolean(can_change) }))
     setBusy(true); setError('')
     try {
       const data = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'share_agents', agents: ready })
@@ -365,6 +365,8 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
               {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{people.length ? 'Nobody found' : 'No people yet'}</p>}
             </div>
           </div>}
+          <label className="flex items-center gap-2 text-xs"><Switch aria-label={`${row.name} only answers them`} checked={!agent.can_change} disabled={busy} onCheckedChange={on => update(row.tab, { can_change: !on })} />Answers only</label>
+          <p className="text-[11px] text-muted-foreground">They use it as you set it up.{agent.can_change ? ' It can make changes for them, and acts with your apps and logins for them.' : ' It only answers them; it won\'t make changes.'}</p>
           <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">Reach it from
             {([[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT or Claude'], [Hash, 'Slack']] as [LucideIcon, string][]).map(([Icon, label]) => <Icon key={label} role="img" aria-label={label} className="h-3.5 w-3.5"><title>{label}</title></Icon>)}
             their apps ·<Terminal role="img" aria-label="Claude Code, Codex and other agents" className="h-3.5 w-3.5"><title>Claude Code, Codex and other agents</title></Terminal>their AI agents</p>

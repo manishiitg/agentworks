@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -439,6 +441,33 @@ const userViewChatPrefix = "asuser-"
 func isUserViewConversationKey(key string) bool {
 	_, chatID, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
 	return ok && strings.HasPrefix(chatID, userViewChatPrefix)
+}
+
+// hiddenFromTabStrip: chats that belong to a page or to one other person, never a tab of the owner's strip.
+func hiddenFromTabStrip(key string) bool {
+	_, chatID, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
+	return ok && (strings.HasPrefix(chatID, userViewChatPrefix) || strings.HasPrefix(chatID, sharedThreadChatPrefix))
+}
+
+// sharedThreadChatPrefix marks a shared agent's own thread with one other person: kept out of the owner's tab strip
+// and agent lists like a user-view chat (PLAT-856-509).
+const sharedThreadChatPrefix = "with-"
+
+// sharedThreadKey is the conversation of one person with one shared agent of this Crew: the same agent, its own chat.
+func sharedThreadKey(project, tab, sender string) string {
+	sum := sha256.Sum256([]byte(tab + "\x00" + sender))
+	return project + codeChatSideMarker + sharedThreadChatPrefix + tab + "-" + hex.EncodeToString(sum[:6])
+}
+
+// sharedAgentOwnerOnlyTools are refused in someone else's turn with a shared agent: they change sharing, settings,
+// access, secrets, connections or the Crew itself, which stay the owner's.
+var sharedAgentOwnerOnlyTools = map[string]bool{
+	"share": true, "crew_owners": true, "manage_crew_sync": true, "manage_laptop_access": true, "settings": true,
+	"manage_my_vaults": true, "list_secrets": true, "set_workflow_secret": true, "delete_workflow_secret": true,
+	"update_project_global_secret_selection": true, "install_mcp_server": true, "add_mcp_server": true,
+	"edit_mcp_server": true, "remove_mcp_server": true, "update_project_mcp_server_selection": true,
+	"manage_google_account": true, "manage_slack_account": true, "set_my_agent_identity": true,
+	"open_project_chat": true, "perform_ui_action": true,
 }
 
 // applyUserViewChat makes a turn in the owner's user-view chat a Run-mode ask: read-only, the owner's published
