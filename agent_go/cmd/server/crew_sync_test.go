@@ -69,6 +69,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			files.GET("/api/documents/*filepath", wh.GetDocument)
 			files.GET("/api/documents", wh.ListDocuments)
 			files.POST("/api/folders", wh.CreateFolder)
+			files.DELETE("/api/folders/*folderpath", wh.DeleteFolder)
 			workspace := httptest.NewServer(files)
 			defer workspace.Close()
 			t.Setenv("WORKSPACE_API_URL", workspace.URL)
@@ -217,6 +218,21 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			if w := call("server", "other", true); w.Code < 400 {
 				t.Fatal("another owner moved a private Crew")
+			}
+			for _, kind := range []string{"bound-agent", "product"} {
+				claims := crewWriter("owner")
+				if kind == "bound-agent" {
+					claims.AccessToken.BoundAgentID = "native-agent"
+				} else {
+					claims.AccessToken.ProjectKind = "crew"
+					claims.AccessToken.ProjectIdentity = "local-id"
+				}
+				request := httptest.NewRequest("POST", "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, claims))
+				response := httptest.NewRecorder()
+				api.pairedCrewSyncAction(response, request, "local-id", "server", "")
+				if response.Code != 403 {
+					t.Fatalf("%s token received saved-login authority: %d %s", kind, response.Code, response.Body.String())
+				}
 			}
 			main, err := api.crewHandoffMain(ctx, owner, local.ID)
 			if err != nil {
@@ -457,6 +473,19 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			}
 			checkCrewMuseNativeHandoff(t, api, ctx, owner, serverRoots, onlineMain, history)
 			// Delete cleanup must match one Crew exactly, retaining a similarly named Crew.
+			// PLAT-856-509: a retried relay create (lost reply) returns the same empty twin; it lives on the Mac until moved online.
+			twin, err := api.crewSync(ctx, owner, "", crewSyncRequest{Action: "create", Mode: "relay", PairID: "relay-pair", SourceID: "mac-crew", Name: "Mac Crew"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			again, err := api.crewSync(ctx, owner, "", crewSyncRequest{Action: "create", Mode: "relay", PairID: "retry-pair", SourceID: "mac-crew", Name: "Mac Crew"})
+			if err != nil || again.ProjectID != twin.ProjectID || again.Binding == nil || again.Binding.PairID != "relay-pair" || again.Binding.Mode != "relay" {
+				t.Fatalf("a retried relay create made a second twin: %+v %v", again, err)
+			}
+			if !crewRelayTwin(twin.ProjectID) {
+				t.Fatal("a new twin is not on the Mac")
+			}
+			checkCrewReachOff(t, api, owner, twin.ProjectID, "relay-pair", serverRoots.ID, binding.PairID)
 			otherPath, _ := crewSyncManifestPath(serverRoots.ID + "-other")
 			write(filepath.Dir(otherPath), filepath.Base(otherPath), "keep")
 			if err = removeCrewSyncState(serverRoots.ID); err != nil {
