@@ -272,7 +272,8 @@ function MacSharedAgents({ projectId, connection }: { projectId: string; connect
     void viaConnection<{ shared_agents?: boolean }>(connection, '/api/crew-sync-capabilities').then(caps => { if (live) setSupported(Boolean(caps.shared_agents)) }).catch(() => {})
     void viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(data => { if (live) setPeople(data.users || []) }).catch(() => {})
     void desktopRequest<{ tabs: { tab: string; name: string }[]; agents: SharedAgent[] }>(endpoint, 'POST', { action: 'agents' })
-      .then(data => { if (!live) return; setTabs(data.tabs || []); setShared(data.agents || []) }).catch(() => { if (live) setTabs([]) })
+      .then(data => { if (!live) return; setTabs(data.tabs || []); setShared(data.agents || []) })
+      .catch(cause => { if (live) { setTabs([]); setError(cause instanceof Error ? cause.message : "This Crew's agents could not be read.") } })
     return () => { live = false }
   }, [connection, projectId, endpoint])
   if (!supported || !tabs) return null
