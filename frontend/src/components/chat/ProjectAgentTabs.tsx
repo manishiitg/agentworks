@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -8,7 +8,6 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { chatTabArrowTargetAllowed, workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
 import { workSideChatDisplayName } from '../../products/work/workProjectPresentation'
 import { markFeatureUsed } from '../../utils/featureUsage'
-import { copyToClipboard } from '../../utils/textUtils'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName, ownerShortName } from './chatTabName'
@@ -100,6 +99,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const livesOnMac = useCrewLivesOnMac(placeProject)
   // A Crew on its owner's Mac shows the Mac's own tabs while the Mac is on; with it off, Main only (PLAT-856-509).
   const sideChatsHere = allowSideChats && place !== 'mac_off'
+  // A Crew on its owner's Mac shows where it lives only as the colour of the agents arrow (owner, 3 Nov): green with the
+  // Mac on, grey with it off, amber while moving. Online Crews keep a plain arrow.
+  const arrowTone = place === 'mac' ? 'text-emerald-500' : place === 'mac_off' ? 'text-muted-foreground/50' : place === 'moving' ? 'text-amber-500' : ''
+  const placeWord = place === 'mac' ? 'On your Mac' : place === 'mac_off' ? 'Mac off' : place === 'moving' ? 'Moving online' : ''
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
   const [reordering, setReordering] = useState(false)
@@ -266,7 +269,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {!phone && place && <button type="button" onClick={() => setMoreOpen(open => !open)} className="rounded px-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Where it lives and agents"><CrewPlaceBadge place={place} /></button>}
       <div ref={stripRef} className="hidden min-w-[84px] items-center gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
@@ -303,16 +305,16 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
             onClick={() => setMoreOpen(open => !open)}
             aria-expanded={moreOpen}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-full max-md:justify-center max-md:gap-2 max-md:px-2 max-md:text-sm max-md:font-semibold max-md:text-foreground"
-            title="Switch agent"
-            aria-label={`Agents: switch, reorder or close (${agentCount})`}
+            title={placeWord ? `Switch agent · ${placeWord}` : 'Switch agent'}
+            aria-label={`Agents: switch, reorder or close (${agentCount})${placeWord ? ` · ${placeWord}` : ''}`}
             aria-haspopup="dialog"
             data-testid="work-more-tabs"
           >
             {phone && activeTab ? <>
               <AgentMenuActivity tabId={activeTab.tabId} workspaceActivity={activeTab.tabId === canonicalTabId ? projectActivity : undefined} />
-              <PhoneCrewTitle name={projectName} tabName={activeTab.tabId === canonicalTabId ? '' : tabLabel(activeTab)} place={place} />
-              <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${moreOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
-            </> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
+              <PhoneCrewTitle name={projectName} tabName={activeTab.tabId === canonicalTabId ? '' : tabLabel(activeTab)} />
+              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${arrowTone || 'text-muted-foreground'} ${moreOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </> : <ChevronDown className={`h-3.5 w-3.5 ${arrowTone}`} aria-hidden="true" />}
           </button>
           {moreOpen && createPortal(
             <div ref={menuRef} style={menuPosition} className="fixed z-[100] flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
@@ -385,7 +387,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                 </div>
               })}
               </div>
-              {activeTab && <CopyDebugInfo tab={activeTab} />}
               {phone && sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
                 className="mt-1 flex min-h-11 shrink-0 items-center gap-2 border-t border-border px-2 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New tab</button>}
             </div>, document.body
@@ -415,28 +416,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   )
 }
 
-/** Copies the IDs a bug report needs (Crew, conversation, last message, where it lives, time) so a report names the
- * exact server lines (PLAT-856-509). IDs only, never message text. */
-function CopyDebugInfo({ tab }: { tab: ChatTab }) {
-  const [copied, setCopied] = useState(false)
-  const sessionId = tab.sessionId || ''
-  const lastMessage = useChatStore(state => (sessionId && state.messageStates[sessionId]?.submission_id) || tab.config?.pendingSubmission?.id || '-')
-  const copy = async () => {
-    const lines = [
-      `Crew: ${tab.metadata?.agentProfileProjectId || '-'}`,
-      `Conversation: ${sessionId || '-'}`,
-      `Last message: ${lastMessage}`,
-      `Place: ${tab.metadata?.agentProfileChatLocation === 'mac' ? 'mac' : 'online'}`,
-      `Time: ${new Date().toISOString()}`,
-    ]
-    setCopied(await copyToClipboard(lines.join('\n')))
-    window.setTimeout(() => setCopied(false), 2000)
-  }
-  return <button type="button" onClick={() => void copy()} className="mt-1 flex min-h-9 shrink-0 items-center gap-2 border-t border-border px-2 text-xs text-muted-foreground hover:text-foreground">
-    {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}{copied ? 'Copied' : 'Copy debug info'}
-  </button>
-}
-
 const PHONE_PLACE: Record<CloudState, string> = { mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */
@@ -446,10 +425,9 @@ function CrewPlaceBadge({ place }: { place?: CloudState }) {
   return <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />{PHONE_PLACE[place]}</span>
 }
 
-/** The phone chat title: the Crew's name and where it lives. */
-function PhoneCrewTitle({ name, tabName, place }: { name: string; tabName: string; place?: CloudState }) {
+/** The phone chat title: the Crew's name and the agent; where it lives is the arrow's colour. */
+function PhoneCrewTitle({ name, tabName }: { name: string; tabName: string }) {
   return <span className="flex min-w-0 items-center gap-1.5 truncate">
     <span className="truncate font-medium text-foreground">{name}{tabName ? ` · ${tabName}` : ''}</span>
-    <CrewPlaceBadge place={place} />
   </span>
 }

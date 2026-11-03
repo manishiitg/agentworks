@@ -183,9 +183,9 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
     {action}
   </div>
   const ready = <span className="text-xs text-emerald-500">✓ Ready</span>
-  return <div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
-    <section aria-label="Where it lives" className="space-y-1 border-b border-border px-4 py-3">
-      <p className="mb-1.5 text-xs text-muted-foreground">Where it lives</p>
+  // The boxes sit on the page directly, without section labels (owner, 3 Nov: less text).
+  return <div className="space-y-3 text-sm">
+    <section aria-label="Where it lives" className="space-y-1">
       <div className="flex items-center justify-between gap-2.5">
         <p role="status" className="flex items-center gap-2 text-base font-semibold">
           {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
@@ -212,8 +212,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       {open === 'move' && <MoveOnline name={name} facts={facts} tooBig={tooBig} onCancel={() => setOpen('')} onMove={() => void move(false)} />}
       {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
-    {status && <section aria-label="Who can use it" className="space-y-1 px-4 py-3">
-      <p className="mb-1.5 text-xs text-muted-foreground">Who can use it</p>
+    {status && <section aria-label="Who can use it" className="space-y-1">
       {binding && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><span className="text-emerald-500">✓</span></div>}
       <div aria-disabled={!binding} className={`overflow-hidden rounded-xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
         {way(<Smartphone className="h-4 w-4" />, 'Phone', 'Scan to open on your phone', <Button size="sm" variant="outline" disabled={!link} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide code' : 'Show code'}</Button>)}
@@ -315,8 +314,8 @@ function MacSharedAgents({ projectId, connection }: { projectId: string; connect
         </>}
       </div>
     })}
-    {!tabs.length && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it. Main stays yours.</p>}
-    <p className="text-[12px] text-muted-foreground">They can ask these agents anything the agents can see in this Crew. They never see your other chats. Works while this Mac is on.</p>
+    {!tabs.length && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
+    {shared.length > 0 && <p className="text-[12px] text-muted-foreground">They can ask these agents anything the agents can see in this Crew. They never see your other chats. Works while this Mac is on.</p>}
     {error && <p className="text-xs text-amber-600">{error}</p>}
   </section>
 }
