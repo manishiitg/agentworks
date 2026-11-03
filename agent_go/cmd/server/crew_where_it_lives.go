@@ -242,6 +242,7 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	removed := removeCrewSyncFiles(roots.ID)
+	crewRelayStreams.forget(claims.UserID, roots.ID)
 	log.Printf("[CREW_RELAY] project=%s reach_off owner=%s pair=%s mac_project=%s backup=%s sync_files_removed=%d", roots.ID, logUsernameForUserID(claims.UserID), pair, b.PeerProjectID, backup, removed)
 	externalJSON(w, crewSyncReply{ProjectID: roots.ID})
 }
