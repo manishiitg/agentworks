@@ -3180,7 +3180,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   onOpenLiveView={activeTabId && shouldShowLiveTerminalControl(liveTerminalOffered, isProductSurface, isInteractiveWorkflowBuilderChat, showProductTerminalControl)
                     ? () => chooseViewMode(activeTabId, 'terminal') : undefined}
                   liveViewTitle={mainAgentRuntimeLabel || undefined}
-                  showAgents={agentProfileId === 'work' || isGoalBuilderChat}
                   onOpenChange={setSendOptionsOpen}
                   sendOptions={{
                     mode: deliveryMode,
