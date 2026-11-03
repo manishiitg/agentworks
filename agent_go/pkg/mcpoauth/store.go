@@ -50,7 +50,12 @@ func OpenStore(path string, cfg Config) (*Store, error) {
 	}
 	// WAL + busy_timeout in the DSN so concurrent connections agree; a
 	// one-time PRAGMA would not apply to later pooled connections.
-	dsn := (&url.URL{Scheme: "file", Path: path}).String() + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	// file:///C:/... on Windows: "file:C:%5C..." is refused by SQLite (PLAT-874).
+	uriPath := filepath.ToSlash(path)
+	if !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	dsn := (&url.URL{Scheme: "file", Path: uriPath}).String() + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
