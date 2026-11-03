@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -343,23 +342,8 @@ func CallLocalBridge(ctx context.Context, root string, request LocalBridgeReques
 	if err = CheckPrivateAccess(root, info); err != nil {
 		return out, fmt.Errorf("unsafe local bridge directory: %w", err)
 	}
-	socket := filepath.Join(root, "bridge.sock")
-	info, err = os.Lstat(socket)
-	switch {
-	case socketUnreadable(err):
-		// Windows: a socket file cannot be opened for inspection (PLAT-874).
-		// Its folder's owner-only access list, checked above, protects it; dial it.
-	case err != nil:
-		return out, err
-	case info.Mode()&os.ModeSocket == 0:
-		return out, errors.New("unsafe local bridge socket: expected a socket")
-	default:
-		if err = CheckPrivateAccess(socket, info); err != nil {
-			return out, fmt.Errorf("unsafe local bridge socket: %w", err)
-		}
-	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+		return bridgeDial(ctx, root)
 	}}
 	defer transport.CloseIdleConnections()
 	b, err := json.Marshal(request)
@@ -485,36 +469,11 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		log.SetOutput(logFile)
 		defer logFile.Close()
 	}
-	socket := filepath.Join(root, "bridge.sock")
-	if len(socket) >= 104 { // sun_path is 104 bytes on macOS and Windows, 108 on Linux
-		return errors.New("the AgentWorks bridge folder path is too long for a local socket (under 104 characters); shorten it")
-	}
-	if info, e := os.Lstat(socket); e == nil {
-		if info.Mode()&os.ModeSocket == 0 {
-			return errors.New("refusing redirected bridge socket")
-		}
-		if e = os.Remove(socket); e != nil {
-			return e
-		}
-	} else if socketUnreadable(e) {
-		// Windows: a socket left by a helper that died cannot be opened (PLAT-874).
-		// This process holds the listener lock, so the file is stale: remove it.
-		if e = os.Remove(socket); e != nil {
-			return fmt.Errorf("cannot remove the stale AgentWorks bridge socket: %w", e)
-		}
-	} else if !errors.Is(e, os.ErrNotExist) {
-		return e
-	}
-	l, err := net.Listen("unix", socket)
+	l, err := bridgeListen(root)
 	if err != nil {
 		return err
 	}
 	defer l.Close()
-	if runtime.GOOS != "windows" { // a Windows socket is protected by its directory's access list
-		if err = os.Chmod(socket, 0600); err != nil {
-			return err
-		}
-	}
 	b := &localBridge{ctx: ctx, root: root, sessions: map[string]*localSession{}, changed: make(chan struct{}), usageWake: make(chan struct{}, 1)}
 	if len(options) > 0 {
 		b.options = options[0]
