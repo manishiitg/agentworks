@@ -1231,7 +1231,9 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	var binding productConversationBinding
 	var bindErr error
 	newAgentName := "" // set when this run creates a named Crew agent's tab
-	if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
+	if job.Profile.ID == "relays" && !productEnabled("relays") {
+		bindErr = errFlowsDisabled
+	} else if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
 		bindErr = fmt.Errorf("This Crew is no longer shared with the caller. Ask its owner for access.")
 		scheduleLogf("[PRODUCT_TRIGGER_ACCESS] actor=%s profile=%s project=%s result=denied reason=current_share", sanitizeUserIDForPath(job.GuestCallerID), job.Profile.ID, job.ProjectID)
 	} else if routeErr := s.validateProjectCallConversation(runCtx, job); routeErr != nil {

@@ -154,6 +154,9 @@ func effectiveWorkflowAccessMap(ctx context.Context, claims *UserClaims) (map[st
 }
 
 func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) WorkflowAccessLevel {
+	if m != nil && (m.Kind == "relay" || (m.crewExecutable != nil && m.crewExecutable.Kind == "relay")) && !productEnabled("relays") {
+		return WorkflowAccessNone
+	}
 	if m != nil && m.crewExecutable != nil {
 		if level, ok := workflowAccessForBotRouteClaims(claims, m); ok {
 			return level

@@ -47,7 +47,7 @@ describe('product surface deployment configuration', () => {
       enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'],
       gatewayUrl: 'http://127.0.0.1:18745',
     } })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase', 'mcp-gateway'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'knowledgebase', 'mcp-gateway'])
     expect(gatewayBaseUrl()).toBe('http://127.0.0.1:18745')
   })
 
@@ -73,8 +73,8 @@ describe('product surface deployment configuration', () => {
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
   })
 
-  it('defaults to AgentWorks, Flows, Crew, and Brain when no deployment allowlist is configured', () => {
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
+  it('defaults to AgentWorks, Crew, and Brain while Flow is disabled when no deployment allowlist is configured', () => {
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'knowledgebase'])
     expect(PRODUCT_SURFACE_LABELS.relays).toBe('Flows')
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
@@ -86,7 +86,7 @@ describe('product surface deployment configuration', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18745' },
     })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'mcp-gateway', 'knowledgebase'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'mcp-gateway', 'knowledgebase'])
   })
 
   it('removes CapLayer from an explicit allowlist when its endpoint is withdrawn', () => {
@@ -97,7 +97,7 @@ describe('product surface deployment configuration', () => {
     expect(isEnabledProductSurface('mcp-gateway')).toBe(false)
   })
 
-  it('constrains the dedicated host to AgentWorks and Relays', () => {
+  it('ignores a saved Flow default and keeps the enabled workflow product', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
         defaultProductSurface: 'relays',
@@ -105,27 +105,19 @@ describe('product surface deployment configuration', () => {
       },
     })
 
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays'])
-    expect(deploymentDefaultProductSurface()).toBe('relays')
+    expect(enabledProductSurfaces()).toEqual(['agentworks'])
+    expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isEnabledProductSurface('agentworks')).toBe(true)
     expect(isEnabledProductSurface('knowledgebase')).toBe(false)
-    expect(isSingleProductDeployment()).toBe(false)
+    expect(isSingleProductDeployment()).toBe(true)
   })
 
-  it('pins a dedicated host to its one enabled surface', () => {
-    vi.stubGlobal('window', {
-      __APP_RUNTIME_CONFIG__: {
-        defaultProductSurface: 'relays',
-        enabledProductSurfaces: ['relays'],
-        gatewaySso: true,
-      },
-    })
-
-    expect(enabledProductSurfaces()).toEqual(['relays'])
-    expect(deploymentDefaultProductSurface()).toBe('relays')
-    expect(isEnabledProductSurface('agentworks')).toBe(false)
-    expect(isSingleProductDeployment()).toBe(true)
-    expect(hasGatewaySSO()).toBe(true)
+  it('does not restore Flow from a stale Flow-only deployment', () => {
+    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: {
+      defaultProductSurface: 'relays', enabledProductSurfaces: ['relays'],
+    } })
+    expect(enabledProductSurfaces()).not.toContain('relays')
+    expect(deploymentDefaultProductSurface()).not.toBe('relays')
   })
 
   it('exposes the Work surface when the deployment allowlists it', () => {

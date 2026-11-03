@@ -55,6 +55,9 @@ func (c *conditionService) resolveTarget(ctx context.Context, job productSchedul
 var conditionChatIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func (c *conditionService) validateTarget(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
+	if job.Profile.ID == "relays" && !productEnabled("relays") {
+		return conditiontrigger.PermanentError{Err: errFlowsDisabled}
+	}
 	if job.WatcherSource != nil {
 		switch job.Profile.ID {
 		case "work":

@@ -302,7 +302,7 @@ func TestRetiredScheduleGroupsRefusedBeforeLaunch(t *testing.T) {
 
 // PLAT-746-265: parking Relay must stop new Crew Relay creation without
 // hiding existing automation from its owner or changing its saved definition.
-func TestCrewWorkflowsDeferNewRelayAndKeepExistingReachable(t *testing.T) {
+func TestCrewWorkflowsKeepRelayDataWhileFlowIsDisabled(t *testing.T) {
 	svc, files, ctx := newCrewCreationTestEnv(t)
 	t.Setenv("AGENT_PRODUCTS", "work,agentworks,relays")
 	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Workflow lab", Purpose: "Run reports", StepInstruction: "Prepare reports", IdempotencyKey: "park-relay"})
@@ -369,9 +369,9 @@ func TestCrewWorkflowsDeferNewRelayAndKeepExistingReachable(t *testing.T) {
 	if files.files["Workflow/relay/workflow.json"] != originalRelay {
 		t.Fatal("parking Relay changed its definition")
 	}
-	// The standalone discovery/access path must still see the existing Relay.
+	// Saved data remains readable internally, but Flow access is unavailable.
 	m, found, err := ReadWorkflowManifest(ctx, "Workflow/relay")
-	if err != nil || !found || workflowAccessForManifest(GetUserFromContext(ctx), m) != WorkflowAccessOwner {
-		t.Fatalf("existing Relay unavailable: %v %v", found, err)
+	if err != nil || !found || workflowAccessForManifest(GetUserFromContext(ctx), m) != WorkflowAccessNone {
+		t.Fatalf("disabled Relay gained access: %v %v", found, err)
 	}
 }

@@ -49,13 +49,13 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
     await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" />))
     await flush()
     // The workflow form has one kind; retained Relays link to their existing
-    // standalone controls and remain eligible for standalone route resolution.
-    expect(host.querySelector('a[href="/relays/retained-relay"]')).not.toBeNull()
+    // data is retained without a link or a stale standalone selection.
+    expect(host.querySelector('a[href="/relays/retained-relay"]')).toBeNull()
     const manifests = [
       {crew_id:'crew',workspace_path:'Workflow/workflow',manifest:{id:'workflow',kind:'workflow',label:'Workflow'}},
       {crew_id:'crew',workspace_path:'Workflow/retained-relay',manifest:{id:'retained-relay',kind:'relay',label:'Existing Relay'}},
     ] as unknown as DiscoveredWorkflow[]
-    expect(buildWorkflowPresetsFromManifests(manifests).map(preset => preset.id)).toEqual(['retained-relay'])
+    expect(buildWorkflowPresetsFromManifests(manifests).map(preset => preset.id)).toEqual([])
     await click('Add')
     expect(host.querySelector('select')).toBeNull()
     const name = host.querySelector<HTMLInputElement>('input')!

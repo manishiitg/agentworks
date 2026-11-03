@@ -165,6 +165,9 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 }
 
 func (c *conditionService) current(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
+	if job.Profile.ID == "relays" && !productEnabled("relays") {
+		return conditiontrigger.PermanentError{Err: errFlowsDisabled}
+	}
 	fresh, err := c.s.Job(ctx, job.UserID, job.ID())
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "product schedule ") && strings.HasSuffix(err.Error(), "not found for this user") {
