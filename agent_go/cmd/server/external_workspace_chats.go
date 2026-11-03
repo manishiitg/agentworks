@@ -262,3 +262,20 @@ func senderOwnTurns(items []codeTurnItem, sender string) []codeTurnItem {
 	}
 	return out
 }
+
+// submissionTurn keeps only the turn that answers one agent message (its id stamped on the delivered message).
+func submissionTurn(items []codeTurnItem, submission string) []codeTurnItem {
+	turn := ""
+	for _, item := range items {
+		if item.Role == "you" && item.Submission == submission {
+			turn = item.Turn
+		}
+	}
+	out := items[:0:0]
+	for _, item := range items {
+		if turn != "" && item.Turn == turn {
+			out = append(out, item)
+		}
+	}
+	return out
+}

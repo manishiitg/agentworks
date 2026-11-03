@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -559,13 +560,14 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	}
 	sender := shareOwnerLabel(source.UserID)
 	read := func(after, wait int) (map[string]any, int) {
-		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait})
+		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID})
 		result := callCrewMacFor(context.Background(), dest.UserID, dest.ID, crewChatCall{Operation: "agent_read", Tab: tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
 		var out map[string]any
 		_ = json.Unmarshal(result.Body, &out)
 		return out, result.Status
 	}
-	baseline, status := read(0, 0)
+	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.
+	_, status := read(0, 0)
 	if status == http.StatusOK {
 		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID})
 		result := callCrewMacFor(context.WithoutCancel(ctx), dest.UserID, dest.ID, crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}, 60*time.Second)
@@ -580,21 +582,20 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	if status != http.StatusOK {
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	after := 0
-	if next, ok := baseline["next_after"].(float64); ok {
-		after = int(next)
-	}
-	go api.awaitMacAgentAnswer(c.ID, from, after, read)
+	go api.awaitMacAgentAnswer(c.ID, m.ID, from, read)
 	return nil
 }
 
+// macAgentAnswered remembers which messages already got their answer, so each is answered once.
+var macAgentAnswered sync.Map
+
 // awaitMacAgentAnswer sends only the agent's final answer to this sender's turn back to the inbox: once "Still
 // working" if it takes long, then the answer. Never its tool steps.
-func (api *StreamingAPI) awaitMacAgentAnswer(inbox string, from, after int, read func(after, wait int) (map[string]any, int)) {
+func (api *StreamingAPI) awaitMacAgentAnswer(inbox, submission string, from int, read func(after, wait int) (map[string]any, int)) {
 	started, toldWorking := time.Now(), false
 	answer := ""
 	for time.Since(started) < macAgentReplyWindow {
-		out, status := read(after, 25)
+		out, status := read(0, 25)
 		if status != http.StatusOK {
 			time.Sleep(10 * time.Second)
 			continue
@@ -607,7 +608,10 @@ func (api *StreamingAPI) awaitMacAgentAnswer(inbox string, from, after int, read
 			}
 		}
 		if working, _ := out["working"].(bool); !working && strings.TrimSpace(answer) != "" {
-			api.appendMacAgentReply(inbox, from, answer)
+			if _, done := macAgentAnswered.LoadOrStore(submission, true); !done {
+				api.appendMacAgentReply(inbox, from, answer)
+				log.Printf("[CREW_SHARED_AGENT] inbox=%s submission=%s action=answer_sent", inbox, submission)
+			}
 			return
 		}
 		if !toldWorking && time.Since(started) > 2*time.Minute {
@@ -615,7 +619,7 @@ func (api *StreamingAPI) awaitMacAgentAnswer(inbox string, from, after int, read
 			toldWorking = true
 		}
 	}
-	log.Printf("[CREW_SHARED_AGENT] inbox=%s answer not ready within %s", inbox, macAgentReplyWindow)
+	log.Printf("[CREW_SHARED_AGENT] inbox=%s submission=%s answer not ready within %s", inbox, submission, macAgentReplyWindow)
 }
 
 // appendMacAgentReply adds the Mac agent's words to the inbox as a message from the agent's side, like any reply.
