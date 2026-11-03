@@ -572,20 +572,20 @@ func (api *StreamingAPI) repairDesktopCrewTwin(ctx context.Context, local, pair,
 		}
 	}
 	log.Printf("[CREW_RELAY] project=%s repaired twin for connection=%s old_pair=%s old_server_project=%s", local, connection, pair, b.PeerProjectID)
-	// Pair it again now, on the connection it already used; the twin loop is only a fallback.
+	// Pair it again now, on the connection it already used. If that fails, the Crew shows Offline until its owner turns
+	// Reach on again.
 	owner := GetDefaultUserID()
 	saved, err := desktopConnectionFor(owner, connection)
 	if err != nil {
-		log.Printf("[CREW_RELAY] project=%s new twin waits: connection %s unavailable", local, connection)
+		log.Printf("[CREW_RELAY] project=%s stays offline: connection %s unavailable", local, connection)
 		return
 	}
 	_, manifest, ok := api.resolveExternalWorkspace(ctx, &UserClaims{UserID: owner, Username: owner}, local)
 	if !ok {
-		log.Printf("[CREW_RELAY] project=%s new twin waits: Crew unavailable", local)
+		log.Printf("[CREW_RELAY] project=%s stays offline: Crew unavailable", local)
 		return
 	}
 	if err := api.createDesktopCrewRelayTwin(ctx, owner, saved, local, manifest.displayTitle()); err != nil {
-		crewRelayBackoff(local, true)
 		log.Printf("[CREW_RELAY] twin project=%s failed: %v", local, err)
 	}
 }

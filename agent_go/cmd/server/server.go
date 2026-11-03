@@ -3190,8 +3190,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	migrateCrewSyncToRelay()
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
-	stopDesktopCrewRelayTwins := api.startDesktopCrewRelayTwins()
-	defer stopDesktopCrewRelayTwins()
 	stopDesktopCrewSync := api.startDesktopCrewSync()
 	defer stopDesktopCrewSync()
 	SetShareTunnelServerPort(actualPort)

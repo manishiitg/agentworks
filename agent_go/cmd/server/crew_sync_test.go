@@ -281,6 +281,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if !crewRelayTwin(twin.ProjectID) {
 				t.Fatal("a new twin is not on the Mac")
 			}
+			checkCrewReachOff(t, api, owner, twin.ProjectID, "relay-pair", serverRoots.ID, out.Binding.PairID)
 			if _, err := api.crewSync(t.Context(), crewWriter("other"), serverRoots.ID, crewSyncRequest{Action: "status"}); err == nil {
 				t.Fatal("other owner accessed sync")
 			}

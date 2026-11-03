@@ -7,12 +7,12 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { laptopSettingsEndpoint } from '../../components/workspace/laptopAccess'
 import { Button } from '../../components/ui/Button'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
-import { ServerProjectLocalOpen } from './ServerProjectLocalOpen'
+import { Switch } from '../../components/ui/Switch'
 import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 
-type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' | 'local' | 'download' }
+type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 type SyncStatus = { binding: Binding | null }
 type Readiness = { fits: boolean; estimated_seconds: number; secrets?: number; measurement: { dependency_files?: string[]; files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
 const sizeLabel = (bytes: number) => bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : bytes >= 1 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : 'under 1 MB'
@@ -97,11 +97,9 @@ const tintedIcons = new Map<string, LucideIcon>()
 
 export function YourComputerPanel({ projectId, sessionId }: { projectId: string; sessionId?: string; canEdit: boolean }) {
   if (!crewCloudMode()) return <div><LaptopCard sessionId={sessionId} /></div>
-  // A Crew opened from a connected server already lives online; the AgentWorks app offers to open it here.
-  const connection = getRawActiveWorkspaceId()
-  if (connection !== 'local') return <section aria-label="Where it lives" className="space-y-3 text-sm">
+  // A Crew opened from a connected server lives online.
+  if (getRawActiveWorkspaceId() !== 'local') return <section aria-label="Where it lives" className="space-y-3 text-sm">
     <p role="status" className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-500" />Online</p>
-    <ServerProjectLocalOpen projectId={projectId} connection={connection} />
   </section>
   return <div><WhereItLivesCard projectId={projectId} sessionId={sessionId} /></div>
 }
@@ -114,6 +112,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [choice, setChoice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [reaching, setReaching] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
   const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'share'>('')
@@ -138,7 +137,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
   const tooBig = !online && readiness?.fits === false
   const target = binding?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
   const link = binding?.peer_server ? `${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}` : ''
-  const run = async (action: 'server' | 'local' | 'relay', via = target) => {
+  const run = async (action: 'server' | 'relay' | 'offline', via = target) => {
     setBusy(true); setError('')
     try { await desktopRequest(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action }); return true }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
@@ -162,18 +161,21 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       <div className="flex items-center justify-between gap-2.5">
         <p role="status" className="flex items-center gap-2 text-base font-semibold">
           {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
-          {!status ? 'Checking…' : moving ? 'Moving online…' : online ? 'Online' : 'On this Mac'}
+          {!status ? 'Checking…' : moving ? 'Moving online…' : online ? 'Online' : binding ? 'On this Mac' : 'On this Mac · Offline'}
         </p>
         {binding && !online && !moving && open !== 'move' && <Button size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
       </div>
-      <p className="text-[13px] text-muted-foreground">{moving ? 'You can keep chatting. It picks up where it left off if interrupted.' : online ? 'It works even when your Mac is off.' : 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.'}</p>
+      <p className="text-[13px] text-muted-foreground">{moving ? 'You can keep chatting. It picks up where it left off if interrupted.' : online ? 'It works even when your Mac is off.' : binding ? 'Your files stay on this Mac. You can use it from anywhere while the Mac is on.' : 'Only in this app on this Mac.'}</p>
       {status && <p className="text-[13px] text-muted-foreground">Its schedules run here too.</p>}
-      {!binding && connections.length > 1 && <select aria-label="Network" value={choice} onChange={event => { setChoice(event.target.value); if (event.target.value) void run('relay', event.target.value) }} className="mt-2 w-full rounded-md border border-border bg-background p-2 text-sm">
-        <option value="">Choose a network</option>
+      {status && !online && !moving && <label className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
+        <span className="text-sm">Reach it from your phone and the web</span>
+        <Switch aria-label="Reach it from your phone and the web" checked={Boolean(binding) || reaching} disabled={busy || (!binding && !target)} onCheckedChange={on => { if (on) { setReaching(true); void run('relay').finally(() => setReaching(false)) } else void run('offline') }} />
+      </label>}
+      {!binding && connections.length > 1 && !target && <select aria-label="Network" value={choice} onChange={event => setChoice(event.target.value)} className="mt-2 w-full rounded-md border border-border bg-background p-2 text-sm">
+        <option value="">Choose a network first</option>
         {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>}
       {open === 'move' && <MoveOnline name={name} facts={facts} tooBig={tooBig} onCancel={() => setOpen('')} onMove={() => void move(false)} />}
-      {binding?.pending_action === 'local' && !busy && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 text-amber-500" /><span className="flex-1">The last move didn't finish. Your work is kept.</span><Button size="sm" variant="outline" onClick={() => void run('local')}>Finish</Button></div>}
       {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
     {binding && <section aria-label="Who can use it" className="space-y-1 px-4 py-3">

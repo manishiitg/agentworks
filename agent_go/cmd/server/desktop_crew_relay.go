@@ -11,8 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -20,63 +18,9 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
-// Every Mac Crew gets an empty twin on its one server, so its owner can use it
-// from the website or phone while the Mac is on. Files move only when the
-// owner turns on "Work with my Mac off" (PLAT-856-509, A1).
-func (api *StreamingAPI) startDesktopCrewRelayTwins() context.CancelFunc {
-	ctx, cancel := context.WithCancel(context.Background())
-	if !IsLocalMode() {
-		return cancel
-	}
-	go func() {
-		for {
-			api.ensureDesktopCrewRelayTwins(ctx)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Minute):
-			}
-		}
-	}()
-	return cancel
-}
-
-// A failed twin waits before the next try, so an error never creates a server Crew every minute.
-var crewRelayRetryAt = struct {
-	sync.Mutex
-	next map[string]time.Time
-	wait map[string]time.Duration
-}{next: map[string]time.Time{}, wait: map[string]time.Duration{}}
-
-func crewRelayBackoff(id string, failed bool) bool {
-	crewRelayRetryAt.Lock()
-	defer crewRelayRetryAt.Unlock()
-	if !failed {
-		return time.Now().Before(crewRelayRetryAt.next[id])
-	}
-	wait := crewRelayRetryAt.wait[id]*2 + time.Hour
-	if wait > 24*time.Hour {
-		wait = 24 * time.Hour
-	}
-	crewRelayRetryAt.wait[id], crewRelayRetryAt.next[id] = wait, time.Now().Add(wait)
-	return true
-}
-
-// logCrewRelayTwinSkip logs the twin loop's state once each time it changes, not every minute.
-var crewRelayTwinLastSkip struct {
-	sync.Mutex
-	reason string
-}
-
-func logCrewRelayTwinSkip(reason string) {
-	crewRelayTwinLastSkip.Lock()
-	defer crewRelayTwinLastSkip.Unlock()
-	if crewRelayTwinLastSkip.reason == reason {
-		return
-	}
-	crewRelayTwinLastSkip.reason = reason
-	log.Printf("[CREW_RELAY] twins %s", reason)
-}
+// A Mac Crew is reached from the phone and the web only when its owner turns "Reach it from your phone and the web" on
+// (owner, 3 Nov: Off by default): that creates its empty online copy (the Mac's "relay" action). Nothing pairs a
+// Crew in the background (PLAT-856-509).
 
 // The server must know empty twins; an older one would create a real Crew instead.
 func desktopServerSupportsRelay(ctx context.Context, owner string, connection desktopConnection) bool {
@@ -94,52 +38,6 @@ func desktopServerSupportsRelay(ctx context.Context, owner string, connection de
 		Relay bool `json:"relay"`
 	}
 	return response.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&out) == nil && out.Relay
-}
-
-// With several connected servers the owner picks the Crew's server in its
-// Cloud panel; a Crew belongs to exactly one server.
-func (api *StreamingAPI) ensureDesktopCrewRelayTwins(ctx context.Context) {
-	owner := GetDefaultUserID()
-	connections, err := readDesktopConnections(owner)
-	switch {
-	case err != nil:
-		logCrewRelayTwinSkip("saved sign-ins unreadable: " + err.Error())
-		return
-	case len(connections) != 1:
-		logCrewRelayTwinSkip(fmt.Sprintf("saved sign-ins=%d; the owner picks a Crew's network in Where it lives", len(connections)))
-		return
-	case !desktopServerSupportsRelay(ctx, owner, connections[0]):
-		logCrewRelayTwinSkip("server " + connections[0].Server + " did not confirm relay support")
-		return
-	}
-	crews, err := listCrewProjectsForOwner(ctx, owner, owner, "")
-	if err != nil {
-		logCrewRelayTwinSkip("Crew list failed: " + err.Error())
-		return
-	}
-	unpaired := 0
-	for _, crew := range crews {
-		if id, _ := crew["id"].(string); id != "" {
-			if b, e := crewroot.ReadSync(id); e == nil && b == nil {
-				unpaired++
-			}
-		}
-	}
-	logCrewRelayTwinSkip(fmt.Sprintf("checking crews=%d unpaired=%d connection=%s", len(crews), unpaired, connections[0].ID))
-	for _, crew := range crews {
-		id, _ := crew["id"].(string)
-		name, _ := crew["name"].(string)
-		if id == "" || ctx.Err() != nil {
-			continue
-		}
-		if b, e := crewroot.ReadSync(id); e != nil || b != nil || crewRelayBackoff(id, false) {
-			continue
-		}
-		if err := api.createDesktopCrewRelayTwin(ctx, owner, connections[0], id, name); err != nil {
-			crewRelayBackoff(id, true)
-			log.Printf("[CREW_RELAY] twin project=%s failed: %v", id, err)
-		}
-	}
 }
 
 func (api *StreamingAPI) createDesktopCrewRelayTwin(ctx context.Context, owner string, connection desktopConnection, id, name string) error {
