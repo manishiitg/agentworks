@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -357,6 +358,20 @@ func macSharedAgentRows(caller string) []map[string]any {
 	return rows
 }
 
+// crewProjectRootByID is a Crew's folder by its project id, from the owner registry.
+func crewProjectRootByID(project string) string {
+	records, err := defaultProjectOwners().All()
+	if err != nil {
+		return ""
+	}
+	for _, record := range records {
+		if record.Product == crewProfileID && record.ProjectID == project {
+			return firstNonEmptyTrimmed(record.CanonicalRoot, workspaceref.SharedProjectPath(record.Folder))
+		}
+	}
+	return ""
+}
+
 // ownerOfCrewProjectID is the main owner of a Crew by its project id, from the owner registry.
 func ownerOfCrewProjectID(project string) string {
 	records, err := defaultProjectOwners().All()
@@ -594,7 +609,8 @@ func macSharedAgentByAddress(owner, address, subject string) (triggerTarget, boo
 				return triggerTarget{}, false
 			}
 			key := macSharedAgentChatKey(project, agent.Tab)
-			return triggerTarget{Kind: triggerCallerCrew, CrewID: project, CrewProfile: crewProfileID, CrewOwner: owner, Label: agent.Name,
+			// The Crew's own folder: message delivery checks the target is still this owner's Crew at this path.
+			return triggerTarget{Kind: triggerCallerCrew, Path: crewProjectRootByID(project), CrewID: project, CrewProfile: crewProfileID, CrewOwner: owner, Label: agent.Name,
 				Chat: &codeChat{OwnerID: owner, Key: key, ID: key, Name: agent.Name, Purpose: agent.Purpose}}, true
 		}
 	}
