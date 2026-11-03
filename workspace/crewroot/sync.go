@@ -14,6 +14,7 @@ import (
 // SyncBinding is platform state, never a file supplied by the working tree.
 // IDs on different servers are deliberately not treated as interchangeable.
 type SyncBinding struct {
+	SchedulesPaused bool   `json:"schedules_paused,omitempty"`
 	ArchiveOnly     bool   `json:"archive_only,omitempty"`
 	Mode            string `json:"mode,omitempty"`
 	SplitFiles      bool   `json:"split_files,omitempty"`
@@ -170,20 +171,23 @@ func SyncWriteGrants(docs string, writes []string) []string {
 
 func SyncContentAllowed(key string, directory bool) bool {
 	area, rel, ok := strings.Cut(key, "/")
-	if !ok || (area != "files" && area != "resources") {
+	if !ok || (area != "files" && area != "resources" && area != "knowledge") {
 		return false
 	}
 	if _, err := publication.CleanPath(rel); err != nil {
 		return false
 	}
+	if area == "knowledge" {
+		return (rel == "knowledgebase" || strings.HasPrefix(rel, "knowledgebase/")) && !publication.ExcludedFromSync(rel, directory)
+	}
 	if area == "resources" {
 		first := strings.SplitN(rel, "/", 2)[0]
 		switch first {
-		case "_files", "outputs", "db", "assets", "reports", "tool_output_folder", ".calls", "shared", "runs", "planning", "knowledgebase", "conversation", "costs", "human_inputs", "triggers",
+		case "_files", "tool_output_folder", ".calls", "runs", "planning", "knowledgebase", "conversation", "costs", "human_inputs",
 			"product.json", "workflow.json", "functions.json", "schedules.json", "webhooks.json", "product-schedules.json", "schedule-runs.json":
 			return false
 		}
-		if rel == "db/db.sqlite" || strings.HasPrefix(rel, "db/db.sqlite-") {
+		if rel == "triggers/deliveries" || strings.HasPrefix(rel, "triggers/deliveries/") || rel == "db/db.sqlite" || strings.HasPrefix(rel, "db/db.sqlite-") {
 			return false
 		}
 	}

@@ -45,7 +45,7 @@ type Payload struct {
 }
 
 type Snapshot struct {
-	StatePath string `json:"-"` // owner-scoped move records, admitted separately from working files
+	StatePath  string             `json:"-"` // owner-scoped move records, admitted separately from working files
 	DecodedDir string             `json:"-"`
 	StagingDir string             `json:"-"`
 	Payloads   map[string]Payload `json:"payloads,omitempty"`
@@ -65,6 +65,9 @@ func rootFor(roots crewroot.Roots, key string) (string, string, error) {
 		return "", "", fmt.Errorf("this file is not project content: %s", key)
 	}
 	area, rel, _ := strings.Cut(key, "/")
+	if area == "knowledge" {
+		return roots.Private, rel, nil
+	}
 	if area == "files" {
 		return roots.Files, rel, nil
 	}
@@ -172,6 +175,9 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest, priva
 	areas := []struct{ name, root string }{{"files", roots.Files}, {"resources", roots.Resources}}
 	if !roots.SeparateFiles() {
 		areas = areas[1:]
+	}
+	if roots.Private != "" {
+		areas = append(areas, struct{ name, root string }{"knowledge", roots.Private})
 	}
 	for _, area := range areas {
 		ignored, err := publication.GitIgnored(ctx, area.root)

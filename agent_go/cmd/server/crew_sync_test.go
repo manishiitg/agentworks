@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -118,12 +119,19 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			write(local.Resources, "skills/example/SKILL.md", "Useful skill")
 			write(local.Files, ".env", "API_KEY=example")
 			write(local.Files, ".cache/state", "keep private")
+			for name, value := range map[string]string{"MEMORY.md": "project memory", "db/reports/.dashboard-state/home/state.json": `{"id":"home","published":"rev-one"}`, "db/reports/managed/home/rev-one/index.html": "<h1>Published</h1>", "assets/chart.csv": "score\n7", "outputs/result.txt": "saved output", "code/triggers/watch.py": "print('{}')"} {
+				write(local.Resources, name, value)
+			}
+			write(local.Private, "knowledgebase/documents/guide.md", "Crew knowledge")
+			write(local.Private, "builder/private.txt", "private runtime")
+
 			listing := httptest.NewRecorder()
 			files.ServeHTTP(listing, httptest.NewRequest("GET", "/api/documents?folder="+local.Virtual+"&max_depth=5", nil))
 			if listing.Code != 200 || !strings.Contains(listing.Body.String(), local.Virtual+"/skills/example/SKILL.md") {
 				t.Fatalf("local resource listing: %d %s", listing.Code, listing.Body.String())
 			}
 			loseResponse := false
+			failActivation := false
 			dropUpload := false
 			var pieceHook func(*http.Request)
 			var offline atomic.Bool
@@ -150,6 +158,17 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				r = mux.SetURLVars(r, map[string]string{"project": strings.TrimPrefix(r.URL.Path, "/api/crew-sync/")})
 				if pieceHook != nil && r.URL.Query().Get("transfer") != "" {
 					pieceHook(r)
+				}
+				if failActivation && r.Method == http.MethodPost && r.URL.Query().Get("transfer") == "" {
+					raw, _ := io.ReadAll(r.Body)
+					r.Body = io.NopCloser(bytes.NewReader(raw))
+					var call crewSyncRequest
+					json.Unmarshal(raw, &call)
+					if call.Action == "push" {
+						failActivation = false
+						externalError(w, 409, "fixture_activation_failed", "injected import failure")
+						return
+					}
 				}
 				response := httptest.NewRecorder()
 				api.handleCrewSync(response, r)
@@ -235,6 +254,14 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if err = writeProjectSchedules(ctx, local.Virtual, []projectactions.Schedule{schedule}); err != nil {
 				t.Fatal(err)
 			}
+			hook := projectWebhookDefinition{ID: "hook-one", Name: "On event", Enabled: true, Project: schedule.Project, RunAs: "owner", Path: "/api/hooks/hook-one", Action: projectactions.Action{Type: "message"}, Input: json.RawMessage(`{"messages":["received"]}`), Auth: projectWebhookAuth{Mode: "bearer", EncryptedSecret: "source-only-ciphertext"}}
+			if err = writeProjectWebhookDefinitions(ctx, local.Virtual, []projectWebhookDefinition{hook}); err != nil {
+				t.Fatal(err)
+			}
+			fn := projectFunctionDefinition{ID: "function-one", Name: "check", Description: "Check work", Enabled: true, Action: projectactions.Action{Type: "message", Tab: "Research helper"}, Input: json.RawMessage(`{"messages":["check"]}`)}
+			if err = writeProjectFunctionDefinitions(ctx, local.Virtual, []projectFunctionDefinition{fn}); err != nil {
+				t.Fatal(err)
+			}
 			// Incompressible bytes guarantee multiple resumable pieces.
 			large := make([]byte, 10<<20)
 			if _, err = rand.Read(large); err != nil {
@@ -306,6 +333,17 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					t.Fatalf("piece %s: %d %s", person, response.Code, response.Body.String())
 				}
 			}
+			failActivation = true
+			if w := call("server", "owner", true); w.Code != 409 || failActivation || !strings.Contains(w.Body.String(), "paused for this move") {
+				t.Fatalf("activation failure not explicit: %d %s", w.Code, w.Body.String())
+			}
+			if w := call("status", "owner", true); w.Code != 200 || !strings.Contains(w.Body.String(), `"schedules_paused":true`) {
+				t.Fatalf("paused move status: %s", w.Body.String())
+			}
+			stillMoving, _ := crewroot.ReadSync(local.ID)
+			if stillMoving == nil || stillMoving.PendingAction != "server" {
+				t.Fatal("failed move lost retry")
+			}
 			loseResponse = true
 			if w := call("server", "owner", true); w.Code != 409 || loseResponse {
 				t.Fatalf("lost receipt: %d %s", w.Code, w.Body.String())
@@ -316,6 +354,9 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			receipt, err := readCrewMoveReceipt(local.ID)
 			if err != nil || receipt == nil || !receipt.Complete {
 				t.Fatalf("retirement: %+v %v", receipt, err)
+			}
+			if !split && !strings.HasPrefix(receipt.BackupPath, local.Files+" (moved online "+time.Now().Format("2006-01-02")+")") {
+				t.Fatalf("managed backup name: %s", receipt.BackupPath)
 			}
 			localFiles := receipt.BackupPath
 			if split {
@@ -329,6 +370,29 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				if e != nil || !bytes.Equal(data, large) {
 					t.Fatal("move lost file bytes", e)
 				}
+			}
+			for name, value := range map[string]string{"MEMORY.md": "project memory", "skills/example/SKILL.md": "Useful skill", "db/reports/.dashboard-state/home/state.json": `{"id":"home","published":"rev-one"}`, "db/reports/managed/home/rev-one/index.html": "<h1>Published</h1>", "assets/chart.csv": "score\n7", "outputs/result.txt": "saved output", "code/triggers/watch.py": "print('{}')"} {
+				raw, e := os.ReadFile(filepath.Join(serverRoots.Resources, name))
+				if e != nil || string(raw) != value {
+					t.Fatalf("moved resource %s: %s %v", name, raw, e)
+				}
+			}
+			if raw, e := os.ReadFile(filepath.Join(serverRoots.Private, "knowledgebase/documents/guide.md")); e != nil || string(raw) != "Crew knowledge" {
+				t.Fatal("knowledge missing", e)
+			}
+			if _, e := os.Stat(filepath.Join(serverRoots.Private, "builder/private.txt")); !os.IsNotExist(e) {
+				t.Fatal("private runtime copied")
+			}
+			hooks, e := readProjectWebhookDefinitions(ctx, serverRoots.Virtual)
+			if e != nil || len(hooks) != 1 || !hooks[0].Enabled || hooks[0].Project.ID != serverRoots.ID || hooks[0].Auth.EncryptedSecret == hook.Auth.EncryptedSecret {
+				t.Fatalf("webhook: %+v %v", hooks, e)
+			}
+			if secret, e := decryptSecretValueWithAAD(hooks[0].Auth.EncryptedSecret, productWebhookAAD(serverRoots.ID, hooks[0].ID)); e != nil || len(secret) != 64 {
+				t.Fatal("fresh destination webhook secret unavailable", e)
+			}
+			functions, e := readProjectFunctionDefinitions(ctx, serverRoots.Virtual)
+			if e != nil || len(functions) != 1 || functions[0].Action.Tab != "Research helper" {
+				t.Fatal("function tab lost", e)
 			}
 			if b, _ := crewroot.ReadSync(local.ID); b != nil {
 				t.Fatal("retired Crew kept a relay binding")
