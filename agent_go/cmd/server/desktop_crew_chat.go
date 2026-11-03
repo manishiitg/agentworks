@@ -327,6 +327,8 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		WaitSeconds int    `json:"wait_seconds"`
 		// Submission: read only the turn that answers this one message (an agent message's id).
 		Submission string `json:"submission"`
+		// SenderAgent names the sender's own agent when an agent sent it, for the owner's Access row.
+		SenderAgent string `json:"sender_agent"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -390,6 +392,11 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		if status >= 300 {
 			return reply(status, map[string]string{"error": "The agent could not take this message. Try again shortly."})
 		}
+		sender := strings.SplitN(call.Caller, "@", 2)[0]
+		if strings.TrimSpace(args.SenderAgent) != "" {
+			sender += "'s agent"
+		}
+		noteMacAsk(project, macAskActivity{Tab: call.Tab, Agent: firstNonEmptyTrimmed(agent.Name, "Main"), Sender: sender, Label: call.Caller, Key: conversation.ConversationKey, Started: time.Now().UTC(), session: conversation.SessionID})
 		var receipt map[string]any
 		_ = json.Unmarshal(capture.body.Bytes(), &receipt)
 		return reply(200, map[string]any{"status": "accepted", "query_id": receipt["query_id"]})

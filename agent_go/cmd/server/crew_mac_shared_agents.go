@@ -617,6 +617,52 @@ func macSharedAgentByAddress(owner, address, subject string) (triggerTarget, boo
 	return triggerTarget{}, false
 }
 
+// macAskActivity is who asked a shared agent on this Mac and when, kept in memory for the owner's Access row
+// (owner, 3 Nov: "show here who is doing it.. so we can click on it and it opens the agent"). Never stored or sent on.
+type macAskActivity struct {
+	Tab     string    `json:"tab"`
+	Agent   string    `json:"agent"`
+	Sender  string    `json:"sender"`
+	Label   string    `json:"sender_label"` // as their message is marked in the tab, to find it there
+	Key     string    `json:"conversation_key"`
+	Started time.Time `json:"started_at"`
+	Active  bool      `json:"active"`
+	session string
+}
+
+const macAskRecent = 10 * time.Minute
+
+var macAsks = struct {
+	sync.Mutex
+	byProject map[string][]macAskActivity
+}{byProject: map[string][]macAskActivity{}}
+
+func noteMacAsk(project string, ask macAskActivity) {
+	macAsks.Lock()
+	defer macAsks.Unlock()
+	kept := []macAskActivity{}
+	for _, old := range macAsks.byProject[project] {
+		if time.Since(old.Started) < macAskRecent && !(old.Tab == ask.Tab && old.Sender == ask.Sender) {
+			kept = append(kept, old)
+		}
+	}
+	macAsks.byProject[project] = append(kept, ask)
+}
+
+// recentMacAsks is this Crew's asks in the last ten minutes, newest first, each marked active while its tab still runs.
+func (api *StreamingAPI) recentMacAsks(project string) []macAskActivity {
+	macAsks.Lock()
+	defer macAsks.Unlock()
+	out := []macAskActivity{}
+	for _, ask := range macAsks.byProject[project] {
+		if time.Since(ask.Started) < macAskRecent {
+			ask.Active = api.sessionTurnRunning(ask.session)
+			out = append([]macAskActivity{ask}, out...)
+		}
+	}
+	return out
+}
+
 // macAgentReplyWindow bounds how long the server waits for a Mac agent's answer to another person's message.
 const macAgentReplyWindow = 30 * time.Minute
 
@@ -639,7 +685,7 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.
 	_, status := read(0, 0)
 	if status == http.StatusOK {
-		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID})
+		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": source.Label})
 		result := callCrewMacFor(context.WithoutCancel(ctx), dest.UserID, dest.ID, crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}, 60*time.Second)
 		status = result.Status
 	}

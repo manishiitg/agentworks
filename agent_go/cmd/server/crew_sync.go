@@ -61,6 +61,8 @@ type crewSyncReply struct {
 	AgentOwner string           `json:"agent_owner,omitempty"` // the owner's name in each agent's address: agent:<owner>/<address>
 	// SharedAgents is how many of a Mac Crew's agents others can message (PLAT-856-509).
 	SharedAgents int `json:"shared_agents,omitempty"`
+	// Asking is who asked this Crew's shared agents on this Mac in the last ten minutes (the owner's own Mac only).
+	Asking []macAskActivity `json:"asking,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -211,6 +213,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	if r.Method == http.MethodGet {
 		out.SharedAgents = len(readMacSharedAgents(out.ProjectID))
+		if IsLocalMode() {
+			out.Asking = api.recentMacAsks(out.ProjectID)
+		}
 	}
 	externalJSON(w, out)
 }
