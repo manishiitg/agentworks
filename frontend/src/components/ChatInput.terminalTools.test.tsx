@@ -130,7 +130,7 @@ describe('terminal toolbar shared tools', () => {
     expect(input.selectionEnd).toBe(5)
     expect(send).not.toHaveBeenCalled()
   })
-  it('shows the Goal Builder model under the server lock and the existing on-open agents menu', async () => {
+  it('shows the Goal Builder model under the server lock and no agents in the + menu', async () => {
     const llms = useLLMStore.getState(), presets = useGlobalPresetStore.getState()
     const workflows = useWorkflowManifestStore.getState(), auth = useAuthStore.getState()
     const get = vi.spyOn(api, 'get').mockResolvedValue({ data: { agents: [] } })
@@ -164,16 +164,13 @@ describe('terminal toolbar shared tools', () => {
       expect(add).not.toBeNull()
       await act(async () => { add.focus(); add.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
       expect(document.querySelector('[data-testid="chat-upload-button"]')?.textContent).toContain('Attach files')
+      // The + menu no longer lists agents (owner, 3 Nov): no Agents entry and no directory load.
       expect(directoryCalls()).toHaveLength(0)
-      const agents = document.querySelector<HTMLElement>('[aria-label="Agents you can reach"]')!
-      expect(agents).not.toBeNull()
-      await act(async () => { agents.focus(); agents.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
-      expect(directoryCalls()).toHaveLength(1)
-      expect(document.querySelector('[aria-label="Accessible agents"]')).not.toBeNull()
+      expect(document.querySelector('[aria-label="Agents you can reach"]')).toBeNull()
       await act(async () => useLLMStore.setState({ llmConfigLocked: true, savedLLMs: [{ id: 'company-model', provider: 'cursor-cli', model_id: 'auto', name: 'Company model' }] }))
       expect(host.querySelector('[aria-label="Model: Company model"]')).not.toBeNull()
       expect(host.querySelector('[aria-label="Model: Builder model"]')).toBeNull()
-      expect(directoryCalls()).toHaveLength(1)
+      expect(directoryCalls()).toHaveLength(0)
     } finally {
       await act(async () => {
         useAuthStore.setState(auth); useLLMStore.setState(llms)
