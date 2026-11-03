@@ -18,7 +18,7 @@ import (
 // message while the Mac is on, each with its own audience. The Mac keeps its choice and pushes the same list to its
 // online copy; the server decides who is in the audience, the Mac decides which of its tabs are shared. A message
 // runs on the Mac in that tab, in Run mode, framed as someone else's words, and its sender reads back only their own
-// exchange. Main and the owner's other chats are never shared.
+// exchange. The owner decides which tabs, Main included; unshared tabs are never reached.
 
 type macSharedAgent struct {
 	Tab      string   `json:"tab"`
@@ -194,9 +194,23 @@ func macSharedAudience(agents []macSharedAgent, tab, caller, owner string) (macS
 	return macSharedAgent{}, "not_shared"
 }
 
-// macSharedAgentTab reads the tab id from a chat_id: "<project>:chat:<id>" or the bare id.
+// macMainTab is how the shared list names a Crew's Main chat (owner, 3 Nov: Main can be shared too).
+const macMainTab = "main"
+
+// macSharedAgentChatKey is the conversation key of a shared tab: the project itself for Main.
+func macSharedAgentChatKey(project, tab string) string {
+	if tab == macMainTab {
+		return project
+	}
+	return project + codeChatSideMarker + tab
+}
+
+// macSharedAgentTab reads the tab id from a chat_id: "<project>:chat:<id>", the bare id, or the project (Main).
 func macSharedAgentTab(project, chatID string) string {
 	chatID = strings.TrimSpace(chatID)
+	if chatID == project {
+		return macMainTab
+	}
 	if base, id, ok := strings.Cut(chatID, codeChatSideMarker); ok {
 		if base != project {
 			return ""
@@ -277,7 +291,7 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	}
 	var out map[string]any
 	if result.Status == http.StatusOK && json.Unmarshal(result.Body, &out) == nil {
-		out["workspace_id"], out["chat_id"], out["name"], out["purpose"], out["can_write"], out["shared"] = manifest.Product+":"+manifest.ID, manifest.ID+codeChatSideMarker+agent.Tab, agent.Name, agent.Purpose, false, true
+		out["workspace_id"], out["chat_id"], out["name"], out["purpose"], out["can_write"], out["shared"] = manifest.Product+":"+manifest.ID, macSharedAgentChatKey(manifest.ID, agent.Tab), agent.Name, agent.Purpose, false, true
 		externalJSON(w, out)
 		return true
 	}
@@ -315,7 +329,7 @@ func macSharedAgentRows(caller string) []map[string]any {
 			}
 			target := "workspace:" + crewProfileID + ":" + project
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
-				"chat_id": project + codeChatSideMarker + agent.Tab, "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "presence": presence, "your_access": "run",
+				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "presence": presence, "your_access": "run",
 				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
 				"owner_short": ownerShort, "available": online})
 		}
@@ -348,7 +362,8 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 		Tab  string `json:"tab"`
 		Name string `json:"name"`
 	}
-	rows := []tabRow{}
+	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov).
+	rows := []tabRow{{Tab: macMainTab, Name: "Main"}}
 	for _, tab := range tabs {
 		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
 			rows = append(rows, tabRow{Tab: id, Name: tab.Name})
@@ -361,7 +376,7 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 		}
 		for _, agent := range agents {
 			if !slices.ContainsFunc(rows, func(row tabRow) bool { return row.Tab == agent.Tab }) {
-				externalError(w, 400, "invalid_agents", "Choose one of this Crew's tabs; Main stays private.")
+				externalError(w, 400, "invalid_agents", "Choose one of this Crew's agents.")
 				return
 			}
 		}
