@@ -255,8 +255,45 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 				return
 			}
 		}
+		// With the Mac off, history and the queue come from the server's own copy (the relay cache), never a 503:
+		// a failed history read made the page look like a new Crew, and the queue lives on the Mac (PLAT-856-509).
+		if operation == "events" || operation == "queue" {
+			if b, err := api.crewChatPair(r, project, ""); err == nil && crewMacSocketFor(GetUserIDFromContext(r.Context()), project, b.PairID) == nil {
+				writeCrewChatResult(w, crewMacOffRead(GetUserIDFromContext(r.Context()), project, generation, operation))
+				return
+			}
+		}
 		writeCrewChatResult(w, api.callCrewMac(r, project, call))
 	})
+}
+
+// crewMacOffRead answers a read while the owner's Mac is off: the queue is empty here (it lives on the Mac), and the
+// history is what the relay cache holds, marked so the page says earlier messages are on the Mac.
+func crewMacOffRead(owner, project, generation, operation string) crewChatResult {
+	if operation == "queue" {
+		return crewChatResult{Status: 200, Body: json.RawMessage(`{"messages":[],"mac_off":true}`)}
+	}
+	crewRelayStreams.Lock()
+	batches := append([]crewRelayBatch(nil), crewRelayStreams.get(owner+"/"+project+"/"+generation).batches...)
+	crewRelayStreams.Unlock()
+	events := []json.RawMessage{}
+	for _, batch := range batches {
+		if batch.Kind != "event" {
+			continue
+		}
+		var envelope struct {
+			Events []json.RawMessage `json:"events"`
+		}
+		if json.Unmarshal(batch.Body, &envelope) == nil {
+			events = append(events, envelope.Events...)
+		}
+	}
+	if len(events) > 200 {
+		events = events[len(events)-200:]
+	}
+	body, _ := json.Marshal(map[string]any{"events": events, "last_processed_index": crewRelayLastSeq(batches), "has_more": false, "mac_off": true, "history_on_mac": true})
+	log.Printf("[CREW_RELAY] mac off read owner=%s project=%s conversation=%s operation=%s events=%d", owner, project, generation, operation, len(events))
+	return crewChatResult{Status: 200, Body: body}
 }
 
 func crewChatEventQuery(in url.Values) url.Values {
