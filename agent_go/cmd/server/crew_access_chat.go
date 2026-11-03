@@ -42,7 +42,7 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 			item := map[string]any{"agent": row.Name, "purpose": row.Purpose, "shared": false}
 			if at := slices.IndexFunc(shared, func(agent macSharedAgent) bool { return agent.Tab == row.Tab }); at >= 0 {
 				agent := shared[at]
-				item["shared"], item["audience"] = true, agent.Audience
+				item["shared"], item["audience"], item["answers_only"] = true, agent.Audience, !agent.CanChange
 				if agent.Address != "" {
 					item["address_for_their_agents"] = "agent:" + agent.Address
 				}
@@ -71,6 +71,10 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 	next := slices.DeleteFunc(slices.Clone(shared), func(agent macSharedAgent) bool { return agent.Tab == tab })
 	if action == "share" {
 		agent := macSharedAgent{Tab: tab, Audience: strings.TrimSpace(externalArg(args, "audience"))}
+		// Answers only unless the owner says it may make changes (the default, like the screen).
+		if answersOnly, set := args["answers_only"].(bool); set && !answersOnly {
+			agent.CanChange = true
+		}
 		if agent.Audience == "chosen" {
 			raw, _ := args["people"].([]any)
 			for _, value := range raw {

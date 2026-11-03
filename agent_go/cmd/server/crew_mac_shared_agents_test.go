@@ -118,3 +118,21 @@ func TestMatchNetworkPersonAsksWhenAmbiguous(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-856-509, decisions log 3 Nov: each person talks to a shared agent in their own thread, kept off the owner's
+// tab strip, and that thread is not a user-view chat (which would put it back in Run mode). Their turns never get the
+// owner-only tools.
+func TestSharedAgentThreadPerSender(t *testing.T) {
+	a, b := sharedThreadKey("p", "main", "tester-b"), sharedThreadKey("p", "main", "tester-c")
+	if a == b || a == sharedThreadKey("p", "writer01", "tester-b") || a != sharedThreadKey("p", "main", "tester-b") {
+		t.Fatalf("threads not one per agent and sender: %q %q", a, b)
+	}
+	if !hiddenFromTabStrip(a) || isUserViewConversationKey(a) || !isSideChatConversationKey(a) {
+		t.Fatalf("thread %q: hidden=%t userView=%t side=%t", a, hiddenFromTabStrip(a), isUserViewConversationKey(a), isSideChatConversationKey(a))
+	}
+	for _, tool := range []string{"share", "manage_crew_sync", "settings", "set_workflow_secret"} {
+		if !sharedAgentOwnerOnlyTools[tool] {
+			t.Fatalf("%s is offered to someone else's turn", tool)
+		}
+	}
+}

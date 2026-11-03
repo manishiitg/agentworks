@@ -35,6 +35,9 @@ type macSharedAgent struct {
 	// across renames; Off keeps a turned-off entry only to keep its address for this owner.
 	Address string `json:"address,omitempty"`
 	Off     bool   `json:"off,omitempty"`
+	// CanChange: the owner lets other people's messages make changes; off (the default) they get answers only, as one
+	// line after each of their messages (owner, 3 Nov). The agent keeps its own tools either way.
+	CanChange bool `json:"can_change,omitempty"`
 }
 
 const macSharedAgentsMax = externalCrewMaxSideChats

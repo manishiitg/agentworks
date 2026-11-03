@@ -1050,10 +1050,10 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		return QueryRequest{}, err
 	}
 	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
-	// A message to a shared Mac agent runs like the owner's user-view ask: Run mode, read-only, no authoring. Only
-	// the Mac's relay op for another person's message sets this key (PLAT-856-509).
-	if ctx.Value(crewMacSharedAskKey{}) != nil {
-		query.PinRunMode, query.CrewGuestCaller, query.CrewAskReadOnly = true, userID, true
+	// A message to a shared Mac agent runs as its owner set it up, in that sender's own thread, without secret values
+	// or owner-only tools (owner, 3 Nov, decisions log). Only the Mac's relay op for another person's message sets it.
+	if sender, _ := ctx.Value(crewMacSharedAskKey{}).(string); sender != "" {
+		query.SharedAgentSender = sender
 	}
 	// Claude Code runs as the chat chose: the native terminal or the chat view. A Claude already running on the
 	// other transport (the choice changed from inside a reply) is relaunched by this turn; the conversation resumes.
@@ -1203,7 +1203,8 @@ func limitsSideChats(profileID string) bool { return profileID == crewProfileID 
 // Every route that can create a side chat's registry entry (open, resume, the shared resolver)
 // goes through it. Other keys get a no-op.
 func guardNewSideChat(ctx context.Context, userID, profileID, key string) (unlock func(), isNew bool, err error) {
-	if !limitsSideChats(profileID) || !isSideChatConversationKey(key) {
+	// One person's thread with a shared agent is not a tab and never counts against the tab limit.
+	if !limitsSideChats(profileID) || !isSideChatConversationKey(key) || hiddenFromTabStrip(key) {
 		return func() {}, false, nil
 	}
 	lock := sideChatLock(userID, profileID, key)
@@ -1230,7 +1231,7 @@ func checkSideChatCapacity(ctx context.Context, store productConversationRegistr
 		if record.ConversationKey == strings.TrimSpace(key) {
 			return false, nil // already open: not a new chat
 		}
-		if !record.IsMainChat && record.ConversationKey != crewOwnerDefaultChatKey(project, userID) {
+		if !record.IsMainChat && record.ConversationKey != crewOwnerDefaultChatKey(project, userID) && !hiddenFromTabStrip(record.ConversationKey) {
 			sides++
 		}
 	}

@@ -846,6 +846,10 @@ type QueryRequest struct {
 	// CrewAskReadOnly marks a guest's free-text `ask` to a Crew: the turn only reads (files, memory, skills, functions,
 	// MCPs); typed functions are how a guest acts (856-59, owner decision 2026-10-12). It only narrows access.
 	CrewAskReadOnly bool `json:"crew_ask_read_only,omitempty"`
+	// SharedAgentSender is the person whose message this turn answers in a shared agent's thread with them (owner,
+	// 3 Nov: a shared agent runs as its owner set it up). The turn keeps the agent's own tools, but gets no secret
+	// values and none of the owner-only tools (sharing, settings, access, the Crew itself). It only narrows.
+	SharedAgentSender string `json:"shared_agent_sender,omitempty"`
 	// Execution options from frontend (for workflow execution phase)
 	ExecutionOptions *ExecutionOptions `json:"execution_options,omitempty"`
 	// Workspace access configuration (legacy field, ignored — workspace is always enabled)
@@ -6067,8 +6071,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
-		if crewAskOnly {
-			// A guest's free-text ask reads only and gets no secrets in its environment (856-59).
+		if crewAskOnly || req.SharedAgentSender != "" {
+			// A guest's free-text ask, and someone else's message to a shared agent, get no secrets (856-59, 509).
 			for name := range codingAgentSecretEnvironment {
 				if strings.HasPrefix(name, "SECRET_") {
 					delete(codingAgentSecretEnvironment, name)
@@ -6161,6 +6165,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if crewAskOnly {
 				toolGate.DenyWhere(func(name string) bool { return !crewAskAllowedTools[strings.TrimSpace(name)] })
 			}
+		}
+		if req.SharedAgentSender != "" {
+			// Someone else's turn never changes sharing, settings, access or the Crew (PLAT-856-509).
+			toolGate.DenyWhere(func(name string) bool { return sharedAgentOwnerOnlyTools[strings.TrimSpace(name)] })
 		}
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewHasNoUsableSlackBot(r.Context(), resolvedProfile.Definition.ID, req.SelectedFolder) {
 			// A Slack tool that can only answer "bot is disabled" is not offered: the model would try it first.
