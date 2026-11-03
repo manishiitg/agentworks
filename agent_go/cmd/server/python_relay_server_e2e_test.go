@@ -72,7 +72,7 @@ func TestPythonRelayPublishAndReturnRealWorkspace(t *testing.T) {
 	}
 	// Exercise the same API handler used by the Builder, with no plan.json.
 	svc := NewSchedulerService(&StreamingAPI{})
-	trigger := workflowWebhookRequest{WorkspacePath: workspacePath, Name: "Process", Enabled: true, Kind: triggerKindFunction, RouteSelections: map[string]string{}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}
+	trigger := workflowWebhookRequest{WorkspacePath: workspacePath, Name: "Process", Enabled: true, Kind: triggerKindFunction, RouteSelections: map[string]string{}, Function: &WorkflowFunctionSpec{Name: "process", Inputs: []string{"INPUT"}}}
 	created := httptest.NewRecorder()
 	svc.saveWorkflowWebhook(created, sharedSecretsRequest("POST", "/api/workflow-webhooks", "", trigger))
 	if created.Code != http.StatusCreated {

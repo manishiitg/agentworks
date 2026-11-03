@@ -92,6 +92,9 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 					if err := workflow.ValidateWorkflowInputDefinitions(&variables); err != nil {
 						return "", err
 					}
+					if err := workflow.ValidateWorkflowInputReferences(ctx, binding.Root, &variables); err != nil {
+						return "", err
+					}
 
 				}
 				err = writeFileToWorkspace(ctx, binding.Root+"/"+clean, content)

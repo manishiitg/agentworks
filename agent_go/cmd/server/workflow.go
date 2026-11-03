@@ -1116,26 +1116,10 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(response)
 }
 
-// VariableGroup represents a single set of variable values (matches controller type)
-type VariableGroup struct {
-	Name    string            `json:"name"` // Unique identifier and display label (e.g., "Production", "Staging")
-	Values  map[string]string `json:"values"`
-	Enabled bool              `json:"-"`
-}
-
-// Variable represents a single variable definition
-type Variable struct {
-	Name        string `json:"name"`
-	Value       string `json:"value,omitempty"`
-	Description string `json:"description"`
-}
-
-// VariablesManifest represents the variables.json structure
-type VariablesManifest struct {
-	Variables      []Variable      `json:"variables"`
-	Groups         []VariableGroup `json:"groups"`
-	ExtractionDate string          `json:"extraction_date"`
-}
+// Workflow input definitions have one owner shared with execution.
+type VariableGroup = todo_creation_human.VariableGroup
+type Variable = todo_creation_human.Variable
+type VariablesManifest = todo_creation_human.VariablesManifest
 
 // VariableGroupsResponse represents the response for getting variable groups
 type VariableGroupsResponse struct {
@@ -1304,6 +1288,10 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 		return
 	}
 	if err := todo_creation_human.ValidateWorkflowInputDefinitions(&inputDefinitions); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	if err := todo_creation_human.ValidateWorkflowInputReferences(r.Context(), workspacePath, &inputDefinitions); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}

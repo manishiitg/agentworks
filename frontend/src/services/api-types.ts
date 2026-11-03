@@ -1909,7 +1909,10 @@ export const ExecutionStrategy = {
 // Variable Groups API types
 export interface Variable {
   name: string;
-  value?: string;  // Flow configuration or workflow single-group default
+  value?: string;  // Optional workflow default
+  type?: 'string' | 'integer' | 'number' | 'boolean' | 'object' | 'array';
+  required?: boolean;
+  schema?: Record<string, unknown>;
   description: string;
 }
 

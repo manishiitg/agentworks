@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtrigger"
 )
 
@@ -20,7 +21,7 @@ func keysWebhookVariables(values map[string]string) []string {
 	return out
 }
 
-func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDelivery) error {
+func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDelivery, definitions ...*VariablesManifest) error {
 	if s.Webhook != nil && s.Webhook.PayloadMappings != nil {
 		if s.Webhook.InputMode == "envelope" {
 			return fmt.Errorf("payload mappings require raw input mode")
@@ -33,8 +34,8 @@ func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDel
 		return nil
 	}
 	var envelope struct {
-		Variables map[string]string `json:"variables"`
-		Payload   json.RawMessage   `json:"payload"`
+		Variables map[string]interface{} `json:"variables"`
+		Payload   json.RawMessage        `json:"payload"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(input.Payload))
 	decoder.DisallowUnknownFields()
@@ -42,18 +43,48 @@ func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDel
 		return fmt.Errorf("webhook envelope must be an object")
 	}
 	if err := decoder.Decode(&envelope); err != nil {
-		return fmt.Errorf("invalid webhook envelope: use declared string variables and payload; group selection is retired")
+		return fmt.Errorf("invalid webhook envelope: use declared input values and payload; group selection is retired")
 	}
 
-	for k, v := range envelope.Variables {
+	input.Variables = map[string]string{}
+	for k, raw := range envelope.Variables {
+		var valueDefinition *Variable
+		if len(definitions) > 0 && definitions[0] != nil {
+			for _, field := range definitions[0].Variables {
+				if field.Name == k {
+					copy := field
+					valueDefinition = &copy
+					break
+				}
+			}
+			if valueDefinition == nil {
+				return fmt.Errorf("unknown input %q", k)
+			}
+		}
+		v, ok := raw.(string)
+		if !ok {
+			encoded, err := json.Marshal(raw)
+			if err != nil {
+				return err
+			}
+			v = string(encoded)
+		}
 		if !slices.Contains(s.Webhook.AllowedVariables, k) {
 			return fmt.Errorf("variable %q is not allowed by this trigger", k)
 		}
 		if len(v) > 16384 {
 			return fmt.Errorf("variable %q exceeds 16 KiB", k)
 		}
+		if valueDefinition != nil {
+			// Text fields must receive text, rather than stringify arbitrary JSON.
+			checked, err := workflow.WorkflowInputValue(*valueDefinition, raw)
+			if err != nil {
+				return err
+			}
+			v = checked
+		}
+		input.Variables[k] = v
 	}
-	input.Variables = envelope.Variables
 	if len(envelope.Payload) == 0 {
 		input.Payload = json.RawMessage(`{}`)
 	} else {
@@ -151,19 +182,14 @@ func validateWebhookVariableNames(ctx context.Context, workspace string, names [
 		blocked[v.Name] = true
 	}
 	for _, name := range names {
-		upper := strings.ToUpper(name)
-		if slices.Contains([]string{"PATH", "HOME", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "NODE_OPTIONS", "BASH_ENV", "ENV", "SHELL"}, upper) {
-			return fmt.Errorf("variable %q is protected", name)
-		}
 		if !regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`).MatchString(name) || !declared[name] || blocked[name] {
-			return fmt.Errorf("variable %q is undeclared or protected", name)
+			return fmt.Errorf("input %q is undeclared or protected", name)
 		}
-		for _, part := range []string{"SECRET", "TOKEN", "PASSWORD", "API_KEY", "CREDENTIAL", "AUTH_", "AGENTWORKS_", "WORKFLOW_", "GOG_"} {
-			if strings.Contains(upper, part) {
-				return fmt.Errorf("variable %q is protected", name)
-			}
+		if err := validateWorkflowExposedInput(name); err != nil {
+			return err
 		}
 	}
+
 	return nil
 }
 

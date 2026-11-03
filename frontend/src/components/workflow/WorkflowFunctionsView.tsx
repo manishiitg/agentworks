@@ -101,7 +101,7 @@ export default function WorkflowFunctionsView({ workspacePath, relayMode = false
               <span className="shrink-0 text-[11px] text-muted-foreground">{trigger.enabled ? 'Active' : 'Paused'}</span>
             </div>
             {fn.description && <p className="text-muted-foreground">{fn.description}</p>}
-            <p><span className="font-medium">Inputs</span> <span className="text-muted-foreground">{(fn.inputs || []).length === 0 ? 'none' : (fn.inputs || []).map(input => `${input.name}: ${input.type || 'string'}${input.required ? '' : '?'}`).join(', ')}</span></p>
+            <p><span className="font-medium">Inputs</span> <span className="text-muted-foreground">{Object.keys(trigger.input_schema?.properties ?? {}).length === 0 ? 'none' : Object.keys(trigger.input_schema?.properties ?? {}).map(input => `${input}: ${trigger.input_schema?.properties?.[input]?.type || 'string'}${trigger.input_schema?.required?.includes(input) ? '' : '?'}`).join(', ')}</span></p>
             {relayMode && relayWorkflowID && <details className="rounded bg-muted/40 p-2">
               <summary className="cursor-pointer">External API request</summary>
               <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px]">{`POST ${getApiBaseUrl()}/api/relays/${relayWorkflowID}/runs\nAuthorization: Bearer <access token>\nContent-Type: application/json\n\n${JSON.stringify({ function: fn.name, ...(releases?.active_version ? { version: releases.active_version } : {}), input: { example: 'value' }, idempotency_key: 'unique-request-id' }, null, 2)}\n\nOmit version to use the active release. Poll GET ${getApiBaseUrl()}/api/relays/${relayWorkflowID}/runs/<run_id>.`}</pre>

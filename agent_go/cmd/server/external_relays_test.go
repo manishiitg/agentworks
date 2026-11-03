@@ -35,7 +35,7 @@ func newExternalRelayFixture(t *testing.T) *externalRelayFixture {
 	m.CreatedBy = "owner"
 	m.RelayOutputStepID = "answer"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"reader", "outsider"}}
-	m.Schedules = []WorkflowSchedule{{ID: "process", Name: "Process", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
+	m.Schedules = []WorkflowSchedule{{ID: "process", Name: "Process", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: "process", Inputs: []string{"INPUT"}}}}
 	raw, _ := json.Marshal(m)
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		"Workflow/invoices/workflow.json":            string(raw),

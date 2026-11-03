@@ -1714,6 +1714,9 @@ func RegisterRunFullWorkflowTool(
 				invocationInputs[name] = value
 			}
 			resolvedInputs, inputErr := ResolveWorkflowInputs(session.controller.variablesManifest, groupName, invocationInputs)
+			if inputErr == nil {
+				inputErr = ValidateWorkflowLaunchInputs(session.controller.variablesManifest, resolvedInputs)
+			}
 			if inputErr != nil {
 				return "", inputErr
 			}

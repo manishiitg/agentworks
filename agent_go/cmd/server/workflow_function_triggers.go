@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 // Workflow functions: a workflow offers typed functions to Crews, other
 // workflows and external MCP/CLI callers through triggers of kind
 // "function". A function trigger is an ordinary workflow trigger (fixed
-// route, allowed groups) plus a name, a description and typed inputs, each
+// route and saved input values) plus a name, description and input names, each
 // bound to a declared workflow variable. It has no public URL and no secret:
 // the platform identifies the caller (a Crew or workflow session, or an
 // access token) and checks it may run the workflow. A GitHub or CI webhook on
@@ -31,24 +30,12 @@ var workflowFunctionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 // WorkflowFunctionSpec is the callable contract of a function trigger.
 type WorkflowFunctionSpec struct {
-	Name        string                  `json:"name"`
-	Description string                  `json:"description,omitempty"`
-	Inputs      []WorkflowFunctionInput `json:"inputs,omitempty"`
-	// InputSchema is the authored contract; Inputs only maps names to run variables.
-	InputSchema map[string]interface{} `json:"input_schema,omitempty"`
-	// AllowedCallers limits who may call; empty means anyone who can run
-	// the workflow.
-	AllowedCallers []triggerCaller `json:"allowed_callers,omitempty"`
-}
-
-// WorkflowFunctionInput is one argument, set as the declared workflow
-// variable of the same name for that run.
-type WorkflowFunctionInput struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type,omitempty"` // string (default), integer, number, boolean, object
-	Required    bool     `json:"required,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Enum        []string `json:"enum,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// Inputs selects names from workflow Inputs. Types and defaults belong there.
+	Inputs         []string               `json:"inputs,omitempty"`
+	InputSchema    map[string]interface{} `json:"-"`
+	AllowedCallers []triggerCaller        `json:"allowed_callers,omitempty"`
 }
 
 func isFunctionTriggerKind(kind string) bool {
@@ -61,61 +48,36 @@ func (s WorkflowSchedule) IsFunctionTrigger() bool {
 	return s.ScheduleType == "webhook" && isFunctionTriggerKind(s.Kind) && s.Function != nil
 }
 
-func workflowFunctionInputType(input WorkflowFunctionInput) string {
-	switch strings.ToLower(strings.TrimSpace(input.Type)) {
-	case "integer", "number", "boolean", "object":
-		return strings.ToLower(strings.TrimSpace(input.Type))
-	default:
-		return "string"
-	}
-}
-
-// validateWorkflowFunctionSpec checks the spec's own shape; that each input
-// is a declared, non-secret variable is checked on save against the
-// workspace (validateWebhookVariableNames).
 func validateWorkflowFunctionSpec(spec *WorkflowFunctionSpec) error {
 	if spec == nil {
-		return errors.New("a function trigger needs function.name and function.inputs")
+		return errors.New("a function trigger needs function.name")
 	}
 	spec.Name = strings.TrimSpace(spec.Name)
 	if !workflowFunctionNamePattern.MatchString(spec.Name) {
-		return fmt.Errorf("function name %q must be snake_case (a-z, 0-9, _), starting with a letter", spec.Name)
+		return fmt.Errorf("function name %q must be snake_case, starting with a letter", spec.Name)
 	}
 	if spec.Name == crewFunctionAskName {
-		return errors.New(`"ask" is reserved: every workflow's ask goes to its assistant`)
+		return errors.New("ask is reserved for the assistant")
 	}
 	seen := map[string]bool{}
-	for i := range spec.Inputs {
-		input := &spec.Inputs[i]
-		input.Name = strings.TrimSpace(input.Name)
-		if input.Name == "" {
-			return errors.New("every function input needs a name (a declared workflow variable)")
+	for i, name := range spec.Inputs {
+		name = strings.TrimSpace(name)
+		spec.Inputs[i] = name
+		if name == "" {
+			return errors.New("every function input needs a name")
 		}
-		if input.Name == "group" {
-			return errors.New(`"group" is reserved for choosing the variable group`)
+		if name == "group" {
+			return errors.New("group is reserved; use input_preset")
 		}
-		if seen[input.Name] {
-			return fmt.Errorf("function input %q is listed twice", input.Name)
+		if seen[name] {
+			return fmt.Errorf("function input %q is listed twice", name)
 		}
-		seen[input.Name] = true
-		if spec.InputSchema != nil {
-			continue // The full schema, including nested types, is checked below.
-		}
-		switch strings.ToLower(strings.TrimSpace(input.Type)) {
-		case "", "string", "integer", "number", "boolean", "object":
-		default:
-			return fmt.Errorf("function input %q: type must be string, integer, number, boolean or object", input.Name)
-		}
-	}
-	if spec.InputSchema != nil {
-		if _, err := compilePythonRelaySchema(spec.InputSchema); err != nil {
-			return fmt.Errorf("function input_schema: %w", err)
-		}
+		seen[name] = true
 	}
 	for _, caller := range spec.AllowedCallers {
 		c := caller
 		if err := validateAnyTriggerCaller(&c); err != nil {
-			return fmt.Errorf("allowed caller: %w", err)
+			return err
 		}
 	}
 	return nil
@@ -125,44 +87,15 @@ func workflowFunctionInputNames(spec *WorkflowFunctionSpec) []string {
 	if spec == nil {
 		return nil
 	}
-	names := make([]string, 0, len(spec.Inputs))
-	for _, input := range spec.Inputs {
-		names = append(names, input.Name)
-	}
-	return names
+	return spec.Inputs
 }
 
-// workflowFunctionInputSchema is the JSON Schema callers see and that call
-// arguments are validated against.
 func workflowFunctionInputSchema(sched WorkflowSchedule) map[string]interface{} {
 	if sched.Function.InputSchema != nil {
 		return sched.Function.InputSchema
 	}
-	properties := map[string]interface{}{}
-	required := []interface{}{}
-	for _, input := range sched.Function.Inputs {
-		property := map[string]interface{}{"type": workflowFunctionInputType(input)}
-		if strings.TrimSpace(input.Description) != "" {
-			property["description"] = input.Description
-		}
-		if len(input.Enum) > 0 {
-			values := make([]interface{}, 0, len(input.Enum))
-			for _, value := range input.Enum {
-				values = append(values, value)
-			}
-			property["enum"] = values
-		}
-		properties[input.Name] = property
-		if input.Required {
-			required = append(required, input.Name)
-		}
-	}
-
-	schema := map[string]interface{}{"type": "object", "properties": properties}
-	if len(required) > 0 {
-		schema["required"] = required
-	}
-	return schema
+	// An unresolved contract cannot admit caller values.
+	return map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}
 }
 
 // workflowFunctionResultSchema describes what a workflow function returns:
@@ -267,131 +200,40 @@ func sharedFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionS
 // mistyped inputs fail before anything runs.
 func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (map[string]string, string, error) {
 	if _, present := args["group"]; present {
-		return nil, "", fmt.Errorf("group is retired; configure input_preset on the function and pass its declared inputs")
+		return nil, "", fmt.Errorf("group is retired; configure input_preset")
 	}
-	if sched.Function.InputSchema != nil {
-		schema, err := compilePythonRelaySchema(sched.Function.InputSchema)
-		if err != nil {
-			return nil, "", fmt.Errorf("function input_schema: %w", err)
-		}
-		if args == nil {
-			args = map[string]interface{}{}
-		}
-		if err := schema.Validate(args); err != nil {
-			return nil, "", fmt.Errorf("function input: %w", err)
-		}
+	if args == nil {
+		args = map[string]interface{}{}
 	}
-	inputs := map[string]WorkflowFunctionInput{}
-	for _, input := range sched.Function.Inputs {
-		inputs[input.Name] = input
+	schema, err := compilePythonRelaySchema(workflowFunctionInputSchema(sched))
+	if err != nil {
+		return nil, "", err
 	}
-	variables := map[string]string{}
-	group := ""
-	problems := []string{}
+	if err := schema.Validate(args); err != nil {
+		return nil, "", fmt.Errorf("function input: %w", err)
+	}
+	values := map[string]string{}
 	for name, raw := range args {
-
-		input, known := inputs[name]
-		if !known {
-			problems = append(problems, fmt.Sprintf("unknown input %q", name))
-			continue
+		if !slices.Contains(sched.Function.Inputs, name) {
+			return nil, "", fmt.Errorf("unknown input %q", name)
 		}
-		var value string
-		var err error
-		if sched.Function.InputSchema != nil {
-			// Validation uses the authored schema. Serialization must not apply
-			// the reduced variable projection as a second, different contract.
-			if text, ok := raw.(string); ok {
-				value = text
-			} else {
-				var encoded []byte
-				encoded, err = json.Marshal(raw)
-				value = string(encoded)
-			}
-			if len(value) > 16384 {
-				err = fmt.Errorf("input %s exceeds 16 KiB", name)
-			}
-		} else {
-			value, err = workflowFunctionInputValue(input, raw)
-		}
-		if err != nil {
-			problems = append(problems, err.Error())
-			continue
-		}
-		variables[name] = value
-	}
-	for _, input := range sched.Function.Inputs {
-		if _, given := variables[input.Name]; input.Required && !given {
-			problems = append(problems, fmt.Sprintf("missing required input %s", input.Name))
-		}
-	}
-	if len(problems) > 0 {
-		slices.Sort(problems)
-		return nil, "", fmt.Errorf("%s: %s", sched.Function.Name, strings.Join(problems, "; "))
-	}
-	return variables, group, nil
-}
-
-func workflowFunctionInputValue(input WorkflowFunctionInput, raw interface{}) (string, error) {
-	var value string
-	switch workflowFunctionInputType(input) {
-	case "object":
-		if _, ok := raw.(map[string]interface{}); !ok {
-			return "", fmt.Errorf("input %s must be an object", input.Name)
-		}
-		encoded, err := json.Marshal(raw)
-		if err != nil {
-			return "", fmt.Errorf("input %s must be a JSON object", input.Name)
-		}
-		value = string(encoded)
-	case "integer":
-		switch n := raw.(type) {
-		case float64:
-			if n != float64(int64(n)) {
-				return "", fmt.Errorf("input %s must be an integer", input.Name)
-			}
-			value = strconv.FormatInt(int64(n), 10)
-		case int:
-			value = strconv.Itoa(n)
-		case string:
-			if _, err := strconv.ParseInt(strings.TrimSpace(n), 10, 64); err != nil {
-				return "", fmt.Errorf("input %s must be an integer", input.Name)
-			}
-			value = strings.TrimSpace(n)
-		default:
-			return "", fmt.Errorf("input %s must be an integer", input.Name)
-		}
-	case "number":
-		switch n := raw.(type) {
-		case float64:
-			value = strconv.FormatFloat(n, 'f', -1, 64)
-		case int:
-			value = strconv.Itoa(n)
-		default:
-			return "", fmt.Errorf("input %s must be a number", input.Name)
-		}
-	case "boolean":
-		b, ok := raw.(bool)
+		value, ok := raw.(string)
 		if !ok {
-			return "", fmt.Errorf("input %s must be true or false", input.Name)
+			encoded, err := json.Marshal(raw)
+			if err != nil {
+				return nil, "", err
+			}
+			value = string(encoded)
 		}
-		value = strconv.FormatBool(b)
-	default:
-		s, ok := raw.(string)
-		if !ok {
-			return "", fmt.Errorf("input %s must be a string", input.Name)
+		if len(value) > 16384 {
+			return nil, "", fmt.Errorf("input %q exceeds 16 KiB", name)
 		}
-		if input.Required && strings.TrimSpace(s) == "" {
-			return "", fmt.Errorf("input %s must not be empty", input.Name)
+		if err := stepworkflow.ValidatePlainWorkflowInput(name, value); err != nil {
+			return nil, "", err
 		}
-		value = s
+		values[name] = value
 	}
-	if len(value) > 16384 {
-		return "", fmt.Errorf("input %s exceeds 16 KiB", input.Name)
-	}
-	if len(input.Enum) > 0 && !slices.Contains(input.Enum, value) {
-		return "", fmt.Errorf("input %s must be one of %s", input.Name, strings.Join(input.Enum, ", "))
-	}
-	return value, nil
+	return values, "", nil
 }
 
 // workflowFunctionCall is one call of a workflow function.

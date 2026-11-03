@@ -17,7 +17,7 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 	manifest := NewWorkflowManifest("Release test")
 	manifest.Kind = "relay"
 	manifest.RelayOutputStepID = "answer"
-	manifest.Schedules = []WorkflowSchedule{{ID: "function-one", Name: "Hello", ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", GroupNames: []string{"default"}, Function: &WorkflowFunctionSpec{Name: "hello", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}}
+	manifest.Schedules = []WorkflowSchedule{{ID: "function-one", Name: "Hello", ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", GroupNames: []string{"default"}, Function: &WorkflowFunctionSpec{Name: "hello", Inputs: []string{"INPUT"}}}}
 	manifestJSON, _ := json.Marshal(manifest)
 	plan := &stepworkflow.PlanningResponse{Steps: []stepworkflow.PlanStepInterface{&stepworkflow.AgentPlanStep{
 		CommonStepFields: stepworkflow.CommonStepFields{ID: "answer", Title: "Answer", Description: "Return JSON"},

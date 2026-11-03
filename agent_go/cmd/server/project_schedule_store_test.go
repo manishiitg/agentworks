@@ -183,8 +183,11 @@ func TestProjectEntryFilesPreserveContractsAndEncryptedAuthentication(t *testing
 	_, _ = newScheduleRunWorkspaceStub(t)
 	ctx := context.Background()
 	root := "Workflow/example"
+	if err := writeFileToWorkspace(ctx, root+"/variables/variables.json", `{"variables":[{"name":"query","required":true,"schema":{"type":"string","enum":["one","two"]}}],"groups":[{"name":"Saved","values":{}}]}`); err != nil {
+		t.Fatal(err)
+	}
 	manifest := &WorkflowManifest{ID: "example", CreatedBy: "owner", Schedules: []WorkflowSchedule{
-		{ChatID: "reporting", ID: "typed-entry", Name: "Inspect", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, Function: &WorkflowFunctionSpec{Name: "inspect", Inputs: []WorkflowFunctionInput{{Name: "query", Type: "string", Required: true, Enum: []string{"one", "two"}}}, AllowedCallers: []triggerCaller{{Type: triggerCallerWorkflow, ID: "source"}}}, GroupNames: []string{"default", "other"}, RouteSelections: map[string]string{"router": "report"}, Webhook: &WorkflowWebhookConfig{StepID: "inspect-step"}},
+		{ChatID: "reporting", ID: "typed-entry", Name: "Inspect", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, Function: &WorkflowFunctionSpec{Name: "inspect", Inputs: []string{"query"}, AllowedCallers: []triggerCaller{{Type: triggerCallerWorkflow, ID: "source"}}}, InputPreset: "Saved", RouteSelections: map[string]string{"router": "report"}, Webhook: &WorkflowWebhookConfig{StepID: "inspect-step"}},
 		{ChatID: "main", ID: "event", Name: "Event", Enabled: true, ScheduleType: "webhook", Webhook: &WorkflowWebhookConfig{AuthMode: "github", EncryptedSecret: "opaque-fixture", InputMode: "envelope", AllowedVariables: []string{"query"}}},
 	}}
 	if err := saveWorkflowEntryActions(ctx, root, manifest); err != nil {
@@ -204,8 +207,8 @@ func TestProjectEntryFilesPreserveContractsAndEncryptedAuthentication(t *testing
 	if _, _, err := workflowFunctionArgs(*fn, map[string]interface{}{}); err == nil {
 		t.Fatal("required function argument lost")
 	}
-	variables, group, err := workflowFunctionArgs(*fn, map[string]interface{}{"query": "two", "group": "other"})
-	if err != nil || variables["query"] != "two" || group != "other" {
+	variables, group, err := workflowFunctionArgs(*fn, map[string]interface{}{"query": "two"})
+	if err != nil || variables["query"] != "two" || group != "" || fn.InputPreset != "Saved" {
 		t.Fatalf("typed execution input changed: %v %s %v", variables, group, err)
 	}
 	hooks, err := readProjectWebhookDefinitions(ctx, root)

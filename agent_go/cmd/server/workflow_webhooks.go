@@ -139,6 +139,7 @@ type workflowWebhookResponse struct {
 	Kind             string                          `json:"kind,omitempty"`
 	Caller           *triggerCaller                  `json:"caller,omitempty"`
 	Function         *WorkflowFunctionSpec           `json:"function,omitempty"`
+	InputSchema      map[string]interface{}          `json:"input_schema,omitempty"`
 }
 
 type workflowWebhookRequest struct {
@@ -236,6 +237,9 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 		path = ""
 	}
 	out := workflowWebhookResponse{ChatID: s.ChatID, ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, InputPreset: s.InputPreset, Inputs: s.Inputs, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function}
+	if s.Function != nil {
+		out.InputSchema = workflowFunctionInputSchema(s)
+	}
 	if s.Webhook != nil {
 		out.StepID = s.Webhook.StepID
 		out.InputMode = s.Webhook.InputMode
@@ -668,6 +672,19 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 	sched := WorkflowSchedule{ChatID: req.ChatID, ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, InputPreset: req.InputPreset, Inputs: req.Inputs, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller}
 	if function {
 		sched.Function = spec
+		definitions, readErr := readWorkflowInputDefinitions(r.Context(), req.WorkspacePath)
+		if readErr != nil {
+			http.Error(w, readErr.Error(), 400)
+			return
+		}
+		if manifest.Kind != "relay" {
+			schema, schemaErr := workflowCallerInputSchema(definitions, spec.Inputs, sched.InputPreset, sched.Inputs)
+			if schemaErr != nil {
+				http.Error(w, schemaErr.Error(), 400)
+				return
+			}
+			spec.InputSchema = schema
+		}
 	}
 	if index >= 0 {
 		sched.Description = manifest.Schedules[index].Description
@@ -890,7 +907,14 @@ func (receiver webhookReceiver) deliver(ctx context.Context, manifestID, workspa
 		return result, err
 	}
 	input := &WorkflowWebhookDelivery{RunID: runID, DeliveryID: deliveryID, Event: event, ReceivedAt: time.Now().UTC(), Payload: append(json.RawMessage(nil), body...)}
-	if err := resolveWebhookDeliveryOptions(sched, input); err != nil {
+	definitions, definitionErr := readWorkflowInputDefinitions(ctx, workspacePath)
+	if definitionErr != nil {
+		return internalTriggerDeliveryResult{}, definitionErr
+	}
+	if err := resolveWebhookDeliveryOptions(sched, input, definitions); err != nil {
+		return internalTriggerDeliveryResult{}, &invalidWebhookDeliveryError{err.Error()}
+	}
+	if err := resolveWorkflowWebhookInputs(ctx, workspacePath, sched, input); err != nil {
 		return internalTriggerDeliveryResult{}, &invalidWebhookDeliveryError{err.Error()}
 	}
 	acceptedID, err := receiver.start(workspacePath, sched.ID, "", input)

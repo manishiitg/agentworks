@@ -14,9 +14,12 @@ import (
 
 // Variable represents a single variable definition
 type Variable struct {
-	Name        string `json:"name"`        // e.g., "AWS_ACCOUNT_ID"
-	Value       string `json:"value"`       // Workflow default; an explicit empty string is a value.
-	Description string `json:"description"` // e.g., "AWS account number for deployment"
+	Name        string                 `json:"name"`        // e.g., "AWS_ACCOUNT_ID"
+	Value       string                 `json:"value"`       // Workflow default; an explicit empty string is a value.
+	Description string                 `json:"description"` // e.g., "AWS account number for deployment"
+	Type        string                 `json:"type,omitempty"`
+	Required    bool                   `json:"required,omitempty"`
+	Schema      map[string]interface{} `json:"schema,omitempty"` // Optional nested constraints, owned by this input.
 }
 
 // VariableGroup stores an optional named set of sparse input overrides.
@@ -235,6 +238,9 @@ func writeVariablesToFile(ctx context.Context, workspacePath string, manifest *V
 	if err := ValidateWorkflowInputDefinitions(manifest); err != nil {
 		return err
 	}
+	if err := ValidateWorkflowInputReferences(ctx, workspacePath, manifest); err != nil {
+		return err
+	}
 
 	// Use relative path only - WriteWorkspaceFile auto-prepends workspacePath
 	variablesPath := filepath.Join("variables", "variables.json")
@@ -275,7 +281,10 @@ func getUpdateVariableSchema() string {
 				"type": "string",
 				"description": "Variable description (optional)"
 			},
-			"action": {
+			"type": {"type":"string", "enum":["string","integer","number","boolean","object","array"],"description":"Input type; defaults to string. Credentials belong in Vault, never saved values."},
+ "required": {"type":"boolean","description":"Needed to start when no default is set."},
+ "schema": {"type":"object","description":"Optional nested JSON Schema constraints, owned by this workflow input."},
+ "action": {
 				"type": "string",
 				"enum": ["update", "add", "delete"],
 				"description": "Action to perform: update existing, add new, or delete"
@@ -352,6 +361,7 @@ func createUpdateVariableExecutor(workspacePath string, logger loggerv2.Logger, 
 				Value:       value,
 				Description: description,
 			}
+			applyWorkflowInputDefinition(&newVar, args)
 			manifest.Variables = append(manifest.Variables, newVar)
 			logger.Info(fmt.Sprintf("✅ Added new variable: %s", name))
 
@@ -434,6 +444,7 @@ func createUpdateVariableExecutor(workspacePath string, logger loggerv2.Logger, 
 						}
 						manifest.Variables[i].Description = descriptionRaw
 					}
+					applyWorkflowInputDefinition(&manifest.Variables[i], args)
 					logger.Info(fmt.Sprintf("✅ Updated variable: %s", existingName))
 					break
 				}
@@ -519,5 +530,17 @@ func createUpdateVariableExecutor(workspacePath string, logger loggerv2.Logger, 
 		}
 
 		return fmt.Sprintf("Successfully performed %s action on variables", action), nil
+	}
+}
+
+func applyWorkflowInputDefinition(input *Variable, args map[string]interface{}) {
+	if kind, ok := args["type"].(string); ok {
+		input.Type = kind
+	}
+	if needed, ok := args["required"].(bool); ok {
+		input.Required = needed
+	}
+	if schema, present := args["schema"]; present {
+		input.Schema, _ = schema.(map[string]interface{})
 	}
 }

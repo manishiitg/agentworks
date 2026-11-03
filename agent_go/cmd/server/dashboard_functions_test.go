@@ -135,7 +135,7 @@ func TestDashboardRelayFunctionsUsePublishedVersionAndRealCaller(t *testing.T) {
 	// An unpublished new draft function and description must not change the form.
 	f.mock.mu.Lock()
 	live.Schedules[0].Function.Description = "Unpublished draft description"
-	live.Schedules = append(live.Schedules, WorkflowSchedule{ID: "draft-only", Name: "Draft only", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, Function: &WorkflowFunctionSpec{Name: "draft_only", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}})
+	live.Schedules = append(live.Schedules, WorkflowSchedule{ID: "draft-only", Name: "Draft only", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, Function: &WorkflowFunctionSpec{Name: "draft_only", Inputs: []string{"INPUT"}}})
 	encoded, _ = json.Marshal(live)
 	f.mock.files["Workflow/invoices/workflow.json"] = string(encoded)
 	f.mock.mu.Unlock()

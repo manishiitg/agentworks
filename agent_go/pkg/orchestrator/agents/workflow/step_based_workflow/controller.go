@@ -731,6 +731,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 			variableValues = cloneWorkflowStringMap(opts.ResolvedInputs)
 		} else {
 			variableValues, err = ResolveWorkflowInputs(hcpo.variablesManifest, preset, inputs)
+			if err == nil {
+				err = ValidateWorkflowLaunchInputs(hcpo.variablesManifest, variableValues)
+			}
 		}
 	}
 	if err != nil {

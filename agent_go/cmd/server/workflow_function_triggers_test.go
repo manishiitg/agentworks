@@ -8,20 +8,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
 func reviewPRTrigger() WorkflowSchedule {
-	return WorkflowSchedule{
+	sched := WorkflowSchedule{
 		ID: "fn-review", Name: "Review PR", ScheduleType: "webhook", Enabled: true, Kind: triggerKindFunction,
 		InputPreset: "Production", WorkshopMode: "run", Webhook: &WorkflowWebhookConfig{},
-		Function: &WorkflowFunctionSpec{Name: "review_pr", Description: "Review one pull request", Inputs: []WorkflowFunctionInput{
-			{Name: "GITHUB_OWNER", Required: true},
-			{Name: "GITHUB_REPO", Required: true},
-			{Name: "PR_NUMBER", Type: "integer", Required: true, Description: "Pull request number"},
-			{Name: "REVIEW_DEPTH", Enum: []string{"quick", "full"}},
-		}},
+		Function: &WorkflowFunctionSpec{Name: "review_pr", Description: "Review one pull request", Inputs: []string{"GITHUB_OWNER", "GITHUB_REPO", "PR_NUMBER", "REVIEW_DEPTH"}},
 	}
+	definitions := reviewPRInputDefinitions()
+	schema, err := workflowCallerInputSchema(definitions, sched.Function.Inputs, "", nil)
+	if err != nil {
+		panic(err)
+	}
+	sched.Function.InputSchema = schema
+	return sched
+}
+
+func reviewPRInputDefinitions() *VariablesManifest {
+	return &VariablesManifest{Variables: []Variable{{Name: "GITHUB_OWNER", Required: true}, {Name: "GITHUB_REPO", Required: true}, {Name: "PR_NUMBER", Type: "integer", Required: true}, {Name: "REVIEW_DEPTH", Schema: map[string]interface{}{"type": "string", "enum": []interface{}{"quick", "full"}}}}, Groups: []VariableGroup{{Name: "Production", Values: map[string]string{}}}}
 }
 
 func TestWorkflowFunctionSpecValidation(t *testing.T) {
@@ -32,9 +39,8 @@ func TestWorkflowFunctionSpecValidation(t *testing.T) {
 	}{
 		{"missing", nil, "needs function.name"},
 		{"bad name", &WorkflowFunctionSpec{Name: "Review PR"}, "snake_case"},
-		{"reserved input", &WorkflowFunctionSpec{Name: "run", Inputs: []WorkflowFunctionInput{{Name: "group"}}}, "reserved"},
-		{"duplicate input", &WorkflowFunctionSpec{Name: "run", Inputs: []WorkflowFunctionInput{{Name: "A"}, {Name: "A"}}}, "twice"},
-		{"bad type", &WorkflowFunctionSpec{Name: "run", Inputs: []WorkflowFunctionInput{{Name: "A", Type: "array"}}}, "type must be"},
+		{"reserved input", &WorkflowFunctionSpec{Name: "run", Inputs: []string{"group"}}, "reserved"},
+		{"duplicate input", &WorkflowFunctionSpec{Name: "run", Inputs: []string{"A", "A"}}, "twice"},
 	} {
 		if err := validateWorkflowFunctionSpec(tt.spec); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Fatalf("%s: err = %v, want %q", tt.name, err, tt.want)
@@ -57,16 +63,20 @@ func TestWorkflowFunctionSpecValidation(t *testing.T) {
 // runs instead of falling back to a saved PR_NUMBER.
 func TestWorkflowFunctionArgs(t *testing.T) {
 	sched := reviewPRTrigger()
-	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}); err == nil || !strings.Contains(err.Error(), "missing required input PR_NUMBER") {
+	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "   ", "GITHUB_REPO": "app", "PR_NUMBER": 1}); err == nil {
+		t.Fatal("blank required text accepted")
+	}
+
+	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}); err == nil || !strings.Contains(err.Error(), "PR_NUMBER") {
 		t.Fatalf("missing PR number: err = %v", err)
 	}
-	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(149), "task": "review it"}); err == nil || !strings.Contains(err.Error(), `unknown input "task"`) {
+	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(149), "task": "review it"}); err == nil || !strings.Contains(err.Error(), "task") {
 		t.Fatalf("free-text task: err = %v", err)
 	}
-	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": "abc"}); err == nil || !strings.Contains(err.Error(), "PR_NUMBER must be an integer") {
+	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": "abc"}); err == nil || !strings.Contains(err.Error(), "PR_NUMBER") {
 		t.Fatalf("bad type: err = %v", err)
 	}
-	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(1), "REVIEW_DEPTH": "deep"}); err == nil || !strings.Contains(err.Error(), "must be one of quick, full") {
+	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(1), "REVIEW_DEPTH": "deep"}); err == nil || !strings.Contains(err.Error(), "REVIEW_DEPTH") {
 		t.Fatalf("enum: err = %v", err)
 	}
 	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": float64(1), "group": "dev"}); err == nil || !strings.Contains(err.Error(), "retired") {
@@ -90,7 +100,8 @@ func TestWorkflowFunctionArgs(t *testing.T) {
 }
 
 func TestWorkflowFunctionObjectInput(t *testing.T) {
-	sched := WorkflowSchedule{Function: &WorkflowFunctionSpec{Name: "run_relay", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}
+	sched := WorkflowSchedule{Function: &WorkflowFunctionSpec{Name: "run_relay", Inputs: []string{"INPUT"}}}
+	sched.Function.InputSchema, _ = workflowCallerInputSchema(&VariablesManifest{Variables: []Variable{{Name: "INPUT", Type: "object", Required: true}}}, sched.Function.Inputs, "", nil)
 	values, _, err := workflowFunctionArgs(sched, map[string]interface{}{"INPUT": map[string]interface{}{"customer": "Asha", "count": float64(2)}})
 	if err != nil || values["INPUT"] != `{"count":2,"customer":"Asha"}` {
 		t.Fatalf("values = %v, err = %v", values, err)
@@ -141,6 +152,10 @@ func TestWorkflowFunctionCallerAllowList(t *testing.T) {
 // manage its owned functions; a call with a missing input fails before any run.
 func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	env := newCrewFunctionEnv(t)
+	definitions, _ := json.Marshal(reviewPRInputDefinitions())
+	env.mock.mu.Lock()
+	env.mock.files["Workflow/reports/variables/variables.json"] = string(definitions)
+	env.mock.mu.Unlock()
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	manifest, _, err := ReadWorkflowManifest(ctx, "Workflow/reports")
 	if err != nil {
@@ -170,7 +185,7 @@ func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	}
 	// The same Builder can now define a whole-plan entry through the common
 	// service. This is saved configuration only; no plan is executed here.
-	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{"project": "#workflow:Reports", "definition": map[string]interface{}{"name": "run_report", "action": map[string]interface{}{"type": "run"}, "input": map[string]interface{}{"groups": []string{"default"}}, "input_schema": map[string]interface{}{"type": "object"}}}); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{"project": "#workflow:Reports", "definition": map[string]interface{}{"name": "run_report", "action": map[string]interface{}{"type": "run"}, "input": map[string]interface{}{}, "inputs": []string{"GITHUB_OWNER", "GITHUB_REPO", "PR_NUMBER"}}}); err != nil {
 		t.Fatalf("define on owned Goal: %v", err)
 	}
 
@@ -213,10 +228,10 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 		t.Fatalf("list = %d %v", code, out)
 	}
 	code, out = request("project_functions_call", map[string]any{"function": "review_pr", "input": map[string]any{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}, WorkflowAccessOwner)
-	if code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "missing required input PR_NUMBER") {
+	if code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "PR_NUMBER") {
 		t.Fatalf("missing input = %d %v", code, out)
 	}
-	if code, out := request("project_functions_call", map[string]any{"function": "review_pr"}, WorkflowAccessRead); code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "missing required input") {
+	if code, out := request("project_functions_call", map[string]any{"function": "review_pr"}, WorkflowAccessRead); code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "PR_NUMBER") {
 		t.Fatalf("Run call must reach input validation: %d %v", code, out)
 	}
 	if code, _ := request("project_functions_call", map[string]any{"function": "nope"}, WorkflowAccessOwner); code != 404 {
@@ -301,12 +316,6 @@ func TestWorkflowChatNativeAgentToolsScope(t *testing.T) {
 		"scheduled run": func() QueryRequest { r := chat; r.TriggeredBy = "cron"; return r }(),
 		"bot":           func() QueryRequest { r := chat; r.BotPlatform = "slack"; return r }(),
 		"notification":  func() QueryRequest { r := chat; r.IsAutoNotification = true; return r }(),
-		"Autopilot reviewer child": func() QueryRequest {
-			r := chat
-			r.ParentSessionID = "parent"
-			r.SessionKind = "pulse_reviewer"
-			return r
-		}(),
 	} {
 		if !env.api.workflowChatNativeAgentTools(ctx, req, "sess-"+name, false) {
 			t.Fatalf("%s must use native tools", name)
@@ -317,7 +326,8 @@ func TestWorkflowChatNativeAgentToolsScope(t *testing.T) {
 // A workflow-backed call stayed "queued" for its whole run because only the Crew word "running" counted
 // (PLAT-535), and its finished result inlined every step's output files, 400 KB for one run (PLAT-536).
 func TestWorkflowFunctionCallStatusAndResultSize(t *testing.T) {
-	for state, want := range map[string]bool{"starting": false, "waiting_for_capacity": false, "workflow_running": true, "pulse_gate": true, "workflow_finished": true} {
+	// PLAT-825-97 removed the Autopilot engine; its retired gate is not an active run.
+	for state, want := range map[string]bool{"starting": false, "waiting_for_capacity": false, "workflow_running": true, "pulse_gate": false, "workflow_finished": true} {
 		if got := triggerTargetRunIsRunning(triggerCallerWorkflow, state); got != want {
 			t.Fatalf("workflow run state %q: running = %v, want %v", state, got, want)
 		}
@@ -358,23 +368,27 @@ func TestWorkflowFunctionCallStatusAndResultSize(t *testing.T) {
 func TestGoalFunctionSchemaSurvivesManifestSaveAndValidatesCalls(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	env.mock.mu.Lock()
-	env.mock.files["Workflow/reports/variables/variables.json"] = `{"variables":[{"name":"INPUT","value":""}],"groups":[{"name":"default"}]}`
-	env.mock.mu.Unlock()
 	schema := map[string]interface{}{
 		"type": "object", "required": []interface{}{"INPUT"}, "additionalProperties": false,
 		"properties": map[string]interface{}{"INPUT": map[string]interface{}{
-			"type": "object", "required": []interface{}{"count", "code"},
+			"type": "object", "required": []interface{}{"count", "code"}, "$defs": map[string]interface{}{"code": map[string]interface{}{"type": "string", "pattern": "^ok-"}},
 			"properties": map[string]interface{}{
 				"count": map[string]interface{}{"type": "integer", "minimum": float64(1)},
-				"code":  map[string]interface{}{"type": "string", "pattern": "^ok-"},
+				"code":  map[string]interface{}{"$ref": "#/$defs/code"},
 			},
 		}},
 	}
+
+	property := schema["properties"].(map[string]interface{})["INPUT"].(map[string]interface{})
+	definitions := VariablesManifest{Variables: []Variable{{Name: "INPUT", Type: "object", Required: true, Schema: property}}}
+	definitionJSON, _ := json.Marshal(definitions)
+	env.mock.mu.Lock()
+	env.mock.files["Workflow/reports/variables/variables.json"] = string(definitionJSON)
+	env.mock.mu.Unlock()
 	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{
 		"project": "#workflow:Reports", "definition": map[string]interface{}{
-			"name": "constrained", "action": map[string]interface{}{"type": "run"}, "input_schema": schema,
-			"input": map[string]interface{}{"groups": []string{"default"}},
+			"name": "constrained", "action": map[string]interface{}{"type": "run"}, "inputs": []string{"INPUT"},
+			"input": map[string]interface{}{},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -391,12 +405,10 @@ func TestGoalFunctionSchemaSurvivesManifestSaveAndValidatesCalls(t *testing.T) {
 	if err != nil || len(records) != 1 {
 		t.Fatalf("saved function records=%v err=%v", records, err)
 	}
-	want, _ := json.Marshal(schema)
-	got, _ := json.Marshal(records[0].InputSchema)
-	if string(got) != string(want) {
-		t.Fatalf("authored schema lost on manifest save: got=%s want=%s", got, want)
+	if records[0].InputSchema != nil || len(records[0].Inputs) != 1 || records[0].Inputs[0] != "INPUT" {
+		t.Fatalf("function must save only input references: %+v", records[0])
 	}
-	view, err := workflowFunctionExecutionView(records[0])
+	view, err := workflowFunctionExecutionView(ctx, "Workflow/reports", records[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,5 +424,51 @@ func TestGoalFunctionSchemaSurvivesManifestSaveAndValidatesCalls(t *testing.T) {
 		if _, _, err := workflowFunctionArgs(view, map[string]interface{}{"INPUT": input}); err == nil || !strings.Contains(err.Error(), "function input:") {
 			t.Fatalf("schema constraint not enforced: input=%v err=%v", input, err)
 		}
+	}
+}
+
+// PLAT-746-265: selecting names never creates a second type contract or grants
+// access to fixed/secret values. Definitions refuse to leave saved consumers dangling.
+func TestWorkflowInputExposureAndSavedReferences(t *testing.T) {
+	definitions := &VariablesManifest{Variables: []Variable{{Name: "count", Type: "integer", Required: true, Value: "4"}, {Name: "scope", Required: true, Value: "default"}, {Name: "SECRET_KEY"}}}
+	schema, err := workflowCallerInputSchema(definitions, []string{"count", "scope"}, "", map[string]string{"scope": "fixed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	properties := schema["properties"].(map[string]interface{})
+	if _, shown := properties["scope"]; shown {
+		t.Fatal("fixed input exposed")
+	}
+	if required, _ := schema["required"].([]interface{}); len(required) > 0 {
+		t.Fatal("default input is caller-required")
+	}
+	sched := WorkflowSchedule{Function: &WorkflowFunctionSpec{Name: "count", Inputs: []string{"count", "scope"}, InputSchema: schema}}
+	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"scope": "override"}); err == nil {
+		t.Fatal("caller overrode fixed input")
+	}
+	for _, names := range [][]string{{"SECRET_KEY"}, {"unknown"}} {
+		if _, err := workflowCallerInputSchema(definitions, names, "", nil); err == nil {
+			t.Fatalf("exposed protected or unknown inputs: %v", names)
+		}
+	}
+	env := newCrewFunctionEnv(t)
+	ctx := context.Background()
+	old := VariablesManifest{Variables: []Variable{{Name: "count", Type: "integer", Value: "1"}}}
+	raw, _ := json.Marshal(old)
+	env.mock.mu.Lock()
+	env.mock.files["Workflow/reports/variables/variables.json"] = string(raw)
+	env.mock.mu.Unlock()
+	record := projectFunctionDefinition{ID: "count", Name: "count", Action: projectactions.Action{Type: "run"}, Input: json.RawMessage(`{}`), Inputs: []string{"count"}}
+	if err := writeProjectFunctionDefinitions(ctx, "Workflow/reports", []projectFunctionDefinition{record}); err != nil {
+		t.Fatal(err)
+	}
+	for _, next := range []*VariablesManifest{{}, {Variables: []Variable{{Name: "count", Type: "string"}}}} {
+		if err := validateWorkflowInputReferences(ctx, "Workflow/reports", next); err == nil || !strings.Contains(err.Error(), "function count") {
+			t.Fatalf("dangling/retyped reference accepted: %v", err)
+		}
+	}
+	old.Variables[0].Description = "A harmless description edit"
+	if err := validateWorkflowInputReferences(ctx, "Workflow/reports", &old); err != nil {
+		t.Fatal(err)
 	}
 }

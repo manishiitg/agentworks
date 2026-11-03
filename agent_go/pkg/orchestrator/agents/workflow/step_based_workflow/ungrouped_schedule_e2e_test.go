@@ -123,10 +123,13 @@ func TestSavedInputsRunOnceWithIndependentSnapshots(t *testing.T) {
 	write("workflow.json", `{"code_layout_version":1}`)
 	write("planning/plan.json", `{"steps":[{"type":"scripted","id":"save","title":"Save inputs","description":"Save the invocation inputs.","context_output":"result.json"}]}`)
 	write("planning/step_config.json", `{"steps":[{"id":"save","agent_configs":{"lock_code":true,"learnings_access":"none","knowledgebase_access":"none"}}]}`)
-	write("variables/variables.json", `{"variables":[{"name":"TARGET","value":"default"},{"name":"CAMPAIGN_ID","value":""}],"groups":[{"name":"India / ecommerce","values":{"TARGET":"saved","CAMPAIGN_ID":"campaign-one"}},{"name":"Another preset","values":{"TARGET":"other"}}]}`)
+	write("variables/variables.json", `{"variables":[{"name":"TARGET","value":"default"},{"name":"CAMPAIGN_ID","value":""},{"name":"COUNT","type":"integer","required":true,"value":"7"},{"name":"ENABLED","type":"boolean","value":"false"},{"name":"DETAILS","type":"object","value":"{\"tag\":\"ok\"}"}],"groups":[{"name":"India / ecommerce","values":{"TARGET":"saved","CAMPAIGN_ID":"campaign-one"}},{"name":"Another preset","values":{"TARGET":"other"}}]}`)
 	write("code/save/main.py", `import json, os
 from pathlib import Path
 assert os.environ['RUN_FOLDER'].startswith('run-')
+assert int(os.environ['VAR_COUNT']) == 7
+assert json.loads(os.environ['VAR_ENABLED']) is False
+assert json.loads(os.environ['VAR_DETAILS']) == {'tag':'ok'}
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'target':os.environ['VAR_TARGET'], 'campaign_id':os.environ['VAR_CAMPAIGN_ID'], 'run':os.environ['RUN_FOLDER']}))
 `)
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)

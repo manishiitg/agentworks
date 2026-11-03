@@ -44,7 +44,7 @@ func TestRelayRunPollsDurableStoreAfterServiceRestart(t *testing.T) {
 	manifest.CreatedBy = "owner"
 	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
 	manifest.RelayOutputStepID = "answer"
-	sched := WorkflowSchedule{ID: "function-trigger", Name: "Process", ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: "process", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}
+	sched := WorkflowSchedule{ID: "function-trigger", Name: "Process", ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, WorkshopMode: "run", Function: &WorkflowFunctionSpec{Name: "process", Inputs: []string{"INPUT"}}}
 	manifest.Schedules = []WorkflowSchedule{sched}
 	manifestRaw, _ := json.Marshal(manifest)
 	runID := webhookDeliveryRunID(manifest.ID, sched.ID, "owner\x00request-1")

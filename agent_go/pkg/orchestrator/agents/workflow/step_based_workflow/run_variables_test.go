@@ -57,3 +57,40 @@ func TestSavedInputPrecedenceAndNoAutomaticSelection(t *testing.T) {
 		t.Fatal("preset selection became a batch")
 	}
 }
+
+// PLAT-746-265: one typed contract covers defaults, presets and call values;
+// local nested references work, while external references cannot read host data.
+func TestWorkflowTypedInputsAndRequiredAdmission(t *testing.T) {
+	manifest := &VariablesManifest{Variables: []Variable{{Name: "count", Type: "integer", Required: true}, {Name: "enabled", Type: "boolean", Value: "false"}, {Name: "details", Type: "object", Schema: map[string]interface{}{"type": "object", "$defs": map[string]interface{}{"code": map[string]interface{}{"type": "string", "pattern": "^ok-"}}, "properties": map[string]interface{}{"code": map[string]interface{}{"$ref": "#/$defs/code"}}, "required": []interface{}{"code"}}}}}
+	if err := ValidateWorkflowInputDefinitions(manifest); err != nil {
+		t.Fatal(err)
+	}
+	defaults, err := ResolveWorkflowInputs(manifest, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateWorkflowLaunchInputs(manifest, defaults); err == nil {
+		t.Fatal("missing required input launched")
+	}
+	for _, values := range []map[string]string{{"count": "not a number"}, {"count": "2.5"}, {"enabled": "yes"}, {"details": `{"code":"wrong"}`}, {"details": "{}"}} {
+		if _, err := ResolveWorkflowInputs(manifest, "", values); err == nil {
+			t.Fatalf("invalid typed input accepted: %v", values)
+		}
+	}
+	values, err := ResolveWorkflowInputs(manifest, "", map[string]string{"count": "9007199254740993", "details": `{"code":"ok-run"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["count"] != "9007199254740993" || values["enabled"] != "false" {
+		t.Fatalf("typed values corrupted: %v", values)
+	}
+	if err := ValidateWorkflowLaunchInputs(manifest, values); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"file:///etc/passwd", "https://example.com/schema"} {
+		field := Variable{Name: "private", Type: "object", Schema: map[string]interface{}{"$ref": ref}}
+		if _, err := WorkflowInputProperty(field); err == nil {
+			t.Fatal("external schema reference admitted")
+		}
+	}
+}

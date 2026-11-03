@@ -22,7 +22,7 @@ func TestWebhookEnvelopeOptions(t *testing.T) {
 		{`{"group":"prod"}`, false}, {`{"variables":{"TOKEN":"bad"}}`, false}, {`{"variables":{"base_url":false}}`, false},
 	} {
 		d := &WorkflowWebhookDelivery{Payload: json.RawMessage(tc.body)}
-		err := resolveWebhookDeliveryOptions(s, d)
+		err := resolveWebhookDeliveryOptions(s, d, &VariablesManifest{Variables: []Variable{{Name: "base_url"}}})
 		if (err == nil) != tc.ok {
 			t.Fatalf("%s: %v", tc.body, err)
 		}
@@ -35,6 +35,19 @@ func TestWebhookEnvelopeOptions(t *testing.T) {
 	if err := resolveWebhookDeliveryOptions(s, d); err != nil || d.Group != "" || d.Variables != nil {
 		t.Fatal("raw event interpreted as config")
 	}
+	typed := WorkflowSchedule{Webhook: &WorkflowWebhookConfig{InputMode: "envelope", AllowedVariables: []string{"count", "details"}}}
+	definitions := &VariablesManifest{Variables: []Variable{{Name: "count", Type: "integer"}, {Name: "details", Type: "object"}}}
+	for _, test := range []struct {
+		body string
+		ok   bool
+	}{{`{"variables":{"count":2,"details":{"ok":true}}}`, true}, {`{"variables":{"count":2.5}}`, false}, {`{"variables":{"details":false}}`, false}} {
+		delivery := &WorkflowWebhookDelivery{Payload: json.RawMessage(test.body)}
+		err := resolveWebhookDeliveryOptions(typed, delivery, definitions)
+		if (err == nil) != test.ok {
+			t.Fatalf("typed envelope %s: %v", test.body, err)
+		}
+	}
+
 }
 
 func TestWebhookRawPayloadMappingsKeepPresetAndSelectNestedBranch(t *testing.T) {
