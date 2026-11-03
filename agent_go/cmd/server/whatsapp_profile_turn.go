@@ -191,7 +191,8 @@ func (api *StreamingAPI) botProfileTurn(ctx context.Context, userID string, msg 
 	// (PLAT-856-509). A channel means other people, which needs the Crew shared.
 	if msg.Platform == "slack" && msg.PresetProfile != nil && strings.EqualFold(profile.ID, crewProfileID) && !IsLocalMode() {
 		if project := crewResourceProjectID(conversationKey); crewRelayTwin(project) {
-			return nil, "", false, api.slackCrewOnMac(ctx, workspaceUserID, project, msg)
+			// The proven DM sender (slack_dm.go directMessage), never the route's owner.
+			return nil, "", false, api.slackCrewOnMac(ctx, strings.TrimSpace(msg.WorkspaceUserID), project, msg)
 		}
 	}
 	// A Code talks 1:1 only: a Slack DM or WhatsApp (which admits 1:1 chats
