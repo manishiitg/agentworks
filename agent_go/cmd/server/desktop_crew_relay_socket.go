@@ -36,6 +36,7 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 			}
 		}()
 		for {
+			followSavedConnections(GetDefaultUserID())
 			live := map[string]bool{}
 			for _, crew := range desktopRelayCrews("") {
 				live[crew.connection] = true
@@ -61,6 +62,50 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 		}
 	}()
 	return cancel
+}
+
+// followSavedConnections moves a Crew whose saved server connection was removed onto the one connection now saved
+// for that same server; signing in again otherwise left it retrying a dead connection forever, off the phone and
+// unsyncable (PLAT-856-509). The server still checks the pair against the new connection's account. With no
+// connection, or several, for that server the Crew is left as it is.
+func followSavedConnections(owner string) {
+	connections, err := readDesktopConnections(owner)
+	if err != nil {
+		return
+	}
+	saved := map[string]bool{}
+	byServer := map[string][]string{}
+	for _, c := range connections {
+		saved[c.ID] = true
+		server := strings.TrimSuffix(c.Server, "/")
+		byServer[server] = append(byServer[server], c.ID)
+	}
+	state, err := workflowCLIStateRoot()
+	if err != nil {
+		return
+	}
+	entries, _ := os.ReadDir(filepath.Join(state, "crew-sync"))
+	for _, entry := range entries {
+		id, ok := strings.CutSuffix(entry.Name(), ".json")
+		if entry.IsDir() || !ok || strings.Contains(id, "-files") {
+			continue
+		}
+		b, e := crewroot.ReadSync(id)
+		if e != nil || b == nil || b.Side != "local" || b.ConnectionID == "" || saved[b.ConnectionID] {
+			continue
+		}
+		current := byServer[strings.TrimSuffix(b.PeerServer, "/")]
+		if len(current) != 1 {
+			continue
+		}
+		old := b.ConnectionID
+		b.ConnectionID = current[0]
+		if e = crewroot.WriteSync(id, *b); e != nil {
+			log.Printf("[CREW_RELAY] project=%s could not follow connection %s to %s: %v", id, old, current[0], e)
+			continue
+		}
+		log.Printf("[CREW_RELAY] project=%s pair=%s followed removed connection=%s to connection=%s", id, b.PairID, old, current[0])
+	}
 }
 
 type desktopRelayCrew struct {
