@@ -350,7 +350,8 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		}
 		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": call.Caller, "sender_user_id": args.SenderID, "display_content": message})
 		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, args.SenderID)
-		body, _ := json.Marshal(AgentProfileChatRequest{Message: crewMacSharedAgentText(call.Caller, message), ConversationKey: conversation.ConversationKey})
+		// Queued as its own turn, never steered into another sender's running turn: each sender reads only their own.
+		body, _ := json.Marshal(AgentProfileChatRequest{Message: crewMacSharedAgentText(call.Caller, message), ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"})
 		req, _ := http.NewRequestWithContext(askCtx, http.MethodPost, "http://localhost/api/agent-profiles/work/query", bytes.NewReader(body))
 		req = mux.SetURLVars(req, map[string]string{"id": "work"})
 		req.Header.Set("Content-Type", "application/json")

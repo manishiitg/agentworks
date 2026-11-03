@@ -56,10 +56,17 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 		{Seq: 4, Turn: "t2", Role: "assistant", Text: "answer to c"},
 		{Seq: 5, Turn: "t3", Role: "you", Text: "owner's own words"},
 		{Seq: 6, Turn: "t3", Role: "assistant", Text: "answer to the owner"},
+		// c's message added into a's running turn (asks are queued, so this is only a backstop): neither reads it.
+		{Seq: 7, Turn: "t4", Role: "you", SenderID: "a", Text: "a again"},
+		{Seq: 8, Turn: "t4", Role: "you", SenderID: "c", Text: "c steered in"},
+		{Seq: 9, Turn: "t4", Role: "assistant", Text: "mixed answer"},
 	}
 	got := senderOwnTurns(items, "a")
 	if len(got) != 2 || got[0].Text != "from a" || got[1].Text != "answer to a" {
 		t.Fatalf("a read more than its own exchange: %+v", got)
+	}
+	if got := senderOwnTurns(items, "c"); len(got) != 2 || got[0].Text != "from c" {
+		t.Fatalf("c read a mixed turn or someone else's: %+v", got)
 	}
 	if len(senderOwnTurns(items, "")) != 0 {
 		t.Fatal("an unnamed sender read the tab")

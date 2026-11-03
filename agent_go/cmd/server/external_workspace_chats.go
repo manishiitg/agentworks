@@ -243,15 +243,20 @@ func ownerAppTurns(items []codeTurnItem, label, queryID, asked string) []codeTur
 // senderOwnTurns keeps only one sender's exchange with a shared agent: the messages that person's agent sent and the
 // agent's answers to them, never other senders' turns or the owner's own (PLAT-856-509).
 func senderOwnTurns(items []codeTurnItem, sender string) []codeTurnItem {
-	turns := map[string]bool{}
+	turns, mixed := map[string]bool{}, map[string]bool{}
 	for _, item := range items {
-		if item.Role == "you" && item.Turn != "" && sender != "" && item.SenderID == sender {
+		if item.Role != "you" || item.Turn == "" {
+			continue
+		}
+		if sender != "" && item.SenderID == sender {
 			turns[item.Turn] = true
+		} else {
+			mixed[item.Turn] = true // someone else's words in this turn: never shown to this sender
 		}
 	}
 	out := items[:0:0]
 	for _, item := range items {
-		if turns[item.Turn] {
+		if turns[item.Turn] && !mixed[item.Turn] {
 			out = append(out, item)
 		}
 	}
