@@ -3,6 +3,9 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { CrewExecutablesPanel } from './CrewExecutablesPanel'
+import api from '../../services/api'
+import { buildWorkflowPresetsFromManifests } from '../../stores/useGlobalPresetStore'
+import type { DiscoveredWorkflow } from '../../services/api-types'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 import type { ExecutionInspectionTarget } from '../../services/api-types'
@@ -12,7 +15,7 @@ const receipt = (run: string, execution: string): ExecutionInspectionTarget => (
 vi.mock('../../services/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../../services/api')>()
   return { ...actual,
-  default: { get: async () => ({ data: { executables: [{ id: 'child', kind: 'workflow', workspace_path: 'Workflow/child', manifest: { label: 'Reports' } }], agents: [] } }) },
+  default: { get: async () => ({ data: { executables: [{ id: 'child', kind: 'workflow', workspace_path: 'Workflow/child', manifest: { label: 'Reports' } }], agents: [], existing_relays: [{id:'retained-relay',label:'Existing Relay'}] } }), post: vi.fn(async () => ({data:{}})) },
   agentApi: { ...actual.agentApi,
     loadWorkspaceState: async () => ({ success: true, data: { run_folders: [{ name: 'run-1' }, { name: 'run-2' }], phases: [], variables_manifest: null } }),
     getWorkspaceStepInspections: async () => ({ items: [ { inspection: receipt('run-1', 'first-execution'), status: 'completed' }, { inspection: receipt('run-2', 'second-execution'), status: 'completed' } ], next_cursor: null }),
@@ -45,6 +48,24 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
   try {
     await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" />))
     await flush()
+    // The workflow form has one kind; retained Relays link to their existing
+    // standalone controls and remain eligible for standalone route resolution.
+    expect(host.querySelector('a[href="/relays/retained-relay"]')).not.toBeNull()
+    const manifests = [
+      {crew_id:'crew',workspace_path:'Workflow/workflow',manifest:{id:'workflow',kind:'workflow',label:'Workflow'}},
+      {crew_id:'crew',workspace_path:'Workflow/retained-relay',manifest:{id:'retained-relay',kind:'relay',label:'Existing Relay'}},
+    ] as unknown as DiscoveredWorkflow[]
+    expect(buildWorkflowPresetsFromManifests(manifests).map(preset => preset.id)).toEqual(['retained-relay'])
+    await click('Add')
+    expect(host.querySelector('select')).toBeNull()
+    const name = host.querySelector<HTMLInputElement>('input')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(name,'Reports')
+      name.dispatchEvent(new Event('input',{bubbles:true}))
+    })
+    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
+    await flush()
+    expect(api.post).toHaveBeenCalledWith('/api/crew-executables',{name:'Reports'},{params:{crew_id:'crew'}})
     await click('ReportsWorkflow')
     expect(useChatStore.getState().activeTabId).toBe('crew-chat')
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')

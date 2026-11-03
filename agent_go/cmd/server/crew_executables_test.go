@@ -299,3 +299,79 @@ func TestRetiredScheduleGroupsRefusedBeforeLaunch(t *testing.T) {
 	}
 
 }
+
+// PLAT-746-265: parking Relay must stop new Crew Relay creation without
+// hiding existing automation from its owner or changing its saved definition.
+func TestCrewWorkflowsDeferNewRelayAndKeepExistingReachable(t *testing.T) {
+	svc, files, ctx := newCrewCreationTestEnv(t)
+	t.Setenv("AGENT_PRODUCTS", "work,agentworks,relays")
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Workflow lab", Purpose: "Run reports", StepInstruction: "Prepare reports", IdempotencyKey: "park-relay"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{projectActions: svc}
+	for _, kind := range []string{"workflow", "relay"} {
+		binding := crewExecutableBinding{ID: kind, CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/" + kind, Kind: kind}
+		if err := registerCrewExecutable(binding); err != nil {
+			t.Fatal(err)
+		}
+		m := NewWorkflowManifest(kind)
+		m.ID = kind
+		if kind == "relay" {
+			m.Kind = "relay"
+			m.RelayRuntime = "python"
+			m.RelayDurability = "dbos"
+		}
+		raw, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files.files[binding.Root+"/workflow.json"] = string(raw)
+	}
+	originalRelay := files.files["Workflow/relay/workflow.json"]
+	path := "/api/crew-executables?crew_id=" + crew.CrewID
+	list := httptest.NewRecorder()
+	api.handleCrewExecutables(list, httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx))
+	var response struct {
+		Executables    []crewExecutableBinding `json:"executables"`
+		ExistingRelays []struct {
+			ID string `json:"id"`
+		} `json:"existing_relays"`
+	}
+	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &response) != nil || len(response.Executables) != 1 || response.Executables[0].Kind != "workflow" || len(response.ExistingRelays) != 1 || response.ExistingRelays[0].ID != "relay" {
+		t.Fatalf("Crew list: %d %s", list.Code, list.Body)
+	}
+	before, _ := readCrewExecutables()
+	rejected := httptest.NewRecorder()
+	api.handleCrewExecutables(rejected, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"name":"New Relay","kind":"relay"}`)).WithContext(ctx))
+	after, _ := readCrewExecutables()
+	if rejected.Code != http.StatusBadRequest || len(after) != len(before) {
+		t.Fatalf("new Relay was created: %d %s", rejected.Code, rejected.Body)
+	}
+	created := httptest.NewRecorder()
+	api.handleCrewExecutables(created, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"name":"Reports"}`)).WithContext(ctx))
+	var newWorkflow crewExecutableBinding
+	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &newWorkflow) != nil || newWorkflow.Kind != "workflow" {
+		t.Fatalf("workflow creation: %d %s", created.Code, created.Body)
+	}
+	reg := &recordingRegistrar{}
+	if err := api.registerCrewExecutableFileTools(reg, "owner", crew.WorkspacePath); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []map[string]interface{}{
+		{"action": "write", "workspace_path": "Workflow/relay", "file": "relay.py", "content": "changed"},
+		{"action": "write", "workspace_path": newWorkflow.Root, "file": "relay.py", "content": "changed"},
+	} {
+		if _, err := reg.tools["crew_workflow_files"].exec(ctx, request); err == nil {
+			t.Fatal("Crew editor accepted Relay source")
+		}
+	}
+	if files.files["Workflow/relay/workflow.json"] != originalRelay {
+		t.Fatal("parking Relay changed its definition")
+	}
+	// The standalone discovery/access path must still see the existing Relay.
+	m, found, err := ReadWorkflowManifest(ctx, "Workflow/relay")
+	if err != nil || !found || workflowAccessForManifest(GetUserFromContext(ctx), m) != WorkflowAccessOwner {
+		t.Fatalf("existing Relay unavailable: %v %v", found, err)
+	}
+}

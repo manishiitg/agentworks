@@ -11,7 +11,6 @@ import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 const Inputs = lazy(() => import('../../components/workflow/canvas/VariablesSidebar'))
 const Canvas = lazy(() => import('../../components/workflow/canvas/WorkspaceViewHost'))
 const Logs = lazy(() => import('../../components/workflow/ExecutionLogsPopup'))
-const RelayLogs = lazy(() => import('../../components/workflow/RelayExecutionLogsView'))
 const Costs = lazy(() => import('../../components/workflow/CostsPopup'))
 const Inspect = lazy(() => import('../../components/chat/StepInspectionPanel'))
 const Schedules = lazy(() => import('../../components/scheduler/WorkflowScheduleRunsPanel'))
@@ -20,7 +19,7 @@ const Webhooks = lazy(() => import('../../components/workflow/WorkflowAPITrigger
 
 export type CrewExecutable = {
   id: string
-  kind: 'workflow' | 'relay'
+  kind: 'workflow'
   workspace_path: string
   manifest: { label: string }
 }
@@ -141,7 +140,6 @@ export function CrewExecutableEditor({
               key={item.id}
               workspacePath={item.workspace_path}
               presetQueryId={item.id}
-              relayMode={item.kind === 'relay'}
               embeddedPlanOnly
               hideToolbar
               scope={scope}
@@ -150,7 +148,6 @@ export function CrewExecutableEditor({
           ) : section === 'runs' ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex flex-wrap items-center gap-2 border-b p-2">
-                {item.kind !== 'relay' && (
                   <label className="text-sm">
                     Run{' '}
                     <select
@@ -170,7 +167,6 @@ export function CrewExecutableEditor({
                       ))}
                     </select>
                   </label>
-                )}
                 <button
                   className={button}
                   aria-label="Refresh workflow runs"
@@ -189,40 +185,7 @@ export function CrewExecutableEditor({
                 ))}
               </div>
               <div className="min-h-0 flex-1">
-                {item.kind === 'relay' ? (
-                  <RelayLogs
-                    relayID={item.id}
-                    draftWorkspacePath={item.workspace_path}
-                    draftSelectedRunFolder={selectedRun}
-                    draftRunFolders={folders.map((folder) => folder.name)}
-                    draftRunFolderInfos={folders}
-                    onRefreshDraftRuns={workspace.refresh}
-                    renderRunDetails={
-                      detail === 'logs'
-                        ? undefined
-                        : (path, folder) =>
-                            !folder ? (
-                              <p className="p-4 text-sm text-muted-foreground">
-                                Choose a run to see its results.
-                              </p>
-                            ) : detail === 'costs' ? (
-                              <Costs
-                                key={`${path}:${folder}`}
-                                workspacePath={path}
-                                runFolders={[folder]}
-                                selectedRunFolder={folder}
-                                runOnly
-                              />
-                            ) : (
-                              <RunInspections
-                                key={`${path}:${folder}`}
-                                workspacePath={path}
-                                runFolder={folder}
-                              />
-                            )
-                    }
-                  />
-                ) : !selectedRun ? (
+                {!selectedRun ? (
                   <p className="p-6 text-sm text-muted-foreground">
                     {folders.length
                       ? 'Choose a run to see its results.'
@@ -270,19 +233,17 @@ export function CrewExecutableEditor({
               </nav>
               <div className="min-h-0 flex-1 overflow-auto">
                 {settings === 'inputs' ? (
- <Inputs embedded workspacePath={item.workspace_path} relayMode={item.kind === 'relay'} onClose={onBack} onUpdate={() => void workspace.refresh()} />
- ) : settings === 'schedules' ? (
+                  <Inputs embedded workspacePath={item.workspace_path} onClose={onBack} onUpdate={() => void workspace.refresh()} />
+                ) : settings === 'schedules' ? (
                   <Schedules
                     embedded
-                workflowScope={{ presetQueryId: item.id, workspacePath: item.workspace_path, label: item.manifest.label }}
+                    workflowScope={{ presetQueryId: item.id, workspacePath: item.workspace_path, label: item.manifest.label }}
                     onClose={onBack}
                   />
                 ) : settings === 'functions' ? (
                   <Functions
                     workspacePath={item.workspace_path}
-                    relayMode={item.kind === 'relay'}
-                    relayWorkflowID={item.id}
-                    onAsk={ask}
+                          onAsk={ask}
                   />
                 ) : (
                   <Webhooks
