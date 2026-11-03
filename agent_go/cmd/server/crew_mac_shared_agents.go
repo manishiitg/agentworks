@@ -34,13 +34,7 @@ type macSharedAgent struct {
 	// across renames; Off keeps a turned-off entry only to keep its address for this owner.
 	Address string `json:"address,omitempty"`
 	Off     bool   `json:"off,omitempty"`
-	// Agents: the people in its audience may also message it from their own AI agents, at its address (owner, 3 Nov).
-	// Off by default; the same audience either way.
-	Agents bool `json:"agents,omitempty"`
 }
-
-// errMacAgentClosedToAgents is the plain refusal when the owner keeps an agent to people only.
-var errMacAgentClosedToAgents = fmt.Errorf("This agent isn't open to other agents.")
 
 const macSharedAgentsMax = externalCrewMaxSideChats
 
@@ -581,12 +575,12 @@ func macAgentSlug(name string) string {
 	return slug
 }
 
-// macSharedAgentByAddress finds the shared agent at <owner>/<address> that this person may message from their agents,
-// as a Crew target. A person in its audience is told plainly when its owner keeps it to people only.
-func macSharedAgentByAddress(owner, address, subject string) (triggerTarget, bool, error) {
+// macSharedAgentByAddress finds the shared agent at <owner>/<address> that this person may message from their own
+// agents, as a Crew target. Sharing an agent opens it to its people and their agents together (owner, 3 Nov).
+func macSharedAgentByAddress(owner, address, subject string) (triggerTarget, bool) {
 	state, err := crewroot.StateRoot()
 	if err != nil {
-		return triggerTarget{}, false, nil
+		return triggerTarget{}, false
 	}
 	files, _ := filepath.Glob(filepath.Join(state, "crew-sync", "*-agents.json"))
 	for _, file := range files {
@@ -597,18 +591,14 @@ func macSharedAgentByAddress(owner, address, subject string) (triggerTarget, boo
 			}
 			if _, reason := macSharedAgentFor(project, agent.Tab, subject, owner); reason != "" {
 				log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=address refused reason=%s user=%s", project, agent.Tab, reason, logUsernameForUserID(subject))
-				return triggerTarget{}, false, nil
-			}
-			if !agent.Agents {
-				log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=address refused reason=agents_off user=%s", project, agent.Tab, logUsernameForUserID(subject))
-				return triggerTarget{}, false, errMacAgentClosedToAgents
+				return triggerTarget{}, false
 			}
 			key := macSharedAgentChatKey(project, agent.Tab)
 			return triggerTarget{Kind: triggerCallerCrew, CrewID: project, CrewProfile: crewProfileID, CrewOwner: owner, Label: agent.Name,
-				Chat: &codeChat{OwnerID: owner, Key: key, ID: key, Name: agent.Name, Purpose: agent.Purpose}}, true, nil
+				Chat: &codeChat{OwnerID: owner, Key: key, ID: key, Name: agent.Name, Purpose: agent.Purpose}}, true
 		}
 	}
-	return triggerTarget{}, false, nil
+	return triggerTarget{}, false
 }
 
 // macAgentReplyWindow bounds how long the server waits for a Mac agent's answer to another person's message.
@@ -618,15 +608,8 @@ const macAgentReplyWindow = 30 * time.Minute
 // agent's final answer back to the same inbox. The person behind the sending agent must be in the audience.
 func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
 	tab := macSharedAgentTab(dest.ID, dest.ChatKey)
-	agent, reason := macSharedAgentFor(dest.ID, tab, source.UserID, dest.UserID)
-	if reason == "" && !agent.Agents {
-		reason = "agents_off"
-	}
-	if reason != "" {
+	if _, reason := macSharedAgentFor(dest.ID, tab, source.UserID, dest.UserID); reason != "" {
 		log.Printf("[CREW_SHARED_AGENT] project=%s tab=%q action=message refused reason=%s sender_agent=%s user=%s", dest.ID, tab, reason, source.NamedAgentID, logUsernameForUserID(source.UserID))
-		if reason == "agents_off" {
-			return errMacAgentClosedToAgents
-		}
 		return fmt.Errorf("This agent isn't shared with you.")
 	}
 	sender := shareOwnerLabel(source.UserID)
@@ -640,7 +623,7 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.
 	_, status := read(0, 0)
 	if status == http.StatusOK {
-		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "from_agent": true})
+		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID})
 		result := callCrewMacFor(context.WithoutCancel(ctx), dest.UserID, dest.ID, crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}, 60*time.Second)
 		status = result.Status
 	}
@@ -740,7 +723,7 @@ func macSharedAgentDirectoryItems(user string) []map[string]interface{} {
 		owner := ownerOfCrewProjectID(project)
 		tab := macSharedAgentTab(project, fmt.Sprint(row["chat_id"]))
 		for _, agent := range readMacSharedAgents(project) {
-			if agent.Tab != tab || agent.Address == "" || !agent.Agents {
+			if agent.Tab != tab || agent.Address == "" {
 				continue
 			}
 			label := shareOwnerLabel(owner)

@@ -234,7 +234,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
       </div>
       {!binding && <p className="text-[12px] text-muted-foreground">Turn on Reach to use it from other places</p>}
-      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">People</span><span className="text-[13px] text-muted-foreground">{online ? 'Choose who can use it on its page online' : 'Nobody else yet'}</span>
+      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">Team</span><span className="text-[13px] text-muted-foreground">{online ? 'Choose who can use it on its page online' : 'Nobody else yet'}</span>
         {online
           ? <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
           : <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={moving} onClick={() => setOpen(open === 'share' ? '' : 'share')}>Share…</Button>}
@@ -245,7 +245,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   </div>
 }
 
-type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string; agents?: boolean }
+type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string }
 type AgentRow = { tab: string; name: string; purpose: string }
 type Person = { id: string; username: string; email?: string }
 
@@ -298,7 +298,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   const save = async (next: SharedAgent[]) => {
     setShared(next)
     const ready = next.filter(agent => purposeOf(agent.tab) && (agent.audience === 'everyone' || agent.people?.length))
-      .map(({ tab, audience, people, agents }) => ({ tab, audience, people, agents: Boolean(agents) }))
+      .map(({ tab, audience, people }) => ({ tab, audience, people }))
     setBusy(true); setError('')
     try {
       const data = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'share_agents', agents: ready })
@@ -317,8 +317,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
   const personName = (id: string) => people.find(person => person.id === id)?.username || id
   const choices = (agent: SharedAgent) => people.filter(person => !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
-  const heading = 'text-[11px] font-medium uppercase tracking-wide text-muted-foreground'
-  return <section aria-label="Who can message your agents" className="mt-2 space-y-2.5 rounded-2xl border border-border p-4">
+  return <section aria-label="Who can message your agents" className="mt-3 space-y-2">
     <p className="text-sm font-semibold">Who can message your agents</p>
     {rows.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
@@ -335,12 +334,11 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
           ? <div className="ml-6 mt-1 flex items-start gap-2 text-[13px] text-muted-foreground"><p title={purpose} className="line-clamp-2 min-w-0 flex-1">{purpose}</p><button type="button" className="shrink-0 text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Change purpose</button></div>
           : agent && <p className="ml-6 mt-1 text-[13px] text-amber-600">Set this agent's purpose to share it. <button type="button" className="text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Set purpose</button></p>}
         {agent && <>
-          <div className="mt-3 space-y-2 border-t border-border pt-3">
-            <p className={heading}>Who</p>
-            <div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-full border border-border text-xs">
+          <div className="ml-6 mt-2.5 space-y-2">
+            <div className="flex flex-wrap items-center gap-2"><div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-full border border-border text-xs">
               {(['chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`rounded-full px-3 py-1 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'chosen' ? 'Chosen people' : 'Everyone'}</button>)}
             </div>
-            {agent.audience === 'everyone' && <p className="text-xs text-muted-foreground">Everyone on {network || 'your team'}.</p>}
+            {agent.audience === 'everyone' && <span className="text-xs text-muted-foreground">on {network || 'your team'}</span>}</div>
             {agent.audience === 'chosen' && <div className="flex flex-wrap items-center gap-1.5">
               {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
               <button type="button" aria-expanded={adding === row.tab} onClick={() => { setAdding(adding === row.tab ? '' : row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-primary hover:bg-muted">+ Add</button>
@@ -356,41 +354,33 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
               </div>
             </div>}
           </div>
-          <div className="mt-3 space-y-1 border-t border-border pt-3">
-            <p className={heading}>How they reach it</p>
-            <div className="flex items-start gap-3 py-1.5 text-[13px]">
-              <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-400"><Users className="h-4 w-4" /></span>
-              <span className="min-w-0 flex-1"><span className="block font-medium">People, in their apps</span><span className="block text-muted-foreground">They open it and type. It shows under "Shared with me".</span>
-                <ReachChips items={[[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT'], [Sparkles, 'Claude'], [Hash, 'Slack']]} /></span>
-              <span className="mt-1 shrink-0 text-xs text-emerald-500">Always</span>
+          <div className="ml-6 mt-2.5 space-y-1.5 text-[13px]">
+            <div className="flex items-center gap-2">
+              <Users aria-hidden="true" className="h-4 w-4 shrink-0 text-blue-400" />
+              <span className="min-w-0 flex-1" title="They open it and type. It shows under &quot;Shared with me&quot;."><span className="font-medium">In their apps</span> <ReachIcons items={[[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT'], [Sparkles, 'Claude'], [Hash, 'Slack']]} /></span>
             </div>
-            <div className={`flex items-start gap-3 border-t border-border py-1.5 pt-2.5 text-[13px] ${agent.agents ? '' : 'opacity-70'}`}>
-              <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400"><Bot className="h-4 w-4" /></span>
-              <span className="min-w-0 flex-1"><span className="block font-medium">Their own AI agents</span><span className="block text-muted-foreground">{agent.agents ? 'Agents they run themselves, on their own computer or anywhere outside AgentWorks, send it a message and get the answer back.' : 'Off. Turn on so agents they run outside AgentWorks, like on their own computer, can message it too.'}</span>
-                <ReachChips items={[[Terminal, 'Claude Code'], [Terminal, 'Codex'], [MessageSquare, 'ChatGPT agents'], [X, 'Grok'], [Plug, 'Their own local agents and bots']]} />
-                {agent.agents && <>
-                  {agent.address
-                    ? <span className="mt-2 flex w-fit items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 font-mono text-xs">agent:{agent.address}
-                      <button type="button" className="rounded-full border border-border bg-background px-2 py-0.5 font-sans text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></span>
-                    : <span className="mt-2 block text-xs text-muted-foreground">Its address shows here once it is shared.</span>}
-                  <span className="mt-1 block text-xs text-muted-foreground">Only agents of the people above. Not anyone else.</span>
-                </>}
-              </span>
-              <Switch className="mt-1" aria-label={`Their own AI agents can message ${row.name}`} checked={Boolean(agent.agents)} disabled={busy} onCheckedChange={on => update(row.tab, { agents: on })} />
+            <div className="flex items-center gap-2">
+              <Bot aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-400" />
+              <span className="min-w-0 flex-1" title="Agents they run themselves, on their own computer or anywhere outside AgentWorks: Claude Code, Codex, ChatGPT agents, Grok, their own local agents and bots."><span className="font-medium">From their own AI agents</span> <ReachIcons items={[[Terminal, 'Claude Code, Codex'], [X, 'Grok'], [Plug, 'Their own local agents and bots']]} /></span>
             </div>
+            {agent.address
+              ? <p className="ml-6 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-foreground">agent:{agent.address}</span>
+                <button type="button" className="rounded-full border border-border px-2 py-0.5 text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button>
+                Only agents of the people above use it.</p>
+              : <p className="ml-6 text-xs text-muted-foreground">Its address for their agents shows here once it is shared.</p>}
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">{row.tab === 'main' ? "This is your main chat. Its answers to others can use what you've discussed here." : 'They can ask it anything it can see in this Crew. They never see your other chats. Works while this Mac is on.'}</p>
         </>}
       </div>
     })}
     {rows.length <= 1 && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
+    {shared.length > 0 && <p className="text-xs text-muted-foreground">They can ask a shared agent anything it can see in this Crew, never your other chats, while this Mac is on. Main's answers can use what you've discussed in it.</p>}
     {error && <p className="text-xs text-amber-600">{error}</p>}
   </section>
 }
 
-// The apps or agents a way of reaching a shared agent covers, as small labelled chips.
-function ReachChips({ items }: { items: [LucideIcon, string][] }) {
-  return <span className="mt-2 flex flex-wrap gap-1.5">{items.map(([Icon, label]) => <span key={label} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 py-0.5 pl-2 pr-2.5 text-xs text-foreground"><Icon aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />{label}</span>)}</span>
+// The apps or agents a way of reaching a shared agent covers: small icons, named on hover.
+function ReachIcons({ items }: { items: [LucideIcon, string][] }) {
+  return <span className="inline-flex items-center gap-1.5 align-middle text-muted-foreground">{items.map(([Icon, label]) => <Icon key={label} aria-label={label} role="img" className="h-3.5 w-3.5"><title>{label}</title></Icon>)}</span>
 }
 
 /** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */
