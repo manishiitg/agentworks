@@ -101,12 +101,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const sideChatsHere = allowSideChats && !livesOnMac
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
-  // "+ New agent" on the Access page opens the same new-tab form.
-  useEffect(() => {
-    const open = (event: Event) => { if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId === placeProject && sideChatsHere) setNewTabName('') }
-    window.addEventListener('agentworks:new-agent', open)
-    return () => window.removeEventListener('agentworks:new-agent', open)
-  }, [placeProject, sideChatsHere])
   const [reordering, setReordering] = useState(false)
   const canReorderInMenu = tabs.length > 5
   useEffect(() => { if (!moreOpen || !canReorderInMenu) setReordering(false) }, [moreOpen, canReorderInMenu])

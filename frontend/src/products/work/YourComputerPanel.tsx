@@ -110,9 +110,9 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
   const workspacePath = tab?.metadata?.agentProfileWorkspace || ''
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
-  const [choice, setChoice] = useState('')
   const [busy, setBusy] = useState(false)
   const [reaching, setReaching] = useState(false)
+  const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
   const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'share'>('')
@@ -135,7 +135,10 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
     return () => abort.abort()
   }, [projectId, online])
   const tooBig = !online && readiness?.fits === false
-  const target = binding?.connection_id || choice || (connections.length === 1 ? connections[0].id : '')
+  const target = binding?.connection_id || (connections.length === 1 ? connections[0].id : '')
+  // A network is named by its server's address, such as agents.example.com.
+  const networkName = (id?: string) => { const item = connections.find(c => c.id === id); try { return item ? new URL(item.server).host : '' } catch { return item?.name || '' } }
+  const reach = (via: string) => { setAsking(false); setReaching(true); void run('relay', via).finally(() => setReaching(false)) }
   const link = binding?.peer_server ? `${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}` : ''
   const run = async (action: 'server' | 'relay' | 'offline', via = target) => {
     setBusy(true); setError('')
@@ -161,7 +164,7 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       <div className="flex items-center justify-between gap-2.5">
         <p role="status" className="flex items-center gap-2 text-base font-semibold">
           {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
-          {!status ? 'Checking…' : moving ? 'Moving online…' : online ? 'Online' : binding ? 'On this Mac' : 'On this Mac · Offline'}
+          {!status ? 'Checking…' : moving ? 'Moving online…' : online ? 'Online' : binding ? ['On this Mac', networkName(binding.connection_id), 'Only you'].filter(Boolean).join(' · ') : 'On this Mac · Offline'}
         </p>
         {binding && !online && !moving && open !== 'move' && <Button size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
       </div>
@@ -169,12 +172,12 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
       {status && <p className="text-[13px] text-muted-foreground">Its schedules run here too.</p>}
       {status && !online && !moving && <label className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
         <span className="text-sm">Reach it from your phone and the web</span>
-        <Switch aria-label="Reach it from your phone and the web" checked={Boolean(binding) || reaching} disabled={busy || (!binding && !target)} onCheckedChange={on => { if (on) { setReaching(true); void run('relay').finally(() => setReaching(false)) } else void run('offline') }} />
+        <Switch aria-label="Reach it from your phone and the web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
       </label>}
-      {!binding && connections.length > 1 && !target && <select aria-label="Network" value={choice} onChange={event => setChoice(event.target.value)} className="mt-2 w-full rounded-md border border-border bg-background p-2 text-sm">
-        <option value="">Choose a network first</option>
-        {connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select>}
+      {asking && !binding && <div role="group" aria-label="Which network?" className="mt-2 space-y-1.5 rounded-xl border border-border p-3">
+        <p className="text-xs text-muted-foreground">Which network?</p>
+        {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
+      </div>}
       {open === 'move' && <MoveOnline name={name} facts={facts} tooBig={tooBig} onCancel={() => setOpen('')} onMove={() => void move(false)} />}
       {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
@@ -189,8 +192,6 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
         {open === 'ai' && binding.peer_server && <div className="border-b border-border p-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
         {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=slack`, '_blank', 'noopener,noreferrer')}>Connect</Button>)}
       </div>
-      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">Assistants</span><span className="text-[13px] text-muted-foreground">Other people's AI assistants can ask it questions while your Mac is on · coming next</span>
-        <span aria-label="Assistants: off, coming next" className="inline-flex overflow-hidden rounded-lg border border-border text-[13px] opacity-60"><span className="bg-muted px-2.5 py-1">Off</span><span className="px-2.5 py-1 text-muted-foreground">On</span></span></div>
       <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">People</span><span className="text-[13px] text-muted-foreground">{online ? 'Choose who can use it on its page online' : 'Nobody else yet'}</span>
         {online
           ? <Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
