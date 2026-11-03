@@ -196,7 +196,7 @@ func crewMacResultText(result crewChatResult) string {
 func crewPlace(owner, project string, b *crewroot.SyncBinding) string {
 	switch {
 	case b == nil && IsLocalMode():
-		return "mac"
+		return "offline" // on this Mac, Reach off: not reached from the phone or the web (owner, 3 Nov)
 	case b == nil:
 		return "online"
 	case b.PendingAction == "server":
