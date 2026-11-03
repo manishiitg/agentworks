@@ -1050,6 +1050,11 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		return QueryRequest{}, err
 	}
 	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
+	// A message to a shared Mac agent runs like the owner's user-view ask: Run mode, read-only, no authoring. Only
+	// the Mac's relay op for another person's message sets this key (PLAT-856-509).
+	if ctx.Value(crewMacSharedAskKey{}) != nil {
+		query.PinRunMode, query.CrewGuestCaller, query.CrewAskReadOnly = true, userID, true
+	}
 	// Claude Code runs as the chat chose: the native terminal or the chat view. A Claude already running on the
 	// other transport (the choice changed from inside a reply) is relaunched by this turn; the conversation resumes.
 	if strings.EqualFold(strings.TrimSpace(query.Provider), string(llmproviders.ProviderClaudeCode)) {

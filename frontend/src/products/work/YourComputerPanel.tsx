@@ -215,8 +215,79 @@ function WhereItLivesCard({ projectId, sessionId }: { projectId: string; session
           ? <Button size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
           : <Button size="sm" variant="outline" disabled={moving} onClick={() => setOpen(open === 'share' ? '' : 'share')}>Share…</Button>}
       </div>
+      {binding && !online && binding.connection_id && <MacSharedAgents projectId={projectId} connection={binding.connection_id} />}
       {open === 'share' && !online && <ShareWithTeam name={name} workspacePath={workspacePath} facts={facts} canMove={!tooBig && !moving} onMoveAndShare={() => void move(true)} onCancel={() => setOpen('')} />}
     </section>}
+  </div>
+}
+
+type SharedAgent = { tab: string; name: string; purpose: string; audience: 'everyone' | 'chosen'; people?: string[] }
+type Person = { id: string; username: string; email?: string }
+
+// Reads one JSON reply from the Crew's network through the Mac's saved sign-in.
+async function viaConnection<T>(connection: string, path: string): Promise<T> {
+  const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(connection)}${path}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
+  if (!response.ok) throw new Error(String(response.status))
+  return response.json() as Promise<T>
+}
+
+/** Others can message this agent (owner, 3 Nov): per side tab, with who may. Main stays private. Shown only when the
+ * Crew's network supports it. */
+function MacSharedAgents({ projectId, connection }: { projectId: string; connection: string }) {
+  const [tabs, setTabs] = useState<{ tab: string; name: string }[] | null>(null)
+  const [shared, setShared] = useState<SharedAgent[]>([])
+  const [saved, setSaved] = useState('')
+  const [people, setPeople] = useState<Person[]>([])
+  const [supported, setSupported] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let live = true
+    void viaConnection<{ shared_agents?: boolean }>(connection, '/api/crew-sync-capabilities').then(caps => { if (live) setSupported(Boolean(caps.shared_agents)) }).catch(() => {})
+    void viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(data => { if (live) setPeople(data.users || []) }).catch(() => {})
+    void desktopRequest<{ tabs: { tab: string; name: string }[]; agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'agents' })
+      .then(data => { if (!live) return; setTabs(data.tabs || []); setShared(data.agents || []); setSaved(JSON.stringify(data.agents || [])) }).catch(() => { if (live) setTabs([]) })
+    return () => { live = false }
+  }, [connection, projectId])
+  if (!supported || !tabs?.length) return null
+  const change = (tab: string, next: Partial<SharedAgent> | null) => setShared(current => {
+    const others = current.filter(agent => agent.tab !== tab)
+    if (next === null) return others
+    const existing = current.find(agent => agent.tab === tab) || { tab, name: tabs.find(row => row.tab === tab)?.name || tab, purpose: '', audience: 'chosen' as const, people: [] }
+    return [...others, { ...existing, ...next }]
+  })
+  const save = async () => {
+    setBusy(true); setError('')
+    try {
+      const data = await desktopRequest<{ agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'share_agents', agents: shared })
+      setShared(data.agents || []); setSaved(JSON.stringify(data.agents || []))
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'It was not saved. Try again.') }
+    finally { setBusy(false) }
+  }
+  return <div aria-label="Others can message these agents" className="mt-2 space-y-2 rounded-xl border border-border p-3">
+    <p className="text-[13px] text-muted-foreground">Let other people's agents message one of this Crew's agents while your Mac is on. They see only their own messages and its answers. Main stays private.</p>
+    {tabs.map(row => {
+      const agent = shared.find(item => item.tab === row.tab)
+      return <div key={row.tab} className="space-y-1.5 border-t border-border pt-2 first:border-t-0 first:pt-0">
+        <label className="flex items-center justify-between gap-3"><span className="text-sm font-medium">{row.name}</span>
+          <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => change(row.tab, on ? {} : null)} /></label>
+        {agent && <>
+          <input aria-label={`What ${row.name} is for`} value={agent.purpose} maxLength={300} placeholder="What it is for, in one line" onChange={event => change(row.tab, { purpose: event.target.value })} className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm" />
+          <select aria-label={`Who can message ${row.name}`} value={agent.audience} onChange={event => change(row.tab, { audience: event.target.value as SharedAgent['audience'] })} className="w-full rounded-md border border-border bg-background p-1.5 text-sm">
+            <option value="chosen">Chosen people</option>
+            <option value="everyone">Everyone</option>
+          </select>
+          {agent.audience === 'chosen' && <div className="max-h-32 space-y-0.5 overflow-y-auto rounded-md border border-border p-1.5">
+            {people.map(person => <label key={person.id} className="flex items-center gap-2 text-[13px]">
+              <input type="checkbox" checked={Boolean(agent.people?.includes(person.id))} onChange={event => change(row.tab, { people: event.target.checked ? [...(agent.people || []), person.id] : (agent.people || []).filter(id => id !== person.id) })} />
+              {person.username}{person.email && person.email !== person.username ? <span className="text-muted-foreground">{person.email}</span> : null}
+            </label>)}
+          </div>}
+        </>}
+      </div>
+    })}
+    {error && <p className="text-xs text-amber-600">{error}</p>}
+    <div className="flex justify-end"><Button size="sm" disabled={busy || JSON.stringify(shared) === saved} onClick={() => void save()}>Save</Button></div>
   </div>
 }
 

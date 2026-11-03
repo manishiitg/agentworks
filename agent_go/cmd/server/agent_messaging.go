@@ -1014,7 +1014,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	{
 		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{
-			"source": "agent_message", "sender_label": source.Label, "sender_kind": agentMessageSenderKindIn(ctx, source),
+			"source": "agent_message", "sender_label": source.Label, "sender_kind": agentMessageSenderKindIn(ctx, source), "sender_user_id": source.UserID,
 			"agent_message_inbox": c.ID, "message_id": m.ID,
 			"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
 		})
@@ -1058,6 +1058,10 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	} else {
 		if api.agentProfiles == nil {
 			return session, fmt.Errorf("Crew runtime unavailable")
+		}
+		// An agent shared from a Crew on its owner's Mac answers through ask, never in an empty online tab (PLAT-856-509).
+		if !IsLocalMode() && crewRelayTwin(dest.ID) {
+			return session, fmt.Errorf("this agent runs on its owner's Mac: ask it with workspace action=ask and its chat_id, then read_chat for the answer")
 		}
 		profile, err := api.agentProfiles.Resolve("work", 0, dest.UserID)
 		if err != nil {

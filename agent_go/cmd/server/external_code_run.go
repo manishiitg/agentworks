@@ -114,8 +114,10 @@ type codeTurnItem struct {
 	Turn   string `json:"turn,omitempty"`
 	Role   string `json:"role"`
 	Sender string `json:"sender,omitempty"`
-	Text   string `json:"text"`
-	At     string `json:"at,omitempty"`
+	// SenderID is the person whose agent sent this message (never sent back to anyone): it scopes what a sender reads.
+	SenderID string `json:"-"`
+	Text     string `json:"text"`
+	At       string `json:"at,omitempty"`
 }
 
 // codeChatTranscript reads a Code chat's saved events as plain lines: what was asked, the answer of each turn and the
@@ -142,6 +144,7 @@ func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath st
 					Metadata    struct {
 						TurnID         string `json:"turn_id"`
 						SenderLabel    string `json:"sender_label"`
+						SenderUserID   string `json:"sender_user_id"`
 						DisplayContent string `json:"display_content"`
 						Source         string `json:"source"`
 					} `json:"metadata"`
@@ -177,7 +180,7 @@ func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath st
 			} else if d.Metadata.Source == "owner_app" {
 				sender = d.Metadata.SenderLabel
 			}
-			items = append(items, codeTurnItem{Seq: e.Sequence, Turn: d.Metadata.TurnID, Role: "you", Sender: sender, Text: clip(text), At: e.Timestamp})
+			items = append(items, codeTurnItem{Seq: e.Sequence, Turn: d.Metadata.TurnID, Role: "you", Sender: sender, SenderID: d.Metadata.SenderUserID, Text: clip(text), At: e.Timestamp})
 		case "unified_completion":
 			if strings.TrimSpace(d.FinalResult) != "" {
 				items = append(items, codeTurnItem{Seq: e.Sequence, Turn: d.Metadata.TurnID, Role: "assistant", Text: clip(d.FinalResult), At: e.Timestamp})
