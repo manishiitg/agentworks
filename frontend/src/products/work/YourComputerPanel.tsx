@@ -332,7 +332,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
           <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null, !on)} />
         </div>
         {purpose
-          ? <p className="ml-6 mt-1 text-[13px] text-muted-foreground">{purpose} · <button type="button" className="text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Change purpose</button></p>
+          ? <div className="ml-6 mt-1 flex items-start gap-2 text-[13px] text-muted-foreground"><p title={purpose} className="line-clamp-2 min-w-0 flex-1">{purpose}</p><button type="button" className="shrink-0 text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Change purpose</button></div>
           : agent && <p className="ml-6 mt-1 text-[13px] text-amber-600">Set this agent's purpose to share it. <button type="button" className="text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Set purpose</button></p>}
         {agent && <>
           <div className="mt-3 space-y-2 border-t border-border pt-3">
@@ -365,7 +365,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
             </div>
             <div className="flex items-start gap-2.5 py-1 text-[13px]">
               <span aria-hidden="true" className="w-5 text-center">🤖</span>
-              <span className="min-w-0 flex-1"><span className="block font-medium">Their AI agents</span><span className="block text-muted-foreground">{agent.agents ? 'Claude Code, Codex and other agents they run can message it and get the answer back.' : 'Off: only people can message it, not their agents.'}</span></span>
+              <span className="min-w-0 flex-1"><span className="block font-medium">Their AI agents</span><span className="block text-muted-foreground">{agent.agents ? 'Their own agents, like Claude Code, Codex, ChatGPT, Grok or any bot they run, can message it at its address and get the answer back.' : 'Off: only the people themselves. Turn on to let their own agents (Claude Code, Codex, ChatGPT, Grok or other bots they run) message it too.'}</span></span>
               <Switch aria-label={`Their AI agents can message ${row.name}`} checked={Boolean(agent.agents)} disabled={busy} onCheckedChange={on => update(row.tab, { agents: on })} />
             </div>
             {agent.agents && <>
