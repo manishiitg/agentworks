@@ -177,7 +177,7 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
    const footer = host.querySelector('footer')!
    // One Access row: where it lives · who can use it, both from the server.
    await act(async () => {})
-   const accessRow = [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Access')!
+   const accessRow = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('Access'))!
    expect(accessRow.textContent).toBe(`AccessOnline · ${detail}`)
    expect(footer.querySelectorAll('button')).toHaveLength(1)
    mocks.open.mockClear(); mocks.target.mockClear()
@@ -197,7 +197,7 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
   const footer = host.querySelector('footer')!
   // Someone else's Crew: the row still opens Access, and says it is shared with you.
   await act(async () => {})
-  const accessRow = [...footer.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Access')!
+  const accessRow = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('Access'))!
   expect(accessRow.textContent).toBe('AccessOnline · Shared with you')
   await act(async () => accessRow.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp','access')
