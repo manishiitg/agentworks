@@ -322,7 +322,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			}()
 		case "refused":
 			if local != "" && msg.State == "not_owner" {
-				repairDesktopCrewTwin(local, pair, connectionID)
+				api.repairDesktopCrewTwin(session, local, pair, connectionID)
 			}
 		case "resume":
 			if local != "" && msg.Conversation != "" {
@@ -550,7 +550,7 @@ func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims
 // repairDesktopCrewTwin forgets a Crew's online copy that the server says belongs to another account, so the twin
 // loop pairs the Crew again for the account this Mac is signed in with (PLAT-856-509). The pairing and its file
 // record are kept as .bak; the Crew's files and chats on this Mac are untouched, and nothing is sent to the old copy.
-func repairDesktopCrewTwin(local, pair, connection string) {
+func (api *StreamingAPI) repairDesktopCrewTwin(ctx context.Context, local, pair, connection string) {
 	b, err := crewroot.ReadSync(local)
 	if err != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction != "" || b.PairID != pair {
 		return
@@ -572,4 +572,20 @@ func repairDesktopCrewTwin(local, pair, connection string) {
 		}
 	}
 	log.Printf("[CREW_RELAY] project=%s repaired twin for connection=%s old_pair=%s old_server_project=%s", local, connection, pair, b.PeerProjectID)
+	// Pair it again now, on the connection it already used; the twin loop is only a fallback.
+	owner := GetDefaultUserID()
+	saved, err := desktopConnectionFor(owner, connection)
+	if err != nil {
+		log.Printf("[CREW_RELAY] project=%s new twin waits: connection %s unavailable", local, connection)
+		return
+	}
+	_, manifest, ok := api.resolveExternalWorkspace(ctx, &UserClaims{UserID: owner, Username: owner}, local)
+	if !ok {
+		log.Printf("[CREW_RELAY] project=%s new twin waits: Crew unavailable", local)
+		return
+	}
+	if err := api.createDesktopCrewRelayTwin(ctx, owner, saved, local, manifest.displayTitle()); err != nil {
+		crewRelayBackoff(local, true)
+		log.Printf("[CREW_RELAY] twin project=%s failed: %v", local, err)
+	}
 }
