@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 	"unicode"
 )
@@ -51,17 +50,15 @@ func WatchMuseBridge(ctx context.Context, root string, in LocalBridgeRequest, of
 	if in.Provider != "muse" || in.SessionID == "" || in.AttachmentID == "" || in.HostKey == "" {
 		return errors.New("Muse watch requires its exact session, host and approved lease")
 	}
-	for _, path := range []string{root, filepath.Join(root, "bridge.sock")} {
-		info, err := os.Lstat(path)
-		if err != nil {
-			return err
-		}
-		if CheckPrivateAccess(path, info) != nil || path == root && !info.IsDir() || path != root && info.Mode()&os.ModeSocket == 0 {
-			return errors.New("unsafe private bridge path")
-		}
+	info, err := os.Lstat(root)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || CheckPrivateAccess(root, info) != nil {
+		return errors.New("unsafe private bridge path")
 	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(root, "bridge.sock"))
+		return bridgeDial(ctx, root)
 	}}
 	defer transport.CloseIdleConnections()
 	in.Action = "watch"
