@@ -4120,10 +4120,22 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	// One policy for every non-owner chat (in-app, MCP ask, dashboard Ask): read-only plus the owner's published functions.
 	crewAskOnly := crewAskReadOnlyTurn(req, currentUserID, currentUserIsReadOnly)
-	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
-	common.SetSessionCrewReader(sessionID, currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID))
-	common.SetSessionCrewAskReadOnly(sessionID, crewAskOnly)
-	common.SetSessionReadOnlyAccess(sessionID, access == WorkflowAccessRead)
+	// A message of the other role (the owner's while someone else's shared ask runs, or the reverse) never steers into
+	// the running turn and never changes its tools: it waits as its own turn (PLAT-856-509). The session's tool mode
+	// belongs to the turn that is running.
+	otherRoleTurn := false
+	if !conversationTurnQueueExecution(r.Context()) && api.sessionTurnRunning(sessionID) {
+		if cfg := common.GetSessionShellConfig(sessionID); cfg != nil && cfg.CrewAskReadOnly != crewAskOnly {
+			otherRoleTurn = true
+			log.Printf("[TURN_QUEUE] session=%s queued: a %s message waits for the running %s turn", sessionID, map[bool]string{true: "shared-ask", false: "owner"}[crewAskOnly], map[bool]string{true: "shared-ask", false: "owner"}[cfg.CrewAskReadOnly])
+		}
+	}
+	if !otherRoleTurn {
+		common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
+		common.SetSessionCrewReader(sessionID, currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID))
+		common.SetSessionCrewAskReadOnly(sessionID, crewAskOnly)
+		common.SetSessionReadOnlyAccess(sessionID, access == WorkflowAccessRead)
+	}
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
 		class := sessionPersistenceClassForRequest(req)
@@ -4272,7 +4284,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		retireProductCodingCLI(sessionID, "product chat: runtime configuration changed")
 		req.RestartCodingCLI = false
 	}
-	if api.shouldWaitForQueuedConversation(r.Context(), currentUserID, sessionID, req) {
+	if otherRoleTurn || api.shouldWaitForQueuedConversation(r.Context(), currentUserID, sessionID, req) {
 		// Hold the existing lane across the backlog check and admission. If
 		// the drainer acquired it first, admission still appends behind it.
 		release, acquired := api.tryLockSessionInputLane(sessionID, 0)
