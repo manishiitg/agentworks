@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Bot, CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, Plug, RefreshCw, Smartphone, Sparkles, Terminal, TriangleAlert, Users, X, type LucideIcon, type LucideProps } from 'lucide-react'
+import { CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, Pencil, RefreshCw, Smartphone, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl, setSlackSetupConnection } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -239,7 +239,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
           ? <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
           : <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={moving} onClick={() => setOpen(open === 'share' ? '' : 'share')}>Share…</Button>}
       </div>
-      {binding && !online && binding.connection_id && <MacSharedAgents projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} />}
+      {binding && !online && binding.connection_id && <MacSharedAgents projectId={projectId} connection={binding.connection_id} />}
       {open === 'share' && !online && <ShareWithTeam name={name} workspacePath={workspacePath} facts={facts} canMove={!tooBig && !moving} onMoveAndShare={() => void move(true)} onCancel={() => setOpen('')} />}
     </section>}
   </div>
@@ -266,7 +266,7 @@ function agentChatTabId(projectId: string, tab: string) {
 /** Who can message your agents (owner, 3 Nov mockup mac-share-card): one card per agent with three plain questions:
  * is it shared (switch), who (chosen people from a list, or everyone), how they reach it (themselves always; their AI
  * agents by a switch that shows the address). The purpose is the tab's own, set from its chat. Saved as you go. */
-function MacSharedAgents({ projectId, connection, network }: { projectId: string; connection: string; network: string }) {
+function MacSharedAgents({ projectId, connection }: { projectId: string; connection: string }) {
   const [rows, setRows] = useState<AgentRow[] | null>(null)
   const [shared, setShared] = useState<SharedAgent[]>([])
   const [people, setPeople] = useState<Person[]>([])
@@ -323,64 +323,44 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
       const saved = Boolean(agent && purpose && (agent.audience === 'everyone' || agent.people?.length))
-      return <div key={row.tab} className={`rounded-xl border border-border px-3.5 py-3 ${agent ? '' : 'opacity-70'}`}>
-        <div className="flex items-center gap-2.5">
+      return <div key={row.tab} className={`rounded-xl border border-border px-3 py-2 ${agent ? 'space-y-1.5' : 'opacity-70'}`}>
+        <div className="flex items-center gap-2">
           <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
           <span className="min-w-0 truncate text-sm font-semibold">{row.name}</span>
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">{!agent ? 'Only you' : saved ? 'Shared' : 'Not shared yet'}</span>
           <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null, !on)} />
         </div>
-        {purpose
-          ? <div className="ml-6 mt-1 flex items-start gap-2 text-[13px] text-muted-foreground"><p title={purpose} className="line-clamp-2 min-w-0 flex-1">{purpose}</p><button type="button" className="shrink-0 text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Change purpose</button></div>
-          : agent && <p className="ml-6 mt-1 text-[13px] text-amber-600">Set this agent's purpose to share it. <button type="button" className="text-primary hover:underline" onClick={() => setPurpose(row.tab)}>Set purpose</button></p>}
-        {agent && <>
-          <div className="ml-6 mt-2.5 space-y-2">
-            <div className="flex flex-wrap items-center gap-2"><div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-full border border-border text-xs">
-              {(['chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`rounded-full px-3 py-1 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'chosen' ? 'Chosen people' : 'Everyone'}</button>)}
-            </div>
-            {agent.audience === 'everyone' && <span className="text-xs text-muted-foreground">on {network || 'your team'}</span>}</div>
-            {agent.audience === 'chosen' && <div className="flex flex-wrap items-center gap-1.5">
-              {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
-              <button type="button" aria-expanded={adding === row.tab} onClick={() => { setAdding(adding === row.tab ? '' : row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-primary hover:bg-muted">+ Add</button>
-            </div>}
-            {agent.audience === 'chosen' && adding === row.tab && <div className="w-64 max-w-full overflow-hidden rounded-2xl border border-border bg-popover shadow">
-              <input autoFocus aria-label="Search people" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAdding(''); setSearch('') } }} placeholder="Search people" className="w-full border-b border-border bg-transparent px-3 py-1.5 text-xs outline-none" />
-              <div className="max-h-56 overflow-y-auto">
-                {choices(agent).map(person => <button key={person.id} type="button" onClick={() => { update(row.tab, { people: [...(agent.people || []), person.id] }); setSearch('') }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted">
-                  <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-[10px]">{person.username.slice(0, 2).toUpperCase()}</span>
-                  <span className="truncate">{person.username}</span>{person.email && person.email !== person.username && <span className="ml-auto truncate text-muted-foreground">{person.email}</span>}
-                </button>)}
-                {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{people.length ? 'Nobody found' : 'No people yet'}</p>}
-              </div>
-            </div>}
+        {agent && <div className="ml-6 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+            {purpose ? <span title={purpose} className="min-w-0 truncate">{purpose}</span> : <span className="min-w-0 truncate text-amber-600">Set this agent's purpose to share it.</span>}
+            <button type="button" aria-label={purpose ? `Change ${row.name}'s purpose` : `Set ${row.name}'s purpose`} title={purpose ? 'Change purpose' : 'Set purpose'} onClick={() => setPurpose(row.tab)} className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button>
           </div>
-          <div className="ml-6 mt-2.5 space-y-1.5 text-[13px]">
-            <div className="flex items-center gap-2">
-              <Users aria-hidden="true" className="h-4 w-4 shrink-0 text-blue-400" />
-              <span className="min-w-0 flex-1" title="They open it and type. It shows under &quot;Shared with me&quot;."><span className="font-medium">In their apps</span> <ReachIcons items={[[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT'], [Sparkles, 'Claude'], [Hash, 'Slack']]} /></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Bot aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-400" />
-              <span className="min-w-0 flex-1" title="Agents they run themselves, on their own computer or anywhere outside AgentWorks: Claude Code, Codex, ChatGPT agents, Grok, their own local agents and bots."><span className="font-medium">From their own AI agents</span> <ReachIcons items={[[Terminal, 'Claude Code, Codex'], [X, 'Grok'], [Plug, 'Their own local agents and bots']]} /></span>
-            </div>
-            {agent.address
-              ? <p className="ml-6 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-foreground">agent:{agent.address}</span>
-                <button type="button" className="rounded-full border border-border px-2 py-0.5 text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button>
-                Only agents of the people above use it.</p>
-              : <p className="ml-6 text-xs text-muted-foreground">Its address for their agents shows here once it is shared.</p>}
+          <div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-full border border-border text-xs">
+            {(['chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`rounded-full px-3 py-0.5 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'chosen' ? 'Chosen people' : 'Everyone'}</button>)}
           </div>
-        </>}
+          {agent.audience === 'chosen' && <div className="flex flex-wrap items-center gap-1.5">
+            {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
+            <button type="button" aria-expanded={adding === row.tab} onClick={() => { setAdding(adding === row.tab ? '' : row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-primary hover:bg-muted">+ Add</button>
+          </div>}
+          {agent.audience === 'chosen' && adding === row.tab && <div className="w-64 max-w-full overflow-hidden rounded-2xl border border-border bg-popover shadow">
+            <input autoFocus aria-label="Search people" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAdding(''); setSearch('') } }} placeholder="Search people" className="w-full border-b border-border bg-transparent px-3 py-1.5 text-xs outline-none" />
+            <div className="max-h-56 overflow-y-auto">
+              {choices(agent).map(person => <button key={person.id} type="button" onClick={() => { update(row.tab, { people: [...(agent.people || []), person.id] }); setSearch('') }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted">
+                <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-[10px]">{person.username.slice(0, 2).toUpperCase()}</span>
+                <span className="truncate">{person.username}</span>{person.email && person.email !== person.username && <span className="ml-auto truncate text-muted-foreground">{person.email}</span>}
+              </button>)}
+              {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{people.length ? 'Nobody found' : 'No people yet'}</p>}
+            </div>
+          </div>}
+          <p className="text-xs text-muted-foreground">People and their AI agents can message it.</p>
+          {agent.address && <p className="flex items-center gap-2 text-xs"><span className="min-w-0 truncate rounded-full bg-muted px-2.5 py-0.5 font-mono">agent:{agent.address}</span>
+            <button type="button" className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></p>}
+        </div>}
       </div>
     })}
     {rows.length <= 1 && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
-    {shared.length > 0 && <p className="text-xs text-muted-foreground">They can ask a shared agent anything it can see in this Crew, never your other chats, while this Mac is on. Main's answers can use what you've discussed in it.</p>}
     {error && <p className="text-xs text-amber-600">{error}</p>}
   </section>
-}
-
-// The apps or agents a way of reaching a shared agent covers: small icons, named on hover.
-function ReachIcons({ items }: { items: [LucideIcon, string][] }) {
-  return <span className="inline-flex items-center gap-1.5 align-middle text-muted-foreground">{items.map(([Icon, label]) => <Icon key={label} aria-label={label} role="img" className="h-3.5 w-3.5"><title>{label}</title></Icon>)}</span>
 }
 
 /** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */
