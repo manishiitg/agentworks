@@ -13,7 +13,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentusage"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/sqlitefile"
 	"github.com/spf13/cobra"
 	_ "modernc.org/sqlite"
 )
@@ -96,8 +96,7 @@ func usageIndex(ctx context.Context, p, query, session string) (string, string) 
 	if e != nil || !info.Mode().IsRegular() {
 		return "", ""
 	}
-	u := url.URL{Scheme: "file", Path: p}
-	db, e := sql.Open("sqlite", u.String()+"?mode=ro&_pragma=busy_timeout(1000)")
+	db, e := sql.Open("sqlite", sqlitefile.URI(p)+"?mode=ro&_pragma=busy_timeout(1000)")
 	if e != nil {
 		return "", ""
 	}

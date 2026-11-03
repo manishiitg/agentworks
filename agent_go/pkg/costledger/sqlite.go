@@ -7,12 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/sqlitefile"
 	_ "modernc.org/sqlite"
 )
 
@@ -97,8 +97,7 @@ func NewSQLiteLedger(dbPath string) (*Ledger, error) {
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return nil, fmt.Errorf("costledger: create SQLite directory: %w", err)
 	}
-	u := &url.URL{Scheme: "file", Path: absPath}
-	dsn := u.String() + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+	dsn := sqlitefile.URI(absPath) + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("costledger: open SQLite database: %w", err)
