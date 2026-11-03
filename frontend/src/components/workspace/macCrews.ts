@@ -11,10 +11,12 @@ export function groupByMac<T extends CrewLocationFields>(projects: T[]): { macs:
   const macs = new Map<string, { mac: MacInfo; rows: T[] }>()
   const server: T[] = []
   for (const project of projects) {
-    if (project.location !== 'mac' || !project.mac?.device_id) { server.push(project); continue }
-    const group = macs.get(project.mac.device_id) || { mac: project.mac, rows: [] }
+    if (project.location !== 'mac') { server.push(project); continue }
+    // A Crew paired before Macs were named has no device id: it still lives on the owner's Mac.
+    const mac: MacInfo = project.mac?.device_id ? project.mac : { device_id: 'mac', name: project.mac?.name || 'Mac', online: project.mac?.online === true, last_seen: project.mac?.last_seen }
+    const group = macs.get(mac.device_id) || { mac, rows: [] }
     group.rows.push(project)
-    macs.set(project.mac.device_id, group)
+    macs.set(mac.device_id, group)
   }
   return { macs: [...macs.values()], server }
 }

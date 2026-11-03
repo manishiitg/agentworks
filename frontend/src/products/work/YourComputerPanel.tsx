@@ -22,7 +22,42 @@ type LaptopSettings = { device_id: string; folders: { id: string; path: string; 
 export const crewCloudMode = () => hasDesktopConnections()
 
 export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online'
-/** Where the Crew lives, for its Access row. The server decides (crew-sync status "place"); the row only shows it. */
+
+// One reading per Crew for the whole page (owner, 3 Nov: the page takes ONE flag): every panel that asks where a
+// Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
+const placeCache = new Map<string, { place?: CloudState; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController }>()
+
+function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
+  let entry = placeCache.get(projectId)
+  if (!entry) {
+    const created: NonNullable<typeof entry> = { listeners: new Set() }
+    entry = created
+    placeCache.set(projectId, created)
+    const load = () => {
+      created.abort?.abort()
+      created.abort = new AbortController()
+      void api.get<{ place?: CloudState }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+        .then(({ data }) => {
+          if (!data.place || data.place === created.place) return
+          created.place = data.place
+          created.listeners.forEach(notify => notify(data.place))
+        }).catch(() => {})
+    }
+    load()
+    created.timer = window.setInterval(load, 5000)
+  }
+  entry.listeners.add(listener)
+  listener(entry.place)
+  const watched = entry
+  return () => {
+    watched.listeners.delete(listener)
+    if (watched.listeners.size > 0) return
+    window.clearInterval(watched.timer); watched.abort?.abort()
+    placeCache.delete(projectId)
+  }
+}
+
+/** Where the Crew lives, as the server reports it (crew-sync status "place"); the page only shows it. */
 export function useYourComputerSummary(enabled: boolean, projectId?: string): CloudState | undefined {
   const [state, setState] = useState<CloudState>()
   useEffect(() => {
@@ -30,15 +65,18 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string): Cl
     if (!enabled || !projectId) return
     // A Crew opened from a connected server in the Mac app lives online.
     if (crewCloudMode() && getRawActiveWorkspaceId() !== 'local') { setState('online'); return }
-    const abort = new AbortController()
-    const load = () => void api.get<SyncStatus & { place?: CloudState }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true })
-      .then(({ data }) => { if (!abort.signal.aborted && data.place) setState(data.place) }).catch(() => {})
-    load()
-    const timer = window.setInterval(load, 5000)
-    return () => { window.clearInterval(timer); abort.abort() }
+    return watchCrewPlace(projectId, setState)
   }, [enabled, projectId])
   return state
 }
+
+/** The page's one flag: this Crew lives on its owner's Mac and this screen is not that Mac (the website or phone),
+ * so its online record is empty. Every panel decides from this, never from its own data. */
+export function useCrewLivesOnMac(projectId?: string): boolean {
+  const place = useYourComputerSummary(Boolean(projectId), projectId)
+  return (place === 'mac' || place === 'mac_off') && !crewCloudMode()
+}
+
 export const cloudStateLabel: Record<CloudState, string> = { mac: 'On this Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online' }
 /** The Access row icon: a laptop while it lives on a Mac, a cloud online, people for someone else's Crew, with a dot:
  * green reachable now, grey Mac off, amber moving. */

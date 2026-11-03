@@ -2,11 +2,11 @@ import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
-import { LayoutDashboard } from 'lucide-react'
+import { LayoutDashboard, Laptop } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
-export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, owned_by_caller, owner_name, stateLine, offline, onOpen }: { name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onOpen: () => void }) {
+export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, owned_by_caller, owner_name, stateLine, offline, onMac, onOpen }: { name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
   const sharedDashboard = kind === 'crew' && mode === 'run'
   const label = sharedDashboard ? 'Shared dashboard' : kind === 'crew' ? 'Crew' : 'Goal'
   return <div className={`flex ${stateLine ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${selected ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
@@ -15,6 +15,11 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
       <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>
       <span className="min-w-0 flex-1"><span className={`block truncate text-[13px] leading-5 ${selected ? 'font-medium' : 'font-normal'}`}>{name}</span>{owned_by_caller === false && owner_name && <span className="block truncate text-[11px] leading-3 text-muted-foreground">{owner_name}</span>}{stateLine && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{stateLine}</span>}</span>
     </button>
+    {/* A Crew that lives on its owner's Mac (the server's row says so): a laptop with the Mac's on/off dot. */}
+    {onMac && <span title={onMac === 'on' ? 'On your Mac' : 'On your Mac · Mac off'} aria-label={onMac === 'on' ? 'On your Mac' : 'On your Mac, Mac off'} className="relative mr-2 inline-flex shrink-0 text-muted-foreground">
+      <Laptop className="h-3.5 w-3.5" aria-hidden="true" />
+      <span aria-hidden="true" className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${onMac === 'on' ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />
+    </span>}
     {remote && serverId && <button type="button" aria-label={`Server: ${location || 'Connected server'}`} title={location || 'Connected server'}
       onClick={() => openConnectedServers('', serverId)} className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <ServerIdentityIcon connectionId={serverId} hidden className={`h-3 w-3 ${serverColor || 'text-slate-500/75 dark:text-slate-400/75'}`} />
