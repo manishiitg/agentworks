@@ -37,10 +37,33 @@ func (api *StreamingAPI) authorizeDurableChatRead(r *http.Request, sessionID, wo
 	if err != nil {
 		return http.StatusInternalServerError, "Failed to authorize durable chat"
 	}
+	if ownerID == "" && ownConversationNotStarted(r, sessionID) {
+		return 0, "" // the caller's own new tab before its first message: an empty chat, not a missing one
+	}
 	if ownerID == "" || !durableChatReadAllowed(r, sessionID, ownerID, workspacePath) && !api.crewSessionTabView(r, sessionID) {
 		return http.StatusNotFound, "Session not found or access denied"
 	}
 	return 0, ""
+}
+
+// ownConversationNotStarted reports a session the caller's own conversation registry already holds (a tab just opened)
+// but that has no saved messages yet. Its stream and history are empty and ready; a 404 made the chat show
+// "Reconnecting…" until the first message (owner, 3 Nov).
+func ownConversationNotStarted(r *http.Request, sessionID string) bool {
+	user := GetUserIDFromContext(r.Context())
+	if user == "" || sessionID == "" {
+		return false
+	}
+	document, err := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(user))
+	if err != nil {
+		return false
+	}
+	for _, record := range document.Entries {
+		if record.SessionID == sessionID {
+			return true
+		}
+	}
+	return false
 }
 
 // handleGetChatArtifact returns the complete event behind a row the journal
