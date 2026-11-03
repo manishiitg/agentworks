@@ -25,12 +25,13 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online'
 
 // One reading per Crew for the whole page (owner, 3 Nov: the page takes ONE flag): every panel that asks where a
 // Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
-const placeCache = new Map<string, { place?: CloudState; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController }>()
+type PlaceEntry = { place?: CloudState; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController }
+const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
   let entry = placeCache.get(projectId)
   if (!entry) {
-    const created: NonNullable<typeof entry> = { listeners: new Set() }
+    const created: PlaceEntry = { listeners: new Set() }
     entry = created
     placeCache.set(projectId, created)
     const load = () => {
