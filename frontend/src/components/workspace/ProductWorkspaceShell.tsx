@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode, Ref } from 'react'
+import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
 import { PanelLeftOpen } from 'lucide-react'
 import { resolveWorkSurfaceLayout } from '../../products/work/workSurfaceLayoutResolver'
 import { MobileWorkspaceNavigationContext, type MobileWorkspacePane } from './MobileWorkspaceNavigation'
@@ -34,7 +35,8 @@ export function ProductWorkspaceShell({
   /** Products with an explicit Assistant action do not need the edge tab. */
   showChatReopenControl?: boolean
 }) {
-  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview, laptopPreview, mobilePaneWidth, mobilePane, compactContext })
+  const contextWide = useContextMenuWideStore(state => state.wide)
+  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview, laptopPreview, mobilePaneWidth, mobilePane, compactContext, contextWide })
   const chatClassName = mobilePane === 'workspace' && panelOpen
     ? `hidden md:flex ${layout.chatClassName.replace(/^flex /, '')}` : layout.chatClassName
   const workspaceClassName = mobilePane === 'chat' && chatOpen

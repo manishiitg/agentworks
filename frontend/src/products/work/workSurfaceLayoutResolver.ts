@@ -3,6 +3,8 @@ import { CONTEXT_PANE_COLUMN, LAPTOP_PREVIEW_COLUMNS, MOBILE_PREVIEW_PANE_COLUMN
 
 export interface WorkSurfaceLayoutInput {
   compactContext?: boolean
+  /** The menu card shows Access: the old side panel's width, never wider than the window allows. */
+  contextWide?: boolean
   chatOpen: boolean
   panelOpen: boolean
   splitRatio: number
@@ -51,7 +53,7 @@ export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSur
     // squeezing side by side into a ~60 px chat column (390 px live check).
     gridClassName: `grid h-full min-h-0 min-w-0 grid-cols-1 ${split ? `${singlePhonePane ? 'grid-rows-[auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)]'} md:grid-rows-[auto_minmax(0,1fr)] md:[grid-template-columns:var(--work-split-columns)]` : 'grid-rows-[auto_minmax(0,1fr)]'}`,
     gridStyle: split
-      ? ({ '--work-split-columns': input.compactContext ? `minmax(240px, 1fr) ${CONTEXT_PANE_COLUMN}` : mobilePreview
+      ? ({ '--work-split-columns': input.compactContext ? `minmax(240px, 1fr) ${input.contextWide ? 'min(560px, calc(100vw - 280px))' : CONTEXT_PANE_COLUMN}` : mobilePreview
         ? `minmax(240px, 1fr) ${mobilePaneWidth ? `${Math.round(mobilePaneWidth)}px` : MOBILE_PREVIEW_PANE_COLUMN}`
         : input.laptopPreview ? LAPTOP_PREVIEW_COLUMNS
         : `minmax(240px, ${splitRatio}fr) minmax(240px, ${1 - splitRatio}fr)` } as CSSProperties)
