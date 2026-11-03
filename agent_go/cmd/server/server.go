@@ -1476,11 +1476,17 @@ func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r 
 		http.Error(w, "turn_running", http.StatusConflict)
 		return true
 	}
+	occupant, backlog := api.conversationTurnOccupiedBy(sessionID), api.conversationTurnHasBacklog(userID, sessionID)
 	turn, position, err := api.enqueueConversationTurn(r.Context(), userID, sessionID, req)
 	if err != nil {
 		http.Error(w, "Cannot durably queue conversation turn: "+err.Error(), http.StatusServiceUnavailable)
 		return true
 	}
+	api.pendingMu.RLock()
+	pendingResults := len(api.pendingCompletions[sessionID])
+	api.pendingMu.RUnlock()
+	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t external_builder=%t pending_results=%d busy_by=%q",
+		sessionID, position, occupant, backlog, api.externalBuilderOwnsSession(sessionID), pendingResults, api.autoNotificationBusyReason(sessionID))
 	api.recordQueuedConversationUserMessage(sessionID, turn)
 	api.kickConversationTurnQueue(sessionID)
 	_ = json.NewEncoder(w).Encode(QueryResponse{
