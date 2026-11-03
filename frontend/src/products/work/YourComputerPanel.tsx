@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
-import { CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, Pencil, RefreshCw, Smartphone, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
+import { CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Info, Laptop, MessageSquare, Pencil, RefreshCw, Smartphone, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl, setSlackSetupConnection } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -208,7 +208,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   if (step) return <MoveOnlineScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
     onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   // The boxes sit on the page directly, without section labels (owner, 3 Nov: less text).
-  return <div className="space-y-3 text-sm">
+  return <div className="space-y-5 text-sm">
     <section aria-label="Where it lives" className="space-y-1">
       <div className="flex items-center justify-between gap-2.5">
         <p role="status" className="flex items-center gap-2 text-base font-semibold">
@@ -287,6 +287,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
+  const [openPurpose, setOpenPurpose] = useState('')
   const endpoint = `/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`
   useEffect(() => {
     let live = true
@@ -328,23 +329,24 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
   const personName = (id: string) => people.find(person => person.id === id)?.username || id
   const choices = (agent: SharedAgent) => people.filter(person => !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
-  return <section aria-label="Who can message your agents" className="mt-3 space-y-2">
+  return <section aria-label="Who can message your agents" className="mt-4 space-y-3">
     <p className="text-sm font-semibold">Who can message your agents</p>
     {rows.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
       const saved = Boolean(agent && purpose && (agent.audience === 'everyone' || agent.people?.length))
-      return <div key={row.tab} className={`rounded-xl border border-border px-3 py-2 ${agent ? 'space-y-1.5' : 'opacity-70'}`}>
+      return <div key={row.tab} className={`rounded-xl border border-border px-4 py-3 ${agent ? 'space-y-2.5' : 'opacity-70'}`}>
         <div className="flex items-center gap-2">
           <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
           <span className="min-w-0 truncate text-sm font-semibold">{row.name}</span>
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">{!agent ? 'Only you' : saved ? 'Shared' : 'Not shared yet'}</span>
           <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null, !on)} />
         </div>
-        {agent && <div className="ml-6 space-y-1.5">
-          <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-            {purpose ? <span title={purpose} className="min-w-0 truncate">{purpose}</span> : <span className="min-w-0 truncate text-amber-600">Set this agent's purpose to share it.</span>}
-            <button type="button" aria-label={purpose ? `Change ${row.name}'s purpose` : `Set ${row.name}'s purpose`} title={purpose ? 'Change purpose' : 'Set purpose'} onClick={() => setPurpose(row.tab)} className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button>
+        {agent && <div className="ml-6 space-y-2.5">
+          <div className="flex items-start gap-1.5 text-[13px] text-muted-foreground">
+            {purpose ? <span title={purpose} className={`min-w-0 ${openPurpose === row.tab ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>{purpose}</span> : <span className="min-w-0 truncate text-amber-600">Set this agent's purpose to share it.</span>}
+            {purpose && <button type="button" aria-expanded={openPurpose === row.tab} aria-label={openPurpose === row.tab ? 'Show less of the purpose' : 'Show the whole purpose'} title={openPurpose === row.tab ? 'Show less' : purpose} onClick={() => setOpenPurpose(openPurpose === row.tab ? '' : row.tab)} className="grid h-5 w-5 shrink-0 place-items-center self-start rounded text-muted-foreground hover:bg-muted hover:text-foreground"><Info aria-hidden="true" className="h-3 w-3" /></button>}
+            <button type="button" aria-label={purpose ? `Change ${row.name}'s purpose` : `Set ${row.name}'s purpose`} title={purpose ? 'Change purpose' : 'Set purpose'} onClick={() => setPurpose(row.tab)} className="grid h-5 w-5 shrink-0 place-items-center self-start rounded text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button>
           </div>
           <div className="flex flex-wrap items-center gap-2"><div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-full border border-border text-xs">
             {(['chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`rounded-full px-3 py-0.5 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'chosen' ? 'Chosen people' : 'Everyone'}</button>)}
