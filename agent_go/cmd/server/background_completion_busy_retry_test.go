@@ -35,7 +35,7 @@ func TestBusySyntheticCompletionRetriesBackOffWithoutLosingResults(t *testing.T)
 			t.Fatalf("retry %d changed queued results: %v", i, queued)
 		}
 	}
-	want := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second, time.Minute, time.Minute, time.Minute}
+	want := []time.Duration{5 * time.Second, 5 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second, 10 * time.Second}
 	for i, delay := range want {
 		if delays[i] != delay {
 			t.Fatalf("retry %d delay=%v, want %v", i, delays[i], delay)

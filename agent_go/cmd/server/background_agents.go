@@ -1614,6 +1614,10 @@ func (api *StreamingAPI) schedulePendingStartNotificationRetry(sessionID string)
 }
 
 func (api *StreamingAPI) drainPendingAutoNotificationsAfterTurn(sessionID string) {
+	// A turn ended: waiting results start over from the shortest check.
+	api.pendingMu.Lock()
+	delete(api.completionRetryBusyAttempts, sessionID)
+	api.pendingMu.Unlock()
 	pendingStarts := api.filterUnsentStartNotifications(sessionID, api.drainPendingStartNotifications(sessionID))
 	pendingCompletions := api.drainPendingCompletions(sessionID)
 
@@ -1778,12 +1782,39 @@ func (api *StreamingAPI) scheduleBusyCompletionRetry(sessionID string) {
 	if attempt < 4 {
 		api.completionRetryBusyAttempts[sessionID] = attempt + 1
 	}
+	pending := len(api.pendingCompletions[sessionID])
 	api.pendingMu.Unlock()
-	delay := 10 * time.Second << attempt
-	if delay > time.Minute {
-		delay = time.Minute
+	// A waiting result is checked again soon: the chat freeing up is a matter of seconds, and a
+	// long backoff kept a finished result (and a person's message queued behind it) waiting 40 s
+	// in an idle chat (2026-11-03).
+	delay := 5 * time.Second << attempt
+	if delay > 10*time.Second {
+		delay = 10 * time.Second
+	}
+	if attempt == 0 {
+		log.Printf("[BG AGENT] results waiting session=%s pending=%d busy_by=%s occupant=%s next_check=%s", sessionID, pending, api.autoNotificationBusyReason(sessionID), api.conversationTurnOccupiedBy(sessionID), delay)
 	}
 	api.schedulePendingCompletionRetryAfter(sessionID, delay)
+}
+
+// autoNotificationBusyReason names why isSessionBusyForAutoNotification holds results back ("" when
+// it would not), for the logs only.
+func (api *StreamingAPI) autoNotificationBusyReason(sessionID string) string {
+	switch {
+	case api.sessionTurnInProgress(sessionID):
+		return "input_lane"
+	case !api.isSessionBusy(sessionID):
+		return ""
+	case api.isSyntheticTurn(sessionID):
+		return "synthetic_turn"
+	case api.hasActiveTurnCancel(sessionID):
+		return "active_turn_cancel"
+	case api.storedAgentTurnInProgress(sessionID):
+		return "stored_agent_turn"
+	case api.terminalStore != nil && api.terminalStore.SessionHasBusyCodingTmux(sessionID):
+		return "coding_tmux"
+	}
+	return "busy_flag"
 }
 
 func (api *StreamingAPI) schedulePendingCompletionRetryAfter(sessionID string, delay time.Duration) {
