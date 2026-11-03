@@ -175,7 +175,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), caller, profile, r.URL.Query().Get("crew_id"), "")
 	if err != nil || !project.OwnedByCaller {
-		http.Error(w, "Only this Crew's owners can manage its workflows and programs.", http.StatusForbidden)
+		http.Error(w, "Only this Crew's owners can manage its workflows.", http.StatusForbidden)
 		return
 	}
 	root := project.Binding.WorkspacePath
@@ -190,6 +190,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			Manifest *WorkflowManifest `json:"manifest"`
 		}
 		entries := []entry{}
+		existingRelays := []map[string]string{}
 		for _, binding := range records {
 			if binding.CrewRoot != root {
 				continue
@@ -200,6 +201,10 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 				return
 			}
 			if found {
+				if binding.Kind == "relay" || manifest.Kind == "relay" {
+					existingRelays = append(existingRelays, map[string]string{"id": binding.ID, "label": manifest.Label})
+					continue
+				}
 				entries = append(entries, entry{binding, manifest})
 			}
 		}
@@ -210,7 +215,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			http.Error(w, "Could not load this Crew's agents", http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "agents": agents})
+		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "agents": agents, "existing_relays": existingRelays})
 		return
 	}
 	var input struct {
@@ -220,33 +225,25 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
-		http.Error(w, "Enter a name and choose Workflow or Program.", http.StatusBadRequest)
+		http.Error(w, "Enter a workflow name.", http.StatusBadRequest)
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if input.Name == "" || len(input.Name) > 120 || (input.Kind != "workflow" && input.Kind != "relay") {
-		http.Error(w, "Enter a name (up to 120 characters) and choose Workflow or Program.", http.StatusBadRequest)
+	if input.Kind != "" && input.Kind != "workflow" {
+		http.Error(w, "Create a workflow here. Open your existing Relays from the Relays screen.", http.StatusBadRequest)
+		return
+	}
+	if input.Name == "" || len(input.Name) > 120 {
+		http.Error(w, "Enter a workflow name (up to 120 characters).", http.StatusBadRequest)
 		return
 	}
 	id := uuid.NewString()
-	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: input.Kind}
+	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "workflow"}
 	manifest := NewWorkflowManifest(input.Name)
 	manifest.ID = id
-	// The existing engine represents an ordinary workflow with an omitted kind.
-	if input.Kind == "relay" {
-		manifest.Kind = "relay"
-	}
 	manifest.CreatedBy = project.OwnerID
 	manifest.Access = &WorkflowAccess{Owners: []string{project.OwnerID}, Readers: []string{}}
 	manifest.Capabilities.LLMConfig = productDefaultWorkflowLLMConfig(r.Context())
-	if input.Kind == "relay" {
-		manifest.RelayRuntime = "python"
-		manifest.RelayDurability = "dbos"
-		if err := initializePythonRelayWorkspaceWithSource(r.Context(), binding.Root, defaultNativeDBOSRelaySource); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
 	if err := registerCrewExecutable(binding); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

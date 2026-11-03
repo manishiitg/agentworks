@@ -16,9 +16,9 @@ import { normalizeWorkspacePath } from '../utils/workspacePathUtils'
 
 // Build workflow presets from manifests
 export function buildWorkflowPresetsFromManifests(workflows = useWorkflowManifestStore.getState().workflows || []): CustomPreset[] {
-  // Crew-owned definitions open inside their Crew, rather than appearing a
-  // second time as a standalone product in the global work list.
-  return workflows.filter(wf => !wf.crew_id).map(wf => {
+  // Workflow definitions open inside their Crew. Existing Relays remain
+  // reachable in their standalone screen so their automations can be stopped.
+  return workflows.filter(wf => !wf.crew_id || wf.manifest.kind === 'relay').map(wf => {
     const caps = wf.manifest.capabilities
     return {
       id: wf.manifest.id || wf.workspace_path,

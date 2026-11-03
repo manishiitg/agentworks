@@ -14,7 +14,7 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Manage this Crew's own workflows and saved programs. action=list returns exact workspaces and Crew agents. read/write takes workspace_path from that list and a relative file: planning/*, code/*, variables/variables.json, relay.py or relay.structure.json. Write code before the plan that uses it. Reuse crew_agent IDs from the list on agent steps; never copy that agent's conversation. Run an ordinary workflow with run_workflow_trigger; use its returned trigger/run IDs to poll get_workflow_trigger_run. These are owned child definitions, not read-only workflow references.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Manage this Crew's own workflows. action=list returns exact workspaces and Crew agents. read/write takes workspace_path from that list and a relative file: planning/*, code/*, variables/variables.json. Write code before the plan that uses it. Reuse crew_agent IDs from the list on agent steps; never copy that agent's conversation. Run an ordinary workflow with run_workflow_trigger; use its returned trigger/run IDs to poll get_workflow_trigger_run. These are owned child definitions, not read-only workflow references.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "read", "write"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
@@ -51,16 +51,16 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 		target, _ := args["workspace_path"].(string)
 		binding, err := findCrewExecutable(target)
-		if err != nil || binding == nil || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
+		if err != nil || binding == nil || binding.Kind != "workflow" || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
 			return "", fmt.Errorf("choose a workflow from this Crew's own list")
 		}
 		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
-		if err != nil || !found || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
+		if err != nil || !found || manifest.Kind == "relay" || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
 			return "", fmt.Errorf("this workflow is unavailable")
 		}
 		file, _ := args["file"].(string)
 		clean, valid := cleanWorkspaceReadPath(file, false)
-		allowed := strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json" || clean == "relay.py" || clean == "relay.structure.json"
+		allowed := strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json"
 		if !valid || !allowed {
 			return "", fmt.Errorf("choose a definition file under planning, code or variables; runtime and account files are not part of this editor")
 		}
