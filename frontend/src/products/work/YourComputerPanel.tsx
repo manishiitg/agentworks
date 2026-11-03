@@ -16,8 +16,11 @@ import { useLocalFileDevices } from './codeLocalFiles'
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
 // and, when it finished, where the Mac folder is kept.
-type MoveReport = { place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string }
+type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string }
 type SyncStatus = MoveReport & { binding: Binding | null }
+// The move's own steps, as the server reports them (astra, PLAT-856-509).
+type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
+const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
 type Readiness = { fits: boolean; estimated_seconds: number; secrets?: number; measurement: { dependency_files?: string[]; files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
 const sizeLabel = (bytes: number) => bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : bytes >= 1 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : 'under 1 MB'
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
@@ -359,8 +362,10 @@ function MoveOnlineScreen({ step, name, facts, tooBig, status, backup, error, on
   </section>
   if (step === 'moving') {
     const total = status?.bytes_total || 0, done = status?.bytes_done || 0
-    const filesDone = total > 0 && done >= total
-    const steps: [string, 'done' | 'now' | 'next'][] = [['Files and database', filesDone ? 'done' : 'now'], ['Chats and agents', filesDone ? 'now' : 'next'], ['Schedules, watchers, dashboards', 'next'], ['Ready online', 'next']]
+    // Each shown step covers some of the move's phases; without a phase (an older server) the bytes decide the first.
+    const at = status?.phase ? MOVE_PHASES.indexOf(status.phase) : total > 0 && done >= total ? 2 : 0
+    const state = (first: number, last: number): 'done' | 'now' | 'next' => at > last ? 'done' : at >= first ? 'now' : 'next'
+    const steps: [string, 'done' | 'now' | 'next'][] = [['Files and database', state(0, 1)], ['Chats and agents', state(2, 2)], ['Schedules, watchers, dashboards', state(3, 4)], ['Ready online', state(5, 6)]]
     return <section aria-label="Moving online" className="space-y-4 py-4 text-sm">
       <p className="text-base font-semibold">Moving "{name}" online…</p>
       <p className="text-[13px] text-muted-foreground">If it's interrupted, it picks up where it left off.</p>
