@@ -64,6 +64,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' }>()
   const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:access'), projectId)
+  const macOnMacHere = useCrewLivesOnMac(projectId)
   const showMenu = (view: 'full' | 'integrations' | 'automations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
@@ -111,7 +112,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const theirs = sharing?.scope === scope && !sharing.owner
   // On the website, a Crew that lives on its owner's Mac has only an empty online record: show none of its own
   // changes, dashboards, connections or automations (they would mislead, and could run on the server).
-  const macElsewhere = useCrewLivesOnMac(projectId)
+  const macElsewhere = macOnMacHere
   const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, who].filter(Boolean).join(' · ') || undefined
   const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => open(item)}>{item.label}</Row>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(accessRow)}</div>}>
