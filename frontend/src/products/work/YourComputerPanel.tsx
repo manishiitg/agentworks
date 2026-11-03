@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
-import { CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, RefreshCw, Smartphone, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
+import { Bot, CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, Plug, RefreshCw, Smartphone, Sparkles, Terminal, TriangleAlert, Users, X, type LucideIcon, type LucideProps } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl, setSlackSetupConnection } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -358,23 +358,26 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
           </div>
           <div className="mt-3 space-y-1 border-t border-border pt-3">
             <p className={heading}>How they reach it</p>
-            <div className="flex items-start gap-2.5 py-1 text-[13px]">
-              <span aria-hidden="true" className="w-5 text-center">👤</span>
-              <span className="min-w-0 flex-1"><span className="block font-medium">Themselves</span><span className="block text-muted-foreground">From the website, their phone, ChatGPT or Claude. They find it under "Shared with me".</span></span>
-              <span className="shrink-0 text-xs text-emerald-500">Always</span>
+            <div className="flex items-start gap-3 py-1.5 text-[13px]">
+              <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-400"><Users className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1"><span className="block font-medium">People, in their apps</span><span className="block text-muted-foreground">They open it and type. It shows under "Shared with me".</span>
+                <ReachChips items={[[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT'], [Sparkles, 'Claude'], [Hash, 'Slack']]} /></span>
+              <span className="mt-1 shrink-0 text-xs text-emerald-500">Always</span>
             </div>
-            <div className="flex items-start gap-2.5 py-1 text-[13px]">
-              <span aria-hidden="true" className="w-5 text-center">🤖</span>
-              <span className="min-w-0 flex-1"><span className="block font-medium">Their AI agents</span><span className="block text-muted-foreground">{agent.agents ? 'Their own agents, like Claude Code, Codex, ChatGPT, Grok or any bot they run, can message it at its address and get the answer back.' : 'Off: only the people themselves. Turn on to let their own agents (Claude Code, Codex, ChatGPT, Grok or other bots they run) message it too.'}</span></span>
-              <Switch aria-label={`Their AI agents can message ${row.name}`} checked={Boolean(agent.agents)} disabled={busy} onCheckedChange={on => update(row.tab, { agents: on })} />
+            <div className={`flex items-start gap-3 border-t border-border py-1.5 pt-2.5 text-[13px] ${agent.agents ? '' : 'opacity-70'}`}>
+              <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400"><Bot className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1"><span className="block font-medium">Their own AI agents</span><span className="block text-muted-foreground">{agent.agents ? 'Agents they run themselves, on their own computer or anywhere outside AgentWorks, send it a message and get the answer back.' : 'Off. Turn on so agents they run outside AgentWorks, like on their own computer, can message it too.'}</span>
+                <ReachChips items={[[Terminal, 'Claude Code'], [Terminal, 'Codex'], [MessageSquare, 'ChatGPT agents'], [X, 'Grok'], [Plug, 'Their own local agents and bots']]} />
+                {agent.agents && <>
+                  {agent.address
+                    ? <span className="mt-2 flex w-fit items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 font-mono text-xs">agent:{agent.address}
+                      <button type="button" className="rounded-full border border-border bg-background px-2 py-0.5 font-sans text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></span>
+                    : <span className="mt-2 block text-xs text-muted-foreground">Its address shows here once it is shared.</span>}
+                  <span className="mt-1 block text-xs text-muted-foreground">Only agents of the people above. Not anyone else.</span>
+                </>}
+              </span>
+              <Switch className="mt-1" aria-label={`Their own AI agents can message ${row.name}`} checked={Boolean(agent.agents)} disabled={busy} onCheckedChange={on => update(row.tab, { agents: on })} />
             </div>
-            {agent.agents && <>
-              {agent.address
-                ? <p className="ml-7 flex w-fit items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 font-mono text-xs">agent:{agent.address}
-                  <button type="button" className="rounded-full border border-border bg-background px-2 py-0.5 font-sans text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></p>
-                : <p className="ml-7 text-xs text-muted-foreground">Its address shows here once it is shared.</p>}
-              <p className="ml-7 text-xs text-muted-foreground">Only agents of the people above. Not anyone else.</p>
-            </>}
           </div>
           <p className="mt-2 text-xs text-muted-foreground">{row.tab === 'main' ? "This is your main chat. Its answers to others can use what you've discussed here." : 'They can ask it anything it can see in this Crew. They never see your other chats. Works while this Mac is on.'}</p>
         </>}
@@ -383,6 +386,11 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
     {rows.length <= 1 && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
     {error && <p className="text-xs text-amber-600">{error}</p>}
   </section>
+}
+
+// The apps or agents a way of reaching a shared agent covers, as small labelled chips.
+function ReachChips({ items }: { items: [LucideIcon, string][] }) {
+  return <span className="mt-2 flex flex-wrap gap-1.5">{items.map(([Icon, label]) => <span key={label} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 py-0.5 pl-2 pr-2.5 text-xs text-foreground"><Icon aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />{label}</span>)}</span>
 }
 
 /** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */
