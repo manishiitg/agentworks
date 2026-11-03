@@ -285,9 +285,10 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 			if navigation && !binding.OwnedByCaller {
 				continue
 			}
-			// A Mac Crew's empty twin is its owner's alone: never listed for co-owners or Run people (PLAT-856-509).
+			// A Crew that lives on its owner's Mac is the owner's alone online: never listed for co-owners or Run
+			// people (PLAT-856-509). Once moved online it is an ordinary server Crew.
 			relay, _ := crewroot.ReadSync(doc.ID)
-			if relay != nil && (relay.Side != "server" || relay.Mode != "relay") {
+			if relay != nil && (relay.Side != "server" || relay.Editing != "local") {
 				relay = nil
 			}
 			if relay != nil && binding.OwnerID != claims.UserID {

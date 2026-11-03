@@ -3186,6 +3186,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		defer desktopSocket.Close()
 		log.Printf("[DESKTOP] Separate-launch connection socket ready")
 	}
+	migrateCrewSyncToRelay()
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
 	stopDesktopCrewRelayTwins := api.startDesktopCrewRelayTwins()

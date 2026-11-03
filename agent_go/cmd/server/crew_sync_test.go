@@ -269,7 +269,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(serverRoots.Files, ".cache/state")); !os.IsNotExist(err) {
 				t.Fatal("copied private file")
 			}
-			// PLAT-856-509: a retried relay create (lost reply) returns the same empty twin, which never takes files.
+			// PLAT-856-509: a retried relay create (lost reply) returns the same empty twin; it lives on the Mac until moved online.
 			twin, err := api.crewSync(ctx, owner, "", crewSyncRequest{Action: "create", Mode: "relay", PairID: "relay-pair", SourceID: "mac-crew", Name: "Mac Crew"})
 			if err != nil {
 				t.Fatal(err)
@@ -278,8 +278,8 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if err != nil || again.ProjectID != twin.ProjectID || again.Binding == nil || again.Binding.PairID != "relay-pair" || again.Binding.Mode != "relay" {
 				t.Fatalf("a retried relay create made a second twin: %+v %v", again, err)
 			}
-			if _, err := api.crewSync(ctx, owner, twin.ProjectID, crewSyncRequest{Action: "push", PairID: "relay-pair", TransferID: "t", Editing: "local"}); err == nil {
-				t.Fatal("a relay twin accepted files")
+			if !crewRelayTwin(twin.ProjectID) {
+				t.Fatal("a new twin is not on the Mac")
 			}
 			if _, err := api.crewSync(t.Context(), crewWriter("other"), serverRoots.ID, crewSyncRequest{Action: "status"}); err == nil {
 				t.Fatal("other owner accessed sync")

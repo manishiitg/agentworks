@@ -78,7 +78,7 @@ it('opens each resource directly without a My Vault destination', async () => {
  }
 })
 
-// Sync and laptop tools are one page (Cloud in the Mac app, Laptop access on a server); old links still open it.
+// Sync and laptop tools are one page (Where it lives in the Mac app, Laptop access on a server); old links still open it.
 it('opens sync and laptop access together on Your computer', async () => {
  const host = await mount()
  for (const target of ['computer', 'sync', 'laptop', 'agents']) {
