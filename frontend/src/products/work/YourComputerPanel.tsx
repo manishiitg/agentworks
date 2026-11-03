@@ -130,7 +130,6 @@ export function YourComputerPanel({ projectId, sessionId, onFullScreen }: { proj
 function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void }) {
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
   const name = tab?.metadata?.agentProfileProjectTitle || 'this'
-  const workspacePath = tab?.metadata?.agentProfileWorkspace || ''
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -140,7 +139,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'share' | 'slack'>('')
+  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'slack'>('')
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
@@ -234,13 +233,11 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
       </div>
       {!binding && <p className="text-[12px] text-muted-foreground">Turn on Reach to use it from other places</p>}
-      <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">Team</span><span className="text-[13px] text-muted-foreground">{online ? 'Choose who can use it on its page online' : 'Nobody else yet'}</span>
-        {online
-          ? <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
-          : <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={moving} onClick={() => setOpen(open === 'share' ? '' : 'share')}>Share…</Button>}
-      </div>
+      {/* A Crew on this Mac shares its agents below; sharing the Crew with a team belongs to its online step (owner, 3 Nov). */}
+      {online && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">Team</span><span className="text-[13px] text-muted-foreground">Choose who can use it on its page online</span>
+        <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
+      </div>}
       {binding && !online && binding.connection_id && <MacSharedAgents projectId={projectId} connection={binding.connection_id} />}
-      {open === 'share' && !online && <ShareWithTeam name={name} workspacePath={workspacePath} facts={facts} canMove={!tooBig && !moving} onMoveAndShare={() => void move(true)} onCancel={() => setOpen('')} />}
     </section>}
   </div>
 }
@@ -457,54 +454,6 @@ function ConnectAiApp({ endpoint, name, onDone }: { endpoint: string; name: stri
   </div>
 }
 
-type ShareAgent = { chat_id: string; name: string; purpose: string; selected: boolean }
-
-/** Share with your team (owner, 3 Nov): Team or Full sync. Only the move is built; the rest shows what comes next. */
-function ShareWithTeam({ name, workspacePath, facts, canMove, onMoveAndShare, onCancel }: { name: string; workspacePath: string; facts?: { size: string; time: string }; canMove: boolean; onMoveAndShare: () => void; onCancel: () => void }) {
-  const [kind, setKind] = useState<'team' | 'full'>('team')
-  const [agents, setAgents] = useState<ShareAgent[]>()
-  useEffect(() => {
-    if (!workspacePath) return
-    let active = true
-    void api.post<{ agents?: ShareAgent[] }>('/api/dashboards', { workspace: workspacePath, action: 'share_status' }).then(({ data }) => { if (active) setAgents(data.agents || []) }).catch(() => { if (active) setAgents([]) })
-    return () => { active = false }
-  }, [workspacePath])
-  const pick = (value: 'team' | 'full', title: string, detail: string) => <button type="button" aria-pressed={kind === value} onClick={() => setKind(value)}
-    className={`flex-1 rounded-md border p-2 text-left ${kind === value ? 'border-primary bg-primary/5' : 'border-border'}`}><span className="block text-sm font-medium">{title}</span><span className="block text-xs text-muted-foreground">{detail}</span></button>
-  return <section aria-label={`Share ${name} with your team`} className="mt-2 space-y-3 rounded-2xl border border-border bg-background/40 p-3 text-xs">
-    <p className="text-sm font-semibold">Share "{name}" with your team</p>
-    <div className="flex gap-2">{pick('team', 'Team', 'Everyone keeps their own files')}{pick('full', 'Full sync', 'Co-owners get everything')}</div>
-    {kind === 'team' ? <>
-      <div className="space-y-1">
-        <p className="font-medium">Team folder</p>
-        <div className="flex items-center gap-2"><Folder aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><span className="flex-1 text-muted-foreground">Everyone gets this folder on their own Mac, kept in step. Everything else stays on each person's own Mac.</span><Button className="rounded-full px-3.5" size="sm" variant="outline" disabled>Choose</Button></div>
-      </div>
-      <div className="space-y-2">
-        <p className="font-medium">Agents your team can ask</p>
-        {!agents ? <p className="text-muted-foreground">Loading agents…</p> : agents.length === 0 ? <p className="text-muted-foreground">No named agents yet.</p> : agents.map(agent => <div key={agent.chat_id} className="flex items-start gap-2">
-          <input type="checkbox" disabled checked={false} aria-label={`Let your team ask ${agent.name}`} className="mt-0.5" />
-          <span className="flex-1"><span className="font-medium">{agent.name}</span>{agent.purpose && <span className="block text-muted-foreground">{agent.purpose}</span>}<span className="block text-muted-foreground">Stays yours. Nobody else sees it.</span></span>
-          <span className="flex shrink-0 overflow-hidden rounded border border-border opacity-50"><span className="px-1.5 py-0.5">Chosen people</span><span className="border-l border-border px-1.5 py-0.5">Everyone</span></span>
-        </div>)}
-        <p className="text-muted-foreground">When you tick an agent: people can ask this agent anything it can see in this Crew.</p>
-      </div>
-      <p className="rounded-md bg-emerald-500/10 p-2 text-emerald-700 dark:text-emerald-400">These agents always answer: from your Mac while it's on, and online while it's off. Online they only see the team folder.</p>
-      <p className="text-muted-foreground">Coming next: choosing the team folder and which agents your team can ask.</p>
-      <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" size="sm" disabled>Share</Button></div>
-    </> : <>
-      <div className="flex items-center gap-2"><span className="flex-1"><span className="font-medium">Co-owners</span><span className="block text-muted-foreground">Add them on its page online after the move.</span></span><Button className="rounded-full px-3.5" size="sm" variant="outline" disabled>+ Add</Button></div>
-      <ul className="space-y-1">
-        <li>✓ All agents, files and your chats with them move online. Everything works when your Mac is off.</li>
-        <li>✓ Each co-owner gets the whole project on their Mac. <span className="text-muted-foreground">(coming next)</span></li>
-        <li>✓ The newest change wins everywhere, your Mac included. Earlier versions are kept in history. <span className="text-muted-foreground">(coming next)</span></li>
-      </ul>
-      <p className="text-muted-foreground">Code history (git) is not synced. Use push and pull as usual.</p>
-      <p className="font-medium">Moves online first</p>
-      <MoveFacts facts={facts} />
-      <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" size="sm" disabled={!canMove || !facts} onClick={onMoveAndShare}>Move and share</Button></div>
-    </>}
-  </section>
-}
 
 function LaptopCard({ sessionId }: { sessionId?: string }) {
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
