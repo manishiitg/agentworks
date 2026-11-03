@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -217,68 +216,4 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 		}
 	}
 	return nil
-}
-
-// handleCloudApps answers the Cloud page: the apps, secret names and accounts the
-// paired server Crew uses. Names and status only; values never leave the server.
-func (api *StreamingAPI) handleCloudApps(w http.ResponseWriter, r *http.Request) {
-	claims := GetUserFromContext(r.Context())
-	roots, err := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
-	if err != nil {
-		externalError(w, 403, "unavailable", err.Error())
-		return
-	}
-	p, paired, err := pairedServerCrewForRoots(claims.UserID, roots)
-	if err != nil || !paired {
-		externalJSON(w, map[string]any{"apps": []any{}, "secrets": []any{}, "accounts": []any{}})
-		return
-	}
-	usable, settings, err := p.usableApps(r.Context())
-	if err != nil {
-		externalError(w, 502, "server_unavailable", err.Error())
-		return
-	}
-	apps, secrets, accounts := []map[string]any{}, []string{}, []map[string]any{}
-	seen := map[string]bool{}
-	vault, _ := settings["vault"].(map[string]any)
-	groups, _ := vault["vaults"].([]any)
-	for _, group := range groups {
-		g, _ := group.(map[string]any)
-		items, _ := g["items"].([]any)
-		for _, raw := range items {
-			item, _ := raw.(map[string]any)
-			kind, _ := item["kind"].(string)
-			name := fmt.Sprint(item["name"])
-			selected, _ := item["selected"].(bool)
-			switch kind {
-			case "mcp":
-				if usable == nil || usable["vault_"+fmt.Sprint(item["id"])] {
-					apps = append(apps, map[string]any{"name": name, "status": item["status"]})
-				}
-			case "project_secret", "shared_secret":
-				if selected && !seen[name] {
-					seen[name] = true
-					secrets = append(secrets, name)
-				}
-			case "google", "slack":
-				if selected {
-					// The signed-in address says which account it is; the generic label does not.
-					if email, _ := item["account_email"].(string); email != "" {
-						name = email
-					}
-					accounts = append(accounts, map[string]any{"name": name, "kind": kind})
-				}
-			}
-		}
-	}
-	if stored, ok := settings["secrets"].(map[string]any); ok {
-		names, _ := stored["stored"].([]any)
-		for _, name := range names {
-			if text := fmt.Sprint(name); !seen[text] {
-				seen[text] = true
-				secrets = append(secrets, text)
-			}
-		}
-	}
-	externalJSON(w, map[string]any{"apps": apps, "secrets": secrets, "accounts": accounts})
 }

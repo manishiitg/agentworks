@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -26,27 +25,29 @@ import (
 )
 
 type crewSyncRequest struct {
-	ArchiveOnly  bool                     `json:"archive_only,omitempty"`
-	Mode         string                   `json:"mode,omitempty"`
-	MacID        string                   `json:"mac_id,omitempty"`
-	SplitFiles   bool                     `json:"split_files,omitempty"`
-	TransferID   string                   `json:"transfer_id,omitempty"`
-	Action       string                   `json:"action"`
-	PairID       string                   `json:"pair_id,omitempty"`
-	SourceID     string                   `json:"source_id,omitempty"`
-	Name         string                   `json:"name,omitempty"`
-	MacName      string                   `json:"mac_name,omitempty"`
-	Editing      string                   `json:"editing,omitempty"`
-	Snapshot     *crewsync.Snapshot       `json:"snapshot,omitempty"`
-	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
+	Native       []*sessiontransfer.Bundle `json:"native,omitempty"`
+	ArchiveOnly  bool                      `json:"archive_only,omitempty"`
+	Mode         string                    `json:"mode,omitempty"`
+	MacID        string                    `json:"mac_id,omitempty"`
+	SplitFiles   bool                      `json:"split_files,omitempty"`
+	TransferID   string                    `json:"transfer_id,omitempty"`
+	Action       string                    `json:"action"`
+	PairID       string                    `json:"pair_id,omitempty"`
+	SourceID     string                    `json:"source_id,omitempty"`
+	Name         string                    `json:"name,omitempty"`
+	MacName      string                    `json:"mac_name,omitempty"`
+	Editing      string                    `json:"editing,omitempty"`
+	Snapshot     *crewsync.Snapshot        `json:"snapshot,omitempty"`
+	Conversation *crewHandoffConversation  `json:"conversation,omitempty"`
 }
 type crewSyncReply struct {
-	Project            *crewSyncProject         `json:"project,omitempty"`
-	SourceProject      *crewSyncProject         `json:"source_project,omitempty"`
+	BytesDone          int64                    `json:"bytes_done"`
+	BytesTotal         int64                    `json:"bytes_total"`
+	BackupPath         string                   `json:"backup_path,omitempty"`
+	LocalFolderKept    string                   `json:"local_folder_kept,omitempty"`
 	RuntimeReadiness   *crewDependencyReport    `json:"runtime_readiness,omitempty"`
 	ConversationNotice string                   `json:"conversation_notice,omitempty"`
 	TransferID         string                   `json:"transfer_id,omitempty"`
-	Auto               *crewAutoSyncStatus      `json:"auto,omitempty"`
 	ProjectID          string                   `json:"project_id"`
 	Workspace          string                   `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
 	Binding            *crewroot.SyncBinding    `json:"binding"`
@@ -126,33 +127,6 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 // Status and send paths run outside the transfer's workspace lock. Re-read
 // under that same lock and change only the requested field, preserving a
 // PendingAction or receipt committed by an in-flight transfer.
-func updateCrewSyncEditing(ctx context.Context, roots crewroot.Roots, observed crewroot.SyncBinding, editing string) (*crewroot.SyncBinding, error) {
-	unlock, err := wf.LockWorkspace(ctx, roots.Files)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-	current, err := crewroot.ReadSync(roots.ID)
-	if err != nil {
-		return nil, err
-	}
-	if current == nil || current.PairID != observed.PairID {
-		return nil, fmt.Errorf("paired project is unavailable")
-	}
-	// The remote reply describes the observed state, not a handoff that
-	// committed while it was in flight. A pending transfer also owns its
-	// editing intent until its receipt; status may still report the old side.
-	if *current != observed || current.PendingAction != "" {
-		return current, nil
-	}
-	if current.Editing != editing {
-		current.Editing = editing
-		if err := crewroot.WriteSync(roots.ID, *current); err != nil {
-			return nil, err
-		}
-	}
-	return current, nil
-}
 
 const crewNativeDivergedCode = "native_history_diverged"
 const crewPairInUseCode = "crew_pair_in_use"
@@ -222,11 +196,8 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
-	if r.Method == http.MethodGet {
+	if r.Method == http.MethodGet && out.Place == "" {
 		out.Place = crewPlace(GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
-	}
-	if IsLocalMode() {
-		out.SourceProject = readCrewSourceProject(out.ProjectID)
 	}
 	externalJSON(w, out)
 }
@@ -243,10 +214,8 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return crewSyncReply{}, fmt.Errorf("this connection cannot create a Crew")
 		}
 		// A retried relay create (a lost reply) returns the Mac Crew's existing twin, never a second one.
-		if input.Mode == "relay" {
-			if id, b := api.existingCrewRelayTwin(ctx, claims, input.SourceID); b != nil {
-				return crewSyncReply{ProjectID: id, Binding: b}, nil
-			}
+		if id, b := api.existingCrewRelayTwin(ctx, claims, input.SourceID); b != nil {
+			return crewSyncReply{ProjectID: id, Binding: b}, nil
 		}
 		created, err := api.createWorkspaceFromSpec(ctx, claims, crewProfileID, crewSpec{Name: input.Name}, false)
 		if err != nil {
@@ -261,40 +230,50 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 				return crewSyncReply{}, err
 			}
 		}
-		binding := crewroot.SyncBinding{ArchiveOnly: input.ArchiveOnly, SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID}
+		binding := crewroot.SyncBinding{Mode: "relay", ArchiveOnly: input.ArchiveOnly, SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID}
 		// A relay twin is empty: the owner uses the Mac Crew from the website while the Mac is on (PLAT-856-509).
-		if input.Mode == "relay" {
-			binding.Mode, binding.MacName, binding.MacID = "relay", input.MacName, input.MacID
-		}
+		binding.MacName, binding.MacID = input.MacName, input.MacID
 		if err = crewroot.WriteSync(created, binding); err != nil {
 			return crewSyncReply{}, err
 		}
 		return crewSyncReply{ProjectID: created, Binding: &binding}, nil
 	}
+	if input.Action == "status" && IsLocalMode() && websiteDeviceClaims(claims) {
+		if receipt, e := readCrewMoveReceipt(id); e == nil && receipt != nil && receipt.Roots.Owner == claims.UserID && receipt.Complete {
+			return crewMoveReply(receipt), nil
+		}
+	}
 	roots, err := api.crewSyncRoots(ctx, claims, id)
 	if err != nil {
 		return crewSyncReply{}, err
 	}
-	if input.Action == "mode" && input.Mode == "off" {
-		b, e := crewroot.ReadSync(roots.ID)
+	if input.Action == "status" {
+		b, e := crewroot.ReadSync(id)
 		if e != nil {
 			return crewSyncReply{}, e
 		}
-		if b == nil || b.Side != "server" || b.PairID != input.PairID {
-			return crewSyncReply{}, fmt.Errorf("use this project’s paired connection")
+		out := crewSyncReply{ProjectID: id, Binding: b, Place: crewPlace(claims.UserID, id, b)}
+		out.BytesDone, out.BytesTotal = crewMoveBytes(roots, b)
+		if IsLocalMode() && b != nil && b.Side == "local" && b.PendingAction == "server" {
+			connection, e := desktopConnectionFor(claims.UserID, b.ConnectionID)
+			if e != nil {
+				return out, e
+			}
+			remote, e := desktopCrewSyncCall(ctx, claims.UserID, &connection, b.PeerProjectID, crewSyncRequest{Action: "status"})
+			if e != nil {
+				return out, e
+			}
+			if remote.Binding == nil || remote.Binding.PairID != b.PairID {
+				return out, fmt.Errorf("the paired Crew is unavailable")
+			}
+			out.BytesDone, out.BytesTotal = remote.BytesDone, remote.BytesTotal
 		}
-		b, e = crewroot.SetSyncMode(roots.ID, b.PairID, "off")
-		return crewSyncReply{ProjectID: roots.ID, Binding: b}, e
-	}
-	if input.Action != "status" && input.Action != "inspect" && input.Action != "mode" && input.Action != "pair" {
-		if e := crewSyncOn(roots.ID); e != nil {
-			return crewSyncReply{}, e
-		}
+		return out, nil
 	}
 	// Main-chat initialization may write the project manifest through workspace
 	// HTTP. Complete it before taking the file lock used by that endpoint.
 	var main ProductConversationRecord
-	if input.Action == "pair" || input.Action == "mirror-get" || input.Action == "activate" || input.Action == "pull" || (input.Action == "push" && input.Editing == "server") {
+	if input.Action == "push" && input.Editing == "server" {
 		main, err = api.crewHandoffMain(ctx, claims, roots.ID)
 		if err != nil {
 			return crewSyncReply{}, err
@@ -309,107 +288,14 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if err != nil {
 		return crewSyncReply{}, err
 	}
-	out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Auto: crewAutoStatus(roots.ID), Workspace: roots.Virtual}
-	if input.Action == "inspect" || input.Action == "pair" {
-		out.Project, err = api.crewSyncProject(ctx, claims, roots)
-		if err != nil {
-			return out, err
-		}
-	}
-	if input.Action == "status" || input.Action == "inspect" {
+	out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Workspace: roots.Virtual}
+	if input.Action == "status" {
 		return out, nil
-	}
-	if input.Action == "pair" {
-		// Both roots represent this existing project. A server-first open
-		// never enters the create-new-server-project path.
-		if input.PairID == "" || input.SourceID != roots.ID {
-			return out, fmt.Errorf("choose this project in the Mac app")
-		}
-		if binding != nil && (binding.Side != "server" || binding.PairID != input.PairID || binding.PeerProjectID != roots.ID) {
-			return out, crewAlreadyOnMac(binding)
-		}
-		if err := api.crewSyncIdle(roots); err != nil {
-			return out, err
-		}
-		if binding == nil {
-			binding = &crewroot.SyncBinding{ArchiveOnly: input.ArchiveOnly, PairID: input.PairID, Side: "server", Editing: "server", PeerProjectID: roots.ID, SplitFiles: roots.SeparateFiles(), MacName: input.MacName}
-			if err := crewroot.WriteSync(roots.ID, *binding); err != nil {
-				return out, err
-			}
-		}
-		out.Binding = binding
-		if binding.Editing == "server" {
-			out.Conversation, err = api.captureCrewHandoffConversation(ctx, claims, roots, main)
-		}
-		return out, err
 	}
 	if binding == nil || input.PairID != binding.PairID || binding.Side != "server" {
 		return out, fmt.Errorf("choose the server paired with this Crew")
 	}
-	if binding.Mode == "off" && input.Action != "mode" {
-		return out, fmt.Errorf("sync is off for this project; turn on Cloud before syncing")
-	}
-	previous, err := readCrewSyncManifest(roots.ID)
-	if err != nil {
-		return out, err
-	}
 	switch input.Action {
-	case "mode":
-		if input.Mode != "continuous" && input.Mode != "manual" {
-			return out, fmt.Errorf("choose automatic or manual sync")
-		}
-		binding, err = crewroot.SetSyncMode(roots.ID, binding.PairID, input.Mode)
-		if err != nil {
-			return out, err
-		}
-		out.Binding = binding
-	case "mirror-put":
-		if binding.Editing != "local" {
-			return out, fmt.Errorf("the server has newer work; bring it back first")
-		}
-		if err = validateCrewHandoffConversation(input.Conversation); err != nil {
-			return out, err
-		}
-		if input.Conversation.Native == nil && !binding.ArchiveOnly {
-			return out, fmt.Errorf("native session sync is not ready for this conversation")
-		}
-		if binding.ArchiveOnly {
-			input.Conversation.Native = nil
-		}
-		if err = bindCrewNativeStage(roots, input.Conversation.Native); err != nil {
-			return out, err
-		}
-		if err = saveCrewNativeMirror(roots, input.Conversation); err != nil {
-			return out, err
-		}
-	case "mirror-get":
-		if binding.Editing != "server" {
-			return out, fmt.Errorf("work is on the Mac")
-		}
-		if api.crewNativeTurnRunning(roots) {
-			return out, nil
-		}
-		out.Conversation, err = api.captureCrewMirror(ctx, claims, roots, main)
-		if err != nil {
-			return out, err
-		}
-		return out, nil
-	case "activate":
-		if binding.Mode == "manual" || binding.Mode == "relay" {
-			return out, fmt.Errorf("move this Crew online from your Mac first")
-		}
-		if binding.Editing == "server" {
-			return out, nil
-		}
-		mirror, e := readCrewNativeMirror(roots)
-		if e != nil {
-			return out, fmt.Errorf("this session has not finished syncing yet; reconnect your Mac")
-		}
-		if e = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, mirror.TransferID, mirror.Conversation, main); e != nil {
-			return out, e
-		}
-		binding.Editing = "server"
-		out.ConversationNotice = "Continued from the last completed sync. Work after the Mac lost its connection may be missing. " + mirror.Conversation.Notice
 	case "push":
 		if input.TransferID == "" {
 			return out, fmt.Errorf("a sync transfer identity is required")
@@ -421,15 +307,10 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, err
 		}
 		if binding.Editing != "local" || input.Snapshot == nil {
-			return out, fmt.Errorf("editing is on the server; bring its changes back before updating it")
+			return out, fmt.Errorf("this Crew already lives online")
 		}
 		if input.Editing != "local" && input.Editing != "server" {
 			return out, fmt.Errorf("choose where to work")
-		}
-		if input.Editing == "server" {
-			if err = validateCrewHandoffConversation(input.Conversation); err != nil {
-				return out, err
-			}
 		}
 		if err = verifyCrewTransferDescriptor(roots.ID, binding.PairID, input.TransferID, input.Snapshot); err != nil {
 			return out, err
@@ -438,6 +319,11 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, err
 		}
 		defer dropCrewPayloadBytes(input.Snapshot)
+		if input.Editing == "server" {
+			if err = validateCrewMoveData(input.Snapshot.StatePath, binding.PeerProjectID, roots.ID, main.ConversationKey); err != nil {
+				return out, err
+			}
+		}
 		if err = applyCrewSyncSnapshot(ctx, roots, binding.PairID, input.Snapshot); err != nil {
 			return out, err
 		}
@@ -446,126 +332,18 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, err
 		}
 		if input.Editing == "server" {
-			if err = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, input.TransferID, input.Conversation, main); err != nil {
+			if err = api.importCrewMoveData(ctx, claims, roots, binding.PairID, input.TransferID, main, input.Snapshot.StatePath); err != nil {
 				return out, err
 			}
-			out.ConversationNotice = input.Conversation.Notice
+			out.ConversationNotice = "Your agents, chats and schedules are available online."
 		}
 		binding.Editing = input.Editing
 		binding.LastTransfer = input.TransferID
-	case "pull", "download":
-		pendingPath, e := crewSyncManifestPath(roots.ID)
-		if e != nil {
-			return out, e
-		}
-		pendingPath += ".return"
-		var pending crewSyncReply
-		movedOld := false
-		if raw, e := os.ReadFile(pendingPath); e == nil {
-			if json.Unmarshal(raw, &pending) != nil || pending.Snapshot == nil {
-				return out, fmt.Errorf("pending sync is unavailable")
-			}
-			// Finish the unacknowledged background copy before changing editing.
-			if len(pending.Snapshot.Payloads) != 0 {
-				return pending, nil
-			}
-			backup, e := moveOldCrewTransfer(pendingPath, roots.ID)
-			if e != nil {
-				return out, e
-			}
-			// A failed recapture must leave the outstanding return discoverable
-			// even when editing has already moved to the Mac.
-			defer func() {
-				if _, e := os.Stat(pendingPath); os.IsNotExist(e) {
-					if e = os.Rename(backup, pendingPath); e != nil {
-						log.Printf("[CREW_SYNC] project=%s old_pending=restore_failed", roots.ID)
-					} else {
-						log.Printf("[CREW_SYNC] project=%s old_pending=restored", roots.ID)
-					}
-				}
-			}()
-			movedOld = true
-			out.Conversation = pending.Conversation
-		} else if !os.IsNotExist(e) {
-			return out, e
-		}
-		if binding.Editing != "server" && input.Action == "download" && !movedOld {
-			// PLAT-856-442: a download queued before a completed return is
-			// now empty. Any unacknowledged return was served above first.
-			return out, nil
-		}
-		if input.Action == "pull" {
-			if e := api.crewSyncIdle(roots); e != nil {
-				return out, e
-			}
-			closeWorkflowPolicyCLI(main.SessionID, main.Provider, "moving native session to Mac")
-			out.Conversation, e = api.captureCrewHandoffConversation(ctx, claims, roots, main)
-			if e != nil {
-				return out, e
-			}
-			binding.Editing = "local"
-			if e := crewroot.WriteSync(roots.ID, *binding); e != nil {
-				return out, e
-			}
-		}
-		if input.Action == "download" && !movedOld && !crewSyncNeedsCapture(roots) {
-			return out, nil
-		}
-		stamp := crewSyncStamp(roots)
-		snapshot, e := captureCrewSyncSnapshot(ctx, roots, previous)
-		defer discardCapturedCrewPayloads(&snapshot)
-		if e != nil {
-			return out, e
-		}
-		if input.Action == "download" && !movedOld && !crewSnapshotChanged(snapshot) {
-			crewSyncRememberScan(roots, stamp)
-			return out, nil
-		}
-		crewSyncRememberScan(roots, stamp)
-		out.Snapshot = &snapshot
-		out.TransferID = uuid.NewString()
-		if e = freezeCrewPayloads(roots.ID, binding.PairID, out.TransferID, "download", out.Snapshot); e != nil {
-			return out, e
-		}
-		if e = fsutil.WriteJSONAtomic(pendingPath, out, 0600); e != nil {
-			return out, e
-		}
-		return out, nil
-	case "ack":
-		if input.TransferID == "" {
-			return out, fmt.Errorf("a sync receipt is required")
-		}
-		if binding.LastTransfer == input.TransferID {
-			return out, nil
-		}
-		p, e := crewSyncManifestPath(roots.ID)
-		if e != nil {
-			return out, e
-		}
-		p += ".return"
-		raw, e := os.ReadFile(p)
-		if e != nil {
-			return out, e
-		}
-		var pending crewSyncReply
-		if json.Unmarshal(raw, &pending) != nil || pending.TransferID != input.TransferID || pending.Snapshot == nil {
-			return out, fmt.Errorf("receipt does not match pending sync")
-		}
-		if err = saveCrewSyncSnapshot(roots, *pending.Snapshot); err != nil {
-			return out, err
-		}
-		binding.LastTransfer = input.TransferID
-		binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
-			return out, err
-		}
-		_ = os.Remove(p)
-		cleanupCrewPayloads(roots.ID, binding.PairID, input.TransferID, "download")
 	default:
 		return out, fmt.Errorf("unknown sync action")
 	}
 	binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if input.Action == "push" || input.Action == "ack" {
+	if input.Action == "push" {
 		binding.LastCompletedAt = binding.UpdatedAt
 	}
 	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
@@ -674,13 +452,13 @@ func saveCrewSyncSnapshot(roots crewroot.Roots, snapshot crewsync.Snapshot) erro
 // permissions they started with, so a running/retained terminal must finish.
 func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
 	if api.crewNativeTurnRunning(roots) {
-		return fmt.Errorf("finish or stop this Crew's running chat and terminal before moving editing; after this reply, use Project sync")
+		return fmt.Errorf("finish or stop this Crew's running chat and terminal before moving online")
 	}
 	codeShells.Lock()
 	defer codeShells.Unlock()
 	for _, shell := range codeShells.byID {
 		if shell.projectID == roots.ID && shell.ownerID == roots.Owner {
-			return fmt.Errorf("stop this Crew's open terminal, then retry Project sync")
+			return fmt.Errorf("stop this Crew's open terminal, then retry Move online")
 		}
 	}
 	return nil

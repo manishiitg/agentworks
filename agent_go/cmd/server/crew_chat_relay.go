@@ -109,25 +109,14 @@ func (api *StreamingAPI) callCrewMac(r *http.Request, project string, call crewC
 		return failure(503, crewMacOffMessage)
 	}
 	timeout := 55 * time.Second
-	if call.Operation == "handoff" {
-		timeout = 15 * time.Minute
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	result, dispatched, err := sock.command(ctx, project, call)
+	result, _, err := sock.command(ctx, project, call)
 	if err != nil {
-		if call.Operation == "handoff" {
-			if !dispatched {
-				return failure(409, "Your Mac has not started the transfer yet. Try again shortly.")
-			}
-			return failure(409, "The session transfer was interrupted. Reopen the Crew to check its progress.")
-		}
 		return failure(504, "Your Mac did not respond. Reopen the chat to check whether your message arrived before sending it again.")
 	}
-	if call.Operation != "handoff" {
-		if _, err := api.crewChatPair(r, project, b.PairID); err != nil {
-			return failure(403, err.Error())
-		}
+	if _, err := api.crewChatPair(r, project, b.PairID); err != nil {
+		return failure(403, err.Error())
 	}
 	if call.Operation == "send" || call.Operation == "resolve" {
 		log.Printf("[CREW_CHAT_RELAY] completed owner=%s project=%s operation=%s request=%s status=%d", GetUserIDFromContext(r.Context()), project, call.Operation, result.ID, result.Status)

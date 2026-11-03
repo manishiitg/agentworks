@@ -112,11 +112,8 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 	if !IsLocalMode() || readOnly || !websiteDeviceClaims(claims) {
 		return nil
 	}
-	if err := api.registerOpenServerProjectTool(reg, gate, claims, sessionID, root); err != nil {
-		return err
-	}
 	gate.Declare("manage_crew_sync")
-	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "Where this Crew lives and whether the owner can reach it from the phone and the web. status: on this Mac or online. reach_on: reach it from the phone and the web while the Mac is on (with several networks, pass network; if unsure, ask the person which one). reach_off: only in the app on this Mac; removes its empty online copy. server: move it online, so it works with the Mac off and can be shared with people (copies its files and your main conversation once). Only the owner, on this Mac. Say \"On this Mac\", \"Offline\" and \"Online\" to the person; never server, sync or relay.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server"}}, "network": map[string]any{"type": "string", "description": "For reach_on with several networks: the network's name, as the person said it."}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
+	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "Where this Crew lives and whether the owner can reach it from the phone and the web. status: on this Mac or online. reach_on: reach it from the phone and the web while the Mac is on (with several networks, pass network; if unsure, ask the person which one). reach_off: only in the app on this Mac; removes its empty online copy. server: move it online, so it works with the Mac off and can be shared with people (moves its files, settings, agents, chats and schedules once). Only the owner, on this Mac. Say \"On this Mac\", \"Offline\" and \"Online\" to the person; never server, sync or relay.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server"}}, "network": map[string]any{"type": "string", "description": "For reach_on with several networks: the network's name, as the person said it."}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller, err := api.interactiveLaptopOwner(ctx, claims, sessionID, root)
 		if err != nil {
 			return "", err

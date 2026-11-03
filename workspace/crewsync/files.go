@@ -45,6 +45,7 @@ type Payload struct {
 }
 
 type Snapshot struct {
+	StatePath string `json:"-"` // owner-scoped move records, admitted separately from working files
 	DecodedDir string             `json:"-"`
 	StagingDir string             `json:"-"`
 	Payloads   map[string]Payload `json:"payloads,omitempty"`

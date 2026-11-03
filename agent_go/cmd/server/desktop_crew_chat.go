@@ -108,7 +108,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	}
 	// A tab, or a session address that is not Main's: the conversation must be one of this Crew's own tabs. Only a
 	// resolve with a new tab id opens a new tab, as + New agent does on the Mac.
-	if call.Tab != "" || (call.Operation != "resolve" && call.Operation != "handoff" && call.ConversationID != conversation.ConversationID) {
+	if call.Tab != "" || (call.Operation != "resolve" && call.ConversationID != conversation.ConversationID) {
 		tabs, err := api.macCrewTabs(ctx, claims, project)
 		if err != nil {
 			return fail(409, err.Error())
@@ -136,7 +136,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 			log.Printf("[CREW_CHAT_RELAY] local project=%s operation=tab_create tab=%s conversation=%s request=%s", project, call.Tab, conversation.ConversationID, call.ID)
 		}
 	}
-	if call.Operation != "resolve" && call.Operation != "handoff" && call.ConversationID != conversation.ConversationID {
+	if call.Operation != "resolve" && call.ConversationID != conversation.ConversationID {
 		return fail(409, "The main chat changed on your Mac. Reopen this Crew to continue it.")
 	}
 	// Neither a session, a workspace path, nor a provider/account choice is
@@ -147,24 +147,6 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	var handler http.HandlerFunc
 	method, path := http.MethodGet, "/api/sessions/"+conversation.SessionID
 	switch call.Operation {
-	case "handoff":
-		// Only the owner's own Move online on this Mac moves a relay pair, never a message from the website.
-		if b.Mode == "relay" {
-			return fail(409, "This Crew lives on your Mac. Move it online from the Mac app.")
-		}
-		roots, e := api.crewSyncRoots(ctx, claims, project)
-		if e != nil {
-			return fail(403, e.Error())
-		}
-		if api.crewNativeTurnRunning(roots) {
-			return fail(409, "Let the current reply finish on your Mac, then send again.")
-		}
-		capture := api.runInternalCrewHandoff(ctx, claims, project, b.ConnectionID, "server")
-		status := capture.status
-		if status == 0 {
-			status = 200
-		}
-		return crewChatResult{ID: call.ID, Status: status, Body: capture.body.Bytes()}
 	case "resolve":
 		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsMainChat: conversation.IsMainChat, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider, ModelID: conversation.ModelID, ReasoningEffort: conversation.ReasoningEffort})
 		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=resolve session=%s conversation=%s request=%s", project, conversation.SessionID, conversation.ConversationID, call.ID)
