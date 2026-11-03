@@ -458,6 +458,10 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
 		return
 	}
+	if crewLivesOnMac(profile.ID, input.ConversationKey) {
+		writeAgentProfileError(w, http.StatusConflict, crewOnMacRefusal)
+		return
+	}
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, "")
 	if err != nil {
 		log.Printf("[PRODUCT_CONVERSATION] stage=query-resolve profile=%s key=%q caller=%q cause=%v", profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context()), err)
