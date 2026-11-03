@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +23,7 @@ import (
 // ownership, access, app-account IDs and filesystem routing. NDJSON lets a long
 // collection of chats use the same resumable disk transport as project files.
 type crewMoveHeader struct {
+	Webhooks    []projectWebhookDefinition            `json:"webhooks"`
 	SourceID    string                                `json:"source_id"`
 	SourceOwner string                                `json:"source_owner"`
 	MainKey     string                                `json:"main_key"`
@@ -65,7 +68,7 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 			return err
 		}
 		selected := map[string]json.RawMessage{}
-		for _, key := range []string{"title", "label", "description", "chat_instructions", "identity"} {
+		for _, key := range []string{"title", "label", "description", "chat_instructions", "identity", "email_inbox_enabled", "knowledgebase_mode"} {
 			if value, ok := doc[key]; ok {
 				selected[key] = value
 			}
@@ -98,6 +101,17 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 	h.Functions, err = readProjectFunctionDefinitions(ctx, roots.Virtual)
 	if err != nil {
 		return err
+	}
+	h.Webhooks, err = readProjectWebhookDefinitions(ctx, roots.Virtual)
+	if err != nil {
+		return err
+	}
+	for i := range h.Webhooks {
+		hook := &h.Webhooks[i]
+		if hook.Project.Kind != "crew" || hook.Project.ID != roots.ID || hook.RunAs != claims.UserID {
+			return fmt.Errorf("a webhook does not belong to this Crew's owner")
+		}
+		hook.Auth.EncryptedSecret = ""
 	}
 	f, err := os.CreateTemp(snapshot.StagingDir, "crew-state-")
 	if err != nil {
@@ -255,7 +269,15 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			identity := chat.Identity
 			// Account identities are destination-owned. Native import resolves an
 			// available destination account; archives retain the destination default.
-			identity.Engine, identity.ModelID, identity.ConnectionID = current.Provider, current.ModelID, current.ConnectionID
+			if identity.Engine != "" {
+				if chosen, _ := api.crewNativeDestination(ctx, claims, roots, current, identity, identity.ModelID, identity.Engine); chosen != nil {
+					identity = *chosen
+				} else {
+					identity.Engine, identity.ModelID, identity.ConnectionID = current.Provider, current.ModelID, current.ConnectionID
+				}
+			} else {
+				identity.ConnectionID = ""
+			}
 			identity.UpdatedBy = claims.UserID
 			doc.Agents[entry] = identity
 			err = store.writeDocument(ctx, path, doc)
@@ -282,7 +304,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			if err = json.Unmarshal(raw, &dst); err != nil {
 				return err
 			}
-			for _, key := range []string{"title", "label", "description", "chat_instructions", "identity"} {
+			for _, key := range []string{"title", "label", "description", "chat_instructions", "identity", "email_inbox_enabled", "knowledgebase_mode"} {
 				if v, ok := selected[key]; ok {
 					dst[key] = v
 				}
@@ -316,19 +338,65 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			fn.ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/function/"+fn.ID)).String()
 			fn.CreatedBy, fn.UpdatedAt = externalCrewAuthorStamp(claims), time.Now().UTC()
 			// Server caller grants are local identities and must be selected there.
-			fn.AllowedCallers = nil
-			if fn.Action.Tab != "" {
-				fn.Action.Tab, err = crewMoveKey(fn.Action.Tab, h, roots.ID, main.ConversationKey)
-				if err != nil {
-					return err
+			for n, caller := range fn.AllowedCallers {
+				if caller.Type == triggerCallerCrew && caller.ID == h.SourceID {
+					fn.AllowedCallers[n].ID = roots.ID
+				} else {
+					fn.Enabled = false
+					fn.AllowedCallers = nil
+					break
 				}
 			}
+
 		}
 		p, err := crewMoveRecordPath(roots, "functions.json")
 		if err != nil {
 			return err
 		}
 		if err = fsutil.WriteJSONAtomic(p, projectFunctionsDocument{Functions: h.Functions}, 0600); err != nil {
+			return err
+		}
+		// Mac webhooks are definitions only. Online activation gets new secrets;
+		// source ciphertext and secret values never enter this transfer artifact.
+		var oldHooks projectWebhooksDocument
+		hookPath, e := crewMoveRecordPath(roots, "webhooks.json")
+		if e != nil {
+			return e
+		}
+		if raw, e := os.ReadFile(hookPath); e == nil {
+			if e = json.Unmarshal(raw, &oldHooks); e != nil {
+				return e
+			}
+		} else if !os.IsNotExist(e) {
+			return e
+		}
+		for i := range h.Webhooks {
+			hook := &h.Webhooks[i]
+			hook.ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/hook/"+hook.ID)).String()
+			hook.Project.ID, hook.RunAs, hook.Path = roots.ID, claims.UserID, "/api/hooks/"+hook.ID
+			if hook.Action.Tab != "" {
+				hook.Action.Tab, err = crewMoveKey(hook.Action.Tab, h, roots.ID, main.ConversationKey)
+				if err != nil {
+					return err
+				}
+			}
+			for _, old := range oldHooks.Webhooks {
+				if old.ID == hook.ID && old.Project == hook.Project && old.RunAs == hook.RunAs && old.Auth.Mode == hook.Auth.Mode {
+					hook.Auth.EncryptedSecret = old.Auth.EncryptedSecret
+				}
+			}
+			if hook.Auth.EncryptedSecret == "" {
+				secret := make([]byte, 32)
+				if _, err = rand.Read(secret); err != nil {
+					return err
+				}
+				hook.Auth.EncryptedSecret, err = encryptSecretValueWithAAD(hex.EncodeToString(secret), productWebhookAAD(roots.ID, hook.ID))
+				if err != nil {
+					return err
+				}
+			}
+		}
+		if err = fsutil.WriteJSONAtomic(hookPath, projectWebhooksDocument{Webhooks: h.Webhooks}, 0600); err != nil {
 			return err
 		}
 		ids := map[string]string{}
@@ -355,6 +423,9 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 					}
 					s.When.After.Schedules[n] = mapped
 				}
+			}
+			if err = rebindCrewMoveWatcher(s, h, roots.ID, main.ConversationKey, pair); err != nil {
+				return err
 			}
 			if err = s.Validate(); err != nil {
 				return err
@@ -417,11 +488,24 @@ func validateCrewMoveData(p, source, destination, main string) error {
 					return err
 				}
 			}
+			if err := rebindCrewMoveWatcher(&s, h, destination, main, "validation"); err != nil {
+				return err
+			}
 			if s.When.After != nil {
 				for _, id := range s.When.After.Schedules {
 					if !ids[id] {
 						return fmt.Errorf("a schedule depends on another project's schedule")
 					}
+				}
+			}
+		}
+		for _, hook := range h.Webhooks {
+			if hook.ID == "" || hook.Project.Kind != "crew" || hook.Project.ID != source || hook.RunAs != h.SourceOwner || hook.Auth.EncryptedSecret != "" || (hook.Auth.Mode != "bearer" && hook.Auth.Mode != "github") || !json.Valid(hook.Input) || hook.Action.Type != "message" {
+				return fmt.Errorf("invalid moved webhook")
+			}
+			if hook.Action.Tab != "" {
+				if _, err := crewMoveKey(hook.Action.Tab, h, destination, main); err != nil {
+					return err
 				}
 			}
 		}
@@ -431,12 +515,54 @@ func validateCrewMoveData(p, source, destination, main string) error {
 				return fmt.Errorf("invalid moved function")
 			}
 			ids[fn.ID] = true
-			if fn.Action.Tab != "" {
-				if _, err := crewMoveKey(fn.Action.Tab, h, destination, main); err != nil {
-					return err
-				}
+			if fn.Action.Tab != "" && (len([]rune(fn.Action.Tab)) > productAgentNameMaxRunes || crewAgentChatID(fn.Action.Tab) == "") {
+				return fmt.Errorf("invalid moved function tab")
 			}
 		}
 		return nil
 	})
+}
+
+func rebindCrewMoveWatcher(s *projectactions.Schedule, h crewMoveHeader, destination, main, pair string) error {
+	var input scheduleExecutionInput
+	if err := json.Unmarshal(s.Input, &input); err != nil {
+		return err
+	}
+	input.TeamAuthorizedBy = ""
+	input.TeamPolicyRevision = 0
+	if cfg := input.Condition; cfg != nil {
+		if key := cfg.Target.ChatID; key != "" && key != "main" && key != "new" {
+			mapped, err := crewMoveKey(key, h, destination, main)
+			if err != nil {
+				return err
+			}
+			cfg.Target.ChatID = mapped
+		}
+		if cfg.Target.TriggerID != "" {
+			cfg.Target.TriggerID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/hook/"+cfg.Target.TriggerID)).String()
+		}
+		// Personal account IDs and a GitHub watcher's local runtime are not
+		// destination authority. Retain the definition but require its account.
+		if cfg.PersonalGmail() {
+			cfg.EmailAccountID = ""
+			s.Enabled = false
+		}
+		if pr := cfg.GitHubPR; pr != nil {
+			if pr.ChatKey != "" {
+				mapped, err := crewMoveKey(pr.ChatKey, h, destination, main)
+				if err != nil {
+					return err
+				}
+				pr.ChatKey = mapped
+			}
+			pr.SessionID, pr.Worktree, pr.Login = "", "", ""
+			s.Enabled = false
+		}
+	}
+	raw, err := json.Marshal(input)
+	if err != nil {
+		return err
+	}
+	s.Input = raw
+	return nil
 }

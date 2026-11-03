@@ -41,6 +41,8 @@ type crewSyncRequest struct {
 	Conversation *crewHandoffConversation  `json:"conversation,omitempty"`
 }
 type crewSyncReply struct {
+	SchedulesPaused    bool                     `json:"schedules_paused"`
+	Message            string                   `json:"message,omitempty"`
 	BytesDone          int64                    `json:"bytes_done"`
 	BytesTotal         int64                    `json:"bytes_total"`
 	BackupPath         string                   `json:"backup_path,omitempty"`
@@ -254,6 +256,10 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		out := crewSyncReply{ProjectID: id, Binding: b, Place: crewPlace(claims.UserID, id, b)}
 		out.BytesDone, out.BytesTotal = crewMoveBytes(roots, b)
+		if b != nil && b.SchedulesPaused {
+			out.SchedulesPaused = true
+			out.Message = "Your Mac schedules are paused for this move. Retry Move online to finish."
+		}
 		if IsLocalMode() && b != nil && b.Side == "local" && b.PendingAction == "server" {
 			connection, e := desktopConnectionFor(claims.UserID, b.ConnectionID)
 			if e != nil {

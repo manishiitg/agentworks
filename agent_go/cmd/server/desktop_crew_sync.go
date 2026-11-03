@@ -233,7 +233,11 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			action = "unknown"
 		}
 		log.Printf("[CREW_SYNC] project=%s pair=%s action=%s phase=failed code=%s reason=%q", roots.ID, pair, action, crewSyncErrorCode(err), err.Error())
-		externalError(w, 409, crewSyncErrorCode(err), err.Error())
+		message := err.Error()
+		if binding != nil && binding.SchedulesPaused {
+			message += ". Your Mac schedules are paused for this move. Retry Move online to finish."
+		}
+		externalError(w, 409, crewSyncErrorCode(err), message)
 	}
 	if binding == nil {
 		if !allowPair {
@@ -323,7 +327,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				}
 			}
 			snapshot, e := captureCrewSyncSnapshot(r.Context(), roots, previous)
-			defer discardCapturedCrewPayloads(&snapshot)
+			defer snapshot.Close()
 			if e != nil {
 				fail(e)
 				return
@@ -441,6 +445,11 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(e)
 				return
 			}
+			binding.SchedulesPaused = true
+			if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
+				fail(e)
+				return
+			}
 		}
 		remote, e := call(binding.PeerProjectID, transfer)
 		if e != nil {
@@ -460,6 +469,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		binding.LastTransfer = transfer.TransferID
 		conversationNotice = remote.ConversationNotice
 		binding.PendingAction = ""
+		binding.SchedulesPaused = false
 	default:
 		fail(fmt.Errorf("choose Move online"))
 		return
