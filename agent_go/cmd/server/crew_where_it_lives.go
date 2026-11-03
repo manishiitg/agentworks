@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -207,4 +210,83 @@ func crewPlace(owner, project string, b *crewroot.SyncBinding) string {
 		return "mac"
 	}
 	return "mac_off"
+}
+
+// "Reach it from your phone and the web" (owner, 3 Nov: Off by default). A Mac Crew is reached from the phone and the
+// web through its empty online copy; turning Reach off removes that copy. Only the Crew's owner, from the Mac that
+// holds its pair, can remove it, and only while the Crew lives on the Mac: a copy that holds a moved Crew is never
+// removed this way. The copy is backed up first.
+func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Request, project, pair string) {
+	claims := GetUserFromContext(r.Context())
+	roots, err := api.crewSyncRoots(r.Context(), claims, project)
+	if err != nil {
+		externalError(w, 403, "sync_unavailable", err.Error())
+		return
+	}
+	b, err := crewroot.ReadSync(roots.ID)
+	if err != nil || b == nil || b.Mode != "relay" || b.Side != "server" || b.Editing != "local" || pair == "" || b.PairID != pair {
+		externalError(w, 409, "wrong_pair", "Turn this off from the Mac that holds this Crew.")
+		return
+	}
+	backup, err := backupCrewRelayTwin(roots)
+	if err != nil {
+		log.Printf("[CREW_RELAY] project=%s reach_off refused: backup failed: %v", roots.ID, err)
+		externalError(w, 409, "backup_failed", "It could not be backed up first, so nothing was removed. Try again.")
+		return
+	}
+	status, body := scheduleHandler(r, api.handleDeleteAgentProfileProject, http.MethodDelete, "/api/agent-profiles/"+crewProfileID+"/projects/"+roots.ID,
+		map[string]string{"id": crewProfileID, "project_id": roots.ID}, nil, nil)
+	if status >= 300 {
+		log.Printf("[CREW_RELAY] project=%s reach_off delete failed status=%d backup=%s: %s", roots.ID, status, backup, strings.TrimSpace(string(body)))
+		externalError(w, 409, "remove_failed", "The online copy could not be removed. Try again.")
+		return
+	}
+	removed := removeCrewSyncFiles(roots.ID)
+	log.Printf("[CREW_RELAY] project=%s reach_off owner=%s pair=%s mac_project=%s backup=%s sync_files_removed=%d", roots.ID, logUsernameForUserID(claims.UserID), pair, b.PeerProjectID, backup, removed)
+	externalJSON(w, crewSyncReply{ProjectID: roots.ID})
+}
+
+// backupCrewRelayTwin keeps a copy of the online copy's folders and pair files under <state>/crew-backups.
+func backupCrewRelayTwin(roots crewroot.Roots) (string, error) {
+	state, err := crewroot.StateRoot()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(state, "crew-backups")
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	paths := []string{}
+	for _, path := range []string{roots.Files, roots.Resources, roots.Private} {
+		if _, e := os.Stat(path); path != "" && e == nil && !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	matches, _ := filepath.Glob(filepath.Join(state, "crew-sync", roots.ID+"*"))
+	paths = append(paths, matches...)
+	target := filepath.Join(dir, roots.ID+"-"+time.Now().UTC().Format("20060102T150405Z")+".tar.gz")
+	// Unreadable caches (a slot's own sandbox files) are skipped; the archive itself must be written.
+	out, err := exec.Command("tar", append([]string{"czf", target, "--ignore-failed-read"}, paths...)...).CombinedOutput()
+	if info, statErr := os.Stat(target); statErr != nil || info.Size() == 0 {
+		return "", fmt.Errorf("tar: %v %s", err, strings.TrimSpace(string(out)))
+	}
+	return target, nil
+}
+
+// removeCrewSyncFiles removes a Crew's pair files: <id>.json, <id>-files.json and what sits next to them.
+func removeCrewSyncFiles(id string) int {
+	state, err := crewroot.StateRoot()
+	if err != nil || id == "" || strings.ContainsAny(id, `/\`) {
+		return 0
+	}
+	removed := 0
+	for _, pattern := range []string{id + ".json", id + ".json.*", id + "-files.json", id + "-files.json.*"} {
+		matches, _ := filepath.Glob(filepath.Join(state, "crew-sync", pattern))
+		for _, path := range matches {
+			if os.RemoveAll(path) == nil {
+				removed++
+			}
+		}
+	}
+	return removed
 }

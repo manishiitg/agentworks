@@ -174,6 +174,25 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
 		return
 	}
+	// Reach off: the server removes this Crew's empty online copy, then the Mac forgets the pair (crew_where_it_lives.go).
+	if input.Action == "offline" {
+		if binding == nil {
+			externalJSON(w, crewSyncReply{ProjectID: roots.ID})
+			return
+		}
+		if binding.Mode != "relay" || binding.Editing != "local" || binding.PendingAction != "" {
+			externalError(w, 409, "sync_unavailable", "This Crew lives online; it stays reachable from your phone and the web.")
+			return
+		}
+		if _, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "unpair", PairID: binding.PairID}); err != nil {
+			externalError(w, 409, crewSyncErrorCode(err), err.Error())
+			return
+		}
+		removed := removeCrewSyncFiles(roots.ID)
+		log.Printf("[CREW_RELAY] project=%s reach_off server_project=%s server=%s sync_files_removed=%d", roots.ID, binding.PeerProjectID, connection.Server, removed)
+		externalJSON(w, crewSyncReply{ProjectID: roots.ID})
+		return
+	}
 	fail := func(err error) {
 		pair := ""
 		if binding != nil {

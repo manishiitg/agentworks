@@ -206,6 +206,10 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 400, "invalid_request", "Send a valid sync request.")
 		return
 	}
+	if input.Action == "unpair" {
+		api.unpairCrewRelayTwin(w, r, mux.Vars(r)["project"], input.PairID)
+		return
+	}
 	out, err := api.crewSync(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"], input)
 	if err != nil {
 		status := 409
