@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { MessageSquare } from 'lucide-react'
+import { Folder, MessageSquare } from 'lucide-react'
 import api from '../../services/api'
 import { SharedAgentConversation } from '../../products/work/SharedCrewWorkspace'
+import { TeamFolderPanel } from '../../products/work/TeamFolderPanel'
+import { useTeams } from '../../products/work/teamApi'
 import { useSharedCrewPageStore } from '../../stores/useSharedCrewPageStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 
@@ -77,6 +79,11 @@ export function SharedCrewPage() {
   const chatId = useSharedCrewPageStore(state => state.chatId)
   const open = useSharedCrewPageStore(state => state.open)
   const agents = useSharedWithMe().filter(agent => agent.workspace_id === workspaceId)
+  // The Crew's shared folder, for a member of its Team who may edit it (the server lists only those teams).
+  const teams = useTeams()
+  const team = teams.find(row => !row.target.connection && `work:${row.team.project_id}` === workspaceId)
+  const [folderOpen, setFolderOpen] = useState(false)
+  useEffect(() => { setFolderOpen(false) }, [workspaceId])
   // Opening anything else from the sidebar leaves this page.
   useEffect(() => useProductSurfaceStore.subscribe((state, previous) => {
     if (state.productSurface !== previous.productSurface || state.selectedWorkProjectId !== previous.selectedWorkProjectId) open(null)
@@ -88,13 +95,18 @@ export function SharedCrewPage() {
     <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 max-md:min-h-[60px] max-md:pl-16">
       <span className="flex min-w-0 max-w-[60%] items-center px-1 text-sm font-semibold"><span className="truncate">{agents[0] ? crewLabel(agents[0]) : 'Shared Crew'}</span></span>
       <nav aria-label="Agents" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-        {agents.map(item => <button key={item.chat_id} type="button" aria-current={item === agent ? 'page' : undefined} onClick={() => open(workspaceId, item.chat_id)}
-          className={`flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[13px] font-medium max-md:min-h-10 ${item === agent ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+        {agents.map(item => <button key={item.chat_id} type="button" aria-current={item === agent && !folderOpen ? 'page' : undefined} onClick={() => { setFolderOpen(false); open(workspaceId, item.chat_id) }}
+          className={`flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[13px] font-medium max-md:min-h-10 ${item === agent && !folderOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
           {item.name}
         </button>)}
+        {team && <button type="button" aria-current={folderOpen ? 'page' : undefined} onClick={() => setFolderOpen(true)}
+          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium max-md:min-h-10 ${folderOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+          <Folder aria-hidden="true" className="h-3.5 w-3.5" />Shared folder
+        </button>}
       </nav>
     </header>
-    {!agents.length ? <p role="status" className="p-6 text-sm text-muted-foreground">Nothing from this Crew is shared with you right now.</p>
+    {folderOpen && team ? <TeamFolderPanel key={team.team.project_id} {...team} onAsk={() => setFolderOpen(false)} />
+      : !agents.length ? <p role="status" className="p-6 text-sm text-muted-foreground">Nothing from this Crew is shared with you right now.</p>
       : agent && <SharedAgentConversation key={agent.chat_id} scope={{ workspace_id: agent.workspace_id }} agent={{ chat_id: agent.chat_id, name: agent.name, purpose: agent.purpose, shared: true }} ownerName={agent.owner_name} />}
   </div>
 }
