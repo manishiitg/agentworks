@@ -12,8 +12,8 @@ import (
 func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	agents, err := cleanMacSharedAgents([]macSharedAgent{
-		{Tab: "writer01", Name: "Writer", Purpose: "Drafts posts", Audience: "chosen", People: []string{"a", "c"}},
-		{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "everyone"},
+		{Tab: "writer01", Name: "Writer", Purpose: "Drafts posts", Icon: "✍️", Audience: "chosen", People: []string{"a", "c"}},
+		{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Icon: "💬", Audience: "everyone"},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -34,8 +34,12 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 			t.Fatalf("%s: reason %q, want %q", tc.name, reason, tc.reason)
 		}
 	}
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "../x", Name: "x", Purpose: "x", Audience: "everyone"}}, nil); err == nil {
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "../x", Name: "x", Purpose: "x", Icon: "💬", Audience: "everyone"}}, nil); err == nil {
 		t.Fatal("a tab id with path characters was saved")
+	}
+	// Owner, 4 Nov: an agent is shared only with its name, purpose and icon.
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "everyone"}}, nil); err == nil {
+		t.Fatal("an agent without an icon was shared")
 	}
 
 	// The Mac refuses before any turn when the tab is not one it shares, or the request is malformed.
