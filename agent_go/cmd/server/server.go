@@ -8468,6 +8468,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+			if restoredNativeCodingResume {
+				// The transcript may sit under another runtime folder of this Crew (a turn in the other mode wrote it).
+				carryClaudeTranscriptBetweenRuntimes(underlyingAgent)
+			}
 			// Materialize guard: a tmux-transport coding-agent turn must ALWAYS have a
 			// live, registered terminal — regardless of whether this turn entered via
 			// /api/query or via live-input → startNextTurnFromLiveInput.
