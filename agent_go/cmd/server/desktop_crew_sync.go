@@ -119,10 +119,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	var main ProductConversationRecord
 	if input.Action == "server" {
-		if placements, e := readCrewAgentPlacements(roots.ID); e != nil || len(placements) > 0 {
-			externalError(w, 409, "published_agents", "This Crew already has agents on the server. Open those agents there; the remaining agents stay on this Mac.")
-			return
-		}
 		main, err = api.crewHandoffMain(r.Context(), claims, roots.ID)
 		if err != nil {
 			externalError(w, 409, "sync_unavailable", err.Error())

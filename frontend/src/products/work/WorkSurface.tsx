@@ -651,6 +651,14 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const tabs = Object.values(state.chatTabs)
           const existing = tabs.find(tab => tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id))
           if (existing) {
+            const location = chat.chat_location === 'mac' ? 'mac' : undefined
+            if (chat.chat_location === 'server' && existing.sessionId !== chat.session_id) {
+              // The published runtime has its own durable journal cursor. Re-read
+              // it instead of carrying a Mac relay event index into that journal.
+              state.resetTabChat(existing.tabId, chat.session_id)
+              state.setTabMetadata(existing.tabId, { agentProfileConversationId: chat.conversation_id })
+            }
+            if (existing.metadata?.agentProfileChatLocation !== location) state.setTabMetadata(existing.tabId, { agentProfileChatLocation: location })
             retireWorkActivityCopies(existing.tabId)
             if (existing.metadata?.agentProfileTabOwnerID !== chat.tab_owner_id || existing.metadata?.agentProfileTabOwnerName !== chat.tab_owner_name || existing.metadata?.agentProfileTabCanWrite !== chat.can_write) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id, agentProfileTabOwnerName: chat.tab_owner_name, agentProfileTabCanWrite: chat.can_write })
             // A tab this browser kept from before the project's product changed still names the old one, which hides it
@@ -670,7 +678,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const tabId = await state.createChatTab(chat.name, {
             ...primary.metadata,
             // A Mac Crew's tabs are the Mac's, like its Main.
-            agentProfileChatLocation: primary.metadata?.agentProfileChatLocation === 'mac' ? 'mac' : undefined,
+            agentProfileChatLocation: chat.chat_location === 'mac' ? 'mac' : undefined,
             agentProfileIsMainChat: false,
             agentProfileBuilder: false,
             agentProfileTabOwnerID: chat.tab_owner_id,
@@ -696,6 +704,16 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         // transcript. ChatArea loads history only when that tab is selected.
         if (cancelled) return
         setListed(listed)
+        const requestedAgent = new URLSearchParams(window.location.search).get('agent')
+        if (requestedAgent && requestedAgent !== 'main') {
+          const wanted = `${projectId}:chat:${requestedAgent}`
+          const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === wanted)
+          if (tab) {
+            activateTab(tab.tabId)
+            const url = new URL(window.location.href); url.searchParams.delete('agent')
+            window.history.replaceState(window.history.state, '', url)
+          }
+        }
 
       } catch {
         // The list is a convenience; the next pass tries again.

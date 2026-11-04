@@ -17,6 +17,7 @@ import (
 
 // AgentProfileSideChat is one open tab of a Code or Crew project as the server knows it.
 type AgentProfileSideChat struct {
+	ChatLocation    string `json:"chat_location,omitempty"`
 	TabOwnerID      string `json:"tab_owner_id,omitempty"`
 	TabOwnerName    string `json:"tab_owner_name,omitempty"`
 	CanWrite        bool   `json:"can_write"`

@@ -108,12 +108,62 @@ func (api *StreamingAPI) pairedCrewSyncAction(w http.ResponseWriter, r *http.Req
 	api.runDesktopCrewSync(w, request, false)
 }
 
+func (api *StreamingAPI) crewAgentPublishChatAction(ctx context.Context, claims *UserClaims, project string, args map[string]any) (string, error) {
+	binding, err := crewroot.ReadSync(project)
+	if err != nil || binding == nil || binding.Side != "local" {
+		return "", fmt.Errorf("connect this Crew to its server in Mac online first")
+	}
+	connection, err := desktopConnectionFor(claims.UserID, binding.ConnectionID)
+	if err != nil {
+		return "", err
+	}
+	rows, err := api.macAgentRows(ctx, claims, project)
+	if err != nil {
+		return "", err
+	}
+	name := strings.TrimSpace(externalArg(args, "agent"))
+	selection := crewAgentPublishSelection{AccountID: externalArg(args, "account_id")}
+	for _, row := range rows {
+		if row.Tab == name || strings.EqualFold(row.Name, name) {
+			if selection.Tab != "" {
+				return "", fmt.Errorf("more than one agent has that name; choose its tab from agents")
+			}
+			selection.Tab = row.Tab
+		}
+	}
+	if selection.Tab == "" {
+		return "", fmt.Errorf("choose this Crew's agent by name from agents")
+	}
+	if raw, ok := args["paths"].([]any); ok {
+		for _, item := range raw {
+			p, ok := item.(string)
+			if !ok {
+				return "", fmt.Errorf("paths must be folder or file names")
+			}
+			selection.Paths = append(selection.Paths, p)
+		}
+	}
+	action := externalArg(args, "action")
+	if action == "publish_agent" {
+		if confirmed, _ := args["confirmed"].(bool); !confirmed {
+			return "", fmt.Errorf("show the publish_preview first, including files, callers and account; after the person confirms the one-way move, call publish_agent with its transfer_id and confirmed=true")
+		}
+	}
+	request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(ctx, UserContextKey, claims))
+	response := httptest.NewRecorder()
+	api.runDesktopCrewAgentPublish(response, request, connection, project, action, externalArg(args, "transfer_id"), &selection)
+	if response.Code >= 400 {
+		return "", fmt.Errorf("%s", laptopActionErrorText(response.Body.String()))
+	}
+	return strings.TrimSpace(response.Body.String()), nil
+}
+
 func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, sessionID, root string) error {
 	if !IsLocalMode() || readOnly || !websiteDeviceClaims(claims) {
 		return nil
 	}
 	gate.Declare("manage_crew_sync")
-	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "This Crew's Access page, from chat (the owner only, on this Mac). status: on this Mac or online. reach_on: turn on Use from phone and web (the person's words for it) while the Mac is on (with several networks, pass network; if unsure, ask the person which one). reach_off: only in the app on this Mac; removes its empty online copy. server: move it online (one-way; tell the person, get their yes, then pass confirmed=true). links: the website and phone link, the address for ChatGPT or Claude, and where Slack is set up. agents: this Crew's agents (Main and its tabs) with purpose and who can message each. share: let people message one agent (agent by name; audience team (My team), everyone (the company), or chosen with Team members by name or email; ask the person when a name matches several). It opens the agent to those people and their own AI agents at its address; the agent needs a purpose first (set_my_agent_identity in that tab). It only answers their questions unless can_make_changes=true. unshare: back to only you. when_mac_off: what the shared agents do while this Mac is off; without when_mac_off it reads the choice and the status (team copy ready, messages it took today, messages waiting, whose Mac is on); with team_copy their team copy on the server answers (their instructions, skills, memory, your chat with them so far and the team folder, never the rest of this Mac), with wait messages wait for this Mac. Needs Use from phone and web on. Say \"On this Mac\", \"Offline\" and \"Online\" to the person; never server, sync or relay.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server", "links", "agents", "share", "unshare", "when_mac_off"}}, "when_mac_off": map[string]any{"type": "string", "enum": []string{"team_copy", "wait"}, "description": "For when_mac_off: team_copy (Answer from the team copy) or wait (Wait for my Mac); leave out to read it."}, "network": map[string]any{"type": "string", "description": "For reach_on with several networks: the network's name, as the person said it."}, "confirmed": map[string]any{"type": "boolean", "description": "For server: the person said yes to the one-way move in this chat."}, "agent": map[string]any{"type": "string", "description": "For share and unshare: the agent's name as listed by agents (Main for the main chat)."}, "audience": map[string]any{"type": "string", "enum": []string{"team", "everyone", "chosen"}}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "For share with chosen: people's names or emails."}, "can_make_changes": map[string]any{"type": "boolean", "description": "For share: false (default) it only answers their questions; true it can change files, run commands and use the owner's apps and logins for them."}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
+	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "This Crew's Access page, from chat (the owner only, on this Mac). publish_preview: review moving one named agent permanently to the server with its native chat, memory, skills, selected paths and callers; paths are relative to this Crew (empty means no working files; dot means all). The response gives actual size, callers, own server accounts and transfer_id. publish_agent: after the person confirms that preview, pass the transfer_id and confirmed=true. Other agents stay on the Mac. Missing login: use the existing server Providers page, never copy credentials. status: on this Mac or online. reach_on: turn on Use from phone and web (the person's words for it) while the Mac is on (with several networks, pass network; if unsure, ask the person which one). reach_off: only in the app on this Mac; removes its empty online copy. server: move it online (one-way; tell the person, get their yes, then pass confirmed=true). links: the website and phone link, the address for ChatGPT or Claude, and where Slack is set up. agents: this Crew's agents (Main and its tabs) with purpose and who can message each. share: let people message one agent (agent by name; audience team (My team), everyone (the company), or chosen with Team members by name or email; ask the person when a name matches several). It opens the agent to those people and their own AI agents at its address; the agent needs a purpose first (set_my_agent_identity in that tab). It only answers their questions unless can_make_changes=true. unshare: back to only you. when_mac_off: read or choose team_copy (the team copy answers while this Mac is off) or wait (questions wait for this Mac). This is separate from permanent Publish. Needs Use from phone and web on. Use the Access page names Mac online, Publish and Team. Describe execution as On this Mac or On the server.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server", "links", "agents", "share", "unshare", "publish_preview", "publish_agent", "when_mac_off"}}, "when_mac_off": map[string]any{"type": "string", "enum": []string{"team_copy", "wait"}, "description": "For when_mac_off: team_copy answers from the team copy, wait waits for this Mac; omit to read the current choice."}, "paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "For publish_preview: paths inside this Crew; empty for memory/skills only, dot for all working files."}, "account_id": map[string]any{"type": "string", "description": "Own server account returned by publish_preview; required only when choosing among accounts."}, "transfer_id": map[string]any{"type": "string", "description": "For publish_agent: the exact reviewed transfer from publish_preview."}, "network": map[string]any{"type": "string", "description": "For reach_on with several networks: the network's name, as the person said it."}, "confirmed": map[string]any{"type": "boolean", "description": "For server: the person said yes to the one-way move in this chat."}, "agent": map[string]any{"type": "string", "description": "For share and unshare: the agent's name as listed by agents (Main for the main chat)."}, "audience": map[string]any{"type": "string", "enum": []string{"team", "everyone", "chosen"}}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "For share with chosen: people's names or emails."}, "can_make_changes": map[string]any{"type": "boolean", "description": "For share: false (default) it only answers their questions; true it can change files, run commands and use the owner's apps and logins for them."}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller, err := api.interactiveLaptopOwner(ctx, claims, sessionID, root)
 		if err != nil {
 			return "", err
@@ -123,6 +173,8 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 			return "", err
 		}
 		switch action := externalArg(args, "action"); action {
+		case "publish_preview", "publish_agent":
+			return api.crewAgentPublishChatAction(ctx, caller, manifest.ID, args)
 		case "links", "agents", "share", "unshare", "when_mac_off":
 			return api.crewAccessChatAction(ctx, manifest.ID, action, args)
 		case "server":

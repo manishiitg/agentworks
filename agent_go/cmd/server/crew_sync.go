@@ -25,27 +25,33 @@ import (
 )
 
 type crewSyncRequest struct {
-	PublishAgent *crewAgentPublishSelection `json:"publish_agent,omitempty"`
-	Provider     string                     `json:"provider,omitempty"`
-	Native       []*sessiontransfer.Bundle  `json:"native,omitempty"`
-	ArchiveOnly  bool                       `json:"archive_only,omitempty"`
-	Mode         string                     `json:"mode,omitempty"`
-	MacID        string                     `json:"mac_id,omitempty"`
-	SplitFiles   bool                       `json:"split_files,omitempty"`
-	TransferID   string                     `json:"transfer_id,omitempty"`
-	Action       string                     `json:"action"`
-	PairID       string                     `json:"pair_id,omitempty"`
-	SourceID     string                     `json:"source_id,omitempty"`
-	Name         string                     `json:"name,omitempty"`
-	MacName      string                     `json:"mac_name,omitempty"`
-	Editing      string                     `json:"editing,omitempty"`
-	Snapshot     *crewsync.Snapshot         `json:"snapshot,omitempty"`
-	Agents       []macSharedAgent           `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
-	// Team copy stays separate from a permanent publish.
-	WhenMacOff string              `json:"when_mac_off,omitempty"`
-	TeamCopy   *crewTeamCopyRecord `json:"team_copy,omitempty"`
+	MacMainConversationID string                     `json:"mac_main_conversation_id,omitempty"`
+	PublishAgent          *crewAgentPublishSelection `json:"publish_agent,omitempty"`
+	Provider              string                     `json:"provider,omitempty"`
+	Native                []*sessiontransfer.Bundle  `json:"native,omitempty"`
+	ArchiveOnly           bool                       `json:"archive_only,omitempty"`
+	Mode                  string                     `json:"mode,omitempty"`
+	MacID                 string                     `json:"mac_id,omitempty"`
+	SplitFiles            bool                       `json:"split_files,omitempty"`
+	TransferID            string                     `json:"transfer_id,omitempty"`
+	Action                string                     `json:"action"`
+	PairID                string                     `json:"pair_id,omitempty"`
+	SourceID              string                     `json:"source_id,omitempty"`
+	Name                  string                     `json:"name,omitempty"`
+	MacName               string                     `json:"mac_name,omitempty"`
+	Editing               string                     `json:"editing,omitempty"`
+	Snapshot              *crewsync.Snapshot         `json:"snapshot,omitempty"`
+	Agents                []macSharedAgent           `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
+	WhenMacOff            string                     `json:"when_mac_off,omitempty"`
+	TeamCopy              *crewTeamCopyRecord        `json:"team_copy,omitempty"`
 }
+type crewServerCopy struct {
+	Name   string `json:"name"`
+	Detail string `json:"detail"`
+}
+
 type crewSyncReply struct {
+	OnServer           []crewServerCopy              `json:"on_server,omitempty"`
 	Publish            *crewAgentPublishPreview      `json:"publish,omitempty"`
 	Placements         map[string]crewAgentPlacement `json:"placements,omitempty"`
 	SchedulesPaused    bool                          `json:"schedules_paused"`
@@ -290,6 +296,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		out.Placements, e = readCrewAgentPlacements(id)
 		if e != nil {
 			return out, e
+		}
+		for _, entry := range out.Placements {
+			out.OnServer = append(out.OnServer, crewServerCopy{Name: entry.Name, Detail: "native chat, memory, skills and selected working files"})
 		}
 		out.BytesDone, out.BytesTotal = crewMoveBytes(roots, b)
 		if b != nil && b.SchedulesPaused {

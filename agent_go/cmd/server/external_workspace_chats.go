@@ -33,7 +33,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	}
 	// A Crew that lives on its owner's Mac answers there (PLAT-856-509): the owner's own AI app reaches it through
 	// the owner's Mac connection, in its Main chat; nobody else does.
-	if !IsLocalMode() && crewRelayTwin(manifest.ID) {
+	if !IsLocalMode() && crewRelayTwin(manifest.ID) && !crewPublishedOwnerRoute(r, manifest.ID, args) {
 		if api.externalMacSharedAgent(w, r, action, args, project, manifest) {
 			return
 		}

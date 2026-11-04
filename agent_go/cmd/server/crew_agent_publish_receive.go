@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -162,7 +164,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	}
 	var imported *crewMoveChat
 	err = readCrewMoveData(in.Snapshot.StatePath, func(h crewMoveHeader, chat *crewMoveChat) error {
-		if h.AgentTab != selection.Tab || h.AccountID != selection.AccountID || len(h.Settings) != 0 {
+		if h.AgentTab != selection.Tab || h.AccountID != selection.AccountID || h.MainKey != h.SourceID || len(h.Settings) != 0 {
 			return fmt.Errorf("agent records differ from the confirmed publish")
 		}
 		if chat == nil {
@@ -178,6 +180,11 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 		if imported != nil || chat.Previous || chat.Key != crewAgentPublishKey(h.SourceID, selection.Tab) || chat.Conversation == nil || chat.Conversation.Native == nil {
 			return fmt.Errorf("publish must contain only this agent's current native conversation")
 		}
+		a, _ := json.Marshal(chat.Conversation.Native)
+		b, _ := json.Marshal(in.Native[0])
+		if !bytes.Equal(a, b) {
+			return fmt.Errorf("the native session differs from the confirmed publish")
+		}
 		if chat.Conversation.Native.Provider != provider || chat.Conversation.Native.SessionID != in.Native[0].SessionID {
 			return fmt.Errorf("the native session differs from the staged agent")
 		}
@@ -191,12 +198,20 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	if err != nil {
 		return out, err
 	}
+	if !strings.HasPrefix(in.MacMainConversationID, "conversation-") || !productConversationKeyPattern.MatchString(in.MacMainConversationID) {
+		return out, fmt.Errorf("the Mac main conversation identity is missing")
+	}
 	if imported == nil {
 		return out, fmt.Errorf("the agent's conversation is missing")
 	}
 	for key := range in.Snapshot.Files {
 		if !crewAgentPublishIncludes(selection, key, false) {
 			return out, fmt.Errorf("publish includes a file outside the selected scope")
+		}
+	}
+	for _, change := range in.Snapshot.Changes {
+		if !crewAgentPublishIncludes(selection, change.Path, false) {
+			return out, fmt.Errorf("publish changes a file outside the selected scope")
 		}
 	}
 	unlock, err := wf.LockWorkspace(ctx, roots.Files)
@@ -212,7 +227,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	// and transfer. Placement is present before import so its CLI gets this root.
 	importTransfer := in.TransferID + "/" + imported.Conversation.ConversationID
 	session := "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(claims.UserID+"/"+id+"/"+binding.PairID+"/"+importTransfer)).String()
-	entry := crewAgentPlacement{Tab: selection.Tab, Location: "publishing", TransferID: in.TransferID, SessionID: session, ConversationID: imported.Conversation.ConversationID, PairID: binding.PairID, SplitFiles: in.SplitFiles, Selection: selection}
+	entry := crewAgentPlacement{Name: firstNonEmptyTrimmed(imported.Identity.Name, "Main"), MacMainConversationID: in.MacMainConversationID, Tab: selection.Tab, Location: "publishing", TransferID: in.TransferID, SessionID: session, ConversationID: imported.Conversation.ConversationID, PairID: binding.PairID, SplitFiles: in.SplitFiles, Selection: selection}
 	if err = writeCrewAgentPlacement(id, entry); err != nil {
 		return out, err
 	}

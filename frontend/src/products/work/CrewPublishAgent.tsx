@@ -56,7 +56,7 @@ export function CrewPublishAgent({ projectId, connection, serverLink, serverName
       const place = placements[agent.tab]
       return <div key={agent.tab} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
         <div className="min-w-0"><p className="font-medium">{agent.icon} {agent.name}</p><p className="text-xs text-muted-foreground break-words">{agent.purpose || 'Set a purpose in this agent’s chat first.'}</p><p className="mt-1 text-xs text-muted-foreground">{place?.location === 'server' ? `On the server${place.since ? ` since ${new Date(place.since).toLocaleDateString()}` : ''}` : place ? 'Publishing to the server' : 'On this Mac'}</p></div>
-        {place?.location === 'server' ? <Button size="sm" variant="outline" className="shrink-0 rounded-full" onClick={() => window.open(serverLink, '_blank', 'noopener,noreferrer')}>Open</Button> : <Button size="sm" variant="outline" className="shrink-0 rounded-full" disabled={busy} onClick={() => { setSelected(agent.tab); setPreview(undefined); setAccount(''); setError('') }}>{place ? 'Finish publish' : 'Publish'}</Button>}
+        {place?.location === 'server' ? <Button size="sm" variant="outline" className="shrink-0 rounded-full" onClick={() => window.open(`${serverLink}?agent=${encodeURIComponent(agent.tab)}`, '_blank', 'noopener,noreferrer')}>Open</Button> : <Button size="sm" variant="outline" className="shrink-0 rounded-full" disabled={busy} onClick={() => { setSelected(agent.tab); setPreview(undefined); setAccount(''); setError('') }}>{place ? 'Finish publish' : 'Publish'}</Button>}
       </div>
     })}
     {selected && <div className="space-y-3 rounded-lg bg-muted/40 p-3">
@@ -68,7 +68,7 @@ export function CrewPublishAgent({ projectId, connection, serverLink, serverName
       {preview && <>
         {preview.accounts?.length > 1 && <label className="block text-[13px]">Your account on {serverName}<select className="mt-1 w-full rounded-lg border border-border bg-background p-2" value={account} disabled={busy} onChange={event => { setAccount(event.target.value); setPreview({ ...preview, ready: false, transfer_id: undefined }) }}><option value="">Choose your account</option>{preview.accounts.map(item => <option key={item.id} value={item.id}>{item.identity || item.name}</option>)}</select></label>}
         {preview.message && <p className="text-[13px]">{preview.message}</p>}
-        {preview.accounts?.length === 0 && <a className="text-primary underline text-[13px]" href={`${new URL(serverLink).origin}/settings/providers`} target="_blank" rel="noreferrer">Open Providers on {serverName}</a>}
+        {preview.accounts?.length === 0 && <a className="text-primary underline text-[13px]" href={`${new URL(serverLink).origin}/settings/ai-accounts`} target="_blank" rel="noreferrer">Open Providers on {serverName}</a>}
         {preview.ready && <div className="space-y-2 text-[13px]">
           <p>{preview.files} files ({size(preview.bytes)}) and the native chat ({size(preview.native_bytes)}).</p>
           <p>Uses your account: {preview.accounts?.find(item => item.id === preview.selection.account_id)?.identity || preview.accounts?.find(item => item.id === preview.selection.account_id)?.name}.</p>
