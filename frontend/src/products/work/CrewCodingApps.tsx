@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Terminal } from 'lucide-react'
 import { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { Button } from '../../components/ui/Button'
 
@@ -11,13 +10,14 @@ const apps = [
 ]
 
 /** Connection state comes from the selected server's existing authorized agent directory. */
-export function CrewCodingApps({ connection, crewName }: { connection: string; crewName: string }) {
+export function CrewCodingApps({ connection, crewName }: { connection?: string; crewName: string }) {
   const [snapshot, setSnapshot] = useState<{ connection: string; agents: ConnectedAgent[] }>()
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
     setError('')
+    if (!connection) return () => controller.abort()
     const load = async () => {
       try {
         const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(connection)}/api/agent-directory`, {
@@ -38,19 +38,20 @@ export function CrewCodingApps({ connection, crewName }: { connection: string; c
     window.addEventListener('focus', onFocus)
     return () => { controller.abort(); window.removeEventListener('focus', onFocus) }
   }, [connection])
-  const agents = snapshot?.connection === connection ? snapshot.agents : undefined
+  const agents = snapshot && snapshot.connection === connection ? snapshot.agents : undefined
   const line = `Connect to AgentWorks, then ask my ${JSON.stringify(crewName)} Crew's agent to help me.`
   const copy = async () => {
     try { await navigator.clipboard.writeText(line); setCopied(true) }
     catch { setError('Copy this setup line into your coding app: ' + line) }
   }
-  return <section aria-label="Your coding apps" className="space-y-2 rounded-xl border border-border p-3">
-    <div className="flex flex-wrap items-center gap-2"><Terminal aria-hidden="true" className="h-4 w-4" /><p className="font-medium">Your coding apps</p><Button className="ml-auto rounded-full" size="sm" variant="outline" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy setup line'}</Button></div>
-    <p className="text-xs text-muted-foreground">In Claude Code, Codex or Cursor, say “connect to AgentWorks”, then ask your Crew’s agent for help. Replies come back in that chat.</p>
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">{apps.map(app => {
+  return <div aria-label="Your coding apps" className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-border py-2.5 pl-3 text-sm">
+    <span title="In your coding app, say ‘connect to AgentWorks’, then ask your Crew’s agent for help. Replies come back in that chat.">Your coding apps</span>
+    <span className="inline-flex flex-wrap items-center gap-1 text-[12.5px] text-muted-foreground">{apps.map((app, index) => {
       const connected = agents?.some(agent => app.providers.includes(agent.provider || '') && agent.online === true)
-      return <span key={app.name}>{app.name} <span className={connected && !error ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>{error ? '· unknown' : !agents ? '· checking…' : connected ? '· connected' : '· not connected'}</span></span>
-    })}</div>
-    {error && <p role="status" className="text-xs text-muted-foreground">{error}</p>}
-  </section>
+      const status = error ? 'connection unknown' : !connection ? 'not connected' : !agents ? 'checking connection' : connected ? 'connected' : 'not connected'
+      return <span key={app.name} title={`${app.name}: ${status}`} aria-label={`${app.name}: ${status}`}>{index > 0 && <span aria-hidden="true" className="mr-1">·</span>}{app.name}{connected && !error && <span aria-hidden="true" className="ml-1 text-emerald-500">●</span>}</span>
+    })}</span>
+    <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!connection} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy setup line'}</Button>
+    {error && <p role="status" className="basis-full text-xs text-muted-foreground">{error}</p>}
+  </div>
 }
