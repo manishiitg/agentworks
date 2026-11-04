@@ -809,7 +809,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		if err := WriteWorkflowManifest(r.Context(), req.WorkspacePath, manifest); err != nil {
-			http.Error(w, "failed to write manifest: "+err.Error(), http.StatusInternalServerError)
+			writeScheduleSaveError(w, err)
 			return
 		}
 		svc.InvalidateWorkflowManifestCache()
@@ -1050,7 +1050,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		if err := WriteWorkflowManifest(r.Context(), workspacePath, manifest); err != nil {
-			http.Error(w, "failed to write manifest: "+err.Error(), http.StatusInternalServerError)
+			writeScheduleSaveError(w, err)
 			return
 		}
 		svc.InvalidateWorkflowManifestCache()
@@ -1095,7 +1095,7 @@ func deleteScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		manifest := result.Manifest
 		manifest.Schedules = append(manifest.Schedules[:result.Index], manifest.Schedules[result.Index+1:]...)
 		if err := WriteWorkflowManifest(r.Context(), result.WorkspacePath, manifest); err != nil {
-			http.Error(w, "failed to write manifest: "+err.Error(), http.StatusInternalServerError)
+			writeScheduleSaveError(w, err)
 			return
 		}
 		svc.InvalidateWorkflowManifestCache()
@@ -1128,7 +1128,7 @@ func enableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			if errors.Is(err, errScheduleChangeRefused) || strings.Contains(err.Error(), "not found") {
 				http.Error(w, "not found", http.StatusNotFound)
 			} else {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				writeScheduleSaveError(w, err)
 			}
 			return
 		}
@@ -1618,4 +1618,13 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 		http.Error(w, "product schedules are declared by the product and cannot be edited here", http.StatusMethodNotAllowed)
 	}
 	return true
+}
+
+// Missing script inputs are a correctable setup error, not a server outage.
+func writeScheduleSaveError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	if errors.Is(err, errScriptTimerInputs) {
+		status = http.StatusBadRequest
+	}
+	http.Error(w, err.Error(), status)
 }
