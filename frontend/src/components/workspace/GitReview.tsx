@@ -36,7 +36,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   const folder = workspacePath.split('/').filter(Boolean).pop() || 'Project'
   const repoName = (root: string) => root || folder
   const recentRepo = recentRepos.map(root => repos.find(item => item.root === root)).find(item => item !== undefined)
-  const repo = repos.find(item => item.root === repoRoot) ?? recentRepo ?? repos[0]
+  const repo = repos.find(item => item.root === repoRoot) ?? repos.find(item => item.used_in_chat) ?? recentRepo ?? repos[0]
 
   useEffect(() => {
     if (scope !== 'branch') return
@@ -108,7 +108,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
       {scope === 'branch' && <>
         <label className="flex w-full min-w-0 items-center gap-1 text-xs text-muted-foreground sm:w-auto">Worktree
           <select aria-label="Worktree" title={`${repoName(repo.root)} · ${repo.branch}`} value={repo.root} className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground sm:max-w-md" onChange={event => { setRepoRoot(event.target.value); setBase(''); setSelected(null) }}>
-            {repos.map(item => <option key={item.root} value={item.root}>{repoName(item.root)} · {item.branch}{recentRepos.includes(item.root) ? ' · This chat' : ''}</option>)}
+            {repos.map(item => <option key={item.root} value={item.root}>{repoName(item.root)} · {item.branch}{item.used_in_chat ? ' · This chat' : ''}</option>)}
           </select>
         </label>
         <span className="flex-1" />
