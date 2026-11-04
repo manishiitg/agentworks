@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -12,7 +13,10 @@ import (
 // PLAT-856: a publicly listed Mac agent refused attached chats because they carry messaging permissions,
 // not Crew tool permissions. Both sending and reading a reply must use the current shared-agent audience.
 func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	owners := withProjectOwnerRegistry(t)
+	if err := owners.Register(projectOwnerRecord{Product: "work", Folder: "crew", ProjectID: "p", OwnerID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL", "")
@@ -61,9 +65,58 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 			}
 		})
 	}
+	// PLAT-856-536: the Mac answered, but native delivery/validation held its reply
+	// because this shared Crew endpoint has no named-agent ShareID.
+	store := agentMessageStore{}
+	now := time.Now().UTC()
+	reply := func(user, tab string) agentConversation {
+		return agentConversation{Endpoints: [2]agentMessageEndpoint{
+			{UserID: user, Kind: triggerCallerUser, External: true, NamedAgentID: "attached-agent"},
+			{UserID: "owner", Kind: triggerCallerCrew, ID: "p", ChatKey: macSharedAgentChatKey("p", tab)},
+		}}
+	}
+	for _, tc := range []struct {
+		user, tab string
+		allowed   bool
+	}{
+		{"outsider", "main", true}, {"member", "team01", true}, {"member", "chosen01", true},
+		{"outsider", "team01", false}, {"outsider", "chosen01", false}, {"member", "private01", false},
+		{"disabled", "main", false}, {"no-crew", "main", false},
+	} {
+		t.Run("reply/"+tc.user+"/"+tc.tab, func(t *testing.T) {
+			if got := store.shareSenderAllowed(reply(tc.user, tc.tab), 1, tc.user, now); got != tc.allowed {
+				t.Fatalf("reply allowed=%t, want %t", got, tc.allowed)
+			}
+		})
+	}
+	public := reply("member", "main")
+	if store.shareSenderAllowed(public, 1, "outsider", now) {
+		t.Fatal("a public audience let another person read this inbox's reply")
+	}
+	for _, change := range []struct {
+		name string
+		edit func(*agentMessageEndpoint)
+	}{
+		{"wrong owner", func(e *agentMessageEndpoint) { e.UserID = "outsider" }},
+		{"external impersonation", func(e *agentMessageEndpoint) { e.External = true }},
+		{"guest impersonation", func(e *agentMessageEndpoint) { e.Guest = "outsider" }},
+		{"no chat", func(e *agentMessageEndpoint) { e.ChatKey = "" }},
+		{"mailbox is not an agent tab", func(e *agentMessageEndpoint) { e.ChatKey = "messages:main" }},
+	} {
+		t.Run("reply/"+change.name, func(t *testing.T) {
+			forged := public
+			change.edit(&forged.Endpoints[1])
+			if store.shareSenderAllowed(forged, 1, "member", now) {
+				t.Fatal("invalid shared-agent endpoint admitted")
+			}
+		})
+	}
 	// An already-open inbox does not retain access after its agent is unshared.
 	if err := writeMacSharedAgents("p", nil); err != nil {
 		t.Fatal(err)
+	}
+	if store.shareSenderAllowed(public, 1, "member", now) {
+		t.Fatal("a queued reply retained its revoked audience")
 	}
 	for _, send := range []bool{true, false} {
 		claims := &UserClaims{UserID: "member", AccessToken: &accesstokens.Token{BoundAgentID: "attached-agent", Scopes: []string{"messages:send", "messages:read"}}}
