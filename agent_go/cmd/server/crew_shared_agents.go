@@ -194,7 +194,7 @@ func (api *StreamingAPI) handleCrewSharedAgents(w http.ResponseWriter, r *http.R
 		return
 	}
 	switch externalArg(args, "action") {
-	case "chats", "read_chat", "ask":
+	case "chats", "read_chat", "ask", "reply_input":
 	default:
 		externalError(w, 400, "invalid_arguments", "Choose agents, read a conversation or send a message.")
 		return

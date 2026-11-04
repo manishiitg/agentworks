@@ -31,7 +31,7 @@ import type { AgentMode } from '../stores/types'
 import { ChatInput } from './ChatInput'
 import { ChatLinkStatus } from './chat/ChatLinkStatus'
 import { ComposerPendingPrompt } from './chat/ComposerPendingPrompt'
-import { codingAgentQuestionCards, withClosedQuestions } from '../utils/codingAgentQuestions'
+import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { StepInspectionTabs } from './chat/StepInspectionTabs'
 import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
@@ -544,6 +544,7 @@ interface ChatAreaProps {
   composerPlaceholder?: string
   /** Sends the person's message somewhere other than this chat's own session (a shared agent's ask); the transcript
    * is fed by the caller. Used with a tab whose metadata has externalTransport. */
+  onQuestionAnswerOverride?: CodingAgentQuestionAnswerHandler
   onSubmitOverride?: (query: string, options?: ChatSubmissionOptions) => Promise<boolean | void>
   /** Brain context hint. The profile route validates access. */
   knowledgebaseFolderPath?: string
@@ -566,7 +567,7 @@ let globalHasRestored = false
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
-  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands, onSubmitOverride} = props
+  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands, onSubmitOverride, onQuestionAnswerOverride} = props
   useMcpOAuthChatNotifications(tabId)
   // Product mode is a complete shared surface, not just a simplified composer.
   // Products may still supply a renderer for domain-specific presentation, but
@@ -955,7 +956,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const answerCodingAgentQuestion = useCallback(async (provider: string, promptId: string, answers: Array<{ id: string; selectedLabels: string[]; otherText?: string }>, auto?: boolean) => {
     if (!activeSessionId) throw new Error('This conversation is no longer active')
     try {
-      await agentApi.submitCodingAgentQuestion(activeSessionId, provider, promptId, answers, auto)
+      if (onQuestionAnswerOverride) await onQuestionAnswerOverride(provider, promptId, answers, auto)
+      else if (activeTab?.metadata?.externalTransport) throw new Error("Question answers are unavailable for this connection")
+      else await agentApi.submitCodingAgentQuestion(activeSessionId, provider, promptId, answers, auto)
     } catch (cause) {
       const detail = codingAgentQuestionErrorText(cause)
       if (/no longer pending|unavailable/i.test(detail)) {
@@ -964,7 +967,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       }
       throw new Error(detail || 'Could not submit this choice. Try again.')
     }
-  }, [activeSessionId])
+  }, [activeSessionId, onQuestionAnswerOverride, activeTab?.metadata?.externalTransport])
 
   const activeTabIsExecution = isExecutionConversationTab(activeTab)
   const activeTabProfileWorkspace = activeTab?.metadata?.agentProfileWorkspace

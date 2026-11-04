@@ -268,7 +268,7 @@ func (api *StreamingAPI) externalMacSharedAgent(w http.ResponseWriter, r *http.R
 // externalMacSharedAgentByID serves a person who has no access to the Crew itself, only to agents shared from it:
 // their ask and read reach the same audience check (PLAT-856-509). Anything else stays "not found".
 func (api *StreamingAPI) externalMacSharedAgentByID(w http.ResponseWriter, r *http.Request, action string, args map[string]any) bool {
-	if IsLocalMode() || (action != "ask" && action != "read_chat") || externalArg(args, "chat_id") == "" {
+	if IsLocalMode() || (action != "ask" && action != "read_chat" && action != "reply_input") || externalArg(args, "chat_id") == "" {
 		return false
 	}
 	id := workspaceTokenProjectID(strings.TrimSpace(externalArg(args, "workspace_id")))
@@ -298,11 +298,11 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 		externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
 		return true
 	}
-	if action != "ask" && action != "read_chat" {
+	if action != "ask" && action != "read_chat" && action != "reply_input" {
 		externalError(w, 403, "tab_owner", "Send this agent a message; its owner controls its settings and confirmations.")
 		return true
 	}
-	if token := claims.AccessToken; token != nil && !token.Allows(map[bool]string{true: "crews:run", false: "crews:read"}[action == "ask"]) {
+	if token := claims.AccessToken; token != nil && !token.Allows(map[bool]string{true: "crews:run", false: "crews:read"}[action == "ask" || action == "reply_input"]) {
 		externalError(w, 403, "insufficient_scope", "This connection cannot use this agent.")
 		return true
 	}
@@ -314,10 +314,16 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	operation := map[bool]string{true: "agent_ask", false: "agent_read"}[action == "ask"]
+	if action == "reply_input" {
+		operation = "agent_answer"
+	}
 	events, _ := args["events"].(bool) // the chat's own events for those turns, so the person sees the owner's chat view
 	raw, _ := json.Marshal(map[string]any{"sender_id": claims.UserID, "after": externalInt(args, "after", 0), "wait_seconds": externalInt(args, "wait_seconds", 0), "events": events})
 	call := crewChatCall{Operation: operation, Tab: agent.Tab, Message: externalArg(args, "message"), Caller: crewOwnerDisplayName(sanitizeUserIDForPath(claims.UserID)), Args: raw,
 		SubmissionID: externalArg(args, "submission_id")}
+	if action == "reply_input" {
+		call.Answer, _ = json.Marshal(map[string]any{"provider": args["provider"], "prompt_id": args["request_id"], "answers": args["answers"], "auto": args["auto"]})
+	}
 	result := callCrewMacFor(r.Context(), project.OwnerID, manifest.ID, call, externalCrewWait(args)+40*time.Second)
 	log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%s action=%s mac_status=%d", manifest.ID, logUsernameForUserID(claims.UserID), agent.Tab, action, result.Status)
 	if result.Status == http.StatusServiceUnavailable {

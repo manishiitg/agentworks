@@ -364,3 +364,37 @@ func TestClarificationFollowUpStartsOncePerPrompt(t *testing.T) {
 		t.Fatalf("expected exactly one decision line, got %d: %s", got, out.String())
 	}
 }
+
+// PLAT-746-314: a shared-page answer must settle only its sender's live thread.
+func TestSharedAgentQuestionAnswerStaysInSenderThread(t *testing.T) {
+	api := &StreamingAPI{eventStore: events.NewEventStore(100)}
+	api.setSessionBusy("sender-thread", true)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := api.waitForCodingAgentClarification(ctx, "sender-thread", "claude-code", clarificationTestArgs())
+		done <- err
+	}()
+	p := pendingClarificationForTest(t, api, "sender-thread")
+	for _, session := range []string{"owner-tab", "another-sender"} {
+		if err := api.submitSharedAgentQuestion(session, p.provider, p.promptID, true, nil); err == nil {
+			t.Fatalf("answer from %s consumed the sender's question", session)
+		}
+	}
+	if err := api.submitSharedAgentQuestion("sender-thread", p.provider, "wrong-prompt", true, nil); err == nil {
+		t.Fatal("a different prompt was accepted")
+	}
+	if err := api.submitSharedAgentQuestion("sender-thread", p.provider, p.promptID, false, []codingAgentQuestionAnswerInput{{ID: "scope", SelectedLabels: []string{"unknown"}}}); err == nil {
+		t.Fatal("invalid answer was accepted")
+	}
+	if err := api.submitSharedAgentQuestion("sender-thread", p.provider, p.promptID, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := api.submitSharedAgentQuestion("sender-thread", p.provider, p.promptID, true, nil); err == nil {
+		t.Fatal("settled question was accepted again")
+	}
+}
