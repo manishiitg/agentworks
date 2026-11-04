@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Target, Trash2, X } from 'lucide-react'
+import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Trash2, X } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { Button } from '../../components/ui/Button'
@@ -10,7 +10,6 @@ import { SettingsCard } from '../../components/ui/SettingsCard'
 import { ToggleRow } from '../../components/ui/ToggleRow'
 import { Input } from '../../components/ui/Input'
 import { Label } from '../../components/ui/label'
-import { Textarea } from '../../components/ui/Textarea'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { StatusBanner } from '../../components/workflow/bots/StatusBanner'
@@ -22,7 +21,6 @@ import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
-import { ChatInstructionsCard } from '../../components/workflow/ChatInstructionsCard'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
 import type { WorkRuntimeSelection } from './workTabs'
 import { useChatStore } from '../../stores/useChatStore'
@@ -62,21 +60,18 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
 }) {
   const [nameDraft, setNameDraft] = useState('')
   const [iconDraft, setIconDraft] = useState('')
-  const [purposeDraft, setPurposeDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setNameDraft(projectIdentity?.name ?? '')
     setIconDraft(projectIdentity?.icon ?? '')
-    setPurposeDraft(projectPurpose)
     setError(null)
   }, [projectIdentity?.name, projectIdentity?.icon, projectPurpose])
 
   const displayName = nameDraft.trim() || projectTitle
   const dirty = nameDraft.trim() !== (projectIdentity?.name ?? '')
     || iconDraft.trim() !== (projectIdentity?.icon ?? '')
-    || purposeDraft.trim() !== projectPurpose
 
   const save = async () => {
     if (!dirty || saving) return
@@ -86,7 +81,7 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
       await onUpdateIdentity({
         name: nameDraft.trim(),
         icon: iconDraft.trim(),
-        purpose: purposeDraft.trim(),
+        purpose: projectPurpose, // unchanged here; Main's card edits it
       })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to save.')
@@ -128,26 +123,7 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
         </div>
       </SettingsCard>
 
-      <SettingsCard
-        icon={<Target aria-hidden="true" className="h-4 w-4 text-primary" />}
-        title="What this Crew is for"
-      >
-        <div>
-          <Textarea
-            value={purposeDraft}
-            onChange={event => setPurposeDraft(event.target.value)}
-            disabled={saving}
-            aria-label="What this Crew is for"
-            placeholder="e.g. Plan and ship the Q3 launch."
-            rows={3}
-          />
-        </div>
-        <div className="flex justify-end">
-          <Button onClick={() => void save()} disabled={!dirty || saving}>
-            {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</> : 'Save'}
-          </Button>
-        </div>
-      </SettingsCard>
+      {/* The purpose is Main's: set it from Main's card (✎) or by asking Main (owner, 5 Nov: removed from Settings). */}
 
 
       <SettingsCard
@@ -382,7 +358,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {activeTab === 'general' && product.hasIdentity && <ChatInstructionsCard workspacePath={workspacePath} />}
         {activeTab === 'general' &&  <ModeRow sessionId={sessionId} />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
         {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}
