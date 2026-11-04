@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 func TestRedactShellCommandForLog(t *testing.T) {
@@ -752,5 +754,58 @@ func TestExecuteShellCommandUsesTheTrustedBridgeSession(t *testing.T) {
 	_ = json.Unmarshal([]byte(`{"command":"x","BridgeSessionID":"victim","bridge_session_id":"victim"}`), &decoded)
 	if decoded.BridgeSessionID != "" {
 		t.Fatal("BridgeSessionID must not decode from tool arguments")
+	}
+}
+
+// PLAT-746-265: attached inline scripts must pass preflight without granting
+// other workflows, app source or symlinks outside the attached project.
+func TestBlockAbsoluteHostPaths_AttachedAutomationGrant(t *testing.T) {
+	base := t.TempDir()
+	base, _ = filepath.EvalSymlinks(base)
+	docs, state, project := filepath.Join(base, "docs"), filepath.Join(base, "state"), filepath.Join(base, "project")
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	t.Setenv("LOCAL_MODE", "true")
+	if err := os.MkdirAll(filepath.Join(docs, crewroot.PrivateDirectory, "crew"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path string, value any) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(state, "ownership/projects.json"), map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", ID: "crew", Owner: "owner", LocalRoot: project}}})
+	binding := crewroot.ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow"}
+	write(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), binding)
+	source := filepath.Join(project, ".agentworks/code/sequence/main.py")
+	write(source, "print(42)")
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(outside, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(project, ".agentworks/code/sequence/escape")); err != nil {
+		t.Fatal(err)
+	}
+	for _, grant := range []string{binding.Root, binding.Root + "/code"} {
+		guard := &FolderGuardConfig{Enabled: true, ReadPaths: []string{grant}}
+		if !isAllowedAbsoluteHostPath(source, guard) {
+			t.Fatalf("source rejected for %s", grant)
+		}
+		for _, denied := range []string{filepath.Join(project, "app.py"), filepath.Join(project, ".agentworks/code/another/main.py"), filepath.Join(project, ".agentworks/code/sequence/escape/secret")} {
+			if isAllowedAbsoluteHostPath(denied, guard) {
+				t.Fatalf("ungranted host path allowed: %s", denied)
+			}
+		}
+	}
+	if isAllowedAbsoluteHostPath(source, &FolderGuardConfig{ReadPaths: []string{"Workflow/unknown/code"}}) {
+		t.Fatal("unregistered grant allowed")
 	}
 }
