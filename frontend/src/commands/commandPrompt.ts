@@ -31,3 +31,16 @@ export function renderCommandPrompt(template: string, context: string): string {
   }
   return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
+
+// PLAT-746: command names may contain spaces. Match the longest registered
+// prefix on a word boundary, leaving the remaining text as its arguments.
+export function resolveSlashCommandInput<T>(input: string, find: (name: string) => T | undefined): { command: T; name: string; args: string } | undefined {
+  const value = input.trim()
+  const boundaries = [...value.matchAll(/\s+/g)].map(match => match.index!)
+  for (const end of [value.length, ...boundaries.reverse()]) {
+    const name = value.slice(0, end)
+    const command = find(name)
+    if (command) return { command, name, args: value.slice(end).trim() }
+  }
+  return undefined
+}

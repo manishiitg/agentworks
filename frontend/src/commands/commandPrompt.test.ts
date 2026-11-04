@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderCommandPrompt } from './commandPrompt'
+import { renderCommandPrompt, resolveSlashCommandInput } from './commandPrompt'
 
 describe('renderCommandPrompt', () => {
   const daily = 'Update the Daily page.\n4. Confirm before writing.\n\nAdditional context from me: {{context}}'
@@ -21,5 +21,15 @@ describe('renderCommandPrompt', () => {
   it('keeps inline placeholders as empty values', () => {
     expect(renderCommandPrompt('Call guidance(kind="design-plan", focus="{{context}}") now.', ''))
       .toBe('Call guidance(kind="design-plan", focus="") now.')
+  })
+})
+
+describe('resolveSlashCommandInput', () => {
+  it('matches spaced names before shorter commands and preserves arguments', () => {
+    const find = (name: string) => ['deep', 'deep work', 'review'].includes(name) ? name : undefined
+    expect(resolveSlashCommandInput('deep work investigate the queue', find)).toEqual({ command: 'deep work', name: 'deep work', args: 'investigate the queue' })
+    expect(resolveSlashCommandInput('deep work', find)?.args).toBe('')
+    expect(resolveSlashCommandInput('review this branch', find)).toEqual({ command: 'review', name: 'review', args: 'this branch' })
+    expect(resolveSlashCommandInput('reviewer', find)).toBeUndefined()
   })
 })

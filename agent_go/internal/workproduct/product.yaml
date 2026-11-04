@@ -117,20 +117,12 @@ profile:
     # summary delivery. mcpagent's own intrinsic tools (get_api_spec,
     # read_skill) are injected by mcpagent
     # itself and are not governed by this list.
-  # Slash commands Crew ships with itself. The prompt lives in its own file
-  # under commands/; `{{context}}` is replaced with whatever the user typed
-  # before the slash. Invoking /update-memory is the user's explicit ask to
-  # preserve reusable procedures, which is what unlocks skill changes under
-  # the panel-data memory-vs-skill rules.
+  # Product slash commands submit instructions in the current chat.
   commands:
-    - name: update-memory
-      description: Update project memory and skills from this conversation
+    - name: deep work
+      description: Plan a complex task, then carry it through with agents as needed
       icon: brain
-      file: commands/update-memory.md
-    - name: daily-learnings
-      description: End-of-day review of today's conversations — save new learnings to memory and skills
-      icon: brain
-      file: commands/daily-learnings.md
+      file: commands/deep-work.md
   runtime:
     # Managed data uses the same direct bridge in Builder and Run. Registration
     # and session access decide whether the database family has reads or writes.
