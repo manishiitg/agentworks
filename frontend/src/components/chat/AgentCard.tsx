@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowUp, Eye, EyeOff, Info, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
-import { AGENT_KEY, AgentIcon } from './AgentIcon'
+import { AGENT_KEY } from './AgentIcon'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 
 // A Crew agent's details (owner, 4 Nov, tab option B): the tab strip shows names only; hovering a name (~400 ms, or a
@@ -136,7 +136,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   </>
 }
 
-/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <icon> <agent name> ⓘ". The Crew name opens its
+/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ", no icon (the left menu shows it). The Crew name opens its
  * team board; ⓘ opens the agent's card (purpose, sharing, ✎). Purpose text is not shown inline. */
 export function AgentHeaderLine({ tabId, crewName, projectId }: { tabId?: string | null; crewName: string; projectId?: string }) {
   const open = useOpenAgentStore()
@@ -151,7 +151,6 @@ export function AgentHeaderLine({ tabId, crewName, projectId }: { tabId?: string
       : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
     {name && <>
       <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
-      <AgentIcon name={name} icon={info?.icon} active shared={info?.sharedWith} />
       <span className="min-w-0 max-w-48 truncate font-semibold">{name}</span>
       {info && <span className="shrink-0"><AgentHoverCard info={info} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
         <button type="button" aria-label={`About ${name}`} className="grid h-5 w-5 place-items-center max-md:h-8 max-md:w-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info aria-hidden="true" className="h-3.5 w-3.5" /></button>
