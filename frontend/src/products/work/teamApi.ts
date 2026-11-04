@@ -6,7 +6,7 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; can_edit_shared_folder: boolean }[]; folder: { id?: string; path: string; label: string }; can_manage: boolean; can_edit_shared_folder: boolean; server_data?: { name: string; size_bytes: number } }
+export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; can_edit_shared_folder: boolean; invited?: boolean }[]; folder: { id?: string; path: string; label: string }; can_manage: boolean; can_edit_shared_folder: boolean; server_data?: { name: string; size_bytes: number } }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
 export type TeamClash = { path: string; source: string; winning_revision: number; losing_revision: number; winning_author: string; losing_author: string }
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
@@ -74,34 +74,47 @@ export async function switchTeam(target: TeamTarget, on: boolean): Promise<TeamS
   return result
 }
 
-export function useTeams() {
+/** A Team invite as the invited person sees it (owner, 5 Nov): accept on the web or on this Mac, or decline. */
+export type TeamInvite = { project_id: string; name: string; owner_name: string; connection?: string }
+
+export async function answerTeamInvite(invite: TeamInvite, accept: boolean) {
+  await teamRequest<unknown>({ project: invite.project_id, connection: invite.connection }, '/invite', 'POST', { accept })
+  window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+}
+
+export function useTeams() { return useTeamLists().teams }
+export function useTeamInvites() { return useTeamLists().invites }
+
+function useTeamLists() {
   const user = useAuthStore(s => s.user?.id)
   const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
   const connections = useConnectedWorkStore(s => s.connections)
-  const [teams, setTeams] = useState<{ team: Team; target: TeamTarget }[]>([])
+  const [lists, setLists] = useState<{ teams: { team: Team; target: TeamTarget }[]; invites: TeamInvite[] }>({ teams: [], invites: [] })
   useEffect(() => {
     let active = true
-    setTeams([])
+    setLists({ teams: [], invites: [] })
     const load = async () => {
       const results: { team: Team; target: TeamTarget }[] = []
+      const invites: TeamInvite[] = []
       const sources = hasDesktopConnections() && getRawActiveWorkspaceId() === 'local' ? connections.filter(c => c.id !== 'local').map(c => c.id) : [undefined]
       await Promise.all(sources.map(async connection => {
         try {
-          let data: { teams: Team[] }
+          let data: { teams: Team[]; invites?: TeamInvite[] }
           if (connection) {
             const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(connection)}/api/crew-teams`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
             if (!response.ok) return
             data = await response.json()
-          } else data = (await api.get<{ teams: Team[] }>('/api/crew-teams', { skipSessionContext: true })).data
+          } else data = (await api.get<{ teams: Team[]; invites?: TeamInvite[] }>('/api/crew-teams', { skipSessionContext: true })).data
           for (const team of data.teams || []) if (team.can_edit_shared_folder) results.push({ team, target: { project: team.project_id, connection, folderId: team.folder.id } })
+          for (const invite of data.invites || []) invites.push({ ...invite, connection })
         } catch { /* An offline network keeps its copies on the computer. */ }
       }))
-      if (active) setTeams(results)
+      if (active) setLists({ teams: results, invites })
     }
     void load()
     const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15000)
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', load) }
   }, [user, workspace, connections])
-  return teams
+  return lists
 }
