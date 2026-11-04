@@ -102,7 +102,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       {scopeSwitch}
       {scope === 'uncommitted' && repos.length > 1 && <label className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">Worktree
-        <select aria-label="Worktree" className={select} value={repoRoot === null ? '*' : `repo:${repoRoot}`} onChange={event => { setRepoRoot(event.target.value === '*' ? null : event.target.value.slice(5)); setSelected(null) }}>
+        <select aria-label="Worktree" className={select} value={repoRoot === null ? '*' : `repo:${repoRoot}`} onChange={event => { setRepoRoot(event.target.value === '*' ? null : event.target.value.slice(5)); setBase(''); setSelected(null) }}>
           <option value="*">All worktrees</option>{repos.map(item => <option key={item.root} value={`repo:${item.root}`}>{repoName(item.root)} · {item.branch}</option>)}
         </select></label>}
       {scope === 'branch' && <>

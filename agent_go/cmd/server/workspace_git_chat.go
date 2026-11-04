@@ -108,7 +108,7 @@ func workspaceGitToolPaths(base, arguments string) []string {
 			break
 		}
 	}
-	for _, key := range []string{"path", "file_path", "directory", "repo_path", "project_path"} {
+	for _, key := range []string{"path", "file_path", "filepath", "directory", "repo_path", "project_path"} {
 		var path string
 		if json.Unmarshal(params[key], &path) == nil {
 			add(path)
