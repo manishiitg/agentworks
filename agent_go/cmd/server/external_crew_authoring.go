@@ -59,7 +59,6 @@ type crewSpec struct {
 	Files            map[string]string              `json:"files,omitempty"`
 	Functions        []crewFunctionSpec             `json:"functions,omitempty"`
 	Schedules        []crewScheduleSpec             `json:"schedules,omitempty"`
-	Mode             string                         `json:"mode,omitempty"`
 	LLMConfig        *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 	// Role is read only to refuse it: the platform alone marks its own Crews.
 	Role string `json:"role,omitempty"`
@@ -272,12 +271,6 @@ func normalizeCrewSpec(spec crewSpec) (crewSpec, error) {
 	}
 	if strings.TrimSpace(spec.Role) != "" {
 		return spec, fmt.Errorf("role is set by the platform; remove it from the Crew settings")
-	}
-	spec.Mode = strings.TrimSpace(spec.Mode)
-	switch spec.Mode {
-	case "", "dev", "cowork":
-	default:
-		return spec, fmt.Errorf("choose Dev or Cowork for this Crew")
 	}
 	if config := spec.LLMConfig; config != nil {
 		if config.SchemaVersion != 2 || config.Mode != workflowtypes.LLMConfigModeExplicit && config.Mode != workflowtypes.LLMConfigModeProviderProfile {
@@ -520,9 +513,6 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 			return "", fmt.Errorf("platform Crews use managed folders")
 		}
 	}
-	if spec.Mode != "" && spec.Mode != "dev" && spec.Mode != "cowork" {
-		return "", fmt.Errorf("Choose Dev or Cowork for this Crew")
-	}
 	if err := checkCrewSkillsAvailable(ctx, "", spec.SelectedSkills, spec.Files); err != nil {
 		return "", err
 	}
@@ -553,7 +543,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
 		return "", err
 	}
 	if spec.ChatInstructions != "" {

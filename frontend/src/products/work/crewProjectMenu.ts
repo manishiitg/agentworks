@@ -15,9 +15,9 @@ export type CrewMenuItem = {
 }
 
 /** One inventory for the Crew menu and panel search. All old feature gates apply. */
-export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, mode = 'cowork' }: {
+export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false }: {
   panels: ProductPanel<WorkWorkspaceView>[]; allowedProducts?: string[] | null; enabledPanels?: Set<string>
-  incomingEmail?: boolean; canShare?: boolean; projectId?: string; mode?: 'dev' | 'cowork'
+  incomingEmail?: boolean; canShare?: boolean; projectId?: string
 }): CrewMenuItem[] {
   const has = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
   const bots = !enabledPanels || enabledPanels.has('bots')
@@ -47,7 +47,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     }
     if (hasDesktopConnections() || isLocalDeployment()) add('mcp', 'Integrations', 'Folders on this Mac', Folder, 'mac-folders')
     if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Use', 'Message other agents', MessageSquareText, 'message-agents')
-    if (mode === 'dev' && isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
+    if (isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
   }

@@ -10,12 +10,6 @@ it('preserves the merged Crew features for Code-origin owner projects', () => {
   expect(panels).toContain('suggestions')
   expect(ids(workWorkspacePanels({ profileId: 'work', showShell: false }))).not.toContain('shell')
 })
-it('preserves Cowork inventory without Terminal or Plan', () => {
-  const panels = ids(workWorkspacePanels({ profileId: 'work', cowork: true, showShell: true }))
-  for (const unwanted of ['shell', 'plan', 'database', 'suggestions']) expect(panels).not.toContain(unwanted)
-  expect(panels).toContain('files')
-  expect(panels).toContain('memory')
-})
 it('preserves shared/read-only dashboard-only access and feature gates', () => {
   expect(ids(workWorkspacePanels({ readOnly: true, showShell: true }))).toEqual(['dashboard'])
   expect(ids(workWorkspacePanels({ readOnly: true, enabledPanels: new Set() }))).toEqual([])

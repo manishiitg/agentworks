@@ -7,7 +7,6 @@ import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { CleanConversationSurface } from './CleanConversationSurface'
 import api from '../services/api'
 import { openReplyChanges } from './workspace/chatFileNavigation'
-import { setProjectMode } from '../products/work/codeLocalFiles'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import type { ActiveSessionInfo } from '../services/api-types'
@@ -417,19 +416,6 @@ it('keeps a late file comparison on its original reply in both transcript views 
         expect(card.querySelector('[aria-label="Reply file names"]')?.textContent).toContain('report.md')
         expect(openReplyChanges).not.toHaveBeenCalled()
         expect(get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ snapshot_id: 'saved-first', session_id: 'files-session' }) }))
-        // PLAT-746-295: saved reply cards remain available in Cowork too.
-        const priorTabs = useChatStore.getState().chatTabs
-        try {
-          await act(async () => {
-            useChatStore.setState({ chatTabs: { ...priorTabs, 'files-tab': { sessionId: 'files-session', metadata: { agentProfileProjectId: 'snapshot-project' } } as ChatTab } })
-            setProjectMode('snapshot-project', 'cowork')
-          })
-          await render([...history, late])
-          expect(host.querySelector('[aria-label="Project changes during this turn"]')).not.toBeNull()
-          await act(async () => setProjectMode('snapshot-project', 'dev'))
-          expect(host.querySelector('[aria-label="Project changes during this turn"]')).not.toBeNull()
-        } finally { await act(async () => useChatStore.setState({ chatTabs: priorTabs })) }
-
       } finally { await act(async () => root.unmount()); host.remove() }
     }
   } finally { get.mockRestore() }

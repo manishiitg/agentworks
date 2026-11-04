@@ -3,11 +3,6 @@ import type { PresetLLMConfig, SharedProjectSchedule, SharedProjectTrigger } fro
 import { dedupeByFilepath, flattenFiles, responseContent, responseFiles, slugifyTitle } from '../../utils/plannerFiles'
 import { nativeAgentToolsEnabled } from '../../utils/nativeAgentTools'
 
-
-/** Server project mode; the optional laptop connection does not change it. */
-export type ProductMode = 'dev' | 'cowork'
-export const PRODUCT_MODES: readonly ProductMode[] = ['dev', 'cowork']
-
 export type ProductProject<P extends string = string> = {
   schemaVersion: 1
   product: P
@@ -29,8 +24,6 @@ export type ProductProject<P extends string = string> = {
   workflowContextPaths: string[]
   /** Crew "Native agent tools": capabilities.native_agent_tools in workflow.json, on unless explicitly false. */
   nativeAgentTools?: boolean
-  /** Absent on projects made before modes: they are dev. */
-  mode?: ProductMode
   /** Set by the server only: "agentworks" marks the person's own AgentWorks Crew. */
   role?: 'agentworks'
   creationWarnings?: string[]
@@ -71,7 +64,6 @@ type ProductManifest = {
   updated_at?: unknown
   capabilities?: unknown
   workflow_context_paths?: unknown
-  mode?: unknown
   role?: unknown
 }
 
@@ -88,16 +80,6 @@ function parseProductIdentity(value: unknown): ProductIdentity | undefined {
 }
 
 const localFileId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
-
-
-function manifestMode(raw: ProductManifest): ProductMode | undefined {
-  return PRODUCT_MODES.find(mode => mode === raw.mode)
-}
-
-/** The server mode a project works in. */
-export function productMode(project: Pick<ProductProject, 'mode'>): ProductMode {
-  return project.mode ?? 'dev'
-}
 
 function parseProductLLMConfig(value: unknown): PresetLLMConfig | undefined {
   if (!value || typeof value !== 'object') return undefined
@@ -175,7 +157,6 @@ export function parseProductProjectManifest<P extends string>(
     selectedGlobalSecrets: manifestGlobalSecretSelection(raw),
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
-    mode: manifestMode(raw),
     ...(raw.role === 'agentworks' ? { role: 'agentworks' as const } : {}),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
     secretSelectionInitialized: manifestHasSecretSelection(raw),
@@ -273,14 +254,13 @@ export async function createProductProject<P extends string>(options: {
   selectedSkills?: readonly string[]
   initialFiles?: Readonly<Record<string, string>>
   runtimeManifestName?: string
-  mode?: ProductMode
 }): Promise<ProductProject<P>> {
   const title = options.title.trim()
   const description = options.description.trim()
   if (options.product === 'work' || options.product === 'code') {
     const created = await agentApi.createProductProject(options.product, {
       name: title, purpose: description, root_path: options.rootPath, icon: options.identity?.icon,
-      mode: options.mode, llm_config: options.llmConfig,
+      llm_config: options.llmConfig,
       selected_skills: options.selectedSkills, files: options.initialFiles,
     })
     const project = parseProductProjectManifest(JSON.stringify(created.product_manifest), created.workspace_path, options.product)
@@ -289,7 +269,7 @@ export async function createProductProject<P extends string>(options: {
   }
   // Personal products retain their existing creation path. Crew and Code
   // have already returned through server-owned creation above.
-  const reserved = await (async () => agentApi.reserveProject(options.product, title, options.mode))().catch((error: unknown) => {
+  const reserved = await (async () => agentApi.reserveProject(options.product, title))().catch((error: unknown) => {
     const response = (error as { response?: { status?: number; data?: { error?: string } } })?.response
     if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create Crews.')
     return { shared: false } as { shared: boolean; id?: string; workspace_path?: string }
@@ -319,7 +299,6 @@ export async function createProductProject<P extends string>(options: {
     created_at: now,
     updated_at: now,
     ...(options.identity ? { identity: options.identity } : {}),
-    ...(options.mode ? { mode: options.mode } : {}),
   }
   if (!options.runtimeManifestName) manifest.capabilities = capabilities
   if (options.runtimeManifestName) {
@@ -366,8 +345,6 @@ export async function createProductProject<P extends string>(options: {
     workspacePath,
     createdAt: now,
     updatedAt: now,
-    // The new project is shown right away from this object, so it carries its mode (Cowork's toolbar and welcome); a refresh reads it from product.json.
-    ...(options.mode ? { mode: options.mode } : {}),
     llmConfig: options.llmConfig,
     selectedServers: [],
     selectedSkills: [...new Set(options.selectedSkills || [])],

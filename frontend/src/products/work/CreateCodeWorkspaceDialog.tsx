@@ -1,32 +1,23 @@
 import { useState, type FormEvent } from 'react'
 import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
-import { AlertCircle, Briefcase, Code2, Loader2, X } from 'lucide-react'
-import type { ProductMode } from '../../platform/chat/productProjects'
-
-// Both modes run on the server; a laptop can be connected later in Settings.
-export const CODE_MODE_CHOICES: Array<{ mode: ProductMode; title: string; text: string; icon: typeof Code2 }> = [
-  { mode: 'cowork', title: 'Cowork', text: 'An assistant for your work: dashboards, the browser and automations. No code needed.', icon: Briefcase },
-  { mode: 'dev', title: 'Dev', text: 'Build and change code with an AI agent: files, terminal and chat on the server.', icon: Code2 },
-]
+import { AlertCircle, Loader2, X } from 'lucide-react'
 
 // Creation needs only a name; identity details can be added later.
-export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'work', initialMode = 'dev', noun = 'Crew' }: {
+export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'work', noun = 'Crew' }: {
   onClose: () => void
-  onCreate: (title: string, runsOn?: RunsOnSelection, mode?: ProductMode) => void | Promise<void>
+  onCreate: (title: string, runsOn?: RunsOnSelection) => void | Promise<void>
   noun?: string
   profileId?: string
-  initialMode?: ProductMode
   submitting: boolean
   error: string | null
 }) {
   const [title, setTitle] = useState('')
   const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
-  const [mode, setMode] = useState<ProductMode>(initialMode)
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const trimmed = title.trim()
     if (!trimmed || submitting) return
-    void onCreate(trimmed, runsOn, profileId === 'work' ? mode : undefined)
+    void onCreate(trimmed, runsOn)
   }
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/65 p-3 backdrop-blur-sm" role="presentation">
@@ -40,13 +31,6 @@ export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error
             <X className="h-4 w-4" />
           </button>
         </div>
-        {profileId === 'work' && <div role="radiogroup" aria-label="Mode" className="mt-4 grid gap-2">
-          {CODE_MODE_CHOICES.map(choice => <label key={choice.mode} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${mode === choice.mode ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}>
-            <input type="radio" name="code-mode" className="mt-1" checked={mode === choice.mode} onChange={() => setMode(choice.mode)} disabled={submitting} />
-            <choice.icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-            <span><span className="block text-sm font-medium text-foreground">{choice.title}</span><span className="block text-xs leading-5 text-muted-foreground">{choice.text}</span></span>
-          </label>)}
-        </div>}
         <label className="mt-4 block text-sm font-medium text-foreground" htmlFor="code-create-name">Name</label>
         <input
           id="code-create-name"

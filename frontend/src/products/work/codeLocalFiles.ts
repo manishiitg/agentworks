@@ -1,32 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import api from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
-import { useChatStore } from '../../stores/useChatStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 export interface LocalFileDevice { device_id: string; settings_managed?: boolean; cli_version?: string; cli_build?: string; resources: { id: string; writable: boolean; publication?: boolean; shell?: boolean; downloads?: boolean; guard: { read_paths?: string[]; write_paths?: string[] } }[] }
-const changed = 'crew-laptop-connection-changed'
 
-type TabsLike = Record<string, { sessionId?: string | null; metadata?: { agentProfileProjectId?: string } }>
-function projectOf(chatTabs: TabsLike, sessionId: string): string | undefined {
-  return Object.values(chatTabs).find(tab => tab.sessionId === sessionId)?.metadata?.agentProfileProjectId || undefined
-}
-// Without a known workspace (no project behind the chat) the choice is kept per chat in this browser.
-// Server mode and optional laptop connection are independent.
-const projectModes = new Map<string, 'dev' | 'cowork'>()
-export function setProjectMode(projectId: string, mode: 'dev' | 'cowork') {
-  if (projectModes.get(projectId) === mode) return
-  projectModes.set(projectId, mode)
-  window.dispatchEvent(new Event(changed))
-}
-export function useProjectMode(sessionId: string): 'dev' | 'cowork' {
-  const project = useChatStore(state => projectOf(state.chatTabs, sessionId))
-  return useSyncExternalStore(subscribe, () => (project && projectModes.get(project)) || 'dev', () => 'dev')
-}
-function subscribe(listener: () => void) {
-  window.addEventListener(changed, listener)
-  return () => window.removeEventListener(changed, listener)
-}
 export const codeLocalFilesApi = {
   devices: async (crewWorkspace?: string): Promise<LocalFileDevice[]> => (await api.get<{ devices: LocalFileDevice[] }>('/api/devices', { skipSessionContext: true, ...(crewWorkspace ? { params: { workspace: crewWorkspace } } : {}) })).data.devices,
 

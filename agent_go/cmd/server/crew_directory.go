@@ -252,23 +252,16 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 	}
 	var body struct {
 		Title string `json:"title"`
-		Mode  string `json:"mode"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil || strings.TrimSpace(body.Title) == "" {
 		writeAgentProfileError(w, http.StatusBadRequest, "title is required")
-		return
-	}
-	switch body.Mode {
-	case "", "dev", "cowork":
-	default:
-		writeAgentProfileError(w, http.StatusBadRequest, "Choose Dev or Cowork for this Crew.")
 		return
 	}
 	if status, message := projectCreationGate(claims, profile.ID); status != 0 {
 		writeAgentProfileError(w, status, message)
 		return
 	}
-	id, err := api.createWorkspaceFromSpec(r.Context(), claims, profile.ID, crewSpec{Name: body.Title, Mode: body.Mode}, false)
+	id, err := api.createWorkspaceFromSpec(r.Context(), claims, profile.ID, crewSpec{Name: body.Title}, false)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusBadRequest, externalCrewCreateError(id, err))
 		return

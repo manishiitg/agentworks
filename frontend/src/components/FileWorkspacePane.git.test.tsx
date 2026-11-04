@@ -105,7 +105,7 @@ describe('FileWorkspacePane git bar', () => {
       expect(workspaceGitApi.act).toHaveBeenCalledWith('Chats/Code/projects/p1', 'app', { op: 'stage', all: true })
       await act(async () => (host.querySelector('[role="tab"][aria-label="Explorer"]') as HTMLButtonElement).click())
       expect(host.querySelector('[data-testid="panel-actions"] [aria-label="New file"]')).not.toBeNull()
-      // Studio-only file review: Cowork keeps its ordinary file tree, not Git controls.
+      // Without showGit the pane keeps its ordinary file tree, not Git controls.
       await act(async () => root.render(<FileWorkspacePane workspacePath="Chats/Code/projects/p1" showGit={false} />))
       expect(host.querySelector('[aria-label="Source Control"]')).toBeNull()
       expect(host.querySelector('[aria-label="Source control"]')).toBeNull()

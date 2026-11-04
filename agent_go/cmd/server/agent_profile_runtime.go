@@ -614,9 +614,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err := applyWorkspaceMemoryFeature(&profile); err != nil {
 		return nil, err
 	}
-	if profile.ID == workproduct.ProfileID && codeProjectMode(ctx, workspacePath) == "cowork" {
-		applyCoworkProfile(&profile)
-	}
 	rendered, err := agentprofiles.RenderPrompt(profile, promptContext)
 	if err != nil {
 		return nil, err

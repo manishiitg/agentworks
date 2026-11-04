@@ -1348,12 +1348,12 @@ export const agentApi = {
 
 
   /** Where a new project is created: the shared root when the server has that switch on (it registers the owner), else shared=false. */
-  reserveProject: async (profileId: string, title: string, mode?: string): Promise<{ shared: boolean; id?: string; workspace_path?: string }> => {
-    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/reserve`, { title, ...(mode ? { mode } : {}) })
+  reserveProject: async (profileId: string, title: string): Promise<{ shared: boolean; id?: string; workspace_path?: string }> => {
+    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/reserve`, { title })
     return response.data
   },
 
-  createProductProject: async (profileId: string, spec: { name: string; purpose: string; root_path?: string; icon?: string; mode?: 'dev' | 'cowork' | 'local'; llm_config?: PresetLLMConfig; templates?: readonly { id: string; version: number }[]; selected_skills?: readonly string[]; files?: Readonly<Record<string, string>> }): Promise<{ id: string; workspace_path: string; files_path: string; product_manifest: Record<string, unknown>; runtime_manifest: Record<string, unknown>; warnings?: string[] }> => {
+  createProductProject: async (profileId: string, spec: { name: string; purpose: string; root_path?: string; icon?: string; llm_config?: PresetLLMConfig; templates?: readonly { id: string; version: number }[]; selected_skills?: readonly string[]; files?: Readonly<Record<string, string>> }): Promise<{ id: string; workspace_path: string; files_path: string; product_manifest: Record<string, unknown>; runtime_manifest: Record<string, unknown>; warnings?: string[] }> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects`, spec, { skipSessionContext: true })
     return response.data
   },

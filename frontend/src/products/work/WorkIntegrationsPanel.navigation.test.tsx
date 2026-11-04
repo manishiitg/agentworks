@@ -21,7 +21,7 @@ vi.mock('../../components/workflow/WorkflowEmailPanel', () => ({ default: () => 
 vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
 vi.mock('./ComputerUsePanel', () => ({ ComputerUsePanel: () => <div data-content="computer-use">Local computer</div> }))
 vi.mock('./YourComputerPanel', () => ({ YourComputerPanel: () => <div data-computer="">Sync and laptop access</div> }))
-vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }), useProjectMode: () => 'dev' }))
+vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
 vi.mock('../../components/integrations/ProjectIntegrationPanel', () => ({ INTEGRATION_LABELS: {github:'GitHub',connected:'MCPs',available:'Available MCPs',secrets:'Secrets',gmail:'Google apps','slack-account':'Slack account',laptop:'Local laptop'}, ProjectIntegrationPanel: ({section}: any) => <section data-content={section} data-integration-section={section}>Native integration</section> }))
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'

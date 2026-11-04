@@ -30,7 +30,6 @@ vi.mock('../../services/api', () => ({ default: { post: vi.fn(async () => { if (
   if (options.params.op === 'reply_card') return { data: replyCard(options.params.pull_requests === true) }
   return { data: { history: { replies: [], reviews: [], available: true, last_snapshot_id: 's', latest_snapshot_id: 's', baseline_snapshot_id: 'x', can_review: true }, total_changes: state.total, comparison: { changes: state.total ? [{ path: 'app/tts.py', status: 'M' }] : [], snapshot: { status: 'complete' }, note: '', skipped_count: 0, uncaptured_changes: 0 } } }
 }) } }))
-vi.mock('../../products/work/codeLocalFiles', () => ({ useProjectMode: () => 'dev' }))
 vi.mock('../../hooks/useMobileViewport', () => ({ useMobileViewport: () => state.phone }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: 'u' } }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: 'w' }) }))

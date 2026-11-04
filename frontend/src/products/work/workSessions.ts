@@ -1,4 +1,4 @@
-import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity,  updateProductProjectSelections, type ProductIdentityPatch, type ProductMode, type ProductProject } from '../../platform/chat/productProjects'
+import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity,  updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
 import { agentApi } from '../../services/api'
 import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
@@ -51,7 +51,7 @@ export async function loadWorkSessions(product: ProjectProductConfig = CREW_PROD
   return sessions
 }
 
-export async function createWorkSession(title: string, description: string, icon?: string, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, mode?: ProductMode, rootPath?: string): Promise<WorkSession> {
+export async function createWorkSession(title: string, description: string, icon?: string, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, rootPath?: string): Promise<WorkSession> {
   const options = await loadAgentProfileProviderOptions(product.profileId)
   // The product default, unless this person cannot use it here (Claude Code and Codex are admins-only on some servers):
   // then the first coding agent they may run, so a new project does not start on a refused account (server B
@@ -90,7 +90,6 @@ export async function createWorkSession(title: string, description: string, icon
     } : {}),
     llmConfig,
     runtimeManifestName: 'workflow.json',
-    ...(mode ? { mode } : {}),
   })
   return project
 }
