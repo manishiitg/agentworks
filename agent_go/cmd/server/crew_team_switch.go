@@ -19,7 +19,8 @@ import (
 
 // The Team tab's on/off switch (owner, 4 Nov, PLAT-856-531): on, every agent ready to share is shared with the team
 // and, when no shared folder is chosen, an empty team/ folder in the Crew becomes it; off, only the owner is in the
-// team and no agent is shared. The roster stays saved either way. The Mac decides and does it; the screen and the
+// team and no agent is shared with the team or chosen people. Public (audience everyone) belongs to Mac online, not
+// Team, and stays (the decisions log, 4 Nov). The roster stays saved either way. The Mac decides and does it; the screen and the
 // Crew's chat (manage_crew_sync action=team) call the same code.
 
 const crewTeamDefaultFolder = "team"
@@ -102,15 +103,18 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 				return out, err
 			}
 		}
-	} else if len(current) > 0 && binding.Mode == "relay" && binding.Editing == "local" {
-		rows, rowsErr := api.macAgentRows(ctx, claims, project)
-		if rowsErr != nil {
-			return out, rowsErr
+	} else if binding.Mode == "relay" && binding.Editing == "local" {
+		public := slices.DeleteFunc(slices.Clone(current), func(agent macSharedAgent) bool { return agent.Audience != "everyone" })
+		if len(public) < len(current) {
+			rows, rowsErr := api.macAgentRows(ctx, claims, project)
+			if rowsErr != nil {
+				return out, rowsErr
+			}
+			if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, public); err != nil {
+				return out, err
+			}
+			out.Unshared = len(current) - len(public)
 		}
-		if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, []macSharedAgent{}); err != nil {
-			return out, err
-		}
-		out.Unshared = len(current)
 	}
 	log.Printf("[CREW_TEAM] local project=%s server_project=%s event=switch on=%t people=%d folder=%q folder_created=%t shared=%d needs_purpose=%d unshared=%d",
 		project, binding.PeerProjectID, on, len(saved.People), saved.Folder.Path, out.FolderCreated, len(out.Shared), len(out.NeedsPurpose), out.Unshared)

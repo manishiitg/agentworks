@@ -61,7 +61,7 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
   return <section aria-label="Team" className="mt-4 space-y-3 rounded-xl border border-border px-4 py-3">
     <div className="flex items-center gap-2"><Users className="h-4 w-4" /><h3 className="text-sm font-semibold">Team</h3><span className="ml-auto text-xs text-muted-foreground">{team.on && team.people.length ? `${team.people.length} people` : 'Only you'}</span><button type="button" title={askText} aria-label={askText} onClick={() => fillTeamSetupDraft(projectId)} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Ask</button><Switch aria-label="Team" disabled={busy || !target.localProject} checked={team.on} onCheckedChange={on => void turn(on)} /></div>
     {switchNote && <p className="text-xs text-muted-foreground">{switchNote}</p>}
-    {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work with people: every agent with a purpose is shared with your team, and an empty team/ folder becomes the shared folder if you have not chosen one.</p>}
+    {!team.on && <p className="text-xs text-muted-foreground">Off: only you (Public agents still answer everyone). Turn it on to work with people: every agent with a purpose is shared with your team, and an empty team/ folder becomes the shared folder if you have not chosen one.</p>}
     {team.on && <>
     <p className="text-xs text-muted-foreground">Choose who works with you. Each agent's sharing can be changed below.</p>
     {team.people.map(person => <div key={person.user_id} className="flex flex-wrap items-center gap-2 text-xs">
