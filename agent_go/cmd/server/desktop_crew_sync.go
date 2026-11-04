@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -207,7 +208,32 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			binding, _ = crewroot.ReadSync(roots.ID)
 			// Shares kept from before Reach was turned off go to the new online copy through the Access card's own path.
 			if shared := readMacSharedAgents(roots.ID); len(shared) > 0 && binding != nil {
-				if rows, e := api.macAgentRows(r.Context(), claims, roots.ID); e != nil {
+				// Turned on against another network, the kept people may not exist there: keep only those it knows.
+				dropped := 0
+				if people, e := desktopNetworkPeople(r.Context(), connection); e == nil {
+					known := map[string]bool{}
+					for _, person := range people {
+						known[person.ID] = true
+					}
+					for i := range shared {
+						kept := shared[i].People[:0]
+						for _, id := range shared[i].People {
+							if known[id] {
+								kept = append(kept, id)
+							} else {
+								dropped++
+							}
+						}
+						shared[i].People = kept
+					}
+					shared = slices.DeleteFunc(shared, func(agent macSharedAgent) bool { return agent.Audience == "chosen" && len(agent.People) == 0 })
+				}
+				if dropped > 0 {
+					log.Printf("[CREW_RELAY] project=%s reach_on dropped %d kept people this network does not know", roots.ID, dropped)
+				}
+				if len(shared) == 0 {
+					log.Printf("[CREW_RELAY] project=%s reach_on no kept shares apply to this network", roots.ID)
+				} else if rows, e := api.macAgentRows(r.Context(), claims, roots.ID); e != nil {
 					log.Printf("[CREW_RELAY] project=%s reach_on could not restore its shares: %v", roots.ID, e)
 				} else if _, _, e = api.pushMacSharedAgents(r.Context(), claims, roots.ID, binding, connection, rows, shared); e != nil {
 					log.Printf("[CREW_RELAY] project=%s reach_on could not restore its shares: %v", roots.ID, e)
