@@ -26,7 +26,8 @@ import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { TopBarEntitySelector } from '../../components/topbar/TopBarEntitySelector'
 import { UpdateProgressToast } from '../../components/UpdateProgressToast'
 import api, { agentApi } from '../../services/api'
-import type { AgentProfileSideChat } from '../../services/api-types'
+import type { AgentProfileSideChat, PollingEvent } from '../../services/api-types'
+import { agentIdentitySaved } from '../../utils/agentPurposeDraft'
 import { useWorkChatModels } from './useWorkChatModels'
 import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
@@ -543,6 +544,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const [listed, setListed] = useState<AgentProfileSideChat[] | null>(null)
   // The person's own Main chat's purpose, for its purpose icon (undefined: not theirs or not loaded).
   const [mainPurpose, setMainPurpose] = useState<string | undefined>()
+  const [mainIcon, setMainIcon] = useState<string | undefined>()
   const ownedListed = (listed || []).filter(chat => chat.can_write !== false)
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
@@ -638,7 +640,9 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       try {
         const rows = await agentApi.listAgentProfileSideChats(profileId, projectId, true)
         if (cancelled) return
-        setMainPurpose(rows.find(chat => chat.is_main)?.purpose ?? (rows.some(chat => chat.is_main) ? '' : undefined))
+        const main = rows.find(chat => chat.is_main)
+        setMainPurpose(main ? main.purpose || '' : undefined)
+        setMainIcon(main?.icon || undefined)
         const listed = rows.filter(chat => !chat.is_main)
         for (const chat of listed) {
           const state = useChatStore.getState()
@@ -711,7 +715,29 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       window.removeEventListener('focus', onFocus)
     }
   }, [allowSideChats, canonicalTabId, profileId, projectId])
-  return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
+  // An agent here that saved its name, purpose or icon (set_my_agent_identity): list again so every place shows it now.
+  const watchedSessions = [canonicalSessionId, ...(listed || []).map(chat => chat.session_id)].filter((id): id is string => !!id).join(' ')
+  useEffect(() => {
+    if (!allowSideChats || !watchedSessions) return
+    const sessions = watchedSessions.split(' ')
+    const seen = new Map<string, PollingEvent[]>()
+    const check = (tabEvents: Record<string, PollingEvent[]>, initial: boolean) => {
+      let saved = false
+      for (const id of sessions) {
+        const events = tabEvents[id] || []
+        const before = seen.get(id)
+        if (before === events) continue
+        seen.set(id, events)
+        if (initial || !before) continue
+        const fresh = events.length > before.length && events[before.length - 1] === before[before.length - 1] ? events.slice(before.length) : events.slice(-20)
+        if (fresh.some(agentIdentitySaved)) saved = true
+      }
+      if (saved) void syncRef.current()
+    }
+    check(useChatStore.getState().tabEvents, true)
+    return useChatStore.subscribe(state => check(state.tabEvents, false))
+  }, [allowSideChats, watchedSessions])
+  return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} mainIcon={mainIcon}
     allowSideChats={allowSideChats} opening={opening} surface="work" projectActivity={projectActivity}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}

@@ -18,7 +18,7 @@ import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
-import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
+import { fillAgentIconDraft, fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 import { useAgentMenuState } from './agentMenuState'
 import { AgentMark } from './AgentIcon'
 
@@ -34,12 +34,13 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 }
 
 /** One tab-management view; each product supplies its existing server operations. */
-export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
+export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, mainIcon, allowSideChats, opening, surface,
   onOrder, onPin, onRename, onOpen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
   mainPurpose?: string
+  mainIcon?: string
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
   onOrder: (keys: string[]) => Promise<void>; onPin: (key: string, pinned: boolean) => Promise<void>
   onRename: (tab: ChatTab, name: string) => Promise<boolean | void>; onOpen: (name: string) => Promise<boolean | void>
@@ -118,12 +119,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       asking: ask?.active,
       info: purpose === undefined ? undefined : {
         name: tabLabel(tab),
-        icon: listedFor(tab)?.icon,
+        icon: (tab.tabId === canonicalTabId ? mainIcon : listedFor(tab)?.icon) || undefined,
         purpose,
         sharedWith: share?.line,
         canChange: share?.canChange,
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
+        onSetIcon: () => fillAgentIconDraft(tab.tabId),
         onSharing: macHere && placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
       },
     }
