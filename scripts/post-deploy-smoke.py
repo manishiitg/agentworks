@@ -6,7 +6,9 @@ that provider for the chat only (models action=set scope=tab), and ask for one A
 owners list. Then, in the same chat (the CLI's next launch, as a person's next message), a native shell command that
 reports the account it runs as and writes, reads and removes a file in the Crew (PLAT-872-90: a CLI that worked once
 failed on its next launch, and one turn per provider never saw it). A provider passes when each turn was accepted
-once and answered once with the expected reply, within the time limit. The side chat is closed afterwards; the Crew's own model is never changed.
+once and answered once with the expected reply, within the time limit. After turn 2 it also checks what was lost
+once before (PLAT-872, 4 Nov): turn 2 continued the AI's own session (no hand-over notice, so no history reload), the
+server knows the chat's size (idle compaction needs it), and Claude runs with its earlier compaction point. The side chat is closed afterwards; the Crew's own model is never changed.
 
 It reports and never gates a deploy: the exit code is 0 unless the check itself could not run.
 
@@ -32,8 +34,18 @@ PROMPT = ("Post-deploy smoke check. Call workspace action=owners once for this C
 
 # The second turn: the CLI's own shell, in the Crew's folder, as whatever account the platform launched it as.
 SHELL_PROMPT = ("Post-deploy smoke check, part 2. Use your shell tool to run exactly this one command in the Crew folder: "
-                "f=.smoke-$$; echo ok > $f && cat $f && rm $f; id -un\n"
-                "Then reply with exactly RUNAS=<the account name it printed> FILE=<ok if it printed ok, else fail> and nothing else.")
+                "f=.smoke-$$; echo ok > $f && cat $f && rm $f; id -un; echo cw=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-none}\n"
+                "Then reply with exactly RUNAS=<the account name it printed> FILE=<ok if it printed ok, else fail> "
+                "CW=<the value after cw=> and nothing else.")
+
+
+# Programs whose chats report their size to the server (needed for idle compaction), and Claude's compaction point.
+SIZE_REPORTED = {"claude-code", "codex-cli", "muse-cli"}
+CLAUDE_COMPACT_WINDOW = "300000"
+
+
+def word(answer, key):
+    return next((w[len(key):] for w in answer.replace(key, " " + key).split() if w.startswith(key)), "")
 
 
 # The third turn (with --app-host): start a tiny app the way a person's app is started from chat, detached, on this
@@ -117,8 +129,9 @@ def configured_providers(chats):
 
 
 def turn(config, workspace, chat_id, prompt, started, limit, accept, expected):
-    """Send prompt in the chat and follow that one turn. Returns (problems, answer): no problems when it was accepted
-    once and answered once with a reply accept() takes."""
+    """Send prompt in the chat and follow that one turn. Returns (problems, answer, notice): no problems when it was
+    accepted once and answered once with a reply accept() takes; notice is True when the platform put a hand-over
+    notice in front of the message (a new AI session that was given the conversation instead of resuming its own)."""
     asked = call(config, "workspace", {"action": "ask", "workspace_id": workspace, "chat_id": chat_id, "submission_id": str(uuid.uuid4()),
                                        "message": prompt})
     query = asked.get("query_id", "")
@@ -157,7 +170,25 @@ def turn(config, workspace, chat_id, prompt, started, limit, accept, expected):
     if problems:
         tools = [m.get("text", "") for m in this if m.get("role") == "tool"]
         problems.append("tools: " + (", ".join(tools[:6]) or "none"))
-    return problems, answers[0] if len(answers) == 1 else ""
+    notice = any((m.get("text") or "") != prompt for m in sent)
+    return problems, answers[0] if len(answers) == 1 else "", notice
+
+
+def continuity_problems(config, workspace, chat_id, provider, answer, notice):
+    """What turn 2 shows about features lost once before: native resume, a known chat size, Claude's compaction point."""
+    problems = []
+    if notice:
+        problems.append("turn 2 started a new AI session with the conversation handed over, instead of resuming its own")
+    if provider in SIZE_REPORTED:
+        try:
+            context = call(config, "workspace", {"action": "chats", "workspace_id": workspace, "chat_id": chat_id}).get("context") or {}
+        except Exception as error:
+            context = {"error": first_line(str(error))}
+        if not context.get("used_tokens"):
+            problems.append(f"the server does not know this chat's size, so it is never compacted when idle ({context.get('error') or 'used_tokens missing'})")
+    if provider == "claude-code" and word(answer, "CW=") != CLAUDE_COMPACT_WINDOW:
+        problems.append(f"Claude runs without its compaction point (CW={word(answer, 'CW=') or 'missing'}, want {CLAUDE_COMPACT_WINDOW})")
+    return problems
 
 
 def smoke(config, workspace, target, owners, limit, app=None):
@@ -175,17 +206,19 @@ def smoke(config, workspace, target, owners, limit, app=None):
         if target["model_id"]:
             choice["model_id"] = target["model_id"]
         call(config, "models", choice)
-        problems, _ = turn(config, workspace, chat_id, PROMPT, started, limit,
+        problems, _, _ = turn(config, workspace, chat_id, PROMPT, started, limit,
                            lambda answer: f"OWNERS={owners}" in answer.replace(" ", ""), f"OWNERS={owners}")
         if not problems:
-            problems, answer = turn(config, workspace, chat_id, SHELL_PROMPT, started, limit,
-                                    lambda answer: "FILE=ok" in answer.replace(" ", ""), "FILE=ok")
+            problems, answer, notice = turn(config, workspace, chat_id, SHELL_PROMPT, started, limit,
+                                            lambda answer: "FILE=ok" in answer.replace(" ", ""), "FILE=ok")
             problems = [f"turn 2: {p}" for p in problems]
-            target["runas"] = next((w[len("RUNAS="):] for w in answer.replace("RUNAS=", " RUNAS=").split() if w.startswith("RUNAS=")), "")
+            target["runas"] = word(answer, "RUNAS=")
+            if not problems:
+                problems = continuity_problems(config, workspace, chat_id, target["provider"], answer, notice)
         if not problems and app:
             host, port, stamp = app
             expected = f"smoke-app {target['provider']} "
-            app_problems, _ = turn(config, workspace, chat_id, APP_PROMPT.format(command=app_command(target["provider"], port, stamp)),
+            app_problems, _, _ = turn(config, workspace, chat_id, APP_PROMPT.format(command=app_command(target["provider"], port, stamp)),
                                    started=time.monotonic(), limit=limit, accept=lambda answer: expected in answer, expected=expected)
             seen = fetch(host, port)
             target["app"] = (f"app on :{port} reachable from outside" if seen.startswith(expected)
