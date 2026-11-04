@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Users } from 'lucide-react'
 
-// The agent's face on its tab (owner, 4 Nov, tab design A): its first letter on a colour taken from its name. Every
+// The agent's face on its tab (owner, 4 Nov, tab design A; calm option B): its first letter in a colour taken from its
+// name, on a faint circle of that colour. Every
 // state is a small mark on it: a ring while it works (amber when it needs you, red when it failed), a green dot while
 // someone else is asking it, a people badge when it is shared. Hover or click opens one card about the agent.
 const AVATAR_COLOURS = ['#9db7ff', '#8fd6b4', '#f0c27a', '#f2a3b3', '#b9a4f5', '#7fd0e0', '#d6c78f']
@@ -63,8 +64,8 @@ export function AgentAvatar({ name, status, asking, shared, card }: { name: stri
       onMouseEnter={show} onMouseLeave={hide} onFocus={show}
       onClick={event => { event.stopPropagation(); if (!card) return; if (pinned) { setAt(null); setPinned(false) } else { show(); setPinned(true) } }}
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
-      style={{ background: agentAvatarColour(name) }}
-      className="relative grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      style={{ background: `${agentAvatarColour(name)}1f`, color: agentAvatarColour(name) }}
+      className="relative grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {letter}
       {RING[status] && <span aria-hidden="true" className={`pointer-events-none absolute -inset-[3px] rounded-full border-2 ${status === 'busy' ? 'border-transparent' : ''} ${RING[status]}`} />}
       {asking && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border border-background bg-emerald-500 motion-safe:animate-pulse" />}
