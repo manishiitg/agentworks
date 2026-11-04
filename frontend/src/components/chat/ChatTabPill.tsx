@@ -11,6 +11,7 @@ import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { compactOwnerChatName, ownerInitials } from './chatTabName'
 import { AgentPurposeButton } from './AgentPurposeButton'
+import { AgentAvatar, type AgentAvatarCard } from './AgentAvatar'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -35,6 +36,8 @@ export interface ChatTabPillProps {
   purpose?: string
   /** Puts the purpose request in this tab's chat box; the icon sits where the status dot is while the tab is idle. */
   onSetPurpose?: () => void
+  /** A Crew agent's tab (owner, 4 Nov, tab design A): its avatar replaces the status slot and carries every mark. */
+  agent?: { asking?: boolean; shared?: string; card?: AgentAvatarCard }
 }
 
 const ALLOW_MAKE_SCHEDULE_INTERACTIVE = false
@@ -55,7 +58,7 @@ const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
 /** The shared Chat tab pill used by workflows, Work, and Vault. */
 export const ChatTabPill = React.memo<ChatTabPillProps>(({
   tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface, workspaceActivity,
-  onTabClick, onCloseTab, onRename, onMakeInteractive, onUnpin, purpose, onSetPurpose, readOnly = false, closeStopsSession = false,
+  onTabClick, onCloseTab, onRename, onMakeInteractive, onUnpin, purpose, onSetPurpose, agent, readOnly = false, closeStopsSession = false,
 }) => {
   const ownerName = tab.metadata?.agentProfileTabOwnerName
   const yourTab = !!ownerName && tab.metadata?.agentProfileTabCanWrite === true
@@ -161,7 +164,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       aria-label={tooltip}
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
-      className={`group relative flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-md py-1 text-xs'} ${
+      className={`group relative flex min-w-0 cursor-pointer items-center font-medium outline-none transition-colors ${agent ? 'gap-2 rounded-full py-1 pl-1 pr-3 text-[13px]' : `gap-1.5 border-b-2 border-transparent px-2 ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-md py-1 text-xs'}`} ${
         // A soft background identifies the selected tab without changing its height.
         isActive
           ? 'bg-muted font-semibold text-foreground'
@@ -172,6 +175,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
+      {agent ? <AgentAvatar name={displayName} status={isBlank ? 'ready' : status} asking={agent.asking} shared={agent.shared} card={agent.card} /> :
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {/* An idle tab shows its owner a quiet purpose icon in this spot instead (owner, 3 Nov). */}
         {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}
@@ -185,7 +189,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
                 <span className="relative h-2.5 w-2.5 rounded-full bg-[hsl(var(--warning))]" />
               </span>
             : <span className={`h-2 w-2 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
-      </span>
+      </span>}
       {isRenaming ? (
         <input
           ref={renameInputRef}

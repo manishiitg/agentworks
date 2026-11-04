@@ -13,7 +13,8 @@ import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
-import { useCrewLivesOnMac, useMacSharedTabs, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
+import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
+import type { ChatTabPillProps } from './ChatTabPill'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -114,9 +115,32 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const placeWord = place === 'mac' ? 'On your Mac' : place === 'mac_off' ? 'Mac off' : place === 'moving' ? 'Moving online' : ''
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
-  // Which agents others can message, for the menu's "Shared" mark (a Crew on this Mac).
-  const sharedTabs = useMacSharedTabs(placeProject, moreOpen && livesOnMacHere(place))
-  const sharedHere = (tab: ChatTab) => tab.tabId === canonicalTabId ? sharedTabs.includes('main') : sharedTabs.some(id => sideChatKey(tab)?.endsWith(`:chat:${id}`))
+  // Which agents others can message and who asked them lately (a Crew on this Mac): marks on each tab's avatar.
+  const macHere = livesOnMacHere(place) && !livesOnMac
+  const shares = useMacSharedAgents(placeProject, macHere)
+  const asking = useCrewAsking(macHere ? placeProject : undefined)
+  const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
+  const sharedHere = (tab: ChatTab) => { const id = agentId(tab); return Boolean(id && shares[id]) }
+  const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
+    if (!isAgentTab(tab)) return undefined
+    const id = agentId(tab)
+    const share = id ? shares[id] : undefined
+    const ask = id ? asking.find(item => item.tab === id) : undefined
+    const purpose = purposeOf(tab)
+    const ago = ask && (ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`)
+    return {
+      asking: ask?.active,
+      shared: share?.line,
+      card: purpose === undefined ? undefined : {
+        purpose,
+        sharedWith: share?.line,
+        canChange: share?.canChange,
+        lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
+        onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
+        onSharing: macHere && placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
+      },
+    }
+  }
   const [actionsFor, setActionsFor] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
   const canReorderInMenu = tabs.length > 5
@@ -305,6 +329,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
         purpose={purposeOf(tab)}
         onSetPurpose={purposeOf(tab) === undefined ? undefined : () => fillAgentPurposeDraft(tab.tabId)}
+        agent={agentFace(tab)}
         titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
         onTabClick={selectTab}
         onCloseTab={closeProjectTab}

@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkflowReadOnly } from '../../utils/workflowPermissions'
 import { ChatTabPill } from './ChatTabPill'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
+import type { ChatTabPillProps } from './ChatTabPill'
 
 export interface AgentWorksChatTabItemProps {
   tab: ChatTab
@@ -22,6 +23,7 @@ export interface AgentWorksChatTabItemProps {
   onUnpin?: () => void
   purpose?: string
   onSetPurpose?: () => void
+  agent?: ChatTabPillProps['agent']
 }
 
 /** Runtime adapter for the shared Chat tab presentation. */

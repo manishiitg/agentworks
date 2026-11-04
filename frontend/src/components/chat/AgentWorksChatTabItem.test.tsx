@@ -109,7 +109,8 @@ it("shows working, waiting and idle on an unfocused tab", async () => {
   expect((await render({ isStreaming: true }))?.getAttribute("aria-label")).toBe("Needs you");
   useChatStore.setState({ activeSessionsCache: [] });
 
-  expect((await render({}))?.getAttribute("aria-label")).toBe("Ready");
+  // An idle chat shows no dot at all (owner, 2 Nov).
+  expect(await render({})).toBeNull();
 });
 
 it('makes the workspace name prominent beside its product icon, with the product named on hover', async () => {
@@ -183,8 +184,8 @@ it.each([undefined, 'agentworks', 'relays', 'work', 'mcp-gateway'] as (ProductSu
     await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, needs_user_input: true }] as never }) })
     await render()
     expectSlot('Needs you')
-    // The server's failed phase (a turn with no response) shows Failed until the next turn.
-    await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, runtime_state: { phase: 'failed' } }] as never }) })
+    // The server's failed phase (a turn with no response) shows Failed until the person opens the chat after it ended.
+    await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, runtime_state: { phase: 'failed', completed_at: new Date(Date.now() + 60_000).toISOString() } }] as never }) })
     await render()
     expectSlot('Failed')
     await act(async () => { useChatStore.setState({ activeSessionsCache: [] }) })

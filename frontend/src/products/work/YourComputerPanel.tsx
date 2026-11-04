@@ -13,6 +13,8 @@ import { ProductSlackPanel } from '../../components/integrations/ProductSlackPan
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
+import { hydrateTabEvents } from '../../utils/sessionRestore'
+import { activateTab } from '../../utils/activateTab'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
@@ -304,6 +306,15 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   }, [connection, projectId, endpoint])
   const busyRef = useRef(false)
   busyRef.current = busy
+  const cards = useRef<HTMLElement>(null)
+  // Opened from an agent's tab: bring that agent's card into view once the cards are on screen.
+  useEffect(() => {
+    const pending = pendingAccess
+    if (!rows || !pending || pending.projectId !== projectId) return
+    const card = cards.current?.querySelector(`[data-shared-agent-card="${CSS.escape(pending.tab)}"]`)
+    pendingAccess = null
+    card?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, [rows, supported, projectId])
   if (!supported || !rows) return null
   const purposeOf = (tab: string) => rows.find(row => row.tab === tab)?.purpose?.trim() || ''
   // Saves the whole list; an agent waits to be saved until its tab has a purpose and, for chosen people, someone.
@@ -329,13 +340,13 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
   const personName = (id: string) => people.find(person => person.id === id)?.username || id
   const choices = (agent: SharedAgent) => people.filter(person => !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
-  return <section aria-label="Who can message your agents" className="mt-4 space-y-3">
+  return <section ref={cards} aria-label="Who can message your agents" className="mt-4 space-y-3">
     <p className="text-sm font-semibold">Who can message your agents</p>
     {rows.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
       const saved = Boolean(agent && purpose && (agent.audience === 'everyone' || agent.people?.length))
-      return <div key={row.tab} className={`rounded-xl border border-border px-4 py-3 ${agent ? 'space-y-2.5' : 'opacity-70'}`}>
+      return <div key={row.tab} data-shared-agent-card={row.tab} className={`rounded-xl border border-border px-4 py-3 ${agent ? 'space-y-2.5' : 'opacity-70'}`}>
         <div className="flex items-center gap-2">
           <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
           <span className="min-w-0 truncate text-sm font-semibold">{row.name}</span>
@@ -540,22 +551,75 @@ export function useMacTabShareLine(projectId?: string, conversationKey?: string)
   return line
 }
 
-/** Which of a Mac Crew's agents others can message ("main" or a side tab's id), read when the agents menu opens. */
-export function useMacSharedTabs(projectId?: string, enabled = true): string[] {
-  const [tabs, setTabs] = useState<string[]>([])
+/** How one of a Mac Crew's agents is shared, for its tab and the agents menu. */
+export type MacAgentShare = { line: string; canChange: boolean }
+
+/** Which of a Mac Crew's agents others can message ("main" or a side tab's id) and with whom ("tester-b", "everyone in
+ * the company"), from this Mac's own shared list and its network's people. Empty while Reach is off. */
+export function useMacSharedAgents(projectId?: string, enabled = true): Record<string, MacAgentShare> {
+  const [shares, setShares] = useState<Record<string, MacAgentShare>>({})
   useEffect(() => {
+    setShares({})
     if (!enabled || !projectId || !crewCloudMode() || getRawActiveWorkspaceId() !== 'local') return
     let live = true
-    void (async () => {
+    const load = async () => {
       const { data } = await api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { skipSessionContext: true })
       const connection = data.binding?.connection_id
-      if (!connection || !live) return
+      if (!connection) { if (live) setShares({}); return }
       const { agents } = await desktopRequest<{ agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'agents' })
-      if (live) setTabs((agents || []).map(agent => agent.tab))
-    })().catch(() => {})
-    return () => { live = false }
+      const chosen = (agents || []).some(agent => agent.audience !== 'everyone')
+      const people = chosen ? await viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(result => result.users || []).catch(() => [] as Person[]) : []
+      const next: Record<string, MacAgentShare> = {}
+      for (const agent of agents || []) {
+        const names = (agent.people || []).map(id => people.find(person => person.id === id)?.username || 'someone')
+        next[agent.tab] = { canChange: Boolean(agent.can_change), line: agent.audience === 'everyone' ? 'everyone in the company' : names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ') }
+      }
+      if (live) setShares(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+    }
+    const reload = () => { void load().catch(() => {}) }
+    reload()
+    const timer = window.setInterval(reload, 15000)
+    window.addEventListener('focus', reload)
+    return () => { live = false; window.clearInterval(timer); window.removeEventListener('focus', reload) }
   }, [projectId, enabled])
-  return tabs
+  return shares
+}
+
+// Opening Access at one agent's card, from that agent's tab: the Crew menu opens Access, then the card scrolls into view.
+let pendingAccess: { projectId: string; tab: string; opened?: boolean } | null = null
+export function openCrewAccess(projectId: string, tab: string) {
+  pendingAccess = { projectId, tab }
+  window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId } }))
+}
+/** True once for a pending request: the Crew menu opens Access for it, and Back is not overridden afterwards. */
+export function takeCrewAccess(projectId?: string) {
+  const pending = pendingAccess
+  if (!pending || pending.projectId !== projectId || pending.opened) return false
+  pending.opened = true
+  return true
+}
+
+/** Opens another person's own thread with one of this Mac's shared agents, for the owner to read. */
+export async function openCrewAskThread(projectId: string, ask: CrewAsk) {
+  const store = useChatStore.getState()
+  const tabs = Object.values(store.chatTabs)
+  const main = tabs.find(row => row.metadata?.agentProfileProjectId === projectId && row.metadata?.agentProfileIsMainChat && !row.metadata?.isViewOnly)
+  if (!main || !ask.session_id) return
+  const existing = tabs.find(row => row.sessionId === ask.session_id && row.metadata?.isViewOnly)
+  const tabId = existing?.tabId || await store.createChatTab(`${ask.sender}'s chat with ${ask.agent}`, {
+    ...main.metadata,
+    agentProfileIsMainChat: false,
+    agentProfileBuilder: false,
+    agentProfileConversationKey: `${projectId}:history:${ask.session_id}`,
+    agentProfileConversationId: undefined,
+    isViewOnly: true,
+    viewOnlyWriter: ask.sender,
+    readOnlyRestoredAt: Date.now(),
+    userInteractiveContinuation: false,
+  }, ask.session_id)
+  store.setTabCanSteer(tabId, false)
+  await hydrateTabEvents(ask.session_id, { workspacePath: main.metadata?.agentProfileWorkspace, fallbackToChatHistory: true, preferChatHistory: true })
+  activateTab(tabId)
 }
 
 /** Where the people it is shared with reach a shared agent (owner, 3 Nov): one audience for all three ways. */
