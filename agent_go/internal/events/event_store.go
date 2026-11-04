@@ -986,6 +986,9 @@ func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
 	if isUsageOnlyEvent(event) {
 		return nil // for the cost ledger only; never a chat event (see usage_only_event.go)
 	}
+	if compactionHidesEvent(sessionID, event) {
+		return nil // the compaction's own turn is not shown in the chat (turn_phase.go)
+	}
 	es.mu.Lock()
 	prepare := es.eventPreparer
 	es.mu.Unlock()

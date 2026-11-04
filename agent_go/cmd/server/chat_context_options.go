@@ -527,8 +527,11 @@ func (api *StreamingAPI) startClaudeTerminalNow(owner string, tab chatContextTab
 // 43 steps at 290-390K each, 14.8M input tokens (4 Nov).
 const compactEarlyTokens = 300_000
 
+// compactEarlyQuiet is how long a chat must stay quiet after a reply before "Compact at 300K" compacts it.
+const compactEarlyQuiet = time.Minute
+
 func compactEarlyHint() string {
-	return fmt.Sprintf("When a reply ends with a chat over %dK tokens, it is summarised right away, so each next step reads less. For all your chats; off by default.", compactEarlyTokens/1000)
+	return fmt.Sprintf("About a minute after a reply ends with a chat over %dK tokens, it is summarised, so each next step reads less. For all your chats; off by default.", compactEarlyTokens/1000)
 }
 
 // compactEarlyAfterTurn compacts a chat whose person turned "Compact at 300K" on, once its reply has ended with the
@@ -542,15 +545,25 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 	if !found || !loadCompactionPreferences(context.Background(), owner).CompactEarly {
 		return
 	}
-	idleCompacts.mu.Lock()
-	var provider string
-	if c := idleCompacts.chats[sessionID]; c != nil {
-		provider = c.provider
+	followed := func() (provider string, lastPerson time.Time) {
+		idleCompacts.mu.Lock()
+		defer idleCompacts.mu.Unlock()
+		if c := idleCompacts.chats[sessionID]; c != nil {
+			return c.provider, c.lastPerson
+		}
+		return "", time.Time{}
 	}
-	idleCompacts.mu.Unlock()
+	provider, person := followed()
 	tokens, _, _ := api.chatContextUsage(sessionID, provider, "", false)
 	if tokens < compactEarlyTokens {
 		return
+	}
+	// Wait for a quiet chat: the person is often still reading the reply or typing the next message, and a
+	// compaction then makes them wait (4 Nov: 20 s after a reply, the next message waited behind it).
+	time.Sleep(compactEarlyQuiet)
+	if _, latest := followed(); !latest.Equal(person) || api.chatContextBusy(owner, sessionID) != "" {
+		log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=skip reason=compact_early_chat_active", sessionID, provider, owner, tokens)
+		return // the next reply's end checks again
 	}
 	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=compact reason=compact_early", sessionID, provider, owner, tokens)
 	api.compactChatAfterTurn(owner, tab)
