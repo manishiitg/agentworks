@@ -763,11 +763,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			llmOptions["reasoning_effort"] = effort
 		}
 		// No account chosen: a person who added their own account for this provider uses it
-		// (owner decision 2026-09-30). Choosing an account, the server one included, wins.
-		// Interactive chats only: a schedule, webhook, bot or automatic notice keeps the account the
-		// project names (else the server's) instead of silently spending someone's personal plan.
-		interactiveTurn := strings.TrimSpace(req.TriggeredBy) == "" && strings.TrimSpace(req.BotPlatform) == "" && !req.IsAutoNotification
-		if publication == nil && strings.TrimSpace(req.ConnectionID) == "" && !isGlobalScope && interactiveTurn {
+		// (owner decision 2026-09-30), typed or not (owner, 4 Nov: agent messages and schedules use
+		// the account the person selected too). Choosing an account, the server one included, wins.
+		if publication == nil && strings.TrimSpace(req.ConnectionID) == "" && !isGlobalScope {
 			req.ConnectionID = ownDefaultProviderAccountID(ctx, userID, provider)
 		}
 		req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: provider, ModelID: modelID, Options: llmOptions, ConnectionID: req.ConnectionID}}

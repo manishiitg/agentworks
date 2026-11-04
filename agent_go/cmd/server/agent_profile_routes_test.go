@@ -464,6 +464,8 @@ func TestProductTurnAccountChangeKeepsTheConversation(t *testing.T) {
 // Owner 2026-10-07 (PLAT-676): a chat's account never changes by itself. After a provider switch it
 // is resolved once (the person's own account, else the server's), recorded and kept: the second
 // message used to pin the server account and restart the CLI. Only an explicit Models choice moves it.
+// The turns here are not typed by a person (an agent message, owner's Mac 4 Nov): they used to get
+// the server account instead of the person's own and failed "not logged in".
 func TestProviderSwitchKeepsTheChatsAccount(t *testing.T) {
 	for _, tc := range []struct{ name, own string }{{"own account", "alice-muse"}, {"no own account", ""}} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -481,7 +483,6 @@ func TestProviderSwitchKeepsTheChatsAccount(t *testing.T) {
 			}
 			turn := func(input AgentProfileChatRequest) (QueryRequest, ProductConversationRecord) {
 				t.Helper()
-				input.interactive = true
 				query, err := prepareProductConversationTurn(req.Context(), "alice", profile, input, conversation)
 				if err != nil {
 					t.Fatal(err)
