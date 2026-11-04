@@ -583,6 +583,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if !crewRelayTwin(twin.ProjectID) {
 				t.Fatal("a new twin is not on the Mac")
 			}
+			t.Run("published agent execution", func(t *testing.T) { checkCrewPublishedExecution(t, twin.ProjectID, "relay-pair") })
 			checkCrewReachOff(t, api, owner, twin.ProjectID, "relay-pair", serverRoots.ID, binding.PairID)
 			otherPath, _ := crewSyncManifestPath(serverRoots.ID + "-other")
 			write(filepath.Dir(otherPath), filepath.Base(otherPath), "keep")

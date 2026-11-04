@@ -175,7 +175,7 @@ func applyCrewChatMode(profile *resolvedAgentProfile, req *QueryRequest, readOnl
 		return fmt.Errorf("render Crew %s prompt: %w", crewCLIMode(readOnly), err)
 	}
 	profile.Definition = definition
-	profile.Prompt = strings.TrimSpace(rendered) + profile.AgentRolePrompt
+	profile.Prompt = strings.TrimSpace(rendered) + profile.AgentRolePrompt + profile.PublishedAgentContext
 	if profile.Publication != nil {
 		if profile.Publication.AgentID != "" {
 			profile.Prompt += "\n\nYour published source is " + profile.Publication.Name + ". Its instructions and working data are separate from Main. Use the Crew's existing resources within this turn's permissions."

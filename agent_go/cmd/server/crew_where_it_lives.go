@@ -69,11 +69,16 @@ func migrateCrewSyncToRelay() {
 
 const crewOnMacRefusal = "This Crew lives on its owner's Mac, so it can't answer here."
 
-// crewLivesOnMac reports a server turn aimed at the empty online copy of a Crew that lives on its owner's Mac.
-// Such a turn would run with none of the Crew's files, so every server path refuses it; the owner's own chat reaches
-// the Mac through the relay before this check.
+// crewLivesOnMac reports a server turn whose agent still runs on the Mac.
+// Only a completed publication for this agent and the current connection makes
+// its server runtime available; the other agents continue through the Mac relay.
 func crewLivesOnMac(profileID, conversationKey string) bool {
-	return !IsLocalMode() && profileID == crewProfileID && crewRelayTwin(crewResourceProjectID(conversationKey))
+	project := crewResourceProjectID(conversationKey)
+	if IsLocalMode() || profileID != crewProfileID || !crewRelayTwin(project) {
+		return false
+	}
+	placement, err := crewPublishedAgent(project, crewAgentPublishTab(conversationKey))
+	return err != nil || placement == nil || placement.Location != "server"
 }
 
 type crewMacCallerKey struct{}
