@@ -20,13 +20,12 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const activeTabId = useChatStore(state => state.activeTabId)
   const [showHidden, setShowHidden] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
-  // The open agent is in the top line, so it is not listed again here (owner, 4 Nov); its ⌘number stays its own.
-  const others = crew.agents.filter(agent => agent.tabId !== activeTabId)
+  // Every agent is listed, the open one highlighted, so the menu matches the top line (owner, 4 Nov: "show that on left also").
   const total = crew.agents.length + crew.closed.length
-  if (view === 'tabs' || crew.projectId !== projectId || total <= crew.agents.length - others.length) return null
-  // Hidden agents (unpinned, as on the tab bar) sit at the end.
-  const shown = others.filter(agent => agent.pinned !== false)
-  const hidden = others.filter(agent => agent.pinned === false)
+  if (view === 'tabs' || crew.projectId !== projectId || !crew.agents.length) return null
+  // Hidden agents (unpinned, as on the tab bar) sit at the end; the open one always stays in view.
+  const shown = crew.agents.filter(agent => agent.pinned !== false || agent.tabId === activeTabId)
+  const hidden = crew.agents.filter(agent => agent.pinned === false && agent.tabId !== activeTabId)
   const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
     {shown.map(row)}
@@ -84,10 +83,9 @@ export function RailCrewAgents() {
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
   const projectId = crew.projectId
-  const others = crew.agents.filter(agent => agent.tabId !== activeTabId)
-  if (!projectId || others.length === crew.agents.length || (!others.length && !crew.closed.length)) return null
+  if (!projectId || !crew.agents.some(agent => agent.tabId === activeTabId)) return null
   return <div role="list" aria-label="Agents" className="mt-2 flex min-h-0 flex-col items-center gap-1 overflow-y-auto border-t border-border/70 pt-2 [scrollbar-width:none]">
-    {others.map(agent => <RailAgent key={agent.tabId} agent={agent} active={false} />)}
+    {crew.agents.map(agent => <RailAgent key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} />)}
     <button type="button" title="All agents" aria-label="All agents" onClick={() => openTeamBoard(projectId)}
       className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
       <MoreHorizontal aria-hidden="true" className="h-4 w-4" />
