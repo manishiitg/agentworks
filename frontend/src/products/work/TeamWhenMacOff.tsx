@@ -31,17 +31,18 @@ export function useTeamCopyStatus(projectId: string, connection: string) {
   return { status, error }
 }
 
-/** When the server last took a changed copy from the Mac, in plain words. */
-function copiedAgo(at?: string) {
+/** When the copy last changed: the Mac checks every 2 minutes while it is on but sends only a change (record_at). */
+function copiedAgo(at: string | undefined, macOn: boolean) {
   const time = at ? Date.parse(at) : NaN
   if (Number.isNaN(time)) return 'not copied yet'
+  const prefix = macOn ? 'copy up to date · last changed' : 'last changed'
   const minutes = Math.max(0, Math.round((Date.now() - time) / 60000))
-  if (minutes < 1) return 'last copied just now'
-  if (minutes < 60) return `last copied ${minutes} min ago`
+  if (minutes < 1) return `${prefix} just now`
+  if (minutes < 60) return `${prefix} ${minutes} min ago`
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `last copied ${hours === 1 ? '1 hour' : `${hours} hours`} ago`
+  if (hours < 24) return `${prefix} ${hours} h ago`
   const days = Math.round(hours / 24)
-  return `last copied ${days === 1 ? '1 day' : `${days} days`} ago`
+  return `${prefix} ${days === 1 ? '1 day' : `${days} days`} ago`
 }
 
 /** The tab's one line on where things live. */
@@ -54,7 +55,7 @@ export function TeamDataLine({ network }: { network: string }) {
 /** What the team copy keeps, when it was last copied and what it did today, right after the shared folder. */
 export function TeamWhenMacOff({ status, error, network }: ReturnType<typeof useTeamCopyStatus> & { network: string }) {
   if (!status) return error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null
-  const now = [copiedAgo(status.record_at),
+  const now = [copiedAgo(status.record_at, status.mac_on),
     status.answered_today === 1 ? '1 question answered today' : `${status.answered_today} questions answered today`,
     status.mac_on ? 'your Mac is on' : 'your Mac is off',
     ...(status.people || []).map(person => `${person.name}'s Mac is ${person.mac_on ? 'on' : 'off'}`)]
