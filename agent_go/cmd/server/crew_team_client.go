@@ -133,6 +133,7 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 		}
 	}
 	if !IsLocalMode() {
+		api.startCrewTeamServerCopies(ctx)
 		return cancel
 	}
 	go func() {
@@ -415,7 +416,7 @@ func transferCrewTeamBundle(ctx context.Context, c desktopConnection, project st
 		if method == http.MethodGet && offset > 0 {
 			r.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 		}
-		client := desktopHTTPClient()
+		client := crewTeamHTTPClient(ctx)
 		client.Timeout = 2 * time.Minute
 		res, e := client.Do(r)
 		if e != nil {
