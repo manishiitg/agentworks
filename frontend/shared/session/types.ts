@@ -77,8 +77,6 @@ export interface GetEventsResponse {
   last_processed_index?: number // Last index processed in unfiltered array (for correct sinceIndex tracking when filtering)
   has_running_background_agents?: boolean // Whether background agents are still running for this session
   is_synthetic_turn?: boolean // True when running auto-notification turn (input remains locked as normal)
-  /** Server-projected source of the work this message is waiting for. */
-  queue_detail?: string
   can_steer?: boolean // True when a live foreground agent can accept steer injection
   runtime_state?: RuntimeSnapshot
   oldest_sequence?: number
@@ -98,6 +96,8 @@ export interface PendingQueuedMessage {
   /** The chat is being updated (new version or settings) before this message can go in. */
   refreshing?: boolean
   queue_reason?: 'starting' | 'running' | 'waiting' | 'refreshing'
+  /** Server-projected source of the work this message is waiting for. */
+  queue_detail?: string
   can_steer?: boolean
   /** Handed to its turn; the chat shows it as being sent until the turn's user row arrives. */
   started?: boolean
