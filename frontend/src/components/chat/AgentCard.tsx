@@ -43,7 +43,7 @@ export const useAgentsViewStore = create<{ view: 'menu' | 'tabs' | null; set: (v
   set: view => set({ view }),
 }))
 
-export function AgentHoverCard({ info, children }: { info?: AgentCardInfo; children: ReactNode }) {
+export function AgentHoverCard({ info, children, side = 'below' }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right' }) {
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
@@ -61,12 +61,15 @@ export function AgentHoverCard({ info, children }: { info?: AgentCardInfo; child
   if (!info) return <>{children}</>
   const open = () => {
     const rect = anchor.current?.getBoundingClientRect()
-    if (rect) setAt({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 336)) })
+    if (!rect) return
+    // The collapsed rail opens the card beside it; everywhere else below the name.
+    if (side === 'right') setAt({ top: Math.max(8, Math.min(rect.top - 8, window.innerHeight - 240)), left: rect.right + 8 })
+    else setAt({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 336)) })
   }
   const later = (ms: number, action: () => void) => { window.clearTimeout(timer.current); timer.current = window.setTimeout(action, ms) }
   const finish = (action: () => void) => { setAt(null); action() }
   return <>
-    <span ref={anchor} className="min-w-0"
+    <span ref={anchor} className={side === 'right' ? 'block' : 'min-w-0'}
       onMouseEnter={() => later(400, open)} onMouseLeave={() => later(200, () => setAt(null))}
       onTouchStart={() => later(500, open)} onTouchEnd={() => { if (!at) window.clearTimeout(timer.current) }}>
       {children}
