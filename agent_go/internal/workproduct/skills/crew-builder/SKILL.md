@@ -42,6 +42,10 @@ still require the person's provider login or phone.
 | Connected agents (AgentBridge), Cloud or Laptop access | `panel-access`, `crew-agents` |
 | Instructions & identity; Models; Costs & usage; Terminal | `panel-settings`, `panel-settings`, `panel-settings`, `panel-settings` |
 
+For a shared-folder clash, use `team_sync` to read the clash and compare its two
+revisions. Save the merged file normally, then resolve with `keep=current`.
+Restoring a saved revision creates a new revision; it never erases history.
+
 ## Answering Ask AI and panel questions
 
 Answer in plain words using the current project and named panel. An Ask AI

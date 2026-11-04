@@ -3197,6 +3197,8 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Printf("[DESKTOP] Separate-launch connection socket ready")
 	}
 	migrateCrewSyncToRelay()
+	stopTeamSync := api.startCrewTeamSync()
+	defer stopTeamSync()
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
 	SetShareTunnelServerPort(actualPort)
@@ -7174,6 +7176,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := api.registerLaptopAccessChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
 					sendError(fmt.Sprintf("Failed to register laptop setup tool: %v", err), true)
+					return
+				}
+				if err := api.registerCrewTeamChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, req.SharedAgentSender); err != nil {
+					sendError(fmt.Sprintf("Failed to register Team Sync: %v", err), true)
 					return
 				}
 				if err := api.registerCrewSyncChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
