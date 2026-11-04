@@ -4,14 +4,14 @@ import { desktopRequest } from '../../services/desktopConnections'
 import { Button } from '../../components/ui/Button'
 import { CrewCodingApps } from './CrewCodingApps'
 
-type SharedAgent = { tab: string; audience: 'team' | 'everyone' | 'chosen'; people?: string[]; address?: string; can_change?: boolean }
+type SharedAgent = { tab: string; audience: 'team' | 'everyone' | 'chosen' | ''; people?: string[]; address?: string; can_change?: boolean; agentbridge_public?: boolean }
 type AgentRow = { tab: string; name: string; purpose: string; icon?: string }
 type Placement = { location: 'publishing' | 'server' }
 
-/** AgentBridge on the Mac online tab (owner, 4 Nov mockup): agents, not people. Per agent, Only my agents | Public,
- * where Public is the same shared-agent record as Team's Everyone (reviewer, 4 Nov): one record, so both tabs agree.
- * An agent shared with Team or chosen people only says so here; a click on this tab never drops or widens that share. */
-export function MacAgentBridge({ projectId, connection, crewName, onTeam }: { projectId: string; connection: string; crewName: string; onTeam: () => void }) {
+/** AgentBridge on the Mac online tab (owner, 4 Nov mockup): agents, not people. Per agent, Only my agents | Public. Public
+ * is its own setting (owner, 5 Nov: Public is AgentBridge only): any agent on the server can message it, and it is never
+ * listed on anyone's website. Who can use it as a person stays the Team tab's choice; this tab never changes it. */
+export function MacAgentBridge({ projectId, connection, network, crewName }: { projectId: string; connection: string; network: string; crewName: string }) {
   const [rows, setRows] = useState<AgentRow[] | null>(null)
   const [shared, setShared] = useState<SharedAgent[]>([])
   const [placements, setPlacements] = useState<Record<string, Placement>>({})
@@ -33,8 +33,11 @@ export function MacAgentBridge({ projectId, connection, crewName, onTeam }: { pr
     return () => { live = false; window.clearInterval(timer); window.removeEventListener('focus', load) }
   }, [endpoint])
   const choose = async (tab: string, publicOn: boolean) => {
-    const next = shared.filter(agent => agent.tab !== tab).map(({ tab, audience, people, can_change }) => ({ tab, audience, people, can_change: Boolean(can_change) }))
-    if (publicOn) next.push({ tab, audience: 'everyone', people: [], can_change: false })
+    const current = shared.find(agent => agent.tab === tab)
+    const others = shared.filter(agent => agent.tab !== tab)
+    // Only the Public flag changes; an agent with no people audience and no Public leaves the list.
+    const mine: SharedAgent[] = publicOn || current?.audience ? [{ ...(current || { tab, audience: '' }), agentbridge_public: publicOn }] : []
+    const next = [...others, ...mine].map(({ tab, audience, people, can_change, agentbridge_public }) => ({ tab, audience, people, can_change: Boolean(can_change), agentbridge_public: Boolean(agentbridge_public) }))
     setBusy(true); setError('')
     try {
       const data = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'share_agents', agents: next })
@@ -53,17 +56,15 @@ export function MacAgentBridge({ projectId, connection, crewName, onTeam }: { pr
       return <div key={row.tab} className="flex flex-wrap items-center gap-2.5 border-t border-border py-2.5 pl-3 text-sm">
         <span aria-hidden="true">{row.icon?.trim() || '•'}</span>
         <span title={row.purpose || undefined} className="min-w-0 truncate">{row.name}</span>
-        {agent?.audience === 'everyone' && agent.address && <>
+        {agent?.agentbridge_public && agent.address && <>
           <code className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5 text-xs">agent:{agent.address}</code>
           <Button className="h-7 rounded-full px-3" size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</Button>
         </>}
         {place === 'server' || place === 'publishing'
           ? <span className="ml-auto text-[12.5px] text-muted-foreground">{place === 'server' ? 'On the server · public there' : 'Moving to the server'}</span>
-          : agent && agent.audience !== 'everyone'
-            ? <span className="ml-auto text-[12.5px] text-muted-foreground">{agent.audience === 'team' ? 'Shared with your team' : 'Shared with chosen people'} · <button type="button" className="text-primary hover:underline" onClick={onTeam}>change in Team</button></span>
-            : <div role="radiogroup" aria-label={`Who can message ${row.name} on AgentBridge`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
+          : <div role="radiogroup" aria-label={`Who can message ${row.name} on AgentBridge`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
               {([[false, 'Only my agents'], [true, 'Public']] as const).map(([value, label]) => {
-                const on = value === (agent?.audience === 'everyone')
+                const on = value === Boolean(agent?.agentbridge_public)
                 return <button key={label} type="button" role="radio" aria-checked={on} disabled={busy} onClick={() => { if (!on) void choose(row.tab, value) }}
                   className={`px-2.5 py-0.5 ${on ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>
               })}
@@ -71,6 +72,7 @@ export function MacAgentBridge({ projectId, connection, crewName, onTeam }: { pr
       </div>
     })}
     <CrewCodingApps connection={connection} crewName={crewName} otherCrews={<OtherCrews projectId={projectId} />} />
+    <p className="pb-2.5 pl-3 text-[12.5px] text-muted-foreground">Public: any agent on {network} can find and message it. It does not appear on anyone's website. It stays on this Mac.</p>
     {error && <p role="alert" className="pl-3 text-xs text-amber-600">{error}</p>}
   </div>
 }

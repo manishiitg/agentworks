@@ -166,7 +166,7 @@ func sharedCrewAgentPeer(ctx context.Context, user string, peer agentMessageEndp
 	}
 	// An agent shared from a Crew on its owner's Mac: its audience decides (PLAT-856-509).
 	if !IsLocalMode() && crewRelayTwin(peer.ID) {
-		_, reason := macSharedAgentFor(peer.ID, macSharedAgentTab(peer.ID, peer.ChatKey), user, peer.UserID)
+		_, reason := macSharedAgentForAgent(peer.ID, macSharedAgentTab(peer.ID, peer.ChatKey), user, peer.UserID)
 		return reason == ""
 	}
 	chat, ok := sharedCrewAgentChat(ctx, user, peer.Path, peer.ChatKey)

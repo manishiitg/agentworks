@@ -19,7 +19,7 @@ import (
 
 // The Team tab's on/off switch (owner, 4 Nov, PLAT-856-531): on, every agent ready to share is shared with the team
 // and, when no shared folder is chosen, an empty team/ folder in the Crew becomes it; off, only the owner is in the
-// team and no agent is shared with the team or chosen people. Public (audience everyone) belongs to Mac online, not
+// team and no agent is shared with the team or chosen people. Public on AgentBridge belongs to Mac online, not
 // Team, and stays (the decisions log, 4 Nov). The roster stays saved either way. The Mac decides and does it; the screen and the
 // Crew's chat (manage_crew_sync action=team) call the same code.
 
@@ -104,8 +104,15 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 			}
 		}
 	} else if binding.Mode == "relay" && binding.Editing == "local" {
-		public := slices.DeleteFunc(slices.Clone(current), func(agent macSharedAgent) bool { return agent.Audience != "everyone" })
-		if len(public) < len(current) {
+		// Public on AgentBridge stays; every people audience goes (owner, 5 Nov: Public is AgentBridge only).
+		public := []macSharedAgent{}
+		for _, agent := range current {
+			if agent.AgentBridgePublic {
+				agent.Audience, agent.People = "", nil
+				public = append(public, agent)
+			}
+		}
+		if len(public) < len(current) || slices.ContainsFunc(current, func(a macSharedAgent) bool { return a.AgentBridgePublic && a.Audience != "" }) {
 			rows, rowsErr := api.macAgentRows(ctx, claims, project)
 			if rowsErr != nil {
 				return out, rowsErr

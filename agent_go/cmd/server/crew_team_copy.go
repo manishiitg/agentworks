@@ -309,7 +309,7 @@ func (api *StreamingAPI) teamCopyMacBack(owner, project, pair string) {
 		}
 		send := func(call crewChatCall, timeout time.Duration) crewChatResult {
 			if published {
-				return api.publishedAgentCall(context.Background(), owner, project, call)
+				return api.publishedAgentCall(context.Background(), owner, project, call, held.Inbox != "") // an inbox means an agent message
 			}
 			return callCrewMacFor(context.Background(), owner, project, call, timeout)
 		}

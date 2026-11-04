@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +32,8 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
 		t.Fatal(err)
 	}
-	agents := []macSharedAgent{{Tab: "main", Audience: "everyone"}, {Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member"}}}
+	agents := []macSharedAgent{{Tab: "main", Audience: "everyone"}, {Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member"}},
+		{Tab: "public01", AgentBridgePublic: true}}
 	if err := writeMacSharedAgents("p", agents); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +55,7 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		{"no Crew product", "no-crew", "main", []string{"messages:send"}, true, true, false},
 		{"unbound Crew permission", "outsider", "main", []string{"crews:run"}, false, true, true},
 		{"unbound messaging alone", "outsider", "main", []string{"messages:send"}, false, true, false},
+		{"public on AgentBridge, not in audience", "outsider", "public01", []string{"messages:send"}, true, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			token := &accesstokens.Token{Scopes: tc.scopes}
@@ -64,6 +68,31 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 				t.Fatalf("allowed=%t, error=%v", tc.allowed, err)
 			}
 		})
+	}
+	// Owner, 5 Nov: Public is AgentBridge only. An agent may message a public agent; the person's own lists (Shared
+	// with me, the agent directory) and their workspace ask still go by the audience alone.
+	if _, reason := macSharedAgentFor("p", "public01", "outsider", "owner"); reason == "" {
+		t.Fatal("a public-only agent admitted a person's own ask")
+	}
+	listed := func(byAgent bool) bool {
+		for _, row := range macSharedAgentRows("outsider", byAgent) {
+			if row["chat_id"] == macSharedAgentChatKey("p", "public01") {
+				return true
+			}
+		}
+		return false
+	}
+	if listed(false) || !listed(true) {
+		t.Fatalf("public-only agent listed for the person=%t (want false), for their agents=%t (want true)", listed(false), listed(true))
+	}
+	// The agent-message channel is the server's own flag: a person's ask that says sender_channel=AgentBridge in its
+	// arguments still needs the audience to reach a published public-only agent (reviewer, 5 Nov).
+	if err := writeCrewAgentPlacement("p", crewAgentPlacement{Tab: "public01", Location: "server", PairID: "pair-test", TransferID: "transfer-test"}); err != nil {
+		t.Fatal(err)
+	}
+	forged := crewChatCall{Operation: "agent_ask", Tab: "public01", Message: "hi", Args: json.RawMessage(`{"sender_id":"outsider","sender_channel":"AgentBridge"}`)}
+	if result := api.publishedAgentCall(t.Context(), "owner", "p", forged, false); result.Status != http.StatusForbidden || !strings.Contains(string(result.Body), "no longer shared") {
+		t.Fatalf("a person's ask claiming AgentBridge reached a public-only agent: status %d %s", result.Status, result.Body)
 	}
 	// PLAT-856-536: the Mac answered, but native delivery/validation held its reply
 	// because this shared Crew endpoint has no named-agent ShareID.
@@ -149,7 +178,7 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 		{"owner uses their own chat", "writer01", "owner", "owner"},
 		{"Main or an unshared tab", "p", "a", "not_shared"},
 	} {
-		if _, reason := macSharedAudience(readMacSharedAgents("p"), tc.tab, tc.caller, "owner", []string{"a", "c"}); reason != tc.reason {
+		if _, reason := macSharedAudience(readMacSharedAgents("p"), tc.tab, tc.caller, "owner", []string{"a", "c"}, false); reason != tc.reason {
 			t.Fatalf("%s: reason %q, want %q", tc.name, reason, tc.reason)
 		}
 	}

@@ -107,7 +107,7 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 	// and the attached connection carries messaging permissions, not general Crew tool permissions.
 	if peer.Kind == triggerCallerCrew && peer.UserID != claims.UserID && peer.ChatKey != "" && !strings.HasPrefix(peer.ChatKey, "messages:") && !IsLocalMode() && crewRelayTwin(peer.ID) {
 		tab := macSharedAgentTab(peer.ID, peer.ChatKey)
-		_, reason := macSharedAgentFor(peer.ID, tab, claims.UserID, peer.UserID)
+		_, reason := macSharedAgentForAgent(peer.ID, tab, claims.UserID, peer.UserID)
 		if reason == "" && token != nil {
 			if token.BoundAgentID != "" {
 				if !namedAgentOperationAllowed(claims, send) {
