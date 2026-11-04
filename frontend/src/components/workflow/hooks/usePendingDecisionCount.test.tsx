@@ -6,6 +6,7 @@ import type {
   ReportHumanInput,
   ReportHumanInputsResponse,
 } from "../../../services/api-types";
+vi.mock("../../../hooks/useLiveRefetch", () => ({ useLiveRefetch: () => {} }));
 vi.mock("../../../services/api", () => ({
   agentApi: { listReportHumanInputs: vi.fn() },
 }));
