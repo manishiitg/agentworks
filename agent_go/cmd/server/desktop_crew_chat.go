@@ -333,6 +333,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		SenderID    string `json:"sender_id"`
 		After       int    `json:"after"`
 		WaitSeconds int    `json:"wait_seconds"`
+		Events      bool   `json:"events"`
 		// Submission: read only the turn that answers this one message (an agent message's id).
 		Submission string `json:"submission"`
 		// SenderAgent names the sender's own agent when an agent sent it, for the owner's Access row.
@@ -430,12 +431,33 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 			mine = submissionTurn(mine, args.Submission)
 		}
 		for _, item := range mine {
-			if at, e := time.Parse(time.RFC3339Nano, item.At); e == nil && !since.IsZero() && !at.Before(since) {
+			if at, e := time.Parse(time.RFC3339Nano, item.At); e == nil && (since.IsZero() || !at.Before(since)) {
 				own = append(own, item)
 			}
 		}
 		working := api.sessionTurnRunning(conversation.SessionID)
-		if len(own) > 0 || time.Now().After(deadline) || ctx.Err() != nil {
+		if args.Events {
+			// The same events the owner's chat shows, for this sender's own turns only.
+			// Turns come from the whole thread: a long turn's later events follow a message read earlier.
+			turns := map[string]bool{}
+			all, _, err := codeChatTranscript(ctx, claims.UserID, conversation.SessionID, conversation.WorkspacePath, 0, 0)
+			if err != nil {
+				return reply(409, map[string]string{"error": "This agent's answers could not be read."})
+			}
+			for _, item := range senderOwnTurns(all, args.SenderID) {
+				if at, e := time.Parse(time.RFC3339Nano, item.At); e == nil && (since.IsZero() || !at.Before(since)) {
+					turns[item.Turn] = true
+				}
+			}
+			events, err := senderTurnEvents(claims.UserID, conversation.SessionID, conversation.WorkspacePath, args.After, turns)
+			if err != nil {
+				return reply(409, map[string]string{"error": "This agent's answers could not be read."})
+			}
+			if len(events) > 0 || time.Now().After(deadline) || ctx.Err() != nil {
+				log.Printf("[CREW_SHARED_AGENT] local project=%s tab=%s operation=read events=%d", project, call.Tab, len(events))
+				return reply(200, map[string]any{"events": events, "messages": own, "next_after": max(args.After, last), "working": working})
+			}
+		} else if len(own) > 0 || time.Now().After(deadline) || ctx.Err() != nil {
 			log.Printf("[CREW_SHARED_AGENT] local project=%s tab=%s operation=read items=%d", project, call.Tab, len(own))
 			return reply(200, map[string]any{"messages": own, "next_after": max(args.After, last), "working": working})
 		}
@@ -444,4 +466,41 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
+}
+
+// senderTurnEvents is the saved chat's own events (what the chat area renders) for the given turns after seq after.
+func senderTurnEvents(userID, sessionID, workspace string, after int, turns map[string]bool) ([]json.RawMessage, error) {
+	if len(turns) == 0 {
+		return nil, nil
+	}
+	data, err := ReadChatHistoryConversation(userID, sessionID, workspace)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var doc struct {
+		Events []json.RawMessage `json:"ui_events"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	out := []json.RawMessage{}
+	for _, raw := range doc.Events {
+		var head struct {
+			Sequence int `json:"sequence"`
+			Data     struct {
+				Data struct {
+					Metadata struct {
+						TurnID string `json:"turn_id"`
+					} `json:"metadata"`
+				} `json:"data"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(raw, &head) == nil && head.Sequence > after && turns[head.Data.Data.Metadata.TurnID] {
+			out = append(out, raw)
+		}
+	}
+	return out, nil
 }

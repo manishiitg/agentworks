@@ -314,7 +314,8 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	operation := map[bool]string{true: "agent_ask", false: "agent_read"}[action == "ask"]
-	raw, _ := json.Marshal(map[string]any{"sender_id": claims.UserID, "after": externalInt(args, "after", 0), "wait_seconds": externalInt(args, "wait_seconds", 0)})
+	events, _ := args["events"].(bool) // the chat's own events for those turns, so the person sees the owner's chat view
+	raw, _ := json.Marshal(map[string]any{"sender_id": claims.UserID, "after": externalInt(args, "after", 0), "wait_seconds": externalInt(args, "wait_seconds", 0), "events": events})
 	call := crewChatCall{Operation: operation, Tab: agent.Tab, Message: externalArg(args, "message"), Caller: crewOwnerDisplayName(sanitizeUserIDForPath(claims.UserID)), Args: raw,
 		SubmissionID: externalArg(args, "submission_id")}
 	result := callCrewMacFor(r.Context(), project.OwnerID, manifest.ID, call, externalCrewWait(args)+40*time.Second)

@@ -10,7 +10,7 @@ import { useChatStore } from '../../stores/useChatStore'
 export type SharedCrewScope = { workspace_id: string } | { workspace: string }
 export type SharedAgent = { chat_id: string; name: string; purpose?: string; shared?: boolean }
 type ChatLine = { seq: number; role: string; text: string; sender?: string; at?: string }
-type ChatPage = { messages?: ChatLine[]; next_after?: number; working?: boolean; has_earlier?: boolean; first_seq?: number }
+type ChatPage = { messages?: ChatLine[]; events?: PollingEvent[]; next_after?: number; working?: boolean; has_earlier?: boolean; first_seq?: number }
 
 /** Run recipients use the actual selected agent. Its owner keeps all controls. */
 export function SharedCrewWorkspace({ projectId, workspacePath, enabled, children }: { projectId?: string; workspacePath?: string; enabled: boolean; children: ReactNode }) {
@@ -77,9 +77,11 @@ export function SharedAgentConversation({ scope: crewScope, agent, onBack, owner
     const controller = new AbortController()
     let after = 0
     let lines: ChatLine[] = []
+    // The chat's own events when its owner's Mac sends them (the same view as the owner's); plain lines otherwise.
+    let events: PollingEvent[] | null = null
     const show = (working: boolean) => {
       const store = useChatStore.getState()
-      store.setTabEvents(sessionId, chatLineEvents(sessionId, lines))
+      store.setTabEvents(sessionId, events ?? chatLineEvents(sessionId, lines))
       store.markTabHistoryLoaded(sessionId)
       store.setTabStreaming(tabId, working)
       store.setTabCompleted(tabId, !working)
@@ -87,10 +89,15 @@ export function SharedAgentConversation({ scope: crewScope, agent, onBack, owner
     const read = async () => {
       try {
         for (let first = true; !controller.signal.aborted; first = false) {
-          const { data } = await api.post<ChatPage>('/api/crew-agents', { action: 'read_chat', ...crewScope, chat_id: agent.chat_id, after, wait_seconds: first ? 0 : 25 }, { signal: controller.signal, timeout: 35000, skipSessionContext: true })
+          const { data } = await api.post<ChatPage>('/api/crew-agents', { action: 'read_chat', ...crewScope, chat_id: agent.chat_id, after, wait_seconds: first ? 0 : 25, events: true }, { signal: controller.signal, timeout: 35000, skipSessionContext: true })
           if (controller.signal.aborted) return
           const incoming = data.messages || []
           lines = first ? incoming : [...lines, ...incoming.filter(line => !lines.some(existing => existing.seq === line.seq))]
+          if (data.events) {
+            const known = new Set((events || []).map(event => event.sequence))
+            const fresh = data.events.filter(event => !known.has(event.sequence)).map(event => ({ ...event, session_id: sessionId }))
+            events = [...(first ? [] : events || []), ...fresh].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+          }
           after = data.next_after || after
           show(data.working === true)
           setError('')
