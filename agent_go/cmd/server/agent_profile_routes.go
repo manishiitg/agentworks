@@ -58,9 +58,6 @@ type AgentProfileChatRequest struct {
 	WorkflowContextRefs []workflowContextRef `json:"workflow_context_refs,omitempty"`
 	// KnowledgebaseFolderPath is a validated selection hint, never authority.
 	KnowledgebaseFolderPath *string `json:"knowledgebase_folder_path,omitempty"`
-	// interactive is set by the web chat route only: a person is sending this message. Bot and
-	// email turns leave it false, so a chat they start gets the server account, not a personal plan.
-	interactive bool
 }
 
 type AgentProfileConversationRequest struct {
@@ -469,7 +466,6 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		externalError(w, http.StatusForbidden, "tab_owner", err.Error())
 		return
 	}
-	input.interactive = true
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {
 		log.Printf("[PRODUCT_CONVERSATION] stage=query-prepare profile=%s key=%q caller=%q cause=%v", profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context()), err)
@@ -1093,7 +1089,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	// move onto the shared account (PLAT-676).
 	filledAccount := false
 	if strings.TrimSpace(query.ConnectionID) == "" && strings.TrimSpace(query.Provider) != "" {
-		query.ConnectionID = productChatDefaultAccount(ctx, userID, profile, query.Provider, input.interactive)
+		query.ConnectionID = productChatDefaultAccount(ctx, userID, profile, query.Provider)
 		filledAccount = true
 	}
 	// Filling in the account a chat with none recorded already ran on is not a change.
@@ -1172,17 +1168,22 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	return query, nil
 }
 
-// productChatDefaultAccount is the account a product chat that names none runs on: for a person
-// using the chat, their own signed-in account for the provider (ownDefaultProviderAccountID, owner
-// decision 2026-09-30); otherwise, and for a global-scope profile, the server account. It is the
-// same rule resolveAgentProfileForQuery applied at run time, now applied once and recorded.
-func productChatDefaultAccount(ctx context.Context, userID string, profile agentprofiles.Profile, provider string, interactive bool) string {
+// productChatDefaultAccount is the account a product chat that names none runs on: the person's own
+// account for the provider (ownDefaultProviderAccountID, owner decision 2026-09-30), else, and for a
+// global-scope profile, the server account. Typed chats, agent messages, schedules and bot turns all
+// get the same one (owner, 4 Nov: agent-message turns ran on the server login instead of the
+// company account the person had selected, and failed "not logged in").
+func productChatDefaultAccount(ctx context.Context, userID string, profile agentprofiles.Profile, provider string) string {
 	provider = strings.TrimSpace(provider)
-	if interactive && profile.EffectiveScope() != agentprofiles.ProfileScopeGlobal {
-		if own := ownDefaultProviderAccountID(ctx, userID, provider); own != "" {
-			return own
-		}
+	if profile.EffectiveScope() == agentprofiles.ProfileScopeGlobal {
+		log.Printf("[CHAT_ACCOUNT] %s chat of %s: server account (the profile uses the server login)", provider, userID)
+		return "global:" + provider
 	}
+	if own := ownDefaultProviderAccountID(ctx, userID, provider); own != "" {
+		log.Printf("[CHAT_ACCOUNT] %s chat of %s: account %s (the person's own)", provider, userID, own)
+		return own
+	}
+	log.Printf("[CHAT_ACCOUNT] %s chat of %s: server account (no own account)", provider, userID)
 	return "global:" + provider
 }
 
