@@ -79,6 +79,13 @@ type Record struct {
 
 // CaptureStats explains partial captures without exposing file names or contents.
 type CaptureStats struct {
+	// Phase timings distinguish Git change detection from queue and history work.
+	DiscoveryMS   int64 `json:"discovery_ms,omitempty"`
+	IndexMS       int64 `json:"index_ms,omitempty"`
+	ImportMS      int64 `json:"import_ms,omitempty"`
+	ComposeMS     int64 `json:"compose_ms,omitempty"`
+	GateMS        int64 `json:"gate_ms,omitempty"`
+	HistoryMS     int64 `json:"history_ms,omitempty"`
 	Eligible      int   `json:"eligible"`
 	Captured      int   `json:"captured"`
 	Reused        int   `json:"reused"`
@@ -488,6 +495,7 @@ func (s Store) BeginWithin(limit time.Duration, execution string) (Record, error
 }
 
 func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Record, error) {
+	gateStart := time.Now()
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Record{}, err
@@ -501,6 +509,7 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 		return Record{}, err
 	}
 	r := Record{ID: id, ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing"}
+	r.BeforeCapture.GateMS = time.Since(gateStart).Milliseconds()
 	r.BeforeSkippedState = map[string]string{}
 	r.BeforeCapture.Cold = !s.hasIndexes()
 	if sendPath && r.BeforeCapture.Cold {
@@ -511,8 +520,10 @@ func (s Store) begin(ctx context.Context, execution string, sendPath bool) (Reco
 	repos := map[string]string{}
 	r.Before, r.Skipped, r.Omitted, err = s.captureRepos(ctx, "refs/turns/"+id+"/before", "", &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes, repos)
 	r.BeforeRepos = sortedKeys(repos)
+	historyStart := time.Now()
 	r.BeforeHeads = s.repoHeads(ctx, repos)
 	r.BeforeGit, _ = s.gitCheckpoints(ctx, repos, 256)
+	r.BeforeCapture.HistoryMS = time.Since(historyStart).Milliseconds()
 	if err != nil || r.Before == "" {
 		r.Status = "unavailable"
 		if sendPath && ctx.Err() != nil {
@@ -593,6 +604,7 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	if r, err := s.read(ID(execution)); err != nil || r.Status != "capturing" {
 		return r, err
 	}
+	gateStart := time.Now()
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Record{}, err
@@ -607,8 +619,10 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	}
 	var skipped, omitted []string
 	r.AfterSkippedState = map[string]string{}
+	r.AfterCapture.GateMS = time.Since(gateStart).Milliseconds()
 	repos := map[string]string{}
 	r.After, skipped, omitted, err = s.captureRepos(ctx, "refs/turns/"+r.ID+"/after", r.Before, &r.AfterCapture, r.AfterSkippedState, maxImportBytes, repos)
+	historyStart := time.Now()
 	r.Skipped = append(r.Skipped, skipped...)
 	r.Omitted = append(r.Omitted, omitted...)
 	if r.Before != "" {
@@ -623,6 +637,7 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 		s.repoBaselines(baselineCtx, &r, repos)
 		cancel()
 	}
+	r.AfterCapture.HistoryMS = time.Since(historyStart).Milliseconds()
 	now := time.Now().UTC()
 	r.CompletedAt = &now
 	r.Status = "complete"
@@ -633,7 +648,9 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 		r.Status = "unavailable"
 	}
 	if err == nil && r.Before != "" {
+		reviewStart := time.Now()
 		s.saveReview(ctx, &r, repos)
+		r.AfterCapture.HistoryMS += time.Since(reviewStart).Milliseconds()
 	}
 	saveErr := s.save(r)
 	if err != nil {

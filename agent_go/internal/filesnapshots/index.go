@@ -39,9 +39,10 @@ import (
 // store's info/attributes unsets every conversion so that re-hash is of the
 // raw bytes too (otherwise a converted file would merely never become clean).
 //
-// Every capture works on a temporary copy of each index (refreshed first)
-// that replaces it after the capture's commit and the head ref are written, so every blob an index names
-// stays reachable and a killed capture leaves the previous index intact.
+// Captures that change an index work on a temporary copy, replaced after the
+// capture commit and head ref are written. Clean indexes may only get Git's
+// cache-tree extension refreshed by write-tree; their entries stay unchanged.
+// Every blob an index names stays reachable if a capture is interrupted.
 
 // headRef always points at the newest capture: it keeps every object the
 // persisted indexes name reachable through retention cleanup.
@@ -154,34 +155,38 @@ func parallel(n int, fn func(int) error) error {
 	return errors.Join(errs...)
 }
 
-// status refreshes a temporary copy of a checkout's persisted index, then
-// reads which paths it holds and which of them Git reports changed. The
-// refresh records new stat data for files whose stat changed but whose bytes
-// still match (a touch, a checkout of the same content, a racily clean
-// entry), so they are not re-hashed on every later capture; the copy replaces
-// the persisted index only when the capture commits.
+// status asks Git for changes against the last captured index, not the user's
+// HEAD. A clean checkout reuses its index without refreshing or rewriting it.
+// Dirty stat entries still go through Git's refresh: a touch with identical
+// bytes must settle, while same-size edits and raw-byte changes stay dirty.
 func (s Store) status(ctx context.Context, c *checkout) error {
 	c.indexed, c.dirty = map[string]bool{}, map[string]bool{}
 	index := s.indexFile(c.key)
 	if _, err := os.Stat(index); err != nil {
 		return nil
 	}
-	tmp := index + ".tmp"
-	if err := copyIndex(index, tmp); err != nil {
-		return err
+	c.reused = true
+	changed, err := s.runIndex(ctx, c, index, nil, "diff-files", "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-z")
+	if err == nil && len(changed) > 0 {
+		tmp := index + ".tmp"
+		if err = copyIndex(index, tmp); err != nil {
+			return err
+		}
+		index = tmp
+		c.changed = true
+		_, err = s.runIndex(ctx, c, index, nil, "update-index", "-q", "--ignore-missing", "--refresh")
 	}
-	c.reused, c.changed = true, true
-	// Git lstats the work-tree paths itself and follows a symlinked parent
-	// directory; that only decides changed or unchanged. No content is
-	// imported from it: contents come only from the confined reads below.
-	_, err := s.runIndex(ctx, c, tmp, nil, "update-index", "-q", "--ignore-missing", "--refresh")
 	var out []byte
 	if err == nil {
-		out, err = s.runIndex(ctx, c, tmp, nil, "ls-files", "-c", "-m", "-t", "-z")
+		args := []string{"ls-files", "-c", "-t", "-z"}
+		if c.changed {
+			args = append(args, "-m")
+		}
+		out, err = s.runIndex(ctx, c, index, nil, args...)
 	}
 	if err != nil {
 		if ctx.Err() == nil {
-			_ = os.Remove(index) // unreadable: rebuild this checkout
+			_ = os.Remove(s.indexFile(c.key))
 		}
 		return fmt.Errorf("read snapshot index: %w", err)
 	}
@@ -235,6 +240,19 @@ func (s Store) writeCheckout(ctx context.Context, c *checkout) error {
 	index := s.indexFile(c.key) + ".tmp"
 	if !c.reused && len(c.add) == 0 {
 		return nil
+	}
+	if c.reused && !c.changed {
+		if len(c.remove) == 0 && len(c.add) == 0 {
+			out, err := s.runIndex(ctx, c, s.indexFile(c.key), nil, "write-tree")
+			if err != nil {
+				return err
+			}
+			c.tree = strings.TrimSpace(string(out))
+			return nil
+		}
+		if err := copyIndex(s.indexFile(c.key), index); err != nil {
+			return err
+		}
 	}
 	c.changed = true
 	if len(c.remove) > 0 {
@@ -364,7 +382,9 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 	if err := os.MkdirAll(s.indexDir(), 0700); err != nil {
 		return "", nil, nil, err
 	}
+	phaseStart := time.Now()
 	checkouts, omitted, err := s.candidates(ctx, stats)
+	stats.DiscoveryMS = time.Since(phaseStart).Milliseconds()
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -388,7 +408,10 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 	if prior != "" {
 		omitted = append(omitted, s.vanishedOnDisk(ctx, root, prior, all)...)
 	}
-	if err := parallel(len(checkouts), func(i int) error { return s.status(ctx, checkouts[i]) }); err != nil {
+	phaseStart = time.Now()
+	err = parallel(len(checkouts), func(i int) error { return s.status(ctx, checkouts[i]) })
+	stats.IndexMS = time.Since(phaseStart).Milliseconds()
+	if err != nil {
 		return "", nil, nil, err
 	}
 	var todo []pending
@@ -458,9 +481,13 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 		}
 		return present[i].size < present[j].size
 	})
-	if err := s.importBlobs(ctx, root, present, budget, stats, &skipped, rememberSkipped, skipRead, drop); err != nil {
+	phaseStart = time.Now()
+	err = s.importBlobs(ctx, root, present, budget, stats, &skipped, rememberSkipped, skipRead, drop)
+	stats.ImportMS = time.Since(phaseStart).Milliseconds()
+	if err != nil {
 		return "", nil, nil, err
 	}
+	phaseStart = time.Now()
 	if err := parallel(len(checkouts), func(i int) error { return s.writeCheckout(ctx, checkouts[i]) }); err != nil {
 		return "", nil, nil, err
 	}
@@ -475,6 +502,7 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 		}
 		return "", nil, nil, err
 	}
+	stats.ComposeMS = time.Since(phaseStart).Milliseconds()
 	// The commit and headRef now hold every blob the new indexes name.
 	keep := map[string]bool{}
 	for _, c := range checkouts {

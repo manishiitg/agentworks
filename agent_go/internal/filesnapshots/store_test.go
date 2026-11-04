@@ -941,6 +941,23 @@ func TestPersistentIndexReuseAfterRestartAndSameSizeEdits(t *testing.T) {
 			t.Fatalf("user Git file changed: %s", rel)
 		}
 	}
+	// PLAT-746-317: a snapshot compares reply boundaries, not HEAD. The
+	// file is already dirty at send time, then staged and committed mid-reply.
+	// A clean ordinary git status at the end must not erase that edit.
+	f.put("app/b.txt", "uncommitted before reply\n")
+	if _, err := f.s.Begin(t.Context(), "committed-during-reply"); err != nil {
+		t.Fatal(err)
+	}
+	f.put("app/b.txt", "committed during reply\n")
+	f.git("app", "add", "b.txt")
+	f.git("app", "commit", "--quiet", "-m", "reply edit")
+	if _, err := f.s.Finish(t.Context(), "committed-during-reply"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.changes(ID("committed-during-reply")); got["app/b.txt"] != "M" {
+		t.Fatalf("commit hid reply edit: %+v", got)
+	}
+
 }
 
 // The persisted index follows the validated candidate list: deleted and newly

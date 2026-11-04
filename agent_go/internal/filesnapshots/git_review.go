@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -85,16 +86,19 @@ func reflogDelta(before gitCheckpoint, lines []string) ([]string, bool) {
 
 func (s Store) gitCheckpoints(ctx context.Context, repos map[string]string, limit int) (map[string]gitCheckpoint, map[string][]string) {
 	out, logs := map[string]gitCheckpoint{}, map[string][]string{}
-	for _, p := range sortedKeys(repos) {
+	keys := sortedKeys(repos)
+	var mu sync.Mutex
+	_ = parallel(len(keys), func(i int) error {
+		p := keys[i]
 		dir := repos[p]
 		raw, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir", "HEAD").Output()
 		fields := strings.Split(strings.TrimSpace(string(raw)), "\n")
 		if err != nil || len(fields) != 2 || !commitID.MatchString(fields[1]) {
-			continue
+			return nil
 		}
 		gitdir, err := filepath.EvalSymlinks(fields[0])
 		if err != nil {
-			continue
+			return nil
 		}
 		branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--short", "-q", "HEAD").Output()
 		remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
@@ -104,10 +108,13 @@ func (s Store) gitCheckpoints(ctx context.Context, repos map[string]string, limi
 			c.Branch = "detached@" + c.Head[:8]
 		}
 		lines := reflog(ctx, s.Root, dir, limit)
+		mu.Lock()
 		logs[p] = lines
 		c.CursorCount, c.Cursor = len(lines), digest(strings.Join(lines, "\n"))
 		out[p] = c
-	}
+		mu.Unlock()
+		return nil
+	})
 	names := map[string]int{}
 	for _, c := range out {
 		names[c.Name]++
