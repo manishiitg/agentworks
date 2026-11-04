@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Pencil } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { create } from 'zustand'
 import { AgentIcon } from './AgentIcon'
 
@@ -43,7 +43,7 @@ export const useAgentsViewStore = create<{ view: 'menu' | 'tabs' | null; set: (v
   set: view => set({ view }),
 }))
 
-export function AgentHoverCard({ info, children, side = 'below' }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right' }) {
+export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right'; clickToOpen?: boolean }) {
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
@@ -71,7 +71,8 @@ export function AgentHoverCard({ info, children, side = 'below' }: { info?: Agen
   return <>
     <span ref={anchor} className={side === 'right' ? 'block' : 'min-w-0'}
       onMouseEnter={() => later(400, open)} onMouseLeave={() => later(200, () => setAt(null))}
-      onTouchStart={() => later(500, open)} onTouchEnd={() => { if (!at) window.clearTimeout(timer.current) }}>
+      onTouchStart={() => later(500, open)} onTouchEnd={() => { if (!at) window.clearTimeout(timer.current) }}
+      onClick={clickToOpen ? () => { window.clearTimeout(timer.current); if (at) setAt(null); else open() } : undefined}>
       {children}
     </span>
     {at && createPortal(<div ref={box} role="dialog" aria-label={info.name} style={at} onClick={event => event.stopPropagation()}
@@ -91,23 +92,26 @@ export function AgentHoverCard({ info, children, side = 'below' }: { info?: Agen
   </>
 }
 
-/** The open agent's header line (owner, 4 Nov): its icon and name · purpose · who it is shared with (opens Access at
- * this agent) · ✎ to change the purpose. With Left menu it sits in the top bar (inline); with Tabs, under the tabs. */
-export function AgentPurposeLine({ tabId, inline = false }: { tabId?: string | null; inline?: boolean }) {
+/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <icon> <agent name> ⓘ". The Crew name opens its
+ * team board; ⓘ opens the agent's card (purpose, sharing, ✎). Purpose text is not shown inline. */
+export function AgentHeaderLine({ tabId, crewName, projectId }: { tabId?: string | null; crewName: string; projectId?: string }) {
   const open = useOpenAgentStore()
   const row = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId) : undefined))
-  const [more, setMore] = useState(false)
   const info = open.tabId && open.tabId === tabId ? open.info : null
   const name = row?.name || info?.name
-  if (!name) return null
-  return <div className={`flex min-w-0 items-center gap-2 text-xs text-muted-foreground ${inline ? 'flex-1' : 'shrink-0 border-b border-border px-4 py-1.5'}`} data-agent-header>
-    <AgentIcon name={name} icon={info?.icon} size={inline ? 'md' : 'sm'} active />
-    <p className={`min-w-0 flex-1 ${more ? 'whitespace-pre-wrap' : 'truncate'}`}>
-      <span className={`font-semibold text-foreground ${inline ? 'text-sm' : ''}`}>{name}</span>
-      {info?.purpose && <> · {info.purpose}</>}
-      {info?.sharedWith && <> · {info.onSharing ? <button type="button" onClick={info.onSharing} className="hover:text-foreground hover:underline">Shared with {info.sharedWith}</button> : <>Shared with {info.sharedWith}</>}</>}
-    </p>
-    {(info?.purpose?.length || 0) > 90 && <button type="button" onClick={() => setMore(value => !value)} className="shrink-0 text-primary hover:underline">{more ? 'less' : 'more'}</button>}
-    {info && <button type="button" aria-label={info.purpose ? 'Change purpose' : 'Set purpose'} title={info.purpose ? 'Change purpose' : 'Set purpose'} onClick={info.onSetPurpose} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button>}
+  return <div className="mr-2 flex h-10 min-w-0 shrink items-center gap-1.5 px-1 text-sm md:h-8" data-agent-header>
+    {projectId
+      ? <button type="button" data-project-title title={crewName} aria-label={`${crewName}: see all agents`}
+          onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } }))}
+          className="max-w-40 truncate rounded-md px-1 font-semibold text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{crewName}</button>
+      : <span data-project-title title={crewName} className="max-w-40 truncate px-1 font-semibold text-muted-foreground">{crewName}</span>}
+    {name && <>
+      <span aria-hidden="true" className="text-muted-foreground/60">›</span>
+      <AgentIcon name={name} icon={info?.icon} active />
+      <span className="min-w-0 max-w-48 truncate font-semibold">{name}</span>
+      {info && <AgentHoverCard info={info} clickToOpen>
+        <button type="button" aria-label={`About ${name}`} className="grid h-5 w-5 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info aria-hidden="true" className="h-3.5 w-3.5" /></button>
+      </AgentHoverCard>}
+    </>}
   </div>
 }

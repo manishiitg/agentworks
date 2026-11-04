@@ -12,7 +12,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
-import { AgentPurposeLine, useAgentsViewStore, useCrewAgentsStore } from '../../components/chat/AgentCard'
+import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { OPEN_TEAM_BOARD_EVENT } from '../../components/chat/ProjectWorkspaceTitle'
 import { TeamBoard } from './TeamBoard'
 import { HomeEntry } from '../../components/workspace/HomeEntry'
@@ -896,8 +896,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     return () => window.removeEventListener(OPEN_TEAM_BOARD_EVENT, open)
   }, [])
   const isMobile = useMobileViewport()
-  // With Left menu the open agent's line sits in the top bar; with Tabs (and on phones) it sits above the chat.
-  const agentLineInTopBar = useAgentsViewStore(state => state.view === 'menu') && !isMobile
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   const openChatPane = useCallback(() => { setChatOpen(true); setMobilePane('chat') }, [])
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
@@ -1395,7 +1393,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   {tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
                         {teamBoardProject === selected.id && <TeamBoard projectId={selected.id} onClose={closeTeamBoard} />}
-                        {!agentLineInTopBar && <AgentPurposeLine tabId={tabId} />}
                         <div className="min-h-0 flex-1">
                         <ChatArea
                           tabId={tabId}
