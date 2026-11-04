@@ -121,13 +121,16 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
       const place = placements[row.tab]?.location
-      const choice = agent?.audience === 'team' ? 'team' : 'none'
+      // An older people setting stays true on screen until it is replaced (people audiences go in a later step).
+      const legacy = agent?.audience === 'everyone' ? 'Everyone (old setting)' : agent?.audience === 'chosen' ? 'Chosen people (old setting)' : ''
+      const choice = agent?.audience === 'team' ? 'team' : legacy ? 'legacy' : 'none'
       return <div key={row.tab} data-shared-agent-card={row.tab} className="border-t border-border px-0.5 py-2.5 text-sm">
         <div className="flex flex-wrap items-center gap-2.5">
           <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">{row.icon?.trim() || row.name.slice(0, 1).toUpperCase()}</span>
           <span title={purpose || undefined} className="min-w-0 truncate">{row.name}</span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${place === 'server' || place === 'publishing' ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>{place === 'server' ? 'Server' : place === 'publishing' ? 'Moving to the server' : 'Mac'}</span>
-          <div role="radiogroup" aria-label={`${row.name} in the team`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
+          {legacy && <span className="ml-auto text-xs text-muted-foreground">{legacy}</span>}
+          <div role="radiogroup" aria-label={`${row.name} in the team`} className={`${legacy ? '' : 'ml-auto '}flex overflow-hidden rounded-full border border-border text-xs`}>
             {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy} onClick={() => { if (choice === value) return; if (value === 'none' && allInTeam) void desktopRequest(endpoint, 'POST', { action: 'team_all', all_in_team: false }).then(() => setAllInTeam(false)).catch(() => {}); update(row.tab, value === 'none' ? null : { audience: value }) }}
               className={`px-2.5 py-0.5 ${choice === value ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
           </div>
