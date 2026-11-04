@@ -229,7 +229,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 					snapshot.Close()
 					continue
 				}
-				err = store.EncodeSync(ctx, crewTeamPair(b.Project, b.RemoteUser, b.Client, direction), crewTeamRoots(b.Root), &snapshot)
+				err = store.EncodeFolderSync(ctx, crewTeamPair(b.Project, b.RemoteUser, b.Client, direction), crewTeamRoots(b.Root), &snapshot)
 				if err == nil {
 					err = copyCrewTeamBundle(snapshot.Content.BundlePath, filepath.Join(stage, "content"))
 					_ = os.RemoveAll(filepath.Dir(snapshot.Content.BundlePath))

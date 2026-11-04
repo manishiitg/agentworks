@@ -55,6 +55,17 @@ func (s Store) syncBase(ctx context.Context, pair string) (string, error) {
 }
 
 func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots, snapshot *crewsync.Snapshot) error {
+	return s.encodeSync(ctx, pair, roots, snapshot, false)
+}
+
+// EncodeFolderSync reconciles the complete content tree with this direction's
+// Git baseline. A collaborating folder may have received edits through another
+// direction since the last upload, even when those paths are not local changes.
+// Only snapshot.Changes remain mutations on the wire; Git still sends a delta.
+func (s Store) EncodeFolderSync(ctx context.Context, pair string, roots crewroot.Roots, snapshot *crewsync.Snapshot) error {
+	return s.encodeSync(ctx, pair, roots, snapshot, true)
+}
+func (s Store) encodeSync(ctx context.Context, pair string, roots crewroot.Roots, snapshot *crewsync.Snapshot, complete bool) error {
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return err
@@ -113,7 +124,7 @@ func (s Store) EncodeSync(ctx context.Context, pair string, roots crewroot.Roots
 					return fmt.Errorf("invalid sync path")
 				}
 				change, changed := changes[key]
-				if !changed && existing[key] {
+				if !complete && !changed && existing[key] {
 					continue
 				}
 				mode := "100644"
