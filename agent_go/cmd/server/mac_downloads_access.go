@@ -68,5 +68,8 @@ func (api *StreamingAPI) handleMacDownloadsAccess(w http.ResponseWriter, r *http
 		}
 		common.HostDownloadsRemoved.Store(input.Removed)
 	}
-	externalJSON(w, map[string]any{"available": true, "removed": common.HostDownloadsRemoved.Load(), "path": macDownloadsFolder()})
+	// home: the person's home folder, which the Folders screen offers as "Your whole Mac" (owner, 4 Nov). Attaching it is
+	// an ordinary folder grant through /api/work/folders; nothing here grants access.
+	home, _ := os.UserHomeDir()
+	externalJSON(w, map[string]any{"available": true, "removed": common.HostDownloadsRemoved.Load(), "path": macDownloadsFolder(), "home": home})
 }
