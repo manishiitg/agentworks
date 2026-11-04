@@ -13,6 +13,7 @@ import { ProductSlackPanel } from '../../components/integrations/ProductSlackPan
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { MacAgentBridge } from './MacAgentBridge'
+import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { CrewTeamTab } from '../../components/workspace/CrewTeamTab'
 export { useMacTabShareLine, useMacSharedAgents, openCrewAccess, takeCrewAccess, openCrewAskThread } from './MacSharedAgents'
 export type { MacAgentShare } from './MacSharedAgents'
@@ -255,6 +256,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
     { id: 'publish', label: 'Publish', detail: 'agents on the server', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
     { id: 'team', label: 'Team', detail: 'work with people', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
   ] as const
+  const needsServer = !connections.length && !online
   const serverCopies = [...(status?.on_server || []), ...(team.team?.server_data ? [{ name: `${team.team.server_data.name}/ (shared folder)`, detail: 'kept on the server so your team can sync it' }] : [])]
   return <div className="space-y-3.5 text-sm">
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
@@ -271,7 +273,10 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
       </button>)}
     </div>
     </div>
-    {section === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
+    {/* No server connected yet (owner, 4 Nov): one sign-in card here, so the person never leaves Access; the tabs show
+        their content once the connection exists. Browser approval stays the person's own step. */}
+    {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
+    {!needsServer && section === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
       {binding?.connection_id && !online
         ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} projectId={projectId} connection={binding.connection_id} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
@@ -305,9 +310,8 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
         {!binding && !online && <p className="mt-1 text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
       </div>
     </section>}
-    {section === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
+    {!needsServer && section === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
       <p className="px-1 text-[13px] text-muted-foreground"><span>Publish runs it on {network} from now on, with your Mac on or off: chat, memory, skills, selected files, schedules and triggers go with it, using your AI login on the server. Publish the whole Crew, or just one agent.</span></p>
-      {!connections.length && <p className="text-xs text-muted-foreground">Sign in to a server in Connections first.</p>}
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
       <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
         <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">🧩</span>
@@ -320,7 +324,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
       {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} onAgentCount={setAgentCount} />}
       <p className="text-[12.5px] text-muted-foreground">Use it for things that should keep running: a workflow, a daily report, a watcher.</p>
     </section>}
-    {section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
+    {!needsServer && section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       {binding && !online && binding.connection_id ? <CrewTeamTab projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <p className="text-[13px] text-muted-foreground">Connect this Crew to a server from <button type="button" className="text-primary underline" onClick={() => setSection('mac')}>Mac online</button> first.</p>}
     </section>}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
@@ -338,6 +342,14 @@ function MacOnlineDataLine({ projectId, connection, network, copies, onTeam }: {
   const kept = copies.length > 0 || Boolean(status?.ready)
   return <MacDataLine>Your Mac does the work while it is on. Messages pass through {network}. Your files stay on this Mac.
     {kept && <> <button type="button" className="underline underline-offset-2" onClick={onTeam}>Some agent data is kept on the server for your team</button>.</>}</MacDataLine>
+}
+
+/** The Access page before this Mac has a server: why, then the same connect form as Servers. */
+function SignInToServer({ onConnected }: { onConnected: () => void }) {
+  return <section aria-label="Sign in to a server" className="space-y-3 rounded-xl border border-border p-4">
+    <p className="text-[13px] text-muted-foreground">Sign in to your company's AgentWorks server to use this Crew from your phone and the web, publish agents and work with a team. Your files stay on this Mac.</p>
+    <ConnectServerForm onConnected={onConnected} />
+  </section>
 }
 
 /** WhatsApp for a Mac Crew (owner, 4 Nov): the phone is linked once on the server; then the owner's own "Message
