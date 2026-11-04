@@ -203,9 +203,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		opts.FolderGuard.BrowserSession = client.Session()
 		opts.FolderGuard.BrowserTransport = "extension"
 	}
-	values = captureArgsWithDefaultDirectory(command, values, captureDownloadsForOptions(opts))
-	values = stripRedundantTabCommandArg(command, values)
-	tab, values, err := extractInlineCDPTab(values)
+	tab, values, err := extensionCaptureArguments(command, values, captureDownloadsForOptions(opts))
 	if err != nil {
 		return "", err
 	}
@@ -414,4 +412,13 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 		}
 	}
 	return output, nil
+}
+
+func extensionCaptureArguments(command string, values []string, downloads string) (string, []string, error) {
+	values = stripRedundantTabCommandArg(command, values)
+	tab, values, err := extractInlineCDPTab(values)
+	if err != nil {
+		return "", nil, err
+	}
+	return tab, captureArgsWithDefaultDirectory(command, values, downloads), nil
 }
