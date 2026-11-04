@@ -23,8 +23,10 @@ export function fillAgentPurposeDraft(tabId: string) { fillDraft(tabId, AGENT_PU
 /** The same for the agent's icon alone. */
 export function fillAgentIconDraft(tabId: string) { fillDraft(tabId, AGENT_ICON_PROMPT) }
 
-/** A finished set_my_agent_identity call (native or over MCP, whose name carries a prefix): the agents list is stale. */
+/** A finished set_my_agent_identity call (native or over MCP, whose name carries a prefix), or a saved Crew identity
+ * (Main's name, purpose and icon are the Crew's): the agents list is stale. */
 export function agentIdentitySaved(event: PollingEvent): boolean {
+  if ((getTypedEventData(event, 'product_interaction')?.kind || '').includes('identity')) return true
   const name = (getTypedEventData(event, 'tool_call_end') ?? getTypedEventData(event, 'tool_execution'))?.tool_name || ''
   return name === 'set_my_agent_identity' || name.endsWith('__set_my_agent_identity') || name.endsWith('.set_my_agent_identity')
 }
