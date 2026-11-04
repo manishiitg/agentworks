@@ -450,6 +450,45 @@ func workProjectChatHistoryConversationPath(userID, workspacePath, sessionID str
 	return workflowBuilderConversationLogPath(userWorkspacePath, sanitizeChatHistorySessionID(sessionID), t), true
 }
 
+// sameProjectConversationFile reports whether existing is the same chat's file in the same project conversation
+// folder as today's path, under any day.
+func sameProjectConversationFile(existing, today string) bool {
+	existing = strings.Trim(strings.TrimSpace(existing), "/")
+	today = strings.Trim(strings.TrimSpace(today), "/")
+	return existing != "" && today != "" && pathpkg.Base(existing) == pathpkg.Base(today) &&
+		pathpkg.Dir(pathpkg.Dir(existing)) == pathpkg.Dir(pathpkg.Dir(today))
+}
+
+// newestProjectConversationFile finds this chat's file under the latest day folder of the project's conversation
+// folder; today is the <project>/builder/conversation/<day>/<file> path a new save would use.
+func newestProjectConversationFile(today string) (string, bool) {
+	today = strings.Trim(strings.TrimSpace(today), "/")
+	conversationFolder := pathpkg.Dir(pathpkg.Dir(today))
+	projectDir, ok := resolveLocalWorkflowDir(pathpkg.Dir(pathpkg.Dir(conversationFolder)))
+	if !ok {
+		return "", false
+	}
+	days, err := os.ReadDir(filepath.Join(projectDir, "builder", "conversation"))
+	if err != nil {
+		return "", false
+	}
+	name, newest := pathpkg.Base(today), ""
+	var newestDay time.Time
+	for _, entry := range days {
+		day, err := time.Parse("2006-01-02", entry.Name())
+		if err != nil || !entry.IsDir() || (newest != "" && !day.After(newestDay)) {
+			continue
+		}
+		if info, err := os.Stat(filepath.Join(projectDir, "builder", "conversation", entry.Name(), name)); err == nil && info.Mode().IsRegular() {
+			newest, newestDay = entry.Name(), day
+		}
+	}
+	if newest == "" {
+		return "", false
+	}
+	return pathpkg.Join(conversationFolder, newest, name), true
+}
+
 // copyChatHistoryConversationIfNeeded seeds a project-local transcript from a
 // legacy central transcript before the next save. Leaving the legacy file in
 // place provides a rollback-compatible fallback while all subsequent writes go

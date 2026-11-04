@@ -1445,6 +1445,38 @@ func TestListWorkflowHistoryPicksNewestDayNotNewestWriteTime(t *testing.T) {
 	}
 }
 
+// PLAT-872: a chat saved on earlier days kept getting a full new copy in each new day folder (one chat had 6).
+// The next day's save must find the chat's newest existing file and keep writing there.
+func TestNextDaySaveKeepsTheChatsExistingFile(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	project := "Workflow/demo"
+	name := "session-resumed-chat-conversation.json"
+	for _, day := range []string{"2026-10-28", "2026-11-02"} {
+		dir := filepath.Join(root, filepath.FromSlash(project), "builder", "conversation", day)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	today := project + "/builder/conversation/2026-11-03/" + name
+	existing, ok := newestProjectConversationFile(today)
+	if want := project + "/builder/conversation/2026-11-02/" + name; !ok || existing != want {
+		t.Fatalf("existing = %q %v, want %q", existing, ok, want)
+	}
+	if !sameProjectConversationFile(existing, today) {
+		t.Fatal("the chat's existing file was not recognised as the same chat")
+	}
+	if sameProjectConversationFile(project+"/builder/conversation/2026-11-02/session-other-conversation.json", today) {
+		t.Fatal("another chat's file was treated as this chat's")
+	}
+	if _, ok := newestProjectConversationFile(project + "/builder/conversation/2026-11-03/session-new-conversation.json"); ok {
+		t.Fatal("a new chat found an existing file")
+	}
+}
+
 func TestListWorkflowHistoryRepairsMissingTitleFromOlderDatedEntry(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)

@@ -8852,6 +8852,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// When an older centrally stored chat is resumed, seed the local file first
 		// so its durable UI events and terminal snapshot survive the move.
 		if workConversationPath, ok := workProjectChatHistoryConversationPath(currentUserID, runtimeWorkspacePath, persistSessionID, time.Now()); ok {
+			// One file per chat (PLAT-872): a chat already saved in this project keeps its file. Only today's date
+			// was used before, so each day copied the whole chat into a new day folder (one chat had 6 copies), and
+			// a copy seeded from the wrong day lost messages (872-77).
+			if persistConversationPath == "" {
+				if existing, found := newestProjectConversationFile(workConversationPath); found {
+					persistConversationPath = existing
+				}
+			}
+			if sameProjectConversationFile(persistConversationPath, workConversationPath) {
+				workConversationPath = strings.Trim(strings.TrimSpace(persistConversationPath), "/")
+			}
 			if err := copyChatHistoryConversationIfNeeded(persistConversationPath, workConversationPath); err != nil {
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Failed to move Work conversation into project workspace: %v", err)
 			} else {
