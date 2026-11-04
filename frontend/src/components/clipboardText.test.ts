@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { getClipboardText } from './clipboardText'
 
@@ -12,6 +13,7 @@ describe('formatted chat paste (PLAT-746-309)', () => {
   it.each([
     ['plain clipboard', '', 'npm run dev\n  --flag', 'npm run dev\n  --flag'],
     ['unformatted HTML', '<span>some text</span>', 'some text', 'some text'],
+    ['font-only HTML keeps code spacing', '<div style="font-family:monospace">some code</div>', 'if (ok) {\n  run()\n}', 'if (ok) {\n  run()\n}'],
     ['styled bold', '<span style="font-weight:700">Strong</span>', 'Strong', '**Strong**'],
     ['ordered list', '<ol start="3"><li>First</li><li>Next</li></ol>', 'First\nNext', '3. First\n4. Next'],
     ['literal Markdown characters', '<b>*literal*</b>', '*literal*', '**\\*literal\\***'],
