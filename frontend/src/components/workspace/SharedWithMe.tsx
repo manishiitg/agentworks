@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { MessageSquare } from 'lucide-react'
 import api from '../../services/api'
 import { SharedAgentConversation } from '../../products/work/SharedCrewWorkspace'
-import { AgentAvatar } from '../chat/AgentAvatar'
 import { useSharedCrewPageStore } from '../../stores/useSharedCrewPageStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 
@@ -76,8 +75,8 @@ export function SharedCrewPage() {
       <span className="flex min-w-0 shrink-0 items-center px-1 text-sm font-semibold"><span className="truncate">{agents[0] ? crewLabel(agents[0]) : 'Shared Crew'}</span></span>
       <nav aria-label="Agents" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
         {agents.map(item => <button key={item.chat_id} type="button" aria-current={item === agent ? 'page' : undefined} onClick={() => setTab(item.chat_id)}
-          className={`flex shrink-0 items-center gap-1.5 rounded-full py-1 pl-1.5 pr-3 text-[13px] font-medium ${item === agent ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-          <AgentAvatar name={item.name} status="ready" active={item === agent} />{item.name}
+          className={`flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[13px] font-medium ${item === agent ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+          {item.name}
         </button>)}
       </nav>
     </header>
