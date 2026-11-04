@@ -19,7 +19,7 @@ import (
 )
 
 // The same actions as the Team Files/Sync panels. Shared-agent turns retain the
-// owner's file authority, narrowed by the existing Can make changes switch.
+// owner's file authority and the existing per-message change instructions.
 func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, sessionID, root, sharedSender string) error {
 	if !websiteDeviceClaims(claims) {
 		return nil
