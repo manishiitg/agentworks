@@ -340,6 +340,11 @@ func (s *SchedulerService) executeCrewScriptSchedule(ctx context.Context, sctx *
 	if err != nil {
 		return sessionID, folder, err
 	}
+	opts.RunKind = invocation.RunKind()
+	opts.ScheduleRunID = invocation.RunID
+	opts.ScheduleID = invocation.ScheduleID
+	opts.TriggerSource = invocation.TriggerSource
+	opts.ScheduledFor = invocation.ScheduledFor
 	req["query"] = "Script: " + sctx.Schedule.Name
 	s.sessionLogf(sctx, sessionID, "[CREW_SCRIPT] Direct schedule execution run=%s run_as=%s folder=%s", runID, sctx.OwnerUserID, folder)
 	err = s.api.startSessionInternal(context.WithValue(ctx, directWebhookExecutionKey{}, opts), req, sessionID, sctx.OwnerUserID, nil)
