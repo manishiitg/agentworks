@@ -164,7 +164,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       aria-label={tooltip}
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
-      className={`group relative flex min-w-0 cursor-pointer items-center font-medium outline-none transition-colors ${agent ? 'gap-2 rounded-full py-1 pl-1 pr-3 text-[13px]' : `gap-1.5 border-b-2 border-transparent px-2 ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-md py-1 text-xs'}`} ${
+      className={`group relative flex min-w-0 cursor-pointer items-center font-medium outline-none transition-colors ${agent ? 'gap-1.5 rounded-full py-1 pl-1.5 pr-3 text-[13px]' : `gap-1.5 border-b-2 border-transparent px-2 ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-md py-1 text-xs'}`} ${
         // A soft background identifies the selected tab without changing its height.
         isActive
           ? 'bg-muted font-semibold text-foreground'

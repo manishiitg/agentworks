@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, MessageSquare } from 'lucide-react'
+import { MessageSquare } from 'lucide-react'
 import api from '../../services/api'
 import { SharedAgentConversation } from '../../products/work/SharedCrewWorkspace'
 import { AgentAvatar } from '../chat/AgentAvatar'
@@ -73,10 +73,10 @@ export function SharedCrewPage() {
   const agent = agents.find(item => item.chat_id === tab) || agents[0]
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-      <span className="flex min-w-0 shrink-0 items-center gap-1 px-1 text-sm font-semibold"><span className="truncate">{agents[0] ? crewLabel(agents[0]) : 'Shared Crew'}</span><ChevronDown aria-hidden="true" className="h-3 w-3 text-muted-foreground" /></span>
+      <span className="flex min-w-0 shrink-0 items-center px-1 text-sm font-semibold"><span className="truncate">{agents[0] ? crewLabel(agents[0]) : 'Shared Crew'}</span></span>
       <nav aria-label="Agents" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
         {agents.map(item => <button key={item.chat_id} type="button" aria-current={item === agent ? 'page' : undefined} onClick={() => setTab(item.chat_id)}
-          className={`flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-3 text-[13px] font-medium ${item === agent ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+          className={`flex shrink-0 items-center gap-1.5 rounded-full py-1 pl-1.5 pr-3 text-[13px] font-medium ${item === agent ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
           <AgentAvatar name={item.name} status="ready" active={item === agent} />{item.name}
         </button>)}
       </nav>
