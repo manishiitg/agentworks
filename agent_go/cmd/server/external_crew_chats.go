@@ -333,7 +333,12 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 				return
 			}
 		}
-		data, err := ReadChatHistoryConversation(claims.UserID, sessionID, workspace)
+		// The newest turns are read without the rest of the chat
+		// (history_turns_total says how many there are).
+		data, paged, err := ReadChatHistoryConversationPage(claims.UserID, sessionID, workspace, externalCrewChatPageTurns)
+		if err == nil && !paged {
+			data, err = ReadChatHistoryConversation(claims.UserID, sessionID, workspace)
+		}
 		if err != nil {
 			externalError(w, 404, "chat_not_found", "The chat's history is unavailable.")
 			return
@@ -454,3 +459,6 @@ func crewCallerSideChatCount(chats []externalCrewChat) int {
 	}
 	return n
 }
+
+// externalCrewChatPageTurns is how many of a chat's newest turns read_chat returns.
+const externalCrewChatPageTurns = 20

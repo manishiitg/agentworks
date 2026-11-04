@@ -4,18 +4,24 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 )
 
 type mockWorkspaceAPI struct {
-	mu      sync.Mutex
-	files   map[string]string
-	folders map[string]bool
+	mu       sync.Mutex
+	files    map[string]string
+	folders  map[string]bool
+	chatRoot string
+	// onAppend runs when a chat turn append arrives (before it is stored).
+	onAppend func()
 }
 
 func (m *mockWorkspaceAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -89,39 +95,79 @@ func (m *mockWorkspaceAPI) handleDocument(w http.ResponseWriter, r *http.Request
 
 	switch r.Method {
 	case http.MethodPost:
-		if !strings.HasSuffix(path, "/append-history") {
+		if strings.HasSuffix(path, "/append-history") {
+			// Goals builder chats (header + history-log record).
+			path = strings.TrimSuffix(path, "/append-history")
+			var body struct {
+				Messages []json.RawMessage          `json:"messages"`
+				Patch    map[string]json.RawMessage `json:"patch"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			var record map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(m.files[path]), &record); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			var history []json.RawMessage
+			_ = json.Unmarshal(record["conversation_history"], &history)
+			history = append(history, body.Messages...)
+			record["conversation_history"], _ = json.Marshal(history)
+			for key, value := range body.Patch {
+				record[key] = value
+			}
+			encoded, _ := json.Marshal(record)
+			m.files[path] = string(encoded)
+			writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+			return
+		}
+		if !strings.HasSuffix(path, "/append-turn") || !isChatHeaderPath(strings.TrimSuffix(path, "/append-turn")) {
 			http.NotFound(w, r)
 			return
 		}
-		path = strings.TrimSuffix(path, "/append-history")
-		var body struct {
-			Messages []json.RawMessage          `json:"messages"`
-			Patch    map[string]json.RawMessage `json:"patch"`
+		path = strings.TrimSuffix(path, "/append-turn")
+		if m.onAppend != nil {
+			m.onAppend()
 		}
+		var body chatTurnAppend
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		var record map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(m.files[path]), &record); err != nil {
+		dir := m.chatDirLocked(path)
+		var stats chatlog.SaveStats
+		var err error
+		if body.OnlyMissing {
+			stats, err = chatlog.AppendMissingTurns(dir, body.Turns, body.Patch)
+		} else {
+			stats, err = chatlog.AppendTurns(dir, body.Turns, body.Patch, body.Mode)
+		}
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		var history []json.RawMessage
-		_ = json.Unmarshal(record["conversation_history"], &history)
-		history = append(history, body.Messages...)
-		record["conversation_history"], _ = json.Marshal(history)
-		for key, value := range body.Patch {
-			record[key] = value
-		}
-		encoded, _ := json.Marshal(record)
-		m.files[path] = string(encoded)
-		writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+		header, _ := os.ReadFile(filepath.Join(dir, chatlog.HeaderFile))
+		m.files[path] = string(header)
+		writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "data": stats})
 	case http.MethodGet:
 		m.mu.Lock()
 		content, ok := m.files[path]
+		if ok && isChatHeaderPath(path) {
+			turns, _ := strconv.Atoi(r.URL.Query().Get("turns"))
+			raw, err := chatlog.Record(m.chatDirLocked(path), turns, r.URL.Query().Get("lines") == "1")
+			if err != nil {
+				m.mu.Unlock()
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			content = string(raw)
+		}
 		m.mu.Unlock()
 		if !ok {
 			http.NotFound(w, r)
@@ -158,6 +204,10 @@ func (m *mockWorkspaceAPI) handleDocument(w http.ResponseWriter, r *http.Request
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if isChatHeaderPath(path) {
+			http.Error(w, "chat history is append-only", http.StatusConflict)
+			return
+		}
 		m.mu.Lock()
 		m.files[path] = body.Content
 		m.mu.Unlock()
@@ -169,6 +219,9 @@ func (m *mockWorkspaceAPI) handleDocument(w http.ResponseWriter, r *http.Request
 		_, ok := m.files[path]
 		if ok {
 			delete(m.files, path)
+			if isChatHeaderPath(path) {
+				_ = chatlog.RemoveChat(m.chatDirLocked(path))
+			}
 		}
 		m.mu.Unlock()
 		if !ok {
@@ -181,6 +234,32 @@ func (m *mockWorkspaceAPI) handleDocument(w http.ResponseWriter, r *http.Request
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// chatDirLocked is where the mock keeps a chat folder (a real chatlog store
+// in a temporary directory). Call with m.mu held.
+func (m *mockWorkspaceAPI) chatDirLocked(headerPath string) string {
+	if m.chatRoot == "" {
+		m.chatRoot, _ = os.MkdirTemp("", "mock-chats-")
+	}
+	return filepath.Join(m.chatRoot, filepath.FromSlash(strings.TrimSuffix(headerPath, "/"+chatlog.HeaderFile)))
+}
+
+// seedChat stores a whole conversation record as a chat folder, as the
+// one-off converter would.
+func (m *mockWorkspaceAPI) seedChat(headerPath, record string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.files == nil {
+		m.files = map[string]string{}
+	}
+	dir := m.chatDirLocked(headerPath)
+	if _, err := chatlog.ConvertRecord(dir, []byte(record), "seed"); err != nil {
+		return err
+	}
+	header, _ := os.ReadFile(filepath.Join(dir, chatlog.HeaderFile))
+	m.files[headerPath] = string(header)
+	return nil
 }
 
 func (m *mockWorkspaceAPI) handleDeleteFolder(w http.ResponseWriter, r *http.Request) {

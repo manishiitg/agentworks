@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +18,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
@@ -71,6 +73,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				wh.UpdateDocument(c)
 			})
 			files.GET("/api/documents/*filepath", wh.GetDocument)
+			files.POST("/api/documents/*filepath", wh.HandleDocumentRequest) // chat turns are appended (append-turn)
 			files.GET("/api/documents", wh.ListDocuments)
 			files.POST("/api/folders", wh.CreateFolder)
 			files.DELETE("/api/folders/*folderpath", wh.DeleteFolder)
@@ -278,12 +281,13 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, record := range []ProductConversationRecord{main, side} {
-				path, ok := workProjectChatHistoryConversationPath("owner", record.WorkspacePath, record.SessionID, time.Now())
+				path, ok := workProjectChatHistoryConversationPath("owner", record.WorkspacePath, record.SessionID)
 				if !ok {
 					t.Fatal("chat path")
 				}
-				raw, _ := json.Marshal(map[string]any{"user_id": "owner", "session_id": record.SessionID, "conversation_history": []map[string]any{{"Role": "human", "Parts": []map[string]any{{"Type": "text", "Text": "marker " + record.ConversationID}}}}, "terminal_snapshots": []string{"do-not-transfer-terminal"}})
-				if err = writeRawFileToWorkspace(ctx, path, string(raw)); err != nil {
+				turn := chatlog.Turn{ID: "t-" + record.ConversationID, Messages: []json.RawMessage{json.RawMessage(`{"Role":"human","Parts":[{"Type":"text","Text":"marker ` + record.ConversationID + `"}]}`)}}
+				header := chatHeaderPatch(map[string]any{"user_id": "owner", "session_id": record.SessionID, "terminal_snapshots": []string{"do-not-transfer-terminal"}})
+				if _, err = appendChatTurnInWorkspace(ctx, path, chatTurnAppend{Turns: []chatlog.Turn{turn}, Patch: header}); err != nil {
 					t.Fatal(err)
 				}
 			}

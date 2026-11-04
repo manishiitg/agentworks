@@ -9,6 +9,7 @@ import (
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
@@ -90,13 +91,16 @@ func TestRetainedCanonicalRunHandoffBeforeAndAfterAcknowledgement(t *testing.T) 
 
 func TestRetainedCanonicalRunFourLaterSteersPersistOwnReplies(t *testing.T) {
 	const sessionID = "rts-four-steers"
-	const workspacePath = "Workflow/project"
-	conversation := workspacePath + "/builder/conversation/2026-10-19/" + chatHistoryConversationFileName(sessionID)
+	const workspacePath = "Crew/project"
+	conversation := chatHistoryHeaderPath(workspacePath+"/builder/conversation", sessionID)
 	raw, _ := json.Marshal(map[string]interface{}{
 		"session_id": sessionID, "user_id": "alice",
 		"conversation_history": []map[string]interface{}{{"Role": "human", "Parts": []map[string]string{{"Text": "start"}}}},
 	})
-	workspace := &mockWorkspaceAPI{files: map[string]string{conversation: string(raw)}}
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	if err := workspace.seedChat(conversation, string(raw)); err != nil {
+		t.Fatal(err)
+	}
 	server := httptest.NewServer(workspace)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
@@ -124,14 +128,16 @@ func TestRetainedCanonicalRunFourLaterSteersPersistOwnReplies(t *testing.T) {
 		api.observeRetainedMainTurnEvent(sessionID, event)
 	}
 	var saved struct {
-		History     []builderConversationMessage `json:"conversation_history"`
-		Checkpoints map[string]interface{}       `json:"structured_turn_checkpoints"`
+		History []builderConversationMessage `json:"conversation_history"`
 	}
-	if err := json.Unmarshal([]byte(workspace.files[conversation]), &saved); err != nil {
+	workspace.mu.Lock()
+	record, err := chatlog.Record(workspace.chatDirLocked(conversation), 0, false)
+	workspace.mu.Unlock()
+	if err != nil || json.Unmarshal(record, &saved) != nil {
 		t.Fatal(err)
 	}
-	if len(saved.History) != 5 || len(saved.Checkpoints) != 4 {
-		t.Fatalf("want four distinct durable replies, got history=%d checkpoints=%d", len(saved.History), len(saved.Checkpoints))
+	if len(saved.History) != 5 {
+		t.Fatalf("want four distinct durable replies, got history=%d", len(saved.History))
 	}
 	for i := 1; i <= 4; i++ {
 		if saved.History[i].Role != "ai" || saved.History[i].Parts[0].Text != fmt.Sprintf("reply-%d", i) {

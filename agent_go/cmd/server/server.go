@@ -8871,44 +8871,100 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		botHistoryMeta := chatHistoryBotMetadataFromQuery(req)
 
-		// Work uses the same workspace-owned transcript layout as AgentWorks.
-		// When an older centrally stored chat is resumed, seed the local file first
-		// so its durable UI events and terminal snapshot survive the move.
-		if workConversationPath, ok := workProjectChatHistoryConversationPath(currentUserID, runtimeWorkspacePath, persistSessionID, time.Now()); ok {
-			// One file per chat (PLAT-872): a chat already saved in this project keeps its file. Only today's date
-			// was used before, so each day copied the whole chat into a new day folder (one chat had 6 copies), and
-			// a copy seeded from the wrong day lost messages (872-77).
-			if persistConversationPath == "" {
-				if existing, found := newestProjectConversationFile(workConversationPath); found {
-					persistConversationPath = existing
-				}
-			}
-			if sameProjectConversationFile(persistConversationPath, workConversationPath) {
-				workConversationPath = strings.Trim(strings.TrimSpace(persistConversationPath), "/")
-			}
-			if err := copyChatHistoryConversationIfNeeded(persistConversationPath, workConversationPath); err != nil {
-				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Failed to move Work conversation into project workspace: %v", err)
-			} else {
-				persistConversationPath = workConversationPath
-				if restoredPersistTarget != nil {
-					restoredPersistTarget.ConversationPath = workConversationPath
-					api.rememberRestoredConversationPersistTarget(sessionID, *restoredPersistTarget)
-				}
+		// A Crew chat is one folder in its project (PLAT-856-521); a restored
+		// chat keeps its own folder.
+		if workConversationPath, ok := workProjectChatHistoryConversationPath(currentUserID, runtimeWorkspacePath, persistSessionID); ok && persistConversationPath == "" {
+			persistConversationPath = workConversationPath
+			if restoredPersistTarget != nil {
+				restoredPersistTarget.ConversationPath = workConversationPath
+				api.rememberRestoredConversationPersistTarget(sessionID, *restoredPersistTarget)
 			}
 		}
 
-		// Persist ordinary personal/product chats to global chat_history, except
-		// Work projects which use the project-owned path selected above. Workflow
-		// conversations are persisted below in their workspace Builder folder.
+		// The turn is marked done before its history is saved (PLAT-856-521): the
+		// save is an append now, and the next turn of this chat still waits for
+		// it, because this goroutine releases the chat's input lane only after
+		// the save and the save holds the chat's writer lock.
 		if !isWorkflowPhase {
 			if err := checkTokenTurn(context.WithoutCancel(agentCtx)); err != nil {
 				turnStatus, turnError = trackedExecutionStatusCanceled, err.Error()
 				return
 			}
-			api.persistChatConversationToPathWithTerminalSession(persistSessionID, sessionID, req.AgentMode, currentUserID, persistedHistoryForDisk, chatRuntime, uiEvents, persistConversationPath, botHistoryMeta)
-			if isCrewReaderTurn(req, currentUserID) {
-				mirrorCrewReaderConversation(currentUserID, req.SelectedFolder, persistSessionID, persistConversationPath, time.Now())
+			// Store agent for reuse by synthetic turns (multi-agent chat and workflow phase chat).
+			// The stored agent retains all tools, prompts, observers, and conversation history.
+			api.storeSessionAgent(sessionID, llmAgent)
+			log.Printf("[BG AGENT] Stored agent for session %s for synthetic turn reuse", sessionID)
+		}
+		settleTurn := func() (string, bool) {
+			// Cancellation also runs the normal removal/history/runtime capture above.
+			// It must not be overwritten as a successful turn after persistence.
+			if agentCtx.Err() != nil {
+				turnStatus = trackedExecutionStatusCanceled
+				turnError = context.Cause(agentCtx).Error()
+				if errors.Is(context.Cause(agentCtx), errTurnInactive) {
+					turnStatus = trackedExecutionStatusFailed
+				} else if !api.isSessionMarkedStopped(sessionID) {
+					api.updateSessionStatus(sessionID, "canceled")
+				}
+				return turnStatus, false
 			}
+
+			// A stop or runtime failure may close the stream while this goroutine is
+			// still unwinding. Preserve that terminal state instead of resurrecting the
+			// session as successfully completed.
+			if activeSession, exists := api.getActiveSession(sessionID); exists {
+				switch normalizeSessionLifecycleStatus(activeSession.Status) {
+				case sessionLifecycleFailed:
+					turnStatus = trackedExecutionStatusFailed
+					turnError = "session reported failure"
+					log.Printf("[COMPLETION] Preserving terminal status %q for session %s", activeSession.Status, sessionID)
+					return activeSession.Status, false
+				case sessionLifecycleStopped:
+					turnStatus = trackedExecutionStatusCanceled
+					turnError = "session was stopped"
+					log.Printf("[COMPLETION] Preserving terminal status %q for session %s", activeSession.Status, sessionID)
+					return activeSession.Status, false
+				}
+			}
+			if api.isSessionMarkedStopped(sessionID) {
+				turnStatus = trackedExecutionStatusCanceled
+				turnError = "session was stopped"
+				log.Printf("[COMPLETION] Session %s has a cancellation guard; skipping completed status", sessionID)
+				return "stopped", false
+			}
+
+			// A turn whose every LLM attempt failed records that only as events and
+			// would otherwise read as completed. Use the scheduler's rule so chat tabs
+			// can show Failed from the server's own phase (PLAT-746-158).
+			if failure := scheduledTurnFailure(api.eventStore, sessionID, streamWaitStartedAt); failure != "" {
+				turnStatus = trackedExecutionStatusFailed
+				turnError = failure
+				log.Printf("[COMPLETION] Turn produced no response; marking session %s failed", sessionID)
+				api.updateSessionStatus(sessionID, "error")
+				return "error", false
+			}
+
+			// Update active session status to completed
+			turnStatus = trackedExecutionStatusCompleted
+			turnError = ""
+			log.Printf("[COMPLETION] Updating session %s status to completed", sessionID)
+			api.updateSessionStatus(sessionID, "completed")
+			return "completed", true
+		}
+
+		// Persist ordinary personal/product chats to global chat_history, except
+		// Work projects which use the project-owned path selected above. Workflow
+		// conversations are persisted below in their workspace Builder folder.
+		// Goals (workflow phase) keep their order: saved first, settled after.
+		var traceStatus string
+		var turnSettledCompleted bool
+		if !isWorkflowPhase {
+			traceStatus, turnSettledCompleted = settleTurnThenSave(settleTurn, func() {
+				saved := api.persistChatConversationToPathWithTerminalSession(persistSessionID, sessionID, req.AgentMode, currentUserID, queryID, persistedHistoryForDisk, chatRuntime, uiEvents, persistConversationPath, botHistoryMeta)
+				if saved != nil && isCrewReaderTurn(req, currentUserID) {
+					mirrorCrewReaderTurn(currentUserID, req.SelectedFolder, persistSessionID, *saved)
+				}
+			})
 		}
 
 		// Store resolved workflowPhaseFolder so synthetic turns can persist builder conversations
@@ -9051,82 +9107,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Store agent for reuse by synthetic turns (multi-agent chat and workflow phase chat).
-		// The stored agent retains all tools, prompts, observers, and conversation history.
-		{
+		if isWorkflowPhase {
 			api.storeSessionAgent(sessionID, llmAgent)
 			log.Printf("[BG AGENT] Stored agent for session %s for synthetic turn reuse", sessionID)
+			traceStatus, turnSettledCompleted = settleTurn()
 		}
-
-		// Cancellation also runs the normal removal/history/runtime capture above.
-		// It must not be overwritten as a successful turn after persistence.
-		if agentCtx.Err() != nil {
-			turnStatus = trackedExecutionStatusCanceled
-			turnError = context.Cause(agentCtx).Error()
-			if errors.Is(context.Cause(agentCtx), errTurnInactive) {
-				turnStatus = trackedExecutionStatusFailed
-			} else if !api.isSessionMarkedStopped(sessionID) {
-				api.updateSessionStatus(sessionID, "canceled")
-			}
-			tracer.EndTrace(traceID, map[string]interface{}{"status": turnStatus})
+		tracer.EndTrace(traceID, map[string]interface{}{"status": traceStatus})
+		if !turnSettledCompleted {
 			return
 		}
-
-		// A stop or runtime failure may close the stream while this goroutine is
-		// still unwinding. Preserve that terminal state instead of resurrecting the
-		// session as successfully completed.
-		if activeSession, exists := api.getActiveSession(sessionID); exists {
-			switch normalizeSessionLifecycleStatus(activeSession.Status) {
-			case sessionLifecycleFailed:
-				turnStatus = trackedExecutionStatusFailed
-				turnError = "session reported failure"
-				log.Printf("[COMPLETION] Preserving terminal status %q for session %s", activeSession.Status, sessionID)
-				tracer.EndTrace(traceID, map[string]interface{}{
-					"status": activeSession.Status,
-				})
-				return
-			case sessionLifecycleStopped:
-				turnStatus = trackedExecutionStatusCanceled
-				turnError = "session was stopped"
-				log.Printf("[COMPLETION] Preserving terminal status %q for session %s", activeSession.Status, sessionID)
-				tracer.EndTrace(traceID, map[string]interface{}{
-					"status": activeSession.Status,
-				})
-				return
-			}
-		}
-		if api.isSessionMarkedStopped(sessionID) {
-			turnStatus = trackedExecutionStatusCanceled
-			turnError = "session was stopped"
-			log.Printf("[COMPLETION] Session %s has a cancellation guard; skipping completed status", sessionID)
-			tracer.EndTrace(traceID, map[string]interface{}{
-				"status": "stopped",
-			})
-			return
-		}
-
-		// A turn whose every LLM attempt failed records that only as events and
-		// would otherwise read as completed. Use the scheduler's rule so chat tabs
-		// can show Failed from the server's own phase (PLAT-746-158).
-		if failure := scheduledTurnFailure(api.eventStore, sessionID, streamWaitStartedAt); failure != "" {
-			turnStatus = trackedExecutionStatusFailed
-			turnError = failure
-			log.Printf("[COMPLETION] Turn produced no response; marking session %s failed", sessionID)
-			api.updateSessionStatus(sessionID, "error")
-			tracer.EndTrace(traceID, map[string]interface{}{"status": "error"})
-			return
-		}
-
-		// Update active session status to completed
-		turnStatus = trackedExecutionStatusCompleted
-		turnError = ""
-		log.Printf("[COMPLETION] Updating session %s status to completed", sessionID)
-		api.updateSessionStatus(sessionID, "completed")
-
-		// End conversation trace
-		tracer.EndTrace(traceID, map[string]interface{}{
-			"status": "completed",
-		})
 
 		// Note: Completion events are emitted by the underlying agent, no need for server-level events
 

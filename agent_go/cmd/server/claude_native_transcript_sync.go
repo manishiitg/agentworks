@@ -266,9 +266,8 @@ func findWorkflowBuilderConversationPathForSession(ctx context.Context, userID, 
 	}
 	paths := []string{}
 	collectWorkspaceFilePaths(listing, &paths)
-	wantFileName := chatHistoryConversationFileName(sessionID)
 	for _, path := range paths {
-		if filepath.Base(path) == wantFileName && isWorkflowBuilderConversationLogPath(workspacePath, path) {
+		if chatHistorySessionIDFromConversationFile(path) == sanitizeChatHistorySessionID(sessionID) && isWorkflowBuilderConversationLogPath(workspacePath, path) {
 			return path, true, nil
 		}
 	}

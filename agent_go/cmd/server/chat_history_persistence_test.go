@@ -15,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	agentevents "github.com/manishiitg/mcpagent/events"
@@ -863,48 +864,6 @@ func TestReadWorkflowScopedChatHistoryConversationDirect(t *testing.T) {
 	}
 }
 
-func TestListChatHistorySessionsFromDiskReadsDateBucketLayout(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-
-	convDir := filepath.Join(root, "_users", "default", "chat_history", "2026-05-17")
-	if err := os.MkdirAll(convDir, 0o755); err != nil {
-		t.Fatalf("mkdir conversation dir: %v", err)
-	}
-	convPath := filepath.Join(convDir, "session-chat-1-conversation.json")
-	data := `{
-  "session_id": "chat-1",
-  "agent_mode": "simple",
-  "conversation_history": [
-    {"Role": "human", "Parts": [{"Text": "hello from date bucket"}]}
-  ],
-  "updated_at": "2026-05-17T10:00:00Z"
-}`
-	if err := os.WriteFile(convPath, []byte(data), 0o600); err != nil {
-		t.Fatalf("write conversation: %v", err)
-	}
-
-	sessions, ok, err := listChatHistorySessionsFromDisk("default", "_users/default/chat_history", "", 10, 0)
-	if err != nil {
-		t.Fatalf("list error = %v", err)
-	}
-	if !ok {
-		t.Fatal("list ok = false, want true")
-	}
-	if len(sessions) != 1 {
-		t.Fatalf("sessions len = %d, want 1: %#v", len(sessions), sessions)
-	}
-	if sessions[0].SessionID != "chat-1" {
-		t.Fatalf("session id = %q, want chat-1", sessions[0].SessionID)
-	}
-	if sessions[0].ConversationPath != "_users/default/chat_history/2026-05-17/session-chat-1-conversation.json" {
-		t.Fatalf("conversation path = %q", sessions[0].ConversationPath)
-	}
-	if _, err := os.Stat(filepath.Join(root, "_users", "default", "chat_history", chatHistoryIndexFileName)); err != nil {
-		t.Fatalf("legacy listing did not backfill chat index: %v", err)
-	}
-}
-
 func TestListChatHistorySessionsFromDiskUsesIndexWithoutParsingConversation(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
@@ -1121,7 +1080,7 @@ func TestAppendLiveInputUsesOwnedWorkProjectConversation(t *testing.T) {
 		workspacePath = "_users/alice/Chats/Work/projects/demo-12345678"
 		sessionID     = "product-chat-live-input"
 	)
-	conversationPath := workspacePath + "/builder/conversation/2026-09-16/" + chatHistoryConversationFileName(sessionID)
+	conversationPath := crewChatHeaderPath(workspacePath, sessionID)
 	conversation := `{
   "session_id": "product-chat-live-input",
   "agent_mode": "multi-agent",
@@ -1130,7 +1089,10 @@ func TestAppendLiveInputUsesOwnedWorkProjectConversation(t *testing.T) {
   "user_id": "alice",
   "updated_at": "2026-09-16T05:00:00Z"
 }`
-	workspace := &mockWorkspaceAPI{files: map[string]string{conversationPath: conversation}}
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	if err := workspace.seedChat(conversationPath, conversation); err != nil {
+		t.Fatal(err)
+	}
 	workspaceServer := httptest.NewServer(workspace)
 	defer workspaceServer.Close()
 	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
@@ -1141,7 +1103,13 @@ func TestAppendLiveInputUsesOwnedWorkProjectConversation(t *testing.T) {
 	var record struct {
 		ConversationHistory []llmtypes.MessageContent `json:"conversation_history"`
 	}
-	if err := json.Unmarshal([]byte(workspace.files[conversationPath]), &record); err != nil {
+	workspace.mu.Lock()
+	raw, err := chatlog.Record(workspace.chatDirLocked(conversationPath), 0, false)
+	workspace.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &record); err != nil {
 		t.Fatalf("decode Work conversation: %v", err)
 	}
 	if len(record.ConversationHistory) != 2 || len(record.ConversationHistory[1].Parts) != 1 || chatHistoryPartText(record.ConversationHistory[1].Parts[0]) != "resumed follow-up" {
@@ -1191,43 +1159,6 @@ func TestNormalizeRestoredChatHistoryConversationPathAllowsOnlyOwnedWorkProject(
 	otherUser := "_users/bob/Chats/Work/projects/demo/builder/conversation/2026-09-14/session-chat-1-conversation.json"
 	if got, ok := normalizeRestoredChatHistoryConversationPath("alice", otherUser); ok || got != "" {
 		t.Fatalf("other user's Work conversation path = %q, ok=%v", got, ok)
-	}
-}
-
-func TestCopyChatHistoryConversationIfNeededPreservesLegacyTranscript(t *testing.T) {
-	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{}})
-	defer workspace.Close()
-	t.Setenv("WORKSPACE_API_URL", workspace.URL)
-
-	sourcePath := "_users/default/chat_history/2026-09-14/session-legacy-conversation.json"
-	destinationPath := "_users/default/Chats/Work/projects/demo/builder/conversation/2026-09-14/session-legacy-conversation.json"
-	if err := writeRawFileToWorkspace(context.Background(), sourcePath, `{"session_id":"legacy","ui_events":[{"type":"tool"}]}`); err != nil {
-		t.Fatalf("write legacy transcript: %v", err)
-	}
-	if err := copyChatHistoryConversationIfNeeded(sourcePath, destinationPath); err != nil {
-		t.Fatalf("copy legacy transcript: %v", err)
-	}
-
-	got, exists, err := readFileFromWorkspace(context.Background(), destinationPath)
-	if err != nil || !exists {
-		t.Fatalf("read project transcript: exists=%v err=%v", exists, err)
-	}
-	if !strings.Contains(got, `"ui_events"`) {
-		t.Fatalf("project transcript lost durable UI events: %s", got)
-	}
-	if _, exists, err := readFileFromWorkspace(context.Background(), sourcePath); err != nil || !exists {
-		t.Fatalf("legacy fallback should remain readable: exists=%v err=%v", exists, err)
-	}
-
-	if err := writeRawFileToWorkspace(context.Background(), destinationPath, `{"session_id":"newer"}`); err != nil {
-		t.Fatalf("overwrite project transcript for test: %v", err)
-	}
-	if err := copyChatHistoryConversationIfNeeded(sourcePath, destinationPath); err != nil {
-		t.Fatalf("second copy: %v", err)
-	}
-	got, _, _ = readFileFromWorkspace(context.Background(), destinationPath)
-	if !strings.Contains(got, `"newer"`) {
-		t.Fatalf("existing project transcript was overwritten: %s", got)
 	}
 }
 
@@ -1310,225 +1241,57 @@ func TestListChatHistorySessionsByKindFiltersBeforePagination(t *testing.T) {
 	}
 }
 
-func TestPersistChatConversationUpdatesMetadataIndex(t *testing.T) {
+// A save appends only the turn being saved (the in-memory history repeats
+// every earlier turn), a re-save of the same turn amends it instead of adding
+// a copy, and the listing index follows the header (PLAT-856-521).
+func TestTurnSaveAppendsOnlyTheNewTurnAndUpdatesIndex(t *testing.T) {
 	workspace := &mockWorkspaceAPI{files: map[string]string{}}
 	server := httptest.NewServer(workspace)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
-
-	history := []llmtypes.MessageContent{{
-		Role: llmtypes.ChatMessageTypeHuman,
-		Parts: []llmtypes.ContentPart{
-			llmtypes.TextContent{Text: "the indexed conversation title"},
-		},
-	}}
-	conversationPath := "Workflow/demo/builder/conversation/2026-08-03/session-save-index-conversation.json"
-	api := &StreamingAPI{}
-	api.persistChatConversationToPathWithTerminalSession("save-index", "", "workflow", "default", history, &ChatHistoryAgentRuntime{
-		Kind:         "coding_agent",
-		Provider:     "codex",
-		WorkshopMode: "workshop",
-	}, nil, conversationPath)
-
-	indexPath := "Workflow/demo/builder/conversation/" + chatHistoryIndexFileName
-	workspace.mu.Lock()
-	conversationData, conversationExists := workspace.files[conversationPath]
-	indexData, indexExists := workspace.files[indexPath]
-	workspace.mu.Unlock()
-	if !conversationExists || !indexExists {
-		t.Fatalf("persisted conversation=%v index=%v, want both", conversationExists, indexExists)
+	text := func(role llmtypes.ChatMessageType, value string) llmtypes.MessageContent {
+		return llmtypes.MessageContent{Role: role, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: value}}}
 	}
+	conversationPath := "Crew/demo/builder/conversation/session-save-index/header.json"
+	runtime := &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: "codex", WorkshopMode: "workshop"}
+	api := &StreamingAPI{}
+	first := []llmtypes.MessageContent{text(llmtypes.ChatMessageTypeSystem, "prompt"), text(llmtypes.ChatMessageTypeHuman, "the indexed conversation title"), text(llmtypes.ChatMessageTypeAI, "a1")}
+	api.persistChatConversationToPathWithTerminalSession("save-index", "", "multi-agent", "alice", "q1", first, runtime, nil, conversationPath)
+	second := append(append([]llmtypes.MessageContent(nil), first...), text(llmtypes.ChatMessageTypeHuman, "q2"))
+	api.persistChatConversationToPathWithTerminalSession("save-index", "", "multi-agent", "alice", "q2", second, runtime, nil, conversationPath)
+	// The same turn finishes: saved again with its answer.
+	second = append(second, text(llmtypes.ChatMessageTypeAI, "a2"))
+	api.persistChatConversationToPathWithTerminalSession("save-index", "", "multi-agent", "alice", "q2", second, runtime, nil, conversationPath)
 
+	workspace.mu.Lock()
+	dir := workspace.chatDirLocked(conversationPath)
+	headerData := workspace.files[conversationPath]
+	indexData := workspace.files["Crew/demo/builder/conversation/"+chatHistoryIndexFileName]
+	workspace.mu.Unlock()
+	turns, _ := os.ReadFile(filepath.Join(dir, chatlog.TurnsFile))
+	if lines := strings.Count(string(turns), "\n"); lines != 3 {
+		t.Fatalf("turn lines = %d, want 3 (q1, q2, q2 amended):\n%s", lines, turns)
+	}
+	raw, err := chatlog.Record(dir, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record builderConversationLog
+	_ = json.Unmarshal(raw, &record)
+	var got []string
+	for _, message := range record.ConversationHistory {
+		got = append(got, message.Parts[0].Text)
+	}
+	if strings.Join(got, ",") != "prompt,the indexed conversation title,a1,q2,a2" {
+		t.Fatalf("history = %v", got)
+	}
 	var index chatHistoryIndex
 	if err := json.Unmarshal([]byte(indexData), &index); err != nil {
 		t.Fatalf("decode persisted index: %v", err)
 	}
 	entry, ok := index.Entries[conversationPath]
-	if !ok {
-		t.Fatalf("missing index entry for %s: %#v", conversationPath, index.Entries)
-	}
-	if entry.Session.Query != "the indexed conversation title" || entry.Session.Status != "completed" || entry.Session.WorkspacePath != "Workflow/demo" {
-		t.Fatalf("unexpected persisted metadata: %#v", entry.Session)
-	}
-	if entry.SourceSize != int64(len(conversationData)) {
-		t.Fatalf("source size = %d, want %d", entry.SourceSize, len(conversationData))
-	}
-	if !entry.AttributionVerified {
-		t.Fatal("newly persisted conversation must have verified attribution")
-	}
-}
-
-func TestUpdatePersistedChatHistoryIndexCarriesTitleAcrossDatedPaths(t *testing.T) {
-	workspace := &mockWorkspaceAPI{files: map[string]string{}}
-	server := httptest.NewServer(workspace)
-	defer server.Close()
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-
-	oldPath := "Workflow/demo/builder/conversation/2026-09-15/session-resumed-chat-conversation.json"
-	newPath := "Workflow/demo/builder/conversation/2026-09-16/session-resumed-chat-conversation.json"
-	indexPath := "Workflow/demo/builder/conversation/" + chatHistoryIndexFileName
-	index := newChatHistoryIndex()
-	index.Entries[oldPath] = chatHistoryIndexEntry{Session: ChatHistorySession{
-		SessionID: "resumed-chat",
-		Title:     "Release follow-up",
-		UpdatedAt: "2026-09-15T10:00:00Z",
-	}}
-	encoded, _ := json.Marshal(index)
-	workspace.files[indexPath] = string(encoded)
-
-	history := []llmtypes.MessageContent{{
-		Role:  llmtypes.ChatMessageTypeHuman,
-		Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "check again"}},
-	}}
-	if err := updatePersistedChatHistoryIndex("default", "resumed-chat", "workflow", history, nil, newPath, 123, time.Date(2026, 9, 16, 10, 0, 0, 0, time.UTC), nil); err != nil {
-		t.Fatalf("update index: %v", err)
-	}
-
-	workspace.mu.Lock()
-	updated := workspace.files[indexPath]
-	workspace.mu.Unlock()
-	var got chatHistoryIndex
-	if err := json.Unmarshal([]byte(updated), &got); err != nil {
-		t.Fatalf("decode updated index: %v", err)
-	}
-	if got.Entries[newPath].Session.Title != "Release follow-up" {
-		t.Fatalf("new dated entry title = %q, want inherited custom title", got.Entries[newPath].Session.Title)
-	}
-}
-
-// A migration rewrote a chat's older day files, so a 6 Oct transcript had a newer write time than 19 Oct's; the chat
-// then continued from 6 Oct and lost 7-19 Oct. The newest day folder is the chat's transcript; a folder that is not a
-// day keeps the write-time order.
-func TestListWorkflowHistoryPicksNewestDayNotNewestWriteTime(t *testing.T) {
-	cases := []struct {
-		name    string
-		written map[string]time.Time
-		want    string
-	}{
-		{"newest day wins over a newer write", map[string]time.Time{
-			"2026-10-06": time.Date(2026, 10, 20, 17, 44, 46, 0, time.UTC), // touched by the migration
-			"2026-10-19": time.Date(2026, 10, 19, 15, 12, 25, 0, time.UTC),
-		}, "2026-10-19"},
-		{"a non-day folder does not win by its name", map[string]time.Time{
-			"background": time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC),
-			"2026-10-19": time.Date(2026, 10, 19, 15, 12, 25, 0, time.UTC),
-		}, "2026-10-19"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			t.Setenv("WORKSPACE_DOCS_PATH", root)
-			workflowPath := "Workflow/demo"
-			conversationRoot := filepath.Join(root, filepath.FromSlash(workflowPath), "builder", "conversation")
-			fileName := "session-resumed-chat-conversation.json"
-			for folder, written := range tc.written {
-				dir := filepath.Join(conversationRoot, folder)
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatal(err)
-				}
-				path := filepath.Join(dir, fileName)
-				if err := os.WriteFile(path, []byte(`{"session_id":"resumed-chat","conversation_history":[]}`), 0o600); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Chtimes(path, written, written); err != nil {
-					t.Fatal(err)
-				}
-			}
-			sessions, ok := listWorkflowBuilderHistoryFromDisk("default", workflowPath, 10, "chat")
-			if !ok || len(sessions) != 1 {
-				t.Fatalf("list ok=%v sessions=%#v", ok, sessions)
-			}
-			if want := workflowPath + "/builder/conversation/" + tc.want + "/" + fileName; sessions[0].ConversationPath != want {
-				t.Fatalf("conversation path = %q, want %q", sessions[0].ConversationPath, want)
-			}
-		})
-	}
-}
-
-// PLAT-872: a chat saved on earlier days kept getting a full new copy in each new day folder (one chat had 6).
-// The next day's save must find the chat's newest existing file and keep writing there.
-func TestNextDaySaveKeepsTheChatsExistingFile(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	project := "Workflow/demo"
-	name := "session-resumed-chat-conversation.json"
-	for _, day := range []string{"2026-10-28", "2026-11-02"} {
-		dir := filepath.Join(root, filepath.FromSlash(project), "builder", "conversation", day)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{}`), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	today := project + "/builder/conversation/2026-11-03/" + name
-	existing, ok := newestProjectConversationFile(today)
-	if want := project + "/builder/conversation/2026-11-02/" + name; !ok || existing != want {
-		t.Fatalf("existing = %q %v, want %q", existing, ok, want)
-	}
-	if !sameProjectConversationFile(existing, today) {
-		t.Fatal("the chat's existing file was not recognised as the same chat")
-	}
-	if sameProjectConversationFile(project+"/builder/conversation/2026-11-02/session-other-conversation.json", today) {
-		t.Fatal("another chat's file was treated as this chat's")
-	}
-	if _, ok := newestProjectConversationFile(project + "/builder/conversation/2026-11-03/session-new-conversation.json"); ok {
-		t.Fatal("a new chat found an existing file")
-	}
-}
-
-func TestListWorkflowHistoryRepairsMissingTitleFromOlderDatedEntry(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-
-	workflowPath := "Workflow/demo"
-	conversationRoot := filepath.Join(root, filepath.FromSlash(workflowPath), "builder", "conversation")
-	oldDir := filepath.Join(conversationRoot, "2026-09-15")
-	newDir := filepath.Join(conversationRoot, "2026-09-16")
-	if err := os.MkdirAll(oldDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(newDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	fileName := "session-resumed-chat-conversation.json"
-	oldLocalPath := filepath.Join(oldDir, fileName)
-	newLocalPath := filepath.Join(newDir, fileName)
-	if err := os.WriteFile(oldLocalPath, []byte(`{"session_id":"resumed-chat"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(newLocalPath, []byte(`{"session_id":"resumed-chat"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	oldTime := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
-	newTime := oldTime.Add(24 * time.Hour)
-	if err := os.Chtimes(oldLocalPath, oldTime, oldTime); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chtimes(newLocalPath, newTime, newTime); err != nil {
-		t.Fatal(err)
-	}
-	oldInfo, _ := os.Stat(oldLocalPath)
-	newInfo, _ := os.Stat(newLocalPath)
-	oldWorkspacePath := workflowPath + "/builder/conversation/2026-09-15/" + fileName
-	newWorkspacePath := workflowPath + "/builder/conversation/2026-09-16/" + fileName
-	index := newChatHistoryIndex()
-	putLocalChatHistoryIndexEntry(&index, localChatHistoryFile{sessionID: "resumed-chat", convPath: oldLocalPath, workspacePath: oldWorkspacePath, modTime: oldInfo.ModTime(), size: oldInfo.Size()}, ChatHistorySession{SessionID: "resumed-chat", Title: "Release follow-up", UpdatedAt: oldTime.Format(time.RFC3339)})
-	putLocalChatHistoryIndexEntry(&index, localChatHistoryFile{sessionID: "resumed-chat", convPath: newLocalPath, workspacePath: newWorkspacePath, modTime: newInfo.ModTime(), size: newInfo.Size()}, ChatHistorySession{SessionID: "resumed-chat", Query: "check again", UpdatedAt: newTime.Format(time.RFC3339)})
-	if err := writeLocalChatHistoryIndex(filepath.Join(conversationRoot, chatHistoryIndexFileName), &index); err != nil {
-		t.Fatal(err)
-	}
-
-	sessions, ok := listWorkflowBuilderHistoryFromDisk("default", workflowPath, 10, "chat")
-	if !ok || len(sessions) != 1 {
-		t.Fatalf("list ok=%v sessions=%#v", ok, sessions)
-	}
-	if sessions[0].Title != "Release follow-up" {
-		t.Fatalf("listed title = %q, want title from older dated entry", sessions[0].Title)
-	}
-	repaired, exists := readLocalChatHistoryIndex(filepath.Join(conversationRoot, chatHistoryIndexFileName))
-	if !exists || repaired.Entries[newWorkspacePath].Session.Title != "Release follow-up" {
-		t.Fatalf("newest index entry was not repaired: %#v", repaired.Entries[newWorkspacePath])
+	if !ok || entry.Session.Status != "completed" || entry.Session.WorkspacePath != "Crew/demo" || entry.Session.MessageCount != 4 || entry.SourceSize != int64(len(headerData)) {
+		t.Fatalf("unexpected index entry: %#v", entry)
 	}
 }
 
@@ -1746,49 +1509,6 @@ func TestListWorkflowChatHistorySessionsKeepsEveryScheduleRun(t *testing.T) {
 	}
 }
 
-func TestDeleteChatHistorySessionDeletesUserDateBucketAndLegacyFiles(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-
-	legacyDir := filepath.Join(root, "_users", "default", "chat_history", "chat-1")
-	dateDir := filepath.Join(root, "_users", "default", "chat_history", "2026-05-17")
-	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
-		t.Fatalf("mkdir legacy dir: %v", err)
-	}
-	if err := os.MkdirAll(dateDir, 0o755); err != nil {
-		t.Fatalf("mkdir date dir: %v", err)
-	}
-	legacyPath := filepath.Join(legacyDir, "conversation.json")
-	datePath := filepath.Join(dateDir, "session-chat-1-conversation.json")
-	if err := os.WriteFile(legacyPath, []byte(`{"session_id":"chat-1","conversation_history":[]}`), 0o600); err != nil {
-		t.Fatalf("write legacy: %v", err)
-	}
-	if err := os.WriteFile(datePath, []byte(`{"session_id":"chat-1","conversation_history":[]}`), 0o600); err != nil {
-		t.Fatalf("write date bucket: %v", err)
-	}
-	if _, ok, err := listChatHistorySessionsFromDisk("default", "_users/default/chat_history", "", 10, 0); err != nil || !ok {
-		t.Fatalf("build deletion test index ok=%v err=%v", ok, err)
-	}
-
-	result, err := DeleteChatHistorySession("default", "chat-1", "")
-	if err != nil {
-		t.Fatalf("delete error = %v", err)
-	}
-	if result.DeletedCount != 2 {
-		t.Fatalf("deleted count = %d, want 2: %#v", result.DeletedCount, result.DeletedPaths)
-	}
-	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
-		t.Fatalf("legacy conversation still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(datePath); !os.IsNotExist(err) {
-		t.Fatalf("date conversation still exists or stat failed unexpectedly: %v", err)
-	}
-	index, exists := readLocalChatHistoryIndex(filepath.Join(root, "_users", "default", "chat_history", chatHistoryIndexFileName))
-	if !exists || len(index.Entries) != 0 {
-		t.Fatalf("deleted chat remains in index: exists=%v entries=%#v", exists, index.Entries)
-	}
-}
-
 func TestDeleteChatHistoryOlderThanUsesJSONTimestampAndSkipsEmpty(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
@@ -1942,39 +1662,6 @@ func TestDeleteChatHistoryOlderThanWorkflowUsesJSONTimestampAndSkipsEmpty(t *tes
 	}
 }
 
-func TestReadUserChatHistoryConversationDirectPrefersNewestDateBucket(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-
-	oldDir := filepath.Join(root, "_users", "default", "chat_history", "chat-1")
-	newDir := filepath.Join(root, "_users", "default", "chat_history", "2026-05-17")
-	if err := os.MkdirAll(oldDir, 0o755); err != nil {
-		t.Fatalf("mkdir legacy dir: %v", err)
-	}
-	if err := os.MkdirAll(newDir, 0o755); err != nil {
-		t.Fatalf("mkdir date dir: %v", err)
-	}
-	legacy := []byte(`{"session_id":"chat-1","updated_at":"2026-05-16T10:00:00Z","conversation_history":[]}`)
-	dateBucket := []byte(`{"session_id":"chat-1","updated_at":"2026-05-17T10:00:00Z","conversation_history":[]}`)
-	if err := os.WriteFile(filepath.Join(oldDir, "conversation.json"), legacy, 0o600); err != nil {
-		t.Fatalf("write legacy: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(newDir, "session-chat-1-conversation.json"), dateBucket, 0o600); err != nil {
-		t.Fatalf("write date bucket: %v", err)
-	}
-
-	got, ok, err := readUserChatHistoryConversationDirect("default", "chat-1")
-	if err != nil {
-		t.Fatalf("direct read error = %v", err)
-	}
-	if !ok {
-		t.Fatal("direct read ok = false, want true")
-	}
-	if string(got) != string(dateBucket) {
-		t.Fatalf("direct read = %s, want %s", got, dateBucket)
-	}
-}
-
 func TestParseLocalChatHistorySessionIncludesRuntime(t *testing.T) {
 	data := `{
   "session_id": "session-1",
@@ -2053,7 +1740,7 @@ func TestRenameWorkChatBeforeFirstPersistenceRetainsTitle(t *testing.T) {
 	if err := RenameChatHistorySession(userID, sessionID, workspacePath, title); err != nil {
 		t.Fatalf("rename before first save: %v", err)
 	}
-	conversationPath, ok := workProjectChatHistoryConversationPath(userID, workspacePath, sessionID, time.Now())
+	conversationPath, ok := workProjectChatHistoryConversationPath(userID, workspacePath, sessionID)
 	if !ok {
 		t.Fatal("expected Work project conversation path")
 	}
@@ -2066,7 +1753,7 @@ func TestRenameWorkChatBeforeFirstPersistenceRetainsTitle(t *testing.T) {
 		Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "check this Notion board"}},
 	}}
 	(&StreamingAPI{}).persistChatConversationToPathWithTerminalSession(
-		sessionID, "", "multi-agent", userID, history, nil, nil, conversationPath,
+		sessionID, "", "multi-agent", userID, "turn-1", history, nil, nil, conversationPath,
 	)
 
 	raw, exists := workspace.files[conversationPath]
@@ -3158,13 +2845,12 @@ func TestAgentProfileRuntimeKeepsActualTurnAdmission(t *testing.T) {
 func TestCrewChatHistoryPathFollowsOwnership(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	crew := registerTestCrew(t, "demo-12345678", "alice", true)
-	at := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
-	got, ok := workProjectChatHistoryConversationPath("alice", crew, "chat-1", at)
-	want := crew + "/builder/conversation/2026-09-14/session-chat-1-conversation.json"
+	got, ok := workProjectChatHistoryConversationPath("alice", crew, "chat-1")
+	want := crew + "/builder/conversation/session-chat-1/header.json"
 	if !ok || !strings.HasSuffix(got, want) {
 		t.Fatalf("owner path = %q ok=%v, want it to end with %q", got, ok, want)
 	}
-	if got, ok := workProjectChatHistoryConversationPath("bob", crew, "chat-1", at); ok || got != "" {
+	if got, ok := workProjectChatHistoryConversationPath("bob", crew, "chat-1"); ok || got != "" {
 		t.Fatalf("a Run person's chat entered Builder storage: %q", got)
 	}
 }

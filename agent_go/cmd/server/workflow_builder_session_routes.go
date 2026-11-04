@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	agentEvents "github.com/manishiitg/mcpagent/events"
 
 	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 )
 
 const restoredBuilderConversationMessageLimit = 12
@@ -432,10 +432,10 @@ func (api *StreamingAPI) restoreLatestBuilderConversation(ctx context.Context, p
 	}, nil
 }
 
-// builderConversationFileSessionID is the session id in a conversation log's
-// file name (session-<id>-conversation.json), or "" for any other name.
+// builderConversationFileSessionID is the session id of a stored chat path
+// (session-<id>/header.json or session-<id>-conversation.json), or "".
 func builderConversationFileSessionID(path string) string {
-	return chatHistorySessionIDFromFileName(pathpkg.Base(path))
+	return chatHistorySessionIDFromConversationFile(path)
 }
 
 // builderConversationPathsNewestFirst orders conversation log paths by file
@@ -481,16 +481,19 @@ func builderConversationVisibleTo(logUserID, viewerID string, workflowAccess Wor
 func isWorkflowBuilderConversationLogPath(workspacePath, candidatePath string) bool {
 	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
 	candidatePath = strings.Trim(strings.TrimSpace(candidatePath), "/")
-	if workspacePath == "" || candidatePath == "" || !strings.HasSuffix(candidatePath, "-conversation.json") {
-		return false
-	}
-
 	newPrefix := workspacePath + "/builder/conversation/"
-	if !strings.HasPrefix(candidatePath, newPrefix) {
+	if workspacePath == "" || candidatePath == "" || !strings.HasPrefix(candidatePath, newPrefix) {
 		return false
 	}
 	relative := strings.TrimPrefix(candidatePath, newPrefix)
 	parts := strings.Split(relative, "/")
+	// A Crew chat folder: conversation/session-<id>/header.json
+	if len(parts) == 2 && parts[1] == chatlog.HeaderFile {
+		return strings.HasPrefix(parts[0], "session-")
+	}
+	if !strings.HasSuffix(candidatePath, "-conversation.json") {
+		return false
+	}
 	// Legacy: conversation/YYYY-MM-DD/session-....json
 	if len(parts) == 2 {
 		if _, err := time.Parse(workflowBuilderConversationDateLayout, parts[0]); err != nil {

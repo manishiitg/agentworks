@@ -720,12 +720,19 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 
 		var data json.RawMessage
-		servedResumeSnapshot := false
+		servedPage := false
 		var err error
-		if resumeTurns == chatHistoryResumeSnapshotTurns && resumeOffset == 0 && r.URL.Query().Get("include_ui_events") != "1" && !includePromptSizes {
-			data, servedResumeSnapshot, err = ReadChatHistoryResumeSnapshot(userID, sessionID, workspacePath)
+		// The newest turns of a chat folder are read without the rest of the
+		// chat (PLAT-856-521); one extra turn tells whether earlier ones exist.
+		servedResumeSnapshot := false
+		if resumeTurns > 0 && resumeOffset == 0 && r.URL.Query().Get("include_ui_events") != "1" && !includePromptSizes {
+			data, servedPage, err = ReadChatHistoryConversationPage(userID, sessionID, workspacePath, resumeTurns+1)
+			// A Goals builder chat still serves its -resume.json snapshot.
+			if err == nil && !servedPage && resumeTurns == chatHistoryResumeSnapshotTurns {
+				data, servedResumeSnapshot, err = ReadChatHistoryResumeSnapshot(userID, sessionID, workspacePath)
+			}
 		}
-		if !servedResumeSnapshot {
+		if !servedPage && !servedResumeSnapshot {
 			data, err = ReadChatHistoryConversation(userID, sessionID, workspacePath)
 		}
 		if err != nil {
@@ -772,9 +779,12 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 			if includePromptSizes {
 				data = attachChatHistorySavedPromptSizes(data, resumeSource)
 			}
+			if servedPage {
+				data = markChatHistoryPagePagination(data, resumeSource)
+			}
 			data = boundChatHistoryResumeSnapshot(data)
-			if limit == chatHistoryResumeSnapshotTurns && resumeOffset == 0 {
-				if conversationPath, found, pathErr := FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath); pathErr == nil && found {
+			if !servedPage && limit == chatHistoryResumeSnapshotTurns && resumeOffset == 0 {
+				if conversationPath, found, pathErr := FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath); pathErr == nil && found && !isChatHeaderPath(conversationPath) {
 					_ = writeChatHistoryResumeSnapshot(r.Context(), conversationPath, resumeSource)
 				}
 			}
@@ -791,6 +801,29 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(api.nativeUsageResponse(r, sessionID, data))
 	}
+}
+
+// markChatHistoryPagePagination corrects a page's pagination: the projection
+// only saw the page, so earlier stored turns mean there is more to load.
+func markChatHistoryPagePagination(projected, page []byte) []byte {
+	var stored struct {
+		Total int `json:"history_turns_total"`
+		Turns int `json:"history_page_turns"`
+	}
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(page, &stored) != nil || json.Unmarshal(projected, &doc) != nil || stored.Total <= stored.Turns {
+		return projected
+	}
+	var pagination map[string]interface{}
+	if json.Unmarshal(doc["history_pagination"], &pagination) != nil || pagination == nil {
+		return projected
+	}
+	pagination["has_more"] = true
+	if total, _ := pagination["total_turns"].(float64); int(total) < stored.Total {
+		pagination["total_turns"] = stored.Total
+	}
+	doc["history_pagination"], _ = json.Marshal(pagination)
+	return marshalChatHistoryProjectionOrOriginal(doc, projected)
 }
 
 // Prompt sizes are debug context, separate from paginated chat turns. Only

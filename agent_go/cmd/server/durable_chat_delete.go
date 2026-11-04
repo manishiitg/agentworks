@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	pathpkg "path"
-	"path/filepath"
 )
 
 // durableSessionIDsFromConversationPaths maps removed
@@ -14,7 +12,7 @@ func durableSessionIDsFromConversationPaths(paths []string) []string {
 	seen := make(map[string]bool, len(paths))
 	ids := make([]string, 0, len(paths))
 	for _, conversationPath := range paths {
-		id := chatHistorySessionIDFromFileName(pathpkg.Base(filepath.ToSlash(conversationPath)))
+		id := chatHistorySessionIDFromConversationFile(conversationPath)
 		if id == "" || seen[id] {
 			continue
 		}

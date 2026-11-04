@@ -2,8 +2,11 @@ package server
 
 import (
 	"net/url"
+
 	"runtime"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 )
 
 // Only the filename changes on Windows. Registries and archive handoffs keep
@@ -35,4 +38,18 @@ func chatHistorySessionIDFromFileName(fileName string) string {
 		id = decoded
 	}
 	return sanitizeChatHistorySessionID(id)
+}
+
+// chatHistorySessionIDFromConversationFile returns the session of a stored
+// chat: a chat folder's header.json (session-<id>/header.json) or, for
+// Goals builder chats, a session-<id>-conversation.json file.
+func chatHistorySessionIDFromConversationFile(path string) string {
+	if isChatHeaderPath(path) || strings.HasSuffix(filepathToSlash(path), "/"+chatlog.HeaderFile) {
+		return chatHistorySessionIDFromHeaderPath(path)
+	}
+	slashed := filepathToSlash(path)
+	if i := strings.LastIndex(slashed, "/"); i >= 0 {
+		slashed = slashed[i+1:]
+	}
+	return chatHistorySessionIDFromFileName(slashed)
 }

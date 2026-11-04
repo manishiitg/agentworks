@@ -125,6 +125,18 @@ type codeTurnItem struct {
 // codeChatTranscript reads a Code chat's saved events as plain lines: what was asked, the answer of each turn and the
 // names of the tools used (never their output). after is the last seq already seen; the returned last is the newest seq.
 func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath string, after, limit int) ([]codeTurnItem, int, error) {
+	// A poll for what is new reads only the newest turn lines (PLAT-856-521).
+	if after > 0 {
+		if raw, ok, err := chatEventWindow(userID, sessionID, workspacePath, after, ""); err != nil {
+			return nil, after, err
+		} else if ok {
+			items, last := codeTurnItemsFromEvents(raw, after)
+			if limit > 0 && len(items) > limit {
+				items = items[len(items)-limit:]
+			}
+			return items, last, nil
+		}
+	}
 	data, err := ReadChatHistoryConversation(userID, sessionID, workspacePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) || strings.Contains(strings.ToLower(err.Error()), "not found") {
@@ -133,7 +145,32 @@ func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath st
 		return nil, after, err
 	}
 	var doc struct {
-		Events []struct {
+		Events []json.RawMessage `json:"ui_events"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, after, err
+	}
+	items, last := codeTurnItemsFromEvents(doc.Events, after)
+	if limit > 0 && len(items) > limit {
+		items = items[len(items)-limit:]
+	}
+	return items, last, nil
+}
+
+// codeTurnItemsFromEvents turns saved chat events into plain lines, skipping
+// events at or before seq after; last is the newest seq seen.
+func codeTurnItemsFromEvents(events []json.RawMessage, after int) ([]codeTurnItem, int) {
+	clip := func(s string) string {
+		r := []rune(strings.TrimSpace(s))
+		if len(r) > 8000 {
+			return string(r[:8000]) + "…"
+		}
+		return string(r)
+	}
+	var items []codeTurnItem
+	last := after
+	for _, raw := range events {
+		var e struct {
 			Sequence  int    `json:"sequence"`
 			Type      string `json:"type"`
 			Timestamp string `json:"timestamp"`
@@ -153,21 +190,10 @@ func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath st
 					} `json:"metadata"`
 				} `json:"data"`
 			} `json:"data"`
-		} `json:"ui_events"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, after, err
-	}
-	clip := func(s string) string {
-		r := []rune(strings.TrimSpace(s))
-		if len(r) > 8000 {
-			return string(r[:8000]) + "…"
 		}
-		return string(r)
-	}
-	var items []codeTurnItem
-	last := after
-	for _, e := range doc.Events {
+		if json.Unmarshal(raw, &e) != nil {
+			continue
+		}
 		if e.Sequence > last {
 			last = e.Sequence
 		}
@@ -194,10 +220,7 @@ func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath st
 			}
 		}
 	}
-	if limit > 0 && len(items) > limit {
-		items = items[len(items)-limit:]
-	}
-	return items, last, nil
+	return items, last
 }
 
 // waitForCodeTurn waits for the turn that carries messageID (the delivered text names it) to answer, up to wait.

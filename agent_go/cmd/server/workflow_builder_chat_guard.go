@@ -9,6 +9,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 )
 
 var workflowBuilderChatGuardSessions = struct {
@@ -51,6 +52,18 @@ func protectOtherWorkflowBuilderChats(sessionID, workspacePath, userID string) {
 	if entries, err := os.ReadDir(conversationRoot); err == nil {
 		for _, dateEntry := range entries {
 			if !dateEntry.IsDir() || dateEntry.Name() == "users" || dateEntry.Name() == "system" {
+				continue
+			}
+			// A chat folder (session-<id>/header.json + turns.jsonl): its
+			// header names the owner; another person's folder is blocked whole.
+			if strings.HasPrefix(dateEntry.Name(), "session-") {
+				data, readErr := os.ReadFile(filepath.Join(conversationRoot, dateEntry.Name(), chatlog.HeaderFile))
+				var owner struct {
+					UserID string `json:"user_id"`
+				}
+				if readErr != nil || json.Unmarshal(data, &owner) != nil || strings.TrimSpace(owner.UserID) != strings.TrimSpace(userID) {
+					blocked = append(blocked, filepath.ToSlash(filepath.Join(workspacePath, "builder", "conversation", dateEntry.Name())))
+				}
 				continue
 			}
 			dateDir := filepath.Join(conversationRoot, dateEntry.Name())

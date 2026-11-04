@@ -452,38 +452,31 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	wait := min(max(args.WaitSeconds, 0), 25)
 	deadline := time.Now().Add(time.Duration(wait) * time.Second)
 	for {
-		items, last, err := codeChatTranscript(ctx, claims.UserID, conversation.SessionID, conversation.WorkspacePath, args.After, 0)
+		// Only the newest turn lines are read on each poll, never the whole
+		// history (PLAT-856-521); each turn comes whole, so an answer to a
+		// message read earlier is still this sender's turn.
+		window, events, last, err := senderChatWindow(claims.UserID, conversation.SessionID, conversation.WorkspacePath, args.After, args.SenderID)
 		if err != nil {
 			return reply(409, map[string]string{"error": "This agent's answers could not be read."})
 		}
 		own := []codeTurnItem{}
-		mine := senderOwnTurns(items, args.SenderID)
+		turns := map[string]bool{}
+		mine := senderOwnTurns(window, args.SenderID)
 		if args.Submission != "" {
 			mine = submissionTurn(mine, args.Submission)
 		}
 		for _, item := range mine {
 			if at, e := time.Parse(time.RFC3339Nano, item.At); e == nil && (since.IsZero() || !at.Before(since)) {
-				own = append(own, item)
+				turns[item.Turn] = true
+				if item.Seq > args.After {
+					own = append(own, item)
+				}
 			}
 		}
 		working := api.sessionTurnRunning(conversation.SessionID)
 		if args.Events {
 			// The same events the owner's chat shows, for this sender's own turns only.
-			// Turns come from the whole thread: a long turn's later events follow a message read earlier.
-			turns := map[string]bool{}
-			all, _, err := codeChatTranscript(ctx, claims.UserID, conversation.SessionID, conversation.WorkspacePath, 0, 0)
-			if err != nil {
-				return reply(409, map[string]string{"error": "This agent's answers could not be read."})
-			}
-			for _, item := range senderOwnTurns(all, args.SenderID) {
-				if at, e := time.Parse(time.RFC3339Nano, item.At); e == nil && (since.IsZero() || !at.Before(since)) {
-					turns[item.Turn] = true
-				}
-			}
-			events, err := senderTurnEvents(claims.UserID, conversation.SessionID, conversation.WorkspacePath, args.After, turns)
-			if err != nil {
-				return reply(409, map[string]string{"error": "This agent's answers could not be read."})
-			}
+			events = senderTurnEvents(events, args.After, turns)
 			if len(events) > 0 || time.Now().After(deadline) || ctx.Err() != nil {
 				log.Printf("[CREW_SHARED_AGENT] local project=%s tab=%s operation=read events=%d", project, call.Tab, len(events))
 				return reply(200, map[string]any{"events": events, "messages": own, "next_after": max(args.After, last), "working": working})
@@ -499,26 +492,41 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	}
 }
 
-// senderTurnEvents is the saved chat's own events (what the chat area renders) for the given turns after seq after.
-func senderTurnEvents(userID, sessionID, workspace string, after int, turns map[string]bool) ([]json.RawMessage, error) {
-	if len(turns) == 0 {
-		return nil, nil
-	}
-	data, err := ReadChatHistoryConversation(userID, sessionID, workspace)
+// senderChatWindow reads a shared thread's newest turn lines after seq after:
+// their items (every event of each line, for telling whose turns they are) and
+// their raw events. A chat not on this machine is read whole.
+func senderChatWindow(userID, sessionID, workspace string, after int, sender string) ([]codeTurnItem, []json.RawMessage, int, error) {
+	events, ok, err := chatEventWindow(userID, sessionID, workspace, after, sender)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "not found") {
-			return nil, nil
+		return nil, nil, after, err
+	}
+	if !ok {
+		data, err := ReadChatHistoryConversation(userID, sessionID, workspace)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				return nil, nil, after, nil
+			}
+			return nil, nil, after, err
 		}
-		return nil, err
+		var doc struct {
+			Events []json.RawMessage `json:"ui_events"`
+		}
+		if err := json.Unmarshal(data, &doc); err != nil {
+			return nil, nil, after, err
+		}
+		events = doc.Events
 	}
-	var doc struct {
-		Events []json.RawMessage `json:"ui_events"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, err
+	items, last := codeTurnItemsFromEvents(events, 0)
+	return items, events, max(after, last), nil
+}
+
+// senderTurnEvents keeps the events of the given turns after seq after (what the chat area renders).
+func senderTurnEvents(events []json.RawMessage, after int, turns map[string]bool) []json.RawMessage {
+	if len(turns) == 0 {
+		return nil
 	}
 	out := []json.RawMessage{}
-	for _, raw := range doc.Events {
+	for _, raw := range events {
 		var head struct {
 			Sequence int `json:"sequence"`
 			Data     struct {
@@ -533,5 +541,5 @@ func senderTurnEvents(userID, sessionID, workspace string, after int, turns map[
 			out = append(out, raw)
 		}
 	}
-	return out, nil
+	return out
 }

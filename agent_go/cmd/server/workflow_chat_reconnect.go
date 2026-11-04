@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -102,6 +103,10 @@ func recentDialogueLines(history []llmtypes.MessageContent, skipPrefixes ...stri
 // that carry text, one "role: text" line each.
 // The same over the full .history.jsonl, read with jq -s (all lines as one array).
 const continuityRecentTurnsLogJQ = `[.[] | select(.Role=="human" or .Role=="user" or .Role=="ai" or .Role=="assistant") | {r: .Role, t: ([.Parts[]?.Text? // empty] | join(" "))} | select(.t != "")] | .[-10:][] | "\(.r): \(.t)"`
+
+// continuityRecentChatTurnsJQ reads a chat folder's turns.jsonl (one turn per
+// line; a later line with the same id replaces the turn).
+const continuityRecentChatTurnsJQ = `reduce .[] as $t ({o: [], m: {}}; (if .m[$t.id] then . else .o += [$t.id] end) | .m[$t.id] = $t) | [.o[] as $id | .m[$id].messages[]? | select(.Role=="human" or .Role=="user" or .Role=="ai" or .Role=="assistant") | {r: .Role, t: ([.Parts[]?.Text? // empty] | join(" "))} | select(.t != "")] | .[-10:][] | "\(.r): \(.t)"`
 
 const continuityRecentTurnsJQ = `[.conversation_history[] | select(.Role=="human" or .Role=="user" or .Role=="ai" or .Role=="assistant") | {r: .Role, t: ([.Parts[]?.Text? // empty] | join(" "))} | select(.t != "")] | .[-10:][] | "\(.r): \(.t)"`
 
@@ -240,7 +245,12 @@ func buildCodingAgentContinuityNotice(conversationPath, workspacePath string, hi
 	// the last 40 messages (a chat with 218 messages could not find its own earlier work).
 	format, recentJQ := "JSON whose conversation_history array stores each turn's role in Role and its text in Parts[].Text", continuityRecentTurnsJQ
 	jqFlags := "-r"
-	if strings.HasSuffix(conversationPath, ".json") {
+	if isChatHeaderPath(normalizedConversationPath) {
+		// A chat folder: the turns are in turns.jsonl beside the header.
+		conversationPath = strings.TrimSuffix(conversationPath, chatlog.HeaderFile) + chatlog.TurnsFile
+		format = "JSON Lines, one turn per line with its messages in messages[] (role in Role, text in Parts[].Text); a later line with the same id replaces that turn"
+		recentJQ, jqFlags = continuityRecentChatTurnsJQ, "-rs"
+	} else if strings.HasSuffix(conversationPath, ".json") {
 		logPath := strings.TrimSuffix(conversationPath, ".json") + ".history.jsonl"
 		abs := logPath
 		if !filepath.IsAbs(abs) {

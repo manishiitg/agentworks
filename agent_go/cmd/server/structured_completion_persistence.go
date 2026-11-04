@@ -9,6 +9,7 @@ import (
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -113,6 +114,58 @@ func (api *StreamingAPI) appendStructuredAssistantReply(userID, sessionID, works
 	lock := chatConversationMutex(conversationPath)
 	lock.Lock()
 	defer lock.Unlock()
+	if !isChatHeaderPath(conversationPath) {
+		// A Goals builder chat keeps its whole-record file until Goals are removed.
+		return api.appendStructuredReplyToGoalsChat(userID, sessionID, conversationPath, turnID, final, event)
+	}
+	stored, exists, err := readStoredChatTail(context.Background(), conversationPath, 3)
+	if err != nil || !exists {
+		return false
+	}
+	if owner := firstNonEmptyTrimmed(stored.UserID, "default"); owner != userID {
+		return false
+	}
+	completedAt := event.Timestamp
+	if completedAt.IsZero() {
+		completedAt = time.Now()
+	}
+	// The turn's tool calls and messages happened after the Run's own save: store everything the live session still
+	// holds (as the Run's save does), not only the completion, or a live-input turn's tool calls vanish from history.
+	liveEvents := []storeevents.Event{event}
+	if api.eventStore != nil {
+		if all := trimChatHistoryUIEvents(api.eventStore.GetAllEventsRaw(sessionID)); len(all) > 0 {
+			liveEvents = all
+			if !chatHistoryEventsContain(all, event.ID) {
+				liveEvents = append(liveEvents, event)
+			}
+		}
+	}
+	reply := llmtypes.MessageContent{Role: llmtypes.ChatMessageTypeAI, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: final}}}
+	// The retained turn is its own line, keyed by its turn id: a replayed
+	// completion finds that id stored and appends nothing (only_missing).
+	stats, err := appendChatTurnInWorkspace(context.Background(), conversationPath, chatTurnAppend{
+		Turns: []chatlog.Turn{{
+			ID: "retained:" + turnID,
+			// Ordered by when it is stored: an event's own time can predate
+			// turns already in the log.
+			At:       time.Now().UTC().Format(time.RFC3339Nano),
+			Messages: chatMessagesToRaw([]llmtypes.MessageContent{reply}),
+			UIEvents: newChatTurnEvents(liveEvents, stored.Turns, ""),
+		}},
+		Patch:       chatHeaderPatch(map[string]interface{}{"updated_at": completedAt.UTC().Format(time.RFC3339Nano)}),
+		OnlyMissing: true,
+	})
+	if err != nil {
+		return false
+	}
+	log.Printf("[CHAT_HISTORY] Persisted structured retained completion session=%s turn=%s chars=%d turns_appended=%d", sessionID, turnID, len(final), stats.Appended)
+	return true
+}
+
+// appendStructuredReplyToGoalsChat records a retained turn's reply in a Goals
+// builder chat (whole-record format, checkpointed by turn id). The caller
+// holds the conversation lock.
+func (api *StreamingAPI) appendStructuredReplyToGoalsChat(userID, sessionID, conversationPath, turnID, final string, event storeevents.Event) bool {
 	content, exists, err := readFileFromWorkspace(context.Background(), conversationPath)
 	if err != nil || !exists {
 		return false

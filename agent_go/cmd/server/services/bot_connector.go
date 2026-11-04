@@ -1345,7 +1345,7 @@ const threadlessSessionIdleLimit = 1 * time.Hour
 const staleContextTurns = 3
 
 // loadRecentChatTurns reads the last `n` user/assistant turns from a
-// session's conversation.json. Returns nil on any read/parse failure; the
+// session's home chat. Returns nil on any read/parse failure; the
 // caller treats "no context" and "failed to load" identically. Used to
 // carry a breadcrumb of prior exchange into a new session when a thread-
 // less chat resumes after the idle threshold.
@@ -1353,37 +1353,45 @@ func (m *BotConversationManager) loadRecentChatTurns(ctx context.Context, userID
 	if m.workspaceURL == "" || userID == "" || sessionID == "" || n <= 0 {
 		return nil
 	}
-	filePath := workspaceref.PhysicalPathOf(userID, "chat_history", sessionID, "conversation.json")
+	// A home chat is a chat folder; reading its header returns the whole
+	// conversation record (PLAT-856-521).
+	filePath := workspaceref.PhysicalPathOf(userID, "chat_history", "session-"+sessionID, "header.json")
 	content, exists, err := readWorkspaceFile(ctx, m.workspaceURL, filePath)
 	if err != nil || !exists {
 		return nil
 	}
-	// The persisted conversation is a JSON array of entries with at least
-	// {role, content} — the exact shape varies a little across generations
-	// of this codebase, so decode permissively.
-	var raw []struct {
-		Role      string    `json:"role"`
-		Content   string    `json:"content"`
-		Timestamp time.Time `json:"timestamp,omitempty"`
+	var record struct {
+		History []struct {
+			Role  string `json:"Role"`
+			Parts []struct {
+				Text string `json:"Text"`
+			} `json:"Parts"`
+		} `json:"conversation_history"`
 	}
-	if err := json.Unmarshal([]byte(content), &raw); err != nil {
+	if err := json.Unmarshal([]byte(content), &record); err != nil {
 		return nil
 	}
 	var out []ThreadMessage
-	for _, r := range raw {
-		if r.Role != "user" && r.Role != "assistant" {
+	for _, r := range record.History {
+		role := strings.ToLower(r.Role)
+		if role != "human" && role != "user" && role != "ai" && role != "assistant" {
 			continue
 		}
-		text := strings.TrimSpace(r.Content)
-		if text == "" {
+		var texts []string
+		for _, part := range r.Parts {
+			if text := strings.TrimSpace(part.Text); text != "" {
+				texts = append(texts, text)
+			}
+		}
+		if len(texts) == 0 {
 			continue
 		}
-		out = append(out, ThreadMessage{
-			UserID:    r.Role,
-			Text:      text,
-			Timestamp: r.Timestamp,
-			IsBot:     r.Role == "assistant",
-		})
+		isBot := role == "ai" || role == "assistant"
+		speaker := "user"
+		if isBot {
+			speaker = "assistant"
+		}
+		out = append(out, ThreadMessage{UserID: speaker, Text: strings.Join(texts, "\n"), IsBot: isBot})
 	}
 	if len(out) > n {
 		out = out[len(out)-n:]

@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
@@ -603,7 +604,7 @@ func durableSubmissionProject(owner, session string) (string, error) {
 				if err := ctx.Err(); err != nil {
 					return "", err
 				}
-				if filepath.Base(candidate) != chatHistoryConversationFileName(session) {
+				if chatHistorySessionIDFromConversationFile(candidate) != session {
 					continue
 				}
 				candidate = filepath.ToSlash(filepath.Clean(candidate))
@@ -735,7 +736,8 @@ func submissionProjectConversationFiles(ctx context.Context, folder string) ([]s
 			if walkErr != nil {
 				return walkErr
 			}
-			if !entry.IsDir() && strings.HasPrefix(entry.Name(), "session-") && strings.HasSuffix(entry.Name(), "-conversation.json") {
+			if !entry.IsDir() && ((strings.HasPrefix(entry.Name(), "session-") && strings.HasSuffix(entry.Name(), "-conversation.json")) ||
+				(entry.Name() == chatlog.HeaderFile && strings.HasPrefix(filepath.Base(filepath.Dir(path)), "session-"))) {
 				paths = append(paths, path)
 			}
 			return nil

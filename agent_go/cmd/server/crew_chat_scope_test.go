@@ -3,7 +3,6 @@ package server
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
@@ -30,8 +29,8 @@ func TestCrewChatScope(t *testing.T) {
 		t.Fatalf("blocked = %v, want %v", got, want)
 	}
 
-	mirror, ok := crewReaderConversationMirrorPath("bob", own+"/", "work:project:abc", time.Now())
-	if !ok || mirror != own+"/builder/crew-chats/users/bob/session-work_project_abc-conversation.json" && !strings.HasPrefix(mirror, own+"/builder/crew-chats/users/bob/session-") {
+	mirror, ok := crewReaderConversationMirrorPath("bob", own+"/", "work:project:abc")
+	if !ok || !strings.HasPrefix(mirror, own+"/builder/crew-chats/users/bob/session-") || !strings.HasSuffix(mirror, "/header.json") {
 		t.Fatalf("mirror path = %q ok=%v", mirror, ok)
 	}
 	if !strings.HasPrefix(mirror, own+"/") {
@@ -42,7 +41,7 @@ func TestCrewChatScope(t *testing.T) {
 			t.Fatalf("this Crew's own mirrored chats must stay readable, blocked by %s", blocked)
 		}
 	}
-	if _, ok := crewReaderConversationMirrorPath("bob", "Crew/unregistered", "s", time.Now()); ok {
+	if _, ok := crewReaderConversationMirrorPath("bob", "Crew/unregistered", "s"); ok {
 		t.Fatal("a Crew with no owner cannot be mirrored into")
 	}
 }

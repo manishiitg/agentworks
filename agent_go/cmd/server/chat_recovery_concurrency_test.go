@@ -6,34 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
-
-func TestFullConversationWriterPreservesConcurrentRecoveredAnswer(t *testing.T) {
-	const path = "Chats/alice/2026-09-17/session-chat-conversation.json"
-	previous := `{"session_id":"chat","user_id":"alice","pending_submissions":{"one":true},"conversation_history":[{"Role":"human","Parts":[{"Text":"first"}]},{"Role":"ai","Parts":[{"Text":"recovered answer"}]}]}`
-	workspace := &mockWorkspaceAPI{files: map[string]string{path: previous}}
-	server := httptest.NewServer(workspace)
-	defer server.Close()
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-	msg := func(text string) llmtypes.MessageContent {
-		return llmtypes.MessageContent{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: text}}}
-	}
-	(&StreamingAPI{}).persistChatConversationToPathWithTerminalSession("chat", "", "simple", "alice", []llmtypes.MessageContent{msg("first"), msg("next")}, nil, nil, path)
-	var got builderConversationLog
-	if err := json.Unmarshal([]byte(workspace.files[path]), &got); err != nil {
-		t.Fatal(err)
-	}
-	if len(got.ConversationHistory) != 3 || got.ConversationHistory[1].Parts[0].Text != "recovered answer" {
-		t.Fatalf("lost canonical answer: %+v", got)
-	}
-	var raw map[string]interface{}
-	_ = json.Unmarshal([]byte(workspace.files[path]), &raw)
-	if raw["pending_submissions"] == nil {
-		t.Fatal("opaque acceptance metadata erased")
-	}
-}
 
 func TestRawConversationSnapshotPreservesRecoveredStructuredRows(t *testing.T) {
 	const path = "Workflow/test/builder/conversation/raw.json"

@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
-// persistRawConversationSnapshot is the boundary for legacy whole-record writers.
-// It preserves canonical rows accepted/recovered since their snapshot was read.
+// persistRawConversationSnapshot is the whole-record writer that Goals builder
+// chats still use (Crew and home chats are chat folders, PLAT-856-521). It
+// preserves canonical rows accepted/recovered since their snapshot was read.
 func persistRawConversationSnapshot(ctx context.Context, path, content string) error {
 	lock := chatConversationMutex(path)
 	lock.Lock()

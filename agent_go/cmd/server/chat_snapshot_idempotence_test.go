@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -125,34 +124,6 @@ func TestSnapshotRetainedTailNeverPrecedesOlderCanonicalToolTurn(t *testing.T) {
 			if g != w {
 				t.Fatalf("save %d row %d reordered/corrupted", i, j)
 			}
-		}
-	}
-}
-
-func TestSnapshotFullHistoryWriterRetainedTailIsIdempotent(t *testing.T) {
-	const path = "Workflow/test/builder/conversation/full-tail.json"
-	var old, next []llmtypes.MessageContent
-	if err := json.Unmarshal([]byte(`[{"Role":"human","Parts":[{"Text":"old"}]},{"Role":"ai","Parts":[{"ID":"old-tool","Type":"function","FunctionCall":{"Name":"inspect","Arguments":"{}"}}]},{"Role":"ai","Parts":[{"Text":"old answer"}]},{"Role":"human","Parts":[{"Text":"recent"}]},{"Role":"ai","Parts":[{"ID":"recent-tool","Type":"function","FunctionCall":{"Name":"inspect","Arguments":"{}"}}]},{"Role":"ai","Parts":[{"Text":"recent answer"}]}]`), &old); err != nil {
-		t.Fatal(err)
-	}
-	next = append(next, old[3:]...)
-	next = append(next, llmtypes.MessageContent{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "new request"}}})
-	raw, _ := json.Marshal(map[string]interface{}{"session_id": "chat", "user_id": "alice", "conversation_history": old})
-	workspace := &mockWorkspaceAPI{files: map[string]string{path: string(raw)}}
-	server := httptest.NewServer(workspace)
-	defer server.Close()
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-	for i := 0; i < 3; i++ {
-		(&StreamingAPI{}).persistChatConversationToPathWithTerminalSession("chat", "", "simple", "alice", next, nil, nil, path)
-		var got builderConversationLog
-		if err := json.Unmarshal([]byte(workspace.files[path]), &got); err != nil {
-			t.Fatal(err)
-		}
-		if len(got.ConversationHistory) != 7 {
-			t.Fatalf("full save %d grew to %d rows", i, len(got.ConversationHistory))
-		}
-		if got.ConversationHistory[0].Parts[0].Text != "old" || got.ConversationHistory[3].Parts[0].Text != "recent" || got.ConversationHistory[6].Parts[0].Text != "new request" {
-			t.Fatal("full writer reordered conversation")
 		}
 	}
 }

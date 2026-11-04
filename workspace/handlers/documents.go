@@ -739,7 +739,18 @@ func GetDocument(c *gin.Context) {
 	// Read file. A chat conversation is assembled from its header and history
 	// log; ?tail=N returns only its last N messages (never to be saved back).
 	var content []byte
-	if chatlog.IsConversationPath(filePath) {
+	if chatlog.IsChatHeaderPath(filePath) {
+		// A chat folder is read as one record; ?turns=N is the newest N turns.
+		n := 0
+		if turns := c.Query("turns"); turns != "" {
+			_, _ = fmt.Sscanf(turns, "%d", &n)
+		}
+		started := time.Now()
+		content, err = chatlog.Record(chatlog.ChatDir(filePath), n, c.Query("lines") == "1")
+		if err == nil && n > 0 {
+			log.Printf("[CHAT_HISTORY] read page path=%s turns=%d bytes=%d ms=%d", filePathParam, n, len(content), time.Since(started).Milliseconds())
+		}
+	} else if chatlog.IsConversationPath(filePath) {
 		if tail := c.Query("tail"); tail != "" {
 			n := 0
 			_, _ = fmt.Sscanf(tail, "%d", &n)
@@ -902,8 +913,13 @@ func GetRawDocument(c *gin.Context) {
 		return
 	}
 
-	if chatlog.IsConversationPath(filePath) {
-		content, err := chatlog.Load(filePath)
+	if chatlog.IsConversationPath(filePath) || chatlog.IsChatHeaderPath(filePath) {
+		var content []byte
+		if chatlog.IsChatHeaderPath(filePath) {
+			content, err = chatlog.Record(chatlog.ChatDir(filePath), 0, false)
+		} else {
+			content, err = chatlog.Load(filePath)
+		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 				Success: false,
@@ -1014,6 +1030,12 @@ func UpdateDocument(c *gin.Context) {
 			return
 		}
 		fileExists = false
+	} else if chatlog.IsChatHeaderPath(filePath) {
+		c.JSON(http.StatusConflict, models.APIResponse[any]{
+			Success: false,
+			Message: "Chat history is append-only; use append-turn",
+		})
+		return
 	} else if chatlog.IsConversationPath(filePath) {
 		writeErr = chatlog.Save(filePath, []byte(*req.Content))
 		if errors.Is(writeErr, chatlog.ErrPartialRecord) {
@@ -1116,6 +1138,8 @@ func DeleteDocument(c *gin.Context) {
 	// and plain Remove for files (faster, no risk of accidentally nuking a tree).
 	if info.IsDir() {
 		err = os.RemoveAll(filePath)
+	} else if chatlog.IsChatHeaderPath(filePath) {
+		err = chatlog.RemoveChat(chatlog.ChatDir(filePath))
 	} else if chatlog.IsConversationPath(filePath) {
 		err = chatlog.Remove(filePath)
 	} else {
@@ -2272,6 +2296,10 @@ func HandleDocumentRequest(c *gin.Context) {
 			filePathParam = strings.TrimSuffix(filePathParam, "/move")
 			c.Params = []gin.Param{{Key: "filepath", Value: filePathParam}}
 			MoveDocument(c)
+		} else if strings.HasSuffix(path, "/append-turn") {
+			filePathParam = strings.TrimSuffix(filePathParam, "/append-turn")
+			c.Params = []gin.Param{{Key: "filepath", Value: filePathParam}}
+			AppendChatTurn(c)
 		} else if strings.HasSuffix(path, "/append-history") {
 			filePathParam = strings.TrimSuffix(filePathParam, "/append-history")
 			c.Params = []gin.Param{{Key: "filepath", Value: filePathParam}}

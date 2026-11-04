@@ -7,6 +7,7 @@ import (
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	agentevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -44,6 +45,61 @@ func TestRetainedStructuredFinalRequiresCompletedReply(t *testing.T) {
 	}
 }
 
+// A retained turn's reply is one line keyed by its turn id: a replayed
+// completion adds nothing, a different turn with the same words is kept, and
+// another person cannot append to the chat (PLAT-856-521).
+func TestRetainedCompletionIsOneTurnLinePerTurnID(t *testing.T) {
+	const (
+		userID        = "alice"
+		sessionID     = "retained-chat"
+		workspacePath = "Crew/project"
+	)
+	header := chatHistoryHeaderPath(workspacePath+"/builder/conversation", sessionID)
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	if err := workspace.seedChat(header, `{"session_id":"retained-chat","user_id":"alice","conversation_history":[{"Role":"human","Parts":[{"Text":"run it"}]}]}`); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	api := &StreamingAPI{}
+	for _, turnID := range []string{"turn-1", "turn-1", "turn-2"} {
+		if !api.appendStructuredAssistantReply(userID, sessionID, workspacePath, turnID, "same answer", retainedCompletionEvent(sessionID, turnID, "completion-"+turnID, "same answer")) {
+			t.Fatalf("structured completion %s was not persisted", turnID)
+		}
+	}
+	read := func() string {
+		workspace.mu.Lock()
+		defer workspace.mu.Unlock()
+		raw, err := chatlog.Record(workspace.chatDirLocked(header), 0, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	var persisted struct {
+		History  []builderConversationMessage `json:"conversation_history"`
+		UIEvents []storeevents.Event          `json:"ui_events"`
+	}
+	before := read()
+	if err := json.Unmarshal([]byte(before), &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.History) != 3 || persisted.History[1].Role != "ai" || persisted.History[2].Parts[0].Text != "same answer" {
+		t.Fatalf("history = %+v, want one reply per retained turn", persisted.History)
+	}
+	if len(persisted.UIEvents) != 2 || persisted.UIEvents[0].ID != "completion-turn-1" || persisted.UIEvents[0].Sequence != 12 {
+		t.Fatalf("durable structured events = %+v", persisted.UIEvents)
+	}
+	if api.appendStructuredAssistantReply("bob", sessionID, workspacePath, "wrong-user", "private", retainedCompletionEvent(sessionID, "wrong-user", "wrong-user", "private")) {
+		t.Fatal("another user was allowed to append to the chat")
+	}
+	if read() != before {
+		t.Fatal("denied append changed private history")
+	}
+}
+
+// Goals builder chats keep their whole-record writer until Goals are removed.
 func TestStructuredCompletionPersistsExactlyOnceByTurn(t *testing.T) {
 	const (
 		userID        = "alice"
@@ -208,12 +264,15 @@ func TestStructuredCompletionFindsProjectTranscriptWithoutWorkspace(t *testing.T
 		sessionID = "code:project:abc"
 		project   = "_users/alice/Chats/Code/projects/demo-abc"
 	)
-	conversation := project + "/builder/conversation/2026-10-14/" + chatHistoryConversationFileName(sessionID)
+	conversation := crewChatHeaderPath(project, sessionID)
 	raw, _ := json.Marshal(map[string]interface{}{
 		"session_id": sessionID, "user_id": userID,
 		"conversation_history": []map[string]interface{}{{"Role": "human", "Parts": []map[string]string{{"Text": "hi"}}}},
 	})
-	workspace := &mockWorkspaceAPI{files: map[string]string{conversation: string(raw)}}
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	if err := workspace.seedChat(conversation, string(raw)); err != nil {
+		t.Fatal(err)
+	}
 	server := httptest.NewServer(workspace)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)

@@ -6,12 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -31,12 +34,31 @@ func crewArchiveOnly(roots crewroot.Roots) bool {
 // Runtime handles, account IDs, terminal snapshots and registry paths are not
 // portable authority. UI events can contain terminal panes and source-machine
 // handles too; the destination renders the canonical message history instead.
+//
+// The chat travels as its turn lines (PLAT-856-521): each keeps its id and
+// time, and the destination appends only the lines it does not have yet, so
+// a retried transfer never duplicates a turn.
 type crewHandoffConversation struct {
-	ConversationID string                    `json:"conversation_id"`
-	ModelID        string                    `json:"model_id,omitempty"`
-	History        []llmtypes.MessageContent `json:"conversation_history"`
-	Native         *sessiontransfer.Bundle   `json:"native,omitempty"`
-	Notice         string                    `json:"-"`
+	ConversationID string                  `json:"conversation_id"`
+	ModelID        string                  `json:"model_id,omitempty"`
+	System         json.RawMessage         `json:"system,omitempty"`
+	Turns          []chatlog.Turn          `json:"turns"`
+	Native         *sessiontransfer.Bundle `json:"native,omitempty"`
+	Notice         string                  `json:"-"`
+}
+
+// history is the flat message list of the carried turns.
+func (in *crewHandoffConversation) history() []llmtypes.MessageContent {
+	var out []llmtypes.MessageContent
+	for _, turn := range in.Turns {
+		for _, raw := range turn.Messages {
+			var message llmtypes.MessageContent
+			if json.Unmarshal(raw, &message) == nil {
+				out = append(out, message)
+			}
+		}
+	}
+	return out
 }
 
 func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {
@@ -59,12 +81,32 @@ func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims
 
 func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, conversation ProductConversationRecord, nativeOnly ...bool) (*crewHandoffConversation, error) {
 	strict := len(nativeOnly) > 0 && nativeOnly[0]
-	data, err := ReadChatHistoryConversation(claims.UserID, conversation.SessionID, conversation.WorkspacePath)
-	if errors.Is(err, errChatHistoryConversationNotFound) {
+	noSession := func() (*crewHandoffConversation, error) {
 		if strict {
 			return nil, fmt.Errorf("this agent has no saved native session yet; send it a message before publishing")
 		}
 		return &crewHandoffConversation{ConversationID: conversation.ConversationID}, nil
+	}
+	path, found, err := FindChatHistoryConversationPathForSession(claims.UserID, conversation.SessionID, conversation.WorkspacePath)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return noSession()
+	}
+	if !isChatHeaderPath(path) {
+		return nil, fmt.Errorf("the saved main conversation could not be read")
+	}
+	physical, bound, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), path)
+	if err != nil {
+		return nil, err
+	}
+	if !bound {
+		physical = filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(chatHistoryStoragePath(path)))
+	}
+	chat, err := chatlog.ReadChat(chatlog.ChatDir(physical), 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return noSession()
 	}
 	if err != nil {
 		return nil, err
@@ -72,20 +114,27 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 	// Check the persisted author as well as the registry/pair owner. A history
 	// lookup must never turn another person's private conversation into payload.
 	var doc struct {
-		UserID  string                    `json:"user_id"`
-		History []llmtypes.MessageContent `json:"conversation_history"`
-		Runtime *ChatHistoryAgentRuntime  `json:"runtime"`
+		UserID  string                   `json:"user_id"`
+		Runtime *ChatHistoryAgentRuntime `json:"runtime"`
 	}
-	if len(data) > crewHandoffHistoryLimit {
-		return nil, fmt.Errorf("this conversation is too large to move; keep using its agent on this computer")
-	}
-	if err = json.Unmarshal(data, &doc); err != nil {
+	header, _ := json.Marshal(chat.Header)
+	if err = json.Unmarshal(header, &doc); err != nil {
 		return nil, fmt.Errorf("the saved main conversation could not be read")
 	}
 	if doc.UserID != claims.UserID {
 		return nil, fmt.Errorf("only your own main conversation can move with this Crew")
 	}
-	out := &crewHandoffConversation{ConversationID: conversation.ConversationID, ModelID: conversation.ModelID, History: doc.History}
+	// UI events can hold terminal panes and source-machine handles: only the
+	// dialogue travels.
+	turns := make([]chatlog.Turn, 0, len(chat.Turns))
+	for _, turn := range chat.Turns {
+		turn.UIEvents = nil
+		turns = append(turns, turn)
+	}
+	out := &crewHandoffConversation{ConversationID: conversation.ConversationID, ModelID: conversation.ModelID, System: chat.Header["system"], Turns: turns}
+	if err = validateCrewHandoffConversation(out); err != nil {
+		return nil, err
+	}
 	if candidate, captureErr := api.captureCrewNative(ctx, claims, roots, conversation, doc.Runtime); captureErr != nil {
 		if strict {
 			return nil, fmt.Errorf("cannot publish this native session: %w", captureErr)
@@ -107,7 +156,7 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 	if out.Native != nil {
 		mode = "native_candidate"
 	}
-	log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=%s conversation=%s messages=%d", roots.ID, mode, out.ConversationID, len(out.History))
+	log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=%s conversation=%s turns=%d", roots.ID, mode, out.ConversationID, len(out.Turns))
 	return out, nil
 }
 
@@ -182,14 +231,17 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		return nil
 	}
 	now := time.Now().UTC()
-	path, ok := workProjectChatHistoryConversationPath(claims.UserID, current.WorkspacePath, session, now)
+	path, ok := workProjectChatHistoryConversationPath(claims.UserID, current.WorkspacePath, session)
 	if !ok {
 		return fmt.Errorf("the destination's private conversation storage is unavailable")
 	}
 	data := map[string]interface{}{
 		"session_id": session, "user_id": claims.UserID,
 		"username": chatHistoryUsername(claims.UserID, ""), "agent_mode": "multi-agent",
-		"conversation_history": in.History, "updated_at": now.Format(time.RFC3339),
+		"updated_at": now.Format(time.RFC3339),
+	}
+	if len(in.System) > 0 {
+		data["system"] = in.System
 	}
 	if nativeCandidate != nil {
 		nativeLock := crewNativeLock(roots, nativeCandidate.Provider+"-"+nativeCandidate.SessionID)
@@ -214,29 +266,32 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		data["runtime"] = runtime
 		in.Notice = "The saved native session is ready to resume on the destination computer."
 	}
-	raw, err := json.Marshal(data)
+	// The caller holds the Crew file lock. Going through workspace HTTP would
+	// acquire that same lock again, so the chat folder is written here, under
+	// the chat's own writer lock (chatlog takes an OS file lock).
+	physical, bound, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), path)
 	if err != nil {
 		return err
 	}
-	// The caller holds the Crew file lock. Going through workspace HTTP would
-	// acquire that same lock again, including for private builder records.
-	write := func(virtual, content string) error {
-		physical, bound, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), virtual)
+	if !bound || !crewroot.Within(roots.Private, physical) {
+		return fmt.Errorf("the destination's private conversation storage is unavailable")
+	}
+	stats, err := chatlog.AppendMissingTurns(chatlog.ChatDir(physical), in.Turns, chatHeaderPatch(data))
+	if err != nil {
+		return err
+	}
+	history := in.history()
+	indexWrite := func(virtual, content string) error {
+		indexPhysical, indexBound, err := crewroot.Resolve(fsutil.WorkspaceDocsRoot(), virtual)
 		if err != nil {
 			return err
 		}
-		if !bound || !crewroot.Within(roots.Private, physical) {
+		if !indexBound || !crewroot.Within(roots.Private, indexPhysical) {
 			return fmt.Errorf("the destination's private conversation storage is unavailable")
 		}
-		return fsutil.WriteJSONAtomic(physical, json.RawMessage(content), 0600)
+		return fsutil.WriteJSONAtomic(indexPhysical, json.RawMessage(content), 0600)
 	}
-	if err = write(path, string(raw)); err != nil {
-		return err
-	}
-	if err = write(chatHistoryResumeSnapshotPath(path), string(boundChatHistoryResumeSnapshot(projectChatHistoryConversationForResumePage(raw, chatHistoryResumeSnapshotTurns, 0)))); err != nil {
-		return err
-	}
-	if err = updatePersistedChatHistoryIndexWithWriter(claims.UserID, session, "multi-agent", in.History, len(in.History), nil, path, int64(len(raw)), now, nil, write); err != nil {
+	if err = updatePersistedChatHistoryIndexWithWriter(claims.UserID, session, "multi-agent", history, stats.MessageCount, nil, path, int64(stats.HeaderBytes), now, nil, indexWrite); err != nil {
 		return err
 	}
 	// The chat screen reads the durable journal, not the resume archive. Register
@@ -247,6 +302,10 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	}
 	api.eventStore.SetSessionOwner(session, claims.UserID)
 	if err = api.eventStore.SetSessionPersistenceClass(session, events.SessionPersistenceInteractiveChat); err != nil {
+		return err
+	}
+	raw, err := chatlog.Record(chatlog.ChatDir(physical), 0, false)
+	if err != nil {
 		return err
 	}
 	var conversation builderConversationLog
@@ -276,6 +335,6 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	if !current.FreshNative {
 		mode = "native_candidate"
 	}
-	log.Printf("[CREW_HANDOFF] project=%s pair=%s transfer=%s phase=import mode=%s conversation=%s session=%s messages=%d journal_rows=%d bytes=%d", roots.ID, pair, transfer, mode, in.ConversationID, session, len(in.History), len(dialogue), len(raw))
+	log.Printf("[CREW_HANDOFF] project=%s pair=%s transfer=%s phase=import mode=%s conversation=%s session=%s turns_appended=%d messages=%d journal_rows=%d bytes=%d", roots.ID, pair, transfer, mode, in.ConversationID, session, stats.Appended, len(history), len(dialogue), stats.Bytes)
 	return nil
 }

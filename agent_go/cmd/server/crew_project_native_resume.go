@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -96,7 +97,7 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 		return
 	}
 	store := defaultProductConversationRegistryStore()
-	path, _ := workProjectChatHistoryConversationPath(roots.Owner, crew.Binding.WorkspacePath, conversation.SessionID, time.Now())
+	path, _ := workProjectChatHistoryConversationPath(roots.Owner, crew.Binding.WorkspacePath, conversation.SessionID)
 	if path == "" {
 		externalError(w, 500, "chat_unavailable", "Could not save this private chat.")
 		return
@@ -143,16 +144,17 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			return
 		}
 		runtime := &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: selected.Provider, ModelID: model, ExternalSessionID: selected.NativeID, ResumeSupported: true, WorkspacePath: crew.Binding.WorkspacePath, WorkshopMode: mode, AgentToolsMode: normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode), AgentSessionHandle: &mcpagent.AgentSessionHandle{ConnectionID: selected.Source.ConnectionID, SessionID: conversation.SessionID, OwnerID: conversation.SessionID, Scope: "coding_agent", Provider: llmtypes.CodingProviderSessionHandle{Provider: selected.Provider, NativeSessionID: selected.NativeID, WorkingDir: roots.Files, Model: model}}}
-		data, _ := json.Marshal(map[string]any{"session_id": conversation.SessionID, "user_id": roots.Owner, "agent_mode": "multi-agent", "workspace_path": crew.Binding.WorkspacePath, "workshop_mode": mode, "title": selected.Title, "conversation_history": history, "runtime": runtime, "created_at": conversation.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
-		if err := writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
+		header := chatHeaderPatch(map[string]interface{}{"session_id": conversation.SessionID, "user_id": roots.Owner, "agent_mode": "multi-agent", "workspace_path": crew.Binding.WorkspacePath, "workshop_mode": mode, "title": selected.Title, "runtime": runtime, "created_at": conversation.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
+		system, turns := chatlog.SplitHistory(chatMessagesToRaw(history), "native-"+selected.NativeID, time.Now())
+		if system != nil {
+			header["system"] = system
+		}
+		stats, err := appendChatTurnInWorkspace(r.Context(), path, chatTurnAppend{Turns: turns, Patch: header, OnlyMissing: true})
+		if err != nil {
 			externalFailure(w, err)
 			return
 		}
-		if err := writeChatHistoryResumeSnapshot(r.Context(), path, data); err != nil {
-			externalFailure(w, err)
-			return
-		}
-		if err := updatePersistedChatHistoryIndex(roots.Owner, conversation.SessionID, "multi-agent", history, runtime, path, int64(len(data)), time.Now(), nil); err != nil {
+		if err := updatePersistedChatHistoryIndex(roots.Owner, conversation.SessionID, "multi-agent", history, runtime, path, int64(stats.HeaderBytes), time.Now(), nil); err != nil {
 			externalFailure(w, err)
 			return
 		}
