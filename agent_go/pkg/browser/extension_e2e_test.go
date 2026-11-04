@@ -27,7 +27,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		t.Skip("set RUN_CHROME_EXTENSION_E2E=1 for real Chrome extension qualification")
 	}
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", "chrome-extension-e2e")

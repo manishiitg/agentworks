@@ -29,7 +29,6 @@ func TestExternalToolCatalogInitializes(t *testing.T) {
 				}
 				t.Setenv("AGENTWORKS_TEST_CATALOG_CHILD", mode)
 				t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", deployment)
-				t.Setenv("LOCAL_MODE", "true")
 				t.Setenv("MULTI_USER_MODE", multi)
 				t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 				cmd := exec.Command(os.Args[0], "-test.run=^TestExternalToolCatalogInitializes$", "-test.v")

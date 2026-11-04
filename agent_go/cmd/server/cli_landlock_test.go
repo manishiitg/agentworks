@@ -16,7 +16,7 @@ import (
 func TestDecideCLIConfinement(t *testing.T) {
 	origOS, origRunner, origSeatbelt := cliHostOS, cliLandlockRunner, cliSeatbeltAvailable
 	t.Cleanup(func() { cliHostOS, cliLandlockRunner, cliSeatbeltAvailable = origOS, origRunner, origSeatbelt })
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	cliSeatbeltAvailable = func() bool { return true }
 	withLock := func() (string, bool) { return "/usr/lib/agentworks/landlock-run", true }
 	noLock := func() (string, bool) { return "", false }
@@ -67,7 +67,7 @@ func TestDecideCLIConfinement(t *testing.T) {
 	}
 	cliHostOS, cliLandlockRunner = "windows", noLock
 	t.Setenv("MULTI_USER_MODE", "")
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if got, _, _ := decideCLIConfinement("claude-code", "/w"); got != cliRunBridgeOnly {
 		t.Fatal("nonlocal Windows gained unsandboxed native execution")
 	}

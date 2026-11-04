@@ -24,7 +24,7 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	env.api.agentProfiles = env.svc.registry
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	// Bind private storage exactly as the server registry does, keeping the
 	// existing fixture's other Crew records and access checks intact.
 	registry := filepath.Join(os.Getenv("AGENTWORKS_STATE_ROOT"), "ownership", "projects.json")

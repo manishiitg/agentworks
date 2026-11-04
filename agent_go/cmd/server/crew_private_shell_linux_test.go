@@ -35,7 +35,7 @@ func TestCrewMCPNativeRootCreationKeepsPlatformStateProtected(t *testing.T) {
 	t.Setenv("TMPDIR", root)
 	f, upstream := newExternalCrewCommandFixture(t)
 	t.Setenv("AUTH_SECRET", "crew-execution-test-signing-secret")
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", t.TempDir())
 	t.Setenv(browserconfig.ProfileRootEnv, t.TempDir())
 	socketRoot := browserconfig.ManagedSocketRoot()

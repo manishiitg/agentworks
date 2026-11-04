@@ -75,7 +75,7 @@ def render(app, docs, product, agent_port, vault_port, unit_dir):
         raise ValueError('Existing Vault service token is invalid')
     token.chmod(0o600)
     settings = {
-        'LOCAL_MODE': 'false', 'GATEWAY_AUTH_MODE': 'platform',
+        'GATEWAY_AUTH_MODE': 'platform',
         'GATEWAY_BIND': '127.0.0.1', 'GATEWAY_PORT': str(vault_port),
         'GATEWAY_PUBLIC_URL': f'http://127.0.0.1:{vault_port}',
         'GATEWAY_PRODUCT_URL': f'http://127.0.0.1:{agent_port}',

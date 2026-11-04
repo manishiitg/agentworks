@@ -41,7 +41,7 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "false")
 	oldDocs := viper.Get("docs-dir")
 	viper.Set("docs-dir", docs)

@@ -13,7 +13,7 @@ import (
 
 func gmailConnectionFixture(t *testing.T) (*StreamingAPI, context.Context, *mockWorkspaceAPI) {
 	t.Helper()
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","email":"owner@example.com","can_create":true},{"id":"reader","email":"reader@example.com"}]}`)

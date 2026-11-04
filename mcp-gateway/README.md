@@ -14,7 +14,7 @@ supports one service process per database. See
 
 ## Start locally
 
-Run the AgentWorks launcher with the gateway enabled, or start `LOCAL_MODE=true go run ./cmd/server` from this directory. The gateway generates a fresh admin token on each start in `<GATEWAY_STATE_DIR>/admin-token` (default `./var/admin-token`, mode `0600`). The launcher prints the file path. The token is a backend service credential. Configure the product API with `CAPLAYER_SERVICE_URL` (the gateway origin) and `CAPLAYER_SERVICE_TOKEN_FILE` (that token file). Vault uses the existing product login; users never enter this gateway secret in the React console. Set `GATEWAY_AUTH_MODE=platform` and `GATEWAY_PRODUCT_URL` to use the product OAuth endpoint locally; `GATEWAY_HUMAN_TOKEN_FILE` can supply a persistent private service credential. An explicitly supplied `GATEWAY_HUMAN_TOKEN` must be unique and at least 32 characters; the old `GATEWAY_LOCAL_ADMIN=1` bypass is rejected.
+Run the AgentWorks launcher with the gateway enabled, or start `AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server` from this directory. The gateway generates a fresh admin token on each start in `<GATEWAY_STATE_DIR>/admin-token` (default `./var/admin-token`, mode `0600`). The launcher prints the file path. The token is a backend service credential. Configure the product API with `CAPLAYER_SERVICE_URL` (the gateway origin) and `CAPLAYER_SERVICE_TOKEN_FILE` (that token file). Vault uses the existing product login; users never enter this gateway secret in the React console. Set `GATEWAY_AUTH_MODE=platform` and `GATEWAY_PRODUCT_URL` to use the product OAuth endpoint locally; `GATEWAY_HUMAN_TOKEN_FILE` can supply a persistent private service credential. An explicitly supplied `GATEWAY_HUMAN_TOKEN` must be unique and at least 32 characters; the old `GATEWAY_LOCAL_ADMIN=1` bypass is rejected.
 
 Private-network upstream MCP servers are disabled by default. Set `GATEWAY_ALLOW_PRIVATE_UPSTREAMS=1` only when that access is intentional. OAuth providers reuse the shared product sign-in and token refresh service (configuration below). The gateway does not store their OAuth tokens.
 Upstream URLs with query parameters are rejected so credentials cannot be stored in connector URLs or returned by the admin API.
@@ -108,7 +108,7 @@ Connector deletion now removes its tool grants, group-server grants and version 
 Call metadata (user/group/client, MCP server and tool, decision, outcome and timing) uses a separate provider from permission configuration. New events also record bounded input arguments and output content, structured data and error indicators. Tool payloads may contain sensitive values; audit viewing and exports remain administrator-only and workspace-scoped. Transport headers, protocol metadata and configured connector credentials are excluded. Historical events may lack payloads. Every audit/usage/export endpoint uses
 the configured provider. Query failures return 503; they never appear as empty history.
 
-| Setting | Local (`LOCAL_MODE=true`) | Server (otherwise) |
+| Setting | Local (`AGENTWORKS_DEPLOYMENT_MODE=local`) | Server (otherwise) |
 |---|---|---|
 | Default provider | SQLite | SQLite (MVP default) |
 | Default retention | Rolling 24 hours | Rolling 24 hours |
@@ -117,7 +117,7 @@ the configured provider. Query failures return 503; they never appear as empty h
 
 SQLite is the only audit storage backend in the MVP. Set
 `VAULT_AUDIT_PROVIDER=sqlite` (default), or `off` to disable collection.
-The local launcher sets `LOCAL_MODE=true`, including gateway-only launches.
+The local launcher sets `AGENTWORKS_DEPLOYMENT_MODE=local` for the gateway, including gateway-only launches.
 Standalone local launches must set it explicitly. Unsupported provider choices
 fail startup. ClickHouse is deferred until after the MVP release.
 Turning auditing off stops collection and querying, but does **not** delete earlier

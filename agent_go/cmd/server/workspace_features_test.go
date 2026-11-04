@@ -222,7 +222,7 @@ func TestProjectCreationLocationKeepsAccessAndDoesNotCreate(t *testing.T) {
 		return rec
 	}
 	for _, local := range []bool{false, true} {
-		t.Setenv("LOCAL_MODE", fmt.Sprint(local))
+		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", map[bool]string{true: "local"}[local])
 		rec := request(f.Ctx(fixtureUserA))
 		var out struct {
 			Folder    string `json:"folder"`
@@ -239,7 +239,7 @@ func TestProjectCreationLocationKeepsAccessAndDoesNotCreate(t *testing.T) {
 			t.Fatalf("location %q %v; want %q %v", out.Folder, out.CanChoose, want, local)
 		}
 	}
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if rec := request(context.Background()); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("unsigned caller: %d", rec.Code)
 	}

@@ -71,12 +71,10 @@ func IsMultiUserMode() bool {
 	return os.Getenv("MULTI_USER_MODE") == "true"
 }
 
-// IsLocalMode reports a backend running on the person's own computer. The Mac
-// app starts its backend with AGENTWORKS_DEPLOYMENT_MODE=local (not LOCAL_MODE),
-// so both count: a released app refused "Use from phone and web" with HTTP 403
-// while development runs (LOCAL_MODE=true) worked (PLAT-856-509).
+// IsLocalMode reports a backend running on the person's own computer
+// (AGENTWORKS_DEPLOYMENT_MODE=local, the one switch for this; PLAT-856-528).
 func IsLocalMode() bool {
-	return os.Getenv("LOCAL_MODE") == "true" || productpolicy.Local()
+	return productpolicy.Local()
 }
 
 // IsHardcodedUserMode returns true if AUTH_USERS environment variable is set

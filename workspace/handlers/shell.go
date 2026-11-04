@@ -69,7 +69,7 @@ func isExistingHostGrant(wp, docsDir string) bool {
 // Compatibility helper: existing local host roots are never created here.
 func guardWritePathToCreate(wp, docsDir string) (string, error) {
 	physicalPath, err := resolveGuardWritePath(wp, docsDir)
-	if err != nil && os.Getenv("LOCAL_MODE") == "true" && os.Getenv("MULTI_USER_MODE") == "false" && os.Getenv("NATIVE_WORKSPACE") == "true" && isExistingHostGrant(wp, docsDir) {
+	if err != nil && strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_DEPLOYMENT_MODE")), "local") && os.Getenv("MULTI_USER_MODE") == "false" && os.Getenv("NATIVE_WORKSPACE") == "true" && isExistingHostGrant(wp, docsDir) {
 		return "", nil
 	}
 	return physicalPath, err

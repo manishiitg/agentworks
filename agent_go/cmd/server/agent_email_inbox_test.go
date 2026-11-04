@@ -40,7 +40,7 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	if e != nil || len(strings.SplitN(address, "@", 2)[0]) > 64 {
 		t.Fatalf("valid Gmail username rejected: %s %v", address, e)
 	}
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	env, ctx, root := agentEmailCrewFixture(t)
 	env.mock.mu.Lock()
@@ -192,7 +192,7 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 		t.Fatal("stored Crew mail lost on disconnection", err)
 	}
 	// No inbox endpoints, private DB or service workers are constructed locally.
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "local"))
 	local := &StreamingAPI{}
 	router := mux.NewRouter()
@@ -232,7 +232,7 @@ func TestInboxWatcherCheckpointAndNoPublicEventSecret(t *testing.T) {
 // Real Inbox snapshot -> Python filter -> existing durable Watcher ledger/receipt.
 // No Google request or model is needed to decide whether mail matches.
 func TestAgentEmailWatcherRealPythonAndDurableCursor(t *testing.T) {
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	env, ctx, root := agentEmailCrewFixture(t)
 	env.mock.mu.Lock()
@@ -346,7 +346,7 @@ func (c personalWatcherMailClient) Message(ctx context.Context, id string) (gmai
 	return raw, nil
 }
 func TestPersonalGmailWatcherKeepsMailPrivateAndPinsOwnerSource(t *testing.T) {
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	env, ctx, root := agentEmailCrewFixture(t)
 	env.mock.mu.Lock()

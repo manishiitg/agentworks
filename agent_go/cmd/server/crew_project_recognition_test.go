@@ -80,7 +80,7 @@ func TestLocalProjectNativeDiscoveryMatchesCwdAccountAndCurrentFile(t *testing.T
 // original account, stable side tab and durable native handle, without a model.
 func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "")
 	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code,codex-cli")
 	t.Setenv("AGENTWORKS_PROVIDER_POLICY", `{"claude-code":{"available_to":"all"},"codex-cli":{"available_to":"all"}}`)

@@ -112,7 +112,7 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 	files := filepath.Join(realDocs, "Crew", r.Folder)
 	resources := files
 	if r.LocalRoot != "" {
-		if os.Getenv("LOCAL_MODE") != "true" || !filepath.IsAbs(r.LocalRoot) {
+		if !strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_DEPLOYMENT_MODE")), "local") || !filepath.IsAbs(r.LocalRoot) {
 			return Roots{}, fmt.Errorf("local Crew binding is unavailable on this server")
 		}
 		files = filepath.Clean(r.LocalRoot)

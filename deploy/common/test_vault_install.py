@@ -57,7 +57,6 @@ class VaultInstallTest(unittest.TestCase):
             self.assertEqual(env['GATEWAY_BIND'], '127.0.0.1')
             self.assertEqual(env['GATEWAY_WORKSPACE_DIR'], str(docs / 'Chats/CapLayer'))
             self.assertEqual(env['GATEWAY_UPSTREAM_URL'], 'none')
-            self.assertEqual(env['LOCAL_MODE'], 'false')
             self.assertNotIn('GATEWAY_GRANT_TOOLS', env)
             self.assertIn('UMask=0077', (units / 'agents-vault.service').read_text())
             self.assertIn('EnvironmentFile=', (units / 'agents-agent.service.d/zz-vault.conf').read_text())

@@ -42,9 +42,9 @@ type AuditOptions struct {
 }
 
 // MVP audit storage is SQLite on both local and server installations.
-// Collection may be disabled; LOCAL_MODE bounds local retention.
+// Collection may be disabled; AGENTWORKS_DEPLOYMENT_MODE=local bounds local retention.
 func AuditOptionsFromEnv(stateDir string) (AuditOptions, error) {
-	o := AuditOptions{Local: os.Getenv("LOCAL_MODE") == "true", StateDir: stateDir,
+	o := AuditOptions{Local: strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_DEPLOYMENT_MODE")), "local"), StateDir: stateDir,
 		Provider: strings.ToLower(strings.TrimSpace(os.Getenv("VAULT_AUDIT_PROVIDER"))), MaxBytes: 256 << 20}
 	if o.Provider == "" {
 		o.Provider = "sqlite"

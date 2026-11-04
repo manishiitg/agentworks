@@ -508,15 +508,15 @@ launch_gateway_process() {
         fi
         prepare_gateway_product_credentials || return 1
         if [ "$BACKGROUND_MODE" = true ]; then
-            nohup "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
+            nohup env AGENTWORKS_DEPLOYMENT_MODE=local "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
         else
-            "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
+            env AGENTWORKS_DEPLOYMENT_MODE=local "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
         fi
     else
         if [ "$BACKGROUND_MODE" = true ]; then
-            nohup bash -lc 'cd "$1" && exec env GOWORK=off go run ./cmd/server' bash "$GATEWAY_DIR" >> "$GATEWAY_LOG_PATH" 2>&1 &
+            nohup bash -lc 'cd "$1" && exec env GOWORK=off AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server' bash "$GATEWAY_DIR" >> "$GATEWAY_LOG_PATH" 2>&1 &
         else
-            (cd "$GATEWAY_DIR" && exec env GOWORK=off go run ./cmd/server) >> "$GATEWAY_LOG_PATH" 2>&1 &
+            (cd "$GATEWAY_DIR" && exec env GOWORK=off AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server) >> "$GATEWAY_LOG_PATH" 2>&1 &
         fi
     fi
     GATEWAY_PID=$!
@@ -547,7 +547,6 @@ if [ "$ONLY_GATEWAY" = true ]; then
     LOG_DIR="${AGENTWORKS_LOG_DIR:-logs}"
     mkdir -p "$LOG_DIR"
     GATEWAY_LOG_PATH="${LOG_DIR}/gateway_debug.log"
-    export LOCAL_MODE="true"
     export GATEWAY_PORT
     export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
     export GATEWAY_DEMO="${GATEWAY_DEMO:-}"
@@ -1460,8 +1459,6 @@ write_frontend_runtime_config
 # Explicitly set single-user mode (local JWT is still required for API routes)
 export MULTI_USER_MODE="false"
 
-# Enable local mode (enables CDP browser connection and other local-only features)
-export LOCAL_MODE="true"
 
 # Coding CLIs and Code's terminal need no switch (PLAT-364): on a Mac they run Full CLI unconfined,
 # on Linux always inside the Landlock lock (bridge tools only if the lock cannot be applied).
