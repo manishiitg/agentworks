@@ -10,6 +10,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 )
 
 // productToolGate is the single place a product profile decides which tools its
@@ -222,14 +223,24 @@ func (g *productToolGate) allowsLocked(name string) bool {
 	if !(productpolicy.Selection{}).AllowsTool(name) {
 		return false
 	}
-	if (name == "send_email" || name == "record_summary") && !g.workflowNotifications {
+	// The allowlist stores grouped identities (files.write), while deny rules
+	// name registered tools (write_file). A grouped name is checked as its
+	// registered member, so listing the allowlist cannot skip a Run rule.
+	members := groupedActionMembers(name)
+	member := name
+	if len(members) > 0 {
+		member = members[0]
+	}
+	if (member == "send_email" || member == "record_summary") && !g.workflowNotifications {
 		return false
 	}
-	if g.deny != nil && g.deny(name) {
+	if g.deny != nil && g.deny(member) {
 		return false
 	}
-	if _, denied := g.readerDenied[name]; denied {
-		return false
+	for _, candidate := range append([]string{name}, members...) {
+		if _, denied := g.readerDenied[candidate]; denied {
+			return false
+		}
 	}
 	if g.allowed != nil {
 		_, ok := g.allowed[platformtools.Identity(name)]
@@ -315,4 +326,16 @@ func uniqueSortedToolNames(names []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// groupedActionMembers returns the registered member and its aliases for a
+// grouped identity such as "files.write"; nil for any other name.
+func groupedActionMembers(name string) []string {
+	for _, action := range catalog.Actions {
+		if action.Member == "" || action.Family+"."+action.Name != name {
+			continue
+		}
+		return append([]string{action.Member}, action.Aliases...)
+	}
+	return nil
 }

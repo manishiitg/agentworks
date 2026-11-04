@@ -9,6 +9,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // The owner (or an editor) over MCP is the same Builder as on the website:
@@ -31,7 +32,7 @@ func TestExternalBuilderHasWebsiteBuilderTools(t *testing.T) {
 		}
 		gate := newAgentWorksChatToolGate("builder")
 		gate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
-		code, bridge := externalWorkflowTransport(claims, false, gate)
+		code, bridge := externalWorkflowTransport(claims, false, gate, false)
 		if code {
 			t.Fatal("token-backed MCP Builder must use the direct bridge")
 		}
@@ -40,8 +41,8 @@ func TestExternalBuilderHasWebsiteBuilderTools(t *testing.T) {
 				continue
 			}
 			want := kb || !slices.Contains(knowledgebase.ToolNames(), name)
-			if slices.Contains(bridge, name) != want || accessTokenRunToolDenied(claims, name) == want {
-				t.Fatalf("Builder tool %s: on bridge=%v, want %v (brain scope %v)", name, slices.Contains(bridge, name), want, kb)
+			if slices.Contains(bridge, platformtools.Identity(name)) != want || accessTokenRunToolDenied(claims, name) == want {
+				t.Fatalf("Builder tool %s: on bridge=%v, want %v (brain scope %v)", name, slices.Contains(bridge, platformtools.Identity(name)), want, kb)
 			}
 		}
 	}
