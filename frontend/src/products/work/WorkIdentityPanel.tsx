@@ -232,8 +232,19 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   const local = isLocalDeployment()
   const canPick = local && Boolean(window.electronAPI?.pickWorkflowFolder)
   // On the Mac, agents may use the Downloads folder by default; the person can remove it (every agent sandbox then blocks it).
-  const [downloads, setDownloads] = useState<{ available: boolean; removed?: boolean }>({ available: false })
-  useEffect(() => { void api.get<{ available: boolean; removed?: boolean }>('/api/work/mac-downloads').then(({ data }) => setDownloads(data)).catch(() => {}) }, [])
+  const [downloads, setDownloads] = useState<{ available: boolean; removed?: boolean; home?: string }>({ available: false })
+  useEffect(() => { void api.get<{ available: boolean; removed?: boolean; home?: string }>('/api/work/mac-downloads').then(({ data }) => setDownloads(data)).catch(() => {}) }, [])
+  // "Your whole Mac" (owner, 4 Nov): one click attaches the home folder read & write, as an ordinary attached folder, so it
+  // is removed like any other. macOS system folders stay out.
+  const home = downloads.available ? (downloads.home || '').replace(/\/+$/, '') : ''
+  const wholeMac = home ? folders.find(folder => folder.path.replace(/\/+$/, '') === home) : undefined
+  const attachWholeMac = async () => {
+    if (!home) return
+    setAdding(true); setError('')
+    try { await workFolderApi.addWorkFolder({ path: home, alias: 'mac', access: 'read_write' }); await refresh() }
+    catch (cause) { setError(localFileError(cause)) }
+    finally { setAdding(false) }
+  }
   const setDownloadsRemoved = async (removed: boolean) => {
     setError('')
     try { const { data } = await api.put<{ available: boolean; removed?: boolean }>('/api/work/mac-downloads', { removed }); setDownloads(data) }
@@ -280,6 +291,11 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
         description={local ? "Folders on your Mac that your Crews can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
         count={`${folders.length} attached`}
       >
+        {home && !wholeMac && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
+          <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1"><p className="text-sm font-medium">Your whole Mac</p><p className="text-xs text-muted-foreground">Everything in your home folder ({home}), read &amp; write, for all your Crews. macOS system folders stay out.</p></div>
+          <button type="button" disabled={adding} onClick={() => void attachWholeMac()} className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50">Give access</button>
+        </div>}
         {/* On a person's own Mac agents may use their Downloads folder by default; it can be removed and added back. */}
         {downloads.available && !downloads.removed && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
           <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
