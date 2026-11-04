@@ -55,6 +55,26 @@ it('refreshes a stale Steer now action without an error or losing its queued bub
   }
 })
 
+it('shows the server-projected watcher source without exposing another prompt', async () => {
+  fixture.messages = [{ message_id: 'watcher-wait', client_message_id: 'watcher-client', content: 'My question', queue_reason: 'running', queue_detail: 'Waiting for Watcher: PR review', can_steer: false }]
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  try {
+    await act(async () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy /></QueryClientProvider>))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    expect(host.textContent).toContain('Waiting for Watcher: PR review')
+    expect(host.textContent).toContain('My question')
+    expect(host.textContent).not.toContain('Starting agent')
+    expect(host.textContent).not.toContain('Steer now')
+  } finally {
+    await act(async () => root.unmount())
+    client.clear()
+    host.remove()
+    fixture.messages = [{ message_id: 'queued-1', client_message_id: 'client-1', content: 'Review the settings page.', queue_position: 1, queue_reason: 'running', can_steer: true }]
+  }
+})
+
 it('restores the server queue and keeps a failed remove visible until the server accepts it', async () => {
   const host = document.createElement('div')
   document.body.append(host)

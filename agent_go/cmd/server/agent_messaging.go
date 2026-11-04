@@ -1153,6 +1153,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		return session, err
 	}
 	reqMap["agent_message_inbox"] = c.ID
+	reqMap["triggered_by_label"] = "From " + source.Label
 	// This store owns durable admission. Do not copy a delegated turn into
 	// the browser queue: replay there would lose its current permission lease.
 	reqMap["is_auto_notification"] = true

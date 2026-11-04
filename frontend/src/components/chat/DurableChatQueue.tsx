@@ -114,12 +114,12 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
       const Icon = pending || refreshing ? Loader2 : Clock
       const text = askAIDisplayText(getDisplaySafeUserMessageContent(message.content))
       const reason = message.queue_reason
-      const description = message.delivery_error || (refreshing ? 'This Crew changed (for example a new function), so the chat restarts with it after the current reply, then your message goes in' : message.steering ? 'Delivering to the current task' : reason === 'starting' ? 'The agent is starting or resuming. Your message will send automatically.' : reason === 'running' ? 'Sends automatically when the current turn finishes' : 'Waiting to send automatically')
+      const description = message.delivery_error || message.queue_detail || (refreshing ? 'This Crew changed (for example a new function), so the chat restarts with it after the current reply, then your message goes in' : message.steering ? 'Delivering to the current task' : reason === 'starting' ? 'The agent is starting or resuming. Your message will send automatically.' : reason === 'running' ? 'Sends automatically when the current turn finishes' : 'Waiting to send automatically')
       return <div key={message.message_id || message.client_message_id} className="rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1">
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
           <span title={description} className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
             <Icon className={`h-3 w-3 shrink-0 ${pending || refreshing ? 'animate-spin' : ''}`} />
-            {message.delivery_error ? 'Delivery unconfirmed' : refreshing ? 'Sends after the current reply · chat restarts with the Crew\'s latest setup' : message.steering ? 'Steering…' : `${reason === 'starting' ? 'Starting agent · sends when ready' : reason === 'running' ? 'Waiting for the current reply' : 'Queued · sends next'}${message.queue_position && message.queue_position > 1 ? ` · ${message.queue_position} in line` : ''}`}
+            {message.delivery_error ? 'Delivery unconfirmed' : refreshing ? 'Sends after the current reply · chat restarts with the Crew\'s latest setup' : message.steering ? 'Steering…' : `${message.queue_detail || (reason === 'starting' ? 'Starting agent · sends when ready' : reason === 'running' ? 'Waiting for the current reply' : 'Queued · sends next')}${message.queue_position && message.queue_position > 1 ? ` · ${message.queue_position} in line` : ''}`}
           </span>
           <details className="group min-w-0 text-xs text-foreground">
             <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>
