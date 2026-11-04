@@ -177,6 +177,32 @@ PY
 
   # 7. Units: any unit files the release ships, then one managed drop-in per service with the managed environment.
   install -d -m 0755 "$unit_dir" "$agent_dropin" "$workspace_dropin"
+  # Daily backup of the server's own databases, kept 7 days (owner, 2026-11-04; deploy/common/backup-system-data.sh).
+  install -m 0755 "$REPO_ROOT/deploy/common/backup-system-data.sh" "$RELEASE_DIR/bin/backup-system-data.sh"
+  cat > "$unit_dir/$UNIT_PREFIX-system-backup.service" <<UNIT
+[Unit]
+Description=$UNIT_PREFIX daily backup of server databases
+
+[Service]
+Type=oneshot
+Environment=DOCS_ROOT=$DOCS_ROOT
+Environment=STATE_ROOT=$STATE_ROOT
+ExecStart=$APP_ROOT/current/bin/backup-system-data.sh
+Nice=10
+IOSchedulingClass=idle
+UNIT
+  cat > "$unit_dir/$UNIT_PREFIX-system-backup.timer" <<UNIT
+[Unit]
+Description=$UNIT_PREFIX daily backup of server databases
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+RandomizedDelaySec=20m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
   if [[ -d "$RELEASE_DIR/systemd" ]]; then
     for file in "$RELEASE_DIR"/systemd/*.service "$RELEASE_DIR"/systemd/*.timer; do
       [[ -f "$file" ]] && install -m 0644 "$file" "$unit_dir/$(basename "$file")"
@@ -239,6 +265,7 @@ except Exception:
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
+  systemctl --user enable --now "$UNIT_PREFIX-system-backup.timer"
   if [[ -d "$RELEASE_DIR/systemd" ]]; then
     for file in "$RELEASE_DIR"/systemd/*.timer; do
       [[ -f "$file" ]] && systemctl --user enable --now "$(basename "$file")"
