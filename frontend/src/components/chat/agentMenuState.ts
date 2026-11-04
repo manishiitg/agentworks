@@ -3,6 +3,7 @@ import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
 import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
 import { runtimeNeedsUserInput, runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
+import { recordTabMarkTelemetry } from '../../utils/chatDeliveryTelemetry'
 
 export type AgentMenuState = 'waiting' | 'running' | 'failed' | 'done' | null
 
@@ -23,20 +24,36 @@ export function useAgentMenuState(tabId: string, workspaceActivity?: 'running' |
     const tab = state.chatTabs[tabId] ?? given
     return !isActive && !!tab?.sessionId && runtimeTurnFailedUnseen(state.activeSessionsCache.find(session => session.session_id === tab.sessionId), tab.lastAccessedAt)
   })
-  // The same busy signal as the chat header: a stored completion ends the spinner at once.
-  const running = useChatStore(state => {
+  // The same busy signal as the chat header: a stored completion ends the spinner at once. It returns the signal that
+  // keeps the tab working (logged below), or null.
+  const runningReason = useChatStore(state => {
     const stored = state.chatTabs[tabId] ?? given
-    if (!stored) return false
+    if (!stored) return null
     const foreground = foregroundTurnState(stored.sessionId ? state.tabEvents[stored.sessionId] : undefined)
     const session = stored.sessionId ? state.activeSessionsCache.find(item => item.session_id === stored.sessionId) : undefined
-    return chatRuntimeActivity({
+    const activity = chatRuntimeActivity({
       isStreaming: stored.isStreaming,
       hasRunningBgAgents: stored.hasRunningBgAgents,
       isCompleted: stored.isCompleted,
       foregroundTurnCompleted: foreground === 'completed',
       foregroundTurnStarted: foreground === 'running',
-    }, session).state === 'running'
+    }, session)
+    if (activity.state !== 'running') return null
+    const where = state.chatTabs[tabId] ? '' : 'not_in_store:'
+    if (foreground === 'completed') return `${where}background_after_completion`
+    if (foreground === 'running') return `${where}turn_started_no_end_event`
+    if (stored.isStreaming) return `${where}tab_streaming_flag`
+    if (stored.hasRunningBgAgents) return `${where}tab_background_flag`
+    return `${where}server:${activity.label}`
   })
+  const running = runningReason !== null
+  const sessionId = useChatStore(state => (state.chatTabs[tabId] ?? given)?.sessionId) || ''
+  useEffect(() => {
+    if (!runningReason || workspaceActivity !== undefined) return
+    recordTabMarkTelemetry(sessionId, tabId, 'on', runningReason)
+    const timer = setTimeout(() => recordTabMarkTelemetry(sessionId, tabId, 'still_on', runningReason), 60_000)
+    return () => clearTimeout(timer)
+  }, [runningReason, sessionId, tabId, workspaceActivity])
   const done = useChatStore(state => !isActive && !!(state.chatTabs[tabId] ?? given)?.hasUnreadCompletion)
   const waiting = workspaceActivity === undefined ? needsInput : needsInput || workspaceActivity === 'waiting'
   const working = workspaceActivity === undefined ? running : workspaceActivity === 'running'

@@ -55,6 +55,7 @@ var allowedClientChatTelemetryPhases = map[string]bool{
 	"processed":        true,
 	"painted":          true,
 	"tab_reorder":      true,
+	"tab_mark":         true, // a chat tab's working mark turned on, or is still on after a minute, and the signal behind it
 	"view_switch":      true, // the click on the chat/terminal switch to the first paint of the new view
 	"terminal_ready":   true, // one of the terminal view's own loads (metadata, history)
 }

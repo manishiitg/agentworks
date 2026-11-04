@@ -13,6 +13,7 @@ export type ChatDeliveryTelemetryPhase =
   | 'processed'
   | 'painted'
   | 'tab_reorder'
+  | 'tab_mark'
   | 'view_switch'
   | 'terminal_ready'
 
@@ -176,6 +177,21 @@ export function recordTabReorderTelemetry(sessionId: string, attemptId: string, 
   queue.push({ sequence: ++sequence, phase: 'tab_reorder', session_id: sessionId, submission_id: attemptId,
     event_type: 'chat_tab', tab_id: sourceTabId, target_tab_id: targetTabId, delivery_status: status,
     client_time: new Date().toISOString(), performance_ms: Math.round(performance.now() * 1000) / 1000 })
+  if (timer === undefined) timer = window.setTimeout(flush, 100)
+}
+
+/** Why a chat tab shows working (the signal keeping it on), when it turns on and when it is still on after a minute,
+ * so a mark that never goes away names its cause in the server log. IDs and signal names only. */
+const lastTabMark = new Map<string, number>()
+export function recordTabMarkTelemetry(sessionId: string, tabId: string, status: 'on' | 'still_on', reason: string) {
+  if (typeof window === 'undefined' || !sessionId) return
+  // The pill, the left menu, the rail and the board each show the same tab's mark: one line per change.
+  const key = `${tabId}:${status}:${reason}`, now = Date.now()
+  if (now - (lastTabMark.get(key) ?? 0) < 5_000) return
+  lastTabMark.set(key, now)
+  if (queue.length >= MAX_QUEUED_EVENTS) queue.shift()
+  queue.push({ sequence: ++sequence, phase: 'tab_mark', session_id: sessionId, event_type: 'chat_tab', tab_id: tabId, transport: reason,
+    delivery_status: status, client_time: new Date().toISOString(), performance_ms: Math.round(performance.now() * 1000) / 1000 })
   if (timer === undefined) timer = window.setTimeout(flush, 100)
 }
 
