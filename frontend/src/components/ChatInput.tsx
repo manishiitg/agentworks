@@ -128,6 +128,7 @@ const CodingProvidersPanel = lazy(() => import('./providers/CodingProvidersPanel
 const ChatSendModeButton = lazy(() => import('./chat/ChatSendModeButton').then(module => ({ default: module.ChatSendModeButton })))
 const DurableChatQueue = lazy(() => import('./chat/DurableChatQueue').then(module => ({ default: module.DurableChatQueue })))
 const ComposerModelChips = lazy(() => import('../products/work/ComposerModelChips'))
+const ComposerAgentChips = lazy(() => import('./chat/ComposerAgentChips'))
 const BuilderModelChips = lazy(() => import('./workflow/BuilderModelChips'))
 const ChatStatusBar = lazy(() => import('../products/work/ChatStatusBar'))
 import type { PlannerFile, LLMProvider, TerminalSnapshot } from '../services/api-types'
@@ -3579,6 +3580,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} sessionId={activeTab?.metadata?.agentProfileCanOpenModels ? tabSessionId || undefined : undefined} />
+                {agentProfileId === 'work' && <Suspense fallback={null}><ComposerAgentChips /></Suspense>}
               </div>
               {/* The person's "Show in chat box" choice: context and plan use beside the model controls, shown whenever the server returns a view (it answers only the tab's owner). */}
               {showContextIndicator && tabSessionId && !nativeTerminalTools && <div className="flex min-w-0 flex-1 justify-start px-1 [container-type:inline-size]">
