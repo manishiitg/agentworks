@@ -17,7 +17,7 @@ export { useMacTabShareLine, useMacSharedAgents, openCrewAccess, takeCrewAccess,
 export type { MacAgentShare } from './MacSharedAgents'
 import { useProjectTeam } from './teamApi'
 import { CrewCodingApps } from './CrewCodingApps'
-import { CrewPublishAgent } from './CrewPublishAgent'
+import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
 import { hasPendingCrewAccess } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
@@ -27,7 +27,7 @@ type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; 
 // What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 type ServerCopy = { name: string; detail: string }
-type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number }
+type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement> }
 // The move's own steps, as the server reports them (astra, PLAT-856-509).
 type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
 const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
@@ -277,7 +277,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         {!online && (tooBig ? <p className="text-xs text-amber-600">This Crew is too large to publish. Move large folders out first.</p> : <MoveFacts facts={facts} />)}
         {online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="rounded-full" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Publish Crew</Button>}
       </div>
-      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} />}
+      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
     </section>}
     {section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       <p className="rounded-xl bg-violet-500/10 px-3 py-2 text-[13px] text-violet-800 dark:text-violet-200">Choose people, the agents they can use and the folder you work on together.</p>

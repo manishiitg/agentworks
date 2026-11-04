@@ -4,18 +4,18 @@ import { Button } from '../../components/ui/Button'
 
 type Agent = { tab: string; name: string; purpose: string; icon?: string }
 type Selection = { tab: string; paths: string[]; account_id?: string }
-type Placement = { location: 'publishing' | 'server'; since?: string; transfer_id: string }
+export type AgentPlacement = { location: 'publishing' | 'server'; since?: string; transfer_id: string }
 type Preview = {
   ready: boolean; message?: string; agents?: Agent[]; selection: Selection; transfer_id?: string
   accounts: { id: string; name: string; identity?: string }[]
   files: number; bytes: number; native_bytes: number; callers: string[]; warnings?: string[]
 }
-type Reply = { publish?: Preview; placements?: Record<string, Placement> }
+type Reply = { publish?: Preview; placements?: Record<string, AgentPlacement> }
 const size = (bytes: number) => bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 
-export function CrewPublishAgent({ projectId, connection, serverLink, serverName }: { projectId: string; connection: string; serverLink: string; serverName: string }) {
+export function CrewPublishAgent({ projectId, connection, serverLink, serverName, reportedPlacements }: { projectId: string; connection: string; serverLink: string; serverName: string; reportedPlacements?: Record<string, AgentPlacement> }) {
   const [agents, setAgents] = useState<Agent[]>([])
-  const [placements, setPlacements] = useState<Record<string, Placement>>({})
+  const [placements, setPlacements] = useState<Record<string, AgentPlacement>>({})
   const [selected, setSelected] = useState('')
   const [paths, setPaths] = useState('')
   const [wholeFolder, setWholeFolder] = useState(false)
@@ -32,6 +32,7 @@ export function CrewPublishAgent({ projectId, connection, serverLink, serverName
     }).catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load agents.') })
     return () => { cancelled = true }
   }, [endpoint])
+  useEffect(() => { if (reportedPlacements) setPlacements(reportedPlacements) }, [reportedPlacements])
   const selection: Selection = { tab: selected, paths: wholeFolder ? ['.'] : paths.split('\n').map(p => p.trim()).filter(Boolean), account_id: account || undefined }
   const run = async (confirm: boolean) => {
     setBusy(true); setError('')

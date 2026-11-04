@@ -150,6 +150,10 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			}
 			for _, s := range h.Schedules {
 				preview.Callers = append(preview.Callers, "Schedule: "+s.Name)
+				var input scheduleExecutionInput
+				if json.Unmarshal(s.Input, &input) == nil && input.Condition != nil && (input.Condition.PersonalGmail() || input.Condition.GitHubPR != nil) {
+					preview.Warnings = append(preview.Warnings, s.Name+": choose its account on the server before turning this watcher back on.")
+				}
 			}
 			for _, s := range h.Functions {
 				preview.Callers = append(preview.Callers, "Function: "+s.Name)
@@ -184,9 +188,13 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			fail(e)
 			return
 		}
-		record, _, e = api.crewAgentPublishRecord(r.Context(), claims, roots, selection.Tab)
+		latest, _, e := api.crewAgentPublishRecord(r.Context(), claims, roots, selection.Tab)
 		if e != nil {
 			fail(e)
+			return
+		}
+		if latest.SessionID != record.SessionID || latest.ConversationID != record.ConversationID || latest.UpdatedAt != record.UpdatedAt {
+			fail(fmt.Errorf("this agent changed while preparing the preview; review its latest work before publishing"))
 			return
 		}
 		plan = crewAgentPublishPlan{Request: request, Preview: preview, SessionID: record.SessionID, ConversationID: record.ConversationID, UpdatedAt: record.UpdatedAt}

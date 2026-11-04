@@ -180,6 +180,9 @@ func crewAgentScopedRoots(roots crewroot.Roots, tab string) (crewroot.Roots, err
 	if err != nil {
 		return roots, err
 	}
+	if err = os.MkdirAll(base, 0770); err != nil {
+		return roots, err
+	}
 	for _, sub := range []string{"files", "resources"} {
 		p, err := crewroot.ResolveContained(base, sub)
 		if err != nil {
