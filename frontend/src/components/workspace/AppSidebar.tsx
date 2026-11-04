@@ -17,7 +17,6 @@ import { openAppPage } from '../../utils/appNavigation'
 // Warm navigation code alongside the shell; mounting still follows authentication.
 const sidebarModule = import('./WorkspaceChatsSidebar')
 const WorkspaceChatsSidebar = lazy(() => sidebarModule)
-const RailCrewAgents = lazy(() => import('./SidebarCrewAgents').then(module => ({ default: module.RailCrewAgents })))
 const DEFAULT_SIDEBAR_WIDTH = 260
 const clampWidth = (width: number) => Math.max(220, Math.min(360, width))
 function readWidth(key: string) {
@@ -148,7 +147,6 @@ export function AppSidebar() {
                 <Search className="h-[18px] w-[18px]" aria-hidden="true" />
               </button>
           </div>
-          <Suspense fallback={null}><RailCrewAgents /></Suspense>
         </aside>}
         {/* The account icon belongs to the rail's stacking context. A fixed
             descendant of the workspace toolbar is covered by this rail. */}
