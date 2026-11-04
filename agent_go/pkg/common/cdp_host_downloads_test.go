@@ -10,7 +10,7 @@ func TestCDPHostDownloadsPathOnlyOnAPersonsOwnMachine(t *testing.T) {
 		t.Setenv(key, "")
 	}
 	t.Setenv("MULTI_USER_MODE", "")
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	if CDPHostDownloadsPath("cdp") != "" {
 		t.Fatal("a person's own Downloads must not be opened by default, even in local mode")
 	}
@@ -28,7 +28,7 @@ func TestCDPHostDownloadsPathOnlyOnAPersonsOwnMachine(t *testing.T) {
 		t.Fatal("a multi-user server must never get it")
 	}
 	t.Setenv("MULTI_USER_MODE", "")
-	t.Setenv("LOCAL_MODE", "")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "")
 	t.Setenv("HOST_DOWNLOADS_PATH", "")
 	if CDPHostDownloadsPath("cdp") != "" {
 		t.Fatal("a non-local server without an explicit folder must not get it")

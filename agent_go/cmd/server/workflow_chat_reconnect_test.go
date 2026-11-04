@@ -20,7 +20,7 @@ func TestContinuityArchiveCommandReadsPrivateCrewStorage(t *testing.T) {
 	}
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	root := registerTestCrew(t, "example", "owner", false)
 	logical := root + "/builder/conversation/2026-10-28/session-example-conversation.json"
 	physical, bound, err := crewroot.Resolve(docs, logical)

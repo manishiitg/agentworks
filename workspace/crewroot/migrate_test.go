@@ -33,7 +33,7 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 			files, _ = filepath.EvalSymlinks(files)
 			resources, _ = filepath.EvalSymlinks(resources)
 			t.Setenv("AGENTWORKS_STATE_ROOT", state)
-			t.Setenv("LOCAL_MODE", "true")
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 			record := Record{Product: "work", Folder: "example", Owner: "owner", ID: "stable-id"}
 			if local {
 				record.LocalRoot = files

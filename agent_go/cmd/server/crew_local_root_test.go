@@ -38,7 +38,7 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	project, _ = filepath.EvalSymlinks(project)
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "")
 	oldDocs := viper.Get("docs-dir")
 	viper.Set("docs-dir", docs)

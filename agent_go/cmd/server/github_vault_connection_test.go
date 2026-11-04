@@ -89,7 +89,6 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	for _, settings := range []struct{ mode, multi, local, owner string }{{"server", "false", "true", "alice"}, {"local", "true", "true", "alice"}, {"local", "false", "true", "bob"}} {
 		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", settings.mode)
 		t.Setenv("MULTI_USER_MODE", settings.multi)
-		t.Setenv("LOCAL_MODE", settings.local)
 		t.Setenv("DEFAULT_USER_ID", settings.owner)
 		if denied := call(http.MethodPost, `{"method":"gh"}`); denied.Code == 200 {
 			t.Fatal("used another person's OS login")
@@ -100,7 +99,6 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	}
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("LOCAL_MODE", "true")
 	t.Setenv("DEFAULT_USER_ID", "alice")
 	for _, body := range []string{`{"method":"gh"}`, `{"method":"gh","login":"not-signed-in"}`, `{"method":"gh","login":"other-cli"}`} {
 		if denied := call(http.MethodPost, body); denied.Code == 200 {

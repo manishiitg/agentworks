@@ -21,7 +21,7 @@ import (
 // persisted registry, then resolve the account as a different Run caller.
 func TestPersonalGoogleConnectionsAcrossSurfaces(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("GOG_HOME", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true},{"id":"editor","username":"editor","can_create":true},{"id":"runner","username":"runner"},{"id":"boss","username":"boss","admin":true}]}`)
 	wf := WorkflowManifest{ID: "orders", Label: "Orders", Access: &WorkflowAccess{Owners: []string{"builder", "editor"}, Readers: []string{"runner"}}}

@@ -158,7 +158,7 @@ func TestAsyncAuditShutdownReportsUnflushedEvents(t *testing.T) {
 }
 
 func TestAuditWriteModeConfiguration(t *testing.T) {
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("VAULT_AUDIT_PROVIDER", "sqlite")
 	t.Setenv("VAULT_AUDIT_RETENTION", "")
 	t.Setenv("VAULT_AUDIT_MAX_MB", "")

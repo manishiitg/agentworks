@@ -1034,7 +1034,7 @@ function spawnWorkspace(userDataPath) {
       DOCS_DIR: docsDir,
       RUNLOOP_USER_DATA_DIR: userDataPath,
       AGENTWORKS_STATE_ROOT: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'),
-      LOCAL_MODE: 'true',
+      AGENTWORKS_DEPLOYMENT_MODE: 'local',
       DATA_DIR: dataDir,
       // workspace-server executes /api/execute shell commands. Mark it native so
       // the safe shell env preserves the imported login-shell PATH/HOME instead

@@ -21,7 +21,6 @@ import (
 func TestComputerUseLocalOwnerAndPrivateCaptures(t *testing.T) {
 	f := newMCPLaptopFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
-	t.Setenv("LOCAL_MODE", "true")
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("DEFAULT_USER_ID", "owner")
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
@@ -92,7 +91,6 @@ func TestComputerUseLocalOwnerAndPrivateCaptures(t *testing.T) {
 func TestComputerUseBusyAndStop(t *testing.T) {
 	f := newMCPLaptopFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
-	t.Setenv("LOCAL_MODE", "true")
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("DEFAULT_USER_ID", "owner")
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
@@ -179,7 +177,6 @@ func TestComputerUseEnvironmentExcludesCredentials(t *testing.T) {
 func TestComputerUsePrivateCaptureGrantOnLocalLinux(t *testing.T) {
 	tokenTestSetup(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
-	t.Setenv("LOCAL_MODE", "true")
 	original := cliHostOS
 	cliHostOS = "linux"
 	t.Cleanup(func() { cliHostOS = original })

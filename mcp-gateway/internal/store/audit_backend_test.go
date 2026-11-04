@@ -14,7 +14,7 @@ func auditTestEvent(id, workspace string) AuditEvent {
 	return AuditEvent{ID: id, CallID: id, WorkspaceID: workspace, Timestamp: time.Now().UTC(), UserID: "alice", GroupIDs: []string{"g"}, ClientID: "claude", ConnectorID: "memory", PublicName: "memory__read", Decision: DecisionAllow, Outcome: OutcomeOK, DurationMs: 10}
 }
 func TestAuditProviderDefaultsAndOff(t *testing.T) {
-	for _, k := range []string{"LOCAL_MODE", "VAULT_AUDIT_PROVIDER", "VAULT_AUDIT_RETENTION", "VAULT_AUDIT_MAX_MB", "VAULT_AUDIT_WRITE_MODE"} {
+	for _, k := range []string{"AGENTWORKS_DEPLOYMENT_MODE", "VAULT_AUDIT_PROVIDER", "VAULT_AUDIT_RETENTION", "VAULT_AUDIT_MAX_MB", "VAULT_AUDIT_WRITE_MODE"} {
 		t.Setenv(k, "")
 	}
 	dir := t.TempDir()
@@ -35,7 +35,7 @@ func TestAuditProviderDefaultsAndOff(t *testing.T) {
 		t.Fatal("deferred audit backend accepted")
 	}
 	t.Setenv("VAULT_AUDIT_PROVIDER", "")
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	o, err = AuditOptionsFromEnv(dir)
 	if err != nil || o.Provider != "sqlite" || o.Retention != 24*time.Hour {
 		t.Fatalf("local default: %+v %v", o, err)

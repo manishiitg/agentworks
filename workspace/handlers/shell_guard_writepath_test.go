@@ -58,7 +58,7 @@ func TestResolveGuardWritePath(t *testing.T) {
 }
 
 func TestGuardWritePathToCreatePreservesExistingHostGrants(t *testing.T) {
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	docsDir, hostDir := t.TempDir(), t.TempDir()
@@ -95,7 +95,7 @@ func TestGuardWritePathToCreateRejectsHostGrantsOnServer(t *testing.T) {
 		{"container workspace", "true", "false", "false"},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
-			t.Setenv("LOCAL_MODE", mode.local)
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", map[string]string{"true": "local"}[mode.local])
 			t.Setenv("MULTI_USER_MODE", mode.multi)
 			t.Setenv("NATIVE_WORKSPACE", mode.native)
 			if _, err := guardWritePathToCreate(hostDir, docsDir); err == nil {

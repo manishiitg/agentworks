@@ -203,7 +203,7 @@ func TestBrowserArtifactsUseBoundCrewFolderAndRetainWriteGuards(t *testing.T) {
 	}
 	docs, _ = filepath.EvalSymlinks(docs)
 	project, _ = filepath.EvalSymlinks(project)
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
 	raw, _ := json.Marshal(map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", Owner: "owner", ID: "id", LocalRoot: project}}})
 	if err := os.WriteFile(filepath.Join(state, "ownership", "projects.json"), raw, 0600); err != nil {

@@ -32,7 +32,7 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 	docs, _ = filepath.EvalSymlinks(docs)
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	old := viper.Get("docs-dir")
 	viper.Set("docs-dir", docs)
 	t.Cleanup(func() { viper.Set("docs-dir", old) })

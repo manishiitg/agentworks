@@ -30,7 +30,7 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
 	raw, _ := json.Marshal(map[string]any{"projects": map[string]Record{"work/example": {Product: "work", Folder: "example", Owner: "owner", ID: "stable-id", LocalRoot: project}}})
 	if err := os.WriteFile(filepath.Join(state, "ownership", "projects.json"), raw, 0600); err != nil {
@@ -118,7 +118,7 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	if _, _, err := LookupForRemoval(docs, "Crew/example"); err == nil {
 		t.Fatal("removal accepted replacement symlink")
 	}
-	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if _, bound, err := Resolve(docs, "Crew/example/_files"); !bound || err == nil {
 		t.Fatal("hosted mode admitted local binding")
 	}

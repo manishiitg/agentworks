@@ -25,7 +25,7 @@ func TestRelayGrouplessChainAndResumeRealWorkspace(t *testing.T) {
 	}
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	oldDocs := viper.Get("docs-dir")

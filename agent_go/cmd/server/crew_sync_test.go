@@ -54,7 +54,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			docs, _ = filepath.EvalSymlinks(docs)
 			project, _ = filepath.EvalSymlinks(project)
 			t.Setenv("WORKSPACE_DOCS_PATH", docs)
-			t.Setenv("LOCAL_MODE", "true")
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 			t.Setenv("DEFAULT_USER_ID", "owner")
 			t.Setenv("MULTI_USER_MODE", "")
 			old := viper.Get("docs-dir")

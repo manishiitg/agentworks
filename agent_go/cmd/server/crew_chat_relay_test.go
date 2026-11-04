@@ -198,7 +198,7 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 		}
 	})
 	t.Run("main website chat routes locally but other callers do not", func(t *testing.T) {
-		t.Setenv("LOCAL_MODE", "false")
+		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 		for _, tc := range []struct {
 			name, profile, key string
 			claims             *UserClaims

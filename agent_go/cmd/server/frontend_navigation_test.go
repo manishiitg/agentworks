@@ -33,7 +33,7 @@ func TestLocalFrontendNavigation(t *testing.T) {
 		{"post", "true", "http://127.0.0.1:51733", "POST", "http://localhost:18743/", ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("LOCAL_MODE", test.local)
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", map[string]string{"true": "local"}[test.local])
 			t.Setenv("AGENTWORKS_CLI_BROWSER_URL", test.frontend)
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, httptest.NewRequest(test.method, test.request, nil))

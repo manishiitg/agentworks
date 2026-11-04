@@ -306,7 +306,7 @@ func TestWorkspaceSkillsReadABoundCrewsResourceRoot(t *testing.T) {
 	write(filepath.Join(private, "workflow.json"), `{"capabilities":{"selected_skills":["review"]}}`)
 	raw, _ := json.Marshal(map[string]any{"projects": map[string]any{"work/example": map[string]any{"product": "work", "folder": "example", "owner_id": "owner", "project_id": "stable-id", "local_root": project}}})
 	write(filepath.Join(state, "ownership", "projects.json"), string(raw))
-	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
 	old := viper.GetString("docs-dir")
 	viper.Set("docs-dir", docs)
