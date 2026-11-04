@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -558,7 +560,10 @@ func removeCrewTeamFile(root, rel string) error {
 		return err
 	}
 	defer dir.Close()
-	if err = dir.Remove(rel); err != nil && !os.IsNotExist(err) {
+	if err = dir.Remove(rel); err != nil {
+		if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
+			return nil
+		}
 		return err
 	}
 	for parent := path.Dir(rel); parent != "."; parent = path.Dir(parent) {

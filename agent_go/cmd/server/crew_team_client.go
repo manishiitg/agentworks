@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -332,7 +334,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 
 func crewTeamCurrentFile(root, rel string) (*crewsync.File, error) {
 	f, e := openCrewTeamFile(root, rel)
-	if os.IsNotExist(e) {
+	if os.IsNotExist(e) || errors.Is(e, syscall.ENOTDIR) {
 		return nil, nil
 	}
 	if e != nil {
