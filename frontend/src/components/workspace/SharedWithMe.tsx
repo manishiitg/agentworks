@@ -71,8 +71,7 @@ export function SharedCrewPage() {
   }), [close])
   if (!workspaceId) return null
   const agent = agents.find(item => item.chat_id === tab) || agents[0]
-  // Above the page behind it and its top bar (z-40), so none of its controls show through (owner, 4 Nov).
-  return <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-background">
+  return <div className="flex h-full min-h-0 flex-col bg-background">
     <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
       <span className="flex min-w-0 shrink-0 items-center gap-1 px-1 text-sm font-semibold"><span className="truncate">{agents[0] ? crewLabel(agents[0]) : 'Shared Crew'}</span><ChevronDown aria-hidden="true" className="h-3 w-3 text-muted-foreground" /></span>
       <nav aria-label="Agents" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">

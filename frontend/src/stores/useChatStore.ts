@@ -468,6 +468,7 @@ export interface ChatTab {
     workspaceReturnAt?: number // Ephemeral explicit server return; supersedes automatic latest-chat selection on entry.
     readOnlyRestoredAt?: number // Timestamp for an explicit user-opened Schedule/Bot restore
     viewOnlyWriter?: string // Whose chat a view-only tab shows (another person's thread with a shared agent)
+    externalTransport?: boolean // Its page feeds the transcript and sends messages (a shared agent's chat); no server stream
     // Generic product-agent binding. These fields are durable so a project can
     // recover its normal AgentWorks session after a refresh without maintaining
     // a second product-specific conversation store.
@@ -2701,7 +2702,7 @@ export const useChatStore = create<ChatState>()(
 
         // A terminal close stops the chat and its background work even between
         // foreground turns. Explicit view-only close/minimize keeps it running.
-        if (stopSession && tab.sessionId) {
+        if (stopSession && tab.sessionId && !tab.metadata?.externalTransport) {
           try {
             await agentApi.stopSession(tab.sessionId)
           } catch (error) {
@@ -2716,7 +2717,8 @@ export const useChatStore = create<ChatState>()(
 
         // Dismiss session so it won't be auto-restored on page refresh (fire-and-forget)
         // Skip dismiss for workflow tabs — their sessions should remain restorable via DB
-        if (tab.sessionId && tab.metadata?.mode !== 'workflow') {
+        // A tab its page feeds (a shared agent's chat) has no server session to dismiss.
+        if (tab.sessionId && tab.metadata?.mode !== 'workflow' && !tab.metadata?.externalTransport) {
           logger.info('SessionStore', `Dismissing session ${tab.sessionId} (stopSession=${stopSession})`)
           agentApi.dismissSession(tab.sessionId).catch(error => {
             logger.error('SessionStore', `Failed to dismiss session ${tab.sessionId}:`, error)
