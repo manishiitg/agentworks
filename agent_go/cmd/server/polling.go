@@ -756,9 +756,6 @@ func workflowDisplayLabel(workspacePath string, manifest *WorkflowManifest) stri
 }
 
 func (api *StreamingAPI) deriveSessionUserInputState(sessionID string) (bool, string, *time.Time, string) {
-	if askedAt, question, waiting := api.pendingCodingAgentQuestion(sessionID); waiting {
-		return true, "coding_agent_question", &askedAt, question
-	}
 	if api == nil || api.eventStore == nil || sessionID == "" {
 		return false, "", nil, ""
 	}

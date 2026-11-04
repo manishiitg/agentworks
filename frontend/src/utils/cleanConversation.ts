@@ -1,5 +1,3 @@
-import { codingAgentQuestionCards, type CodingAgentQuestionPrompt } from './codingAgentQuestions'
-export type { CodingAgentQuestionPrompt } from './codingAgentQuestions'
 import { normalizeTranscriptChunkEvents } from './transcriptChunkUpdates'
 import { nativeActivityText } from './nativeActivityText'
 import type { PollingEvent } from '../services/api-types'
@@ -37,13 +35,12 @@ export function summarizeBackgroundTaskMessage(message: string): string {
 
 export type ConversationItem = {
   id: string
-  role: 'user' | 'assistant' | 'progress' | 'reasoning' | 'error' | 'notification' | 'continuity' | 'background' | 'question'
+  role: 'user' | 'assistant' | 'progress' | 'reasoning' | 'error' | 'notification' | 'continuity' | 'background'
   content: string
   timestamp?: string
   assistantUpdate?: boolean
   usage?: ConversationUsage
   failure?: ProductChatFailure
-  codingAgentQuestion?: CodingAgentQuestionPrompt
 }
 
 export type ConversationUsage = {
@@ -149,7 +146,6 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
   const itemTurnIDs = new WeakMap<ConversationItem, string>()
 	let completedAssistantAwaitingUsage: ConversationItem | undefined
 	const pendingFrontendUserEchoes = new Map<string, number>()
-	const { cards: questionCards } = codingAgentQuestionCards(normalizeTranscriptChunkEvents(events))
 	const pushUnique = (item: ConversationItem, turnID = '') => {
 		const previous = items.at(-1)
 		if (previous?.role === item.role && previous.content === item.content && !distinctServerTurns(itemTurnIDs.get(previous) || '', turnID)) return
@@ -199,11 +195,8 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
 
     if (isChildExecution(event, payload)) continue
 
-    if (event.type === 'coding_agent_question') {
-      const prompt = questionCards.get(event.id)
-      if (prompt) items.push({ id: event.id, role: 'question', content: prompt.questions.map(q => q.question).join(' · '), timestamp: event.timestamp, codingAgentQuestion: prompt })
-      continue
-    }
+    // Old question events (the question card was removed 4 Nov) are not shown.
+    if (event.type === 'coding_agent_question') continue
 
     if (event.type === 'coding_agent_native_activity') {
       const record = asRecord(payload.record)

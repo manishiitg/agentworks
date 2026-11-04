@@ -62,51 +62,6 @@ func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest) bool {
 	return strings.TrimSpace(req.SessionKind) == ""
 }
 
-// codingAgentTurnAttended reports whether this turn runs in a website chat tab,
-// where a coding agent's native questions, plan approvals and command approvals
-// show as cards and wait for the person (owner, 2026-10-28: "all tabs on
-// website... except schedules/whatsapp/slack etc need to have this decision
-// thing"). The server decides from the turn's origin, not from a browser header:
-// a person's message, a queued or steered follow-up and a message from another
-// agent delivered into the tab are attended, whoever started the turn.
-// Schedules, webhooks, Slack, WhatsApp, MCP and API callers, child sessions and
-// background completions have nobody at a card, so their questions are
-// auto-answered and never hold the run.
-func codingAgentTurnAttended(claims *UserClaims, req *QueryRequest, sessionID string) bool {
-	if req == nil {
-		return false
-	}
-	if strings.TrimSpace(req.ParentSessionID) != "" || strings.TrimSpace(req.SessionKind) != "" {
-		return false
-	}
-	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
-	if strings.TrimSpace(req.BotPlatform) != "" || strings.HasPrefix(trigger, "bot:") {
-		return false
-	}
-	// MCP and API callers come first: the fields below are plain request JSON they could set.
-	if strings.TrimSpace(req.ExternalBuilderOperationID) != "" ||
-		claims != nil && (claims.AccessToken != nil || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "") {
-		return false
-	}
-	// "Make interactive" hands a schedule session to the person on purpose.
-	if req.UserInteractiveContinuation {
-		return true
-	}
-	if req.KeepNativeSessionAlive || isScheduledSessionIdentity(sessionID, req.TriggeredBy) {
-		return false
-	}
-	// Another agent's message delivered into a tab (agent_messaging.go) runs as the tab's owner.
-	if strings.TrimSpace(req.AgentMessageInbox) != "" {
-		return true
-	}
-	if req.IsAutoNotification {
-		return false
-	}
-	// The website sends no trigger; "interactive" marks its queued and live follow-ups. Every other trigger
-	// (manual schedule runs, external, chat_tool, webhook, cron, product jobs) auto-answers.
-	return trigger == "" || trigger == "interactive"
-}
-
 // codingAgentClaudeCodeChatTransport is the transport a chat's Claude Code runs on: the chat's own choice, else
 // "" for the server's setting (the Agent SDK by default).
 // chatClaudeCodeTransport is the chat's own Claude choice, read from its saved tab: a turn reaches the query

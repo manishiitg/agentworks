@@ -371,9 +371,7 @@ type ActiveSessionInfo struct {
 type StreamingAPI struct {
 	crewTurnSnapshots sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
 
-	localDevices                sync.Map // user/device -> authenticated outbound executor
-	codingAgentClarificationsMu sync.Mutex
-	codingAgentClarifications   map[string]*pendingCodingAgentClarification
+	localDevices sync.Map // user/device -> authenticated outbound executor
 
 	externalBuilderRuntime      externalBuilderRuntime
 	internalExternalBuilderTurn func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
@@ -959,7 +957,7 @@ type QueryRequest struct {
 	// (not user-initiated). Backend treats it as a synthetic turn so frontend doesn't block input.
 	IsAutoNotification bool `json:"is_auto_notification,omitempty"`
 	// AgentMessageInbox marks another agent's message delivered into this chat (agent_messaging.go). It survives
-	// the turn queue, and makes the turn attended: the tab shows question cards (codingAgentTurnAttended).
+	// the turn queue.
 	AgentMessageInbox string `json:"agent_message_inbox,omitempty"`
 	// Internal/system callers can force a real server-tracked turn instead of the
 	// retained coding-CLI live-input shortcut. Scheduler sequences rely on this so
@@ -2858,8 +2856,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/llm-guidance", api.handleSetLLMGuidance).Methods("POST", "OPTIONS")
 
 	apiRouter.HandleFunc("/sessions/{session_id}/live-input", api.handleLiveInputMessage).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/sessions/{session_id}/coding-agent-question/answer", api.handleCodingAgentQuestionAnswer).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/sessions/{session_id}/muse-question/answer", api.handleCodingAgentQuestionAnswer).Methods("POST", "OPTIONS") // Existing clients.
 	apiRouter.HandleFunc("/sessions/{session_id}/control", api.handleControlKey).Methods("POST", "OPTIONS")
 
 	// Human Feedback API
@@ -6192,32 +6188,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate)
 		}
 		log.Printf("[CODE_EXECUTION] session=%s code_execution=%v browser_mode=%s direct_bridge_tools=%v", sessionID, useCodeExecutionMode, req.BrowserMode, platformBridgeTools)
-		crewAskClarification := crewAskInputFromContext(r.Context()) != nil && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && !req.IsAutoNotification && req.ParentSessionID == "" && req.SessionKind == "" && req.BotPlatform == ""
-		if crewAskClarification {
-			toolGate.Declare("request_clarification")
-		}
-		// Every website tab shows the agent's questions and waits for the person; the server decides from the
-		// turn's origin (codingAgentTurnAttended). The card is a platform capability of that tab, not a product
-		// tool, so it is declared on every product's surface. Run people keep their own Ask path above.
-		attendedTurn := codingAgentTurnAttended(GetUserFromContext(r.Context()), &req, sessionID) && !currentUserIsReadOnly &&
-			isCodingAgentProvider(finalProvider, finalModelID)
-		if attendedTurn {
-			toolGate.Declare("request_clarification")
-		}
-		attendedTurn = attendedTurn && toolGate.Admit("request_clarification")
-		log.Printf("[QUESTIONS] session=%s attended=%t trigger=%q agent_message=%t provider=%s", sessionID, attendedTurn, req.TriggeredBy, req.AgentMessageInbox != "", finalProvider)
-		clarificationAvailable := crewAskClarification || attendedTurn
-		// A question in a turn another agent's message started gets the unattended answer after 5 minutes.
-		questionsUnansweredAfter := time.Duration(0)
-		if attendedTurn {
-			questionsUnansweredAfter = codingAgentQuestionUnansweredAfter(&req)
-		}
-		if clarificationAvailable {
-			platformBridgeTools = append(platformBridgeTools, "request_clarification")
-			streamCtx = llmtypes.WithCodingAgentQuestionHandler(streamCtx, finalProvider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
-				return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, questionsUnansweredAfter), sessionID, finalProvider, questions)
-			})
-		}
 		if resolvedProfile != nil {
 			for _, name := range resolvedProfile.Definition.Runtime.BridgeTools {
 				if toolGate.Admit(name) {
@@ -6292,7 +6262,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			PiPersistentInteractiveSession:         piPersistentInteractive,
 			MusePersistentInteractiveSession:       musePersistentInteractive,
 			AgyPersistentInteractiveSession:        agyPersistentInteractive,
-			CodingAgentUserAnswersNativeQuestions:  attendedTurn,
 			ClaudeCodeTransport:                    claudeCodeTransport,
 			ForceStructuredCodingAgent:             forceStructuredCodingAgent,
 			CodingAgentWorkingDir:                  chatWorkingDir,
@@ -6994,12 +6963,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Add custom agent instructions based on agent mode
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
-			if clarificationAvailable {
-				if err := api.registerCodingAgentClarificationTool(llmAgent, sessionID, finalProvider, questionsUnansweredAfter); err != nil {
-					sendError(fmt.Sprintf("Failed to register clarification tool: %v", err), true)
-					return
-				}
-			}
 			// Create custom tools for the agent. Workflow-phase (workshop) agents need
 			// the full applicable human-tool set registered including summary tools.
 			// Chat mode stays minimal (workflowMode=false). Without
@@ -7557,8 +7520,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				promptCtx.CLIToolEnvironment = virtualtools.BuildCLIToolEnvironmentPrompt(req.Provider)
 			}
 
-			promptCtx.ClarificationAvailable = clarificationAvailable
-			promptCtx.NativeClaudeQuestionsAvailable = clarificationAvailable && claudeCodePersistentInteractive && !forceStructuredCodingAgent
 			includedSections, skippedSections, sectionErr := assemblePromptSections(llmAgent, promptCtx)
 			if sectionErr != nil {
 				sendError(fmt.Sprintf("Failed to assemble the system prompt: %v", sectionErr), true)

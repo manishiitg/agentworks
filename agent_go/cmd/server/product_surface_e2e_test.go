@@ -86,11 +86,6 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 		if err := api.registerMultiAgentLLMTools(draft, nil); err != nil {
 			t.Fatal(err)
 		}
-		if !readOnly {
-			if err := api.registerCodingAgentClarificationTool(draft, "surface-e2e", "muse-cli", 0); err != nil {
-				t.Fatal(err)
-			}
-		}
 		names := []string{}
 		for name := range draft.tools {
 			names = append(names, name)
