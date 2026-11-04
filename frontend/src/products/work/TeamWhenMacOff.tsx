@@ -25,6 +25,8 @@ export function useTeamCopyStatus(projectId: string, connection: string) {
   const endpoint = `/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`
   useEffect(() => {
     let live = true
+    // Another Crew: nothing of the previous one shows while this one loads.
+    setStatus(null); setError('')
     const load = () => desktopRequest<{ team_copy?: TeamCopyStatus }>(endpoint, 'POST', { action: 'team_copy' })
       .then(data => { if (live && data.team_copy) { setStatus(data.team_copy); setError('') } })
       .catch(cause => { if (live) setError(cause instanceof Error ? cause.message : 'The team copy could not be read.') })
