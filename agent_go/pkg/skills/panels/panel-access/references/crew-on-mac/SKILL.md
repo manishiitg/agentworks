@@ -4,7 +4,7 @@ Everything on the Access page of a Crew that lives on the owner's Mac also works
 `manage_crew_sync` (the owner only, in the Mac app):
 
 - "Where does it live?" → `action=status`.
-- "Reach it from my phone" → `action=reach_on` (with several networks, ask which and pass `network`). "Only on this
+- "Use it from my phone" / "Use from phone and web" → `action=reach_on` (with several networks, ask which and pass `network`). "Only on this
   Mac" → `action=reach_off`.
 - "Move it online" → tell the person it is one-way (it lives online from then on; a backup copy of the folder stays on
   this Mac), get their yes in chat, then `action=server` with `confirmed=true`.

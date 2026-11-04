@@ -447,7 +447,7 @@ func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, p
 // (one purpose, owner 3 Nov), never from the screen's copy.
 func (api *StreamingAPI) pushMacSharedAgents(ctx context.Context, claims *UserClaims, project string, binding *crewroot.SyncBinding, connection desktopConnection, rows []macAgentRow, agents []macSharedAgent) (int, string, error) {
 	if binding == nil || binding.Mode != "relay" || binding.Editing != "local" {
-		return 409, "reach_off", fmt.Errorf("Turn on Reach it from your phone and the web first.")
+		return 409, "reach_off", fmt.Errorf("Turn on Use from phone and web first.")
 	}
 	for i := range agents {
 		at := slices.IndexFunc(rows, func(row macAgentRow) bool { return row.Tab == agents[i].Tab })
