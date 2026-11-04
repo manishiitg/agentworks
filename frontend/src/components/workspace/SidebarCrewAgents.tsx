@@ -76,31 +76,3 @@ function AgentRow({ agent, active, dragging, onDrag }: { agent: CrewAgentRow; ac
     </div>}
   </div>
 }
-
-/** The collapsed sidebar (icon rail) keeps the open Crew's agents (owner, 4 Nov): one icon per agent with its mark.
- * Shown only while one of that Crew's agents is open. */
-export function RailCrewAgents() {
-  const crew = useCrewAgentsStore()
-  const activeTabId = useChatStore(state => state.activeTabId)
-  const projectId = crew.projectId
-  if (!projectId || !crew.agents.some(agent => agent.tabId === activeTabId)) return null
-  return <div role="list" aria-label="Agents" className="mt-2 flex min-h-0 flex-col items-center gap-1 overflow-y-auto border-t border-border/70 pt-2 [scrollbar-width:none]">
-    {crew.agents.map(agent => <RailAgent key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} />)}
-    <button type="button" title="All agents" aria-label="All agents" onClick={() => openTeamBoard(projectId)}
-      className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
-      <MoreHorizontal aria-hidden="true" className="h-4 w-4" />
-    </button>
-  </div>
-}
-
-function RailAgent({ agent, active }: { agent: CrewAgentRow; active: boolean }) {
-  const state = useAgentMenuState(agent.tabId, agent.activity)
-  // Every agent the same box; the open one highlighted. Hover shows its card to the right of the rail.
-  return <AgentHoverCard info={agent.info} side="right" actions={agent.actions} pinned={agent.pinned !== false} shortcut={agent.shortcut}>
-    <button type="button" role="listitem" aria-current={active ? 'page' : undefined} title={agent.info ? undefined : agent.name} aria-label={agent.name} onClick={() => activateTab(agent.tabId)}
-      className="relative grid h-8 w-8 place-items-center rounded-md hover:opacity-90">
-      <AgentIcon name={agent.name} icon={agent.info?.icon} size="md" active={active} shared={agent.info?.sharedWith} />
-      <span className="absolute -right-0.5 -top-0.5"><AgentMark state={state} asking={agent.asking} /></span>
-    </button>
-  </AgentHoverCard>
-}
