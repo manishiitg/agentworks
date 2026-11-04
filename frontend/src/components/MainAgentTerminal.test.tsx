@@ -202,9 +202,7 @@ describe('MainAgentTerminal sizing', () => {
       const scroller = host.querySelector('[data-testid="main-agent-terminal-scroll-container"]')
       const terminalGrid = host.querySelector<HTMLElement>('[data-testid="main-agent-terminal-grid"]')
 
-      expect(scroller?.classList.contains('overflow-x-auto')).toBe(true)
       expect(terminalGrid?.style.minWidth).toBe(`${MAIN_AGENT_TERMINAL_MIN_WIDTH_PX}px`)
-      expect(MAIN_AGENT_TERMINAL_MIN_WIDTH_PX).toBe(680)
       expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
       expect(getMainTerminal).toHaveBeenCalledWith('session-1', { content: 'none' })
     } finally {

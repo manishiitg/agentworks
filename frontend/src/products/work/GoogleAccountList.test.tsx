@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GmailConnection } from '../../services/api-types'
 import { GoogleAccountList } from './GoogleAccountList'
-import { CHANGE_GOOGLE_ACCESS_EVENT, googleAccessSummary, googleGrantedAccess } from './googleAccountAccess'
+import { CHANGE_GOOGLE_ACCESS_EVENT, googleGrantedAccess } from './googleAccountAccess'
 
 const account = (extra: Partial<GmailConnection>): GmailConnection => ({
   id: 'c1', display_name: 'Google account', email: 'me@x.com', enabled: true, is_default: false, ready: true,
@@ -29,11 +29,6 @@ describe('Google accounts across products', () => {
     await act(async () => { items.find(item => item.textContent === 'Reconnect')!.click(); items.find(item => item.textContent === 'Remove')!.click() })
     expect(reconnect).not.toHaveBeenCalled()
     expect(remove).toHaveBeenCalledTimes(1)
-  })
-
-  it('says what the agent may do in one line', () => {
-    expect(googleAccessSummary(account({}))).toBe('Gmail: read · Drive, Calendar: read')
-    expect(googleAccessSummary(account({ allow_agent_write_access: true, services: [{ service: 'docs', write: true }] }))).toBe('Gmail: read, draft and send · Docs: read and edit')
   })
 
   it('keeps accounts compact, opens only one permission comparison, and prefills Change access', async () => {

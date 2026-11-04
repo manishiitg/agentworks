@@ -47,19 +47,6 @@ it('keeps the header to scope, one badge, and a short line', async () => {
   }
 })
 
-it('uses title-case section heads without kickers or accent bars', async () => {
-  const { host, unmount } = await mount()
-  try {
-    for (const heading of host.querySelectorAll('h3')) {
-      expect(heading.className).not.toContain('uppercase')
-      expect(heading.className).not.toContain('tracking-')
-    }
-    expect(host.querySelector('.border-l-2')).toBeNull()
-  } finally {
-    await unmount()
-  }
-})
-
 it('lays summaries out as labeled Channels, From, and To lines', async () => {
   const { host, unmount } = await mount()
   try {

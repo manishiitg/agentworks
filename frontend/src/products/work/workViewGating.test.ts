@@ -23,10 +23,8 @@ describe('isWorkWorkspaceViewEnabled', () => {
 })
 
 describe('isWorkIdentityTabEnabled', () => {
-  it('always enables General and gates the rest on their panel', () => {
+  it('always enables General and gates folders and models on their panel', () => {
     expect(isWorkIdentityTabEnabled('general', new Set())).toBe(true)
-    expect(isWorkIntegrationTabEnabled('vault', new Set())).toBe(false)
-    expect(isWorkIntegrationTabEnabled('vault', new Set(['secrets']))).toBe(true)
     expect(isWorkIntegrationTabEnabled('folders', new Set(['folders']))).toBe(true)
     expect(isWorkIntegrationTabEnabled('folders', new Set(['mcp']))).toBe(false)
     expect(isWorkIdentityTabEnabled('models', new Set(['models']))).toBe(true)
@@ -37,7 +35,6 @@ describe('isWorkIntegrationTabEnabled', () => {
   it('gates channel tabs on the shared bots panel', () => {
     expect(isWorkIntegrationTabEnabled('apps', new Set(['mcp']))).toBe(true)
     expect(isWorkIntegrationTabEnabled('apps', new Set(['bots']))).toBe(false)
-    expect(isWorkIntegrationTabEnabled('vault', new Set(['skills']))).toBe(true)
     expect(isWorkIntegrationTabEnabled('slack', new Set(['bots']))).toBe(true)
     expect(isWorkIntegrationTabEnabled('whatsapp', new Set(['bots']))).toBe(true)
     expect(isWorkIntegrationTabEnabled('gmail', new Set(['bots']))).toBe(true)

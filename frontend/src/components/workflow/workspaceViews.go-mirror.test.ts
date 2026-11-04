@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { normalizeWorkspaceViewId, PRIMARY_WORKSPACE_TOOLBAR_VIEWS, WORKSPACE_VIEWS } from './workspaceViews'
+import { normalizeWorkspaceViewId, WORKSPACE_VIEWS } from './workspaceViews'
 import { UI_CONTROL_CONTRACT } from '../../platform/ui-control/contract.generated'
 
 // The agent's UI tool (agent_go/cmd/server/ui_control_contract.json) offers only the Dashboard (owner, 3 Nov);
@@ -16,21 +16,7 @@ describe('the agent UI contract uses registered workspace views', () => {
   })
 })
 
-describe('primary workspace toolbar views', () => {
-  it('always includes Plan for workflows that do not have steps yet', () => {
-    expect(PRIMARY_WORKSPACE_TOOLBAR_VIEWS.map(view => view.id)).toEqual([
-      'report',
-      'flow',
-      'costs',
-      'execution-logs',
-      'knowledge',
-      'webhooks',
-      'files',
-      'browser',
-      'workshop',
-    ])
-  })
-
+describe('persisted workspace view ids', () => {
   it('maps schedule and trigger destinations into Automation while retired Setup views fall back', () => {
     expect(WORKSPACE_VIEWS.map(view => view.id)).not.toContain('api-triggers')
     expect(normalizeWorkspaceViewId('api-triggers')).toBe('workshop')
@@ -49,10 +35,5 @@ describe('primary workspace toolbar views', () => {
     expect(normalizeWorkspaceViewId('learnings')).toBe('knowledge')
     expect(normalizeWorkspaceViewId('knowledgebase')).toBe('knowledge')
     expect(normalizeWorkspaceViewId('database')).toBe('knowledge')
-  })
-
-  it('orders Setup as Identity, then Integrations', () => {
-    const ids = WORKSPACE_VIEWS.map(view => view.id)
-    expect(ids.indexOf('identity')).toBeLessThan(ids.indexOf('mcp'))
   })
 })

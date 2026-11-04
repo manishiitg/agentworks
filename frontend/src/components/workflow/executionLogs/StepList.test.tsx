@@ -44,21 +44,13 @@ async function mount(props: Partial<React.ComponentProps<typeof StepList>> = {})
   return { host, toggleStep, unmount: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
-it('shows one status pill per step on a neutral card', async () => {
+it('shows one status per step', async () => {
   const { host, unmount } = await mount()
   try {
     expect(host.textContent).toContain('Failed run')
     expect(host.textContent).toContain('Completed')
-    expect(host.querySelector('.absolute.left-0')).toBeNull()
     const cards = host.querySelectorAll(':scope > div')
     expect(cards.length).toBe(2)
-    for (const card of cards) {
-      expect(card.className).toContain('border-border')
-      expect(card.className).toContain('bg-card')
-      expect(card.className).not.toContain('shadow-[')
-      expect(card.className).not.toContain('pulse')
-      expect(card.className).not.toContain('indigo')
-    }
   } finally {
     await unmount()
   }

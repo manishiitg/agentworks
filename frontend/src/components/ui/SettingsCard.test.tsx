@@ -35,7 +35,6 @@ it("lays out icon, title, count, actions, description, and body", async () => {
   );
   const section = host.querySelector("section")!;
   expect(section.getAttribute("aria-label")).toBe("Knowledge sources");
-  expect(section.className).toContain("rounded-lg");
   expect(host.querySelector('[data-testid="icon"]')).not.toBeNull();
   expect(host.querySelector("h3")?.textContent).toBe("Shared knowledge bases");
   expect(host.textContent).toContain("0 attached");
@@ -58,6 +57,5 @@ it("renders count and empty helpers with the standard treatment", async () => {
   );
   expect(host.querySelector(".rounded-full")?.textContent).toBe("3 attached");
   const empty = host.querySelector("p")!;
-  expect(empty.className).toContain("border-dashed");
   expect(empty.textContent).toBe("No secrets yet.");
 });

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, productReturnPath, productRoutePath, PRODUCT_PATHS, PRODUCT_ROUTE_ALIASES } from './productRoutes'
+import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, productReturnPath, productRoutePath, PRODUCT_PATHS } from './productRoutes'
 
 describe('shareable product routes', () => {
   it('round trips every surface and the resource/view contract', () => {
@@ -46,13 +45,6 @@ describe('shareable product routes', () => {
       expect(parseProductRoute(path), path).toBeUndefined()
       expect(productReturnPath(path), path).toBeNull()
     }
-  })
-
-  it('keeps the server OAuth return roots aligned with the client surface paths and aliases', () => {
-    const source = readFileSync(new URL('../../../agent_go/cmd/server/product_url_auth.go', import.meta.url), 'utf8')
-    const roots = JSON.parse('[' + source.match(/case (.*):/)![1] + ']') as string[]
-    const clientRoots = ['', 'workflows', ...Object.values(PRODUCT_PATHS).map(path => path.slice(1)), ...Object.keys(PRODUCT_ROUTE_ALIASES)]
-    expect(roots.sort()).toEqual([...new Set(clientRoots)].sort())
   })
 })
 

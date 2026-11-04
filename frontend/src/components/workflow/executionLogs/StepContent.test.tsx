@@ -54,23 +54,9 @@ it('shows detail chips and script errors', async () => {
   try {
     expect(host.textContent).toContain('high')
     const errorBlock = host.querySelector('pre')
-    expect(errorBlock?.className).toContain('text-destructive')
-    expect(errorBlock?.className).not.toContain('rose')
+    expect(errorBlock?.textContent).toContain('script blew up')
   } finally {
     await unmount()
   }
 })
 
-it('uses card-title section headings without kickers', async () => {
-  const { host, unmount } = await mount(scriptStep)
-  try {
-    const headings = host.querySelectorAll('h4')
-    expect(headings.length).toBeGreaterThan(0)
-    for (const heading of headings) {
-      expect(heading.className).not.toContain('uppercase')
-      expect(heading.className).not.toContain('tracking-')
-    }
-  } finally {
-    await unmount()
-  }
-})

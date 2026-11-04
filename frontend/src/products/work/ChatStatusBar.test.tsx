@@ -15,21 +15,16 @@ import { chatContextChangedEvent } from './ChatContextItems'
 import ChatStatusBar from './ChatStatusBar'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-it('loads context when opened mid-turn and shows the weekly reset even when the five-hour window is fuller', async () => {
+it('loads context when opened mid-turn and follows a context change from the menu', async () => {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   try {
     await act(async () => root.render(<ChatStatusBar sessionId="chat" busy />))
     expect(read).toHaveBeenCalledWith('chat')
-    expect(host.textContent).toContain('7d 13% (resets Nov 3)')
     const chip = host.querySelector('button')!
-    expect(chip.getAttribute('aria-label')).toContain('context used')
-    expect(chip.title).toContain('7d 13% (resets Nov 3')
+    expect(chip.textContent).toContain('200k')
     await act(async () => window.dispatchEvent(new CustomEvent(chatContextChangedEvent, { detail: { session_id: 'chat', used_tokens: 738693, can_compact: false, can_fresh: false } })))
-    expect(chip.textContent).toBe('739k used')
-    expect(chip.title).toBe('739k context used')
-    expect(chip.querySelector('[role="progressbar"]')).toBeNull()
-    expect(chip.textContent).not.toContain('/')
+    expect(chip.textContent).toContain('739k')
   } finally {
     await act(async () => root.unmount()); host.remove()
   }

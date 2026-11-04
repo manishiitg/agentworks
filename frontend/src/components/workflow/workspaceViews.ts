@@ -120,14 +120,6 @@ export function workflowContextViews(relayMode: boolean, isMultiUser: boolean) {
     && (!relayMode || RELAY_WORKSPACE_VIEWS.has(view.id)))
 }
 
-/** Views rendered by the generic Views toolbar loop. Plan stays in this list
- * even before the workflow has steps: opening it is how a new workflow reaches
- * the existing "No Plan Yet" / "Build Plan" state. Schedules is rendered
- * separately because its button carries status affordances. */
-export const PRIMARY_WORKSPACE_TOOLBAR_VIEWS = WORKSPACE_VIEWS.filter(
-  view => view.toolbarGroup === 'views' && view.id !== 'schedules',
-)
-
 type ViewOfKind<K extends WorkspaceViewKind> = Extract<typeof VIEWS[number], { kind: K }>['id']
 
 export type InspectorViewId = ViewOfKind<'inspector'> | ViewOfKind<'capability'>

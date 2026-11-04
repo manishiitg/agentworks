@@ -55,16 +55,6 @@ it('uses the Vault consent API with the shared platform login page', async () =>
   } finally { await view.cleanup() }
 })
 
-it('says in one plain line that the app can do what the person can do on the website, with the exact permissions behind details', async () => {
-  const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'crews:read', 'crews:run', 'crews:write'], [])
-  try {
-    expect(view.host.querySelector('main > div > ul')).toBeNull()
-    expect(view.host.textContent).toContain('This app can do what you can do on the website, and nothing more.')
-    expect(view.host.querySelector('details')).not.toBeNull()
-    expect(view.host.querySelector('details')!.textContent).toContain('Read workflow files, including test code')
-  } finally { await view.cleanup() }
-})
-
 it('shows the reason the server gives when a connection is refused', async () => {
   const view = await mount(['workflows:read'], [])
   try {

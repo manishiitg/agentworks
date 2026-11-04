@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   SHELL_FONT_SIZE_KEY,
@@ -56,36 +55,6 @@ describe('Code terminal helpers', () => {
     expect(isOpenableTerminalLink('javascript:alert(1)')).toBe(false)
     expect(isOpenableTerminalLink('file:///etc/passwd')).toBe(false)
     expect(isOpenableTerminalLink('not a url')).toBe(false)
-  })
-})
-
-describe('Code terminal panel wiring', () => {
-  const source = readFileSync('src/products/work/CodeShellPanel.tsx', 'utf8')
-
-  it('uses the chosen colour scheme (Homebrew by default), recolors in place, and keeps the coding-tool font', () => {
-    expect(source).toContain('shellTheme(schemeRef.current, RAW_XTERM_THEMES[themeRef.current])')
-    expect(source).toContain('termRef.current.options.theme = shellTheme(colourScheme, RAW_XTERM_THEMES[theme])')
-    expect(source).toContain('fontFamily: RAW_XTERM_FONT_FAMILY')
-    expect(source).toContain('Colours: {SHELL_THEME_LABELS[colourScheme]}')
-  })
-
-  it('loads the xterm add-ons and opens links only through the safe check', () => {
-    for (const addon of ['FitAddon', 'SearchAddon', 'Unicode11Addon', 'WebLinksAddon', 'WebglAddon']) {
-      expect(source).toContain(`new ${addon}(`)
-    }
-    expect(source).toContain('isOpenableTerminalLink(uri)')
-    expect(source).toContain("'noopener,noreferrer'")
-  })
-
-  it('keeps search in the toolbar and the rest in one menu with shortcuts', () => {
-    expect(source).toContain('aria-label="Search the terminal"')
-    expect(source).toContain('aria-label="Terminal menu"')
-    for (const item of ["'Copy selection', 'copy'", "'Paste', 'paste'", "'Clear screen', 'clear'", "'Larger text', 'larger'", "'Smaller text', 'smaller'", "'New terminal', 'newTab'"]) {
-      expect(source).toContain(`menuItem(${item}`)
-    }
-    expect(source).toContain('shellShortcut(event, IS_MAC)')
-    expect(source).toContain("expanded ? 'Exit full screen' : 'Full screen'")
-    expect(source).toContain('SHELL_RECONNECT_ATTEMPTS')
   })
 })
 

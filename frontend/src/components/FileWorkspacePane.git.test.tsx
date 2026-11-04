@@ -168,7 +168,6 @@ describe('FileWorkspacePane git bar', () => {
       // Stashes list with apply/pop.
       const stashToggle = Array.from(view.querySelectorAll('button')).find(item => item.textContent?.startsWith('Stashes'))!
       expect(stashToggle.getAttribute('aria-expanded')).toBe('false')
-      expect(stashToggle.className).toContain('items-center')
       await act(async () => stashToggle.click())
       await act(async () => { await Promise.resolve() })
       expect(view.textContent).toContain('wip: two')

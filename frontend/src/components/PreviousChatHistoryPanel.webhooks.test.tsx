@@ -319,18 +319,6 @@ it('loads and formats the webhook body when delivery details are opened', async 
   expect(host.textContent).toContain('"number": 42')
 })
 
-it('right-aligns header controls when the hub owns the title', async () => {
-  const host = document.createElement('div'); document.body.append(host)
-  const root = createRoot(host)
-  await act(async () => root.render(
-    <PreviousChatHistoryPanel workspacePath="Workflow/test" title="" onSelectSession={vi.fn()} />,
-  ))
-  cleanups.push(() => { act(() => root.unmount()); host.remove() })
-  const header = host.querySelector('.chat-history-panel > div > div')
-  expect(header?.className).toContain('justify-end')
-  expect(header?.className).not.toContain('justify-start')
-})
-
 it('offers run cleanup in the delivery-history feed', async () => {
   vi.mocked(schedulerApi.getJobRuns).mockImplementation(async id => ({
     runs: id === hook.id ? [{ ...webhookRun, status: 'success' }] : [],

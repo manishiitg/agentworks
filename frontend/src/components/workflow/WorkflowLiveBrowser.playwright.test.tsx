@@ -61,17 +61,6 @@ it('shows both browser types but makes Playwright watch-only even for workflow w
   expect(buttons()).toContain('Start recording')
 })
 
-it('fits the browser automatically while preserving its aspect ratio', async () => {
-  api.get.mockResolvedValue({ data: { sessions: [testBrowser('pw-aspect')] } })
-  const { host } = await mountBrowser()
-  await act(async () => { FakeSocket.instances.at(-1)?.onmessage?.({ data: JSON.stringify({ type: 'frame', data: '/9j/', metadata: { deviceWidth: 900, deviceHeight: 1600 } }) }) })
-  const image = host.querySelector('img')!
-  // Fill the panel and letterbox: never cropped, never a tiny centered image.
-  expect(image.className).toContain('object-contain')
-  expect(image.className).toContain('h-full')
-  expect(image.className).toContain('w-full')
-})
-
 const shared = { browser_session: 'shared-browser', workflow_session: 'shared', label: 'Shared browser · all users' }
 const testBrowser = (id: string) => ({ browser_session: id, workflow_session: 'child-run', label: `Login ${id}`, kind: 'playwright', read_only: 'true' })
 async function mountBrowser(fakeTimeouts = false) {

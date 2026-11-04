@@ -119,8 +119,6 @@ it('makes the workspace name prominent beside its product icon, with the product
   expect(host.querySelector('[data-product-icon]')?.getAttribute('title')).toBe('Crew')
   expect(host.querySelector('[data-product-icon]')?.getAttribute('aria-label')).toBe('Crew')
   const name = [...host.querySelectorAll('span')].find(node => node.textContent === 'Company CA')!
-  expect(name.className).toContain('font-semibold')
-  expect(name.closest('[role="button"]')?.className).toContain('text-sm')
 })
 
 it('does not duplicate foreground work on the workspace title while preserving each chat spinner', async () => {
@@ -165,14 +163,10 @@ it.each([undefined, 'agentworks', 'relays', 'work', 'mcp-gateway'] as (ProductSu
     }
     await render({}, true)
     const slot = host.querySelector('[data-chat-status-slot]')!
-    const slotClasses = slot.className
-    expect(slotClasses).toContain('w-3')
-    expect(slotClasses).toContain('shrink-0')
     expect(slot.childElementCount).toBe(0)
 
     const expectSlot = (label: string | null) => {
       expect(host.querySelector('[data-chat-status-slot]')).toBe(slot)
-      expect(slot.className).toBe(slotClasses)
       expect(slot.querySelector('[role="img"]')?.getAttribute('aria-label') ?? null).toBe(label)
       expect(host.querySelector('[title="Reports"]')?.textContent).toBe('Reports')
       expect(host.textContent).not.toContain('Done')

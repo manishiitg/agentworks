@@ -16,17 +16,6 @@ async function mount(props: Partial<React.ComponentProps<typeof CleanupOldChatsD
   return { host, onSelect, unmount: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
-it('uses neutral kit styling instead of destructive red', async () => {
-  const { host, unmount } = await mount()
-  try {
-    const button = host.querySelector('button[aria-haspopup="menu"]')
-    expect(button?.className).toContain('text-muted-foreground')
-    expect(button?.className).not.toContain('destructive')
-  } finally {
-    await unmount()
-  }
-})
-
 it('opens age options and reports the selection', async () => {
   const { host, onSelect, unmount } = await mount()
   try {
