@@ -136,3 +136,13 @@ func TestSelectorSourcesReceiveTheirOwnAction(t *testing.T) {
 		}
 	}
 }
+
+// search_tools shows only the start of a group's description; a group without a real purpose line sent agents
+// through extra spec reads (1.7 per call made, test server Oct-Nov 2026).
+func TestEveryToolGroupSaysWhatItIsFor(t *testing.T) {
+	for _, action := range Actions {
+		if groupPurpose[action.Family] == "" {
+			t.Errorf("tool group %q has no purpose line in groupPurpose", action.Family)
+		}
+	}
+}

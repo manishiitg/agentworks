@@ -123,7 +123,9 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 			if action.Scope != "" {
 				line += " (" + action.Scope + ")"
 			}
-			line += ": " + action.Description
+			if !fillerActionDescription.MatchString(action.Description) {
+				line += ": " + action.Description
+			}
 			fields := []string{}
 			switch required := member.tool.InputSchema["required"].(type) {
 			case []string:
@@ -153,7 +155,11 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 		}
 		props["action"] = map[string]any{"type": "string", "enum": actions}
 		group.InputSchema = map[string]any{"type": "object", "properties": props, "required": []any{"action"}, "additionalProperties": passThrough}
-		group.Description = "Use this project's " + family + " actions.\n" + strings.Join(lines, "\n")
+		purpose := groupPurpose[family]
+		if purpose == "" {
+			purpose = "Project " + family + " actions."
+		}
+		group.Description = purpose + "\n" + strings.Join(lines, "\n")
 		group.Execute = func(ctx context.Context, args map[string]any) (string, error) {
 			action, _ := args["action"].(string)
 			choices := members[action]

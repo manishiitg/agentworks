@@ -1227,14 +1227,6 @@
   },
   {
     "family": "workspace",
-    "name": "reply_input",
-    "member": "workspace__reply_input",
-    "description": "Use the current workspace reply input operation.",
-    "source": "workspace",
-    "source_action": "reply_input"
-  },
-  {
-    "family": "workspace",
     "name": "chats",
     "member": "workspace__chats",
     "description": "Use the current workspace chats operation.",
