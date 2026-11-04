@@ -2,7 +2,7 @@ import { YourComputerPanel } from './YourComputerPanel'
 import { useMacCrew } from './useMacCrew'
 import { useProjectMode } from './codeLocalFiles'
 import { useState, type ReactNode } from 'react'
-import { Server, Users } from 'lucide-react'
+import { Server } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type ProjectSecretControls, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
@@ -54,7 +54,8 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Access', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
-    <WorkspaceViewHeader icon={tab === 'access' ? Users : Server} title={labels[tab]} />
+    {/* The Access page opens straight on its tabs, without a title row (owner, 4 Nov). */}
+    {tab !== 'access' && <WorkspaceViewHeader icon={Server} title={labels[tab]} />}
     <div data-ui-view-section={tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       <>
         {tab === 'access' && <AccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} canEdit={canEdit} onAsk={draft} laptopForRun={<ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section="laptop" canEdit={false} onAsk={draft} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} />} />}
