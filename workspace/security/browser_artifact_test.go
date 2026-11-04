@@ -1,6 +1,10 @@
 package security
 
 import (
+	"bytes"
+	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,6 +142,11 @@ func TestFinalizeBrowserArtifactPublishesGenericDownload(t *testing.T) {
 
 func stagedArtifactFile(t *testing.T, extension string, data []byte) string {
 	t.Helper()
+	if os.Getenv(browserStagingNamespaceEnv) == "" {
+		t.Setenv(browserStagingNamespaceEnv, filepath.Base(t.TempDir()))
+		root := BrowserArtifactStagingDir()
+		t.Cleanup(func() { _ = os.RemoveAll(root) })
+	}
 	if err := os.MkdirAll(BrowserArtifactStagingDir(), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -180,5 +189,72 @@ func TestFinalizeBrowserArtifactKeepsTheProjectGroupsAccess(t *testing.T) {
 	}
 	if got := file.Mode().Perm(); got != 0o660 {
 		t.Fatalf("artifact mode = %v, want 0660 so the project group can read it", got)
+	}
+}
+
+// PLAT-856: browser outputs and Files must resolve a selected local folder identically.
+func TestBrowserArtifactsUseBoundCrewFolderAndRetainWriteGuards(t *testing.T) {
+	base := t.TempDir()
+	docs, project, state := filepath.Join(base, "docs"), filepath.Join(base, "project"), filepath.Join(base, "state")
+	for _, dir := range []string{filepath.Join(docs, "Crew", "example"), filepath.Join(project, ".agentworks"), filepath.Join(docs, "_system", "crew-data", "id"), filepath.Join(state, "ownership")} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	docs, _ = filepath.EvalSymlinks(docs)
+	project, _ = filepath.EvalSymlinks(project)
+	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	raw, _ := json.Marshal(map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", Owner: "owner", ID: "id", LocalRoot: project}}})
+	if err := os.WriteFile(filepath.Join(state, "ownership", "projects.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 1}
+	for _, tc := range []struct {
+		name, kind string
+		data       []byte
+	}{{"shot.png", "screenshot", png}, {"video.webm", "video", []byte{0x1a, 0x45, 0xdf, 0xa3, 1}}} {
+		virtual := "Crew/example/_files/evidence/" + tc.name
+		for _, dest := range []string{virtual, filepath.Join(docs, virtual), filepath.Join(project, "evidence", tc.name)} {
+			if !ArtifactDestinationWritable(dest, docs, []string{"Crew/example/_files"}) {
+				t.Fatalf("not writable: %s", dest)
+			}
+			source := stagedArtifactFile(t, filepath.Ext(tc.name), tc.data)
+			if err := FinalizeBrowserArtifact(source, dest, tc.kind, docs, []string{"Crew/example/_files"}, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			readPath, err := utils.ResolveUserPath(docs, virtual, "owner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(readPath)
+			if err != nil || !bytes.Equal(data, tc.data) || readPath != filepath.Join(project, "evidence", tc.name) {
+				t.Fatalf("Files read %s: %v", readPath, err)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(docs, virtual)); !os.IsNotExist(err) {
+			t.Fatalf("shadow artifact exists: %v", err)
+		}
+	}
+	for _, tc := range []struct {
+		dest             string
+		allowed, blocked []string
+	}{
+		{"Crew/example/_files/denied.png", []string{"Crew/other/_files"}, nil},
+		{"Crew/example/_files/denied.png", []string{"Crew/example/_files"}, []string{"Crew/example/_files/denied.png"}},
+		{filepath.Join(base, "outside.png"), []string{base}, nil},
+	} {
+		source := stagedArtifactFile(t, ".png", png)
+		if err := FinalizeBrowserArtifact(source, tc.dest, "screenshot", docs, tc.allowed, nil, tc.blocked); err == nil {
+			t.Fatalf("unauthorized destination accepted: %s", tc.dest)
+		}
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(project, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	source := stagedArtifactFile(t, ".png", png)
+	if err := FinalizeBrowserArtifact(source, "Crew/example/_files/escape/out.png", "screenshot", docs, []string{"Crew/example/_files"}, nil, nil); err == nil {
+		t.Fatal("symlink escape accepted")
 	}
 }

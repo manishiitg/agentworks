@@ -17,7 +17,10 @@ import (
 
 func TestExecuteShellBrowserArtifactDestinationIsWorkspaceRelative(t *testing.T) {
 	base := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(base, "Downloads"), 0755); err != nil {
+	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", filepath.Base(base))
+	staging := security.BrowserArtifactStagingDir()
+	t.Cleanup(func() { _ = os.RemoveAll(staging) })
+	if err := os.MkdirAll(filepath.Join(base, "evidence"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(security.BrowserArtifactStagingDir(), 0700); err != nil {
@@ -42,15 +45,15 @@ func TestExecuteShellBrowserArtifactDestinationIsWorkspaceRelative(t *testing.T)
 
 	request := models.ExecuteShellRequest{
 		Command:          "true",
-		WorkingDirectory: "Downloads",
+		WorkingDirectory: "evidence",
 		FolderGuard: &models.FolderGuardConfig{
 			Enabled:    true,
-			ReadPaths:  []string{"Downloads"},
-			WritePaths: []string{"Downloads"},
+			ReadPaths:  []string{"evidence"},
+			WritePaths: []string{"evidence"},
 		},
 		ArtifactTransfer: &models.BrowserArtifactTransfer{
 			SourcePath:      stagedPath,
-			DestinationPath: "Downloads/report.txt",
+			DestinationPath: "evidence/report.txt",
 			Kind:            "download",
 			Finalize:        true,
 		},
@@ -70,12 +73,12 @@ func TestExecuteShellBrowserArtifactDestinationIsWorkspaceRelative(t *testing.T)
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 
-	want := filepath.Join(base, "Downloads", "report.txt")
+	want := filepath.Join(base, "evidence", "report.txt")
 	got, err := os.ReadFile(want)
 	if err != nil || string(got) != "download-body" {
 		t.Fatalf("workspace-relative artifact = %q, err=%v", got, err)
 	}
-	if _, err := os.Stat(filepath.Join(base, "Downloads", "Downloads", "report.txt")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(base, "evidence", "evidence", "report.txt")); !os.IsNotExist(err) {
 		t.Fatalf("artifact was incorrectly resolved relative to the command working directory: %v", err)
 	}
 }
@@ -84,6 +87,9 @@ func TestExecuteShellBrowserArtifactDestinationIsWorkspaceRelative(t *testing.T)
 // reading is not writable there, so the folder-relative one is used (otherwise: 'not covered by this session's write paths').
 func TestExecuteShellBrowserArtifactDestinationMayBeRelativeToTheProjectFolder(t *testing.T) {
 	base := t.TempDir()
+	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", filepath.Base(base))
+	staging := security.BrowserArtifactStagingDir()
+	t.Cleanup(func() { _ = os.RemoveAll(staging) })
 	if err := os.MkdirAll(filepath.Join(base, "proj"), 0755); err != nil {
 		t.Fatal(err)
 	}
