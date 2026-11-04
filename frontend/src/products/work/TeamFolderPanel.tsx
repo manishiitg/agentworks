@@ -34,7 +34,7 @@ export function TeamFolderPage() {
   useEffect(() => useSharedCrewPageStore.subscribe(s => { if (s.workspaceId) open(undefined) }), [open])
   if (!selected) return null
   return <div className="absolute inset-0 z-20 flex min-h-0 flex-col bg-background">
-    <header className="flex items-center gap-3 border-b border-border px-4 py-3"><button type="button" aria-label="Close team folder" onClick={() => open(undefined)} className="rounded p-1 hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button><h1 className="truncate text-sm font-semibold">{selected.team.name} · {selected.team.owner_name}</h1></header>
+    <header className="flex items-center gap-3 border-b border-border py-3 pl-14 pr-4 md:px-4"><button type="button" aria-label="Close team folder" onClick={() => open(undefined)} className="rounded p-1 hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button><h1 className="truncate text-sm font-semibold">{selected.team.name} · {selected.team.owner_name}</h1></header>
     <TeamFolderPanel key={`${selected.target.connection}:${selected.team.project_id}`} {...selected} onAsk={() => open(undefined)} />
   </div>
 }
