@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from 'react'
 import { useAppViewport } from '../../hooks/useAppViewport'
 import { AppQuickSwitcher } from './AppQuickSwitcher'
 import { AppSidebar } from './AppSidebar'
+import { SharedCrewPage } from './SharedWithMe'
 import { WorkspaceAccountMenu } from './WorkspaceAccountMenu'
 import { ProductNavigationContext, CompactProductNavigationContext } from './productNavigationContexts'
 import ToastHost from '../ui/ToastHost'
@@ -14,7 +15,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return <TooltipProvider><ProductNavigationContext.Provider value={false}><CompactProductNavigationContext.Provider value={true}>
     <div ref={viewport} data-app-shell className="flex h-dvh min-h-0 overflow-hidden bg-background">
       <AppSidebar />
-      <div data-app-main className="relative min-h-0 min-w-0 flex-1">{children}</div>
+      <div data-app-main className="relative min-h-0 min-w-0 flex-1">{children}<SharedCrewPage /></div>
       <WorkspaceAccountMenu />
       <AppQuickSwitcher />
       <ToastHost />

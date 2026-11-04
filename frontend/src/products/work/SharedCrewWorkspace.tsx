@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, Bot, Loader2, Send } from 'lucide-react'
+import { ArrowLeft, Bot, ChevronRight, Loader2, Send } from 'lucide-react'
 import api from '../../services/api'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 
@@ -40,7 +40,7 @@ export function SharedCrewWorkspace({ projectId, workspacePath, enabled, childre
   </div>
 }
 
-export function SharedAgentConversation({ scope: crewScope, agent, onBack, ownerName }: { scope: SharedCrewScope; agent: SharedAgent; onBack: () => void; ownerName?: string }) {
+export function SharedAgentConversation({ scope: crewScope, agent, onBack, ownerName }: { scope: SharedCrewScope; agent: SharedAgent; onBack?: () => void; ownerName?: string }) {
   const [messages, setMessages] = useState<ChatLine[]>([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -109,13 +109,15 @@ export function SharedAgentConversation({ scope: crewScope, agent, onBack, owner
     finally { setLoadingEarlier(false) }
   }
   return <section className="flex min-h-0 flex-1 flex-col" aria-label={`${agent.name} conversation`}>
-    <header className="flex shrink-0 items-start gap-3 border-b border-border px-4 py-3"><button type="button" aria-label="Back to shared agents" onClick={onBack} className="rounded p-1 hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button><div><h2 className="text-sm font-semibold">{agent.name}</h2><p className="text-xs text-muted-foreground">{agent.purpose}</p></div></header>
+    <header className="flex shrink-0 items-start gap-3 border-b border-border px-4 py-2.5">{onBack && <button type="button" aria-label="Back to shared agents" onClick={onBack} className="rounded p-1 hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>}<div className="min-w-0">{onBack && <h2 className="text-sm font-semibold">{agent.name}</h2>}<Purpose text={agent.purpose} /></div></header>
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6" role="log" aria-label="Agent conversation">
       {loading && <p role="status" className="text-sm text-muted-foreground">Loading conversation…</p>}
       {earlier && <button type="button" disabled={loadingEarlier} onClick={() => void loadEarlier()} className="mb-4 text-xs text-primary underline">{loadingEarlier ? 'Loading…' : 'Earlier messages'}</button>}
-      {messages.map(line => <article key={line.seq} className={`mx-auto mb-5 max-w-3xl ${line.role === 'tool' ? 'text-xs text-muted-foreground' : ''}`}>
-        <p className="mb-1 text-xs font-medium text-muted-foreground">{line.role === 'assistant' ? agent.name : line.role === 'tool' ? 'Tool' : line.sender || 'Owner'}</p>
-        {line.role === 'tool' ? <p>{line.text}</p> : <MarkdownRenderer content={line.text} className="text-sm" untrustedContent compactImages />}
+      {foldTools(messages).map(item => Array.isArray(item) ? <ToolSteps key={item[0].seq} steps={item} /> : item.role === 'assistant' ? <article key={item.seq} className="mx-auto mb-5 max-w-3xl">
+        <MarkdownRenderer content={item.text} className="text-sm" untrustedContent compactImages />
+      </article> : <article key={item.seq} className="mx-auto mb-5 flex max-w-3xl flex-col items-end">
+        {item.sender && <p className="mb-1 text-xs text-muted-foreground">{item.sender}</p>}
+        <div className="max-w-[85%] rounded-2xl bg-muted px-3.5 py-2"><MarkdownRenderer content={item.text} className="text-sm" untrustedContent compactImages /></div>
       </article>)}
       {working && <p role="status" className="mx-auto flex max-w-3xl items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Working…</p>}<div ref={bottom} />
     </div>
@@ -126,4 +128,40 @@ export function SharedAgentConversation({ scope: crewScope, agent, onBack, owner
       <p className="text-[11px] text-muted-foreground">Only you see your messages and its answers.</p>
     </form>
   </section>
+}
+
+/** A purpose of one or two lines, with "more" for the rest. */
+function Purpose({ text }: { text?: string }) {
+  const [open, setOpen] = useState(false)
+  if (!text) return null
+  return <p className={`text-xs text-muted-foreground ${open ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>{text}{text.length > 140 && <> <button type="button" onClick={() => setOpen(value => !value)} className="text-primary hover:underline">{open ? 'less' : 'more'}</button></>}</p>
+}
+
+// Tool steps between two messages fold into one plain line (owner, 4 Nov): never internal tool names.
+function foldTools(lines: ChatLine[]): (ChatLine | ChatLine[])[] {
+  const out: (ChatLine | ChatLine[])[] = []
+  for (const line of lines) {
+    const last = out[out.length - 1]
+    if (line.role !== 'tool') out.push(line)
+    else if (Array.isArray(last)) last.push(line)
+    else out.push([line])
+  }
+  return out
+}
+
+const STEP_WORDS: Record<string, string> = { files: 'Looked at files', read_file: 'Read a file', write_file: 'Wrote a file', edit_file: 'Edited a file', bash: 'Ran a command', shell: 'Ran a command', read_skill: 'Read a skill', web_search: 'Searched the web', fetch: 'Opened a page' }
+function stepWord(text: string) {
+  const name = text.trim().split(/\s/)[0].split('__').pop() || ''
+  return STEP_WORDS[name] || (name ? name.replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase()) : 'A step')
+}
+
+function ToolSteps({ steps }: { steps: ChatLine[] }) {
+  const [open, setOpen] = useState(false)
+  const words = [...new Set(steps.map(step => stepWord(step.text)))]
+  return <div className="mx-auto mb-4 max-w-3xl text-xs text-muted-foreground">
+    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex items-center gap-1 hover:text-foreground">
+      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} />{steps.length === 1 ? words[0] : `Worked through ${steps.length} steps`}
+    </button>
+    {open && <ul className="ml-4 mt-1 space-y-0.5">{words.map(word => <li key={word}>{word}{steps.filter(step => stepWord(step.text) === word).length > 1 ? ` ×${steps.filter(step => stepWord(step.text) === word).length}` : ''}</li>)}</ul>}
+  </div>
 }

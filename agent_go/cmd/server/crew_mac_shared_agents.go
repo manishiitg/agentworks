@@ -337,7 +337,7 @@ func macSharedAgentRows(caller string) []map[string]any {
 		if err != nil || b == nil || b.Mode != "relay" || b.Side != "server" || b.Editing != "local" {
 			continue
 		}
-		owner := ownerOfCrewProjectID(project)
+		owner, title := crewOwnerAndTitle(project)
 		if owner == "" {
 			continue
 		}
@@ -355,7 +355,7 @@ func macSharedAgentRows(caller string) []map[string]any {
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
 				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "presence": presence, "your_access": "run",
 				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
-				"owner_short": ownerShort, "available": online})
+				"owner_short": ownerShort, "crew_title": title, "available": online})
 		}
 	}
 	return rows
@@ -376,17 +376,39 @@ func crewProjectRootByID(project string) string {
 }
 
 // ownerOfCrewProjectID is the main owner of a Crew by its project id, from the owner registry.
-func ownerOfCrewProjectID(project string) string {
+// crewOwnerAndTitle is a Crew's owner and its name as its owner sees it (product.json's title), else its folder's name
+// without the id ("test" for "test-d9edf837").
+func crewOwnerAndTitle(project string) (string, string) {
+	record, ok := crewOwnerRecord(project)
+	if !ok {
+		return "", ""
+	}
+	if manifest, err := readCrewProjectManifests(context.Background(), crewProfileID, crewProjectRootByID(project)); err == nil && strings.TrimSpace(manifest.Title) != "" {
+		return record.OwnerID, strings.TrimSpace(manifest.Title)
+	}
+	title := record.Folder
+	if at := strings.LastIndex(title, "-"); at > 0 {
+		title = title[:at]
+	}
+	return record.OwnerID, strings.ReplaceAll(title, "-", " ")
+}
+
+func crewOwnerRecord(project string) (projectOwnerRecord, bool) {
 	records, err := defaultProjectOwners().All()
 	if err != nil {
-		return ""
+		return projectOwnerRecord{}, false
 	}
 	for _, record := range records {
 		if record.Product == crewProfileID && record.ProjectID == project {
-			return record.OwnerID
+			return record, true
 		}
 	}
-	return ""
+	return projectOwnerRecord{}, false
+}
+
+func ownerOfCrewProjectID(project string) string {
+	record, _ := crewOwnerRecord(project)
+	return record.OwnerID
 }
 
 // macAgentRow is one agent on the Mac app's Access page: Main or a side tab, with its purpose from the tab itself.
@@ -510,7 +532,7 @@ func (api *StreamingAPI) handleSharedWithMe(w http.ResponseWriter, r *http.Reque
 	if !IsLocalMode() {
 		for _, row := range macSharedAgentRows(claims.UserID) {
 			agents = append(agents, map[string]any{"workspace_id": crewProfileID + ":" + fmt.Sprint(row["crew_id"]), "chat_id": row["chat_id"], "name": row["name"],
-				"owner_name": row["owner_short"], "purpose": row["purpose"], "available": row["available"]})
+				"owner_name": row["owner_short"], "crew_name": row["crew_title"], "purpose": row["purpose"], "available": row["available"]})
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
