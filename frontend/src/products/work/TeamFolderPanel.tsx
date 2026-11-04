@@ -1,45 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { create } from 'zustand'
-import { ArrowLeft, Download, FileText, Folder, RefreshCw, Upload, Users } from 'lucide-react'
+import { Download, FileText, Folder, RefreshCw, Upload } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
-import { useAuthStore } from '../../stores/useAuthStore'
-import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
-import { useSharedCrewPageStore } from '../../stores/useSharedCrewPageStore'
 import { desktopRequest } from '../../services/desktopConnections'
 import { TeamSyncPanel } from './TeamSyncPanel'
-import { teamError, teamRequest, useTeams, type Team, type TeamTarget } from './teamApi'
+import { teamError, teamRequest, type Team, type TeamTarget } from './teamApi'
 
 type Selection = { team: Team; target: TeamTarget }
-export const useTeamPage = create<{ selected?: Selection; open: (selected?: Selection) => void }>(set => ({ open: selected => set({ selected }) }))
 type SharedFile = { path: string; size: number; hash: string; author: string; revision: number }
 
-export function TeamsSidebar() {
-  const teams = useTeams()
-  const selected = useTeamPage(s => s.selected)
-  const open = useTeamPage(s => s.open)
-  if (!teams.length) return null
-  return <section aria-label="Teams" className="mb-3 space-y-1"><h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Teams</h2>
-    {teams.map(row => <button key={`${row.target.connection}:${row.team.project_id}`} type="button" onClick={() => { useSharedCrewPageStore.getState().open(null); open(row); window.dispatchEvent(new CustomEvent('close-app-sidebar')) }} aria-current={selected?.team.project_id === row.team.project_id && selected.target.connection === row.target.connection ? 'page' : undefined} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] hover:bg-muted"><Users className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">{row.team.name} · {row.team.owner_name}</span></button>)}
-  </section>
-}
-
-export function TeamFolderPage() {
-  const selected = useTeamPage(s => s.selected)
-  const open = useTeamPage(s => s.open)
-  const user = useAuthStore(s => s.user?.id)
-  const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
-  useEffect(() => { open(undefined) }, [user, workspace, open])
-  useEffect(() => useProductSurfaceStore.subscribe((s, p) => { if (s.productSurface !== p.productSurface || s.selectedWorkProjectId !== p.selectedWorkProjectId) open(undefined) }), [open])
-  useEffect(() => useSharedCrewPageStore.subscribe(s => { if (s.workspaceId) open(undefined) }), [open])
-  if (!selected) return null
-  return <div className="absolute inset-0 z-20 flex min-h-0 flex-col bg-background">
-    <header className="flex items-center gap-3 border-b border-border py-3 pl-14 pr-4 md:px-4"><button type="button" aria-label="Close team folder" onClick={() => open(undefined)} className="rounded p-1 hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button><h1 className="truncate text-sm font-semibold">{selected.team.name} · {selected.team.owner_name}</h1></header>
-    <TeamFolderPanel key={`${selected.target.connection}:${selected.team.project_id}`} {...selected} onAsk={() => open(undefined)} />
-  </div>
-}
-
-function TeamFolderPanel({ team, target, onAsk }: Selection & { onAsk: () => void }) {
+/** A team folder's Files and Sync history, opened from inside the shared Crew by a member who edits it (owner, 5 Nov:
+ * no separate Teams page). */
+export function TeamFolderPanel({ team, target, onAsk }: Selection & { onAsk: () => void }) {
   const [files, setFiles] = useState<SharedFile[]>([])
   const [selected, setSelected] = useState<SharedFile>()
   const [text, setText] = useState('')
