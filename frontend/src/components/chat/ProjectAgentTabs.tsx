@@ -317,7 +317,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
+      {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} projectId={placeProject} />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
