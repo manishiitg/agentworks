@@ -27,8 +27,7 @@ import (
 )
 
 type crewTeamPerson struct {
-	UserID              string `json:"user_id"`
-	CanEditSharedFolder bool   `json:"can_edit_shared_folder"`
+	UserID string `json:"user_id"`
 	// Invited: added by the owner but not accepted yet (owner, 5 Nov, the decisions log). An invited person has no
 	// access and no folder sync; accepting on the web or on their Mac makes them a member.
 	Invited bool `json:"invited,omitempty"`
@@ -110,7 +109,8 @@ func (t crewTeam) member(user string) bool {
 	return user != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && !p.Invited }))
 }
 func (t crewTeam) edits(user string) bool {
-	return t.Folder.Path != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && !p.Invited && p.CanEditSharedFolder }))
+	// Every joined member reads and writes the shared folder; there is no per-person switch (owner, 5 Nov).
+	return t.Folder.Path != "" && t.member(user)
 }
 
 // invited: the person has an open invite to this team (Team on, not accepted yet).
@@ -165,7 +165,7 @@ func crewTeamAuthorize(claims *UserClaims, project, rel string, write, folder bo
 		return crewTeam{}, fmt.Errorf("this team is not shared with you; ask its owner to add you")
 	}
 	if folder && !t.edits(claims.UserID) {
-		return crewTeam{}, fmt.Errorf("ask the owner to turn on Edits shared folder for you")
+		return crewTeam{}, fmt.Errorf("this team has no shared folder yet; ask its owner to choose one")
 	}
 	if token := claims.AccessToken; token != nil && token.FileGuard != nil && !token.FileGuard.Allows(rel, write) {
 		return crewTeam{}, fmt.Errorf("this connection cannot access that file; use the team's Files panel")
@@ -333,12 +333,6 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		input.Folder.Label = path.Base(input.Folder.Path)
-	}
-	for _, p := range input.People {
-		if p.CanEditSharedFolder && input.Folder.Path == "" {
-			externalError(w, 400, "folder_required", "Choose a shared folder before allowing people to edit it.")
-			return
-		}
 	}
 	dir, e := crewTeamDir(project)
 	if e == nil {
