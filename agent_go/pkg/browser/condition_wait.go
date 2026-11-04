@@ -111,5 +111,6 @@ func (c *Client) executeConditionWait(ctx context.Context, args []string, opts *
 }
 
 func conditionWaitExpression(expression string) string {
-	return "(async () => { let timer; try { return await Promise.race([(async () => { const v = (" + expression + "); const r = typeof v === 'function' ? await v() : await v; return !!r })(), new Promise(resolve => { timer = setTimeout(() => resolve(false), 2000) })]); } finally { clearTimeout(timer); } })()"
+	// Evaluate the argument in the page's scope, outside our helper bindings.
+	return "(async (condition) => { let timer; try { return await Promise.race([(async () => { const result = typeof condition === 'function' ? await condition() : await condition; return !!result })(), new Promise(resolve => { timer = setTimeout(() => resolve(false), 2000) })]); } finally { clearTimeout(timer); } })(" + expression + ")"
 }
