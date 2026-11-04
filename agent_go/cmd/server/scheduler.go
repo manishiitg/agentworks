@@ -2485,7 +2485,7 @@ const (
 
 func (s *SchedulerService) runAfterRunHousekeeping(ctx context.Context, sctx *ScheduleContext, runStatus, runFolder, runSessionID, scheduleRunID string) (result afterRunResult) {
 	ctx = costActivityContext(ctx, sctx.OwnerUserID, "schedule", "")
-	if sctx.WebhookInput != nil || strings.EqualFold(sctx.Schedule.ScheduleType, "webhook") {
+	if sctx.WebhookInput != nil || strings.EqualFold(sctx.Schedule.ScheduleType, "webhook") || sctx.CrewExecutable != nil && sctx.CrewExecutable.Kind == "script" {
 		return afterRunNotRun
 	}
 
@@ -2748,6 +2748,9 @@ func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext
 
 	if sctx.WebhookInput != nil {
 		return s.executeWebhookJob(ctx, sctx, runID)
+	}
+	if sctx.CrewExecutable != nil && sctx.CrewExecutable.Kind == "script" {
+		return s.executeCrewScriptSchedule(ctx, sctx, runID)
 	}
 	if mode := strings.TrimSpace(sctx.Schedule.Mode); mode != "" && mode != "workshop" {
 		s.logf(sctx, "[SCHEDULER] Schedule %s uses legacy mode=%s; executing through workshop mode", sctx.Schedule.ID, mode)

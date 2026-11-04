@@ -888,6 +888,11 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		return nil, false, bindErr
 	}
 	if binding != nil && binding.Kind == "script" {
+		// A run/code subfolder belongs to this script but is not another
+		// executable. Native listings include those folders after the first run.
+		if crewExecutableWorkspace(workspacePath) != binding.Root {
+			return nil, false, nil
+		}
 		return crewScriptManifest(ctx, binding)
 	}
 	content, exists, err := readFileFromWorkspace(ctx, manifestPath(workspacePath))

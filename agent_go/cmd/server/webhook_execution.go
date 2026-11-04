@@ -78,8 +78,10 @@ func configureDirectWebhookRequest(req map[string]interface{}, sctx *ScheduleCon
 		opts.InputPreset = sctx.Schedule.InputPreset
 		opts.Inputs = sctx.Schedule.Inputs
 	}
-	opts.WebhookInputFile = webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)
-	opts.WebhookVariables = sctx.WebhookInput.Variables
+	if sctx.WebhookInput != nil {
+		opts.WebhookInputFile = webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)
+		opts.WebhookVariables = sctx.WebhookInput.Variables
+	}
 	// Keep the serialized options for setup; hidden delivery values travel only
 	// in the scheduler-owned context below.
 	serializedOpts := req["execution_options"].(map[string]interface{})
