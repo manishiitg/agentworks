@@ -928,6 +928,8 @@ type QueryRequest struct {
 	// resolvedResumeTarget is attached only by a trusted server-owned product
 	// route. It is never accepted from or serialized back to a browser.
 	resolvedResumeTarget *resolvedResumeTarget `json:"-"`
+	// sharedAsk is another person's message to a shared Mac agent: their thread starts from the owner's own chat.
+	sharedAsk *crewMacSharedAsk `json:"-"`
 	// providerSwitchedFrom is the coding provider of the retained CLI this turn replaced (the person changed the agent
 	// mid-chat); empty otherwise. It only feeds the log line that proves the conversation was carried over.
 	providerSwitchedFrom string `json:"-"`
@@ -3932,6 +3934,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if target, ok := r.Context().Value(resolvedResumeTargetContextKey{}).(*resolvedResumeTarget); ok {
 		req.resolvedResumeTarget = target
 	}
+	if ask, ok := r.Context().Value(crewMacSharedAskKey{}).(*crewMacSharedAsk); ok && req.SharedAgentSender != "" {
+		req.sharedAsk = ask
+	}
 	if err := validateRequestedCDPPorts(req); err != nil {
 		http.Error(w, "Invalid CDP configuration: "+err.Error(), http.StatusBadRequest)
 		return
@@ -6068,8 +6073,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
-		if crewAskOnly || req.SharedAgentSender != "" {
-			// A guest's free-text ask, and someone else's message to a shared agent, get no secrets (856-59, 509).
+		// A shared agent's turn for someone else keeps them (owner, 4 Nov: "whatever the main agent has access to the
+		// other users will have access if i share it").
+		if crewAskOnly {
+			// A guest's free-text ask gets no secrets (856-59).
 			for name := range codingAgentSecretEnvironment {
 				if strings.HasPrefix(name, "SECRET_") {
 					delete(codingAgentSecretEnvironment, name)
@@ -6162,10 +6169,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if crewAskOnly {
 				toolGate.DenyWhere(func(name string) bool { return !crewAskAllowedTools[strings.TrimSpace(name)] })
 			}
-		}
-		if req.SharedAgentSender != "" {
-			// Someone else's turn never changes sharing, settings, access or the Crew (PLAT-856-509).
-			toolGate.DenyWhere(func(name string) bool { return sharedAgentOwnerOnlyTools[strings.TrimSpace(name)] })
 		}
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewHasNoUsableSlackBot(r.Context(), resolvedProfile.Definition.ID, req.SelectedFolder) {
 			// A Slack tool that can only answer "bot is disabled" is not offered: the model would try it first.
@@ -8341,7 +8344,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			restoredConversationPathForFallback := restoredConversationPath
 			var restoredRuntime *ChatHistoryAgentRuntime
-			if modeChangedThisTurn {
+			forked, recap := api.forkOwnerSessionForSender(context.Background(), currentUserID, sessionID, req.sharedAsk)
+			if forked != nil {
+				// Another person's turn starts from a fresh copy of the owner's conversation with this agent, with their own
+				// last exchanges as a short note (the copy does not hold them).
+				restoredRuntime = forked
+				restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, forked, underlyingAgent)
+				if restoredNativeCodingResume {
+					chatQuery = recap + chatQuery
+				}
+			} else if modeChangedThisTurn {
 				// A role change (Builder <-> Run) must never seed the previous native session handle.
 			} else if target := req.resolvedResumeTarget; target != nil {
 				restoredConversationPathForFallback = target.ConversationPath
