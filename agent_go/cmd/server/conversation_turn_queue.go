@@ -1009,6 +1009,7 @@ type PendingQueuedMessage struct {
 	// update can still be withdrawn.
 	Refreshing  bool   `json:"refreshing,omitempty"`
 	QueueReason string `json:"queue_reason"`
+	QueueDetail string `json:"queue_detail,omitempty"`
 	CanSteer    bool   `json:"can_steer"`
 	// Started: the queue handed this message to its turn, which has not finished. The chat keeps showing it as being sent
 	// until the turn's own user row arrives, instead of it vanishing between the queue and the chat.

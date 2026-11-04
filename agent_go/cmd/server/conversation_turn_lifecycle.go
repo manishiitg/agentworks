@@ -59,6 +59,7 @@ func (api *StreamingAPI) trackConversationTurnStart(queryID, sessionID string, r
 			metadata["workshop_mode"] = mode
 		}
 	}
+	metadata["turn_source_label"] = strings.TrimSpace(req.TriggeredByLabel)
 	kind := "conversation_turn"
 	phaseID := strings.TrimSpace(req.PhaseID)
 	phaseName := "Conversation"

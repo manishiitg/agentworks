@@ -103,12 +103,59 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 		}
 		message.QueueReason, message.CanSteer = api.queuedMessageDeliveryState(sessionID, turn.Request)
 		message.Refreshing = message.QueueReason == "refreshing"
+		message.QueueDetail = api.queuedMessageWaitDetail(sessionID, message.QueueReason)
 		// Steer now is only for a message the person queued on purpose (queue mode). In steer mode the server hands the
 		// message in by itself as soon as it can, so offering the button there only adds a choice.
 		if message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
 			message.CanSteer = false
 		}
 	}
+}
+
+// Describe the actual running root, never the waiting request or its raw prompt.
+// Queue access is already checked by pendingQueuedMessages (PLAT-746-313).
+func (api *StreamingAPI) queuedMessageWaitDetail(sessionID, reason string) string {
+	if reason == "refreshing" {
+		return "Waiting for this chat to restart with its updated setup"
+	}
+	if idleCompacts.running(sessionID) != nil {
+		return "Waiting for this chat to finish tidying its context"
+	}
+	var active *TrackedWorkflowExecution
+	for _, exec := range api.trackedExecutionsForSession(sessionID) {
+		if exec.Source == trackedExecutionSourceConversationTurn && exec.Status == trackedExecutionStatusRunning &&
+			(active == nil || exec.StartedAt.After(active.StartedAt)) {
+			active = exec
+		}
+	}
+	if active == nil {
+		return ""
+	}
+	label := strings.TrimPrefix(strings.TrimSpace(active.Metadata["turn_source_label"]), "From ")
+	if label == "" {
+		switch active.TriggeredBy {
+		case "agent_message", "external":
+			label = "another agent’s message"
+		case "cron", "schedule":
+			label = "a scheduled run"
+		case "webhook":
+			label = "a webhook task"
+		case "auto_notification":
+			label = "a background update"
+		default:
+			return ""
+		}
+	}
+	// Labels are plain text and bounded, matching the source already shown in chat.
+	label = strings.Join(strings.Fields(label), " ")
+	runes := []rune(label)
+	if len(runes) > 100 {
+		label = string(runes[:100]) + "…"
+	}
+	if reason == "starting" {
+		return "Starting " + label
+	}
+	return "Waiting for " + label
 }
 
 type queuedMessageSteerKey struct{}

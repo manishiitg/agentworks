@@ -158,6 +158,21 @@ func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 	check("starting", false) // confirmed startup phase
 	api.eventStore.AddEvent("chat", events.Event{Type: "conversation_end"})
 	check("running", false) // completed output can still be releasing its lane
+	// The queue names the running watcher, not the queued person message or a
+	// newer execution from another chat (PLAT-746-313).
+	api.trackConversationTurnStart("watcher-source", "chat", QueryRequest{TriggeredBy: "agent_message", TriggeredByLabel: "From Watcher: PR review", Query: "private watcher prompt"})
+	api.trackConversationTurnStart("other-chat-source", "other-chat", QueryRequest{TriggeredBy: "cron", TriggeredByLabel: "Schedule: private other chat"})
+	messages := api.pendingQueuedMessages(ctx, "owner", "chat")
+	if len(messages) != 1 || messages[0].QueueDetail != "Waiting for Watcher: PR review" {
+		t.Fatalf("active source detail = %+v", messages)
+	}
+	api.trackedWorkflowExecutionsMux.Lock()
+	api.trackedWorkflowExecutions["watcher-source"].Status = trackedExecutionStatusCompleted
+	api.trackedWorkflowExecutionsMux.Unlock()
+	if detail := api.pendingQueuedMessages(ctx, "owner", "chat")[0].QueueDetail; detail != "" {
+		t.Fatalf("completed source still shown: %q", detail)
+	}
+
 	api.runningAgents = map[string]*mcpagent.Agent{"chat": testCodingAgent(llm.ProviderClaudeCode, "claude-sonnet-4-6")}
 	api.agentCancelFuncs = map[string]context.CancelFunc{"chat": func() {}}
 	check("running", false) // a missing transport can also mean finishing
