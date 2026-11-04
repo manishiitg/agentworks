@@ -27,8 +27,14 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const shown = crew.agents.filter(agent => agent.pinned !== false || agent.tabId === activeTabId)
   const hidden = crew.agents.filter(agent => agent.pinned === false && agent.tabId !== activeTabId)
   const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
+  // A shared room (owner, 5 Nov): with other people's agents here, the list is grouped by person, yours under "You".
+  const people = [...new Set(shown.map(agent => agent.owner || ''))]
+  const grouped = people.length > 1
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
-    {shown.map(row)}
+    {grouped ? people.map(person => <div key={person || 'you'} role="group" aria-label={person ? `${person}'s agents` : 'Your agents'}>
+      <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{person || 'You'}</p>
+      {shown.filter(agent => (agent.owner || '') === person).map(row)}
+    </div>) : shown.map(row)}
     {hidden.length > 0 && <button type="button" aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
       className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />Hidden agents ({hidden.length})

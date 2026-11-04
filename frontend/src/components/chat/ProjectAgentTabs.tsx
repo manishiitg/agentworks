@@ -175,14 +175,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentTabs = tabs.filter(isAgentTab)
   const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
-  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index) => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
+  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index) => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, owner: canControl(tab) ? undefined : listedFor(tab)?.tab_owner_name || undefined, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
   // Agents the server lists that have no tab here (closed), for the team board, which lists every agent.
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, icon: chat.icon,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.icon]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.icon]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
