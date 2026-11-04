@@ -344,7 +344,7 @@ func setCodeTabName(ctx context.Context, userID, conversationKey, name string, p
 	if len(profileIDs) > 0 {
 		profileID = profileIDs[0]
 	}
-	_, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, profileID, conversationKey, &name, nil, "tab name")
+	_, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, profileID, conversationKey, &name, nil, nil, "tab name")
 	return err
 }
 

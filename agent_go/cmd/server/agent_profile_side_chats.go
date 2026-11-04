@@ -34,6 +34,8 @@ type AgentProfileSideChat struct {
 	Pinned bool `json:"pinned"`
 	// Purpose is the agent's one line, set by its owner or by the agent itself (set_my_agent_identity).
 	Purpose string `json:"purpose,omitempty"`
+	// Icon is the agent's one emoji, shown before its purpose.
+	Icon string `json:"icon,omitempty"`
 	// IsMain marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
 	IsMain bool `json:"is_main,omitempty"`
 }
@@ -175,14 +177,14 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, userID))
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
-			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, Icon: tab.Identity.Icon, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
 		}
 		if ownMain || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
 			continue
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(tab.Identity.Name, "Chat "+id)
-		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose}
+		row := AgentProfileSideChat{Icon: tab.Identity.Icon, ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose}
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
 			row.Pinned = !own.Unpinned
 		}

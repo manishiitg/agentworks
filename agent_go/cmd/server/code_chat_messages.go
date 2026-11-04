@@ -32,6 +32,7 @@ type codeChat struct {
 	ID        string // "main" or the side chat's id
 	Name      string
 	Purpose   string
+	Icon      string
 	SessionID string
 	UpdatedAt string
 }
@@ -93,6 +94,7 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 			chat.Name = firstNonEmptyTrimmed(identity.Name, chat.Name)
 			chat.Purpose = identity.Purpose
 		}
+		chat.Icon = tab.Identity.Icon
 		if record.SessionID == sessionID && tab.OwnerID == userID {
 			project.Self, found = chat, true
 		}
@@ -279,34 +281,38 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
 			}},
-		{"set_my_agent_identity", "Set this agent's own name and/or purpose (a few words and one short line) so the other agents in this project know what it is for. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
+		{"set_my_agent_identity", "Set this agent's own name, purpose and icon (a few words, one short line and one emoji) so the other agents and people know what it is for. Whenever you set the purpose, also pick one emoji icon that fits it. An agent can be shared only with all three. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name":    map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
 				"purpose": map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
+				"icon":    map[string]interface{}{"type": "string", "description": "One emoji that fits the purpose, e.g. 🧾 for invoices. No text."},
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
-				var name, purpose *string
+				var name, purpose, icon *string
 				if value, ok := args["name"].(string); ok {
 					name = &value
 				}
 				if value, ok := args["purpose"].(string); ok {
 					purpose = &value
 				}
-				if name == nil && purpose == nil {
-					return "", fmt.Errorf("pass a name, a purpose or both")
+				if value, ok := args["icon"].(string); ok {
+					icon = &value
+				}
+				if name == nil && purpose == nil && icon == nil {
+					return "", fmt.Errorf("pass a name, a purpose or an icon")
 				}
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
 				if err != nil {
 					return "", err
 				}
-				identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, name, purpose, "agent "+project.Self.Name)
+				identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, name, purpose, icon, "agent "+project.Self.Name)
 				if err != nil {
 					return "", err
 				}
 				// A shared agent on this Mac: its new line reaches the people it is shared with too.
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
-				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
+				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose, "icon": identity.Icon})
 			}},
 		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat. Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{
 			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{

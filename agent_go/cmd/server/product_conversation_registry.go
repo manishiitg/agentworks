@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -95,8 +97,10 @@ type productConversationRegistryDocument struct {
 
 // ProductAgentIdentity is the name and one-line purpose of an agent in a project, with who last changed it.
 type ProductAgentIdentity struct {
-	Name      string `json:"name,omitempty"`
-	Purpose   string `json:"purpose,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Purpose string `json:"purpose,omitempty"`
+	// Icon is one emoji the agent picks to fit its purpose, shown before the purpose (PLAT-856-509).
+	Icon      string `json:"icon,omitempty"`
 	UpdatedBy string `json:"updated_by,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 	// Position orders the person's side tabs in the strip (1 is first); 0 means not placed yet.
@@ -115,6 +119,41 @@ type ProductAgentIdentity struct {
 	ClaudeTerminal bool `json:"claude_terminal,omitempty"`
 }
 
+// cleanAgentIcon accepts one emoji (a flag, a skin tone or a joined emoji counts as one) and no text; "" clears it.
+func cleanAgentIcon(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	refuse := fmt.Errorf("the icon must be one emoji, with no text")
+	if utf8.RuneCountInString(value) > 10 {
+		return "", refuse
+	}
+	pictographs, flags, joined := 0, 0, false
+	for _, r := range value {
+		switch {
+		case r == 0x200D: // zero-width joiner: the next pictograph joins this one
+			joined = true
+			continue
+		case r == 0xFE0F || r == 0xFE0E || r == 0x20E3 || (r >= 0x1F3FB && r <= 0x1F3FF) || (r >= 0xE0020 && r <= 0xE007F):
+			// variation selectors, keycap, skin tones, tag characters: part of the emoji before them
+		case r >= 0x1F1E6 && r <= 0x1F1FF: // regional indicators: two make one flag
+			flags++
+		case unicode.Is(unicode.So, r) || unicode.Is(unicode.Sk, r):
+			if !joined {
+				pictographs++
+			}
+		default:
+			return "", refuse
+		}
+		joined = false
+	}
+	if pictographs+(flags+1)/2 != 1 || flags%2 == 1 {
+		return "", refuse
+	}
+	return value, nil
+}
+
 const (
 	productAgentNameMaxRunes    = 120
 	productAgentPurposeMaxRunes = 300
@@ -122,7 +161,7 @@ const (
 
 // setAgentIdentity changes an agent's name and/or purpose (nil keeps the field) and logs the change with its actor.
 // An empty string clears the field.
-func (store productConversationRegistryStore) setAgentIdentity(ctx context.Context, userID, profileID, conversationKey string, name, purpose *string, actor string) (ProductAgentIdentity, error) {
+func (store productConversationRegistryStore) setAgentIdentity(ctx context.Context, userID, profileID, conversationKey string, name, purpose, icon *string, actor string) (ProductAgentIdentity, error) {
 	conversationKey = strings.TrimSpace(conversationKey)
 	if conversationKey == "" || strings.TrimSpace(userID) == "" {
 		return ProductAgentIdentity{}, fmt.Errorf("an agent is required")
@@ -144,6 +183,14 @@ func (store productConversationRegistryStore) setAgentIdentity(ctx context.Conte
 	cleanPurpose, err := clean(purpose, productAgentPurposeMaxRunes, "purpose")
 	if err != nil {
 		return ProductAgentIdentity{}, err
+	}
+	var cleanIcon *string
+	if icon != nil {
+		value, err := cleanAgentIcon(*icon)
+		if err != nil {
+			return ProductAgentIdentity{}, err
+		}
+		cleanIcon = &value
 	}
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
@@ -167,6 +214,9 @@ func (store productConversationRegistryStore) setAgentIdentity(ctx context.Conte
 	if cleanPurpose != nil {
 		identity.Purpose = *cleanPurpose
 	}
+	if cleanIcon != nil {
+		identity.Icon = *cleanIcon
+	}
 	identity.UpdatedBy = strings.TrimSpace(actor)
 	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	document.Agents[entryKey] = identity
@@ -174,7 +224,7 @@ func (store productConversationRegistryStore) setAgentIdentity(ctx context.Conte
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[AGENT_IDENTITY] %s set the agent %s to name=%q purpose=%q", identity.UpdatedBy, entryKey, identity.Name, identity.Purpose)
+	log.Printf("[AGENT_IDENTITY] %s set the agent %s to name=%q purpose=%q icon=%q", identity.UpdatedBy, entryKey, identity.Name, identity.Purpose, identity.Icon)
 	return identity, nil
 }
 

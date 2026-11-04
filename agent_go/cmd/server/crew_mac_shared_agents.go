@@ -28,6 +28,7 @@ type macSharedAgent struct {
 	Tab      string   `json:"tab"`
 	Name     string   `json:"name"`
 	Purpose  string   `json:"purpose"`
+	Icon     string   `json:"icon,omitempty"`
 	Audience string   `json:"audience"` // team | everyone | chosen
 	People   []string `json:"people,omitempty"`
 	Since    string   `json:"since,omitempty"`
@@ -96,6 +97,9 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 			return nil, fmt.Errorf("an agent needs a name")
 		case agent.Purpose == "" || len([]rune(agent.Purpose)) > productAgentPurposeMaxRunes:
 			return nil, fmt.Errorf("set %s's purpose to share it (one line, at most %d characters)", agent.Name, productAgentPurposeMaxRunes)
+		case strings.TrimSpace(agent.Icon) == "":
+			// Owner, 4 Nov: sharing an agent needs its name, purpose and icon.
+			return nil, fmt.Errorf("give %s an icon to share it: ask it to set its name, purpose and an emoji icon that fits it", agent.Name)
 		case agent.Audience != "team" && agent.Audience != "everyone" && agent.Audience != "chosen":
 			return nil, fmt.Errorf("choose My team, Chosen people or Everyone in the company for %s", agent.Name)
 		case agent.Audience == "chosen" && (len(agent.People) == 0 || len(agent.People) > 100):
@@ -332,7 +336,7 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	}
 	var out map[string]any
 	if result.Status == http.StatusOK && json.Unmarshal(result.Body, &out) == nil {
-		out["workspace_id"], out["chat_id"], out["name"], out["purpose"], out["can_write"], out["shared"] = manifest.Product+":"+manifest.ID, macSharedAgentChatKey(manifest.ID, agent.Tab), agent.Name, agent.Purpose, false, true
+		out["workspace_id"], out["chat_id"], out["name"], out["purpose"], out["icon"], out["can_write"], out["shared"] = manifest.Product+":"+manifest.ID, macSharedAgentChatKey(manifest.ID, agent.Tab), agent.Name, agent.Purpose, agent.Icon, false, true
 		externalJSON(w, out)
 		return true
 	}
@@ -370,7 +374,7 @@ func macSharedAgentRows(caller string) []map[string]any {
 			}
 			target := "workspace:" + crewProfileID + ":" + project
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
-				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "presence": presence, "your_access": "run",
+				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "icon": agent.Icon, "presence": presence, "your_access": "run",
 				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
 				"owner_short": ownerShort, "crew_title": title, "available": online})
 		}
@@ -433,6 +437,7 @@ type macAgentRow struct {
 	Tab     string `json:"tab"`
 	Name    string `json:"name"`
 	Purpose string `json:"purpose"`
+	Icon    string `json:"icon,omitempty"`
 }
 
 func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, project string) ([]macAgentRow, error) {
@@ -441,10 +446,10 @@ func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, p
 		return nil, err
 	}
 	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov).
-	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Purpose: main.Purpose}}
+	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Purpose: main.Purpose, Icon: main.Icon}}
 	for _, tab := range tabs {
 		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
-			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose})
+			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose, Icon: tab.Icon})
 		}
 	}
 	return rows, nil
@@ -461,7 +466,7 @@ func (api *StreamingAPI) pushMacSharedAgents(ctx context.Context, claims *UserCl
 		if at < 0 {
 			return 400, "invalid_agents", fmt.Errorf("Choose one of this Crew's agents.")
 		}
-		agents[i].Name, agents[i].Purpose = rows[at].Name, rows[at].Purpose
+		agents[i].Name, agents[i].Purpose, agents[i].Icon = rows[at].Name, rows[at].Purpose, rows[at].Icon
 	}
 	clean, err := cleanMacSharedAgents(agents, readMacSharedAgents(project))
 	if err != nil {
@@ -511,7 +516,7 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 func macSharedPurposesStale(rows []macAgentRow, agents []macSharedAgent) bool {
 	for _, agent := range agents {
 		for _, row := range rows {
-			if row.Tab == agent.Tab && row.Purpose != "" && (row.Purpose != agent.Purpose || row.Name != agent.Name) {
+			if row.Tab == agent.Tab && row.Purpose != "" && (row.Purpose != agent.Purpose || row.Name != agent.Name || row.Icon != agent.Icon) {
 				return true
 			}
 		}
@@ -549,7 +554,7 @@ func (api *StreamingAPI) handleSharedWithMe(w http.ResponseWriter, r *http.Reque
 	if !IsLocalMode() {
 		for _, row := range macSharedAgentRows(claims.UserID) {
 			agents = append(agents, map[string]any{"workspace_id": crewProfileID + ":" + fmt.Sprint(row["crew_id"]), "chat_id": row["chat_id"], "name": row["name"],
-				"owner_name": row["owner_short"], "crew_name": row["crew_title"], "purpose": row["purpose"], "available": row["available"]})
+				"owner_name": row["owner_short"], "crew_name": row["crew_title"], "purpose": row["purpose"], "icon": row["icon"], "available": row["available"]})
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")

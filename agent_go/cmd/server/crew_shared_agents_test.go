@@ -49,7 +49,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = defaultProductConversationRegistryStore().setAgentIdentity(personCtx, person, "work", key, &name, &purpose, person); err != nil {
+		if _, err = defaultProductConversationRegistryStore().setAgentIdentity(personCtx, person, "work", key, &name, &purpose, nil, person); err != nil {
 			t.Fatal(err)
 		}
 		return record

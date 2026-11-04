@@ -145,7 +145,7 @@ func (api *StreamingAPI) openPublishedAgent(r *http.Request, p *publishedProject
 	}
 	name := p.Name
 	purpose := "Published from your computer; continues from a private summary."
-	_, err = defaultProductConversationRegistryStore().setAgentIdentity(r.Context(), claims.UserID, p.ProfileID, chat.ConversationKey, &name, &purpose, claims.UserID)
+	_, err = defaultProductConversationRegistryStore().setAgentIdentity(r.Context(), claims.UserID, p.ProfileID, chat.ConversationKey, &name, &purpose, nil, claims.UserID)
 	if err == nil {
 		err = RenameChatHistorySession(claims.UserID, chat.SessionID, binding.Binding.WorkspacePath, name)
 	}
