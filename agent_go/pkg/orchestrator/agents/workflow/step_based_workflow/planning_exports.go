@@ -709,6 +709,7 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	}
 
 	controller.SetWorkspacePath(cfg.WorkspacePath)
+	bindCrewRunner(controller, cfg.CrewRunner)
 	// Product policy must be loaded before the Builder registers execution tools.
 	if err := controller.loadCodeLayout(ctx); err != nil {
 		cancelFunc()
@@ -763,7 +764,6 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	// Crew steps resolve their runner from the controller's options, and
 	// execute_step builds fresh strategy options without touching them —
 	// so the session runner must live on the controller from init.
-	bindCrewRunner(controller, cfg.CrewRunner)
 	bindAgentFunctionTools(controller, cfg.AgentFunctionTools)
 
 	controller.enabledGroupNames = nil
@@ -771,6 +771,9 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	_, existingManifest, varErr := controller.variableManager.checkExistingVariables(ctx, variablesPath)
 	if varErr != nil {
 		return nil, fmt.Errorf("read workflow inputs: %w", varErr)
+	}
+	if controller.directCrewScript != nil {
+		existingManifest = &VariablesManifest{Variables: controller.directCrewScript.Inputs}
 	}
 	controller.variablesManifest = existingManifest
 	if controller.isRelayExecution() {

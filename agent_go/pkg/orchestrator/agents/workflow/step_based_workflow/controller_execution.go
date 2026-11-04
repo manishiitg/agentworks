@@ -1561,6 +1561,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			if fastResult.RanScript {
 				// Emit UI event for the saved-script execution attempt
 				savedScriptPath := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), hcpo.scriptedSourceDir(step.GetID()), "main.py")
+				if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
+					savedScriptPath = filepath.Join(GetPromptDocsRoot(), stepExecutionPath, "code", "main.py")
+				}
 				hcpo.emitScriptedExecutionEvent(ctx, step, stepIndex, stepPath,
 					savedScriptPath, fastResult.Success, fastResult.ExitCode, fastResult.Output, fastResult.Error, 0, true)
 				// Save execution log so debug_step and direct file inspection can see fast-path output

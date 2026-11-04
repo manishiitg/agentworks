@@ -182,6 +182,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		"type": "object", "required": []string{"workspace_path"}, "properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string", "description": "The workflow's id from list_agents (workflow:<id>) or its workspace_path."},
 			"trigger_id":     map[string]interface{}{"type": "string", "description": "Internal trigger ID bound to this Crew; omit to reuse or create it."},
+			"inputs":         map[string]interface{}{"type": "object", "description": "For a saved Crew script: typed values for its declared inputs. Types/defaults come from the script."},
 			"payload":        map[string]interface{}{"type": "object", "description": "JSON delivery payload within 1 MiB."},
 			"delivery_id":    map[string]interface{}{"type": "string", "description": "Stable idempotency key; omit for a new delivery."},
 			"event":          map[string]interface{}{"type": "string", "description": "Event type; defaults to crew.trigger."},
@@ -216,7 +217,21 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 			}
 			payload = typed
 		}
-		data, err := json.Marshal(payload)
+		var deliveryPayload interface{} = payload
+		if manifest.crewExecutable != nil && manifest.crewExecutable.Kind == "script" {
+			variables := map[string]interface{}{}
+			if raw, present := args["inputs"]; present {
+				var ok bool
+				variables, ok = raw.(map[string]interface{})
+				if !ok {
+					return "", fmt.Errorf("inputs must be an object")
+				}
+			}
+			deliveryPayload = map[string]interface{}{"variables": variables, "payload": payload}
+		} else if _, present := args["inputs"]; present {
+			return "", fmt.Errorf("inputs on this entry are supported for saved Crew scripts; use the workflow's declared function inputs")
+		}
+		data, err := json.Marshal(deliveryPayload)
 		if err != nil {
 			return "", fmt.Errorf("invalid payload")
 		}
@@ -407,6 +422,19 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 		ID: id, Name: firstNonEmptyTrimmed(name, "Internal invocation"), ScheduleType: "webhook", Timezone: "UTC", Enabled: true,
 		RouteSelections: map[string]string{}, GroupNames: groups, Mode: "workshop", WorkshopMode: "run",
 		CollisionPolicy: "skip", Webhook: &WorkflowWebhookConfig{}, Kind: triggerKindInternal, Caller: &bound,
+	}
+	if latest.crewExecutable != nil && latest.crewExecutable.Kind == "script" {
+		definitions, err := readWorkflowInputDefinitions(ctx, workspacePath)
+		if err != nil {
+			return "", false, err
+		}
+		sched.Webhook.InputMode = "envelope"
+		for _, input := range definitions.Variables {
+			if err := validateWorkflowExposedInput(input.Name); err != nil {
+				return "", false, err
+			}
+			sched.Webhook.AllowedVariables = append(sched.Webhook.AllowedVariables, input.Name)
+		}
 	}
 	latest.Schedules = append(latest.Schedules, sched)
 	if err := ValidateManifest(latest); err != nil {

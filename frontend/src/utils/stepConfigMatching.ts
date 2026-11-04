@@ -106,6 +106,8 @@ interface CommonStepFields {
 // Scripted step
 export interface ScriptedPlanStep extends CommonStepFields {
   type: 'scripted' | 'regular'; // regular is a saved-plan compatibility alias.
+  script?: string;
+  script_inputs?: Record<string, { value?: unknown; input?: string; output?: string; field?: string }>;
   script_only?: boolean;
   next_step_id?: string;                    // Explicit successor for scripted route chains
 }

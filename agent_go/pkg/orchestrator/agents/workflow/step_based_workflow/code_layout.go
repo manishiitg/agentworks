@@ -20,6 +20,22 @@ func scriptedCommand(main string, args []string) string {
 // Layout is persisted in workflow.json, never inferred from directory existence.
 // Unknown versions fail instead of executing from an unintended source directory.
 func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) error {
+	if options := hcpo.GetExecutionOptions(); options != nil {
+		if resolver, ok := options.CrewRunner.(CrewScriptResolver); ok {
+			resolved, err := resolver.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), "")
+			if err != nil {
+				return err
+			}
+			if resolved.Definition.ID != "" {
+				hcpo.directCrewScript = &resolved.Definition
+				hcpo.directCrewScriptConfig = &resolved
+				hcpo.codeLayoutVersion.Store(1)
+				hcpo.platformStoresDisabled.Store(true)
+				hcpo.relayExecution.Store(false)
+				return nil
+			}
+		}
+	}
 	content, err := hcpo.ReadWorkspaceFile(ctx, "workflow.json")
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "not found") || strings.Contains(err.Error(), "404") {
@@ -72,6 +88,9 @@ func savedCodeDirectory(ctx context.Context, workspace, stepID string, readFile 
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) scriptedSourceDir(stepID string) string {
+	if hcpo.directCrewScript != nil {
+		return "."
+	}
 	if hcpo.usesCodeTree() {
 		return "code/" + stepID
 	}

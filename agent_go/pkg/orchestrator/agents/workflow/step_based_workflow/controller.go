@@ -60,6 +60,8 @@ func ChainSubAgentNotifiers(notifiers ...SubAgentNotifier) SubAgentNotifier {
 // - Always includes independent steps extraction for parallel execution
 // - Explicit task phases, skills and backend validation without automatic learning
 type StepBasedWorkflowOrchestrator struct {
+	directCrewScriptConfig  *CrewScriptConfiguration
+	directCrewScript        *CrewScriptDefinition
 	workshopSubAgentCleanup *workshopSubAgentCleanup
 	codeLayoutVersion       atomic.Int32
 	platformStoresDisabled  atomic.Bool
@@ -670,6 +672,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 		return "", fmt.Errorf("read workflow inputs: %w", err)
 	}
 
+	if hcpo.directCrewScript != nil {
+		variablesExist = true
+		existingVariablesManifest = &VariablesManifest{Variables: hcpo.directCrewScript.Inputs}
+	}
 	var templatedObjective string
 	if variablesExist && existingVariablesManifest != nil {
 		// Variables exist - use them
@@ -690,8 +696,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 	if err != nil {
 		return "", fmt.Errorf("failed to check for existing plan: %w", err)
 	}
+	if !planExists && hcpo.directCrewScript != nil {
+		existingPlan = CrewScriptPlan(hcpo.directCrewScript, hcpo.GetWorkspacePath())
+		if hcpo.directCrewScriptConfig != nil {
+			existingPlan.Steps[0].(*ScriptedPlanStep).crewScript = hcpo.directCrewScriptConfig
+		}
+		planExists = true
+	}
 	if !planExists {
 		return "", fmt.Errorf("plan.json not found at %s - planning must be run first as a separate phase", planPath)
+	}
+
+	if err := hcpo.hydrateCrewScripts(ctx, existingPlan); err != nil {
+		return "", err
 	}
 
 	// Plan exists - use it

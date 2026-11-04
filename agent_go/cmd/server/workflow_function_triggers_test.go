@@ -467,6 +467,52 @@ func TestWorkflowInputExposureAndSavedReferences(t *testing.T) {
 			t.Fatalf("dangling/retyped reference accepted: %v", err)
 		}
 	}
+	parentManifest, _, err := ReadWorkflowManifest(ctx, "Workflow/reports")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// PR498: a newly required input must be supplied by every saved entry.
+	if err := writeProjectWebhookDefinitions(ctx, "Workflow/reports", []projectWebhookDefinition{{ID: "raw", Name: "raw", Project: projectactions.Project{Kind: "goal", ID: parentManifest.ID}, RunAs: "owner", Action: projectactions.Action{Type: "run"}, Input: json.RawMessage(`{}`), InputMapping: projectWebhookInputMapping{Mode: "raw"}}}); err != nil {
+		t.Fatal(err)
+	}
+	next := &VariablesManifest{Variables: []Variable{{Name: "count", Type: "integer", Value: "1"}, {Name: "needed", Required: true}}}
+	if err := validateWorkflowInputReferences(ctx, "Workflow/reports", next); err == nil || !strings.Contains(err.Error(), "webhook raw") {
+		t.Fatal("new required input broke raw webhook", err)
+	}
+	if err := writeProjectWebhookDefinitions(ctx, "Workflow/reports", []projectWebhookDefinition{{ID: "envelope", Name: "envelope", Project: projectactions.Project{Kind: "goal", ID: parentManifest.ID}, RunAs: "owner", Action: projectactions.Action{Type: "run"}, Input: json.RawMessage(`{}`), InputMapping: projectWebhookInputMapping{Mode: "envelope", Variables: []string{"needed"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeProjectFunctionDefinitions(ctx, "Workflow/reports", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorkflowInputReferences(ctx, "Workflow/reports", next); err != nil {
+		t.Fatal("explicit envelope input refused", err)
+	}
+	timer := projectactions.Schedule{ID: "timer", Name: "timer", Project: projectactions.Project{Kind: "goal", ID: parentManifest.ID}, RunAs: "owner", When: projectactions.When{Cron: "0 9 * * *", Timezone: "UTC"}, Action: projectactions.Action{Type: "run"}, Input: json.RawMessage(`{}`)}
+	if err := writeProjectSchedules(ctx, "Workflow/reports", []projectactions.Schedule{timer}); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorkflowInputReferences(ctx, "Workflow/reports", next); err == nil || !strings.Contains(err.Error(), "schedule timer") {
+		t.Fatal("new required input broke timer", err)
+	}
+	timer.Input = json.RawMessage(`{"inputs":{"needed":"saved"}}`)
+	if err := writeProjectSchedules(ctx, "Workflow/reports", []projectactions.Schedule{timer}); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorkflowInputReferences(ctx, "Workflow/reports", next); err != nil {
+		t.Fatal("timer fixed input refused", err)
+	}
+	if err := writeProjectSchedules(ctx, "Workflow/reports", nil); err != nil {
+		t.Fatal(err)
+	}
+	// Remove the extra consumer before the harmless-edit case below.
+	if err := writeProjectWebhookDefinitions(ctx, "Workflow/reports", nil); err != nil {
+		t.Fatal(err)
+	}
+	record.Inputs = []string{"count"}
+	if err := writeProjectFunctionDefinitions(ctx, "Workflow/reports", []projectFunctionDefinition{record}); err != nil {
+		t.Fatal(err)
+	}
 	old.Variables[0].Description = "A harmless description edit"
 	if err := validateWorkflowInputReferences(ctx, "Workflow/reports", &old); err != nil {
 		t.Fatal(err)

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 
 	"github.com/google/uuid"
@@ -124,7 +125,7 @@ func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
 	if err := json.Unmarshal(data, &binding); err != nil {
 		return nil, fmt.Errorf("read executable binding: %w", err)
 	}
-	if binding.Root != root || binding.ID == "" || binding.CrewID == "" || (binding.Kind != "workflow" && binding.Kind != "relay") {
+	if binding.Root != root || binding.ID == "" || binding.CrewID == "" || (binding.Kind != "workflow" && binding.Kind != "relay" && binding.Kind != "script") {
 		return nil, fmt.Errorf("invalid executable binding")
 	}
 	owner, found := crewProjectOwnerID(binding.CrewRoot)
@@ -188,6 +189,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		type entry struct {
 			crewExecutableBinding
 			Manifest *WorkflowManifest `json:"manifest"`
+			UsedBy   []crewScriptUsage `json:"used_by,omitempty"`
 		}
 		entries := []entry{}
 		existingRelays := []map[string]string{}
@@ -205,7 +207,15 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 					existingRelays = append(existingRelays, map[string]string{"id": binding.ID, "label": manifest.Label})
 					continue
 				}
-				entries = append(entries, entry{binding, manifest})
+				var consumers []crewScriptUsage
+				if binding.Kind == "script" {
+					consumers, err = crewScriptConsumers(r.Context(), &binding, nil)
+					if err != nil {
+						http.Error(w, err.Error(), 500)
+						return
+					}
+				}
+				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers})
 			}
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Manifest.Label < entries[j].Manifest.Label })
@@ -229,7 +239,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if input.Kind != "" && input.Kind != "workflow" {
+	if input.Kind != "" && input.Kind != "workflow" && input.Kind != "script" {
 		http.Error(w, "Create a workflow here. Open your existing Relays from the Relays screen.", http.StatusBadRequest)
 		return
 	}
@@ -239,6 +249,32 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	}
 	id := uuid.NewString()
 	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "workflow"}
+	if input.Kind == "script" {
+		binding.Kind = "script"
+		sourceRoot := path.Join(root, "code", id)
+		definition := stepworkflow.CrewScriptDefinition{ID: id, Name: input.Name, Outputs: []string{"result.json"}}
+		encoded, _ := json.MarshalIndent(definition, "", "  ")
+		if err := registerCrewExecutable(binding); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		registerWorkflowOwner(binding.Root, project.OwnerID)
+		if err := writeFileToWorkspace(r.Context(), sourceRoot+"/script.json", string(encoded)); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if err := writeFileToWorkspace(r.Context(), sourceRoot+"/main.py", "import json, os\nfrom pathlib import Path\ninputs = json.loads(os.environ.get('STEP_PARAMS_JSON', '{}'))\nPath(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps(inputs))\n"); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if api.scheduler != nil {
+			api.scheduler.InvalidateWorkflowManifestCache()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		json.NewEncoder(w).Encode(binding)
+		return
+	}
 	manifest := NewWorkflowManifest(input.Name)
 	manifest.ID = id
 	manifest.CreatedBy = project.OwnerID

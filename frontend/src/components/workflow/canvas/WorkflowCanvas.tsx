@@ -759,6 +759,8 @@ export function ReadOnlyStepDetailPanel({
   onClose,
   onOpenFile,
   crewAgents,
+  crewScripts,
+  onSetCrewScript,
   onSetCrewAgent,
 }: {
   node: WorkflowNode
@@ -766,6 +768,8 @@ export function ReadOnlyStepDetailPanel({
   onClose: () => void
   onOpenFile?: (file: string) => void
   crewAgents?: Array<{ id: string; name: string }>
+  crewScripts?: Array<{ id: string; name: string }>
+  onSetCrewScript?: (stepId: string, scriptId: string) => Promise<void>
   onSetCrewAgent?: (stepId: string, agentId: string) => Promise<void>
 }) {
   const data = node.data as WorkflowNodeData
@@ -837,7 +841,7 @@ export function ReadOnlyStepDetailPanel({
             {step?.id && <span className="truncate font-mono text-[10px] text-muted-foreground">{step.id}</span>}
           </div>
           <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
-          {(step?.type === 'scripted' || step?.type === 'regular') && (
+          {(step?.type === 'scripted' || step?.type === 'regular') && !step.script && (
             <div className="mt-2">
               <button
                 type="button"
@@ -866,6 +870,16 @@ export function ReadOnlyStepDetailPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {step?.type === 'scripted' && crewScripts && onSetCrewScript && <DetailSection icon={FileCode2} title="Saved Crew script">
+          <select aria-label="Crew script for this step" disabled={savingAgent} value={step.script ?? ''} className="w-full rounded border bg-background p-2 text-sm" onChange={async event => {
+            setSavingAgent(true); setAgentError('')
+            try { await onSetCrewScript(step.id, event.target.value) }
+            catch (cause) { setAgentError(cause instanceof Error ? cause.message : 'Could not save the script.') }
+            finally { setSavingAgent(false) }
+          }}><option value="">Use this step's own code</option>{crewScripts.map(script => <option key={script.id} value={script.id}>{script.name}</option>)}</select>
+          <p className="mt-2 text-xs text-muted-foreground">Reuses the saved code and inputs. Open the script from the Crew’s Steps to edit it. Map workflow values or earlier outputs in chat. Errors fail the step without automatic repair.</p>
+          {agentError && <p role="alert" className="mt-2 text-xs text-destructive">{agentError}</p>}
+        </DetailSection>}
         {step?.type === 'agent' && crewAgents && onSetCrewAgent && <DetailSection icon={Settings} title="Crew agent">
           <select aria-label="Crew agent for this step" disabled={savingAgent} value={step.crew_agent ?? ''} className="w-full rounded border bg-background p-2 text-sm" onChange={async event => {
             setSavingAgent(true); setAgentError('')
@@ -2679,6 +2693,8 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
           <ReadOnlyStepDetailPanel
             onOpenFile={scope ? file => scope.openView('files', file) : undefined}
             crewAgents={scope?.crewAgents}
+            crewScripts={scope?.crewScripts}
+            onSetCrewScript={scope ? async (stepId, scriptId) => { await agentApi.updatePlanStep(workspacePath!, stepId, { script: scriptId }); await loadPlanRefresh() } : undefined}
             onSetCrewAgent={scope ? async (stepId, agentId) => { await agentApi.updatePlanStep(workspacePath!, stepId, { crew_agent: agentId }); await loadPlanRefresh() } : undefined}
             node={selectedFlowNode}
             workspacePath={workspacePath}

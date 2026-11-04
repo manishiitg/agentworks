@@ -15,7 +15,7 @@ const receipt = (run: string, execution: string): ExecutionInspectionTarget => (
 vi.mock('../../services/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../../services/api')>()
   return { ...actual,
-  default: { get: async () => ({ data: { executables: [{ id: 'child', kind: 'workflow', workspace_path: 'Workflow/child', manifest: { label: 'Reports' } }], agents: [], existing_relays: [{id:'retained-relay',label:'Existing Relay'}] } }), post: vi.fn(async () => ({data:{}})) },
+  default: { get: async (url: string) => url === '/api/crew-script-file' ? ({ data: { success: true, data: { content: "print('saved script')" } } }) : ({ data: { executables: [{ id: 'child', kind: 'workflow', workspace_path: 'Workflow/child', manifest: { label: 'Reports' } }, { id: 'script', kind: 'script', workspace_path: 'Crew/lab/code/script', manifest: { label: 'Qualify' } }], agents: [], existing_relays: [{id:'retained-relay',label:'Existing Relay'}] } }), post: vi.fn(async () => ({data:{}})), put: vi.fn(async () => ({data:{success:true}})) },
   agentApi: { ...actual.agentApi,
     loadWorkspaceState: async () => ({ success: true, data: { run_folders: [{ name: 'run-1' }, { name: 'run-2' }], phases: [], variables_manifest: null } }),
     getWorkspaceStepInspections: async () => ({ items: [ { inspection: receipt('run-1', 'first-execution'), status: 'completed' }, { inspection: receipt('run-2', 'second-execution'), status: 'completed' } ], next_cursor: null }),
@@ -57,7 +57,7 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
     ] as unknown as DiscoveredWorkflow[]
     expect(buildWorkflowPresetsFromManifests(manifests).map(preset => preset.id)).toEqual([])
     await click('Add')
-    expect(host.querySelector('select')).toBeNull()
+    expect([...host.querySelectorAll('option')].map(option => option.value)).toEqual(['workflow', 'script'])
     const name = host.querySelector<HTMLInputElement>('input')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(name,'Reports')
@@ -65,7 +65,7 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
     })
     await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
     await flush()
-    expect(api.post).toHaveBeenCalledWith('/api/crew-executables',{name:'Reports'},{params:{crew_id:'crew'}})
+    expect(api.post).toHaveBeenCalledWith('/api/crew-executables',{name:'Reports',kind:'workflow'},{params:{crew_id:'crew'}})
     await click('ReportsWorkflow')
     expect(useChatStore.getState().activeTabId).toBe('crew-chat')
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')
@@ -86,5 +86,21 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
     expect(host.querySelector('[data-view="inspect"]')?.getAttribute('data-execution')).toBe('second-execution')
     expect(useChatStore.getState().activeTabId).toBe('crew-chat')
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')
+  } finally { await act(async () => root.unmount()) }
+})
+
+// PLAT-746-265: a standalone script opens code directly and saves to the
+// owning-Crew source endpoint, without manufacturing a workflow plan.
+it('opens and saves the shared script source from its Crew', async () => {
+  const host = document.createElement('div'); const root = createRoot(host)
+  const flush = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+  try {
+    await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" />)); await flush()
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'QualifyScript')!.click()); await flush()
+    expect(host.querySelector('[data-view="steps"]')).toBeNull()
+    expect(host.querySelector('textarea')?.value).toBe("print('saved script')")
+    const save = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Save')!
+    await act(async () => save.click()); await flush()
+    expect(api.put).toHaveBeenCalledWith('/api/crew-script-file', { content: "print('saved script')" }, { params: { workspace_path: 'Crew/lab/code/script', file: 'main.py' } })
   } finally { await act(async () => root.unmount()) }
 })

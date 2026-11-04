@@ -39,6 +39,7 @@ func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDel
 	}
 	decoder := json.NewDecoder(bytes.NewReader(input.Payload))
 	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
 	if !strings.HasPrefix(strings.TrimSpace(string(input.Payload)), "{") {
 		return fmt.Errorf("webhook envelope must be an object")
 	}
@@ -156,14 +157,11 @@ func validateWebhookVariableNames(ctx context.Context, workspace string, names [
 	if len(names) == 0 {
 		return nil
 	}
-	raw, exists, err := readFileFromWorkspace(ctx, workspace+"/variables/variables.json")
-	if err != nil || !exists {
-		return fmt.Errorf("cannot validate workflow variables")
+	definitions, err := readWorkflowInputDefinitions(ctx, workspace)
+	if err != nil {
+		return err
 	}
-	var vars VariablesManifest
-	if json.Unmarshal([]byte(raw), &vars) != nil {
-		return fmt.Errorf("invalid workflow variables")
-	}
+	vars := *definitions
 	declared := map[string]bool{}
 	for _, v := range vars.Variables {
 		declared[v.Name] = true

@@ -97,5 +97,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) ReadCurrentPlan(ctx context.Context) 
 	if err := hcpo.loadCodeLayout(ctx); err != nil {
 		return nil, err
 	}
-	return readPlanFromFile(ctx, hcpo.GetWorkspacePath(), hcpo.ReadWorkspaceFile)
+	if hcpo.directCrewScript != nil {
+		plan := CrewScriptPlan(hcpo.directCrewScript, hcpo.GetWorkspacePath())
+		if hcpo.directCrewScriptConfig != nil {
+			plan.Steps[0].(*ScriptedPlanStep).crewScript = hcpo.directCrewScriptConfig
+		}
+		return plan, nil
+	}
+	plan, err := readPlanFromFile(ctx, hcpo.GetWorkspacePath(), hcpo.ReadWorkspaceFile)
+	if err != nil {
+		return nil, err
+	}
+	if err := hcpo.hydrateCrewScripts(ctx, plan); err != nil {
+		return nil, err
+	}
+	return plan, nil
 }

@@ -8,6 +8,15 @@ import shutil
 import tempfile
 
 
+def has_schema_reference(value):
+    # Extracting a property changes its resource scope. Do not guess how an old
+    # reference should resolve in the new independent input definition.
+    if isinstance(value, dict):
+        return any(key in {'$ref', '$dynamicRef', '$recursiveRef'} or has_schema_reference(child)
+                   for key, child in value.items())
+    return isinstance(value, list) and any(has_schema_reference(child) for child in value)
+
+
 def convert(root):
     changes, errors = {}, []
     for file in sorted(root.rglob('functions.json')):
@@ -38,6 +47,9 @@ def convert(root):
             for name, property_schema in properties.items():
                 if name not in declared or not isinstance(property_schema, dict):
                     errors.append(f'{file.relative_to(root)} / {fn["name"]}: cannot map input {name}')
+                    continue
+                if has_schema_reference(property_schema):
+                    errors.append(f'{file.relative_to(root)} / {fn["name"]}: references in {name} need an author decision before extraction')
                     continue
                 field = copy.deepcopy(declared[name])
                 field['type'] = property_schema.get('type', 'string')

@@ -48,6 +48,11 @@ func TestWebhookEnvelopeOptions(t *testing.T) {
 		}
 	}
 
+	// PLAT-746-265 / PR498: decoding into float64 changed submitted integers.
+	delivery := &WorkflowWebhookDelivery{Payload: json.RawMessage(`{"variables":{"count":9007199254740993,"details":{"id":9007199254740993}}}`)}
+	if err := resolveWebhookDeliveryOptions(typed, delivery, definitions); err != nil || delivery.Variables["count"] != "9007199254740993" || delivery.Variables["details"] != `{"id":9007199254740993}` {
+		t.Fatalf("webhook rounded the caller's integer: %+v %v", delivery, err)
+	}
 }
 
 func TestWebhookRawPayloadMappingsKeepPresetAndSelectNestedBranch(t *testing.T) {
