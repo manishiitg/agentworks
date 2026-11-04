@@ -11,7 +11,7 @@ import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } 
 import { useSharedCrewRows } from './SharedWithMe'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
 
-const openTeamBoard = (projectId: string) => window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } }))
+const openTeamBoard = (projectId: string) => { window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } })); window.dispatchEvent(new Event('close-app-sidebar')) }
 import { TeamsSidebar } from '../../products/work/TeamFolderPanel'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields

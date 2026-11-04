@@ -923,7 +923,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   useEffect(() => {
     const open = (event: Event) => {
       const projectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId
-      if (projectId) { setTeamBoardProject(projectId); setChatOpen(true) }
+      // On a phone the board sits in the chat pane, so that pane comes forward.
+      if (projectId) { setTeamBoardProject(projectId); setChatOpen(true); setMobilePane('chat') }
     }
     window.addEventListener(OPEN_TEAM_BOARD_EVENT, open)
     return () => window.removeEventListener(OPEN_TEAM_BOARD_EVENT, open)

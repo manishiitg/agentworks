@@ -89,14 +89,14 @@ export function TeamBoard({ projectId, onClose }: { projectId: string; onClose: 
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
   return <div data-team-board className="absolute inset-0 z-20 flex flex-col overflow-y-auto bg-background">
-    <div className="flex items-center gap-2 px-4 pt-4">
+    <div className="flex min-w-0 items-center gap-2 px-4 pt-4">
       <button type="button" onClick={onClose}
-        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs max-md:min-h-10 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />Back to chat
       </button>
       <span className="truncate text-sm font-semibold">{crewName || 'Agents'}</span>
     </div>
-    {agents?.length || closed?.length ? <div className="grid max-w-5xl grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3 p-4">
+    {agents?.length || closed?.length ? <div className="grid max-w-5xl grid-cols-[repeat(auto-fill,minmax(min(14rem,100%),1fr))] gap-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       {agents?.map(agent => <AgentBoardCard key={agent.tabId} agent={agent} onOpen={() => { activateTab(agent.tabId); onClose() }} />)}
       {closed?.map(agent => <ClosedBoardCard key={agent.key} agent={agent} onOpen={() => { void agent.open(); onClose() }} />)}
     </div> : <div className="grid flex-1 place-items-center p-6 text-sm text-muted-foreground">No agents here yet.</div>}

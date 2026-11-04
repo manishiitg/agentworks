@@ -7,7 +7,10 @@ import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { OPEN_TEAM_BOARD_EVENT } from '../chat/ProjectWorkspaceTitle'
 
-const openTeamBoard = (projectId: string) => window.dispatchEvent(new CustomEvent(OPEN_TEAM_BOARD_EVENT, { detail: { projectId } }))
+// The phone drawer closes once something is opened from it.
+const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
+const openTeamBoard = (projectId: string) => { window.dispatchEvent(new CustomEvent(OPEN_TEAM_BOARD_EVENT, { detail: { projectId } })); closeDrawer() }
+const openAgent = (tabId: string) => { activateTab(tabId); closeDrawer() }
 
 /** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its icon,
  * name and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
@@ -28,12 +31,12 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
     {shown.map(row)}
     {hidden.length > 0 && <button type="button" aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
-      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />Hidden agents ({hidden.length})
     </button>}
     {showHidden && hidden.map(row)}
     <button type="button" onClick={() => openTeamBoard(projectId)}
-      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground">All agents ({total})</button>
+      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">All agents ({total})</button>
   </div>
 }
 
@@ -57,8 +60,8 @@ function AgentRow({ agent, active, dragging, onDrag }: { agent: CrewAgentRow; ac
     onDragOver={dragging && key ? event => { event.preventDefault(); setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key ? event => { event.preventDefault(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
     <AgentHoverCard info={agent.info} shortcut={agent.shortcut}>
-      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => activateTab(agent.tabId)}
-        className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => openAgent(agent.tabId)}
+        className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         <AgentIcon name={agent.name} icon={agent.info?.icon} active={active} shared={agent.info?.sharedWith} />
         <span className="min-w-0 flex-1 truncate">{agent.name}</span>
         {agent.shortcut && <span className="hidden shrink-0 text-[10px] text-muted-foreground group-hover:inline">{AGENT_KEY}{agent.shortcut}</span>}
@@ -66,7 +69,7 @@ function AgentRow({ agent, active, dragging, onDrag }: { agent: CrewAgentRow; ac
       </button>
     </AgentHoverCard>
     {hasActions && <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={menu} onClick={() => setMenu(value => !value)}
-      className={`absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid'}`}>
+      className={`absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
     </button>}
     {menu && actions && <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-border bg-popover p-1 shadow-lg">

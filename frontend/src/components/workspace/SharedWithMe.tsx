@@ -46,10 +46,10 @@ export function useSharedCrewRows() {
     const mine = agents.filter(agent => agent.workspace_id === id)
     const shown = mine.find(agent => agent.chat_id === chatId) || mine[0]
     return <div key={id}>
-      <SharedCrewRow label={crewLabel(mine[0])} available={mine.some(agent => agent.available)} selected={current === id} onOpen={() => open(id)} />
+      <SharedCrewRow label={crewLabel(mine[0])} available={mine.some(agent => agent.available)} selected={current === id} onOpen={() => { open(id); closeDrawer() }} />
       {current === id && <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
-        {mine.map(agent => <button key={agent.chat_id} type="button" role="listitem" aria-current={agent === shown ? 'page' : undefined} onClick={() => open(id, agent.chat_id)} title={agent.name}
-          className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] ${agent === shown ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+        {mine.map(agent => <button key={agent.chat_id} type="button" role="listitem" aria-current={agent === shown ? 'page' : undefined} onClick={() => { open(id, agent.chat_id); closeDrawer() }} title={agent.name}
+          className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] max-md:min-h-10 ${agent === shown ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
           <span className="min-w-0 flex-1 truncate">{agent.name}</span>
         </button>)}
       </div>}
@@ -57,6 +57,8 @@ export function useSharedCrewRows() {
   })
 }
 
+// The phone drawer closes once something is opened from it.
+const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const crewLabel = (agent: SharedWithMeAgent) => `${agent.crew_name || agent.name} · ${agent.owner_name}`
 
 function SharedCrewRow({ label, available, selected, onOpen }: { label: string; available: boolean; selected: boolean; onOpen: () => void }) {
@@ -82,11 +84,12 @@ export function SharedCrewPage() {
   if (!workspaceId) return null
   const agent = agents.find(item => item.chat_id === chatId) || agents[0]
   return <div className="flex h-full min-h-0 flex-col bg-background">
-    <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-      <span className="flex min-w-0 shrink-0 items-center px-1 text-sm font-semibold"><span className="truncate">{agents[0] ? crewLabel(agents[0]) : 'Shared Crew'}</span></span>
+    {/* On a phone the sidebar button floats at the top left, so the header leaves room for it. */}
+    <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 max-md:min-h-[60px] max-md:pl-16">
+      <span className="flex min-w-0 max-w-[60%] items-center px-1 text-sm font-semibold"><span className="truncate">{agents[0] ? crewLabel(agents[0]) : 'Shared Crew'}</span></span>
       <nav aria-label="Agents" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
         {agents.map(item => <button key={item.chat_id} type="button" aria-current={item === agent ? 'page' : undefined} onClick={() => open(workspaceId, item.chat_id)}
-          className={`flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[13px] font-medium ${item === agent ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+          className={`flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[13px] font-medium max-md:min-h-10 ${item === agent ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
           {item.name}
         </button>)}
       </nav>

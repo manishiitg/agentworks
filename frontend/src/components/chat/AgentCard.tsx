@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowUp, Eye, EyeOff, Info, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { AGENT_KEY, AgentIcon } from './AgentIcon'
+import { useMobileViewport } from '../../hooks/useMobileViewport'
 
 // A Crew agent's details (owner, 4 Nov, tab option B): the tab strip shows names only; hovering a name (~400 ms, or a
 // long press on touch) opens one card, and the open tab's purpose sits in one line at the top of its chat.
@@ -70,9 +71,14 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
   const [removing, setRemoving] = useState(false)
   const timer = useRef<number | undefined>(undefined)
+  // On a phone the card is a bottom sheet over a backdrop; the backdrop closes it with its own click, so the tap does
+  // not fall through to what is underneath.
+  const sheet = useMobileViewport()
+  const backdrop = useRef<HTMLDivElement>(null)
+  const pressed = useRef(false)
   useEffect(() => {
     if (!at) return
-    const close = (event: MouseEvent | TouchEvent) => { if (!box.current?.contains(event.target as Node) && !anchor.current?.contains(event.target as Node)) setAt(null) }
+    const close = (event: MouseEvent | TouchEvent) => { const target = event.target as Node; if (!box.current?.contains(target) && !anchor.current?.contains(target) && !backdrop.current?.contains(target)) setAt(null) }
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setAt(null) }
     document.addEventListener('mousedown', close)
     document.addEventListener('touchstart', close)
@@ -92,21 +98,27 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const finish = (action: () => void) => { setAt(null); action() }
   return <>
     <span ref={anchor} className={side === 'right' ? 'block' : 'min-w-0'}
-      onMouseEnter={() => later(400, open)} onMouseLeave={() => later(200, () => setAt(null))}
-      onTouchStart={() => later(500, open)} onTouchEnd={() => { if (!at) window.clearTimeout(timer.current) }}
+      onPointerEnter={event => { if (event.pointerType === 'mouse') later(400, open) }} onPointerLeave={event => { if (event.pointerType === 'mouse') later(200, () => setAt(null)) }}
+      onTouchStart={() => { pressed.current = false; later(500, () => { pressed.current = true; open() }) }} onTouchEnd={() => { if (!at) window.clearTimeout(timer.current) }}
+      onTouchMove={() => { if (!at) window.clearTimeout(timer.current) }}
+      /* The click that ends a long press only opened the card; it does not also open the agent. */
+      onClickCapture={event => { if (pressed.current) { pressed.current = false; event.preventDefault(); event.stopPropagation() } }}
       onClick={clickToOpen ? () => { window.clearTimeout(timer.current); if (at) setAt(null); else open() } : undefined}>
       {children}
     </span>
-    {at && createPortal(<div ref={box} role="dialog" aria-label={info.name} style={at} onClick={event => event.stopPropagation()}
-      onMouseEnter={() => window.clearTimeout(timer.current)} onMouseLeave={() => later(200, () => setAt(null))}
-      className="fixed z-[100] w-80 rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg">
+    {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); setAt(null) }} />}
+    <div ref={box} role="dialog" aria-label={info.name} style={sheet ? undefined : at} onClick={event => event.stopPropagation()}
+      onPointerEnter={() => window.clearTimeout(timer.current)} onPointerLeave={event => { if (event.pointerType === 'mouse') later(200, () => setAt(null)) }}
+      className={sheet
+        ? 'fixed inset-x-0 bottom-0 z-[100] max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-border bg-popover p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-sm shadow-lg'
+        : 'fixed z-[100] w-80 rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
       <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
       <p className={`mb-2 mt-1 ${info.purpose ? 'text-muted-foreground' : 'text-muted-foreground/70'}`}>{info.purpose || 'No purpose yet. Others see it when you share this agent.'}</p>
       <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>
       {info.sharedWith && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>For them it</span><span className="text-muted-foreground">{info.canChange ? 'can make changes' : 'answers only'}</span></div>}
       {info.lastAsked && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Last asked</span>
         <button type="button" onClick={() => finish(info.lastAsked!.open)} className="min-w-0 truncate text-primary hover:underline">{info.lastAsked.who} · {info.lastAsked.when}</button></div>}
-      <div className="mt-2 flex gap-4">
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 max-md:[&>button]:min-h-10">
         <button type="button" onClick={() => finish(info.onSetPurpose)} className="text-primary hover:underline">{info.purpose ? 'Change purpose' : 'Set purpose'}</button>
         {info.onSetIcon && <button type="button" onClick={() => finish(info.onSetIcon!)} className="text-primary hover:underline">{info.icon ? 'Change icon' : 'Set icon'}</button>}
         {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
@@ -116,11 +128,11 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           <span className="text-muted-foreground">Remove {info.name}? Its chat is deleted.</span>
           <button type="button" onClick={() => { setRemoving(false); finish(info.onRemove!) }} className="text-destructive hover:underline">Remove</button>
           <button type="button" onClick={() => setRemoving(false)} className="text-muted-foreground hover:underline">Keep</button>
-        </> : <button type="button" onClick={() => setRemoving(true)} className="text-muted-foreground hover:text-destructive hover:underline">Remove agent…</button>}
+        </> : <button type="button" onClick={() => setRemoving(true)} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>}
       </div>}
       {actions && <div className="mt-2 border-t border-border pt-1.5"><AgentActionsMenu name={info.name} actions={actions} pinned={pinned} onDone={() => setAt(null)} /></div>}
-      <p className="mt-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground">{AGENT_KEY}← {AGENT_KEY}→ switch agents</p>
-    </div>, document.body)}
+      {!sheet && <p className="mt-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground">{AGENT_KEY}← {AGENT_KEY}→ switch agents</p>}
+    </div></>, document.body)}
   </>
 }
 
@@ -135,15 +147,15 @@ export function AgentHeaderLine({ tabId, crewName, projectId }: { tabId?: string
     {projectId
       ? <button type="button" data-project-title title={crewName} aria-label={`${crewName}: see all agents`}
           onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } }))}
-          className="max-w-40 truncate rounded-md px-1 font-semibold text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{crewName}</button>
-      : <span data-project-title title={crewName} className="max-w-40 truncate px-1 font-semibold text-muted-foreground">{crewName}</span>}
+          className="min-w-0 max-w-28 truncate rounded-md px-1 font-semibold text-muted-foreground hover:bg-muted md:max-w-40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{crewName}</button>
+      : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
     {name && <>
-      <span aria-hidden="true" className="text-muted-foreground/60">›</span>
+      <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
       <AgentIcon name={name} icon={info?.icon} active shared={info?.sharedWith} />
       <span className="min-w-0 max-w-48 truncate font-semibold">{name}</span>
-      {info && <AgentHoverCard info={info} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
-        <button type="button" aria-label={`About ${name}`} className="grid h-5 w-5 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info aria-hidden="true" className="h-3.5 w-3.5" /></button>
-      </AgentHoverCard>}
+      {info && <span className="shrink-0"><AgentHoverCard info={info} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
+        <button type="button" aria-label={`About ${name}`} className="grid h-5 w-5 place-items-center max-md:h-8 max-md:w-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info aria-hidden="true" className="h-3.5 w-3.5" /></button>
+      </AgentHoverCard></span>}
     </>}
   </div>
 }
@@ -153,14 +165,14 @@ export function AgentHeaderLine({ tabId, crewName, projectId }: { tabId?: string
 export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: string; actions: CrewAgentActions; pinned?: boolean; onDone: () => void }) {
   const [draft, setDraft] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
-  const item = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  const item = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const run = (action: () => void) => { action(); onDone() }
   if (draft !== null) return <input autoFocus aria-label={`New name for ${name}`} value={draft} onChange={event => setDraft(event.target.value)}
     onKeyDown={event => {
       if (event.key === 'Escape') { event.stopPropagation(); setDraft(null) }
       if (event.key === 'Enter' && draft.trim()) { void actions.rename?.(draft.trim()); onDone() }
     }}
-    onBlur={() => setDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs" />
+    onBlur={() => setDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" />
   return <div role="menu" aria-label={`${name} actions`} className="space-y-0.5">
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
