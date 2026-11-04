@@ -202,6 +202,9 @@ func ClientURLCapability(ctx context.Context, legacy bool) bool {
 // answerable, non-sensitive question in a successful function-call result,
 // or nil to return the ordinary result.
 func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string, args map[string]any, raw json.RawMessage) *mcp.CallToolResult {
+	if target == "workspace" {
+		return h.workspaceMaybeElicit(ctx, args, raw)
+	}
 	family, ok := elicitationFamilyFor(target, args)
 	if !ok || !h.ClientCanElicit(ctx) || !family.available(h, false) || !family.available(h, true) {
 		return nil
@@ -254,6 +257,9 @@ func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string,
 func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args map[string]any, request mcp.CallToolRequest) *mcp.CallToolResult {
 	if !h.ClientCanElicit(ctx) {
 		return mcp.NewToolResultError("elicitation_not_supported: use call-ID polling and reply tools")
+	}
+	if target == "workspace" {
+		return h.workspaceResume(ctx, args, request)
 	}
 	var state functionElicitationState
 	action, _ := args["action"].(string)

@@ -2,8 +2,10 @@ import { ReplyFileChanges } from './chat/ReplyFileChanges'
 import { replyFileChangesByMessage } from '../utils/replyFileChanges'
 import { TranscriptFind } from './chat/TranscriptFind'
 import { transcriptSearchText } from '../utils/transcriptSearch'
+import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
 import { WorkingStatus } from './chat/WorkingStatus'
 import { currentTurnActivity, currentTurnPhase, type TurnPhase } from '../utils/turnStart'
+import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -1110,6 +1112,10 @@ interface TerminalEventTranscriptProps {
   // terminal's own scoping does not need it.
   siblingTerminals?: TerminalSnapshot[]
   onSendMessage?: (msg: string) => void
+  onAnswerCodingAgentQuestion?: CodingAgentQuestionAnswerHandler
+  closedCodingAgentQuestions?: ReadonlySet<string>
+  /** The pending prompt with this ID is shown above the message box instead of here. */
+  dockedCodingAgentQuestion?: string
   onRetryLastMessage?: () => void | Promise<void>
   /** Resends a user message whose delivery failed. */
   onResendMessage?: (msg: string) => void
@@ -1148,6 +1154,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   terminal,
   siblingTerminals,
   onSendMessage,
+  onAnswerCodingAgentQuestion,
+  closedCodingAgentQuestions,
+  dockedCodingAgentQuestion,
   onRetryLastMessage,
   onResendMessage,
   loading = false,
@@ -1192,13 +1201,13 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     })
     return () => window.cancelAnimationFrame(frame)
   }, [latestTelemetryEvent, terminal?.session_id, terminal?.terminal_id])
-  // Old question events (the question card was removed 4 Nov) are not shown.
+  const questions = useMemo(() => codingAgentQuestionCards(scoped), [scoped])
   // context_cancelled is the agent library's debug event, emitted once per
   // internal turn (T0, T1): one cancel showed three times beside the turn's own
   // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
   const items = useMemo<TranscriptRenderItem[]>(
-    () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => event.type !== 'coding_agent_question' && event.type !== 'context_cancelled'))))),
-    [scoped],
+    () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled'))))),
+    [scoped, questions],
   )
   const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], new Set(items.flatMap(item => item.kind === 'event' && isAgentResponseEvent(item.event) ? [item.event.id] : []))), [events, items])
   // Retry belongs to the latest human turn, never an older failed message
@@ -1391,7 +1400,11 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           // otherwise leave unmeasured space at the end of the virtual list.
           const slot = turnSlots[index]
           const testId = item.kind === 'event' ? `terminal-clear-event-${item.event.id || item.key}` : undefined
-          const body = item.kind === 'live'
+          const question = item.kind === 'event' ? questions.cards.get(item.event.id) : undefined
+          const questionPrompt = question ? withClosedQuestions(question, closedCodingAgentQuestions) : question
+          const body = questionPrompt
+            ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} docked={questionPrompt.promptId === dockedCodingAgentQuestion} />
+            : item.kind === 'live'
             ? <LiveAssistantTranscript chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'working'
             ? <WorkingGroup item={item} live={workingNow && index === items.length - 1 && !streamingText.trim()} phase={turnPhase} toolLayout={toolLayout} />

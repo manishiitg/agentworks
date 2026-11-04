@@ -46,11 +46,23 @@ secret-wording and requestState checks cannot drift apart. A retried
 `call_*` request with `requestState` never starts a second call.
 
 Crew `workspace action=ask` uses the native project conversation, not the
-legacy `ask_crew` agent-message inbox. Crew turns have no question tool (owner,
-2026-11-04: question cards and Ask questions removed); an agent that needs
-something asks in its reply, and the caller answers with a new Ask. Ask
-receipts and `workspace action=read_chat` return `query_id`; poll with the
-original `workspace_id`, `chat_id` and `query_id`.
+legacy `ask_crew` agent-message inbox. External attended Ask turns admit the
+existing `request_clarification` tool, for both Builder and Run. Functions,
+schedules and bot messages do not gain that tool. Its ordinary questions use
+the native clarification waiter and choice validator; `human_feedback` remains
+excluded from the Crew product.
+
+Ask receipts and `workspace action=read_chat` return `query_id`, `can_reply`
+and `pending_inputs`. Poll with the original `workspace_id`, `chat_id` and
+`query_id`. `workspace action=reply_input` takes that exact identity plus the
+pending `request_id` and ordered `answers` (`id`, `selected_labels`, optional
+`other_text`). The server stamps person, connection family, project, chat,
+session and query at dispatch, preserving them through the turn queue. A
+question is returned only to that person and connection, never broadcast as a
+question card to other owners. Current project/tab and connection restrictions
+still apply on every poll and answer. Ended turns, wrong questions and duplicate
+answers are refused. The website question endpoint cannot answer an external
+Ask prompt on behalf of another connection.
 
 The shared MCP adapter presents related questions as one flat form, including
 single or multiple selections and custom text when offered. It re-reads the

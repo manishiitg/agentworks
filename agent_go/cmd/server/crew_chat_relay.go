@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -27,15 +28,16 @@ const pairedMacSessionPrefix = "paired-mac-"
 const crewChatMaxReply = 8 << 20
 
 type crewChatCall struct {
-	SubmissionID   string     `json:"submission_id,omitempty"`
-	ConversationID string     `json:"conversation_id,omitempty"`
-	ID             string     `json:"id"`
-	Operation      string     `json:"operation"`
-	Message        string     `json:"message,omitempty"`
-	DeliveryMode   string     `json:"delivery_mode,omitempty"`
-	Query          url.Values `json:"query,omitempty"`
-	Path           string     `json:"path,omitempty"`
-	// Workspace: the owner's own AI app call (ask, read_chat), run on the Mac as its named tab.
+	SubmissionID   string          `json:"submission_id,omitempty"`
+	ConversationID string          `json:"conversation_id,omitempty"`
+	ID             string          `json:"id"`
+	Operation      string          `json:"operation"`
+	Message        string          `json:"message,omitempty"`
+	DeliveryMode   string          `json:"delivery_mode,omitempty"`
+	Query          url.Values      `json:"query,omitempty"`
+	Answer         json.RawMessage `json:"answer,omitempty"`
+	Path           string          `json:"path,omitempty"`
+	// Workspace: the owner's own AI app call (ask, read_chat, reply_input), run on the Mac as its named tab.
 	Action string          `json:"action,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
 	Caller string          `json:"caller,omitempty"`
@@ -265,6 +267,8 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			operation = "cancel"
 		case r.Method == "POST" && r.URL.Path == "/api/session/stop":
 			operation = "cancel"
+		case r.Method == "POST" && suffix == "coding-agent-question/answer":
+			operation = "answer"
 		case r.Method == "GET" && suffix == "file":
 			operation = "file"
 		default:
@@ -272,6 +276,13 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			return
 		}
 		call := crewChatCall{Operation: operation, ConversationID: generation, Query: crewChatEventQuery(r.URL.Query()), Path: r.URL.Query().Get("path")}
+		if operation == "answer" {
+			call.Answer, _ = io.ReadAll(http.MaxBytesReader(w, r.Body, 128<<10))
+			if !json.Valid(call.Answer) {
+				externalError(w, 400, "invalid_answer", "Send a valid answer.")
+				return
+			}
+		}
 		// With the Mac off, history and the queue come from the server's own copy (the relay cache), never a 503:
 		// a failed history read made the page look like a new Crew, and the queue lives on the Mac (PLAT-856-509).
 		if operation == "events" || operation == "queue" {

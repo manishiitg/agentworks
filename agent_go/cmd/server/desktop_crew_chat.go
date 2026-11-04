@@ -185,6 +185,8 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		handler = api.handleQueuedConversationMessages
 	case "cancel":
 		method, path, handler = http.MethodPost, "/api/session/cancel-turn", api.handleCancelCurrentTurn
+	case "answer":
+		method, path, body, handler = http.MethodPost, path+"/coding-agent-question/answer", call.Answer, api.handleCodingAgentQuestionAnswer
 	default:
 		return fail(400, "This action is unavailable through the website.")
 	}

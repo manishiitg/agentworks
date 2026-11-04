@@ -23,7 +23,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	}
 	if token := claims.AccessToken; token != nil {
 		scope := "crews:read"
-		if action == "ask" {
+		if action == "ask" || action == "reply_input" {
 			scope = "crews:run"
 		}
 		if !token.Allows(scope) {
@@ -88,7 +88,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		externalError(w, 404, "chat_not_found", "Choose one of your chats with action=chats, or ask without a chat_id to open your caller's own tab.")
 		return
 	}
-	if action == "ask" && chat.OwnerID != "" && chat.OwnerID != claims.UserID {
+	if (action == "ask" || action == "reply_input") && chat.OwnerID != "" && chat.OwnerID != claims.UserID {
 		externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab, or message_chat to communicate with its agent.")
 		return
 	}
@@ -96,6 +96,10 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	out := map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": chat.ID}
 	queryID := strings.TrimSpace(externalArg(args, "query_id"))
 	workspaceID := manifest.Product + ":" + manifest.ID
+	if action == "reply_input" {
+		api.replyCrewAskInput(w, r, args, workspaceID, chat.ID, chat.SessionID, queryID)
+		return
+	}
 	if action == "ask" {
 		message := strings.TrimSpace(externalArg(args, "message"))
 		if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
@@ -141,6 +145,20 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 			queryID = execution.ExecutionID
 		}
 		out["query_id"] = queryID
+		out["pending_inputs"] = []map[string]any{}
+		out["can_reply"] = false
+		if chat.OwnerID == claims.UserID {
+			pending := api.externalCrewAskPending(r, workspaceID, chat.ID, chat.SessionID, queryID)
+			out["pending_inputs"] = pending
+			out["can_reply"] = len(pending) > 0
+			if len(pending) > 0 {
+				out["status"], out["working"] = "waiting_for_input", true
+				out["messages"], out["next_after"] = items, max(after, last)
+				out["next"] = "Answer with workspace action=reply_input using this workspace_id, chat_id, query_id, request_id and answers; then read_chat with the same query_id."
+				externalJSON(w, out)
+				return
+			}
+		}
 		working := api.sessionTurnRunning(chat.SessionID) || execution != nil && execution.Status == trackedExecutionStatusRunning
 		if !working {
 			if failure := execution; failure != nil && failure.Status == trackedExecutionStatusFailed {
