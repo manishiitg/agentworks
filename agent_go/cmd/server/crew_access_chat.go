@@ -31,13 +31,6 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 			"whatsapp":          "Link the phone once on " + binding.PeerServer + " (any Crew, Integrations, WhatsApp), then in WhatsApp's Message yourself chat send @list and pick this Crew. Only the person's own messages there reach this Mac.",
 		})
 	}
-	if action == "when_mac_off" {
-		reply, _, _, err := api.desktopTeamCopy(ctx, claims, project, binding, connection, strings.TrimSpace(externalArg(args, "when_mac_off")))
-		if err != nil {
-			return "", err
-		}
-		return out(reply.TeamCopy)
-	}
 	rows, err := api.macAgentRows(ctx, claims, project)
 	if err != nil {
 		return "", err

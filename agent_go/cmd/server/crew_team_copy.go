@@ -26,8 +26,9 @@ import (
 // The team copy (PLAT-856-509, case B3; owner 4 Nov): while a Crew's Mac is off, the agents its owner shares keep
 // answering the people they are shared with from a copy on the server. The copy has the agent's instructions, skills
 // and memory, the owner's chat with it so far and the team folder, never the rest of the Mac, and it runs as the owner
-// on the server. The owner chooses per Crew: answer from the team copy (the default) or wait for the Mac, when messages
-// are held and delivered once it is back. When the Mac returns, each agent gets a note of what was asked and answered.
+// on the server. It always answers; there is no choice to wait (owner, 4 Nov, the decisions log). Messages are held for
+// the Mac only while the copy cannot run (no record yet, no own login). When the Mac returns, each agent gets a note of
+// what was asked and answered.
 
 const (
 	teamCopyAnswer = "team_copy"
@@ -102,7 +103,7 @@ type crewTeamCopyAway struct {
 	At       string `json:"at"`
 }
 
-// crewTeamCopyWaiting is a message held for the Mac ("Wait for my Mac"). An agent message also names its inbox, where
+// crewTeamCopyWaiting is a message held for the Mac while the team copy cannot run. An agent message also names its inbox, where
 // the answer goes once the Mac has it.
 type crewTeamCopyWaiting struct {
 	ID           string          `json:"id"`
@@ -117,20 +118,12 @@ type crewTeamCopyWaiting struct {
 }
 
 type crewTeamCopyState struct {
-	WhenMacOff   string                `json:"when_mac_off,omitempty"`
 	RecordAt     string                `json:"record_at,omitempty"`
 	RecordDigest string                `json:"record_digest,omitempty"`
 	Answered     map[string]int        `json:"answered,omitempty"` // UTC day -> messages the team copy took
 	CopySince    string                `json:"copy_since,omitempty"`
 	Away         []crewTeamCopyAway    `json:"away,omitempty"`
 	Waiting      []crewTeamCopyWaiting `json:"waiting,omitempty"`
-}
-
-func (s crewTeamCopyState) mode() string {
-	if s.WhenMacOff == teamCopyWait {
-		return teamCopyWait
-	}
-	return teamCopyAnswer
 }
 
 var (
@@ -176,16 +169,13 @@ func updateTeamCopyState(project string, change func(*crewTeamCopyState)) (crewT
 }
 
 // teamCopyRoute is where a shared agent's message goes while its owner's Mac is off: the team copy, once the server has
-// the agent's record, the owner chose it and has their own login for its program here (owner, 4 Nov: never the
+// the agent's record and the owner has their own login for its program here (owner, 4 Nov: never the
 // server's account); else it waits for the Mac. The reason names why it waits.
 func teamCopyRoute(project, tab string) (string, string) {
 	if crewPublishedTarget(project, tab) {
 		return teamCopyWait, "published"
 	}
 	s := readTeamCopyState(project)
-	if s.mode() == teamCopyWait {
-		return teamCopyWait, "chose_wait"
-	}
 	agent, ok := readTeamCopyAgent(project, tab)
 	if s.RecordAt == "" || !ok {
 		return teamCopyWait, "no_record"
@@ -255,7 +245,7 @@ func (api *StreamingAPI) teamCopyCall(ctx context.Context, owner, project string
 	return result
 }
 
-// holdForMac keeps a message for the Mac ("Wait for my Mac", no team copy yet, or no own login for it).
+// holdForMac keeps a message for the Mac (no team copy yet, or no own login for it).
 func holdForMac(project, reason string, call crewChatCall, inbox string, from int) error {
 	_, err := updateTeamCopyState(project, func(s *crewTeamCopyState) {
 		s.Waiting = append(s.Waiting, crewTeamCopyWaiting{ID: uuid.NewString(), Tab: call.Tab, Caller: call.Caller, Message: call.Message, SubmissionID: call.SubmissionID,
@@ -432,13 +422,6 @@ func (api *StreamingAPI) handleTeamCopy(w http.ResponseWriter, r *http.Request, 
 			s.RecordAt, s.RecordDigest = time.Now().UTC().Format(time.RFC3339Nano), input.TeamCopy.Digest
 		})
 		log.Printf("[TEAM_COPY] project=%s action=record files=%d chats=%d digest=%s", roots.ID, len(input.TeamCopy.Files), len(input.TeamCopy.Chats), input.TeamCopy.Digest)
-	} else if input.WhenMacOff != "" {
-		if input.WhenMacOff != teamCopyAnswer && input.WhenMacOff != teamCopyWait {
-			externalError(w, 400, "invalid_choice", "Choose Answer from the team copy or Wait for my Mac.")
-			return
-		}
-		_, _ = updateTeamCopyState(roots.ID, func(s *crewTeamCopyState) { s.WhenMacOff = input.WhenMacOff })
-		log.Printf("[TEAM_COPY] project=%s owner=%s action=set when_mac_off=%s", roots.ID, logUsernameForUserID(claims.UserID), input.WhenMacOff)
 	}
 	status := teamCopyStatus(claims.UserID, roots.ID, b)
 	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: b, TeamCopy: &status})
@@ -552,7 +535,6 @@ func writeTeamCopyFile(base, rel string, data []byte) error {
 }
 
 type crewTeamCopyStatus struct {
-	WhenMacOff    string `json:"when_mac_off"`
 	Ready         bool   `json:"ready"`
 	RecordAt      string `json:"record_at,omitempty"`
 	AnsweredToday int    `json:"answered_today"`
@@ -571,7 +553,7 @@ type teamMacPresence struct {
 
 func teamCopyStatus(owner, project string, b *crewroot.SyncBinding) crewTeamCopyStatus {
 	s := readTeamCopyState(project)
-	out := crewTeamCopyStatus{WhenMacOff: s.mode(), Ready: s.RecordAt != "", RecordAt: s.RecordAt, AnsweredToday: s.Answered[time.Now().UTC().Format("2006-01-02")],
+	out := crewTeamCopyStatus{Ready: s.RecordAt != "", RecordAt: s.RecordAt, AnsweredToday: s.Answered[time.Now().UTC().Format("2006-01-02")],
 		Waiting: len(s.Waiting), MacOn: crewPlace(owner, project, b) == "mac"}
 	for _, agent := range readMacSharedAgents(project) {
 		if _, reason := teamCopyRoute(project, agent.Tab); reason == "no_own_login" {
@@ -817,16 +799,12 @@ func (api *StreamingAPI) teamCopyMacBackAll(sock *crewMacSocket) {
 	}
 }
 
-// desktopTeamCopy reads or sets "When your Mac is off" on the online copy, for the Team tab and the Crew's chat. Choosing
-// the team copy sends the agents' record at once, so it is ready before the Mac goes off.
-func (api *StreamingAPI) desktopTeamCopy(ctx context.Context, claims *UserClaims, project string, binding *crewroot.SyncBinding, connection desktopConnection, whenMacOff string) (crewSyncReply, int, string, error) {
+// desktopTeamCopy reads the team copy's state on the online copy, for the Team tab's status line.
+func (api *StreamingAPI) desktopTeamCopy(ctx context.Context, claims *UserClaims, project string, binding *crewroot.SyncBinding, connection desktopConnection) (crewSyncReply, int, string, error) {
 	if binding == nil || binding.Mode != "relay" || binding.Editing != "local" {
 		return crewSyncReply{}, 409, "reach_off", fmt.Errorf("Turn on Use from phone and web first.")
 	}
-	if whenMacOff == teamCopyAnswer {
-		api.pushTeamCopyRecord(ctx, project)
-	}
-	reply, err := desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "team_copy", PairID: binding.PairID, WhenMacOff: whenMacOff})
+	reply, err := desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "team_copy", PairID: binding.PairID})
 	if err != nil {
 		return crewSyncReply{}, 409, crewSyncErrorCode(err), err
 	}

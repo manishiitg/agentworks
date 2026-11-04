@@ -42,7 +42,6 @@ type crewSyncRequest struct {
 	Editing               string                     `json:"editing,omitempty"`
 	Snapshot              *crewsync.Snapshot         `json:"snapshot,omitempty"`
 	Agents                []macSharedAgent           `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
-	WhenMacOff            string                     `json:"when_mac_off,omitempty"`
 	TeamCopy              *crewTeamCopyRecord        `json:"team_copy,omitempty"`
 }
 type crewServerCopy struct {
