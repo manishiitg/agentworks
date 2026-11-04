@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import { useCrewAgentsStore, type CrewAgentRow } from '../../components/chat/AgentCard'
+import { useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../../components/chat/AgentCard'
 import { AgentIcon } from '../../components/chat/AgentIcon'
 import { useAgentMenuState, type AgentMenuState } from '../../components/chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
@@ -8,7 +8,8 @@ import type { PollingEvent } from '../../services/api-types'
 import { activateTab } from '../../utils/activateTab'
 
 // Team board (owner, 4 Nov, PLAT-856-509): clicking the Crew name shows every agent as a card with what it is doing
-// now; clicking a card opens that agent. Everything here reads what the tab strip and chat store already hold.
+// now; clicking a card opens that agent. Everything here reads what the tab strip and chat store already hold. Every
+// agent is here, closed ones too, so a closed agent can always be opened again.
 
 const LIVE_CHARS = 80
 
@@ -64,9 +65,24 @@ function AgentBoardCard({ agent, onOpen }: { agent: CrewAgentRow; onOpen: () => 
   </button>
 }
 
+function ClosedBoardCard({ agent, onOpen }: { agent: CrewClosedAgent; onOpen: () => void }) {
+  const purpose = agent.purpose?.trim()
+  return <button type="button" onClick={onOpen} data-team-board-closed={agent.key}
+    className="flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-2xl border border-dashed border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+      <AgentIcon name={agent.name} icon={agent.icon} />
+      <span className="truncate text-sm font-medium">{agent.name}</span>
+    </span>
+    <span title={purpose || undefined} className="line-clamp-2 break-words text-xs text-muted-foreground">{purpose || 'No purpose set yet'}</span>
+    <span className="truncate rounded-md bg-muted/60 px-2 py-1 font-mono text-xs text-muted-foreground">Closed · open</span>
+  </button>
+}
+
 export function TeamBoard({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const agents = useCrewAgentsStore(state => state.projectId === projectId ? state.agents : null)
   const crewName = useCrewAgentsStore(state => state.projectId === projectId ? state.name : '')
+  const closed = useCrewAgentsStore(state => state.projectId === projectId ? state.closed : null)
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -80,8 +96,9 @@ export function TeamBoard({ projectId, onClose }: { projectId: string; onClose: 
       </button>
       <span className="truncate text-sm font-semibold">{crewName || 'Agents'}</span>
     </div>
-    {agents?.length ? <div className="grid max-w-5xl grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3 p-4">
-      {agents.map(agent => <AgentBoardCard key={agent.tabId} agent={agent} onOpen={() => { activateTab(agent.tabId); onClose() }} />)}
+    {agents?.length || closed?.length ? <div className="grid max-w-5xl grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3 p-4">
+      {agents?.map(agent => <AgentBoardCard key={agent.tabId} agent={agent} onOpen={() => { activateTab(agent.tabId); onClose() }} />)}
+      {closed?.map(agent => <ClosedBoardCard key={agent.key} agent={agent} onOpen={() => { void agent.open(); onClose() }} />)}
     </div> : <div className="grid flex-1 place-items-center p-6 text-sm text-muted-foreground">No agents here yet.</div>}
   </div>
 }

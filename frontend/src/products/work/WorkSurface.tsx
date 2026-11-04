@@ -740,6 +740,13 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} mainIcon={mainIcon}
     allowSideChats={allowSideChats} opening={opening} surface="work" projectActivity={projectActivity}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
+    onReopen={async chat => {
+      // The list pass opens a tab for every agent the server lists; then switch to this one.
+      await syncRef.current()
+      const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === chat.conversation_key)
+      if (!tab) throw new Error('Could not open this agent. Try again.')
+      activateTab(tab.tabId)
+    }}
     onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}
     onPin={async (key, pinned) => { applyServerOrder(await agentApi.pinAgentProfileSideChat(profileId, projectId, key, pinned)) }} />
 }

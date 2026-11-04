@@ -44,12 +44,15 @@ export interface CrewAgentActions {
 }
 /** pinned: shown in the list (and on the tab bar); the rest sit under "Hidden agents". */
 export interface CrewAgentRow { tabId: string; name: string; main: boolean; pinned?: boolean; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
-export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; canAdd: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean) => void }>(set => ({
+/** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
+export interface CrewClosedAgent { key: string; name: string; purpose?: string; icon?: string; open: () => Promise<unknown> }
+export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[]) => void }>(set => ({
   projectId: null,
   name: '',
   agents: [],
+  closed: [],
   canAdd: false,
-  set: (projectId, name, agents, canAdd) => set({ projectId, name, agents, canAdd }),
+  set: (projectId, name, agents, canAdd, closed = []) => set({ projectId, name, agents, canAdd, closed }),
 }))
 
 /** The person's choice of how agents are shown ("menu" or "tabs"), once it has loaded from the server. */

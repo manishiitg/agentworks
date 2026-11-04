@@ -5,6 +5,9 @@ import { AGENT_KEY, AgentIcon, AgentMark } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
+import { OPEN_TEAM_BOARD_EVENT } from '../chat/ProjectWorkspaceTitle'
+
+const openTeamBoard = (projectId: string) => window.dispatchEvent(new CustomEvent(OPEN_TEAM_BOARD_EVENT, { detail: { projectId } }))
 
 /** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its icon,
  * name and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
@@ -14,10 +17,13 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const activeTabId = useChatStore(state => state.activeTabId)
   const [showHidden, setShowHidden] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
-  if (view === 'tabs' || crew.projectId !== projectId || !crew.agents.length) return null
-  // Hidden agents (unpinned, as on the tab bar) sit at the end; the open one always shows.
-  const shown = crew.agents.filter(agent => agent.pinned !== false || agent.tabId === activeTabId)
-  const hidden = crew.agents.filter(agent => !shown.includes(agent))
+  // The open agent is in the top line, so it is not listed again here (owner, 4 Nov); its ⌘number stays its own.
+  const others = crew.agents.filter(agent => agent.tabId !== activeTabId)
+  const total = crew.agents.length + crew.closed.length
+  if (view === 'tabs' || crew.projectId !== projectId || total <= crew.agents.length - others.length) return null
+  // Hidden agents (unpinned, as on the tab bar) sit at the end.
+  const shown = others.filter(agent => agent.pinned !== false)
+  const hidden = others.filter(agent => agent.pinned === false)
   const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
     {shown.map(row)}
@@ -26,6 +32,8 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />Hidden agents ({hidden.length})
     </button>}
     {showHidden && hidden.map(row)}
+    <button type="button" onClick={() => openTeamBoard(projectId)}
+      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground">All agents ({total})</button>
   </div>
 }
 
@@ -72,9 +80,15 @@ function AgentRow({ agent, active, dragging, onDrag }: { agent: CrewAgentRow; ac
 export function RailCrewAgents() {
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
-  if (!crew.projectId || !crew.agents.some(agent => agent.tabId === activeTabId)) return null
+  const projectId = crew.projectId
+  const others = crew.agents.filter(agent => agent.tabId !== activeTabId)
+  if (!projectId || others.length === crew.agents.length || (!others.length && !crew.closed.length)) return null
   return <div role="list" aria-label="Agents" className="mt-2 flex min-h-0 flex-col items-center gap-1 overflow-y-auto border-t border-border/70 pt-2 [scrollbar-width:none]">
-    {crew.agents.map(agent => <RailAgent key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} />)}
+    {others.map(agent => <RailAgent key={agent.tabId} agent={agent} active={false} />)}
+    <button type="button" title="All agents" aria-label="All agents" onClick={() => openTeamBoard(projectId)}
+      className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
+      <MoreHorizontal aria-hidden="true" className="h-4 w-4" />
+    </button>
   </div>
 }
 
