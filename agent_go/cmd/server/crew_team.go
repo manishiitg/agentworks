@@ -141,7 +141,7 @@ func crewTeamAuthorize(claims *UserClaims, project, rel string, write, folder bo
 		return crewTeam{}, fmt.Errorf("use your own account to open this team's shared folder")
 	}
 	t, err := readCrewTeam(project)
-	if err != nil || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !shareAccountActive(t.OwnerID) {
+	if err != nil || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return crewTeam{}, fmt.Errorf("this team is not shared with you; ask its owner to add you")
 	}
 	if folder && !t.edits(claims.UserID) {
@@ -183,7 +183,7 @@ func crewTeamPeople(project string) []string {
 	}
 	out := []string{t.OwnerID}
 	for _, p := range t.People {
-		if IsLocalMode() || shareAccountActive(p.UserID) {
+		if IsLocalMode() || crewTeamAccountActive(p.UserID) {
 			out = append(out, p.UserID)
 		}
 	}
@@ -228,7 +228,7 @@ func ensureCrewTeamPeople(project, owner string, people []string) error {
 	}
 	t := crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}
 	for _, id := range people {
-		if id != owner && shareAccountActive(id) && !t.member(id) {
+		if id != owner && crewTeamAccountActive(id) && !t.member(id) {
 			t.People = append(t.People, crewTeamPerson{UserID: id})
 		}
 	}
@@ -254,12 +254,12 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			t = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}
 			e = nil
 		}
-		if e != nil || !t.member(claims.UserID) || t.OwnerID != owner || !shareAccountActive(owner) {
+		if e != nil || !t.member(claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
 			externalError(w, 403, "team_forbidden", "This team is not shared with you. Ask its owner to add you.")
 			return
 		}
 		// Exclude disabled/deleted members from all live audience resolutions.
-		t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !shareAccountActive(p.UserID) })
+		t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
 		externalJSON(w, t.view(claims.UserID))
 		return
 	}
@@ -294,7 +294,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	}
 	seen := map[string]bool{}
 	for _, p := range input.People {
-		if p.UserID == owner || seen[p.UserID] || !shareAccountActive(p.UserID) {
+		if p.UserID == owner || seen[p.UserID] || !crewTeamAccountActive(p.UserID) {
 			externalError(w, 400, "invalid_person", "Choose active people from your company.")
 			return
 		}
@@ -379,7 +379,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		t, e := readCrewTeam(entry.Name())
-		if e == nil && t.member(claims.UserID) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && shareAccountActive(t.OwnerID) && crewTeamClaims(claims, t.ProjectID, false) {
+		if e == nil && t.member(claims.UserID) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID) && crewTeamClaims(claims, t.ProjectID, false) {
 			out = append(out, t.view(claims.UserID))
 		}
 	}
@@ -497,4 +497,14 @@ func crewTeamFolderPath(root, rel string) (string, error) {
 		}
 	}
 	return filepath.Join(root, filepath.FromSlash(rel)), nil
+}
+
+// Team folder membership needs Crew access, not an AgentBridge product grant.
+func crewTeamAccountActive(user string) bool {
+	directory, err := loadUserDirectory()
+	if err != nil || directory == nil {
+		return false
+	}
+	record := directory.byID(user)
+	return record != nil && !record.Disabled && userAllowedProduct(&UserClaims{UserID: user}, crewProfileID)
 }
