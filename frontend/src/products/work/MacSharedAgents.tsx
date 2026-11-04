@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Globe, Hash, Info, MessageSquare, Pencil, Smartphone, Terminal, type LucideIcon } from 'lucide-react'
+import { Globe, Hash, MessageSquare, MoreHorizontal, Pencil, Smartphone, Terminal, type LucideIcon } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -13,7 +13,7 @@ import { useProjectTeam } from './teamApi'
 import type { CrewAsk } from './YourComputerPanel'
 
 type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'team' | 'everyone' | 'chosen'; people?: string[]; address?: string; can_change?: boolean }
-type AgentRow = { tab: string; name: string; purpose: string }
+type AgentRow = { tab: string; name: string; purpose: string; icon?: string }
 type Person = { id: string; username: string; email?: string }
 
 // Reads one JSON reply from the Crew's network through the Mac's saved sign-in.
@@ -97,54 +97,55 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
   const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
   const personName = (id: string) => people.find(person => person.id === id)?.username || id
   const choices = (agent: SharedAgent) => people.filter(person => team?.people.some(member => member.user_id === person.id) && !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
-  return <section ref={cards} aria-label="Who can message your agents" className="mt-4 space-y-3">
-    <p className="text-sm font-semibold">Who can message your agents</p>
+  // One choice per agent, as the approved mockup has it: Only me turns sharing off; Team, Chosen and Everyone share it.
+  const AUDIENCES = [['none', 'Only me'], ['team', 'Team'], ['chosen', 'Chosen'], ['everyone', 'Everyone']] as const
+  return <section ref={cards} aria-label="Who can message your agents">
     {rows.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
-      const saved = Boolean(agent && purpose && (agent.audience !== 'chosen' || agent.people?.length))
-      return <div key={row.tab} data-shared-agent-card={row.tab} className={`rounded-xl border border-border px-4 py-3 ${agent ? 'space-y-2.5' : 'opacity-70'}`}>
-        <div className="flex items-center gap-2">
-          <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
-          <span className="min-w-0 truncate text-sm font-semibold">{row.name}</span>
-          <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] leading-4 text-muted-foreground">{placements[row.tab]?.location === 'server' ? 'Server' : placements[row.tab]?.location === 'publishing' ? 'Moving to the server' : 'Mac'}</span>
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground">{!agent ? 'Only you' : saved ? 'Shared' : !purpose ? 'Set its purpose to share it' : 'Add people to share it'}</span>
-          <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null)} />
-        </div>
-        {agent && <div className="ml-6 space-y-2.5">
-          <div className="flex items-start gap-1.5 text-[13px] text-muted-foreground">
-            {purpose ? <span title={purpose} className={`min-w-0 ${openPurpose === row.tab ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>{purpose}</span> : <span className="min-w-0 truncate text-amber-600">Set this agent's purpose to share it.</span>}
-            {purpose && <button type="button" aria-expanded={openPurpose === row.tab} aria-label={openPurpose === row.tab ? 'Show less of the purpose' : 'Show the whole purpose'} title={openPurpose === row.tab ? 'Show less' : purpose} onClick={() => setOpenPurpose(openPurpose === row.tab ? '' : row.tab)} className="grid h-5 w-5 shrink-0 place-items-center self-start rounded text-muted-foreground hover:bg-muted hover:text-foreground"><Info aria-hidden="true" className="h-3 w-3" /></button>}
-            <button type="button" aria-label={purpose ? `Change ${row.name}'s purpose` : `Set ${row.name}'s purpose`} title={purpose ? 'Change purpose' : 'Set purpose'} onClick={() => setPurpose(row.tab)} className="grid h-5 w-5 shrink-0 place-items-center self-start rounded text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button>
+      const place = placements[row.tab]?.location
+      const choice = agent ? agent.audience : 'none'
+      return <div key={row.tab} data-shared-agent-card={row.tab} className="border-t border-border px-0.5 py-2.5 text-sm">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">{row.icon?.trim() || row.name.slice(0, 1).toUpperCase()}</span>
+          <span title={purpose || undefined} className="min-w-0 truncate">{row.name}</span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${place === 'server' || place === 'publishing' ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>{place === 'server' ? 'Server' : place === 'publishing' ? 'Moving to the server' : 'Mac'}</span>
+          <div role="radiogroup" aria-label={`Who can message ${row.name}`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
+            {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy} onClick={() => { if (choice !== value) update(row.tab, value === 'none' ? null : { audience: value }) }}
+              className={`px-2.5 py-0.5 ${choice === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
           </div>
-          <div className="flex flex-wrap items-center gap-2"><div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-full border border-border text-xs">
-            {(['team', 'chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`rounded-full px-3 py-0.5 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'team' ? 'My team' : choice === 'chosen' ? 'Chosen people' : 'Everyone in the company'}</button>)}
-          </div>{agent.audience === 'everyone' && network && <span className="text-[11px] text-muted-foreground">everyone on {network}</span>}</div>
-          {agent.audience === 'chosen' && <div className="flex flex-wrap items-center gap-1.5">
-            {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
-            <button type="button" aria-expanded={adding === row.tab} onClick={() => { setAdding(adding === row.tab ? '' : row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-primary hover:bg-muted">+ Add</button>
-          </div>}
-          {agent.audience === 'chosen' && adding === row.tab && <div className="w-64 max-w-full overflow-hidden rounded-2xl border border-border bg-popover shadow">
-            <input autoFocus aria-label="Search people" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAdding(''); setSearch('') } }} placeholder="Search people" className="w-full border-b border-border bg-transparent px-3 py-1.5 text-xs outline-none" />
-            <div className="max-h-56 overflow-y-auto">
-              {choices(agent).map(person => <button key={person.id} type="button" onClick={() => { update(row.tab, { people: [...(agent.people || []), person.id] }); setSearch('') }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted">
-                <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-[10px]">{person.username.slice(0, 2).toUpperCase()}</span>
-                <span className="truncate">{person.username}</span>{person.email && person.email !== person.username && <span className="ml-auto truncate text-muted-foreground">{person.email}</span>}
-              </button>)}
-              {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{team?.people.length ? 'Nobody found' : 'Add people to the Team above'}</p>}
-            </div>
-          </div>}
-          <label className="flex items-center gap-2 text-xs"><Switch aria-label={`${row.name} can make changes for them`} checked={Boolean(agent.can_change)} disabled={busy} onCheckedChange={on => update(row.tab, { can_change: on })} />Can make changes for them</label>
-          <p className="text-[11px] text-muted-foreground">{agent.can_change ? 'It can change files, run commands and use your apps and logins for them.' : 'It only answers their questions.'}</p>
-          <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">Use it from
-            {([[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT or Claude'], [Hash, 'Slack']] as [LucideIcon, string][]).map(([Icon, label]) => <Icon key={label} role="img" aria-label={label} className="h-3.5 w-3.5"><title>{label}</title></Icon>)}
-            their apps ·<Terminal role="img" aria-label="Claude Code, Codex and other agents" className="h-3.5 w-3.5"><title>Claude Code, Codex and other agents</title></Terminal>their AI agents</p>
-          {agent.address && <p className="flex items-center gap-2 text-xs"><span className="min-w-0 truncate rounded-full bg-muted px-2.5 py-0.5 font-mono">agent:{agent.address}</span>
-            <button type="button" className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></p>}
+          <button type="button" aria-label={`More for ${row.name}`} aria-expanded={openPurpose === row.tab} onClick={() => setOpenPurpose(openPurpose === row.tab ? '' : row.tab)} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></button>
+        </div>
+        {agent && !purpose && <p className="mt-1.5 flex items-center gap-2 pl-8 text-[12.5px] text-amber-600">Set this agent's purpose to share it.<button type="button" onClick={() => setPurpose(row.tab)} className="text-primary hover:underline">Set purpose</button></p>}
+        {agent?.audience === 'chosen' && <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-8">
+          {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
+          <button type="button" aria-expanded={adding === row.tab} onClick={() => { setAdding(adding === row.tab ? '' : row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-primary hover:bg-muted">+ Person</button>
+        </div>}
+        {agent?.audience === 'chosen' && adding === row.tab && <div className="ml-8 mt-1.5 w-64 max-w-[calc(100%-2rem)] overflow-hidden rounded-2xl border border-border bg-popover shadow">
+          <input autoFocus aria-label="Search people" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAdding(''); setSearch('') } }} placeholder="Search people" className="w-full border-b border-border bg-transparent px-3 py-1.5 text-xs outline-none" />
+          <div className="max-h-56 overflow-y-auto">
+            {choices(agent).map(person => <button key={person.id} type="button" onClick={() => { update(row.tab, { people: [...(agent.people || []), person.id] }); setSearch('') }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted">
+              <span className="truncate">{person.username}</span>{person.email && person.email !== person.username && <span className="ml-auto truncate text-muted-foreground">{person.email}</span>}
+            </button>)}
+            {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{team?.people.length ? 'Nobody found' : 'Add people to the Team above'}</p>}
+          </div>
+        </div>}
+        {openPurpose === row.tab && <div className="ml-8 mt-2 space-y-2 rounded-xl border border-border bg-popover p-3 text-xs">
+          <p className="flex items-start gap-1.5 text-muted-foreground"><span className="min-w-0 whitespace-pre-wrap break-words">{purpose || 'No purpose yet.'}</span>
+            <button type="button" aria-label={purpose ? `Change ${row.name}'s purpose` : `Set ${row.name}'s purpose`} title={purpose ? 'Change purpose' : 'Set purpose'} onClick={() => setPurpose(row.tab)} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button></p>
+          {agent ? <>
+            <label className="flex items-center gap-2"><Switch aria-label={`${row.name} can make changes for them`} checked={Boolean(agent.can_change)} disabled={busy} onCheckedChange={on => update(row.tab, { can_change: on })} />Can make changes for them</label>
+            <p className="text-[11px] text-muted-foreground">{agent.can_change ? 'It can change files, run commands and use your apps and logins for them.' : 'It only answers their questions.'}</p>
+            <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">Use it from
+              {([[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT or Claude'], [Hash, 'Slack']] as [LucideIcon, string][]).map(([Icon, label]) => <Icon key={label} role="img" aria-label={label} className="h-3.5 w-3.5"><title>{label}</title></Icon>)}
+              their apps ·<Terminal role="img" aria-label="Claude Code, Codex and other agents" className="h-3.5 w-3.5"><title>Claude Code, Codex and other agents</title></Terminal>their AI agents{agent.audience === 'everyone' && network ? ` · everyone on ${network}` : ''}</p>
+            {agent.address && <p className="flex items-center gap-2"><span className="min-w-0 truncate rounded-full bg-muted px-2.5 py-0.5 font-mono">agent:{agent.address}</span>
+              <button type="button" className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></p>}
+          </> : <p className="text-muted-foreground">Only you can message it. Choose Team, Chosen or Everyone to share it.</p>}
         </div>}
       </div>
     })}
-    {rows.length <= 1 && <p className="text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
+    {rows.length <= 1 && <p className="border-t border-border px-0.5 py-2.5 text-xs text-muted-foreground">Add an agent with + in the chat to share it.</p>}
     {error && <p className="text-xs text-amber-600">{error}</p>}
   </section>
 }
