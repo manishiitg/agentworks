@@ -84,6 +84,14 @@ func reflogDelta(before gitCheckpoint, lines []string) ([]string, bool) {
 	return lines[:match], true
 }
 
+func checkoutIdentity(gitdir string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(gitdir)
+	if err != nil {
+		return "", err
+	}
+	return digest(resolved), nil
+}
+
 func (s Store) gitCheckpoints(ctx context.Context, repos map[string]string, limit int) (map[string]gitCheckpoint, map[string][]string) {
 	out, logs := map[string]gitCheckpoint{}, map[string][]string{}
 	keys := sortedKeys(repos)
@@ -96,14 +104,14 @@ func (s Store) gitCheckpoints(ctx context.Context, repos map[string]string, limi
 		if err != nil || len(fields) != 2 || !commitID.MatchString(fields[1]) {
 			return nil
 		}
-		gitdir, err := filepath.EvalSymlinks(fields[0])
+		identity, err := checkoutIdentity(fields[0])
 		if err != nil {
 			return nil
 		}
 		branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--short", "-q", "HEAD").Output()
 		remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
 		name := filepath.Base(dir)
-		c := gitCheckpoint{CheckoutLabel: CheckoutLabel{ID: digest(gitdir), Root: p, Name: name, Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}, Head: fields[1]}
+		c := gitCheckpoint{CheckoutLabel: CheckoutLabel{ID: identity, Root: p, Name: name, Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}, Head: fields[1]}
 		if c.Branch == "" {
 			c.Branch = "detached@" + c.Head[:8]
 		}

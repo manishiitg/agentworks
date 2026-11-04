@@ -66,11 +66,17 @@ func TestGitTurnCapturesOnlyChangedPathsAndCommittedEdits(t *testing.T) {
 	if got := f.tree(r.After); len(got) != 3 {
 		t.Fatalf("clean/ignored files imported: %+v", got)
 	}
+	// PLAT-746-319 review: new captures must match the live checkout identity used by Undo.
+	plan, err := f.s.PlanUndo(t.Context(), r.ID, func(string) bool { return true }, func(string) bool { return true })
+	if err != nil || len(plan.Restore) != 3 || len(plan.Skipped) != 0 {
+		t.Fatalf("Undo rejected unchanged checkout: %v %+v", err, plan)
+	}
+
 	if _, err := f.s.BeginGitTurn(t.Context(), "clean", []string{dir}); err != nil {
 		t.Fatal(err)
 	}
 	clean, err := f.s.FinishGitTurn(t.Context(), "clean", []string{dir})
-	if err != nil || !f.s.Unchanged(t.Context(), clean) {
+	if err != nil || !f.s.Unchanged(t.Context(), clean) || len(clean.Review.Spans) != 0 {
 		t.Fatalf("no-op turn: %v %+v", err, clean)
 	}
 }
@@ -116,8 +122,7 @@ func TestGitTurnEmptyRepositoryAndNewWorktree(t *testing.T) {
 	}
 	// A newly discovered checkout with a pre-existing commit is not a whole
 	// project of added files. The test supplies that new checkout explicitly.
-	f.repo("second", map[string]string{"source.txt": "existing\n"})
-	f.backdateAll()
+	f.git("fresh", "worktree", "add", "--quiet", "-b", "second", filepath.Join(f.s.Root, "second"))
 	if _, err := f.s.BeginGitTurn(t.Context(), "new-worktree", []string{dir}); err != nil {
 		t.Fatal(err)
 	}
@@ -128,5 +133,25 @@ func TestGitTurnEmptyRepositoryAndNewWorktree(t *testing.T) {
 	c, err = f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
 	if err != nil || len(c.Changes) != 0 {
 		t.Fatalf("checkout contents counted as edits: %v %+v", err, c)
+	}
+}
+
+// PLAT-746-319 review: a repository created and committed within one reply has no starting HEAD.
+func TestGitTurnCapturesFirstCommitCreatedDuringReply(t *testing.T) {
+	f := newCrew(t)
+	if err := os.MkdirAll(f.s.Root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.BeginGitTurn(t.Context(), "create", nil); err != nil {
+		t.Fatal(err)
+	}
+	f.repo("new-project", map[string]string{"app.ts": "export const answer = 42\n"})
+	r, err := f.s.FinishGitTurn(t.Context(), "create", []string{filepath.Join(f.s.Root, "new-project")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := f.tree(r.After)
+	if got["new-project/app.ts"] != "export const answer = 42\n" {
+		t.Fatalf("initial commit missing: %+v", got)
 	}
 }

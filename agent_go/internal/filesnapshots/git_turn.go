@@ -46,7 +46,18 @@ func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurn
 		head, _ := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "HEAD").Output()
 		branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
 		remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
-		repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Label: CheckoutLabel{ID: digest(checkoutKey(rel, dir)), Root: rel, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
+		gitdir, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir").Output()
+		if err != nil {
+			return nil, err
+		}
+		identity, err := checkoutIdentity(strings.TrimSpace(string(gitdir)))
+		if err != nil {
+			return nil, err
+		}
+		repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Label: CheckoutLabel{ID: identity, Root: rel, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
+		if repo.Label.Branch == "" && len(repo.Head) >= 8 {
+			repo.Label.Branch = "detached@" + repo.Head[:8]
+		}
 		rows := bytes.Split(raw, []byte{0})
 		for i := 0; i < len(rows); i++ {
 			row := rows[i]
@@ -193,6 +204,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string, dirs []strin
 	}
 	r.Review = &savedReview{Roots: turnKeys(repos), Spans: []reviewSpan{}}
 	var total int64
+	changedRoots := map[string]bool{}
 	for _, root := range turnKeys(repos) {
 		end := repos[root]
 		start, existed := r.GitTurn[root]
@@ -229,7 +241,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string, dirs []strin
 				}
 			}
 		}
-		if existed && start.Head == "" && end.Head != "" {
+		if start.Head == "" && end.Head != "" {
 			raw, e := gitIn(ctx, s.Root, dir, "ls-tree", "-r", "--name-only", "-z", end.Head).Output()
 			if e != nil {
 				return r, e
@@ -266,6 +278,9 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string, dirs []strin
 				skipped[full] = true
 				continue
 			}
+			if present != exists || b.mode != a.mode || !bytes.Equal(b.data, a.data) {
+				changedRoots[root] = true
+			}
 			total += int64(len(b.data) + len(a.data))
 			if present {
 				before[full] = b
@@ -284,7 +299,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string, dirs []strin
 	if err != nil {
 		return r, err
 	}
-	for _, root := range turnKeys(repos) {
+	for _, root := range turnKeys(changedRoots) {
 		r.Review.Spans = append(r.Review.Spans, reviewSpan{Checkout: repos[root].Label, Before: r.Before, After: r.After})
 	}
 	now := time.Now().UTC()
