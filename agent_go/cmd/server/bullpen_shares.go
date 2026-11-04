@@ -190,7 +190,15 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 func (s agentMessageStore) shareSenderAllowed(c agentConversation, from int, recipientUserID string, now time.Time) bool {
 	src := c.Endpoints[from]
 	if src.ShareID == "" {
-		return sameAccountAgentSender(src, recipientUserID)
+		if sameAccountAgentSender(src, recipientUserID) {
+			return true
+		}
+		// Mac Crew agents use their current audience, not a named-agent grant.
+		// A reply still belongs only to the other endpoint of this inbox.
+		return src.Kind == triggerCallerCrew && !src.External && src.Guest == "" &&
+			c.Endpoints[1-from].UserID == recipientUserID && !IsLocalMode() &&
+			crewRelayTwin(src.ID) && ownerOfCrewProjectID(src.ID) == src.UserID &&
+			sharedCrewAgentPeer(context.Background(), recipientUserID, src)
 	}
 	return src.Guest == "" && src.UserID != recipientUserID && c.Endpoints[1-from].UserID == recipientUserID && s.conversationShareErr(c, now) == nil
 }
