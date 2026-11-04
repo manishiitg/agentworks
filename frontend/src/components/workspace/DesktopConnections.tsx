@@ -39,7 +39,6 @@ export function DesktopConnections({ children, projects = [] }: { children?: Rea
 }
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
   const { recent, visit } = useWorkHistory(projects)
-  const [filter, setFilter] = useState('all')
   const orderedProjects = [...projects].sort((a, b) => {
     const rank = (project: SidebarProject) => {
       const index = recent?.indexOf(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id)) ?? -1
@@ -53,9 +52,9 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     openSidebarProject(project.kind, project.id)
   }} />
   const sharedAgentRows = useSharedCrewRows()
-  const { macs, server } = groupByMac(orderedProjects.filter(project => filter === 'all' || (filter === 'dashboard' ? project.kind === 'crew' && project.mode === 'run' : project.kind === filter && (project.kind !== 'crew' || project.mode !== 'run'))))
+  // One server here: no filter (owner, 4 Nov: the filter is only the server choice; Mine and Shared with me are groups).
+  const { macs, server } = groupByMac(orderedProjects)
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-    <div className="py-2"><LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={[]} workTypes /></div>
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
       <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
         <span className="shrink-0">On your Mac</span>
@@ -81,7 +80,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const [filter, setFilter] = useState('all')
   // Crews whose agents are shared with you on the server this window shows (the local app lists none).
   const sharedAgentRows = useSharedCrewRows()
-  useEffect(() => { if (!['all', 'crew', 'goal', 'dashboard'].includes(filter) && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
+  useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   useEffect(() => {
     void refresh()
     const onFocus = () => void refresh()
@@ -101,7 +100,8 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     const rank = (row: typeof a) => { const index = recent?.indexOf(connectedProjectKey(row.connection.id, row.kind, row.id)) ?? -1; return index < 0 ? Infinity : index }
     return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
   })
-  const visible = rows.filter(row => filter === 'dashboard' ? row.kind === 'crew' && row.mode === 'run' : filter === 'crew' ? row.kind === 'crew' && row.mode !== 'run' : filter === 'goal' ? row.kind === 'goal' : filter === 'all' || row.connection.id === filter)
+  // The filter is only which server (owner, 4 Nov); Mine and Shared with me stay as the groups below.
+  const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
   const serverColors = serverIconColors(connections)
   const renderProject = (project: typeof rows[number]) => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
     selected={project.connection.id === active && project.selected}
@@ -111,10 +111,10 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       if (project.connection.id === active) openSidebarProject(project.kind, project.id)
       else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
     }} />
-  const locations = connections.filter(connection => ['all', 'crew', 'goal', 'dashboard'].includes(filter) || connection.id === filter)
+  const locations = connections.filter(connection => filter === 'all' || connection.id === filter)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
-      <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} workTypes />
+      {connections.length > 1 && <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} />}
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       <div className="space-y-1"><OwnershipGroups projects={visible} render={renderProject} sharedAgents={sharedAgentRows} /></div>

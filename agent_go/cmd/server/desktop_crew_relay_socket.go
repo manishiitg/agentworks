@@ -45,11 +45,14 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 				if workers[id] == nil {
 					child, stop := context.WithCancel(ctx)
 					workers[id] = stop
+					log.Printf("[CREW_RELAY] desktop connection=%s start: a Crew has Reach on", id)
 					go api.runDesktopCrewRelay(child, id)
 				}
 			}
 			for id, stop := range workers {
 				if !live[id] {
+					// The Mac stops reaching this server when no Crew on it has Reach on; say so, it is otherwise silent.
+					log.Printf("[CREW_RELAY] desktop connection=%s stop: no Crew has Reach on for it", id)
 					stop()
 					delete(workers, id)
 				}
