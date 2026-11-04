@@ -44,6 +44,8 @@ async function render() {
   return host
 }
 const button = (host: HTMLElement, label: string) => [...host.querySelectorAll<HTMLButtonElement>('button')].find(item => item.getAttribute('aria-label') === label || item.textContent === label)!
+// Since the 24 Oct Goal/Crew tab alignment the Builder's own chat is labelled Main, and another person's tab carries
+// their short name.
 
 it('opens a left-sidebar step in the same strip and returns to the parent draft without removing run tabs', async () => {
   const host = await render()
@@ -53,10 +55,10 @@ it('opens a left-sidebar step in the same strip and returns to the parent draft 
   const strip = host.querySelector('[aria-label="Chat tabs"]')!
   expect(strip.contains(button(host, 'Inspect Record Prices'))).toBe(true)
   expect(host.querySelector('main [role="tablist"]')).toBeNull()
-  expect(button(host, 'Builder').getAttribute('aria-pressed')).toBe('false')
+  expect(button(host, 'Main').closest('[data-tab-active]')).toBeNull()
   expect(button(host, 'Inspect Record Prices').getAttribute('aria-pressed')).toBe('true')
   expect(host.textContent).not.toContain('Foreign step')
-  await act(async () => button(host, 'Builder').click())
+  await act(async () => button(host, 'Main').click())
   expect(host.querySelector('input')).toBe(draft)
   expect(draft.value).toBe('Keep my draft')
   expect(host.querySelector('main')?.textContent).not.toContain('Saved conversation:')
@@ -101,7 +103,7 @@ it.each(['agentworks', 'relays'] as const)('keeps the project name visible witho
   expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
   expect(host.querySelector('[data-project-title]')?.getAttribute('title')).toBe('Example')
   expect(host.querySelector('[data-chat-owner-group="me"]')).toBeNull()
-  await act(async () => button(host, 'Review').click())
+  await act(async () => button(host, 'Review · alex.taylor').click())
   expect(useChatStore.getState().activeTabId).toBe('review')
   expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
 })
