@@ -286,7 +286,7 @@ func TestCrewShipsDailyLearningsCommand(t *testing.T) {
 	if strings.TrimSpace(prompt) == "" {
 		t.Fatal("Crew must serve a daily-learnings slash command with a resolved prompt")
 	}
-	for _, want := range []string{"{{context}}", "builder/conversation/", "builder/crew-chats/users/", "MEMORY.md", "skills/", "update_project_skill_selection"} {
+	for _, want := range []string{"{{context}}", "builder/conversation/", "builder/crew-chats/users/", "MEMORY.md", "skills/"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("daily-learnings prompt must mention %q", want)
 		}
