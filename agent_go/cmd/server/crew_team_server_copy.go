@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // A Team member's own agents on the server (owner, 5 Nov, "A Team is a shared room") work in their own copy of the
@@ -117,6 +118,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 	}
 	go func() {
 		for ctx.Err() == nil {
+			removeStaleCrewTeamServerCopies(ctx)
 			for _, t := range crewTeamsOnServer() {
 				for _, p := range t.People {
 					if p.Invited {
@@ -134,6 +136,34 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// removeStaleCrewTeamServerCopies deletes a member's copy once they no longer have that folder: they left or were
+// removed, the Team is off, or the folder changed. It holds team files they have no right to, and nothing needs it
+// (their changes were uploaded already, or they lost the right to upload them).
+func removeStaleCrewTeamServerCopies(ctx context.Context) {
+	state, err := crewroot.StateRoot()
+	if err != nil {
+		return
+	}
+	dirs, _ := filepath.Glob(filepath.Join(state, "team-working", "server", "*", "*"))
+	for _, dir := range dirs {
+		b, err := readCrewTeamLocal(dir)
+		if err != nil {
+			continue
+		}
+		t, err := readCrewTeam(b.Project)
+		if err == nil && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) {
+			continue
+		}
+		unlock, err := wf.LockWorkspace(ctx, dir)
+		if err != nil {
+			continue
+		}
+		err = os.RemoveAll(dir)
+		unlock()
+		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed err=%v", b.Project, logUsernameForUserID(b.RemoteUser), err)
+	}
 }
 
 func crewTeamsOnServer() []crewTeam {
