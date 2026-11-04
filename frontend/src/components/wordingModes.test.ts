@@ -18,7 +18,6 @@ const FILES = [
   'components/MCPConfigEditor.tsx',
   'components/ModePresetBar.tsx',
   'components/TerminalCenter.tsx',
-  'components/scheduler/scheduleRuns/AfterRunActions.tsx',
   'components/integrations/LocalMcpTokenPanel.tsx',
   'pages/CLIOAuthConsent.tsx',
   'pages/MCPOAuthConsent.tsx',

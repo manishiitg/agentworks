@@ -54,6 +54,7 @@ vi.mock('../../stores/useGlobalPresetStore', () => ({
 }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({
   useWorkspaceConnectionStore: (select: any) => select({ activeWorkspaceId: mocks.workspace }),
+  getWorkspaceScopedStorageKey: (key: string) => key,
 }))
 vi.mock('../../stores/useProductSurfaceStore', () => ({
   useProductSurfaceStore: Object.assign((select: any) => select({ productSurface: mocks.product }), {

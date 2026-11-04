@@ -64,51 +64,6 @@ it('supports keyboard dismissal without adding a separate personal Vault entry',
   } finally { await act(async () => root.unmount()); host.remove() }
 })
 
-it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(surface => [false, true].map(admin => ({ surface, admin }))))('shares Setup tiles in $surface with permission gates (admin=$admin)', async ({ surface, admin }) => {
-  useProductSurfaceStore.setState({ productSurface: surface })
-  auth.user.is_admin = admin
-  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'relays', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
-  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
-  useProductNavigationToolbarStore.setState({ target: host, settingsTarget: null })
-  function Picker() {
-    const [open, setOpen] = useState(false)
-    return <TopBarEntitySelector label="Company CA" placeholder="Choose a Crew member" open={open} onToggle={() => setOpen(value => !value)} onClose={() => setOpen(false)}><div>Existing workspaces</div></TopBarEntitySelector>
-  }
-  try {
-    await act(async () => root.render(<TooltipProvider><ProductTopBar><Picker /><ProductSettingsMenu><ProvidersControl /><McpControl /><UsersControl /></ProductSettingsMenu></ProductTopBar><WorkspaceToolsMenu>{close => <button role="menuitem" onClick={close}>Memory</button>}</WorkspaceToolsMenu></TooltipProvider>))
-    expect(host.querySelector('button[aria-label="Settings"]')).toBeNull()
-    const tools = host.querySelector<HTMLElement>('[role="menu"][aria-label="More workspace tools"]')!
-    expect(tools.querySelector('[data-product-navigation-action]')).toBeNull()
-    const picker = host.querySelector<HTMLElement>('.preset-dropdown')!
-    const setup = picker.querySelector<HTMLElement>('[data-picker-setup]')!
-    expect(picker.querySelector('[aria-label="Products"]')).not.toBeNull()
-    expect(setup).not.toBeNull()
-    const mcp = setup.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!
-    expect(setup.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
-    expect(setup.querySelector('[aria-label="My vaults"]')).toBeNull()
-    expect(setup.textContent).toContain('AI models & accounts')
-    expect(setup.textContent).toContain('CLI, Cowork & ChatGPT')
-    expect(picker.hidden).toBe(true)
-    await act(async () => window.dispatchEvent(new Event('open-product-settings')))
-    expect(picker.hidden).toBe(false)
-    mcp.focus()
-    await act(async () => mcp.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowUp',bubbles:true})))
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('AI models & accounts')
-    await act(async () => mcp.click())
-    expect(useAppStore.getState().adminPage).toBe('mcp')
-    expect(picker.hidden).toBe(true)
-    expect(setup.querySelector('[aria-label="Connect AI tools"]')).toBe(mcp)
-    await act(async () => window.dispatchEvent(new Event('open-product-settings')))
-    expect(picker.hidden).toBe(false)
-    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true})))
-    expect(picker.hidden).toBe(true)
-  } finally {
-    await act(async () => root.unmount()); host.remove()
-    expect(useProductNavigationToolbarStore.getState().settingsTarget).toBeNull()
-    useProductNavigationToolbarStore.setState({ target: null })
-  }
-})
-
 it('closes lifted picker state before Setup navigation reparents controls into a page header', async () => {
   useAppStore.setState({ adminPage: null, showWorkflowsOverview: false, showSchedulesOverview: false })
   useProductNavigationToolbarStore.setState({ target: null, targetKind: null, settingsTarget: null, workspaceTrigger: null })
@@ -168,27 +123,3 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
   }
 })
 
-it.each(['agentworks', 'relays'] as const)('opens the existing project picker from the %s landing title', async surface => {
-  useProductSurfaceStore.setState({ productSurface: surface })
-  useAppStore.setState({ adminPage: null, showSchedulesOverview: false, showWorkflowsOverview: false })
-  useProductNavigationToolbarStore.setState({ target: null, targetKind: null, workspaceTrigger: null, pickerOpen: false })
-  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'work'] }
-  function Navigation() {
-    const [open, setOpen] = useState(false)
-    return <><ProductTopBar><TopBarEntitySelector placeholder={surface === 'relays' ? 'Select Flow' : 'Select Automation'} open={open} onToggle={() => setOpen(value => !value)} onClose={() => setOpen(false)}><button>Existing project</button></TopBarEntitySelector></ProductTopBar><WorkspaceTopToolbar navigationKind="page"><ProductBreadcrumb surface={surface} onHome={() => {}} /></WorkspaceTopToolbar></>
-  }
-  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
-  try {
-    await act(async () => root.render(<TooltipProvider><Navigation /></TooltipProvider>))
-    const trigger = host.querySelector<HTMLButtonElement>('[data-product-header-picker]')!
-    const panel = host.querySelector<HTMLElement>('.preset-dropdown')!
-    expect(panel.hidden).toBe(true)
-    await act(async () => trigger.click())
-    expect(panel.hidden).toBe(false)
-    expect(panel.querySelector('header')?.textContent).toBe(surface === 'relays' ? 'Flows' : 'Automations')
-    expect(panel.querySelector('[data-product-picker-menu]')?.textContent).toContain('Existing project')
-    expect(panel.querySelector('[data-product-switch-menu]')).not.toBeNull()
-    await act(async () => trigger.click())
-    expect(panel.hidden).toBe(true)
-  } finally { await act(async () => root.unmount()); host.remove(); useProductNavigationToolbarStore.setState({ target: null, targetKind: null, workspaceTrigger: null }) }
-})

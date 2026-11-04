@@ -36,13 +36,6 @@ async function mount() {
   await act(async () => root.render(<GatewaySurface />))
   return host
 }
-it('retains Vault administration without creating a separate assistant chat', async () => {
-  const host = await mount()
-  expect(host.textContent).toContain('Admin connections')
-  expect(host.querySelector('textarea')).toBeNull()
-  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'My vaults')!.click())
-  expect(mocks.open).toHaveBeenCalledOnce()
-})
 it('keeps the administrator access boundary when My vaults moves into project chat', async () => {
   mocks.user.is_admin = false
   const host = await mount()

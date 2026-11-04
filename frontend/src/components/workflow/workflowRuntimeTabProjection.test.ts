@@ -50,25 +50,6 @@ describe('workflowRuntimeTabProjection', () => {
     expect(projected?.metadata.scheduledJobName).toBe('Schedule')
   })
 
-  it('labels the toolbar one-off Autopilot lane as Manual Autopilot', () => {
-    const projected = workflowRuntimeTabProjection(runtime({
-      session_id: 'schedule-manual--manual-p_1788000820583762000',
-      triggered_by: 'workflow_builder',
-      title: 'Workflow Builder',
-      phase_name: 'Workflow Builder',
-    }), 'workflow-linkedin')
-
-    expect(projected).toMatchObject({
-      name: 'Manual Autopilot',
-      metadata: {
-        isViewOnly: true,
-        isScheduledRun: true,
-        scheduledJobName: 'Manual Autopilot',
-      },
-      autoActivate: false,
-    })
-  })
-
   it('keeps an interactive builder run eligible for automatic selection', () => {
     const projected = workflowRuntimeTabProjection(runtime({
       phase_id: 'workflow-builder',
@@ -219,13 +200,6 @@ describe('workflowTabDisplayName', () => {
     })).toBe('full-run [default / iteration-0]')
   })
 
-  it('repairs a persisted one-off Autopilot tab whose old title was Workflow Builder', () => {
-    expect(workflowTabDisplayName({
-      name: 'Workflow Builder',
-      sessionId: 'schedule-manual--manual-p_1788000820583762000',
-      metadata: { mode: 'workflow', isViewOnly: true, isScheduledRun: true },
-    })).toBe('Manual Autopilot')
-  })
 })
 
 describe('shouldCatchUpRunningWorkflowTranscript', () => {

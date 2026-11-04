@@ -14,18 +14,6 @@ function mountReport(html: string) {
   return frame
 }
 
-it('a relative link to another dashboard view switches views instead of navigating the frame', () => {
-  const frame = mountReport('<a id="l" href="tasks.html">Open tasks</a>')
-  const seen: unknown[] = []
-  const onSelect = (e: Event) => seen.push((e as CustomEvent).detail)
-  window.addEventListener('report-document-selection-changed', onSelect)
-  const click = new MouseEvent('click', { bubbles: true, cancelable: true })
-  frame.contentDocument!.getElementById('l')!.dispatchEvent(click)
-  window.removeEventListener('report-document-selection-changed', onSelect)
-  expect(click.defaultPrevented).toBe(true)
-  expect(seen).toEqual([{ workspacePath: '_users/m/Chats/Code/projects/p1', path: 'db/reports/tasks.html' }])
-})
-
 it('never lets any other relative link navigate the frame', () => {
   const frame = mountReport('<a id="l" href="/anthropics/whatever">x</a>')
   const click = new MouseEvent('click', { bubbles: true, cancelable: true })

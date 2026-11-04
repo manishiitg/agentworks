@@ -16,6 +16,7 @@ vi.mock("../../api/secrets", () => ({
       .fn()
       .mockResolvedValue([{ name: "LOCAL_KEY", encrypted_value: "sealed" }]),
     getGlobalSecrets: vi.fn().mockRejectedValue(new Error("Vault unavailable")),
+    getSecretSources: vi.fn().mockResolvedValue({ status: "available", note: "", warnings: [], secrets: [] }),
   },
 }));
 it("keeps project secrets available during a Vault outage", async () => {

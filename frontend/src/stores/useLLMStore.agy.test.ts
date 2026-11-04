@@ -8,7 +8,7 @@ afterEach(() => {
 
 describe('AGY library support', () => {
   it('keeps a published AGY model selectable', async () => {
-    useLLMStore.persist.setOptions({ storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
+    useLLMStore.persist?.setOptions({ storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
     vi.spyOn(llmConfigService, 'getPublishedLLMs').mockResolvedValue([])
     const save = vi.spyOn(llmConfigService, 'savePublishedLLMs').mockResolvedValue({ status: 'ok' })
     const refresh = vi.fn(async () => {})

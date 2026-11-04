@@ -6,7 +6,7 @@ import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { agentApi } from '../services/api'
 
-vi.mock('../services/api', () => ({ agentApi: { getChatArtifact: vi.fn() } }))
+vi.mock('../services/api', () => ({ agentApi: { getChatArtifact: vi.fn() }, getApiBaseUrl: () => '', getAuthToken: () => '' }))
 
 vi.mock('react-virtuoso', () => ({
   Virtuoso: ({ data, firstItemIndex, itemContent, computeItemKey }: { data: unknown[]; firstItemIndex: number; itemContent: (index: number, item: unknown) => React.ReactNode; computeItemKey: (index: number, item: unknown) => React.Key }) => (

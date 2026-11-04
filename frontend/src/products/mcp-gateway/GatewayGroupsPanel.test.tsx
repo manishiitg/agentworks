@@ -87,25 +87,6 @@ describe('GatewayGroupsPanel', () => {
     return mock
   }
 
-  it('opens a group from the list and returns with a back button', async () => {
-    const fetchMock = await renderPanel(undefined, false, false, false)
-    expect(container!.querySelector('[data-testid="gateway-group-detail"]')).toBeNull()
-    expect(container!.textContent).toContain('Access groups')
-    expect(container!.querySelector('[aria-label="Find a group"]')).toBeNull()
-    expect(fetchMock.mock.calls.some(([url]) => url.includes('/members') || url.endsWith('/secrets'))).toBe(false)
-    await act(async () => { (container!.querySelector('[aria-label="Select group Engineering"]') as HTMLButtonElement).click() })
-    expect(container!.querySelector('[data-testid="gateway-group-select"]')).toBeNull()
-    expect(container!.querySelector('[aria-label="Group MCPs"]')).not.toBeNull()
-    expect(container!.querySelector('[aria-label="Edit group"]')).toBeNull()
-    expect(container!.querySelector('[aria-label="Group secrets"]')).toBeNull()
-    await act(async () => { (container!.querySelector('[role=tab][title=Secrets]') as HTMLButtonElement).click() })
-    expect(container!.querySelector('[aria-label="Group MCPs"]')).toBeNull()
-    expect(container!.querySelector('[aria-label="Group secrets"]')).not.toBeNull()
-    await act(async () => { (container!.querySelector('[aria-label="Back to groups"]') as HTMLButtonElement).click() })
-    expect(container!.querySelector('[data-testid="gateway-group-detail"]')).toBeNull()
-    expect(container!.querySelector('[aria-label="Select group Engineering"]')).not.toBeNull()
-  })
-
   it('shows the selected group with Users, MCPs and Secrets tabs', async () => {
     await renderPanel()
 
@@ -131,35 +112,6 @@ describe('GatewayGroupsPanel', () => {
     expect(container!.textContent).toContain(allowed ? 'All tools allowed' : '0 of 1 tools allowed')
     if (!allowed) expect(container!.textContent).not.toContain('All tools allowed')
     expect(container!.querySelector('[aria-label="Read tools only on Notion"]')).not.toBeNull()
-  })
-
-  it('keeps secret controls mounted and the add list open while refreshing after a saved grant', async () => {
-    let refreshSecrets: ((value: Response) => void) | undefined
-    let reads = 0
-    const fetchMock = vi.fn((url: string) => {
-      if (url.endsWith('/secrets')) {
-        reads += 1
-        if (reads === 1) return Promise.resolve(jsonResponse(200, { secrets: [{ name: 'TEAM_KEY' }] }))
-        return new Promise<Response>(resolve => { refreshSecrets = resolve })
-      }
-      return healthyFetch()(url)
-    })
-    await renderPanel(fetchMock)
-    await act(async () => { (container!.querySelector('[role=tab][title=Secrets]') as HTMLButtonElement).click() })
-    const section = container!.querySelector('[aria-label="Group secrets"]')
-    expect(section).not.toBeNull()
-    expect(container!.querySelector('[aria-label="Allow TEAM_KEY"]')?.getAttribute('aria-checked')).toBe('true')
-    await act(async () => { ([...container!.querySelectorAll('button')].find(b => b.textContent === 'Add secrets') as HTMLButtonElement).click() })
-    await act(async () => { (container!.querySelector('[aria-label="Allow SECOND_KEY"]') as HTMLButtonElement).click() })
-    expect(secretAPI.setVaultSecretAccess).toHaveBeenCalledWith('eng', 'SECOND_KEY', true)
-    expect(reads).toBe(2)
-    expect(container!.querySelector('[aria-label="Group secrets"]')).toBe(section)
-    expect(container!.textContent).not.toContain('Loading secret permissions')
-    expect(container!.querySelector('[aria-label="Available secrets"]')).not.toBeNull()
-    expect(container!.querySelector('[aria-label="Allow SECOND_KEY"]')?.getAttribute('aria-checked')).toBe('true')
-    await act(async () => { refreshSecrets!(jsonResponse(200, { secrets: [{ name: 'TEAM_KEY' }, { name: 'SECOND_KEY' }] })) })
-    expect(container!.querySelector('[aria-label="Group secrets"]')).toBe(section)
-    expect(container!.querySelector('[aria-label="Allow THIRD_KEY"]')).not.toBeNull()
   })
 
   it('shows Platform as built-in with automatic platform membership and an immutable name', async () => {

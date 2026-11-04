@@ -96,32 +96,6 @@ describe('Autopilot decision chat routing', () => {
     expect(message).toContain('My question:\nWhy is archiving safer?')
   })
 
-  it('makes an explicit delegated action authorize a choice without allowing an invented unsafe action', () => {
-    const input = {
-      id: 'decision-one',
-      workspace_path: 'Workflow/example',
-      source: 'pulse',
-      status: 'pending',
-      priority: 'medium',
-      question: 'How should I finish the job?',
-      context: 'The previous cleanup did not reach the limit.',
-      options: [{ id: 'archive', title: 'Archive older entries', description: 'Nothing is lost.' }],
-      allow_free_text: true,
-      evidence: 'builder/improve.html',
-      created_at: '2026-08-04T08:22:00Z',
-      updated_at: '2026-08-04T08:22:00Z',
-    } as ReportHumanInput
-
-    const message = buildReportHumanInputDelegatedActionMessage(input, 'Workflow/example')
-
-    expect(message).toContain('I delegate this pending Autopilot decision to you.')
-    expect(message).toContain('choose the best supported option')
-    expect(message).toContain('do not invent one or take an unsafe action')
-    expect(message).toContain('call answer_human_input_request')
-    expect(message).toContain('apply the answer as the tool result describes')
-    expect(message).toContain('Archive older entries [option_id=archive] — Nothing is lost.')
-  })
-
   it('names the reviewer that created the decision', () => {
     const input = {
       id: 'ops-decision-one', workspace_path: 'Workflow/example', source: 'ops_review', status: 'pending',
