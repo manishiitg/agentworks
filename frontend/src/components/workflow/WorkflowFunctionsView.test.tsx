@@ -8,7 +8,8 @@ import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 
 vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn(), relayReleases: vi.fn() } }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: vi.fn(() => true) }))
-vi.mock('../../services/api', () => ({ getApiBaseUrl: vi.fn(() => 'http://localhost:8000') }))
+vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
+vi.mock('../../services/api', () => ({ getApiBaseUrl: vi.fn(() => 'http://localhost:8000'), getAuthToken: () => '' }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const webhook = { id: 'hook', name: 'GitHub PRs', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/hook', route_selections: {}, group_names: [] }
