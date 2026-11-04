@@ -852,6 +852,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveScriptedShellGuard(
 	if includeCodeDir && len(writePaths) > 0 {
 		writePaths = append(writePaths, writePaths[0]+"/code")
 	}
+	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
+		readOnlyPaths = append(readOnlyPaths, saved.crewScript.Root+"/script.json", saved.crewScript.Root+"/main.py")
+		for file := range saved.crewScript.Files {
+			readOnlyPaths = append(readOnlyPaths, saved.crewScript.Root+"/"+file)
+		}
+	}
 	readPaths = common.DeduplicateStrings(append(readPaths, writePaths...))
 	if err := hcpo.materializeWorkflowGuardPaths(readPaths, writePaths); err != nil {
 		return nil, err
@@ -1182,7 +1188,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	docsRoot := GetPromptDocsRoot()
 	stepID := step.GetID()
 
-	if !hcpo.hasValidLearnedScriptAPI(ctx, stepID) {
+	shared, hasShared := step.(*ScriptedPlanStep)
+	hasShared = hasShared && shared.crewScript != nil
+	if !hasShared && !hcpo.hasValidLearnedScriptAPI(ctx, stepID) {
 		scriptRelPath := hcpo.scriptedSourceDir(stepID) + "/main.py"
 		existingScript, _ := hcpo.ReadWorkspaceFile(ctx, scriptRelPath)
 		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] No saved script for step %d (%s) — LLM will generate from scratch", stepIndex+1, stepID))
@@ -1200,6 +1208,54 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	codeDirRelPath := hcpo.scriptedWorkingDir(stepID, stepExecutionRelPath)
 	codeDirAbsPath := filepath.Join(docsRoot, codeDirRelPath)
 	mainPyAbsPath := filepath.Join(codeDirAbsPath, "main.py")
+	if hasShared {
+		parameters, err := hcpo.crewScriptParameters(ctx, shared, stepIndex, stepPath, allSteps, executionWorkspacePath)
+		if err != nil {
+			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+		}
+		ctx = withScriptedDelegationContext(ctx, stepID, "", "", parameters)
+		codeDirRelPath = stepExecutionRelPath + "/code"
+		codeDirAbsPath = filepath.Join(docsRoot, codeDirRelPath)
+		mainPyAbsPath = filepath.Join(codeDirAbsPath, "main.py")
+		if err := createFolderViaAPI(ctx, codeDirRelPath); err != nil {
+			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+		}
+		files := shared.crewScript.Files
+		if files == nil {
+			files = map[string]string{}
+			entries, err := hcpo.BaseOrchestrator.ListWorkspaceFiles(ctx, ".")
+			if err != nil {
+				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+			}
+			for _, entry := range entries {
+				file := filepath.Base(entry)
+				if strings.HasSuffix(file, ".py") {
+					content, err := hcpo.ReadWorkspaceFile(ctx, file)
+					if err != nil {
+						return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+					}
+					files[file] = content
+				}
+			}
+		}
+		for file, content := range files {
+			if !CrewScriptBundleFile(file) {
+				return &ScriptedFastPathResult{RanScript: true, Error: "invalid saved script bundle", ExitCode: -1}
+			}
+			if directory := filepath.Dir(file); directory != "." {
+				if err := createFolderViaAPI(ctx, codeDirRelPath+"/"+directory); err != nil {
+					return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+				}
+			}
+			if err := hcpo.WriteWorkspaceFile(ctx, codeDirRelPath+"/"+file, content); err != nil {
+				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+			}
+		}
+		existingScript = files["main.py"]
+		if existingScript == "" {
+			return &ScriptedFastPathResult{RanScript: true, Error: "saved script main.py is unavailable", ExitCode: -1}
+		}
+	}
 
 	inputArgs := hcpo.buildScriptedInputArgs(ctx, step, stepIndex, stepPath, allSteps, executionWorkspacePath, docsRoot, hcpo.variableValues)
 

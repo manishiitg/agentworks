@@ -8,6 +8,7 @@ import type { WorkspaceViewId } from '../workspaceViews'
 /** Embedded editors own their selection without changing the active product/chat. */
 export interface EmbeddedWorkflowScope {
   crewAgents?: Array<{ id: string; name: string }>
+  crewScripts?: Array<{ id: string; name: string }>
   view: WorkspaceViewId
   selectedRunFolder: string | null
   setSelectedRunFolder: (folder: string | null) => void

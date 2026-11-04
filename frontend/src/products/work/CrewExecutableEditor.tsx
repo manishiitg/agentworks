@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
-import { agentApi } from '../../services/api'
+import api, { agentApi } from '../../services/api'
 import type { ExecutionInspectionTarget, WorkspaceStepInspection } from '../../services/api-types'
 import type { WorkspaceViewId } from '../../components/workflow/workspaceViews'
 import type { EmbeddedWorkflowScope } from '../../components/workflow/canvas/workspaceViewData'
@@ -19,9 +19,10 @@ const Webhooks = lazy(() => import('../../components/workflow/WorkflowAPITrigger
 
 export type CrewExecutable = {
   id: string
-  kind: 'workflow'
+  kind: 'workflow' | 'script'
   workspace_path: string
   manifest: { label: string }
+  used_by?: Array<{ workflow: string; step: string }>
 }
 const button = 'rounded-md px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50'
 
@@ -29,11 +30,13 @@ const button = 'rounded-md px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-5
 export function CrewExecutableEditor({
   item,
   crewAgents,
+  crewScripts = [],
   chatTabId,
   onBack,
 }: {
   item: CrewExecutable
   crewAgents: Array<{ id: string; name: string }>
+  crewScripts?: Array<{ id: string; name: string }>
   chatTabId: string
   onBack: () => void
 }) {
@@ -62,12 +65,13 @@ export function CrewExecutableEditor({
   const scope = useMemo<EmbeddedWorkflowScope>(
     () => ({
       crewAgents,
+      crewScripts,
       view,
       selectedRunFolder: selectedRun,
       setSelectedRunFolder: setRunFolder,
       openView,
     }),
-    [crewAgents, view, selectedRun, openView],
+    [crewAgents, crewScripts, view, selectedRun, openView],
   )
   useLiveRefetch(
     () => {
@@ -106,6 +110,7 @@ export function CrewExecutableEditor({
           {section === 'runs' ? 'Run in chat' : 'Edit in chat'}
         </button>
       </div>
+      {item.kind === 'script' && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes apply to the next run.</p>}
       <nav aria-label="Workflow" className="flex shrink-0 gap-2 border-b p-2">
         {(['steps', 'runs', 'settings'] as const).map((value) => (
           <button
@@ -117,7 +122,7 @@ export function CrewExecutableEditor({
               setFile(null)
             }}
           >
-            {value[0].toUpperCase() + value.slice(1)}
+            {value === 'steps' && item.kind === 'script' ? 'Code' : value[0].toUpperCase() + value.slice(1)}
           </button>
         ))}
       </nav>
@@ -135,6 +140,8 @@ export function CrewExecutableEditor({
               file={file}
               onClose={() => setFile(null)}
             />
+          ) : section === 'steps' && item.kind === 'script' ? (
+            <ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={onBack} />
           ) : section === 'steps' ? (
             <Canvas
               key={item.id}
@@ -233,7 +240,7 @@ export function CrewExecutableEditor({
               </nav>
               <div className="min-h-0 flex-1 overflow-auto">
                 {settings === 'inputs' ? (
-                  <Inputs embedded workspacePath={item.workspace_path} onClose={onBack} onUpdate={() => void workspace.refresh()} />
+                  <Inputs embedded scriptMode={item.kind === 'script'} workspacePath={item.workspace_path} onClose={onBack} onUpdate={() => void workspace.refresh()} />
                 ) : settings === 'schedules' ? (
                   <Schedules
                     embedded
@@ -345,8 +352,10 @@ function ExecutableFile({
   workspacePath,
   file,
   onClose,
+  crewScript = false,
 }: {
   workspacePath: string
+  crewScript?: boolean
   file: string
   onClose: () => void
 }) {
@@ -356,8 +365,7 @@ function ExecutableFile({
   const path = `${workspacePath}/${file}`
   useEffect(() => {
     let current = true
-    void agentApi
-      .getPlannerFileContent(path)
+    void (crewScript ? api.get('/api/crew-script-file', { params: { workspace_path: workspacePath, file } }).then(response => response.data) : agentApi.getPlannerFileContent(path))
       .then((response) => {
         if (!response.success || !response.data) throw new Error(response.error || 'Could not open file.')
         if (current) setContent(String(response.data.content ?? ''))
@@ -374,7 +382,7 @@ function ExecutableFile({
     setBusy(true)
     setError('')
     try {
-      const response = await agentApi.updatePlannerFile(path, content, 'Edit workflow source')
+      const response = crewScript ? (await api.put('/api/crew-script-file', { content }, { params: { workspace_path: workspacePath, file } })).data : await agentApi.updatePlannerFile(path, content, 'Edit workflow source')
       if (!response.success) throw new Error(response.message || 'Could not save.')
       onClose()
     } catch (cause) {

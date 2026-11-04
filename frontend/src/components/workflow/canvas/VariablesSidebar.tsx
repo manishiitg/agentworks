@@ -6,13 +6,14 @@ import type { VariablesManifest } from '../../../services/api-types'
 interface VariablesSidebarProps {
   workspacePath: string | null
   relayMode?: boolean
+  scriptMode?: boolean
   onClose: () => void
   onUpdate?: (manifest: VariablesManifest) => void
   showChatArea?: boolean
   embedded?: boolean
 }
 
-export function VariablesSidebar({ workspacePath, relayMode = false, onClose, onUpdate, showChatArea = false, embedded = false }: VariablesSidebarProps) {
+export function VariablesSidebar({ workspacePath, relayMode = false, scriptMode = false, onClose, onUpdate, showChatArea = false, embedded = false }: VariablesSidebarProps) {
   const [manifest, setManifest] = useState<VariablesManifest | null>(null)
   const [preset, setPreset] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -85,7 +86,7 @@ export function VariablesSidebar({ workspacePath, relayMode = false, onClose, on
     <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {loading ? <p className="text-sm text-muted-foreground">Loading inputs…</p> : manifest && <>
-        {!relayMode && <div className="flex flex-wrap items-center gap-2">
+        {!relayMode && !scriptMode && <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm">Values <select aria-label="Edit input values" className="ml-2 rounded border bg-background p-2" value={preset ?? ''} onChange={event => setPreset(event.target.value === '' ? null : Number(event.target.value))}>
             <option value="">Workflow defaults</option>
             {(manifest.groups ?? []).map((group, index) => <option key={index} value={index}>{group.name}</option>)}

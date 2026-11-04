@@ -12,16 +12,9 @@ const retiredWorkflowGroupsMessage = stepworkflow.RetiredWorkflowGroupsMessage
 // All entry points validate the same definition and precedence rule. A preset
 // is not a route grant and cannot alter the execution account or file roots.
 func resolveWorkflowInvocationInputs(ctx context.Context, root, preset string, overrides map[string]string) (map[string]string, error) {
-	raw, found, err := readFileFromWorkspace(ctx, root+"/variables/variables.json")
+	manifest, err := readWorkflowInputDefinitions(ctx, root)
 	if err != nil {
 		return nil, err
-	}
-	var manifest *stepworkflow.VariablesManifest
-	if found {
-		manifest = &stepworkflow.VariablesManifest{}
-		if err := json.Unmarshal([]byte(raw), manifest); err != nil {
-			return nil, fmt.Errorf("read workflow inputs: %w", err)
-		}
 	}
 	return stepworkflow.ResolveWorkflowInputs(manifest, preset, overrides)
 }

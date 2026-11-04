@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,7 +48,7 @@ func noteWorkspaceMutation(filePath string, folder bool) {
 		} else {
 			manifestDirtyAll.Store(true)
 		}
-	case path.Base(clean) == "workflow.json":
+	case path.Base(clean) == "workflow.json" || path.Base(clean) == "script.json":
 		manifestDirtyFolders.Store(path.Dir(clean), struct{}{})
 	case path.Base(clean) == "schedule-runs.json":
 		noteScheduleSummaryChange()
@@ -191,7 +192,23 @@ func listWorkflowFoldersWithManifestStamps(ctx context.Context) ([]string, map[s
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
-	return parseWorkflowFolderListing(body)
+	folders, stamps, err := parseWorkflowFolderListing(body)
+	if err != nil {
+		return nil, nil, err
+	}
+	bindings, err := readCrewExecutables()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, binding := range bindings {
+		if binding.Kind == "script" {
+			if !slices.Contains(folders, binding.Root) {
+				folders = append(folders, binding.Root)
+			}
+			stamps[binding.Root] = manifestStamp{present: true}
+		}
+	}
+	return folders, stamps, nil
 }
 
 type workflowListingNode struct {

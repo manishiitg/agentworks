@@ -12,6 +12,17 @@ import (
 )
 
 func readWorkflowInputDefinitions(ctx context.Context, root string) (*VariablesManifest, error) {
+	binding, err := findCrewExecutable(root)
+	if err != nil {
+		return nil, err
+	}
+	if binding != nil && binding.Kind == "script" {
+		definition, err := readCrewScript(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+		return &VariablesManifest{Variables: definition.Inputs}, nil
+	}
 	var definitions VariablesManifest
 	if err := readProjectEntryFile(ctx, root, "variables/variables.json", &definitions); err != nil {
 		return nil, err
@@ -115,7 +126,7 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 		current[input.Name] = input
 	}
 	used := []string{}
-	check := func(label string, names []string, raw json.RawMessage) {
+	check := func(label string, names, exposed []string, raw json.RawMessage) {
 		var fixed scheduleExecutionInput
 		if err := json.Unmarshal(raw, &fixed); err != nil {
 			used = append(used, label+": invalid saved inputs")
@@ -132,7 +143,16 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 				return
 			}
 		}
-		if _, err := workflow.ResolveWorkflowInputs(next, fixed.InputPreset, fixed.Inputs); err != nil {
+		values, err := workflow.ResolveWorkflowInputs(next, fixed.InputPreset, fixed.Inputs)
+		if err == nil {
+			for _, input := range next.Variables {
+				if input.Required && strings.TrimSpace(values[input.Name]) == "" && !slices.Contains(exposed, input.Name) {
+					err = fmt.Errorf("input %q is needed to start; set a value or expose it on an envelope", input.Name)
+					break
+				}
+			}
+		}
+		if err != nil {
 			used = append(used, label+": "+err.Error())
 		}
 	}
@@ -145,7 +165,14 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 		if fn.InputMapping != nil {
 			names = append(names, fn.InputMapping.Variables...)
 		}
-		check("function "+fn.Name, names, fn.Input)
+		exposed := fn.Inputs
+		if fn.InputMapping != nil {
+			exposed = nil
+			if fn.InputMapping.Mode == "envelope" {
+				exposed = fn.InputMapping.Variables
+			}
+		}
+		check("function "+fn.Name, names, exposed, fn.Input)
 		if fn.InputMapping == nil {
 			var fixed scheduleExecutionInput
 			if json.Unmarshal(fn.Input, &fixed) == nil {
@@ -160,14 +187,18 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 		return err
 	}
 	for _, hook := range hooks {
-		check("webhook "+hook.Name, append([]string(nil), hook.InputMapping.Variables...), hook.Input)
+		var exposed []string
+		if hook.InputMapping.Mode == "envelope" {
+			exposed = hook.InputMapping.Variables
+		}
+		check("webhook "+hook.Name, append([]string(nil), hook.InputMapping.Variables...), exposed, hook.Input)
 	}
 	schedules, err := readProjectSchedules(ctx, root)
 	if err != nil {
 		return err
 	}
 	for _, schedule := range schedules {
-		check("schedule "+schedule.Name, nil, schedule.Input)
+		check("schedule "+schedule.Name, nil, nil, schedule.Input)
 	}
 	if len(used) > 0 {
 		slices.Sort(used)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -14,12 +15,14 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Manage this Crew's own workflows. action=list returns exact workspaces and Crew agents. read/write takes workspace_path from that list and a relative file: planning/*, code/*, variables/variables.json. Write code before the plan that uses it. Reuse crew_agent IDs from the list on agent steps; never copy that agent's conversation. Run an ordinary workflow with run_workflow_trigger; use its returned trigger/run IDs to poll get_workflow_trigger_run. These are owned child definitions, not read-only workflow references.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Manage this Crew's own workflows. action=list returns exact workspaces and Crew agents. action=create with name and kind=script creates one reusable Crew script, or kind=workflow creates a sequence. Script definitions own inputs; workflow scripted steps select script:<id> and script_inputs bindings {value:...}, {input: workflow_input_name}, or {output: declared_dependency_file, field: nested_field}. read/write takes workspace_path from that list and a relative file: script.json or main.py for scripts; planning/*, code/*, variables/variables.json for workflows. Write code before the plan that uses it. Reuse crew_agent IDs from the list on agent steps; never copy that agent's conversation. Run a workflow or script with run_workflow_trigger; use its returned trigger/run IDs to poll get_workflow_trigger_run. These are owned child definitions, not read-only workflow references.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "read", "write"}},
+			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
 			"file":           map[string]interface{}{"type": "string"},
 			"content":        map[string]interface{}{"type": "string"},
+			"name":           map[string]interface{}{"type": "string"},
+			"kind":           map[string]interface{}{"type": "string", "enum": []string{"workflow", "script"}},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
@@ -32,7 +35,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			return "", fmt.Errorf("this Crew is outside the connection's access")
 		}
 		action, _ := args["action"].(string)
-		if action == "list" {
+		if action == "list" || action == "create" {
 			identity, ok := projectIdentityOf(root)
 			if !ok {
 				return "", fmt.Errorf("Crew is unavailable")
@@ -41,7 +44,16 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if !found {
 				return "", fmt.Errorf("Crew is unavailable")
 			}
-			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/crew-executables?crew_id="+url.QueryEscape(record.ProjectID), nil)
+			method := http.MethodGet
+			body := ""
+			if action == "create" {
+				method = http.MethodPost
+				name, _ := args["name"].(string)
+				kind, _ := args["kind"].(string)
+				encoded, _ := json.Marshal(map[string]string{"name": name, "kind": kind})
+				body = string(encoded)
+			}
+			request, _ := http.NewRequestWithContext(ctx, method, "/api/crew-executables?crew_id="+url.QueryEscape(record.ProjectID), strings.NewReader(body))
 			response := &internalResponseCapture{header: http.Header{}}
 			api.handleCrewExecutables(response, request)
 			if response.status >= 400 {
@@ -51,7 +63,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 		target, _ := args["workspace_path"].(string)
 		binding, err := findCrewExecutable(target)
-		if err != nil || binding == nil || binding.Kind != "workflow" || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
+		if err != nil || binding == nil || (binding.Kind != "workflow" && binding.Kind != "script") || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
 			return "", fmt.Errorf("choose a workflow from this Crew's own list")
 		}
 		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
@@ -60,13 +72,20 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 		file, _ := args["file"].(string)
 		clean, valid := cleanWorkspaceReadPath(file, false)
-		allowed := strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json"
+		allowed := (binding.Kind == "script" && (clean == "script.json" || clean == "main.py" || strings.HasSuffix(clean, ".py") && !strings.Contains(clean, "/"))) || strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json"
 		if !valid || !allowed {
 			return "", fmt.Errorf("choose a definition file under planning, code or variables; runtime and account files are not part of this editor")
 		}
+		if binding.Kind == "script" && (strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "variables/")) {
+			return "", fmt.Errorf("edit script.json or main.py; a saved script has one definition")
+		}
 		switch action {
 		case "read":
-			content, found, err := readFileFromWorkspace(ctx, binding.Root+"/"+clean)
+			sourceRoot := binding.Root
+			if binding.Kind == "script" {
+				sourceRoot = path.Join(binding.CrewRoot, "code", binding.ID)
+			}
+			content, found, err := readFileFromWorkspace(ctx, sourceRoot+"/"+clean)
 			if err != nil {
 				return "", err
 			}
@@ -97,7 +116,11 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 					}
 
 				}
-				err = writeFileToWorkspace(ctx, binding.Root+"/"+clean, content)
+				if binding.Kind == "script" {
+					err = writeCrewScriptFile(ctx, binding, clean, content)
+				} else {
+					err = writeFileToWorkspace(ctx, binding.Root+"/"+clean, content)
+				}
 			}
 			if err != nil {
 				return "", err

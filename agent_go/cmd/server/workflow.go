@@ -1151,6 +1151,21 @@ func (api *StreamingAPI) handleGetVariableGroups(w http.ResponseWriter, r *http.
 		return
 	}
 
+	binding, bindingErr := findCrewExecutable(workspacePath)
+	if bindingErr != nil {
+		http.Error(w, bindingErr.Error(), 400)
+		return
+	}
+	if binding != nil && binding.Kind == "script" {
+		definition, err := readWorkflowInputDefinitions(r.Context(), workspacePath)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		json.NewEncoder(w).Encode(VariableGroupsResponse{Success: true, Manifest: definition})
+		return
+	}
+
 	// Build path to variables.json
 	variablesPath := workspacePath + "/variables/variables.json"
 
@@ -1293,6 +1308,17 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 	}
 	if err := todo_creation_human.ValidateWorkflowInputReferences(r.Context(), workspacePath, &inputDefinitions); err != nil {
 		http.Error(w, err.Error(), 400)
+		return
+	}
+	if binding, err := findCrewExecutable(workspacePath); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	} else if binding != nil && binding.Kind == "script" {
+		if err := saveCrewScriptInputs(r.Context(), workspacePath, &manifest); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Inputs saved"})
 		return
 	}
 	for _, group := range manifest.Groups {
@@ -1852,10 +1878,12 @@ type PlanStepUpdate struct {
 	NextStepID *string `json:"next_step_id,omitempty"`
 
 	// Agent step fields
-	CrewAgent        *string                                       `json:"crew_agent,omitempty"`
-	PredefinedRoutes *[]todo_creation_human.PlanOrchestrationRoute `json:"predefined_routes,omitempty"`
-	Items            *[]todo_creation_human.AgentItem              `json:"items,omitempty"`
-	ValidationSchema *todo_creation_human.ValidationSchema         `json:"validation_schema,omitempty"`
+	Script           *string                                           `json:"script,omitempty"`
+	ScriptInputs     map[string]todo_creation_human.ScriptInputBinding `json:"script_inputs,omitempty"`
+	CrewAgent        *string                                           `json:"crew_agent,omitempty"`
+	PredefinedRoutes *[]todo_creation_human.PlanOrchestrationRoute     `json:"predefined_routes,omitempty"`
+	Items            *[]todo_creation_human.AgentItem                  `json:"items,omitempty"`
+	ValidationSchema *todo_creation_human.ValidationSchema             `json:"validation_schema,omitempty"`
 }
 
 // PlanUpdateRequest represents a request to update a plan step
@@ -1900,6 +1928,15 @@ type AddStepRequest struct {
 
 // readPlanFromWorkspace reads plan.json from workspace using workspace API
 func readPlanFromWorkspace(ctx context.Context, workspacePath string) (*todo_creation_human.PlanningResponse, error) {
+	if binding, err := findCrewExecutable(workspacePath); err != nil {
+		return nil, err
+	} else if binding != nil && binding.Kind == "script" {
+		definition, err := readCrewScript(ctx, workspacePath)
+		if err != nil {
+			return nil, err
+		}
+		return todo_creation_human.CrewScriptPlan(definition, workspacePath), nil
+	}
 	planPath := workspacePath + "/planning/plan.json"
 
 	// URL-encode the filepath segments
@@ -1971,6 +2008,11 @@ func readPlanFromWorkspace(ctx context.Context, workspacePath string) (*todo_cre
 
 // writePlanToWorkspace writes plan.json to workspace using workspace API
 func writePlanToWorkspace(ctx context.Context, workspacePath string, plan *todo_creation_human.PlanningResponse) error {
+	if binding, err := findCrewExecutable(workspacePath); err != nil {
+		return err
+	} else if binding != nil && binding.Kind == "script" {
+		return fmt.Errorf("edit the saved script instead of adding a plan")
+	}
 	planPath := workspacePath + "/planning/plan.json"
 	if err := todo_creation_human.ValidatePlanStructure(plan); err != nil {
 		return err
@@ -2222,6 +2264,12 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 	switch s := step.(type) {
 	case *todo_creation_human.ScriptedPlanStep:
 		updated := *s // Copy the step
+		if updates.Script != nil {
+			updated.Script = strings.TrimPrefix(strings.TrimSpace(*updates.Script), "script:")
+		}
+		if updates.ScriptInputs != nil {
+			updated.ScriptInputs = updates.ScriptInputs
+		}
 		applyCommonFields(&updated.CommonStepFields, updates)
 		updatedStep = &updated
 

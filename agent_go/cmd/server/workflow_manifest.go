@@ -883,6 +883,13 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 
 // readWorkflowManifest can inspect existing settings without persisting read-time migrations.
 func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigrations bool) (*WorkflowManifest, bool, error) {
+	binding, bindErr := findCrewExecutable(workspacePath)
+	if bindErr != nil {
+		return nil, false, bindErr
+	}
+	if binding != nil && binding.Kind == "script" {
+		return crewScriptManifest(ctx, binding)
+	}
 	content, exists, err := readFileFromWorkspace(ctx, manifestPath(workspacePath))
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to read workflow.json: %w", err)
@@ -914,7 +921,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		}
 	}
 
-	binding, bindErr := findCrewExecutable(workspacePath)
+	binding, bindErr = findCrewExecutable(workspacePath)
 	if bindErr != nil {
 		return nil, false, bindErr
 	}
@@ -1251,6 +1258,23 @@ func manifestChangelogChange(path string, beforeOK, afterOK bool) step_based_wor
 
 // WriteWorkflowManifest validates and writes workflow.json to a workspace.
 func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *WorkflowManifest) error {
+	binding, bindingErr := findCrewExecutable(workspacePath)
+	if bindingErr != nil {
+		return bindingErr
+	}
+	if binding != nil && binding.Kind == "script" {
+		if err := prepareCrewExecutableSchedules(ctx, workspacePath, m); err != nil {
+			return err
+		}
+		if err := ValidateManifest(m); err != nil {
+			return err
+		}
+		if err := saveWorkflowEntryActions(ctx, workspacePath, m); err != nil {
+			return err
+		}
+		return saveWorkflowTimerActions(ctx, workspacePath, m)
+	}
+
 	if err := prepareCrewExecutableSchedules(ctx, workspacePath, m); err != nil {
 		return err
 	}
@@ -1450,6 +1474,15 @@ func discoverWorkflowManifests(ctx context.Context, persistMigrations bool) ([]D
 		return nil, fmt.Errorf("failed to list workspace folders: %w", err)
 	}
 
+	bindings, bindingErr := readCrewExecutables()
+	if bindingErr != nil {
+		return nil, bindingErr
+	}
+	for _, binding := range bindings {
+		if binding.Kind == "script" && !slices.Contains(folders, binding.Root) {
+			folders = append(folders, binding.Root)
+		}
+	}
 	var results []DiscoveredWorkflow
 	for _, folder := range folders {
 		manifest, exists, err := readWorkflowManifest(ctx, folder, persistMigrations)

@@ -484,6 +484,9 @@ type ScriptedPlanStep struct {
 	CommonStepFields
 	// ScriptOnly executes the saved main.py without agent generation or repair.
 	// Flow script nodes use this on the existing scripted step executor.
+	Script       string                        `json:"script,omitempty"`
+	ScriptInputs map[string]ScriptInputBinding `json:"script_inputs,omitempty"`
+	crewScript   *CrewScriptConfiguration
 	ScriptOnly   bool          `json:"script_only,omitempty"`
 	NextStepID   string        `json:"next_step_id,omitempty"` // Optional explicit successor; empty preserves sequential execution
 	AgentConfigs *AgentConfigs `json:"-"`                      // runtime: per-agent configuration (LLM, max turns, toggles) - not stored in plan.json
@@ -1001,13 +1004,15 @@ type PartialPlanStep struct {
 	// Routing fields
 	NextStepID string `json:"next_step_id,omitempty"` // Optional: Updated next_step_id (for routing steps)
 	// Routing step fields
-	RoutingQuestion string            `json:"routing_question,omitempty"`  // Optional: Updated routing question
-	Routes          []RoutingRoute    `json:"routes,omitempty"`            // Optional: Updated routes
-	DefaultRouteID  string            `json:"default_route_id,omitempty"`  // Optional: Updated default route ID
-	RouteSourceFile string            `json:"route_source_file,omitempty"` // Optional: Updated deterministic route source file
-	ValuePath       string            `json:"value_path,omitempty"`
-	ValueCases      map[string]string `json:"value_cases,omitempty"`
-	ScriptOnly      *bool             `json:"script_only,omitempty"`
+	RoutingQuestion string                        `json:"routing_question,omitempty"`  // Optional: Updated routing question
+	Routes          []RoutingRoute                `json:"routes,omitempty"`            // Optional: Updated routes
+	DefaultRouteID  string                        `json:"default_route_id,omitempty"`  // Optional: Updated default route ID
+	RouteSourceFile string                        `json:"route_source_file,omitempty"` // Optional: Updated deterministic route source file
+	ValuePath       string                        `json:"value_path,omitempty"`
+	ValueCases      map[string]string             `json:"value_cases,omitempty"`
+	ScriptRef       *string                       `json:"script,omitempty"`
+	ScriptInputs    map[string]ScriptInputBinding `json:"script_inputs,omitempty"`
+	ScriptOnly      *bool                         `json:"script_only,omitempty"`
 	// Branch step fields (PLAT-259: same deterministic-switch shape as
 	// routing, just its own field name for the human-readable prompt)
 	BranchQuestion         string                               `json:"branch_question,omitempty"`          // Optional: Updated branch question
@@ -1307,7 +1312,9 @@ func getUpdateScriptedStepSchema() string {
 							"type": "string",
 							"description": "REQUIRED: The ID of the step in the existing plan that you want to update. Use the step's id field from the plan."
 						},
-						"script_only": {"type": "boolean", "description": "For a Flow script node, execute saved main.py strictly, without agent repair."},
+						"script": {"type":"string","description":"Optional stable id of a saved script in this Crew. Input types belong to the script."},
+ "script_inputs": {"type":"object","description":"Values for saved script inputs. Each value selects one source: value (literal), input (workflow input name), or output (declared JSON context dependency) with optional field (dot-separated field)."},
+ "script_only": {"type": "boolean", "description": "For a Flow script node, execute saved main.py strictly, without agent repair."},
 						"title": {
 							"type": "string",
 							"description": "OPTIONAL: New title for the step. Only include if you want to rename the step. If omitted, the existing title is preserved."
@@ -1379,7 +1386,9 @@ func getAddScriptedStepSchema() string {
 		"type": "object",
 		"properties": {
             "is_orphan": {"type": "boolean", "description": "Set true to create a reusable saved script in orphan_steps instead of the main flow, for scripted agent batches. It does not auto-run. Use empty insert_after_step_id."},
-			"script_only": {"type": "boolean", "description": "For a Flow script node, require an existing main.py and stop on any error without agent generation or repair."},
+			"script": {"type":"string","description":"Optional stable id of a saved script in this Crew. Input types belong to the script."},
+ "script_inputs": {"type":"object","description":"Values for saved script inputs. Each value selects one source: value (literal), input (workflow input name), or output (declared JSON context dependency) with optional field (dot-separated field)."},
+ "script_only": {"type": "boolean", "description": "For a Flow script node, require an existing main.py and stop on any error without agent generation or repair."},
 			"id": {
 				"type": "string",
 				"description": "REQUIRED: Stable step ID for this new step. Generate a unique, URL-friendly ID based on the step title (e.g., 'deploy-application' from 'Deploy Application')."
@@ -2867,6 +2876,12 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		}
 		if partialUpdate.NextStepID != "" {
 			updated.NextStepID = partialUpdate.NextStepID
+		}
+		if partialUpdate.ScriptRef != nil {
+			updated.Script = strings.TrimPrefix(strings.TrimSpace(*partialUpdate.ScriptRef), "script:")
+		}
+		if partialUpdate.ScriptInputs != nil {
+			updated.ScriptInputs = partialUpdate.ScriptInputs
 		}
 		if partialUpdate.ScriptOnly != nil {
 			updated.ScriptOnly = *partialUpdate.ScriptOnly
