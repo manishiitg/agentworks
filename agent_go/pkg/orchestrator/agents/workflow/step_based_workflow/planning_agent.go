@@ -5459,7 +5459,7 @@ Before adding it, decide the step type by who decides the work, not by habit:
 - add_routing_step / add_branch_step only for a real fixed branch choice (routing: one major sub-workflow fork per plan; branch: a small in-flow decision).
 - Supply known values through run variables/function arguments or per-step human_inputs. Agents use human_feedback for urgent missing values and create_human_input_request for durable decisions.
 
-For the full decision playbook and anti-patterns, call read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}]) before adding the first step.`, planPath), nil
+For the full decision guide and anti-patterns, call read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}]) before adding the first step.`, planPath), nil
 	}
 }
 

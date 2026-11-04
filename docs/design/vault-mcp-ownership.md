@@ -113,7 +113,7 @@ is still tracked; this ownership refactor does not claim to fix key rotation.
   checks: passed. JS gzip is 986.55 kB, above the 950 kB warning threshold and
   below the enforced 1030 kB budget.
 - The full host server suite is **not green**. The run found unmodified sales and
-  Playbook catalog expectations (including a 40-entry expectation against 64
+  template catalog expectations (including a 40-entry expectation against 64
   entries), a Pulse bridge fixture with an invalid generated `go.work`, and hit
   the overall 120-second timeout. Two ownership fixtures expecting old shared
   stores were updated and passed in the focused rerun. The full suite was not

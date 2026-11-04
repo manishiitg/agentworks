@@ -30,9 +30,9 @@ Fictional output: finding=sec-81; PR-92 merged at sha:c101b; deployed build=sha:
 
 Inadequate: “PR merged, security issue resolved.” Reason: It confuses code merge with deployment and omits the affected environment, independent retest, and closure decision.
 
-## Workflow Playbook and handoff
+## Workflow handoff
 
-Finding to Verified Remediation uses security-remediation-ledger/v1 keyed by finding, asset, issue, approved change SHA, affected deployed build, independent retest and disposition. Access Exception to Verified Fix uses access-remediation-ledger/v1 tied to the exact policy cell, actor, resource and direct retest. Each Playbook supplies its own validator and output path; the finding or policy source remains authoritative. The existing Workflow Playbook is security-engineering/application-security/application-security-assessment-remediation. Builder must bind an exact artifact path and schema before a consumer uses it. Validate structure and recheck source truth.
+Finding to Verified Remediation uses security-remediation-ledger/v1 keyed by finding, asset, issue, approved change SHA, affected deployed build, independent retest and disposition. Access Exception to Verified Fix uses access-remediation-ledger/v1 tied to the exact policy cell, actor, resource and direct retest. Each Workflow supplies its own validator and output path; the finding or policy source remains authoritative. Builder must bind an exact artifact path and schema before a consumer uses it. Validate structure and recheck source truth.
 
 ## Boundaries
 

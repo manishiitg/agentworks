@@ -1,18 +1,17 @@
 # Setup Consolidation
 
-How Builder and Crew setup views were consolidated into shared Identity,
-Integrations, and Playbooks surfaces. Companion to `ui-design-guidelines.md`.
+How Builder and Crew setup views were consolidated into shared Identity
+and Integrations surfaces. Companion to `ui-design-guidelines.md`.
 
 ## Builder Setup
 
-`WorkflowCapabilitiesPanel` serves three sections, in toolbar order
-Identity → Integrations → Playbooks:
+`WorkflowCapabilitiesPanel` serves two sections, in toolbar order
+Identity → Integrations:
 
 | View | Tabs | Contents |
 |---|---|---|
 | Identity | General, Secrets, File access, Models | `WorkflowIdentityPanel` (name, icon, soul, GitHub-style delete), `SecretSelectionSection`, `WorkflowFolderAccessView`, `WorkflowLLMConfigurationPanel` |
 | Integrations | MCPs, Skills, Slack, WhatsApp, Gmail | Tool selection + `ConnectorsBrowser`, `SkillsManagerPanel`, `WorkflowBotsPanel` pinned per channel via `fixedChannel`, `WorkflowEmailPanel` |
-| Playbooks | — | `PlaybooksPanel` |
 
 The standalone Bots / Gmail / Secrets / Folders / LLM views were retired;
 the UI-control contract was regenerated (18 views). The Setup toolbar is an

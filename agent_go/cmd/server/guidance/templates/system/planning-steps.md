@@ -69,7 +69,7 @@ checkpoint just to ask the same branch choice again.
 
 ## See also
 
-For the design playbook (8-step design walkthrough, step-type
+For the design guide (8-step design walkthrough, step-type
 trade-offs, validation design, context flow, anti-patterns,
 step-types reference, inner steps, reusable orphan-route pattern),
 call **`read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}])`** — this is the entry

@@ -1,6 +1,6 @@
 ---
 name: "plan-design"
-description: "Plan-design playbook: step boundaries, step-type selection, context flow, validation/failure design, anti-patterns. Load when designing a new plan or restructuring one."
+description: "Plan-design guide: step boundaries, step-type selection, context flow, validation/failure design, anti-patterns. Load when designing a new plan or restructuring one."
 external: true
 external_note: "External mapping: use plan action=list for the current native plan and step schemas. Read get_plan for expected_revision, then pass a stable request_id and the listed native arguments. Internal plan operation names are plan action values, not standalone external tools. Fetch referenced guidance with help action=topic and its listed topic name. Builder action=chat is an optional delegation path when listed; it is not required for native plan edits."
 ---

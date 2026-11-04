@@ -1,4 +1,4 @@
-import { ArrowRight, BookMarked, Check, Loader2, RefreshCw, Target } from 'lucide-react'
+import { ArrowRight, Check, Loader2, RefreshCw, Target } from 'lucide-react'
 import type { WorkflowGoalSetupCheck, WorkflowGoalSetupStatus } from '../../services/api'
 
 const GOAL_SETUP_ACTION_LABEL: Record<string, string> = {
@@ -21,7 +21,6 @@ export interface GoalSetupCardProps {
   busy?: boolean
   loading?: boolean
   onStart: (step: WorkflowGoalSetupCheck) => void
-  onOpenPlaybooks: () => void
   onDismiss: () => void
   onRefresh: () => void
 }
@@ -29,11 +28,9 @@ export interface GoalSetupCardProps {
 // The goal setup card, drawn from a status alone (WorkflowGoalSetupBar loads
 // it). Before a goal is set it is a short card that says what a goal buys;
 // after that it is one slim line so it does not crowd the chat.
-export function GoalSetupCard({ status, busy = false, loading = false, onStart, onOpenPlaybooks, onDismiss, onRefresh }: GoalSetupCardProps) {
+export function GoalSetupCard({ status, busy = false, loading = false, onStart, onDismiss, onRefresh }: GoalSetupCardProps) {
   const next = status.next
-  const steps = status.checks.filter(check => check.id !== 'playbook')
-  const playbook = status.checks.find(check => check.id === 'playbook')
-  const playbooks = status.playbooks ?? []
+  const steps = status.checks
   const goalDone = steps.find(step => step.id === 'goal')?.done ?? false
   const doneCount = steps.filter(step => step.done).length
   const nextIndex = next ? steps.findIndex(step => step.id === next.id) : -1
@@ -135,18 +132,6 @@ export function GoalSetupCard({ status, busy = false, loading = false, onStart, 
           <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-[3.375rem] [@container(min-width:760px)]:flex-col [@container(min-width:760px)]:items-end [@container(min-width:760px)]:pl-0">
             {primaryAction}
             <div className="flex items-center gap-1">
-              {playbook ? (
-                <button
-                  type="button"
-                  onClick={onOpenPlaybooks}
-                  title={playbook.done ? 'Installed playbooks guide this setup. Open Playbooks.' : 'Start from a ready-made playbook. Open Playbooks.'}
-                  className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium hover:bg-muted ${playbook.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}
-                >
-                  <BookMarked className="h-3.5 w-3.5" />
-                  {playbook.done ? `Playbook: ${playbooks.map(p => p.title).join(', ')}` : 'Start from a playbook'}
-                </button>
-              ) : null}
-              <span aria-hidden className="text-muted-foreground/40">·</span>
               <button
                 type="button"
                 onClick={onDismiss}

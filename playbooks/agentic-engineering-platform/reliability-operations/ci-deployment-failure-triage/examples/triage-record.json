@@ -1,9 +1,0 @@
-{
-  "example": true,
-  "failure_id": "fail-example-001",
-  "source": {"provider": "example-ci", "event_id": "evt-101", "delivery_id": "delivery-101"},
-  "identity": {"repository": "example/service", "commit": "abc123example", "pipeline_run": "run-44", "stage": "deploy", "environment": "staging"},
-  "classification": {"type": "unknown", "confidence": "low", "supporting_evidence": [], "contradicting_evidence": []},
-  "action": {"type": "hold", "approval_required": false, "receipt": null},
-  "evidence": {"status": "incomplete", "artifacts": []}
-}

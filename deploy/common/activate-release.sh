@@ -18,7 +18,7 @@
 #   EXTRA_ENV[]      KEY=value written to .env and to both services' managed drop-in, then checked in the running processes
 #   AGENT_EXTRA_ENV[] the same for the agent only
 #   ENV_ONLY_FILE    a file of KEY=value lines written to .env only (secrets, values with spaces); never in argv or drop-ins
-#   REMOVE_DEPLOY_DROPINS[], REQUIRED_PERSISTED_ENV_KEYS[], EXPECTED_PUBLIC_URL, PLAYBOOK_SMOKE_PATH, PIN_NODE_VERSION
+#   REMOVE_DEPLOY_DROPINS[], REQUIRED_PERSISTED_ENV_KEYS[], EXPECTED_PUBLIC_URL, PIN_NODE_VERSION
 #   BROWSER_CLI_CHECK_DIR  when set, the sandbox must also run the browser CLI from this folder
 #   DRAIN_TIMEOUT_SECONDS  wait for running turns before the restart (default 0: restart at once)
 #   DOMAIN, PUBLIC_CHECKS, PUBLIC_HEALTH_STATUS, PUBLIC_CHECK_PATHS[], LOCAL_PROXY_CHECK_URL  the public checks (skipped without DOMAIN)
@@ -276,9 +276,6 @@ except Exception:
   for entry in "${AGENT_EXTRA_ENV[@]:-}"; do
     [[ -n "$entry" ]] && { tr '\0' '\n' < "/proc/$pid/environ" | grep -Fx "$entry" >/dev/null || { echo "$UNIT_PREFIX-agent did not receive $entry" >&2; return 1; }; }
   done
-  if [[ -n "${PLAYBOOK_SMOKE_PATH:-}" ]]; then
-    test -f "/proc/$pid/cwd/playbooks/$PLAYBOOK_SMOKE_PATH"
-  fi
   if [[ -n "${PIN_NODE_VERSION:-}" ]]; then
     test "$(node --version)" = "v$PIN_NODE_VERSION"
   fi

@@ -49,7 +49,7 @@ nobody looks for a "Workbench" button that doesn't exist.
 | Admin view | Owner-only chats (admins see usage, not chats) | Admins can inspect chats, terminals and files, read-only and audited |
 | Default view | Chat and dashboard | Files, with editor and terminal |
 | Identity / purpose / role | Yes | No, just a name |
-| Templates (Crew catalog, playbooks) | Yes | No |
+| Templates (Crew catalog) | Yes | No |
 | Reaching others | Crews and workflows (as caller) | Crews and workflows the person can access (as caller); never another Code |
 | MCP servers used inside | Yes, shared per server/Crew | Yes, the shared platform ones (as Crew); private per-Code servers later |
 | Skills | Yes, shared | Yes, but private: ones added or created in a Code stay in it |
@@ -137,8 +137,8 @@ Code-specific work outside the definition:
      the function result. It never grants the caller access to the Code folder.
    - Shared readers/editors, other owners and external connections cannot call
      Code functions. Owner-created authenticated webhooks are a separate API.
-2. **No templates.** The Crew template catalog, playbooks and "install a
-   role" flows do not appear anywhere in Code: not in creation, the empty
+2. **No templates.** The Crew template catalog and "install a role"
+   flows do not appear anywhere in Code: not in creation, the empty
    state, or the Ask AI suggestions.
 3. **Files-first UI.** Open a Code on the files view. The file tree, editor
    and terminal come first; the chat is beside them, and the dashboard is a
@@ -257,7 +257,7 @@ users has to hold:
 3. **Private function callers, no templates, owner-only bots.** Allow declared
    functions from owned Codes/Crews/workflows only for their actual owner. Refuse
    public MCP function access and Slack channel/group access. Allow owner Slack
-   DMs and WhatsApp. Hide template, playbook and role flows.
+   DMs and WhatsApp. Hide template and role flows.
 4. **Files-first UI.** Land on files; editor and terminal alongside chat;
    dashboard as a tab.
 5. **Admin inspection.** Per-product setting, read-only views, the user

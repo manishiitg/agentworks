@@ -67,7 +67,7 @@ automatically; ask the coding agent to run your checks explicitly before committ
 
 ## Specialist guidance
 
-The built-in domain skills are `finance-work`, `customer-work`, `growth-work`, `sales-work`, `team-work`, `software-work` and `store-work`. Their short indexes link to focused references, read only for the current task. Select them with the existing skill tools; they need no template installation or separate access grant. Workflow playbook agent slots point to these same procedures and keep their existing routes and output contracts.
+The built-in domain skill is `software-work`. Its short index links to focused references, read only for the current task. Select it with the existing skill tools; it needs no template installation or separate access grant.
 
 ## Access
 

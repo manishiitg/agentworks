@@ -30,9 +30,9 @@ Fictional output: attempt=qa-17-01; journey=signup-to-project@v3; build=sha:abc1
 
 Inadequate: “Signup failed; retry later.” Reason: It omits the tested build, expected step, attempt, evidence, reproducible failure, and owner.
 
-## Workflow Playbook and handoff
+## Workflow handoff
 
-The Critical Journey Validation Workflow can consume a journey-result/v1 record keyed by journey revision, build, environment, attempt ID, observed outcome, evidence links, classification, and owner. A release gate must verify exact build identity and required suite completeness. The existing Workflow Playbook is browser-qa/critical-journey-validation. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
+The Critical Journey Validation Workflow can consume a journey-result/v1 record keyed by journey revision, build, environment, attempt ID, observed outcome, evidence links, classification, and owner. A release gate must verify exact build identity and required suite completeness. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
 
 ## Boundaries
 

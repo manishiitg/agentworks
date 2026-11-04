@@ -30,9 +30,9 @@ Fictional output: cell=roles-v4/member/tenant-b-invoice/read; build=sha:b912e; a
 
 Inadequate: “The invoice link is hidden, so tenant isolation works.” Reason: It skips direct server denial, exact policy and build identity, and the cross-tenant data observation.
 
-## Workflow Playbook and handoff
+## Workflow handoff
 
-Access Exception to Verified Fix consumes access-review-matrix/v1 keyed by policy revision, build, environment, actor role and tenant, resource and tenant, action, expected/observed direct result, attempt ID, and evidence. Role and Permission Validation remains the test-method guide. Security remediation receives only validated, owner-reviewed exceptions. The existing Workflow Playbook is browser-qa/role-permission-validation. Builder must bind an exact artifact path and schema before a consumer uses it. Validate structure and recheck source truth.
+Access Exception to Verified Fix consumes access-review-matrix/v1 keyed by policy revision, build, environment, actor role and tenant, resource and tenant, action, expected/observed direct result, attempt ID, and evidence. Role and Permission Validation remains the test-method guide. Security remediation receives only validated, owner-reviewed exceptions. Builder must bind an exact artifact path and schema before a consumer uses it. Validate structure and recheck source truth.
 
 ## Boundaries
 

@@ -25,7 +25,6 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   if (!relayMode) {
     add('knowledge', 'Build', 'Knowledge base', BookOpen, 'knowledgebase')
     add('knowledge', 'Build', 'Database', Database, 'database')
-    add('playbooks', 'Setup', 'Workflow playbooks', BookOpen)
   } else add('flow', 'Build', 'Code', Code2, 'source', 'Advanced')
   for (const item of projectAutomationSections({ relay: relayMode, incomingEmail })) {
     add('workshop', item.id === 'functions' ? 'Build' : 'Use', item.id === 'email' ? 'Email inbox' : item.label, item.icon, item.id, item.id === 'functions' ? undefined : item.id === 'email' ? 'Use from other apps' : 'Run automatically')

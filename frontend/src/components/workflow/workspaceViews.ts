@@ -1,7 +1,6 @@
 import {
   BellRing,
   Settings2,
-  BookMarked,
   BookOpen,
   CalendarClock,
   Cloud,
@@ -97,7 +96,6 @@ const VIEWS = [
   // -- capability sections (WorkflowCapabilitiesPanel) -------------------------
   { id: 'identity', kind: 'capability', label: 'Settings', icon: Fingerprint, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
   { id: 'mcp', kind: 'capability', label: 'Connections', icon: Server, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
-  { id: 'playbooks', kind: 'capability', label: 'Workflow playbooks', icon: BookMarked, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
   { id: 'browser', kind: 'capability', label: 'Browser', icon: Monitor, toolbarGroup: 'views', pane: true },
   { id: 'workshop', kind: 'inspector', label: 'Automations', icon: Zap, toolbarGroup: 'views', pane: true },
 ] as const satisfies readonly WorkspaceViewDef[]

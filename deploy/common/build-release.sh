@@ -278,11 +278,11 @@ step "CLI downloads built"
 
 build_frontend() {
 # The website is the slowest part (~90s more than the binaries) and most deploys do not change it. Its output is kept by the
-# Git trees it reads (frontend/, the playbooks its catalog check reads, the two agent_go static folders it writes into, this
-# script) and the Node version, and reused when they are the same. BUILD_FRONTEND_CACHE=0 always builds.
+# Git trees it reads (frontend/, the two agent_go static folders it writes into, this script) and the Node version, and
+# reused when they are the same. BUILD_FRONTEND_CACHE=0 always builds.
 local key="" cached="" trees=""
 # A missing tree leaves no key, and the website is built.
-trees="$(cd "$REPO_ROOT" && git rev-parse HEAD:frontend HEAD:playbooks HEAD:agent_go/static HEAD:agent_go/cmd/server/static HEAD:deploy/common/build-release.sh 2>/dev/null)" \
+trees="$(cd "$REPO_ROOT" && git rev-parse HEAD:frontend HEAD:agent_go/static HEAD:agent_go/cmd/server/static HEAD:deploy/common/build-release.sh 2>/dev/null)" \
   && key="$(printf '%s\n%s\n' "$trees" "$(node --version)" | sha256sum | cut -c1-32)"
 cached="$CACHE/frontend/${key:-none}"
 if [[ "${BUILD_FRONTEND_CACHE:-1}" != 0 && -n "$key" && -f "$cached/.complete" ]]; then
@@ -326,13 +326,6 @@ missing="$(LD_LIBRARY_PATH="$OUT/bin/lib" ldd "$OUT/bin/agent" | grep 'not found
 [[ -z "$missing" ]] || { echo "agent has unresolved libraries: $missing" >&2; exit 1; }
 rm -f "$OUT/go.work" "$OUT/go.work.sum"
 
-# Validate the playbooks once, here, in a scratch copy (its tests create temporary folders beside the playbooks and must not touch the shared source);
-# a product that ships playbooks validates its own copy again when it activates.
-step "Validating playbooks"
-scratch="$(mktemp -d)"
-cp -R "$REPO_ROOT/playbooks/." "$scratch/"
-PYTHONDONTWRITEBYTECODE=1 python3 "$scratch/scripts/validate_playbooks.py" --skills-root "$REPO_ROOT/agent_go/internal/workproduct/skills"
-rm -rf "$scratch"
 chmod -R u+rwX,go+rX,go-w "$OUT"
 
 step "Writing manifest.json"
