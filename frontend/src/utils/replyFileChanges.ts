@@ -22,8 +22,6 @@ export interface ReplyFileChangesRef {
   sessionId: string
   latestSnapshotId?: string
   summary?: ReplyFileSummary
-  // The chat's newest review point (a file_reviewed event), if any.
-  reviewedSnapshotId?: string
   // The server's one line when this reply's file changes were not saved (no snapshot).
   unavailable?: string
 }
@@ -62,10 +60,9 @@ export function replyFileChangesByMessage(events: PollingEvent[], replyIds: Read
     }
     return found
   }
-  const latest = newest('reply_file_changes'), reviewed = newest('file_reviewed')
+  const latest = newest('reply_file_changes')
   for (const ref of result.values()) {
     ref.latestSnapshotId = latest.get(ref.sessionId)?.id
-    ref.reviewedSnapshotId = reviewed.get(ref.sessionId)?.id
   }
   return result
 }

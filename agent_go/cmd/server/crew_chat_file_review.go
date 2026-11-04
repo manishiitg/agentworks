@@ -13,10 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	agentevents "github.com/manishiitg/mcpagent/events"
 )
 
 type chatStartMessage struct {
@@ -109,28 +107,6 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesn
 		out.Replies = append(out.Replies, ref)
 		out.replyData[ref.ID] = raw
 	}
-	seen := map[string]bool{}
-	for _, ref := range out.Replies {
-		seen[ref.ID] = true
-	}
-	for _, event := range history.Reviews {
-		if event.Data == nil {
-			continue
-		}
-		raw, _ := json.Marshal(event.Data.Data)
-		var point chatReviewPoint
-		if json.Unmarshal(raw, &point) != nil || point.ID == "" || point.Workspace != root || point.End <= point.Start {
-			continue
-		}
-		out.Reviews = append(out.Reviews, point)
-		for _, ref := range []*chatSnapshotReference{&point.chatSnapshotReference, point.First} {
-			if ref != nil && ref.Workspace == root && !seen[ref.ID] {
-				out.Replies = append(out.Replies, *ref)
-				seen[ref.ID] = true
-			}
-		}
-	}
-	sort.Slice(out.Reviews, func(i, j int) bool { return out.Reviews[i].End < out.Reviews[j].End })
 	sort.Slice(out.Replies, func(i, j int) bool { return out.Replies[i].End < out.Replies[j].End })
 	// A reply whose capture failed, or that retention removed, has no saved
 	// before/after; the comparison starts at the oldest reply still saved and
@@ -155,9 +131,6 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesn
 				out.StartMessage = &chatStartMessage{Text: string(text), At: message.At}
 			}
 		}
-	}
-	if len(out.Reviews) > 0 {
-		out.Baseline = out.Reviews[len(out.Reviews)-1].ID
 	}
 	if len(out.Replies) == 0 {
 		out.Note = "No file changes saved for this chat yet. Changes appear here after the agent edits files."
@@ -257,14 +230,6 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {
 		history.CanReview = false
 	}
-	if op == "snapshot_review" && project {
-		externalError(w, 400, "invalid_action", "Choose a saved project comparison to review.")
-		return
-	}
-	if op == "snapshot_review" {
-		api.markChatFilesReviewed(w, r, sessionID, store, history, id)
-		return
-	}
 	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" && op != "reply_card" && op != "chat_status" && op != "snapshot_turn" {
 		externalError(w, 400, "invalid_action", "Choose a saved file comparison.")
 		return
@@ -296,37 +261,9 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	if pin := r.URL.Query().Get("baseline_snapshot_id"); pin != "" {
 		baseline = pin
 	}
-	if reviewID := r.URL.Query().Get("review_id"); reviewID != "" {
-		found := false
-		for i, point := range history.Reviews {
-			if point.ID == reviewID {
-				last = point.ID
-				baseline = "start"
-				if i > 0 {
-					baseline = history.Reviews[i-1].ID
-				}
-				found = true
-				break
-			}
-		}
-		if !found {
-			externalError(w, 404, "not_found", "This review point is unavailable.")
-			return
-		}
-	}
-	if baseline != "start" {
-		found := false
-		for _, point := range history.Reviews {
-			if point.ID == baseline {
-				found = true
-				break
-			}
-		}
-		if !found {
-			externalError(w, 404, "not_found", "This review point does not belong to this chat.")
-			return
-		}
-		first, side = baseline, "after"
+	if baseline != "start" || r.URL.Query().Get("review_id") != "" {
+		externalError(w, 400, "invalid_boundary", "Choose a saved reply comparison.")
+		return
 	}
 	if id != "" {
 		if _, found := refs[id]; !found {
@@ -472,19 +409,6 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	summary := reviewSummary(comparison)
-	var sinceReview *chatReviewSummary
-	if !project && id != "" && id == history.Latest {
-		start, startSide := history.First, "before"
-		if len(history.Reviews) > 0 {
-			start, startSide = history.Reviews[len(history.Reviews)-1].ID, "after"
-		}
-		if history.Available || startSide == "after" {
-			if net, err := compare(start, last, startSide, "", ""); err == nil {
-				value := reviewSummary(net)
-				sinceReview = &value
-			}
-		}
-	}
 	total := len(comparison.Changes)
 	nextOffset := 0
 	if file != "" {
@@ -518,76 +442,11 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	if project {
 		log.Printf("[FILE_REVIEW] scope=project checkout=%q snapshot=%s files=%d", r.URL.Query().Get("checkout_id"), last, total)
 	}
-	externalJSON(w, map[string]any{"history": history, "comparison": comparison, "summary": summary, "since_review": sinceReview, "total_changes": total, "next_offset": nextOffset})
+	externalJSON(w, map[string]any{"history": history, "comparison": comparison, "summary": summary, "total_changes": total, "next_offset": nextOffset})
 
 }
 
 // Review is chat activity: use the existing chat control rule, never Crew settings authority.
-func (api *StreamingAPI) markChatFilesReviewed(w http.ResponseWriter, r *http.Request, sessionID string, store filesnapshots.Store, history chatFileReview, id string) {
-	if r.Method != http.MethodPost {
-		externalError(w, 405, "method_not_allowed", "Use Mark as reviewed in this chat.")
-		return
-	}
-	if !history.CanReview {
-		externalError(w, 403, "forbidden", "You can view this chat; mark changes in a chat you can write in.")
-		return
-	}
-	var ref *chatSnapshotReference
-	for i := range history.Replies {
-		if history.Replies[i].ID == id {
-			ref = &history.Replies[i]
-			break
-		}
-	}
-	if ref == nil {
-		externalError(w, 404, "not_found", "Choose a saved reply in this chat.")
-		return
-	}
-	if len(history.Reviews) > 0 {
-		last := history.Reviews[len(history.Reviews)-1]
-		if last.ID == id {
-			externalJSON(w, map[string]any{"review": last})
-			return
-		}
-		if ref.End < last.End {
-			externalError(w, 409, "already_reviewed", "A later reply is already reviewed. Refresh the changes.")
-			return
-		}
-	}
-	point := chatReviewPoint{chatSnapshotReference: *ref, ReviewedAt: time.Now().UTC()}
-	if history.Available {
-		for i := range history.Replies {
-			if history.Replies[i].ID == history.First {
-				first := history.Replies[i]
-				point.First = &first
-				break
-			}
-		}
-	}
-	if err := store.KeepReviewBoundaries(r.Context(), id); err != nil {
-		externalError(w, 404, "snapshot_unavailable", "This saved reply is no longer available. Refresh the changes.")
-		return
-	}
-	if point.First != nil {
-		if err := store.KeepReviewBoundaries(r.Context(), point.First.ID); err != nil {
-			// A pruned initial boundary must not prevent starting a new review point.
-			point.First = nil
-		}
-	}
-	raw, _ := json.Marshal(point)
-	fields := map[string]interface{}{}
-	_ = json.Unmarshal(raw, &fields)
-	data := storeevents.NewGenericEventData("file_reviewed", fields)
-	event := agentevents.NewAgentEvent(data)
-	event.SessionID = sessionID
-	if err := api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: "file-reviewed:" + id, Type: "file_reviewed", Timestamp: point.ReviewedAt, SessionID: sessionID, Data: event}); err != nil {
-		externalError(w, 500, "review_not_saved", "Could not save the review point. Try again.")
-		return
-	}
-	log.Printf("[FILE_REVIEW] session=%s snapshot=%s end_sequence=%d status=saved", sessionID, id, ref.End)
-	externalJSON(w, map[string]any{"review": point})
-}
-
 func savedReviewAnchor(ctx context.Context, store filesnapshots.Store, comparison filesnapshots.Comparison, file, side string, line int) (string, error) {
 	if line < 1 {
 		return "", errors.New("invalid line")

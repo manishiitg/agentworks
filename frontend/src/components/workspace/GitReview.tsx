@@ -19,7 +19,7 @@ const scopeLabel: Record<Scope, string> = { uncommitted: 'Uncommitted', branch: 
  * only shows what it returns. When the Crew folder itself is not a repository,
  * "This chat" (the default) shows the chat's saved-copy changes (renderChat), the
  * same list the reply card counts, including files outside any repository. */
-export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos, onRefresh, onBrowse, renderChat, initialScope = 'chat' }: {
+export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos, onRefresh, onBrowse, renderChat, initialScope = 'uncommitted' }: {
   workspacePath: string; sessionId: string; tabId: string; repos: GitRepo[]; recentRepos: string[]; onRefresh: () => void; onBrowse: () => void
   initialScope?: 'chat' | 'uncommitted'; renderChat: (bar: ReactNode) => ReactNode
 }) {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"log"
 	"mime"
@@ -33,10 +32,9 @@ const crewSnapshotTimeout = 15 * time.Second
 // the turn is still the reply's baseline. Accepted risk: a file the agent
 // edits before the capture reaches it is missing from that reply's card, its
 // Undo and the chat's changes; never a false change, no data loss. The
-// capture is bounded by crewSnapshotBeforeLimit, and a Crew with no private
-// index yet is not captured (no baseline) while it builds one in the background.
+// capture is bounded by crewSnapshotBeforeLimit and saves only paths reported
+// dirty by project Git; it never warms a whole-workspace index.
 const crewSnapshotBeforeLimit = time.Minute
-const crewSnapshotWarmLimit = 2 * time.Minute
 
 type crewTurnSnapshot struct {
 	store                        filesnapshots.Store
@@ -105,7 +103,9 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 		return
 	}
 	go func() {
-		snapshot.record, snapshot.beforeErr = snapshot.store.BeginWithin(crewSnapshotBeforeLimit, executionID)
+		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeLimit)
+		defer cancel()
+		snapshot.record, snapshot.beforeErr = snapshot.store.BeginGitTurn(ctx, executionID, workspaceGitFindRepos(roots.Files))
 		close(snapshot.beforeDone)
 		api.logCrewBeforeCapture(snapshot)
 	}()
@@ -113,27 +113,9 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 
 func (api *StreamingAPI) logCrewBeforeCapture(snapshot *crewTurnSnapshot) {
 	record, err := snapshot.record, snapshot.beforeErr
-	if errors.Is(err, filesnapshots.ErrWarming) {
-		log.Printf("[SNAPSHOT] before_capture session=%s execution=%s elapsed_ms=%d skipped=warming", snapshot.sessionID, snapshot.executionID, time.Since(snapshot.sentAt).Milliseconds())
-		return
-	}
 	log.Printf("[SNAPSHOT] before_capture session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d files=%d deferred=%s error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, time.Since(snapshot.sentAt).Milliseconds(), record.BeforeCapture.Captured, firstNonEmptyString(record.BeforeCapture.Deferred, "none"), err, record.BeforeCapture)
-	if record.BeforeCapture.Deferred != "" {
-		go warmCrewSnapshotCache(snapshot.store, snapshot.sessionID, snapshot.executionID)
-	}
 }
 
-// warmCrewSnapshotCache builds a Crew's persisted private index off the send
-// path. Its own context, not the request's; one per Crew (the store refuses a
-// second).
-func warmCrewSnapshotCache(store filesnapshots.Store, sessionID, executionID string) {
-	started := time.Now()
-	stats, err := store.Warm(crewSnapshotWarmLimit)
-	if errors.Is(err, filesnapshots.ErrWarming) {
-		return
-	}
-	log.Printf("[FILE_SNAPSHOT] phase=warm session=%s execution=%s elapsed_ms=%d success=%t error=%v capture=%+v", sessionID, executionID, time.Since(started).Milliseconds(), err == nil, err, stats)
-}
 func (api *StreamingAPI) startCrewTurnSnapshot(executionID, sessionID string, req QueryRequest) {
 	api.prepareCrewTurnSnapshot(executionID, sessionID, req)
 	api.watchCrewTurnSnapshot(executionID)
@@ -204,10 +186,6 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		if err != nil || !found || roots.Files != snapshot.store.Root || roots.Private != snapshot.store.Private {
 			return
 		}
-		if errors.Is(snapshot.beforeErr, filesnapshots.ErrWarming) {
-			api.publishCrewSnapshotUnavailable(snapshot, "setting_up")
-			return
-		}
 		if snapshot.record.ID == "" {
 			api.publishCrewSnapshotUnavailable(snapshot, "failed")
 			return
@@ -215,15 +193,11 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotTimeout)
 		defer cancel()
 		started := time.Now()
-		record, err := snapshot.store.Finish(ctx, snapshot.executionID)
+		record, err := snapshot.store.FinishGitTurn(ctx, snapshot.executionID, workspaceGitFindRepos(snapshot.store.Root))
 		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s output_done=%t elapsed_ms=%d success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, snapshot.outputDone.Load(), time.Since(started).Milliseconds(), err == nil, err, record.AfterCapture)
 		switch {
 		case err == nil && (record.Status == "complete" || record.Status == "partial"):
 			api.publishCrewSnapshot(snapshot, roots, record)
-		case record.BeforeCapture.Deferred == "cold":
-			api.publishCrewSnapshotUnavailable(snapshot, "setting_up")
-		case record.BeforeCapture.Deferred == "budget":
-			api.publishCrewSnapshotUnavailable(snapshot, "busy")
 		default:
 			api.publishCrewSnapshotUnavailable(snapshot, "failed")
 		}

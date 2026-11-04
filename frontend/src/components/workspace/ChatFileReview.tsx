@@ -66,7 +66,7 @@ function CheckoutFileReview(props: ReviewProps) {
 /** All requests and sends stay with that chat; the server resolves and
  * authorizes its saved boundaries. */
 function SnapshotReview({ reply, allChat = false, outsideGit = false, workspacePath, sessionId, tabId, onBrowse, bar, toolbar }: ReviewProps & { bar?: ReactNode }) {
-  const [reviewId, setReviewId] = useState('')
+  const reviewId = ''
   const [result, setResult] = useState<Result | null>(null)
   const [revision, refresh] = useReviewRevision()
   const [error, setError] = useState('')
@@ -127,13 +127,8 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
     <WorkspaceViewHeader title="Files" context={<TooltipProvider delayDuration={150}><Tooltip>
       <TooltipTrigger asChild><button type="button" aria-label="About saved changes" className={iconButton}><Info className="h-3.5 w-3.5" aria-hidden="true" /></button></TooltipTrigger>
       <TooltipContent side="bottom" align="start" className="max-w-64 text-xs">Saved project differences. Other chats or editors may contribute.</TooltipContent>
-    </Tooltip></TooltipProvider>} subtitle={reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : reviewId ? 'Reviewed changes' : result?.history.reviews?.length ? 'Changes since your last review' : 'Changes in this chat'} actions={<>
+    </Tooltip></TooltipProvider>} subtitle={reply ? (reply.historyScope ? 'Project changes' : 'During this turn') : allChat ? 'All chat changes' : outsideGit ? 'Files outside Git' : 'Changes in this chat'} actions={<>
       {(reply || allChat) && <button type="button" className="text-xs underline" onClick={() => reply?.checkoutId ? openChatFiles(sessionId, undefined, reply.checkoutId) : openChatFiles(sessionId)}>Project history</button>}
-      {!reply && !allChat && !!result?.history.reviews?.length && <select aria-label="Review history" title="Review history" value={reviewId} onChange={event => setReviewId(event.target.value)}
-        className="max-w-40 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground">
-        <option value="">Since your last review</option>
-        {[...result.history.reviews].reverse().map(point => <option key={point.snapshot_id} value={point.snapshot_id}>Reviewed {new Date(point.reviewed_at).toLocaleString()}</option>)}
-      </select>}
       <button type="button" aria-label="Refresh changes" title="Refresh" onClick={refresh} className={iconButton}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /></button>
       <button type="button" aria-label="Browse files" title="Browse files" onClick={onBrowse} className={iconButton}><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
     </>} />
@@ -187,7 +182,7 @@ function SnapshotReview({ reply, allChat = false, outsideGit = false, workspaceP
           </div>
         })}
         {!!result?.next_offset && <button type="button" disabled={loadingMore} className="p-2 text-xs underline" onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Show more files'}</button>}
-        {result?.comparison && changes.length === 0 && <p className="p-2 text-sm">{reply ? 'No files changed in this reply.' : 'No changes since this review point.'}</p>}
+        {result?.comparison && changes.length === 0 && <p className="p-2 text-sm">{reply ? 'No files changed in this reply.' : 'No saved changes in this chat.'}</p>}
       </div>
       {!result?.comparison?.skipped_count && (result?.comparison?.uncaptured_changes ?? 0) > 0 && <p role="status" className="p-3 text-xs text-muted-foreground">{result?.comparison?.uncaptured_changes} files could not be compared.</p>}
     </div>

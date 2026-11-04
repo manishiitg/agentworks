@@ -551,7 +551,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 			// Discovery includes list for readers; dispatch checks the action,
 			// live ownership and authoring consent before any mutation.
 			return t.Allows("crews:read") || t.Allows("crews:write")
-		case "ask_crew", "suggest_crew_change", "review_crew_snapshot":
+		case "ask_crew", "suggest_crew_change":
 			return t.Allows("crews:run")
 		case "undo_crew_reply":
 			return t.Allows("crews:write")

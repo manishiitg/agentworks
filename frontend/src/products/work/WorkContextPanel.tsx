@@ -131,7 +131,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   }
   const automations = snapshot?.automations || []
   const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
-  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={() => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', 'review'); onOpen('files') }}/> : null
+  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={() => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', 'review-uncommitted'); onOpen('files') }}/> : null
   // One Access row (owner, 3 Nov): where it lives · who can use it, both as the server reports them.
   const who = sharing?.scope === scope ? sharing.detail : undefined
   const theirs = sharing?.scope === scope && !sharing.owner
