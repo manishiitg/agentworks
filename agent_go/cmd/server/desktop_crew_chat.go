@@ -117,7 +117,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		data, _ := json.Marshal(rows)
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	}
-	if call.Operation == "agent_ask" || call.Operation == "agent_read" {
+	if call.Operation == "agent_ask" || call.Operation == "agent_read" || call.Operation == "agent_answer" {
 		return api.desktopMacSharedAgent(ctx, claims, profile, project, call)
 	}
 	if call.Tab != "" && !crewMacTabID(call.Tab) {
@@ -372,6 +372,21 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	conversation, err := api.resolveAgentProfileConversation(r, profile, key, "")
 	if err != nil {
 		return reply(409, map[string]string{"error": "This agent is unavailable right now."})
+	}
+	if call.Operation == "agent_answer" {
+		var input struct {
+			Provider string                           `json:"provider"`
+			PromptID string                           `json:"prompt_id"`
+			Answers  []codingAgentQuestionAnswerInput `json:"answers"`
+			Auto     bool                             `json:"auto"`
+		}
+		if json.Unmarshal(call.Answer, &input) != nil || input.PromptID == "" {
+			return reply(400, map[string]string{"error": "Give the pending question and your answer."})
+		}
+		if err := api.submitSharedAgentQuestion(conversation.SessionID, input.Provider, input.PromptID, input.Auto, input.Answers); err != nil {
+			return reply(409, map[string]string{"error": err.Error()})
+		}
+		return reply(200, map[string]any{"success": true})
 	}
 	if call.Operation == "agent_ask" {
 		message := strings.TrimSpace(call.Message)

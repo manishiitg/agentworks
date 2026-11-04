@@ -31,7 +31,8 @@ type pendingCodingAgentClarification struct {
 	ctx       context.Context
 	askedAt   time.Time
 	ask       *crewAskInputScope // Non-nil only for an external, attended Crew Ask.
-	askedTurn string             // the turn that asked, as clarificationTurnToken saw it
+	turnID    string
+	askedTurn string // the turn that asked, as clarificationTurnToken saw it
 }
 
 func codingAgentClarificationSchema() map[string]interface{} {
@@ -135,7 +136,7 @@ func (api *StreamingAPI) emitCodingAgentClarification(p *pendingCodingAgentClari
 	}
 	now := time.Now()
 	data := &unifiedevents.CodingAgentQuestionEvent{
-		BaseEventData: unifiedevents.BaseEventData{Timestamp: now, SessionID: p.sessionID},
+		BaseEventData: unifiedevents.BaseEventData{Timestamp: now, SessionID: p.sessionID, Metadata: map[string]interface{}{"turn_id": p.turnID}},
 		Provider:      p.provider, PromptID: p.promptID, Kind: kind, Outcome: outcome, Answers: answers,
 	}
 	if kind == "requested" {
@@ -221,7 +222,7 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 			return "", err
 		}
 	}
-	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx, askedAt: time.Now(), ask: ask, askedTurn: api.clarificationTurnToken(sessionID)}
+	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx, askedAt: time.Now(), ask: ask, turnID: api.currentConversationTurnExecutionID(sessionID), askedTurn: api.clarificationTurnToken(sessionID)}
 	api.codingAgentClarificationsMu.Lock()
 	if api.codingAgentClarifications == nil {
 		api.codingAgentClarifications = map[string]*pendingCodingAgentClarification{}
@@ -495,4 +496,16 @@ func (api *StreamingAPI) settleCodingAgentClarificationLocked(p *pendingCodingAg
 	delete(api.codingAgentClarifications, p.sessionID)
 	p.answers <- answers
 	return nil
+}
+
+// The relay derives sessionID from the authenticated sender's own shared thread.
+// Never follow an ended question into a new turn under the owner's identity.
+func (api *StreamingAPI) submitSharedAgentQuestion(sessionID, provider, promptID string, auto bool, input []codingAgentQuestionAnswerInput) error {
+	api.codingAgentClarificationsMu.Lock()
+	defer api.codingAgentClarificationsMu.Unlock()
+	p := api.codingAgentClarifications[sessionID]
+	if p == nil || p.promptID != promptID || p.provider != provider || p.ctx.Err() != nil || p.ask != nil || clarificationAskingTurnEnded(p.askedTurn, api.clarificationTurnToken(sessionID)) {
+		return fmt.Errorf("this question is no longer pending")
+	}
+	return api.settleCodingAgentClarificationLocked(p, auto, input)
 }
