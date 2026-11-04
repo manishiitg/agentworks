@@ -35,6 +35,8 @@ function agentChatTabId(projectId: string, tab: string) {
  * agents by a switch that shows the address). The purpose is the tab's own, set from its chat. Saved as you go. */
 export function MacSharedAgents({ projectId, connection, network }: { projectId: string; connection: string; network: string }) {
   const [rows, setRows] = useState<AgentRow[] | null>(null)
+  // Where each agent answers: a published agent is on the server (the server decides; absent means this Mac).
+  const [placements, setPlacements] = useState<Record<string, { location: 'publishing' | 'server' }>>({})
   const [shared, setShared] = useState<SharedAgent[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const { team } = useProjectTeam(projectId)
@@ -51,8 +53,8 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
     void viaConnection<{ shared_agents?: boolean }>(connection, '/api/crew-sync-capabilities').then(caps => { if (live) setSupported(Boolean(caps.shared_agents)) }).catch(() => {})
     void viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(data => { if (live) setPeople(data.users || []) }).catch(() => {})
     // A purpose set from a tab's chat shows here on the next read.
-    const load = () => desktopRequest<{ tabs: AgentRow[]; agents: SharedAgent[] }>(endpoint, 'POST', { action: 'agents' })
-      .then(data => { if (!live) return; setRows(data.tabs || []); setShared(current => busyRef.current ? current : data.agents || []) })
+    const load = () => desktopRequest<{ tabs: AgentRow[]; agents: SharedAgent[]; placements?: Record<string, { location: 'publishing' | 'server' }> }>(endpoint, 'POST', { action: 'agents' })
+      .then(data => { if (!live) return; setRows(data.tabs || []); setPlacements(data.placements || {}); setShared(current => busyRef.current ? current : data.agents || []) })
       .catch(cause => { if (live) { setRows(current => current || []); setError(cause instanceof Error ? cause.message : "This Crew's agents could not be read.") } })
     void load()
     const timer = window.setInterval(() => { void load() }, 15000)
@@ -105,6 +107,7 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
         <div className="flex items-center gap-2">
           <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
           <span className="min-w-0 truncate text-sm font-semibold">{row.name}</span>
+          <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] leading-4 text-muted-foreground">{placements[row.tab]?.location === 'server' ? 'Server' : placements[row.tab]?.location === 'publishing' ? 'Moving to the server' : 'Mac'}</span>
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">{!agent ? 'Only you' : saved ? 'Shared' : !purpose ? 'Set its purpose to share it' : 'Add people to share it'}</span>
           <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null)} />
         </div>
