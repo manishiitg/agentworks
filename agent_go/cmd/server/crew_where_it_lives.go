@@ -103,12 +103,19 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 	if !ok {
 		return fail(404, "This Crew is unavailable on your Mac.")
 	}
-	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(ctx, crewMacCallerKey{}, call.Caller))
+	callCtx := context.WithValue(ctx, crewMacCallerKey{}, call.Caller)
+	if unattended, _ := sent["unattended"].(bool); unattended {
+		callCtx = context.WithValue(callCtx, crewMacUnattendedKey{}, true)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(callCtx)
 	recorder := httptest.NewRecorder()
 	api.externalWorkspaceConversation(recorder, r, call.Action, args, binding, manifest)
 	log.Printf("[CREW_CHAT_RELAY] local project=%s operation=workspace action=%s caller=%q status=%d", project, call.Action, call.Caller, recorder.Code)
 	return crewChatResult{ID: call.ID, Status: recorder.Code, Body: recorder.Body.Bytes()}
 }
+
+// crewMacUnattendedKey marks a Mac relay ask that nobody can answer questions for (a Slack direct message).
+type crewMacUnattendedKey struct{}
 
 const crewOnMacSlackRefusal = "This Crew is on its owner's Mac. Ask them to share it so it works here."
 
@@ -132,7 +139,9 @@ func (api *StreamingAPI) askCrewMacAndWait(ctx context.Context, owner, project, 
 		raw, _ := json.Marshal(args)
 		return callCrewMacFor(ctx, owner, project, crewChatCall{Operation: "workspace", Action: action, Args: raw, Caller: caller}, 70*time.Second)
 	}
-	result := call("ask", map[string]any{"message": message, "wait_seconds": float64(externalCrewMaxWaitSeconds)})
+	// Nobody can answer a question card from here (Slack has no answer path), so the turn runs unattended like a
+	// direct Slack turn: its questions are answered automatically instead of holding the run (PLAT-746-316).
+	result := call("ask", map[string]any{"message": message, "wait_seconds": float64(externalCrewMaxWaitSeconds), "unattended": true})
 	answer := ""
 	deadline := time.Now().Add(15 * time.Minute)
 	for {

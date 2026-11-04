@@ -111,6 +111,9 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		user, connection := mcpTaskPrincipal(r)
 		scope := &crewAskInputScope{User: user, Connection: connection, Workspace: workspaceID, Chat: chat.ID, Session: chat.SessionID, Query: fmt.Sprintf("query_%d", time.Now().UnixNano())}
 		askContext := context.WithValue(r.Context(), crewAskInputKey{}, scope)
+		if unattended, _ := r.Context().Value(crewMacUnattendedKey{}).(bool); unattended {
+			askContext = r.Context() // no answer path: the turn stays unattended and its questions are answered for it
+		}
 		if appInMain {
 			askContext = context.WithValue(askContext, deliveredAgentMessageKey{}, map[string]interface{}{"source": "owner_app", "sender_label": appLabel})
 		}
