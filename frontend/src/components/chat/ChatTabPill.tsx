@@ -136,9 +136,13 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
-      {/* An agent's icon (when it has one) with the shared badge, as in the left menu (owner, 4 Nov, option C). */}
-      {agent && <AgentIcon name={displayName} icon={agent.info?.icon} active={isActive} shared={agent.info?.sharedWith} letter={false} />}
-      {agent ? <AgentMark state={isBlank ? null : menuState} asking={agent.asking} /> :
+      {/* An agent's icon (when it has one) with the shared badge, as in the left menu (owner, 4 Nov, option C). Its mark
+          (working, needs you, failed, new reply) sits on the icon's corner so it takes no extra space (owner, 4 Nov). */}
+      {agent && agent.info?.icon?.trim()
+        ? <span className="relative shrink-0"><AgentIcon name={displayName} icon={agent.info.icon} active={isActive} shared={agent.info.sharedWith} letter={false} />
+            <span className="absolute -right-1 -top-1 grid place-items-center rounded-full bg-background"><AgentMark state={isBlank ? null : menuState} asking={agent.asking} /></span></span>
+        : agent && <AgentIcon name={displayName} active={isActive} shared={agent.info?.sharedWith} letter={false} />}
+      {agent ? (!agent.info?.icon?.trim() && <AgentMark state={isBlank ? null : menuState} asking={agent.asking} />) :
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {/* An idle tab shows its owner a quiet purpose icon in this spot instead (owner, 3 Nov). */}
         {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}
