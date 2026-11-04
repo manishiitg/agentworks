@@ -931,6 +931,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [])
   const isMobile = useMobileViewport()
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
+  // On a phone, opening an agent (from the drawer, the board or a shortcut) shows its chat.
+  useEffect(() => { if (isMobile && tabId) setMobilePane('chat') }, [isMobile, tabId])
   const openChatPane = useCallback(() => { setChatOpen(true); setMobilePane('chat') }, [])
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
   const [viewNavigationRevision, setViewNavigationRevision] = useState(0)
