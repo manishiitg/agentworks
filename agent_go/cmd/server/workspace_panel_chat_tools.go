@@ -87,9 +87,9 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 				if claims == nil || claims.UserID != user {
 					return "", errors.New("Use your own chat to change your display.")
 				}
-				var update *bool
-				if show, ok := args["show_context_indicator"].(bool); ok {
-					update = &show
+				update, err := chatPreferencesUpdateFromArgs(args)
+				if err != nil {
+					return "", err
 				}
 				recorder := httptest.NewRecorder()
 				api.chatPreferences(recorder, httptest.NewRequest(http.MethodGet, "/api/chat-preferences", nil).WithContext(ctx), update)

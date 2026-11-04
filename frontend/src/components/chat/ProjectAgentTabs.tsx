@@ -15,26 +15,13 @@ import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import type { ChatTabPillProps } from './ChatTabPill'
-import { useOpenAgentStore } from './AgentCard'
+import { useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
-import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
+import { useAgentMenuState } from './agentMenuState'
 
-type AgentMenuState = 'waiting' | 'running' | 'failed' | 'done' | null
 const AGENT_STATE_WORD = { waiting: 'Needs you', running: 'Working', failed: 'Stopped with an error', done: 'Finished' } as const
-
-function useAgentMenuState(tabId: string, workspaceActivity?: 'running' | 'waiting' | null): AgentMenuState {
-  const activity = useChatRuntimeActivity(tabId)
-  const failed = useChatStore(state => {
-    const tab = state.chatTabs[tabId]
-    return !!tab?.sessionId && state.activeTabId !== tabId && runtimeTurnFailedUnseen(state.activeSessionsCache.find(session => session.session_id === tab.sessionId), tab.lastAccessedAt)
-  })
-  const done = useChatStore(state => state.activeTabId !== tabId && !!state.chatTabs[tabId]?.hasUnreadCompletion)
-  if (activity.state === 'waiting' || workspaceActivity === 'waiting') return 'waiting'
-  if (activity.state === 'running' || workspaceActivity === 'running') return 'running'
-  return failed ? 'failed' : done ? 'done' : null
-}
 
 function AgentMenuActivity({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
   const state = useAgentMenuState(tabId, workspaceActivity)
@@ -143,6 +130,21 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       },
     }
   }
+  // In Left menu mode (the person's choice, owner 4 Nov) the agents are listed in the app's left menu, not as tabs here:
+  // the list there reads them from this store, and its "+ New agent" opens the name form below.
+  const agentsView = useAgentsViewStore(state => state.view)
+  const menuMode = surface === 'work' && agentsView === 'menu' && !phone
+  const crewAgents = surface === 'work' && placeProject ? tabs.filter(isAgentTab).map(tab => ({ tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined })) : []
+  const crewKey = JSON.stringify([placeProject, sideChatsHere, crewAgents.map(agent => [agent.tabId, agent.name, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  useEffect(() => {
+    if (placeProject) useCrewAgentsStore.getState().set(placeProject, crewAgents, sideChatsHere)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crewKey])
+  useEffect(() => {
+    const open = (event: Event) => { if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId === placeProject && sideChatsHere) setNewTabName(current => current ?? '') }
+    window.addEventListener('agentworks:new-agent', open)
+    return () => window.removeEventListener('agentworks:new-agent', open)
+  }, [placeProject, sideChatsHere])
   // The open tab's details, for the purpose line at the top of its chat.
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
@@ -316,7 +318,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      <div ref={stripRef} className="hidden min-w-[84px] items-center gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
+      <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
@@ -348,7 +350,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       />{renderAfterTab?.(tab)}</div>
       })}
       </div>
-      {(tabs.length > 1 || phone || livesOnMac) && (
+      {!menuMode && (tabs.length > 1 || phone || livesOnMac) && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
@@ -447,7 +449,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       )}
 
       {newTabForm}
-      {sideChatsHere && newTabName === null && (
+      {!menuMode && sideChatsHere && newTabName === null && (
         <button
           type="button"
           onClick={() => setNewTabName('')}
