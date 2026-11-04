@@ -14,7 +14,10 @@ import (
 // private transfer/history directory. Access removal stops future grants/sync;
 // already downloaded files remain on their computer.
 func crewTeamNativeFolders(ctx context.Context, claims *UserClaims) []workflowtypes.WorkflowFolderGrant {
-	if !IsLocalMode() || !websiteDeviceClaims(claims) {
+	if !IsLocalMode() {
+		return crewTeamServerFolders(claims)
+	}
+	if !websiteDeviceClaims(claims) {
 		return nil
 	}
 	connections, e := readDesktopConnections(claims.UserID)

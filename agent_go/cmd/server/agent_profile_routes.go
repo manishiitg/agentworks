@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
@@ -472,6 +473,12 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		log.Printf("[CREW_TEAM] member turn refused user=%s provider=%s reason=no_own_login", logUsernameForUserID(caller), conversation.Provider)
 		externalError(w, http.StatusConflict, "own_login_required", fmt.Sprintf("Sign in to %s on this server once (Providers), so your agent here runs on your own login.", providerAccountProductName(conversation.Provider)))
 		return
+	}
+	// The member's own copy of the team's shared folder is current before their agent starts (crew_team_server_copy.go).
+	if caller := productWorkspaceUserID(r.Context()); crewTeamOnlyMember(conversation.WorkspacePath, caller) {
+		sync, done := context.WithTimeout(r.Context(), 30*time.Second)
+		_, _ = api.syncCrewTeamServerCopy(sync, caller, crewResourceProjectID(conversation.ConversationKey), true)
+		done()
 	}
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {

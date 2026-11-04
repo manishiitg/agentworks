@@ -497,7 +497,7 @@ func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnect
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, e := desktopHTTPClient().Do(req)
+	resp, e := crewTeamHTTPClient(ctx).Do(req)
 	if e != nil {
 		return fmt.Errorf("cannot reach your company's server; local changes stay on this computer")
 	}

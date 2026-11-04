@@ -405,5 +405,25 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatal("first upload into empty generation", w.Code, w.Body.String())
 	}
 	t.Log("[CREW_TEAM_PROOF] first_upload_into_empty_folder=pass")
-
+	// A member's server copy (their agents on the server, 5 Nov): what their agent writes reaches the team as theirs,
+	// and it is their attached folder; nobody else gets it.
+	copyRoot, err := api.syncCrewTeamServerCopy(t.Context(), "member", "team-test", true)
+	if err != nil || copyRoot == "" {
+		t.Fatalf("member server copy: %q %v", copyRoot, err)
+	}
+	if err = os.WriteFile(filepath.Join(copyRoot, "from-server-agent.md"), []byte("written by the member's agent"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = api.syncCrewTeamServerCopy(t.Context(), "member", "team-test", false); err != nil {
+		t.Fatal(err)
+	}
+	if w = call("owner", "GET", base+"/files", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"from-server-agent.md"`) || !strings.Contains(w.Body.String(), `"author":"member"`) {
+		t.Fatalf("server copy upload not recorded as the member's: %d %s", w.Code, w.Body.String())
+	}
+	if grants := crewTeamServerFolders(&UserClaims{UserID: "member"}); len(grants) != 1 || grants[0].Path != copyRoot || grants[0].Alias != "other" {
+		t.Fatalf("member's attached team folder: %+v", grants)
+	}
+	if grants := crewTeamServerFolders(&UserClaims{UserID: "outsider"}); len(grants) != 0 {
+		t.Fatalf("outsider got a team folder: %+v", grants)
+	}
 }
