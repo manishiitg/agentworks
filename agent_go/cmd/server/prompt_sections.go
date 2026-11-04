@@ -231,7 +231,6 @@ You share this server with other people: only stop processes you started, and ne
 const nativeSubagentsGuidance = `## Splitting work
 Do the work yourself by default. Do not use your CLI's built-in subagents (its Agent or Task tool): each one runs a separate full conversation on the person's limit.
 Only when it clearly makes sense (a large, independent part of a job that would go faster in another agent tab of this Crew), ask the person first, saying what you would hand over and to which tab. Only after they agree, or when they asked for it (a /deep-work request counts), use ` + "`ask_project_chat`" + ` or ` + "`open_project_chat`" + `; the crew-agents skill has the details. Never split a small task.
-` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly yourself in this chat, one after another or together, and read their results.
 A review, audit or check that must not change anything: do it yourself.`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
