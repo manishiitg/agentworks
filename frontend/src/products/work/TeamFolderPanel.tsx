@@ -67,7 +67,7 @@ function TeamFolderPanel({ team, target, onAsk }: Selection & { onAsk: () => voi
     if (text !== saved && selected?.path !== file.path) { setError('Save your current edit before opening another file.'); return }
     if (file.size > 1 << 20) { setError('This file is too large for the text editor. Use Download to open it on your computer.'); return }
     setBusy(true); setError('')
-    try { const content = await teamRequest<string>(target, `/file?path=${encodeURIComponent(file.path)}`, 'GET', undefined, true); if (content.includes('\0')) throw new Error('This is a binary file. Use Download to open it on your computer.'); setSelected(file); setText(content); setSaved(content) } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
+    try { const blob = await teamRequest<Blob>(target, `/file?path=${encodeURIComponent(file.path)}`, 'GET', undefined, 'blob'); const content = new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer()); if (content.includes('\0')) throw new Error('This is a binary file. Use Download to open it on your computer.'); setSelected(file); setText(content); setSaved(content) } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
   const download = async (file: SharedFile) => {
     setBusy(true); setError('')
@@ -83,7 +83,7 @@ function TeamFolderPanel({ team, target, onAsk }: Selection & { onAsk: () => voi
     try {
       await teamRequest(target, `/file?${new URLSearchParams({ path, base, transfer: crypto.randomUUID() })}`, 'PUT', content, true)
       setVersion(v => v + 1)
-      if (typeof content === 'string') { setSaved(content); const data = await teamRequest<{ files: SharedFile[] }>(target, '/files'); setFiles(data.files); setSelected(data.files.find(f => f.path === path)) }
+      if (typeof content === 'string') { setText(content); setSaved(content); const data = await teamRequest<{ files: SharedFile[] }>(target, '/files'); setFiles(data.files); setSelected(data.files.find(f => f.path === path)) }
     } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
   return <div className="flex min-h-0 flex-1 flex-col">
