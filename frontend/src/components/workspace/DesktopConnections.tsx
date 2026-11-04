@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
-import { SharedAgentRow, SharedAgentSheet, useSharedWithMe, type SharedWithMeAgent } from './SharedWithMe'
+import { useSharedCrewRows } from './SharedWithMe'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
 
@@ -52,8 +52,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
   }} />
-  const [openAgent, setOpenAgent] = useState<SharedWithMeAgent | null>(null)
-  const sharedAgentRows = useSharedWithMe().map(agent => <SharedAgentRow key={`${agent.workspace_id}:${agent.chat_id}`} agent={agent} selected={openAgent?.chat_id === agent.chat_id} onOpen={() => setOpenAgent(agent)} />)
+  const sharedAgentRows = useSharedCrewRows()
   const { macs, server } = groupByMac(orderedProjects.filter(project => filter === 'all' || (filter === 'dashboard' ? project.kind === 'crew' && project.mode === 'run' : project.kind === filter && (project.kind !== 'crew' || project.mode !== 'run'))))
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
     <div className="py-2"><LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={[]} workTypes /></div>
@@ -68,7 +67,6 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     {macs.length > 0 && server.length > 0 && <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">On the server</h2>}
     <div className="space-y-1"><OwnershipGroups projects={server} render={renderProject} sharedAgents={sharedAgentRows} /></div>
     {children}
-    {openAgent && <SharedAgentSheet agent={openAgent} onClose={() => setOpenAgent(null)} />}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
   </div>
 }
@@ -81,9 +79,8 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const { refresh, error: directoryError } = state
   const { recent, visit } = useWorkHistory(projects)
   const [filter, setFilter] = useState('all')
-  // Agents shared with you on the server this window shows (the local app lists none).
-  const [openAgent, setOpenAgent] = useState<SharedWithMeAgent | null>(null)
-  const sharedAgentRows = useSharedWithMe().map(agent => <SharedAgentRow key={`${agent.workspace_id}:${agent.chat_id}`} agent={agent} selected={openAgent?.chat_id === agent.chat_id} onOpen={() => setOpenAgent(agent)} />)
+  // Crews whose agents are shared with you on the server this window shows (the local app lists none).
+  const sharedAgentRows = useSharedCrewRows()
   useEffect(() => { if (!['all', 'crew', 'goal', 'dashboard'].includes(filter) && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   useEffect(() => {
     void refresh()
@@ -122,8 +119,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       <div className="space-y-1"><OwnershipGroups projects={visible} render={renderProject} sharedAgents={sharedAgentRows} /></div>
       {(filter === 'all' || filter === active) && children}
-      {openAgent && <SharedAgentSheet agent={openAgent} onClose={() => setOpenAgent(null)} />}
-      {locations.map(connection => {
+        {locations.map(connection => {
         const status = inventory[connection.id]?.status
         if (!status) return <p key={connection.id} role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading {connection.name}…</p>
         if (status === 'unavailable') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => void refresh()}>{connection.name} unavailable · Retry</button>

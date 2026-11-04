@@ -7,7 +7,7 @@ import { DesktopConnections } from './DesktopConnections'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('../../services/desktopConnections', () => ({ desktopRequest: mocks.request }))
-vi.mock('../../services/api', () => ({ getLocalApiBaseUrl: () => 'http://127.0.0.1:18743', getDesktopApiBaseUrl: () => 'http://127.0.0.1:18743' }))
+vi.mock('../../services/api', () => ({ default: { get: () => new Promise(() => {}) }, getApiBaseUrl: () => '', getAuthToken: () => '', getLocalApiBaseUrl: () => 'http://127.0.0.1:18743', getDesktopApiBaseUrl: () => 'http://127.0.0.1:18743' }))
 vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
 vi.mock('../../utils/appNavigation', () => ({ openAppProduct: vi.fn() }))
 beforeEach(() => { invalidateChatIdentity() })
