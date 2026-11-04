@@ -15,7 +15,7 @@ import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import type { ChatTabPillProps } from './ChatTabPill'
-import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore } from './AgentCard'
+import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
@@ -129,20 +129,40 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     }
   }
   // In Left menu mode (the person's choice, owner 4 Nov) the agents are listed in the app's left menu, not as tabs here:
-  // the list there reads them from this store, and its "+ New agent" opens the name form below.
+  // the list there reads them from this store; "+" stays in this top line.
   const agentsView = useAgentsViewStore(state => state.view)
-  const menuMode = surface === 'work' && agentsView === 'menu' && !phone
-  const crewAgents = surface === 'work' && placeProject ? tabs.filter(isAgentTab).map(tab => ({ tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined })) : []
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, crewAgents.map(agent => [agent.tabId, agent.name, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  // Left menu is the default, also before the saved choice has loaded.
+  const menuMode = surface === 'work' && agentsView !== 'tabs' && !phone
+  // The strip's own handlers for one agent, so the left menu and the rail offer the same rename, order, show/hide and
+  // close (owner, 4 Nov: "did we lose more features?").
+  const agentActions = (tab: ChatTab): CrewAgentActions => {
+    const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
+    const pinKey = tab.tabId === canonicalTabId ? undefined : sideChatKey(tab)
+    const position = ownedListed.findIndex(chat => chat.conversation_key === key)
+    const before = position > 0 ? ownedListed[position - 1].conversation_key : undefined
+    const after = position >= 0 ? ownedListed[position + 1]?.conversation_key : undefined
+    return {
+      orderKey: key,
+      renameDraft: key ? sideChatName(tab) : undefined,
+      rename: key ? name => renameSideChat(tab, name) : undefined,
+      moveUp: key && before ? () => { void moveSideChat(key, before) } : undefined,
+      moveDown: key && after ? () => { void moveSideChat(key, after) } : undefined,
+      dropHere: key ? from => { void moveSideChat(from, key) } : undefined,
+      setPinned: pinKey ? pinned => { void pinSideChat(pinKey, pinned) } : undefined,
+      close: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
+    }
+  }
+  // The left menu's order: shown agents (pinned, or open now) first, then the hidden ones. Cmd/Ctrl+1..5 and the arrows
+  // follow it in Left menu mode, so reordering there changes the numbers.
+  const agentTabs = tabs.filter(isAgentTab)
+  const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
+  const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
+  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index) => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.pinned, agent.actions?.close ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crewKey])
-  useEffect(() => {
-    const open = (event: Event) => { if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId === placeProject && sideChatsHere) setNewTabName(current => current ?? '') }
-    window.addEventListener('agentworks:new-agent', open)
-    return () => window.removeEventListener('agentworks:new-agent', open)
-  }, [placeProject, sideChatsHere])
   // The open tab's details, for the purpose line at the top of its chat.
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
@@ -251,10 +271,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Alt+Shift+T / Option+Shift+T opens one
   // (PLAT-571), only while this product is on screen and never for a key
   // the terminal already took (it marks its own Alt keys handled).
-  const tabsRef = useRef(tabs)
-  tabsRef.current = tabs
   const visibleTabsRef = useRef(visibleTabs)
-  visibleTabsRef.current = visibleTabs
+  visibleTabsRef.current = menuMode ? menuOrder : visibleTabs
+  const numberedTabsRef = useRef(tabs)
+  numberedTabsRef.current = menuMode ? menuOrder : tabs
   useEffect(() => {
     if (!sideChatsHere) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -279,7 +299,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         setNewTabName(current => current ?? '')
         return
       }
-      const target = tabsRef.current[action.index]
+      const target = numberedTabsRef.current[action.index]
       if (target) onSelectTab(target.tabId)
     }
     window.addEventListener('keydown', onKeyDown)
@@ -449,7 +469,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       )}
 
       {newTabForm}
-      {!menuMode && sideChatsHere && newTabName === null && (
+      {sideChatsHere && newTabName === null && (
         <button
           type="button"
           onClick={() => setNewTabName('')}

@@ -2,7 +2,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeWorkWorkspaceView, WorkChatTabs, useWorkChatTab } from './WorkSurface'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { agentApi } from '../../services/api'
@@ -12,6 +12,7 @@ import { routeView } from '../../utils/productRoutes'
 import { CREW_PRODUCT } from './projectProduct'
 import type { WorkSession } from './workSessions'
 import * as sessionRestore from '../../utils/sessionRestore'
+import { useAgentsViewStore } from '../../components/chat/AgentCard'
 
 vi.mock('../../stores/useChatStore', async original => ({ ...await original<typeof import('../../stores/useChatStore')>(), waitForChatStoreHydration: async () => {} }))
 
@@ -53,6 +54,8 @@ describe('fresh deep links keep their view', () => {
 })
 
 describe('Crew native tab dragging', () => {
+  // The tab strip exists only when the person chose Tabs; Left menu is the default.
+  beforeEach(() => useAgentsViewStore.getState().set('tabs'))
   it('restores all tab names without loading background histories or changing selection', async () => {
     // PLAT-746-245: a slow history for the first side chat must not hide later tabs.
     const main = { tabId: 'main', sessionId: 'session-main', name: 'Main', config: {}, metadata: {
