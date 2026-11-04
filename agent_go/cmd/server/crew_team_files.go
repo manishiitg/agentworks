@@ -336,6 +336,10 @@ func openCrewTeamFile(root, rel string) (*os.File, error) {
 		return nil, err
 	}
 	info, err := f.Stat()
+	if err == nil && info.IsDir() {
+		f.Close()
+		return nil, &os.PathError{Op: "open", Path: rel, Err: syscall.EISDIR}
+	}
 	if err != nil || !info.Mode().IsRegular() {
 		f.Close()
 		return nil, fmt.Errorf("choose an ordinary file in the shared folder")

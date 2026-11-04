@@ -334,7 +334,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 
 func crewTeamCurrentFile(root, rel string) (*crewsync.File, error) {
 	f, e := openCrewTeamFile(root, rel)
-	if os.IsNotExist(e) || errors.Is(e, syscall.ENOTDIR) {
+	if os.IsNotExist(e) || errors.Is(e, syscall.ENOTDIR) || errors.Is(e, syscall.EISDIR) {
 		return nil, nil
 	}
 	if e != nil {
@@ -389,6 +389,7 @@ func applyCrewTeamDownload(ctx context.Context, b *crewTeamLocal, s *crewsync.Sn
 				}
 			}
 		}
+		log.Printf("[CREW_TEAM_LOCAL] project=%s actor=%s client=%s path=%q event=received deleted=%t", b.Project, b.RemoteUser, b.Client, rel, change.After == nil)
 		if change.After == nil {
 			delete(b.LocalBase, change.Path)
 		} else {
