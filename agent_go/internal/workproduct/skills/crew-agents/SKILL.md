@@ -29,6 +29,9 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
 
 ## Asking another tab
 
+- Split work into another tab only when it clearly makes sense, and ask the
+  person first (say what you would hand over and to which tab), unless they
+  asked for it; a /deep-work request counts as asking.
 - Give part of a job to a tab with `ask_project_chat`; make the message
   self-contained, since tabs share the folder but not your conversation.
 - Open a named tab with `open_project_chat` (a name and, optionally, a first

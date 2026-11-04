@@ -1,4 +1,4 @@
-Run the /run-plan-drift review. You do it yourself in this turn, and may use your own subagents for parallel reading or analysis.
+Run the /run-plan-drift review. You do it yourself in this turn.
 Do this:
 
 Call help(action="command", kind="run-plan-drift", focus="{{context}}") and follow the returned instructions verbatim.
