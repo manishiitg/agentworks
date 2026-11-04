@@ -205,6 +205,16 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			binding, _ = crewroot.ReadSync(roots.ID)
+			// Shares kept from before Reach was turned off go to the new online copy through the Access card's own path.
+			if shared := readMacSharedAgents(roots.ID); len(shared) > 0 && binding != nil {
+				if rows, e := api.macAgentRows(r.Context(), claims, roots.ID); e != nil {
+					log.Printf("[CREW_RELAY] project=%s reach_on could not restore its shares: %v", roots.ID, e)
+				} else if _, _, e = api.pushMacSharedAgents(r.Context(), claims, roots.ID, binding, connection, rows, shared); e != nil {
+					log.Printf("[CREW_RELAY] project=%s reach_on could not restore its shares: %v", roots.ID, e)
+				} else {
+					log.Printf("[CREW_RELAY] project=%s reach_on restored shares=%d", roots.ID, len(shared))
+				}
+			}
 		}
 		externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: binding})
 		return
@@ -229,8 +239,15 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			externalError(w, 409, crewSyncErrorCode(err), err.Error())
 			return
 		}
+		// The share list stays (owner, 4 Nov): turning it back on shares the same agents with the same people.
+		shared := readMacSharedAgents(roots.ID)
 		removed := removeCrewSyncFiles(roots.ID)
-		log.Printf("[CREW_RELAY] project=%s reach_off server_project=%s server=%s sync_files_removed=%d", roots.ID, binding.PeerProjectID, connection.Server, removed)
+		if len(shared) > 0 {
+			if err := writeMacSharedAgents(roots.ID, shared); err != nil {
+				log.Printf("[CREW_RELAY] project=%s reach_off could not keep its share list: %v", roots.ID, err)
+			}
+		}
+		log.Printf("[CREW_RELAY] project=%s reach_off server_project=%s server=%s sync_files_removed=%d shares_kept=%d", roots.ID, binding.PeerProjectID, connection.Server, removed, len(shared))
 		externalJSON(w, crewSyncReply{ProjectID: roots.ID})
 		return
 	}

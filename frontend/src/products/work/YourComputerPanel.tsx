@@ -218,10 +218,11 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   // The boxes sit on the page directly, without section labels (owner, 3 Nov: less text).
   return <div className="space-y-5 text-sm">
     <section aria-label="Where it lives" className="space-y-1">
-      <div className="flex items-center justify-between gap-2.5">
-        <p role="status" className="flex items-center gap-2 text-base font-semibold">
-          {moving ? <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
-          {!status ? 'Checking…' : moving ? (status.bytes_total ? `Moving online… ${sizeLabel(status.bytes_done || 0)} of ${sizeLabel(status.bytes_total)}` : 'Moving online…') : online ? 'Online' : binding ? ['On this Mac', networkName(binding.connection_id)].filter(Boolean).join(' · ') : 'On this Mac · Offline'}
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        {/* Wraps in a narrow panel; the dot keeps room for its glow (owner, 4 Nov: it was cut off). */}
+        <p role="status" className="flex min-w-0 items-start gap-2 text-base font-semibold">
+          {moving ? <RefreshCw aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : <span aria-hidden="true" className={`ml-[3px] mt-[7px] h-2.5 w-2.5 shrink-0 rounded-full ${online || binding ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(62,207,122,0.2)]' : 'bg-muted-foreground/60'}`} />}
+          <span className="min-w-0 break-words">{!status ? 'Checking…' : moving ? (status.bytes_total ? `Moving online… ${sizeLabel(status.bytes_done || 0)} of ${sizeLabel(status.bytes_total)}` : 'Moving online…') : online ? 'Online' : binding ? ['On this Mac', networkName(binding.connection_id)].filter(Boolean).join(' · ') : 'On this Mac · Offline'}</span>
         </p>
         {binding && !online && !moving && open !== 'move' && <Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={() => setOpen('move')}>Move online</Button>}
       </div>
@@ -234,8 +235,8 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         {link && <Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open online</Button>}
       </div>}
       {status && !online && !moving && <label className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-border px-3 py-2">
-        <span className="text-sm">Reach it from your phone and the web</span>
-        <Switch aria-label="Reach it from your phone and the web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
+        <span className="text-sm">Use from phone and web</span>
+        <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
       </label>}
       {asking && !binding && <div role="group" aria-label="Which network?" className="mt-2 space-y-1.5 rounded-2xl border border-border p-3">
         <p className="text-xs text-muted-foreground">Which network?</p>
@@ -255,7 +256,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
         {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
       </div>
-      {!binding && <p className="text-[12px] text-muted-foreground">Turn on Reach above to use it from other places and so people can message your agents</p>}
+      {!binding && <p className="text-[12px] text-muted-foreground">Turn on Use from phone and web above so you can use it from other places and people can message your agents</p>}
       {/* A Crew on this Mac shares its agents below; sharing the Crew with a team belongs to its online step (owner, 3 Nov). */}
       {online && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">Team</span><span className="text-[13px] text-muted-foreground">Choose who can use it on its page online</span>
         <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
@@ -406,7 +407,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
           </div>}
           <label className="flex items-center gap-2 text-xs"><Switch aria-label={`${row.name} can make changes for them`} checked={Boolean(agent.can_change)} disabled={busy} onCheckedChange={on => update(row.tab, { can_change: on })} />Can make changes for them</label>
           <p className="text-[11px] text-muted-foreground">{agent.can_change ? 'It can change files, run commands and use your apps and logins for them.' : 'It only answers their questions.'}</p>
-          <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">Reach it from
+          <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">Use it from
             {([[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT or Claude'], [Hash, 'Slack']] as [LucideIcon, string][]).map(([Icon, label]) => <Icon key={label} role="img" aria-label={label} className="h-3.5 w-3.5"><title>{label}</title></Icon>)}
             their apps ·<Terminal role="img" aria-label="Claude Code, Codex and other agents" className="h-3.5 w-3.5"><title>Claude Code, Codex and other agents</title></Terminal>their AI agents</p>
           {agent.address && <p className="flex items-center gap-2 text-xs"><span className="min-w-0 truncate rounded-full bg-muted px-2.5 py-0.5 font-mono">agent:{agent.address}</span>

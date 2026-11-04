@@ -15,7 +15,7 @@ import (
 func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, action string, args map[string]any) (string, error) {
 	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
 	if err != nil || binding.Mode != "relay" {
-		return "", fmt.Errorf("Turn on Reach it from your phone and the web first (manage_crew_sync reach_on)")
+		return "", fmt.Errorf("Turn on Use from phone and web first (manage_crew_sync reach_on)")
 	}
 	out := func(value any) (string, error) {
 		data, _ := json.Marshal(value)
