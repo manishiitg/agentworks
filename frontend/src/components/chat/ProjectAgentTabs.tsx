@@ -18,6 +18,7 @@ import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
+import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { fillAgentIconDraft, fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 import { useAgentMenuState } from './agentMenuState'
 import { AgentMark } from './AgentIcon'
@@ -146,7 +147,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // the list there reads them from this store; "+" stays in this top line.
   const agentsView = useAgentsViewStore(state => state.view)
   // Left menu is the default, also before the saved choice has loaded; phones list the agents in the sidebar drawer.
-  const menuMode = surface === 'work' && agentsView !== 'tabs'
+  // With the left menu closed on a computer the agents come back as tabs here, with their marks and cards (owner, 4 Nov:
+  // "i need tabs for my agents.. see whats is running.. their purpose").
+  const leftMenuOpen = useWorkspaceReturnStore(state => state.navigationMode) === 'fixed'
+  const menuMode = surface === 'work' && agentsView !== 'tabs' && (phone || leftMenuOpen)
   // The strip's own handlers for one agent, so the left menu and the rail offer the same rename, order, show/hide and
   // hide (owner, 4 Nov: "did we lose more features?"); removing for good is only in the agent card.
   const agentActions = (tab: ChatTab): CrewAgentActions => {
