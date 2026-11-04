@@ -86,6 +86,21 @@ func TestIdleCompactionPhaseIsNotRunning(t *testing.T) {
 	if got := phaseEvents(es, session); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("phases = %q, want %q", got, want)
 	}
+	// The compaction's own model calls never reach the chat: their start made the screen reopen the reply that had
+	// just finished (4 Nov). The person's message does reach it.
+	for _, e := range es.GetAllEventsRaw(session) {
+		if e.Type == "llm_generation_start" || e.Type == "llm_generation_end" {
+			t.Fatalf("the compaction's %s was stored in the chat", e.Type)
+		}
+	}
+	if types := map[string]bool{}; func() bool {
+		for _, e := range es.GetAllEventsRaw(session) {
+			types[e.Type] = true
+		}
+		return !types["user_message"]
+	}() {
+		t.Fatal("the person's message after the compaction was not stored")
+	}
 }
 
 // After a restart the live turn state is gone; the stored events decide whether a turn is still open (PLAT-861-228).

@@ -276,6 +276,22 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 	es.announceTurnPhase(sessionID, announce, now)
 }
 
+// compactionHidesEvent keeps a running compaction's own turn out of the chat (PLAT-872). It runs as an internal turn
+// built from the person's last message, and its start and model-call events made the screen reopen the reply that
+// had just finished: the reply went back to its half-streamed text with a stale "Navigating" line until the next
+// message (4 Nov, "Compact at 300K" 20 s after a reply). The person's own message, the "compacted" chat row,
+// the usage line and the phase itself still pass.
+func compactionHidesEvent(sessionID string, event Event) bool {
+	switch event.Type {
+	case "user_message", "live_input_confirmed", turnPhaseEventType, "context_compaction", "status_line":
+		return false
+	}
+	turnPhasesMu.Lock()
+	st := turnPhases[sessionID]
+	turnPhasesMu.Unlock()
+	return st != nil && st.phase == turnPhaseCompacting
+}
+
 // BeginIdleCompaction shows the idle compaction (PLAT-872) as the chat's turn
 // phase, so the Working line says the chat is being tidied instead of
 // "running" while the CLI compacts. manual is the tab's "Compact now".
