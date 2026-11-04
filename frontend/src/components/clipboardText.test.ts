@@ -25,4 +25,11 @@ describe('formatted chat paste (PLAT-746-309)', () => {
   it('keeps pasted code fences intact', () => {
     expect(getClipboardText(clipboard('<pre>```js\nhello\n```</pre>'))).toBe('````\n```js\nhello\n```\n````')
   })
+  it('preserves whitespace from styled code and preformatted Slack snippets', () => {
+    const text = 'if (ok) {\n  run();\n}'
+    expect(getClipboardText(clipboard('<div style="white-space:pre-wrap"><b>if</b> (ok) {\n  run();\n}</div>', text))).toBe(text)
+    const code = 'x = """a\n\n\nb"""\n  \nend'
+    expect(getClipboardText(clipboard(`<pre>${code}</pre>`, code))).toBe('```\n' + code + '\n```')
+  })
+
 })

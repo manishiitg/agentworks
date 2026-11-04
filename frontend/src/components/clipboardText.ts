@@ -9,12 +9,20 @@ export function getClipboardText(clipboard: Pick<DataTransfer, 'getData'>): stri
     style.fontWeight === 'bold' || Number(style.fontWeight) >= 600 || style.fontStyle === 'italic' ||
     style.textDecorationLine.includes('line-through') || style.textDecoration.includes('line-through'))
   if (!hasStyledText && !doc.body.querySelector('b,strong,i,em,s,strike,del,code,pre,blockquote,ul,ol,a[href],h1,h2,h3,h4,h5,h6')) return plain
+  // Unsupported CSS-preserved text is safer as plain text than altered code.
+  if (plain && Array.from(doc.body.querySelectorAll<HTMLElement>('[style]')).some(({ style }) =>
+    /^(pre|pre-wrap|pre-line|break-spaces)$/.test(style.whiteSpace))) return plain
+  let codePrefix = '\u0000clipboard-code:'
+  while (html.includes(codePrefix) || plain.includes(codePrefix)) codePrefix += ':'
+  const codeBlocks: string[] = []
   const escape = (text: string) => text.replace(/([\\`*_\[\]~])/g, '\\$1')
   const children = (node: Node): string => Array.from(node.childNodes).map(render).join('')
   const fenced = (text: string, block: boolean) => {
     const longest = Math.max(0, ...Array.from(text.matchAll(/`+/g), match => match[0].length))
     const fence = '`'.repeat(Math.max(block ? 3 : 1, longest + 1))
-    return block ? `\n\n${fence}\n${text.replace(/\n$/, '')}\n${fence}\n\n` : `${fence} ${text} ${fence}`
+    const code = block ? `${fence}\n${text.replace(/\n$/, '')}\n${fence}` : `${fence} ${text} ${fence}`
+    const token = `${codePrefix}${codeBlocks.push(code) - 1}\u0000`
+    return block ? `\n\n${token}\n\n` : token
   }
   function render(node: Node): string {
     if (node.nodeType === Node.TEXT_NODE) return escape((node.textContent || '').replace(/[\t\r\n ]+/g, ' ').replace(/\u00a0/g, ' '))
@@ -54,5 +62,5 @@ export function getClipboardText(clipboard: Pick<DataTransfer, 'getData'>): stri
     return text
   }
   const markdown = children(doc.body).replace(/\n[ \t]+\n/g, '\n\n').replace(/\n{3,}/g, '\n\n').trim()
-  return markdown || plain
+  return codeBlocks.reduce((text, code, index) => text.split(`${codePrefix}${index}\u0000`).join(code), markdown) || plain
 }
