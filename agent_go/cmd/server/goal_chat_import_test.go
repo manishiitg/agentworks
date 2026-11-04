@@ -43,4 +43,15 @@ func TestGoalChatImportPreservesOwnerAndExistingJournal(t *testing.T) {
 	if err != nil || !strings.Contains(string(raw), "Original question") || !strings.Contains(string(raw), "Original answer") {
 		t.Fatal("dialogue missing", string(raw), err)
 	}
+	// An unfinished archive must not become a permanently running Crew chat.
+	if err := os.WriteFile(archive, []byte(`{"session_id":"unfinished","user_id":"owner","updated_at":"2026-01-01T00:00:00Z","conversation_history":[{"Role":"human","Parts":[{"Text":"Unanswered question"}]}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := importGoalChatArchives(db, []goalChatImport{{Session: "unfinished", Owner: "owner", Archive: archive}}); err != nil {
+		t.Fatal(err)
+	}
+	unfinished, err := journal.ReadPage("unfinished", events.DurableEventPageOptions{Limit: 100})
+	if err != nil || len(unfinished.Events) != 2 || unfinished.Events[1].Type != "context_cancelled" {
+		t.Fatal("unfinished imported turn must be stopped", unfinished, err)
+	}
 }
