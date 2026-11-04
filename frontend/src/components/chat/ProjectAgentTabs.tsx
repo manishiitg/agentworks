@@ -15,6 +15,7 @@ import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import type { ChatTabPillProps } from './ChatTabPill'
+import { useOpenAgentStore } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -122,7 +123,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   const sharedHere = (tab: ChatTab) => { const id = agentId(tab); return Boolean(id && shares[id]) }
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
-    // Faces are for a Crew's agents (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.
+    // A Crew's agents only (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.
     if (surface !== 'work' || !isAgentTab(tab)) return undefined
     const id = agentId(tab)
     const share = id ? shares[id] : undefined
@@ -131,8 +132,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const ago = ask && (ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`)
     return {
       asking: ask?.active,
-      shared: share?.line,
-      card: purpose === undefined ? undefined : {
+      info: purpose === undefined ? undefined : {
+        name: tabLabel(tab),
         purpose,
         sharedWith: share?.line,
         canChange: share?.canChange,
@@ -142,6 +143,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       },
     }
   }
+  // The open tab's details, for the purpose line at the top of its chat.
+  const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
+  const openInfo = openTab ? agentFace(openTab)?.info : undefined
+  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}` : ''
+  useEffect(() => {
+    useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openKey])
   const [actionsFor, setActionsFor] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
   const canReorderInMenu = tabs.length > 5

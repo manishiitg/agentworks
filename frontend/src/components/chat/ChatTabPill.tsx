@@ -11,7 +11,7 @@ import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { compactOwnerChatName, ownerInitials } from './chatTabName'
 import { AgentPurposeButton } from './AgentPurposeButton'
-import { AgentAvatar, type AgentAvatarCard } from './AgentAvatar'
+import { AgentHoverCard, type AgentCardInfo } from './AgentCard'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -36,8 +36,9 @@ export interface ChatTabPillProps {
   purpose?: string
   /** Puts the purpose request in this tab's chat box; the icon sits where the status dot is while the tab is idle. */
   onSetPurpose?: () => void
-  /** A Crew agent's tab (owner, 4 Nov, tab design A): its avatar replaces the status slot and carries every mark. */
-  agent?: { asking?: boolean; shared?: string; card?: AgentAvatarCard }
+  /** A Crew agent's tab (owner, 4 Nov, tab option B): its name only, a tiny mark before it only when needed, and its
+   * details in a card on hover. */
+  agent?: { asking?: boolean; info?: AgentCardInfo }
 }
 
 const ALLOW_MAKE_SCHEDULE_INTERACTIVE = false
@@ -164,7 +165,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       aria-label={tooltip}
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
-      className={`group relative flex min-w-0 cursor-pointer items-center font-medium outline-none transition-colors ${agent ? 'gap-1.5 rounded-full py-1 pl-1.5 pr-3 text-[13px]' : `gap-1.5 border-b-2 border-transparent px-2 ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-md py-1 text-xs'}`} ${
+      className={`group relative flex min-w-0 cursor-pointer items-center font-medium outline-none transition-colors ${agent ? 'gap-1.5 rounded-lg px-2.5 py-1 text-[13px]' : `gap-1.5 border-b-2 border-transparent px-2 ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-md py-1 text-xs'}`} ${
         // A soft background identifies the selected tab without changing its height.
         isActive
           ? 'bg-muted font-semibold text-foreground'
@@ -175,7 +176,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
-      {agent ? <AgentAvatar name={displayName} status={isBlank ? 'ready' : status} active={isActive} asking={agent.asking} shared={agent.shared} card={agent.card} /> :
+      {agent ? <AgentMark status={isBlank ? 'ready' : status} asking={agent.asking} label={dot.label} /> :
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {/* An idle tab shows its owner a quiet purpose icon in this spot instead (owner, 3 Nov). */}
         {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}
@@ -210,12 +211,12 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       ) : (
         <>
           {ownerName && !yourTab && <span aria-hidden="true" title={`Owned by ${ownerName}`} className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold leading-4 text-primary">{ownerInitials(ownerName) || '·'}</span>}
-          <span
-            className={`min-w-0 truncate whitespace-nowrap ${productSurface ? 'max-w-[18rem] font-semibold' : 'max-w-[14rem]'}`}
-            title={tooltip}
+          <AgentHoverCard info={agent?.info}><span
+            className={`block min-w-0 truncate whitespace-nowrap ${productSurface ? 'max-w-[18rem] font-semibold' : 'max-w-[14rem]'}`}
+            title={agent?.info ? undefined : tooltip}
           >
             {displayName}
-          </span>
+          </span></AgentHoverCard>
         </>
       )}
       <ShowChatButton tabId={tab.tabId} />
@@ -285,6 +286,17 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
 })
 
 ChatTabPill.displayName = 'ChatTabPill'
+
+// A Crew agent tab's one mark, only when there is something to say: a spinner while it works, amber when it needs you,
+// red when it failed, a green pulse while someone else is asking it, a blue dot for a reply not read yet. Idle: nothing.
+function AgentMark({ status, asking, label }: { status: TabStatus; asking?: boolean; label: string }) {
+  if (status === 'busy') return <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" aria-label={label} role="img"><title>{label}</title></Loader2>
+  if (status === 'waiting') return <span className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" title={label} aria-label={label} role="img" />
+  if (status === 'failed') return <span className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--destructive))]" title={label} aria-label={label} role="img" />
+  if (asking) return <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 motion-safe:animate-pulse" title="Someone is asking it now" aria-label="Someone is asking it now" role="img" />
+  if (status === 'completed') return <span className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--info))]" title={label} aria-label={label} role="img" />
+  return null
+}
 
 // While a tab shows its terminal, one click shows the chat again (the terminal keeps running).
 function ShowChatButton({ tabId }: { tabId: string }) {

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
+import { AgentPurposeLine } from '../../components/chat/AgentCard'
 import { HomeEntry } from '../../components/workspace/HomeEntry'
 import { openAppProduct } from '../../utils/appNavigation'
 import { REPORT_SELECTION_EVENT } from '../../components/workflow/reportDocuments'
@@ -1376,7 +1377,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
                   {tabId ? (
-                      <div className="min-h-0 flex-1">
+                      <div className="flex min-h-0 flex-1 flex-col">
+                        <AgentPurposeLine tabId={tabId} />
+                        <div className="min-h-0 flex-1">
                         <ChatArea
                           tabId={tabId}
                           compact
@@ -1388,6 +1391,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           // tab (the server rotates the project's session), never a second, parallel chat.
                           showNewChatAction={!isWorkSessionRun(selected) && tabId === canonicalTabId}
                         />
+                        </div>
                       </div>
                   ) : (
                     <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
