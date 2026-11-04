@@ -47,20 +47,21 @@ const keepTurns = 200
 
 // Record contains no prompt, transcript or account credentials.
 type Record struct {
-	Reviewed           bool              `json:"-"`
-	BeforeSkippedState map[string]string `json:"-"`
-	AfterSkippedState  map[string]string `json:"-"`
-	ID                 string            `json:"id"`
-	ExecutionID        string            `json:"execution_id"`
-	StartedAt          time.Time         `json:"started_at"`
-	CompletedAt        *time.Time        `json:"completed_at,omitempty"`
-	Before             string            `json:"-"`
-	After              string            `json:"-"`
-	Status             string            `json:"status"`
-	Skipped            []string          `json:"skipped,omitempty"`
-	Omitted            []string          `json:"-"`
-	BeforeCapture      CaptureStats      `json:"before_capture"`
-	AfterCapture       CaptureStats      `json:"after_capture"`
+	GitTurn            map[string]gitTurnRepo `json:"-"`
+	Reviewed           bool                   `json:"-"`
+	BeforeSkippedState map[string]string      `json:"-"`
+	AfterSkippedState  map[string]string      `json:"-"`
+	ID                 string                 `json:"id"`
+	ExecutionID        string                 `json:"execution_id"`
+	StartedAt          time.Time              `json:"started_at"`
+	CompletedAt        *time.Time             `json:"completed_at,omitempty"`
+	Before             string                 `json:"-"`
+	After              string                 `json:"-"`
+	Status             string                 `json:"status"`
+	Skipped            []string               `json:"skipped,omitempty"`
+	Omitted            []string               `json:"-"`
+	BeforeCapture      CaptureStats           `json:"before_capture"`
+	AfterCapture       CaptureStats           `json:"after_capture"`
 	// Git checkouts present at the before-capture (Crew-relative folders), and
 	// what the after-capture found about checkouts that appeared or vanished
 	// during the turn (repo_baselines.go).
@@ -116,6 +117,7 @@ type CaptureStats struct {
 
 // diskRecord keeps Git object names private to the server.
 type diskRecord struct {
+	GitTurn map[string]gitTurnRepo `json:"git_turn,omitempty"`
 	Record
 	Reviewed           bool                     `json:"reviewed,omitempty"`
 	BeforeSkippedState map[string]string        `json:"before_skipped_state,omitempty"`
@@ -446,6 +448,7 @@ func (s Store) read(id string) (Record, error) {
 	if err = json.Unmarshal(data, &disk); err != nil {
 		return Record{}, err
 	}
+	disk.Record.GitTurn = disk.GitTurn
 	disk.Record.Reviewed = disk.Reviewed
 	disk.Record.Before = disk.BeforeTree
 	disk.Record.After = disk.AfterTree
@@ -461,7 +464,7 @@ func (s Store) read(id string) (Record, error) {
 	return disk.Record, nil
 }
 func (s Store) save(r Record) error {
-	data, err := json.Marshal(diskRecord{Record: r, Reviewed: r.Reviewed, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState,
+	data, err := json.Marshal(diskRecord{Record: r, GitTurn: r.GitTurn, Reviewed: r.Reviewed, BeforeTree: r.Before, AfterTree: r.After, Omitted: r.Omitted, BeforeSkippedState: r.BeforeSkippedState, AfterSkippedState: r.AfterSkippedState,
 		BeforeRepos: r.BeforeRepos, NewRepos: r.NewRepos, GoneRepos: r.GoneRepos, BaselineSkipped: r.BaselineSkipped, BeforeHeads: r.BeforeHeads, BeforeGit: r.BeforeGit, Review: r.Review})
 	if err != nil {
 		return err

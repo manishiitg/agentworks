@@ -19,7 +19,7 @@ import (
 // never exposed, whoever owns the Crew.
 
 var externalCrewTools = map[string]bool{
-	"list_crew_snapshots": true, "compare_crew_snapshot": true, "review_crew_snapshot": true, "undo_crew_reply": true,
+	"list_crew_snapshots": true, "compare_crew_snapshot": true, "undo_crew_reply": true,
 	// Git review reads (external_crew_git.go), the Files review panel's reads.
 	"crew_git_status": true, "crew_git_diff": true, "crew_git_branch_compare": true, "crew_git_branch_diff": true,
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true,
@@ -287,7 +287,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	}
 	label := fmt.Sprint(summary["name"])
 	switch name {
-	case "list_crew_snapshots", "compare_crew_snapshot", "review_crew_snapshot", "undo_crew_reply":
+	case "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply":
 		r = r.Clone(r.Context())
 		q := r.URL.Query()
 		for _, key := range []string{"session_id", "through_snapshot_id", "baseline_snapshot_id", "review_id", "line", "offset", "change_key", "history_scope", "checkout_id", "after_sequence"} {
@@ -297,10 +297,6 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		r.URL.RawQuery = q.Encode()
 		op := "snapshots"
-		if name == "review_crew_snapshot" {
-			op = "snapshot_review"
-			r.Method = http.MethodPost
-		}
 		if name == "undo_crew_reply" {
 			// Without apply=true this only previews what would be restored.
 			op = "snapshot_undo_preview"

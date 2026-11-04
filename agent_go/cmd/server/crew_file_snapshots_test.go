@@ -6,10 +6,10 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -66,14 +66,16 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(private, "product.json"), []byte(`{"mode":"cowork"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	// A Crew with no private index defers the send-path capture
-	// (PLAT-746-163); build it as the background index build does.
 	roots, found, err := crewStorageRoots(linkBetaPath)
 	if err != nil || !found {
 		t.Fatalf("Crew roots: %v %v", found, err)
 	}
-	if _, err := (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).Warm(time.Minute); err != nil {
-		t.Fatal(err)
+	for _, args := range [][]string{{"init", "--quiet"}, {"add", "-A"}, {"-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "--quiet", "-m", "initial"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = roots.Files
+		if out, e := cmd.CombinedOutput(); e != nil {
+			t.Fatalf("git fixture: %v %s", e, out)
+		}
 	}
 	api.trackConversationTurnStart("turn", "session", QueryRequest{SelectedFolder: linkBetaPath})
 	api.prepareCrewTurnSnapshot("turn", "session", QueryRequest{SelectedFolder: linkBetaPath})

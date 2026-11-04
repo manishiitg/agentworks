@@ -114,7 +114,7 @@ export function ReplyFileChanges({ reference, panel = false, showFiles = true }:
 
 function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFileChangesRef; panel: boolean; showFiles: boolean }) {
   const summary = reference.summary
-  // Only for a reply saved before summaries were sent with the event, and for the newest reply's "since your last review" line.
+  // Load saved comparisons when the reply event has no inline summary.
   const [result, setResult] = useState<ReviewResult | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const comparison = result?.comparison
@@ -132,20 +132,17 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const [undoCheckoutId, setUndoCheckoutId] = useState('')
   const [undo, setUndo] = useState<{ plan?: UndoPlan; busy?: boolean; done?: string; error?: string } | null>(null)
   const latest = !reference.latestSnapshotId || reference.latestSnapshotId === reference.snapshotId
-  const reviewed = reference.reviewedSnapshotId === reference.snapshotId
-  const sinceReview = latest && !!reference.reviewedSnapshotId && !reviewed
   const hasSummary = !!summary
   useEffect(() => {
     const controller = new AbortController()
-    // The card itself renders from the reply event; this only fills the "since your last review" line.
-    if (!hasSummary || sinceReview) {
+    if (!hasSummary) {
       setLoadFailed(false)
       void api.get<ReviewResult>(endpoint, { params: { ...paramsFor(reference), session_id: reference.sessionId, op: 'snapshot_compare' }, signal: controller.signal })
         .then(response => { if (!controller.signal.aborted) setResult(response.data) })
         .catch(() => { if (!controller.signal.aborted) setLoadFailed(true) })
     }
     return () => controller.abort()
-  }, [reference.workspacePath, reference.snapshotId, reference.sessionId, hasSummary, sinceReview, revision])
+  }, [reference.workspacePath, reference.snapshotId, reference.sessionId, hasSummary, revision])
   useEffect(() => {
     if (!hasSummary) return
     const controller = new AbortController()
@@ -261,11 +258,9 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 font-medium text-muted-foreground">
           {plural(total)}
           <span className="font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
-          {latest && reviewed && <span className="text-xs font-normal text-muted-foreground">Reviewed up to here</span>}
         </div>
         {actionButtons}
       </div>
-      {latest && result?.since_review && <p className="mt-1 text-xs">Since your last review: {result.since_review.files} files <span className="text-diff-add">+{result.since_review.added}</span> <span className="text-diff-del">−{result.since_review.removed}</span></p>}
       {reviewError && <p role="alert" className="mt-1 text-xs">{reviewError}</p>}
       {isOpen && <div>
         {[...groups].sort((x, y) => Number(x.kind === 'crew_files') - Number(y.kind === 'crew_files')).map(group => (
