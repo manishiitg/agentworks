@@ -6,7 +6,14 @@ import { SharedCrewWorkspace } from './SharedCrewWorkspace'
 
 const post = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ default: { post } }))
-vi.mock('../../components/ui/MarkdownRenderer', () => ({ MarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div> }))
+// The page feeds the owner's own chat area; this stand-in shows what it was fed (the events on its tab).
+vi.mock('../../components/ChatArea', async () => {
+  const { useChatStore } = await import('../../stores/useChatStore')
+  return { default: ({ tabId }: { tabId: string }) => {
+    const events = useChatStore(state => { const sessionId = state.chatTabs[tabId]?.sessionId; return sessionId ? state.tabEvents[sessionId] : undefined }) || []
+    return <div role="log">{events.map(event => { const data = (event.data as { data: { content?: string; metadata?: { sender_label?: string } } }).data; return <p key={event.id}>{data.metadata?.sender_label} {data.content}</p> })}</div>
+  } }
+})
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('opens only published agents and the existing attributed transcript, without Builder controls', async () => {

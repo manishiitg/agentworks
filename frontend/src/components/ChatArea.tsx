@@ -542,6 +542,9 @@ interface ChatAreaProps {
   showNewChatAction?: boolean
   /** Product-specific composer placeholder (the product variant otherwise says "Describe what you want to create…"). */
   composerPlaceholder?: string
+  /** Sends the person's message somewhere other than this chat's own session (a shared agent's ask); the transcript
+   * is fed by the caller. Used with a tab whose metadata has externalTransport. */
+  onSubmitOverride?: (query: string, options?: ChatSubmissionOptions) => Promise<boolean | void>
   /** Brain context hint. The profile route validates access. */
   knowledgebaseFolderPath?: string
 }
@@ -563,7 +566,7 @@ let globalHasRestored = false
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
-  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands} = props
+  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands, onSubmitOverride} = props
   useMcpOAuthChatNotifications(tabId)
   // Product mode is a complete shared surface, not just a simplified composer.
   // Products may still supply a renderer for domain-specific presentation, but
@@ -826,7 +829,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     activeEventViewMode === 'formatted',
     activeTab?.metadata?.agentProfileWorkspace ||
       (activeTab?.metadata?.mode === 'workflow' ? activeWorkflowPreset?.selectedFolder?.filepath : undefined),
-    !isExecutionConversationTab(activeTab),
+    !isExecutionConversationTab(activeTab) && !activeTab?.metadata?.externalTransport,
   )
   const activeStreamingText = useChatStore((state) =>
     activeSessionId ? state.streamingText[activeSessionId] || '' : ''
@@ -2455,8 +2458,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const chatStore = useChatStore.getState() // Get fresh store state to check streaming status
 
     const filtered = tabsWithSessions.filter(tab => {
-      // Must have session ID
-      if (!tab.sessionId) {
+      // Must have session ID; a tab fed by its page (a shared agent's chat) has no server stream of its own.
+      if (!tab.sessionId || tab.metadata?.externalTransport) {
         return false
       }
 
@@ -3873,7 +3876,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           // foreground catch-up loop, which can drop another tab's completion
           // while a resumed chat is opening.
           key={targetTabId ?? 'inactive-chat-input'}
-          onSubmit={(query, options) => submitQueryWithQuery(query, undefined, options)}
+          onSubmit={(query, options) => onSubmitOverride ? onSubmitOverride(query, options) : submitQueryWithQuery(query, undefined, options)}
           onStopStreaming={stopStreaming}
           onNewChat={() => void handleNewChat(targetTabId ?? undefined)}
           tabId={targetTabId}
