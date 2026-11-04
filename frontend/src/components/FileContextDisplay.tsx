@@ -1,4 +1,5 @@
 import { FileText, Folder, X } from 'lucide-react'
+import { WorkspaceImage } from './ui/WorkspaceImage'
 
 interface FileContextItem {
   name: string
@@ -15,9 +16,27 @@ interface FileContextDisplayProps {
   isRequiredFolderSelected: boolean
 }
 
-export default function FileContextDisplay({ files, onRemoveFile, onClearAll, agentMode, isRequiredFolderSelected }: FileContextDisplayProps) {
+export default function FileContextDisplay({ attachmentMode = false, files, onRemoveFile, onClearAll, agentMode, isRequiredFolderSelected }: FileContextDisplayProps) {
   if (files.length === 0) {
     return null
+  }
+
+  if (attachmentMode) {
+    return <div aria-label="Attachments" className="flex gap-2 overflow-x-auto px-2 pt-2 pb-1">
+      {files.map(file => {
+        const name = file.name || file.path.split('/').filter(Boolean).pop() || 'File'
+        const image = file.type === 'file' && /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(file.path)
+        return <div key={file.path} title={name} className={`relative shrink-0 overflow-hidden rounded-xl border border-border bg-muted ${image ? 'h-24 w-24' : 'flex h-14 max-w-56 items-center gap-2 pl-3 pr-9'}`}>
+          {image ? <WorkspaceImage path={file.path} alt={name} className="h-full w-full object-cover" /> : <>
+            {file.type === 'folder' ? <Folder className="h-5 w-5 shrink-0 text-muted-foreground" /> : <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />}
+            <span className="truncate text-sm">{name}</span>
+          </>}
+          <button type="button" onClick={() => onRemoveFile(file.path)} aria-label={`Remove ${name}`} title={`Remove ${name}`} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      })}
+    </div>
   }
 
   return (
