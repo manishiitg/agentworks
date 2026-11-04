@@ -1,6 +1,6 @@
 **Plan-editing tool arguments:** Before a plan mutation, read `builder-reference/references/plan-editing-tools.md`. Step fields described below belong inside `add_step.step` or `update_step.changes`; route/group/maintenance fields belong inside `parameters`. Use the live type/action-specific schema; these field descriptions do not authorize flat arguments or extra fields.
 
-**Saved-code paths:** Read `workflow.json.code_layout_version` first. In this reference, `<script-dir>` means `code/<step-id>` for version 1, or `learnings/<step-id>` for absent/zero (legacy). Resolve the placeholder before using a path; never infer the version from folders or migrate an existing workflow implicitly. Version 1 executes and repairs canonical source directly, with shared helpers under `WORKFLOW_CODE_ROOT`; only legacy workflows copy code into runs and save it back.
+**Saved Crew scripts:** For a step with `script`, follow `panel-plan/references/crew-plan/SKILL.md`: the runner snapshots the saved source and does not repair shared code. For step-local code, read `workflow.json.code_layout_version` first. In this reference, `<script-dir>` means `code/<step-id>` for version 1, or `learnings/<step-id>` for absent/zero (legacy). Resolve the placeholder before using a path; never infer the version from folders or migrate an existing workflow implicitly. Version 1 executes and repairs canonical source directly, with shared helpers under `WORKFLOW_CODE_ROOT`; only legacy workflows copy code into runs and save it back.
 
 ## Workflow Tools — Mode-Scoped Reference
 
@@ -65,7 +65,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 
 ## Step Execution & Inspection
 
-- **`runs(action="step", step_id, input_preset?, inputs?, instructions?, human_input?, tier?, agent_restart?, script_parameters?)`** — Start a single step in the background; returns `execution_id`. In interactive Workshop mode this is the primary way to test one step after adding or editing it and creates a unique run folder; inside a saved schedule/webhook invocation the server forces its bound `iteration-N-sched`/`iteration-N-hook` folder. For a scripted step, `script_parameters` is an object validated against the step's declared contract and passed through `STEP_PARAMS_JSON`; it is rejected for non-scripted steps. A standalone `agent` always starts its configured queue from the beginning; `human_input` is inserted as an initial user message and never mutates the system-level description charter. LLM specialist routes are retired; persistent specialist work belongs to Crew. It is high-priority runtime context scoped to this executable step.
+- **`runs(action="step", step_id, input_preset?, inputs?, instructions?, human_input?, tier?, agent_restart?, script_parameters?)`** — Start a single step in the background; returns `execution_id`. In interactive Workshop mode this is the primary way to test one step after adding or editing it and creates a unique run folder; inside a saved schedule/webhook invocation the server forces its bound `iteration-N-sched`/`iteration-N-hook` folder. For a step-local script, `script_parameters` is an object validated against its declared contract and passed through `STEP_PARAMS_JSON`; saved Crew scripts instead resolve their `script_inputs` from the shared definition; it is rejected for non-scripted steps. A standalone `agent` always starts its configured queue from the beginning; `human_input` is inserted as an initial user message and never mutates the system-level description charter. LLM specialist routes are retired; persistent specialist work belongs to Crew. It is high-priority runtime context scoped to this executable step.
 - **`runs(action="step", step_id, input_preset?, inputs?, fast_path_only=true)`** *(Workshop mode only)* — Run the step's saved Python `<script-dir>/main.py` directly with the same workflow env, args, output folder, and validation behavior as a real workflow run. Never falls back to LLM. Used to quickly test `scripted` main.py patches. Without `fast_path_only`, your own `runs action=step` of a scripted step may write or repair its `main.py`; a run never does.
 - **`runs(action="step_status", step_id, tool_call_id?)`** — One-off live status check for a running single step. Resolves the latest execution for that step and shows execution status plus structured MCP tool calls and tool-call details captured so far. For coding-CLI providers, terminal/TUI progress does not appear as MCP tool calls — but when the step runs in tmux, `runs action=step_status` **inlines the latest lines of the live terminal pane** and also returns the tmux session name + a `tmux capture-pane -pt <session> -S -200` command for deeper history (same session as the UI terminal). Do **not** combine `sleep`, `runs action=active`, and `runs action=step_status` into a polling loop. After launching background work, use at most one immediate status check, then yield; `[AUTO-NOTIFICATION]` will resume the conversation when the work completes.
 - **`runs(action="message", execution_id, message)`** — Send a correction or follow-up to the exact active child-agent turn inside a running step or full-workflow execution. Use the ID returned by `runs action=step` / `runs action=start`; never guess from the step ID. Coding CLIs receive native live input, while non-coding agents queue the message for the next safe turn boundary. This does not start or resume work. `no_active_agent` means the execution is between agent turns or running validation/script work; wait instead of retrying in a loop.
@@ -206,7 +206,7 @@ Confirm with the user before skipping backup on a recurring schedule.
 - **Bad**: `"Run the workflow and ask me which steps to optimize"`.
 - **Good**: `"Review the current run and database measurements for this group, identify the failing contract, and ask Builder for a bounded evidence-backed repair. Verify the actual result."`
 
-AgentWorks uses its saved next-check time independently of normal schedules. Failed runs can wake the same continuing AgentWorks conversation when AgentWorks is ON; there is no module cadence or post-run Gate.
+Progress reviews use the ordinary AgentWorks Crew and its explicitly configured schedules/notifications. Do not recreate the retired Pulse/Autopilot engine or infer a recurring review from a failed run.
 
 {{end}}
 
@@ -230,18 +230,15 @@ For choosing between the human interaction mechanisms below, read
 {{if ne .WorkshopMode "run"}}
 ## Skills
 
-Skills are reusable instruction sets injected into step agents at runtime. They live at the **workspace root** `{{"{{"}}.AbsDocsRoot{{"}}"}}/skills/{folder}/SKILL.md` — shared across all workflows. Do NOT create or reference skills inside the workflow folder (e.g. `Workflow/trading/skills/` does not exist).
+Skills are reusable instructions, selected by name and loaded through the admitted skill tools. Workflow-local procedures live under this workflow's `skills/<name>/SKILL.md`; Crew-local procedures live under their Crew's skills folder. Installed and built-in skills are also discovered through the current catalog. Inspect the returned source/scope before editing; do not assume all skills are global or move private guides into a shared catalog.
 
-**Workflow for managing skills**:
+1. **Find/read:** use `skills action=list/search` and `read_skill` as offered. Read the relevant reference, not every file.
+2. **Install:** use the offered install/import action for a registry skill. For an authored procedure, update the existing same-purpose local skill rather than duplicating it; preserve its references and assets. Discovery does not authorize changing or installing a skill.
+3. **Select for Builder:** `settings(action="update", skills={"add":["name"]})` selects workflow capabilities; it does not give every execution step that skill.
+4. **Select for steps:** use the admitted step settings tool and `enabled_skills`. Ordinary steps use their explicit selection. A `crew_agent` reference supplies Crew-selected skills when `enabled_skills` is omitted; an explicit list, including `[]`, overrides the default. Skill names still must resolve in the execution's admitted scope; selecting a name does not grant a new folder.
+5. **Remove:** deselect from the workflow or step when that is the request; uninstalling removes the source and may affect other consumers.
 
-1. **Find**: `skills action=list` to see installed skills, or `skills(action="search", query)` to search the public registry.
-2. **Install**: `skills(action="install", source)` (e.g. `owner/repo@skill-name`) or `skills(action="import", github_url)` — downloads into `{{"{{"}}.AbsDocsRoot{{"}}"}}/skills/{folder}/`. If a skill folder exists but has no `SKILL.md`, reinstall it using the same method it was originally installed with — **never write `SKILL.md` content manually**.
-3. **Select for workflow/builder context**: `settings(action="update", skills={"add":["folder-name"]})` — makes the skill visible as a selected workflow capability for workshop/builder discovery. **Do NOT edit `workflow.json` manually.**
-4. **Enable for runtime steps**: `update_step_config(step_id, enabled_skills=["skill-a"])`. Step execution only receives the skills listed in that step's `enabled_skills`; workflow-selected skills do not cascade into runtime agents.
-5. **Remove from workflow**: `settings(action="update", skills={"remove":["folder-name"]})`.
-6. **Uninstall**: `skills(action="uninstall", folder_name)` — removes files from workspace entirely.
-
-Use `settings action=get` to see the workflow's selected skills. Use `skills action=list` to see all installed skills.
+During an explicitly requested older workflow upgrade, use the offered `migrate_workflow_skills` operation to preserve guides/assets and their recorded migration evidence. This is not the Goal-to-Crew migration. Do not automatically move guides or stamp an upgrade as part of running a workflow.
 
 ## Secrets
 

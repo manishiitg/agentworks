@@ -23,7 +23,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	resetCrewOwnerCache()
 	t.Cleanup(resetCrewOwnerCache)
 	t.Setenv("AUTH_SECRET", "crew-script-test-auth-secret-01234567890123456789")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"runner","username":"runner","role":"creator"}]}`)
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"runner","username":"runner","role":"creator"}]}`)
 	for _, record := range []projectOwnerRecord{{Product: "work", Folder: "lab", ProjectID: "crew-lab", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true, RunPeople: []string{"runner"}}, {Product: "work", Folder: "other", ProjectID: "crew-other", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true}} {
 		if err := defaultProjectOwners().Register(record); err != nil {
 			t.Fatal(err)
@@ -67,6 +67,24 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	}
 	if code := request("owner", "print('owner update')\n"); code != 200 {
 		t.Fatalf("Builder edit HTTP%d", code)
+	}
+	// PLAT-746-265 / PR498: ownership alone cannot restore revoked account rights.
+	originalDirectory := *directory
+	for _, record := range []string{
+		`{"id":"owner","username":"owner","role":"viewer"}`,
+		`{"id":"owner","username":"owner","role":"creator","disabled":true}`,
+		`{"id":"owner","username":"owner","role":"creator","products":["agentworks"]}`,
+	} {
+		*directory = `{"users":[` + record + `]}`
+		invalidateUserDirectoryCache()
+		if code := request("owner", "print('revoked')"); code != 403 {
+			t.Errorf("revoked account source edit HTTP%d: %s", code, record)
+		}
+	}
+	*directory = originalDirectory
+	invalidateUserDirectoryCache()
+	if code := request("owner", "print('owner update')\n"); code != 200 {
+		t.Fatalf("restored Builder edit HTTP%d", code)
 	}
 	manifest, found, err := ReadWorkflowManifest(context.Background(), script.Root)
 	if err != nil || !found {
@@ -121,8 +139,30 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if err := saveCrewScriptInputs(context.Background(), script.Root, &workflow.VariablesManifest{Variables: []workflow.Variable{{Name: "count", Type: "string"}}}); err == nil || !strings.Contains(err.Error(), "Qualify step") {
 		t.Fatal("breaking script input edit did not identify the referencing step", err)
 	}
+	// Referenced specialist definitions live outside the ordinary step list.
+	files.mu.Lock()
+	files.files[parent.Root+"/planning/plan.json"] = `{"steps":[],"orphan_steps":[{"id":"specialist","type":"scripted","title":"Saved specialist","description":"Uses shared code","script":"qualify","script_inputs":{"count":{"value":3}}}]}`
+	files.mu.Unlock()
+	if err := saveCrewScriptInputs(context.Background(), script.Root, &workflow.VariablesManifest{Variables: []workflow.Variable{{Name: "count", Type: "string"}}}); err == nil || !strings.Contains(err.Error(), "Saved specialist") {
+		t.Errorf("specialist input edit lost consumer validation: %v", err)
+	}
 	if err := saveCrewScriptInputs(context.Background(), script.Root, &workflow.VariablesManifest{Variables: []workflow.Variable{{Name: "count", Type: "integer", Value: "4"}}}); err != nil {
 		t.Fatal(err)
+	}
+	if err := saveCrewScriptInputs(context.Background(), script.Root, &workflow.VariablesManifest{Variables: []workflow.Variable{{Name: "count", Type: "integer", Required: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	projected, _, err = ReadWorkflowManifest(context.Background(), script.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected.Schedules = []WorkflowSchedule{{ID: "timer", Name: "Required input timer", ScheduleType: "cron", CronExpression: "0 0 * * *", Timezone: "UTC", Enabled: true}}
+	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err == nil || !strings.Contains(strings.ToLower(err.Error()), "count") {
+		t.Errorf("enabled script timer accepted missing required input: %v", err)
+	}
+	projected.Schedules[0].Inputs = map[string]string{"count": "3"}
+	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err != nil {
+		t.Fatalf("complete timer inputs refused: %v", err)
 	}
 	if _, present := files.files[script.Root+"/variables/variables.json"]; present {
 		t.Fatal("script wrote a duplicate input definition")

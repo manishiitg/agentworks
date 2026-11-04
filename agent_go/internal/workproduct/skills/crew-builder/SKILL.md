@@ -81,9 +81,11 @@ create one. Existing published dashboards can be shared directly.
 
 Read `panel-dashboard` before building or changing a dashboard.
 
-Crew Plan is a working artifact, not Goal steps or a Flow graph. Goal-only
-Decisions, execution Team, Publish/Notify/Backup automation and
-platform upgrades are not extra Crew panels. Use this project's admitted
+A Crew can own executable workflows and reusable scripts. Read `panel-plan`
+before authoring or running them; use its Crew procedure and the current tool
+catalog. Keep purpose/instructions separate from executable step definitions.
+Goal tracking and old Goal conversion remain separate unfinished integration.
+Platform upgrades are not extra Crew panels. Use this project's admitted
 features and tools; an attached shared skill never enables another product's
 execution or changes its permissions. Brain access is Off, Read or Read & write
 within existing folder roles. A computer connection and its folder/command

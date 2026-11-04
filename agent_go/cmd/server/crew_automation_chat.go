@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -59,6 +60,21 @@ func prepareCrewExecutableSchedules(ctx context.Context, root string, manifest *
 		}
 		if strings.TrimSpace(schedule.ChatID) == "" {
 			schedule.ChatID = "main"
+		}
+		// Script timers execute Python directly: no agent can fill missing inputs.
+		// Pausing stays possible; webhook/function caller values arrive later.
+		if binding.Kind == "script" && schedule.Enabled && schedule.ScheduleType != "webhook" {
+			definitions, err := readWorkflowInputDefinitions(ctx, root)
+			if err != nil {
+				return err
+			}
+			values, err := workflow.ResolveWorkflowInputs(definitions, schedule.InputPreset, schedule.Inputs)
+			if err != nil {
+				return err
+			}
+			if err := workflow.ValidateWorkflowLaunchInputs(definitions, values); err != nil {
+				return err
+			}
 		}
 		if err := validateExecutableSchedule(ctx, buildScheduleContext(root, manifest, *schedule)); err != nil {
 			return err

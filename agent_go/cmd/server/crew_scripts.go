@@ -208,7 +208,7 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 		return
 	}
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || !crewProjectOwnedByCaller(claims.UserID, binding.CrewRoot) {
+	if claims == nil || userAccessForClaims(claims).Disabled || !userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "work") || !crewProjectOwnedByCaller(claims.UserID, binding.CrewRoot) {
 		http.Error(w, "Only this Crew's Builder can edit its scripts. Run it through chat or a shared function instead.", 403)
 		return
 	}

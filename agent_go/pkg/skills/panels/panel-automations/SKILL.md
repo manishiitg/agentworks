@@ -14,10 +14,11 @@ metadata:
 
 # Automations
 
-One `automations` tool makes work start by itself: `scope=schedule` says when, `scope=webhook` receives HTTP events, and `scope=watcher` checks for a condition. Reusable work belongs to functions. List the current project’s callers first and inspect saved status or run evidence after a change.
+One `automations` tool makes work start by itself: `scope=schedule` says when, `scope=webhook` receives HTTP events, and `scope=watcher` checks for a condition. Reusable work lives in workflows or scripts; functions expose it to callers. Crew chat actions remain available. List the current project’s callers first and inspect saved status or run evidence after a change.
 
 Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
+- Functions: read `panel-dashboard/references/functions/SKILL.md` through the panel-dashboard skill.
 - Schedules: read `references/schedules/SKILL.md` when needed.
 - Webhooks: read `references/webhooks/SKILL.md` when needed.
 - Watchers: read `references/watchers/SKILL.md` when needed.

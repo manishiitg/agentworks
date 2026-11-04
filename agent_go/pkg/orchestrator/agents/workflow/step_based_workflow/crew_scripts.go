@@ -240,7 +240,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Cont
 func CrewScriptReferencingSteps(plan *PlanningResponse, id string) []*ScriptedPlanStep {
 	var result []*ScriptedPlanStep
 	if plan != nil {
-		for _, info := range collectAllSteps(plan.Steps) {
+		steps := append(append([]PlanStepInterface{}, plan.Steps...), plan.OrphanSteps...)
+		for _, info := range collectAllSteps(steps) {
 			if step, ok := info.Step.(*ScriptedPlanStep); ok && strings.TrimPrefix(step.Script, "script:") == id {
 				result = append(result, step)
 			}
