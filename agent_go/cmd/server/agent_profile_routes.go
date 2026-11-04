@@ -1037,6 +1037,17 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err != nil {
 		return QueryRequest{}, err
 	}
+	// The same agent (owner, 4 Nov): with no program chosen for the tab, the thread runs what the owner's own chat with
+	// it last ran, so its saved session can be copied and resumed.
+	if ask != nil && own.Engine == "" {
+		engine, model := ask.Owner.Provider, ask.Owner.ModelID
+		if runtime, ok, _ := ReadChatHistoryRuntimeForSession(userID, ask.Owner.SessionID, ask.Owner.WorkspacePath); ok && runtime != nil && runtime.AgentSessionHandle != nil && runtime.AgentSessionHandle.Provider.Provider != "" {
+			engine, model = runtime.AgentSessionHandle.Provider.Provider, firstNonEmptyTrimmed(runtime.AgentSessionHandle.Provider.Model, runtime.ModelID)
+		}
+		if engine != "" {
+			own.Engine, own.ModelID, own.ConnectionID = engine, model, ask.Owner.ConnectionID
+		}
+	}
 	if own.Engine == "" {
 		useProjectChatDefault(&input, &modelConversation, profile)
 	} else {
