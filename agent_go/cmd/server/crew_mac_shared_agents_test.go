@@ -41,6 +41,15 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "everyone"}}, nil); err == nil {
 		t.Fatal("an agent without an icon was shared")
 	}
+	// An agent already shared before the rule keeps working when its name or purpose changes; a new audience
+	// counts as sharing again and needs the icon.
+	shared := []macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "everyone"}}
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers anything", Audience: "everyone"}}, shared); err != nil {
+		t.Fatalf("refreshing an existing share without an icon was refused: %v", err)
+	}
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team"}}, shared); err == nil {
+		t.Fatal("a new audience for an agent without an icon was accepted")
+	}
 
 	// The Mac refuses before any turn when the tab is not one it shares, or the request is malformed.
 	api := &StreamingAPI{}
