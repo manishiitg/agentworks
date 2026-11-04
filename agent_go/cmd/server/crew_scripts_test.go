@@ -159,6 +159,12 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	projected.Schedules = []WorkflowSchedule{{ID: "timer", Name: "Required input timer", ScheduleType: "cron", CronExpression: "0 0 * * *", Timezone: "UTC", Enabled: true}}
 	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err == nil || !strings.Contains(strings.ToLower(err.Error()), "count") {
 		t.Errorf("enabled script timer accepted missing required input: %v", err)
+	} else {
+		response := httptest.NewRecorder()
+		writeScheduleSaveError(response, err)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("missing input looked like server failure: HTTP%d", response.Code)
+		}
 	}
 	projected.Schedules[0].Inputs = map[string]string{"count": "3"}
 	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err != nil {

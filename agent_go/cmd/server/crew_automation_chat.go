@@ -12,6 +12,8 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
+var errScriptTimerInputs = fmt.Errorf("script timer inputs are incomplete")
+
 // Saved work retains its own run identity; the chat is its durable destination,
 // never a replacement for a workflow checkpoint or a provider session handle.
 func validateExecutableSchedule(ctx context.Context, sctx *ScheduleContext) error {
@@ -66,14 +68,14 @@ func prepareCrewExecutableSchedules(ctx context.Context, root string, manifest *
 		if binding.Kind == "script" && schedule.Enabled && schedule.ScheduleType != "webhook" {
 			definitions, err := readWorkflowInputDefinitions(ctx, root)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: %w", errScriptTimerInputs, err)
 			}
 			values, err := workflow.ResolveWorkflowInputs(definitions, schedule.InputPreset, schedule.Inputs)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: %w", errScriptTimerInputs, err)
 			}
 			if err := workflow.ValidateWorkflowLaunchInputs(definitions, values); err != nil {
-				return err
+				return fmt.Errorf("%w: %w", errScriptTimerInputs, err)
 			}
 		}
 		if err := validateExecutableSchedule(ctx, buildScheduleContext(root, manifest, *schedule)); err != nil {
