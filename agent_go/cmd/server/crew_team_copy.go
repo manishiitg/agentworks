@@ -179,6 +179,9 @@ func updateTeamCopyState(project string, change func(*crewTeamCopyState)) (crewT
 // the agent's record, the owner chose it and has their own login for its program here (owner, 4 Nov: never the
 // server's account); else it waits for the Mac. The reason names why it waits.
 func teamCopyRoute(project, tab string) (string, string) {
+	if crewPublishedTarget(project, tab) {
+		return teamCopyWait, "published"
+	}
 	s := readTeamCopyState(project)
 	if s.mode() == teamCopyWait {
 		return teamCopyWait, "chose_wait"
@@ -278,9 +281,8 @@ func (api *StreamingAPI) teamCopyMacBack(owner, project, pair string) {
 	}
 	defer teamCopyHandingBack.Delete(project)
 	time.Sleep(3 * time.Second) // the Mac's connection is registered once its offer is admitted
-	if crewMacSocketFor(owner, project, pair) == nil {
-		return
-	}
+	// Without the Mac, only what now belongs to a published agent moves on: its held messages go to it on the server.
+	macOn := crewMacSocketFor(owner, project, pair) != nil
 	s = readTeamCopyState(project)
 	reported := map[string]bool{}
 	tabs := map[string][]crewTeamCopyAway{}
@@ -288,6 +290,15 @@ func (api *StreamingAPI) teamCopyMacBack(owner, project, pair string) {
 		tabs[away.Tab] = append(tabs[away.Tab], away)
 	}
 	for tab, asks := range tabs {
+		if crewPublishedTarget(project, tab) {
+			// Published since: the agent lives on the server now, so the Mac's tab gets no note.
+			reported[tab] = true
+			log.Printf("[TEAM_COPY] project=%s tab=%s action=away_report skipped reason=published people=%d", project, tab, len(asks))
+			continue
+		}
+		if !macOn {
+			continue
+		}
 		text := api.teamCopyReport(owner, project, tab, asks)
 		if text == "" {
 			reported[tab] = true
@@ -301,8 +312,19 @@ func (api *StreamingAPI) teamCopyMacBack(owner, project, pair string) {
 	}
 	delivered := map[string]bool{}
 	for _, held := range s.Waiting {
-		result := callCrewMacFor(context.Background(), owner, project, crewChatCall{Operation: "agent_ask", Tab: held.Tab, Message: held.Message, Caller: held.Caller, Args: held.Args, SubmissionID: held.SubmissionID}, 60*time.Second)
-		log.Printf("[TEAM_COPY] project=%s tab=%s action=deliver_held inbox=%q mac_status=%d", project, held.Tab, held.Inbox, result.Status)
+		// An agent published while the message waited is answered on the server from then on.
+		published := crewPublishedTarget(project, held.Tab)
+		if !published && !macOn {
+			continue
+		}
+		send := func(call crewChatCall, timeout time.Duration) crewChatResult {
+			if published {
+				return api.publishedAgentCall(context.Background(), owner, project, call)
+			}
+			return callCrewMacFor(context.Background(), owner, project, call, timeout)
+		}
+		result := send(crewChatCall{Operation: "agent_ask", Tab: held.Tab, Message: held.Message, Caller: held.Caller, Args: held.Args, SubmissionID: held.SubmissionID}, 60*time.Second)
+		log.Printf("[TEAM_COPY] project=%s tab=%s action=deliver_held inbox=%q status=%d published=%t", project, held.Tab, held.Inbox, result.Status, published)
 		if result.Status != http.StatusOK {
 			continue
 		}
@@ -315,7 +337,7 @@ func (api *StreamingAPI) teamCopyMacBack(owner, project, pair string) {
 			held := held
 			read := func(after, wait int) (map[string]any, int) {
 				raw, _ := json.Marshal(map[string]any{"sender_id": args.SenderID, "after": after, "wait_seconds": wait, "submission": held.SubmissionID})
-				result := callCrewMacFor(context.Background(), owner, project, crewChatCall{Operation: "agent_read", Tab: held.Tab, Caller: held.Caller, Args: raw}, time.Duration(wait+40)*time.Second)
+				result := send(crewChatCall{Operation: "agent_read", Tab: held.Tab, Caller: held.Caller, Args: raw}, time.Duration(wait+40)*time.Second)
 				var out map[string]any
 				_ = json.Unmarshal(result.Body, &out)
 				return out, result.Status
@@ -330,7 +352,7 @@ func (api *StreamingAPI) teamCopyMacBack(owner, project, pair string) {
 			next.CopySince = ""
 		}
 	})
-	if s.CopySince != "" && after.CopySince == "" {
+	if s.CopySince != "" && after.CopySince == "" && macOn {
 		log.Printf("[TEAM_COPY] project=%s switch=team_copy->mac reason=mac_back since=%s", project, s.CopySince)
 	}
 }
@@ -597,6 +619,7 @@ var teamCopyPushed = struct {
 func (api *StreamingAPI) startTeamCopyRecords() context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if !IsLocalMode() {
+		go api.sweepHeldForPublished(ctx)
 		return cancel
 	}
 	go func() {
@@ -808,4 +831,33 @@ func (api *StreamingAPI) desktopTeamCopy(ctx context.Context, claims *UserClaims
 		return crewSyncReply{}, 409, crewSyncErrorCode(err), err
 	}
 	return reply, 200, "", nil
+}
+
+// sweepHeldForPublished, on the server, delivers messages held for a Mac whose agent was published since, without
+// waiting for that Mac to come back: every two minutes.
+func (api *StreamingAPI) sweepHeldForPublished(ctx context.Context) {
+	tick := time.NewTicker(2 * time.Minute)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		state, err := crewroot.StateRoot()
+		if err != nil {
+			continue
+		}
+		files, _ := filepath.Glob(filepath.Join(state, "crew-sync", "*-team-copy.json"))
+		for _, file := range files {
+			project := strings.TrimSuffix(filepath.Base(file), "-team-copy.json")
+			held := readTeamCopyState(project).Waiting
+			if !slices.ContainsFunc(held, func(w crewTeamCopyWaiting) bool { return crewPublishedTarget(project, w.Tab) }) {
+				continue
+			}
+			if b, err := crewroot.ReadSync(project); err == nil && b != nil {
+				api.teamCopyMacBack(ownerOfCrewProjectID(project), project, b.PairID)
+			}
+		}
+	}
 }
