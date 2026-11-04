@@ -165,7 +165,10 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
   )
 }
 
-export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange, onOpenComputer }: {
+/** part (owner, 4 Nov): in the Mac app "Linked projects" shows only the linked projects and "Folders on this Mac" only the
+ * folders attached on this Mac; elsewhere one page shows both. */
+export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange, onOpenComputer, part = 'all' }: {
+  part?: 'all' | 'linked' | 'attached'
   workspacePath: string
   workflowContextPaths: string[]
   onOpenComputer?: () => void
@@ -276,16 +279,16 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
 
   return (
     <div className="space-y-4">
-      {roots.length > 0 && <p className="text-[11px] text-muted-foreground">Allowed roots: {roots.join(', ')}</p>}
-      <WorkflowReferenceAccess
+      {part !== 'linked' && roots.length > 0 && <p className="text-[11px] text-muted-foreground">Allowed roots: {roots.join(', ')}</p>}
+      {part !== 'attached' && <WorkflowReferenceAccess
         selectedPaths={workflowContextPaths}
         onChange={onWorkflowContextPathsChange}
         excludeWorkspacePath={workspacePath}
         additionalReferences={crewReferences}
         additionalLabel="Crew"
         showAdditionalGroup
-      />
-      <SettingsCard
+      />}
+      {part !== 'linked' && <SettingsCard
         icon={<FolderOpen aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Attached folders"
         description={local ? "Folders on your Mac that your Crews can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
@@ -312,7 +315,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
           <button type="button" disabled={adding} onClick={() => void add()} className="h-8 rounded-md border border-border px-3 text-xs hover:bg-muted disabled:opacity-50">{adding ? 'Adding…' : 'Add folder'}</button>
         </div> : <div className="mt-3 text-xs text-muted-foreground">{local ? 'Add folders from the AgentWorks Mac app.' : onOpenComputer && <button type="button" onClick={onOpenComputer} className="underline underline-offset-2 hover:text-foreground">Open Your computer</button>}</div>}
         {error && <p className="text-xs text-destructive">{error}</p>}
-      </SettingsCard>
+      </SettingsCard>}
     </div>
   )
 }

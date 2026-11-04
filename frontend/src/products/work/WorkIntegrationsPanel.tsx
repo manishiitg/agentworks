@@ -23,7 +23,7 @@ import { integrationProductAvailable } from '../../components/integrations/integ
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
 
-export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'coding-apps' | 'message-agents'
+export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
 
 export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
   accessLoading?: boolean
@@ -48,10 +48,10 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
     if (next === 'computer-use' && (!canEdit || !isLocalDeployment())) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
-    if ((next === 'coding-apps' || next === 'message-agents') && !integrationProductAvailable('bullpen', allowedProducts)) return
-    if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'coding-apps', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
+    if (next === 'message-agents' && !integrationProductAvailable('bullpen', allowedProducts)) return
+    if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
   })
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Access', 'computer-use': 'Computer use', 'coding-apps': 'Coding apps on this Mac', 'message-agents': 'Message other agents' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Access', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <WorkspaceViewHeader icon={tab === 'access' ? Users : Server} title={labels[tab]} />
@@ -61,9 +61,12 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'apps' && <ProjectIntegrationPanel github={projectMode === 'dev'} workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
-        {tab === 'folders' && <WorkFoldersSection onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
-        {tab === 'mac-folders' && <CodeLocalFilesSettings sessionId={sessionId} />}
-        {tab === 'coding-apps' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} view="coding" />}
+        {tab === 'folders' && <WorkFoldersSection part={isLocalDeployment() ? 'linked' : 'all'} onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
+        {/* In the Mac app this is the folders attached on this Mac (Downloads, your whole Mac, picked folders); on a server it
+            is the person's laptop as seen from the server (owner, 4 Nov). */}
+        {tab === 'mac-folders' && (isLocalDeployment()
+          ? <WorkFoldersSection part="attached" workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />
+          : <CodeLocalFilesSettings sessionId={sessionId} />)}
         {tab === 'message-agents' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} view="others" />}
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}
         {tab === 'slack' && <ProductSlackPanel workspacePath={workspacePath} noun="Crew" section="bot" tabId={tabId} />}
