@@ -17,6 +17,7 @@ export { useMacTabShareLine, useMacSharedAgents, openCrewAccess, takeCrewAccess,
 export type { MacAgentShare } from './MacSharedAgents'
 import { useProjectTeam } from './teamApi'
 import { CrewCodingApps } from './CrewCodingApps'
+import { CrewPublishAgent } from './CrewPublishAgent'
 import { hasPendingCrewAccess } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
@@ -276,6 +277,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         {!online && (tooBig ? <p className="text-xs text-amber-600">This Crew is too large to publish. Move large folders out first.</p> : <MoveFacts facts={facts} />)}
         {online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="rounded-full" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Publish Crew</Button>}
       </div>
+      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} />}
     </section>}
     {section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       <p className="rounded-xl bg-violet-500/10 px-3 py-2 text-[13px] text-violet-800 dark:text-violet-200">Choose people, the agents they can use and the folder you work on together.</p>

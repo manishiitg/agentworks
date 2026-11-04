@@ -162,6 +162,13 @@ func (s *Snapshot) Close() {
 // Capture sends only changed bytes. Expected fingerprints are retained for
 // every deletion/replacement so edits outside AgentWorks are never overwritten.
 func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest, privateStageRoot string) (out Snapshot, err error) {
+	return CaptureSelected(ctx, roots, previous, privateStageRoot, nil)
+}
+
+// CaptureSelected applies the caller's narrower file scope before reading bytes.
+// The ordinary sync exclusions still apply; selection cannot admit private state,
+// symlinks, ignored files or generated dependencies. A nil selection means all.
+func CaptureSelected(ctx context.Context, roots crewroot.Roots, previous Manifest, privateStageRoot string, include func(string, bool) bool) (out Snapshot, err error) {
 	out = Snapshot{Files: Manifest{}, Changes: []Change{}}
 	if privateStageRoot == "" {
 		return out, fmt.Errorf("private sync staging directory is required")
@@ -206,7 +213,7 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest, priva
 			rel = filepath.ToSlash(rel)
 			key := area.name + "/" + rel
 			// The resources tree is captured independently; never descend through it twice.
-			if (area.name == "files" && p == roots.Resources) || !Allowed(key, entry.IsDir()) || ignored[rel] {
+			if (area.name == "files" && p == roots.Resources) || !Allowed(key, entry.IsDir()) || ignored[rel] || (include != nil && !include(key, entry.IsDir())) {
 				if entry.IsDir() {
 					return filepath.SkipDir
 				}
@@ -269,7 +276,7 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest, priva
 			}
 			// If exclusions changed, leave the old copy alone rather than sending
 			// a mutation for a path the current policy no longer admits.
-			if Allowed(key, false) {
+			if Allowed(key, false) && (include == nil || include(key, false)) {
 				out.Changes = append(out.Changes, Change{Path: key, Before: &before})
 			}
 		}

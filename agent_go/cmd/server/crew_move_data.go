@@ -24,6 +24,8 @@ import (
 // ownership, access, app-account IDs and filesystem routing. NDJSON lets a long
 // collection of chats use the same resumable disk transport as project files.
 type crewMoveHeader struct {
+	AgentTab    string                                `json:"agent_tab,omitempty"`
+	AccountID   string                                `json:"account_id,omitempty"`
 	Callers     []crewMoveCaller                      `json:"callers,omitempty"`
 	Watchers    map[string]crewMoveWatcherState       `json:"watchers,omitempty"`
 	Webhooks    []projectWebhookDefinition            `json:"webhooks"`
@@ -52,9 +54,15 @@ func crewMoveRecordPath(roots crewroot.Roots, name string) (string, error) {
 	return p, nil
 }
 
-func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserClaims, roots crewroot.Roots, main ProductConversationRecord, snapshot *crewsync.Snapshot) error {
-	if err := captureCrewMoveDatabase(ctx, roots, snapshot); err != nil {
-		return err
+func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserClaims, roots crewroot.Roots, main ProductConversationRecord, snapshot *crewsync.Snapshot, selected ...crewAgentPublishSelection) error {
+	var selection crewAgentPublishSelection
+	if len(selected) > 0 {
+		selection = selected[0]
+	}
+	if selection.Tab == "" {
+		if err := captureCrewMoveDatabase(ctx, roots, snapshot); err != nil {
+			return err
+		}
 	}
 	h := crewMoveHeader{SourceID: roots.ID, SourceOwner: claims.UserID, MainKey: main.ConversationKey, Settings: map[string]map[string]json.RawMessage{}}
 	for _, name := range []string{"product.json", "workflow.json"} {
@@ -125,6 +133,13 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 		}
 		hook.Auth.EncryptedSecret = ""
 	}
+	if selection.Tab != "" {
+		h.AgentTab, h.AccountID = selection.Tab, selection.AccountID
+		if err = filterCrewAgentCallers(&h); err != nil {
+			return err
+		}
+		h.Settings = nil // The paired Crew keeps its own settings and connections.
+	}
 	f, err := os.CreateTemp(snapshot.StagingDir, "crew-state-")
 	if err != nil {
 		return err
@@ -142,7 +157,7 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 	}
 	keys := make([]string, 0, len(doc.Entries))
 	for key, c := range doc.Entries {
-		if c.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(c.WorkspacePath) == roots.Virtual {
+		if c.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(c.WorkspacePath) == roots.Virtual && (selection.Tab == "" || c.ConversationKey == crewAgentPublishKey(roots.ID, selection.Tab)) {
 			keys = append(keys, key)
 		}
 	}
@@ -154,17 +169,26 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 		for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
 			records[i], records[j] = records[j], records[i]
 		}
+		if selection.Tab != "" {
+			records = nil
+		}
 		records = append(records, current)
 		for i, record := range records {
 			if canonicalCrewWorkspaceRoot(record.WorkspacePath) != roots.Virtual {
 				return fmt.Errorf("a chat does not belong to this Crew")
 			}
 			closeWorkflowPolicyCLI(record.SessionID, record.Provider, "moving Crew online")
-			conversation, err := api.captureCrewHandoffConversation(ctx, claims, roots, record)
+			conversation, err := api.captureCrewHandoffConversation(ctx, claims, roots, record, selection.Tab != "")
 			if err != nil {
 				return err
 			}
 			identity := doc.Agents[key]
+			if selection.Tab != "" {
+				_, identity, err = api.crewAgentPublishRecord(ctx, claims, roots, selection.Tab)
+				if err != nil {
+					return err
+				}
+			}
 			identity.ConnectionID, identity.UpdatedBy = "", ""
 			if err = encoder.Encode(crewMoveChat{current.ConversationKey, i < len(records)-1, identity, conversation}); err != nil {
 				return err
@@ -233,6 +257,45 @@ func (api *StreamingAPI) disableCrewMoveSchedules(ctx context.Context, roots cre
 	for i := range h.Schedules {
 		h.Schedules[i].Enabled = false
 	}
+	if h.AgentTab != "" {
+		old, e := readProjectSchedules(ctx, roots.Virtual)
+		if e != nil {
+			return e
+		}
+		h.Schedules = mergeCrewPublishedItems(old, h.Schedules, func(v projectactions.Schedule) string { return v.ID })
+		hooks, e := readProjectWebhookDefinitions(ctx, roots.Virtual)
+		if e != nil {
+			return e
+		}
+		for i := range hooks {
+			if crewAgentTargetMatches(hooks[i].Action.Tab, h) {
+				hooks[i].Enabled = false
+			}
+		}
+		p, e := crewMoveRecordPath(roots, "webhooks.json")
+		if e != nil {
+			return e
+		}
+		if e = fsutil.WriteJSONAtomic(p, projectWebhooksDocument{Webhooks: hooks}, 0600); e != nil {
+			return e
+		}
+		functions, e := readProjectFunctionDefinitions(ctx, roots.Virtual)
+		if e != nil {
+			return e
+		}
+		for i := range functions {
+			if functions[i].Action.Type == "message" && crewAgentTargetMatches(functions[i].Action.Tab, h) {
+				functions[i].Enabled = false
+			}
+		}
+		p, e = crewMoveRecordPath(roots, "functions.json")
+		if e != nil {
+			return e
+		}
+		if e = fsutil.WriteJSONAtomic(p, projectFunctionsDocument{Functions: functions}, 0600); e != nil {
+			return e
+		}
+	}
 	p, err := crewMoveRecordPath(roots, "schedules.json")
 	if err != nil {
 		return err
@@ -252,7 +315,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 	if err = validateCrewMoveData(statePath, binding.PeerProjectID, roots.ID, main.ConversationKey); err != nil {
 		return err
 	}
-	return readCrewMoveData(statePath, func(h crewMoveHeader, chat *crewMoveChat) error {
+	visit := func(h crewMoveHeader, chat *crewMoveChat) error {
 		if h.SourceID != binding.PeerProjectID || h.SourceOwner == "" {
 			return fmt.Errorf("move records do not match the paired Crew")
 		}
@@ -289,10 +352,18 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			identity := chat.Identity
 			// Account identities are destination-owned. Native import resolves an
 			// available destination account; archives retain the destination default.
+			if h.AgentTab != "" {
+				identity.ConnectionID = h.AccountID
+				identity.Engine = chat.Conversation.Native.Provider
+			}
 			if identity.Engine != "" {
 				if chosen, _ := api.crewNativeDestination(ctx, claims, roots, current, identity, identity.ModelID, identity.Engine); chosen != nil {
 					identity = *chosen
 				} else {
+					if h.AgentTab != "" {
+						lock.Unlock()
+						return fmt.Errorf("the selected server account cannot resume this agent")
+					}
 					identity.Engine, identity.ModelID, identity.ConnectionID = current.Provider, current.ModelID, current.ConnectionID
 				}
 			} else {
@@ -306,7 +377,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 				return err
 			}
 			current.handoffAgentToolsMode = main.handoffAgentToolsMode
-			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current)
+			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current, h.AgentTab != "")
 		}
 		if err := api.importCrewMoveCallers(ctx, claims, roots, h, pair, main.ConversationKey); err != nil {
 			return err
@@ -376,6 +447,13 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 		if err != nil {
 			return err
 		}
+		if h.AgentTab != "" {
+			old, e := readProjectFunctionDefinitions(ctx, roots.Virtual)
+			if e != nil {
+				return e
+			}
+			h.Functions = mergeCrewPublishedItems(old, h.Functions, func(v projectFunctionDefinition) string { return v.ID })
+		}
 		if err = fsutil.WriteJSONAtomic(p, projectFunctionsDocument{Functions: h.Functions}, 0600); err != nil {
 			return err
 		}
@@ -418,6 +496,9 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 					return err
 				}
 			}
+		}
+		if h.AgentTab != "" {
+			h.Webhooks = mergeCrewPublishedItems(oldHooks.Webhooks, h.Webhooks, func(v projectWebhookDefinition) string { return v.ID })
 		}
 		if err = fsutil.WriteJSONAtomic(hookPath, projectWebhooksDocument{Webhooks: h.Webhooks}, 0600); err != nil {
 			return err
@@ -464,12 +545,34 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 		if err != nil {
 			return err
 		}
+		if h.AgentTab != "" {
+			old, e := readProjectSchedules(ctx, roots.Virtual)
+			if e != nil {
+				return e
+			}
+			h.Schedules = mergeCrewPublishedItems(old, h.Schedules, func(v projectactions.Schedule) string { return v.ID })
+		}
 		if err = fsutil.WriteJSONAtomic(p, projectactions.Schedules{Schedules: h.Schedules}, 0600); err != nil {
 			return err
 		}
 		log.Printf("[CREW_SYNC] project=%s phase=records-imported schedules=%d functions=%d webhooks=%d", roots.ID, len(h.Schedules), len(h.Functions), len(h.Webhooks))
 		return nil
+	}
+	var pending *crewMoveHeader
+	err = readCrewMoveData(statePath, func(h crewMoveHeader, chat *crewMoveChat) error {
+		if h.AgentTab != "" && chat == nil {
+			pending = &h
+			return nil
+		}
+		return visit(h, chat)
 	})
+	if err != nil {
+		return err
+	}
+	if pending != nil {
+		return visit(*pending, nil)
+	}
+	return nil
 }
 
 // Validate every record before changing destination files or settings. An owner

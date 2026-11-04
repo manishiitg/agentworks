@@ -25,38 +25,42 @@ import (
 )
 
 type crewSyncRequest struct {
-	Native      []*sessiontransfer.Bundle `json:"native,omitempty"`
-	ArchiveOnly bool                      `json:"archive_only,omitempty"`
-	Mode        string                    `json:"mode,omitempty"`
-	MacID       string                    `json:"mac_id,omitempty"`
-	SplitFiles  bool                      `json:"split_files,omitempty"`
-	TransferID  string                    `json:"transfer_id,omitempty"`
-	Action      string                    `json:"action"`
-	PairID      string                    `json:"pair_id,omitempty"`
-	SourceID    string                    `json:"source_id,omitempty"`
-	Name        string                    `json:"name,omitempty"`
-	MacName     string                    `json:"mac_name,omitempty"`
-	Editing     string                    `json:"editing,omitempty"`
-	Snapshot    *crewsync.Snapshot        `json:"snapshot,omitempty"`
-	Agents      []macSharedAgent          `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
-	// team_copy: "When your Mac is off" (team_copy | wait, empty reads it); team_copy_record: the team copy's record.
+	PublishAgent *crewAgentPublishSelection `json:"publish_agent,omitempty"`
+	Provider     string                     `json:"provider,omitempty"`
+	Native       []*sessiontransfer.Bundle  `json:"native,omitempty"`
+	ArchiveOnly  bool                       `json:"archive_only,omitempty"`
+	Mode         string                     `json:"mode,omitempty"`
+	MacID        string                     `json:"mac_id,omitempty"`
+	SplitFiles   bool                       `json:"split_files,omitempty"`
+	TransferID   string                     `json:"transfer_id,omitempty"`
+	Action       string                     `json:"action"`
+	PairID       string                     `json:"pair_id,omitempty"`
+	SourceID     string                     `json:"source_id,omitempty"`
+	Name         string                     `json:"name,omitempty"`
+	MacName      string                     `json:"mac_name,omitempty"`
+	Editing      string                     `json:"editing,omitempty"`
+	Snapshot     *crewsync.Snapshot         `json:"snapshot,omitempty"`
+	Agents       []macSharedAgent           `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
+	// Team copy stays separate from a permanent publish.
 	WhenMacOff string              `json:"when_mac_off,omitempty"`
 	TeamCopy   *crewTeamCopyRecord `json:"team_copy,omitempty"`
 }
 type crewSyncReply struct {
-	SchedulesPaused    bool                  `json:"schedules_paused"`
-	Message            string                `json:"message,omitempty"`
-	BytesDone          int64                 `json:"bytes_done"`
-	BytesTotal         int64                 `json:"bytes_total"`
-	BackupPath         string                `json:"backup_path,omitempty"`
-	LocalFolderKept    string                `json:"local_folder_kept,omitempty"`
-	RuntimeReadiness   *crewDependencyReport `json:"runtime_readiness,omitempty"`
-	ConversationNotice string                `json:"conversation_notice,omitempty"`
-	TransferID         string                `json:"transfer_id,omitempty"`
-	ProjectID          string                `json:"project_id"`
-	Workspace          string                `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
-	Binding            *crewroot.SyncBinding `json:"binding"`
-	Snapshot           *crewsync.Snapshot    `json:"snapshot,omitempty"`
+	Publish            *crewAgentPublishPreview      `json:"publish,omitempty"`
+	Placements         map[string]crewAgentPlacement `json:"placements,omitempty"`
+	SchedulesPaused    bool                          `json:"schedules_paused"`
+	Message            string                        `json:"message,omitempty"`
+	BytesDone          int64                         `json:"bytes_done"`
+	BytesTotal         int64                         `json:"bytes_total"`
+	BackupPath         string                        `json:"backup_path,omitempty"`
+	LocalFolderKept    string                        `json:"local_folder_kept,omitempty"`
+	RuntimeReadiness   *crewDependencyReport         `json:"runtime_readiness,omitempty"`
+	ConversationNotice string                        `json:"conversation_notice,omitempty"`
+	TransferID         string                        `json:"transfer_id,omitempty"`
+	ProjectID          string                        `json:"project_id"`
+	Workspace          string                        `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
+	Binding            *crewroot.SyncBinding         `json:"binding"`
+	Snapshot           *crewsync.Snapshot            `json:"snapshot,omitempty"`
 	// Place is where the Crew lives for the Access row: mac, mac_off, moving or online (the server decides).
 	Place string `json:"place,omitempty"`
 	// Agents: share_agents' answer, each with the address the server gave it.
@@ -230,6 +234,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
+	if input.Action == "publish_accounts" || input.Action == "publish_agent" || input.Action == "stage_agent" {
+		return api.receiveCrewAgentPublish(ctx, claims, id, input)
+	}
 	if input.Action == "stage" {
 		return api.prepareCrewTransfer(ctx, claims, id, input)
 	}
@@ -280,6 +287,10 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return crewSyncReply{}, e
 		}
 		out := crewSyncReply{ProjectID: id, Binding: b, Workspace: roots.Virtual, Place: crewPlace(claims.UserID, id, b)}
+		out.Placements, e = readCrewAgentPlacements(id)
+		if e != nil {
+			return out, e
+		}
 		out.BytesDone, out.BytesTotal = crewMoveBytes(roots, b)
 		if b != nil && b.SchedulesPaused {
 			out.SchedulesPaused = true

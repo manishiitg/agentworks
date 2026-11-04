@@ -499,6 +499,15 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		crewOwned = crew.OwnedByCaller
 		crewRoot = crew.Binding.WorkspacePath
+		if crewOwned {
+			place, e := crewPublishedAgent(crewResourceProjectID(conversationKey), crewAgentPublishTab(conversationKey))
+			if e != nil {
+				return nil, e
+			}
+			if place != nil && (IsLocalMode() || place.Location != "server") {
+				return nil, fmt.Errorf("this agent is %s on the server; open Access → Publish to continue there or finish its publish", place.Location)
+			}
+		}
 		// The crew's "Native agent tools" switch. Resolve returned a copy, so
 		// this changes only this request's profile; the session key hashes the
 		// definition, so toggling relaunches the coding CLI. Owners only:
@@ -832,6 +841,21 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		rendered += "\n\n" + publishedSourceNotice + "\nThis published agent saves working data under " + publication.runtimeRoot() + ". AGENTWORKS_PUBLICATION_SOURCE and AGENTWORKS_PUBLICATION_RUNTIME name its source and working-data directories in scripts."
 		if publishedBuilderHandoff(req, !crewOwned) {
 			rendered += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(publication)
+		}
+	}
+	if isProjectProfileID(profile.ID) {
+		if scoped, e := crewAgentRuntimeFolder(workspacePath, userID, sessionID); e != nil {
+			return nil, e
+		} else if scoped != workspacePath {
+			// Capabilities and account admission remain those of the same Crew.
+			// File/skill tools and the native cwd use this agent's transferred work.
+			req.SelectedFolder = scoped
+			rendered += "\n\nThis agent was published from a Mac. Its working files, skills and memory are in " + scoped + ". Use that folder for this agent's work. The rest of the Mac is not present."
+			if content, found, e := readFileFromWorkspace(ctx, scoped+"/"+projectinstructions.FileName); e != nil {
+				return nil, e
+			} else if found {
+				projectInstructions = projectinstructions.Section(content)
+			}
 		}
 	}
 	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered, AgentRolePrompt: agentRole, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,

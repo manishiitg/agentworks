@@ -33,6 +33,11 @@ func crewCLIMode(readOnly bool) string {
 }
 
 func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	var scopeErr error
+	folder, scopeErr = crewAgentRuntimeFolder(folder, user, session)
+	if scopeErr != nil {
+		return "", scopeErr
+	}
 	if roots, bound, err := localCrewRoots(folder); bound || err != nil {
 		return roots.Files, err
 	}
