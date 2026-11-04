@@ -102,6 +102,27 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		}
 		return nil
 	}
+	// A person may contact a shared Mac agent through their attached chat just as on the website.
+	// Check the current audience before the own-hosted-chat receive guard: this is an explicit share,
+	// and the attached connection carries messaging permissions, not general Crew tool permissions.
+	if peer.Kind == triggerCallerCrew && peer.UserID != claims.UserID && peer.ChatKey != "" && !strings.HasPrefix(peer.ChatKey, "messages:") && !IsLocalMode() && crewRelayTwin(peer.ID) {
+		tab := macSharedAgentTab(peer.ID, peer.ChatKey)
+		_, reason := macSharedAgentFor(peer.ID, tab, claims.UserID, peer.UserID)
+		if reason == "" && token != nil {
+			if token.BoundAgentID != "" {
+				if !namedAgentOperationAllowed(claims, send) {
+					reason = "messaging_not_allowed"
+				}
+			} else if !(token.Allows("crews:run") || !send && token.Allows("crews:read")) {
+				reason = "crew_operation_not_allowed"
+			}
+		}
+		if reason != "" {
+			log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message_authorize refused reason=%s user=%s send=%t", peer.ID, tab, reason, logUsernameForUserID(claims.UserID), send)
+			return denied
+		}
+		return nil
+	}
 	// An attached agent's connection exists only to receive its own mail: a chat inside AgentWorks that
 	// wrote to it is judged by what the person can reach, not by the connection's tool scopes (which a
 	// bound connection never has), or its messages would be stored and never delivered.
@@ -114,13 +135,6 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		claims = view
 	}
 	token = claims.AccessToken
-	// A Mac Crew's shared agent: the audience check above is the access; there is no Crew to resolve here.
-	if peer.Kind == triggerCallerCrew && !IsLocalMode() && crewRelayTwin(peer.ID) && sharedCrewAgentPeer(ctx, claims.UserID, peer) {
-		if token != nil && !(token.Allows("crews:run") || !send && token.Allows("crews:read")) {
-			return denied
-		}
-		return nil
-	}
 	if peer.Kind == triggerCallerCrew && sharedCrewAgentPeer(ctx, claims.UserID, peer) {
 		if token != nil && !(token.Allows("crews:run") || !send && token.Allows("crews:read")) {
 			return denied
