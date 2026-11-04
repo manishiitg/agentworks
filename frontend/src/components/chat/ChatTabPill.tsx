@@ -175,7 +175,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
-      {agent ? <AgentAvatar name={displayName} status={isBlank ? 'ready' : status} asking={agent.asking} shared={agent.shared} card={agent.card} /> :
+      {agent ? <AgentAvatar name={displayName} status={isBlank ? 'ready' : status} active={isActive} asking={agent.asking} shared={agent.shared} card={agent.card} /> :
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {/* An idle tab shows its owner a quiet purpose icon in this spot instead (owner, 3 Nov). */}
         {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}

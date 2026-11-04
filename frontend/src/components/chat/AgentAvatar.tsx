@@ -2,18 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Users } from 'lucide-react'
 
-// The agent's face on its tab (owner, 4 Nov, tab design A; calm option B): its first letter in a colour taken from its
-// name, on a faint circle of that colour. Every
-// state is a small mark on it: a ring while it works (amber when it needs you, red when it failed), a green dot while
-// someone else is asking it, a people badge when it is shared. Hover or click opens one card about the agent.
-const AVATAR_COLOURS = ['#9db7ff', '#8fd6b4', '#f0c27a', '#f2a3b3', '#b9a4f5', '#7fd0e0', '#d6c78f']
-
-export function agentAvatarColour(name: string) {
-  let hash = 0
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
-  return AVATAR_COLOURS[hash % AVATAR_COLOURS.length]
-}
-
+// The agent's face on its tab (owner, 4 Nov, tab design A; quiet option A): its first letter on the same grey circle
+// for every agent. The only colour is in the marks on it: a ring while it works (amber when it needs you, red when it
+// failed), a green dot while someone else is asking it, a people badge when it is shared. Hover or click opens one card.
 export type AgentAvatarStatus = 'waiting' | 'busy' | 'failed' | 'completed' | 'ready'
 
 export interface AgentAvatarCard {
@@ -35,7 +26,7 @@ const RING: Partial<Record<AgentAvatarStatus, string>> = {
 }
 const STATUS_WORD: Partial<Record<AgentAvatarStatus, string>> = { busy: 'Working', waiting: 'Needs you', failed: 'Failed', completed: 'Completed — open to mark as seen' }
 
-export function AgentAvatar({ name, status, asking, shared, card }: { name: string; status: AgentAvatarStatus; asking?: boolean; shared?: string; card?: AgentAvatarCard }) {
+export function AgentAvatar({ name, status, active, asking, shared, card }: { name: string; status: AgentAvatarStatus; active?: boolean; asking?: boolean; shared?: string; card?: AgentAvatarCard }) {
   const face = useRef<HTMLButtonElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
@@ -64,8 +55,7 @@ export function AgentAvatar({ name, status, asking, shared, card }: { name: stri
       onMouseEnter={show} onMouseLeave={hide} onFocus={show}
       onClick={event => { event.stopPropagation(); if (!card) return; if (pinned) { setAt(null); setPinned(false) } else { show(); setPinned(true) } }}
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
-      style={{ background: `${agentAvatarColour(name)}1f`, color: agentAvatarColour(name) }}
-      className="relative grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      className={`relative grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'bg-neutral-300 text-neutral-900 dark:bg-[#3a3b42] dark:text-white' : 'bg-neutral-200 text-neutral-600 dark:bg-[#2a2b30] dark:text-[#c9c9cf]'}`}>
       {letter}
       {RING[status] && <span aria-hidden="true" className={`pointer-events-none absolute -inset-[3px] rounded-full border-2 ${status === 'busy' ? 'border-transparent' : ''} ${RING[status]}`} />}
       {asking && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border border-background bg-emerald-500 motion-safe:animate-pulse" />}
