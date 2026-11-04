@@ -319,3 +319,30 @@ func crewScriptConsumers(ctx context.Context, script *crewExecutableBinding, nex
 	}
 	return result, nil
 }
+
+// PLAT-746-265: a timer runs saved Python directly, just like a function/webhook.
+// It must not ask a Builder model to launch the script or do post-run AI work.
+func (s *SchedulerService) executeCrewScriptSchedule(ctx context.Context, sctx *ScheduleContext, runID string) (string, string, error) {
+	folder := sctx.ScheduledRunFolder
+	if folder == "" {
+		return "", "", fmt.Errorf("this script schedule has no assigned run folder")
+	}
+	sessionID := s.newScheduleSessionID(sctx)
+	invocation := &workflow.ScheduleInvocation{RunID: runID, ScheduleID: sctx.Schedule.ID, RunFolder: folder, TriggerSource: sctx.TriggerSource, ScheduledFor: sctx.ScheduledFor, AllowParallel: scheduleAllowsParallel(sctx.Schedule)}
+	s.api.scheduleInvocations.Store(sessionID, invocation)
+	defer s.api.scheduleInvocations.Delete(sessionID)
+	s.updateRuntimeState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) { state.LastSessionID = sessionID })
+	if err := UpdateScheduleRun(ctx, sctx.WorkspacePath, runID, "running", "", nil, folder, sessionID); err != nil {
+		return sessionID, folder, err
+	}
+	req := s.buildWorkshopRequest(ctx, sctx, runID)
+	opts, err := configureDirectWebhookRequest(req, sctx, folder)
+	if err != nil {
+		return sessionID, folder, err
+	}
+	req["query"] = "Script: " + sctx.Schedule.Name
+	s.sessionLogf(sctx, sessionID, "[CREW_SCRIPT] Direct schedule execution run=%s run_as=%s folder=%s", runID, sctx.OwnerUserID, folder)
+	err = s.api.startSessionInternal(context.WithValue(ctx, directWebhookExecutionKey{}, opts), req, sessionID, sctx.OwnerUserID, nil)
+	sctx.ProducedRunEvidence = err == nil
+	return sessionID, folder, err
+}

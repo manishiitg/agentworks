@@ -78,6 +78,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	if err != nil || !found {
 		t.Fatal(err)
 	}
+	if _, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner", Username: "owner"}, "workflow:"+binding.ID); err != nil {
+		t.Fatalf("saved script discovery by stable id: %v", err)
+	}
 	runAs := workflowExecutionOwnerUserID(manifest)
 	if runAs != "owner" {
 		t.Fatal("wrong run-as", runAs)
@@ -154,6 +157,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			verified = true
 			t.Logf("script completed run=%s run_as=%s real_python=true", folder.Name(), runAs)
 		}
+	}
+	if _, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner", Username: "owner"}, "workflow:"+binding.ID); err != nil {
+		t.Fatalf("script discovery after runtime files exist: %v", err)
 	}
 	if !verified {
 		t.Fatal("no real Python result")
