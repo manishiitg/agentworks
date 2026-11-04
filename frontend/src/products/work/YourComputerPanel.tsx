@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useState, type ReactNode } from 'react'
-import { CheckCircle2, CircleDashed, Cloud, Folder, Globe, Hash, Laptop, MessageSquare, RefreshCw, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
+import { CheckCircle2, CircleDashed, Cloud, Folder, Laptop, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl, setSlackSetupConnection } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -19,6 +19,8 @@ import { useProjectTeam } from './teamApi'
 import { CrewCodingApps } from './CrewCodingApps'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
 import { hasPendingCrewAccess } from './MacSharedAgents'
+import { schedulerApi } from '../../api/scheduler'
+import { useTeamCopyStatus } from './TeamWhenMacOff'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
@@ -161,6 +163,20 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   }, [projectId])
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
   const name = tab?.metadata?.agentProfileProjectTitle || 'this'
+  const workspace = tab?.metadata?.agentProfileWorkspace
+  const [agentCount, setAgentCount] = useState<number>()
+  const [scheduleCount, setScheduleCount] = useState<number>()
+  useEffect(() => {
+    setAgentCount(undefined); setScheduleCount(undefined)
+  }, [projectId])
+  useEffect(() => {
+    if (section !== 'publish' || !workspace) return
+    let active = true
+    void schedulerApi.listJobs({ entity_type: 'product', limit: 1000 }).then(data => {
+      if (active && data.total <= data.jobs.length) setScheduleCount(data.jobs.filter(job => job.workspace_path?.replace(/\/+$/, '') === workspace.replace(/\/+$/, '')).length)
+    }).catch(() => {})
+    return () => { active = false }
+  }, [section, workspace])
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -211,10 +227,9 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   }
   const minutes = readiness ? Math.max(1, Math.round(readiness.estimated_seconds / 60)) : 0
   const facts = readiness && !tooBig ? { size: sizeLabel(readiness.measurement.bytes), time: `about ${minutes} ${minutes > 1 ? 'minutes' : 'minute'}` } : undefined
-  const way = (icon: ReactNode, title: string, line: string, action: ReactNode) => <div className="grid grid-cols-[22px_minmax(0,1fr)] items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0 sm:grid-cols-[22px_minmax(0,1fr)_auto]">
-    <span aria-hidden="true" className="flex justify-center text-muted-foreground">{icon}</span>
-    <span className="min-w-0"><span className="block text-sm font-medium">{title}</span><span className="block text-xs text-muted-foreground">{line}</span></span>
-    <div className="col-start-2 flex flex-wrap items-center gap-2 sm:col-start-auto">{action}</div>
+  const way = (title: string, line: string, action: ReactNode) => <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-border py-2.5 pl-3 text-sm">
+    <span>{title}</span>{line && <span className="text-[12.5px] text-muted-foreground">{line}</span>}
+    <div className="ml-auto flex flex-wrap items-center gap-1.5">{action}</div>
   </div>
   // Move online takes the whole page (owner, 3 Nov mockup): the step, then its progress, then done.
   const [doneSeen, setDoneSeen] = useState(false)
@@ -225,11 +240,12 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
     onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   const network = networkName(target) || 'your server'
   const tabs = [
-    { id: 'mac', label: 'Mac online', detail: 'you, from anywhere', tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
-    { id: 'publish', label: 'Publish', detail: 'agents on the server', tone: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' },
-    { id: 'team', label: 'Team', detail: 'work with people', tone: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' },
+    { id: 'mac', icon: '💻', label: 'Mac online', detail: 'you, from anywhere', tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
+    { id: 'publish', icon: '☁️', label: 'Publish', detail: 'agents on the server', tone: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' },
+    { id: 'team', icon: '👥', label: 'Team', detail: 'work with people', tone: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' },
   ] as const
-  return <div className="space-y-4 text-sm">
+  const serverCopies = [...(status?.on_server || []), ...(team.team?.server_data ? [{ name: `${team.team.server_data.name}/ (shared folder)`, detail: 'kept on the server so your team can sync it' }] : [])]
+  return <div className="space-y-3.5 text-sm">
     <div role="tablist" aria-label="Crew access" className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1">
       {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={section === item.id} tabIndex={section === item.id ? 0 : -1}
         onClick={() => setSection(item.id)} onKeyDown={event => {
@@ -237,73 +253,72 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
           if (next < 0) return
           event.preventDefault(); setSection(tabs[next].id); document.getElementById(`crew-access-${projectId}-${tabs[next].id}`)?.focus()
         }} className={`min-w-0 rounded-lg px-2 py-2 text-center ${section === item.id ? item.tone : 'text-muted-foreground hover:bg-muted'}`}>
-        <span className="block font-semibold">{item.label}</span><span className="mt-0.5 block text-[11px]">{item.detail}</span>
+        <span className="block font-semibold"><span aria-hidden="true">{item.icon}</span> {item.label}</span><span className="mt-0.5 block text-[11px]">{item.detail}</span>
       </button>)}
     </div>
     {section === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
-      <p className="rounded-xl bg-emerald-500/10 px-3 py-2 text-[13px] text-emerald-800 dark:text-emerald-200">{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : `Reach your Mac from a browser, phone or your other apps while it is on. Messages pass through ${network}.`}</p>
-      {status && !online && !moving && <label className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-border px-3 py-2">
-        <span className="text-sm">Use from phone and web</span>
-        <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
-      </label>}
-      {asking && !binding && <div role="group" aria-label="Which network?" className="mt-2 space-y-1.5 rounded-2xl border border-border p-3">
-        <p className="text-xs text-muted-foreground">Which network?</p>
-        {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="rounded-full px-3.5 w-full justify-start" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
-      </div>}
-
-      <div aria-disabled={!binding} className={`overflow-hidden rounded-2xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
-        {way(<Globe className="h-4 w-4" />, 'Website', 'Any browser or phone', <>
-          <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button>
-          <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} aria-expanded={open === 'code'} aria-controls={`crew-phone-code-${projectId}`} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide QR' : 'QR for phone'}</Button>
-        </>)}
-        {open === 'code' && link && <div id={`crew-phone-code-${projectId}`} className="flex justify-center border-b border-border p-3"><LinkCode link={link} /></div>}
-        {way(<MessageSquare className="h-4 w-4" />, 'ChatGPT or Claude', `Then just say "ask my ${name} Crew to…"`, <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
-        {open === 'ai' && binding?.peer_server && <div className="border-b border-border p-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
-        {way(<Hash className="h-4 w-4" />, 'Slack DM', 'Message your Crew directly in Slack.', <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
-        {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
+      {binding?.connection_id && !online
+        ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} projectId={projectId} connection={binding.connection_id} network={network} copies={serverCopies} />
+        : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
+      <div className="px-0.5">
+        {status && !online && !moving && <label className="flex items-center justify-between gap-3 border-t border-border py-2.5">
+          <span className="font-semibold">Use from phone and web</span>
+          <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
+        </label>}
+        {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border py-3">
+          <p className="text-xs text-muted-foreground">Which network?</p>
+          {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start rounded-full px-3.5" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
+        </div>}
+        <div aria-disabled={!binding} className={binding ? '' : 'pointer-events-none opacity-50'}>
+          {way('Website', 'any browser or phone', <>
+            <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button>
+            <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} aria-expanded={open === 'code'} aria-controls={`crew-phone-code-${projectId}`} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide QR' : 'QR for phone'}</Button>
+          </>)}
+          {open === 'code' && link && <div id={`crew-phone-code-${projectId}`} className="flex justify-center border-t border-border p-3"><LinkCode link={link} /></div>}
+          {way('ChatGPT or Claude', `“ask my ${name} Crew to…”`, <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
+          {open === 'ai' && binding?.peer_server && <div className="border-t border-border py-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
+          {way('Slack DM', '', <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
+          {open === 'slack' && binding?.connection_id && <div className="border-t border-border py-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
+          <CrewCodingApps connection={binding?.connection_id} crewName={name} />
+        </div>
+        <p className="mt-1 text-[12.5px] text-muted-foreground">{online ? 'Open this published Crew from the Publish tab.' : 'Only you. Works while this Mac is on.'}</p>
+        {!binding && !online && <p className="mt-1 text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
       </div>
-
-      {binding?.connection_id && <CrewCodingApps connection={binding.connection_id} crewName={name} />}
-      {!binding && <p className="text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
     </section>}
     {section === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
-      <p className="rounded-xl bg-sky-500/10 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200">Publish runs your work on {network} from now on, even when this Mac is off.</p>
+      <p className="flex items-start gap-2 rounded-[10px] bg-sky-500/10 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200"><span aria-hidden="true">☁️</span><span>Publish runs it on {network} from now on, with your Mac on or off: chat, memory, skills, selected files, schedules and triggers go with it, using your AI login on the server. Publish the whole Crew, or just one agent.</span></p>
       {!connections.length && <p className="text-xs text-muted-foreground">Sign in to a server in Connections first.</p>}
-      {status && binding && !online && <WhereYourDataIs copies={[...(status.on_server || []), ...(team.team?.server_data ? [{ name: `${team.team.server_data.name}/ (shared folder)`, detail: 'kept on the server so your team can sync it' }] : [])]} sharing={(status.shared_agents || 0) > 0} />}
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
-      <div className="space-y-3 rounded-xl border border-sky-500/25 p-3">
-        <p className="font-semibold">Whole Crew</p>
-        <p className="text-[13px] text-muted-foreground">{online ? `Published on ${network}. Your Mac folder is kept.` : 'All its agents, files, chats, schedules and watchers move to the server. Your Mac folder is kept as a backup.'}</p>
-        {!online && (tooBig ? <p className="text-xs text-amber-600">This Crew is too large to publish. Move large folders out first.</p> : <MoveFacts facts={facts} />)}
-        {online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="rounded-full" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Publish Crew</Button>}
+      <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
+        <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">🧩</span>
+        <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p>
+          <p className="text-[12.5px] text-muted-foreground">{online ? `Published on ${network}. Your Mac folder is kept.` : `All ${agentCount === undefined ? 'its agents' : `${agentCount} ${agentCount === 1 ? 'agent' : 'agents'}`}, the Crew folder${facts ? ` (${facts.size})` : ''} and ${scheduleCount === undefined ? 'its schedules' : `its ${scheduleCount} ${scheduleCount === 1 ? 'schedule' : 'schedules'}`}. The Mac folder is kept as a backup.`}</p>
+          {!online && tooBig && <p className="text-xs text-amber-600">This Crew is too large to publish. Move large folders out first.</p>}
+        </div>
+        {online ? <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="ml-auto h-7 rounded-full px-3" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Publish Crew</Button>}
       </div>
-      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
+      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} onAgentCount={setAgentCount} />}
+      <p className="text-[12.5px] text-muted-foreground">Use it for things that should keep running: a workflow, a daily report, a watcher.</p>
     </section>}
     {section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <p className="rounded-xl bg-violet-500/10 px-3 py-2 text-[13px] text-violet-800 dark:text-violet-200">Choose people, the agents they can use and the folder you work on together.</p>
       {binding && !online && binding.connection_id ? <CrewTeamTab projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <p className="text-[13px] text-muted-foreground">Connect this Crew to a server from <button type="button" className="text-primary underline" onClick={() => setSection('mac')}>Mac online</button> first.</p>}
     </section>}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
   </div>
 }
 
-/** Where this Mac Crew's data is (owner, 4 Nov mockup data-where): green while everything stays on this Mac, blue once the
- * server keeps something, listed by name as the server reports it. */
-function WhereYourDataIs({ copies, sharing }: { copies: ServerCopy[]; sharing: boolean }) {
-  const [open, setOpen] = useState(false)
-  const row = (icon: ReactNode, body: ReactNode) => <div className="flex items-start gap-2.5 text-[13px]"><span aria-hidden="true" className="mt-0.5 flex w-4 justify-center text-muted-foreground">{icon}</span><div className="min-w-0">{body}</div></div>
-  const tag = (text: string, tone: string) => <span className={`ml-1.5 rounded-full px-2 py-px text-[11px] ${tone}`}>{text}</span>
-  if (!copies.length) return <section aria-label="Where your data is" className="space-y-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3.5 py-3">
-    {row(<Laptop className="h-4 w-4" />, <><b className="font-semibold">Your work is on this Mac</b><p className="text-muted-foreground">Your files, chats and memory are here. Your agents answer while this Mac is on.</p></>)}
-    {row(<RefreshCw className="h-3.5 w-3.5" />, <p className="text-muted-foreground">{sharing ? "People's questions and the answers pass through the server. Each person sees only their own chat." : 'Phone, web and agent messages pass through the server to this Mac and back.'}</p>)}
-  </section>
-  return <section aria-label="Where your data is" className="space-y-2 rounded-2xl border border-sky-400/25 bg-sky-400/[0.06] px-3.5 py-3">
-    {row(<Cloud className="h-4 w-4" />, <><b className="font-semibold">Copies kept on the server</b>{tag('Stored', 'bg-sky-400/15 text-sky-600 dark:text-sky-300')}
-      <ul className="mt-1 space-y-0.5 text-muted-foreground">{copies.map(copy => <li key={copy.name}><span className="font-medium text-foreground">{copy.name}</span>: {copy.detail}</li>)}</ul></>)}
-    {row(<Laptop className="h-4 w-4" />, <><b className="font-semibold">Still only on this Mac</b>{tag('Private', 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400')}<p className="text-muted-foreground">Everything else: your other files, your chats with your agents, your logins and secrets.</p></>)}
-    {row(null, <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="text-primary hover:underline">{open ? 'Hide the list' : "See exactly what's on the server"}</button>)}
-    {open && <ul className="ml-6 list-disc space-y-0.5 text-[12px] text-muted-foreground">{copies.map(copy => <li key={copy.name}>{copy.name}: {copy.detail}</li>)}</ul>}
-  </section>
+const allOnMac = (network: string) => `Everything is on this Mac. Use it from your phone, the web or your other apps while the Mac is on; your messages pass through ${network}, your files don't.`
+function MacDataLine({ children }: { children: ReactNode }) {
+  return <p className="flex items-start gap-2 rounded-[10px] bg-emerald-500/10 px-3 py-2 text-[13px] text-emerald-800 dark:text-emerald-200"><span aria-hidden="true">🔒</span><span>{children}</span></p>
+}
+function MacOnlineDataLine({ projectId, connection, network, copies }: { projectId: string; connection: string; network: string; copies: ServerCopy[] }) {
+  const { status, error } = useTeamCopyStatus(projectId, connection)
+  const names = copies.map(copy => copy.name)
+  if (status?.ready) names.push('your shared agents’ instructions, skills, memory and chats for the team copy')
+  return <MacDataLine>{names.length
+    ? `Your Mac does the work while it is on. Messages pass through ${network}; the server also keeps ${names.join(', ')}. Your other files stay on this Mac.`
+    : !status || error ? `Your Mac does the work while it is on; messages pass through ${network}. Files shared through Team or Publish are kept there; other files stay on this Mac.`
+    : allOnMac(network)}</MacDataLine>
 }
 
 /** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */
