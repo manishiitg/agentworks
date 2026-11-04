@@ -205,7 +205,7 @@ func workFolderClaimsAreAdmin(claims *UserClaims) bool {
 
 func workFolderGrantsForClaims(ctx context.Context, claims *UserClaims) []workflowtypes.WorkflowFolderGrant {
 	grants, _ := workFolderAccessForClaims(ctx, claims)
-	return grants
+	return append(grants, crewTeamNativeFolders(ctx, claims)...)
 }
 
 // workFolderRootsForClaims returns the canonical allowed roots for the

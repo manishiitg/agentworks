@@ -6,14 +6,14 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; people: { user_id: string; can_edit_shared_folder: boolean }[]; folder: { path: string; label: string }; can_manage: boolean; can_edit_shared_folder: boolean; server_data?: { name: string; size_bytes: number } }
-export type TeamTarget = { project: string; connection?: string; localProject?: string }
+export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; people: { user_id: string; can_edit_shared_folder: boolean }[]; folder: { id?: string; path: string; label: string }; can_manage: boolean; can_edit_shared_folder: boolean; server_data?: { name: string; size_bytes: number } }
+export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
 export type TeamClash = { path: string; source: string; winning_revision: number; losing_revision: number; winning_author: string; losing_author: string }
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
 export const teamError = (e: unknown) => e instanceof Error ? e.message : 'Could not open the shared folder. Try again.'
 
 export async function teamRequest<T>(target: TeamTarget, suffix = '', method = 'GET', body?: unknown, raw = false): Promise<T> {
-  const route = `/api/crew-teams/${encodeURIComponent(target.project)}${suffix}`
+  const route = `/api/crew-teams/${encodeURIComponent(target.project)}${suffix}${suffix && target.folderId ? `${suffix.includes('?') ? '&' : '?'}folder_id=${encodeURIComponent(target.folderId)}` : ''}`
   if (!target.connection) {
     const { data } = await api.request<T>({ url: route, method, data: body, skipSessionContext: true, ...(raw ? { responseType: 'text', headers: { 'Content-Type': 'application/octet-stream' } } : {}) })
     return data
@@ -44,7 +44,7 @@ export function useProjectTeam(project: string) {
           target = { connection: data.binding.connection_id, project: data.binding.peer_project_id, localProject: project }
         }
         const team = await teamRequest<Team>(target)
-        if (active) { setResult({ team, target }); setError('') }
+        if (active) { setResult({ team, target: { ...target, folderId: team.folder.id } }); setError('') }
       } catch (e) { if (active) setError(teamError(e)) }
     }
     if (project) void load()
@@ -83,7 +83,7 @@ export function useTeams() {
             if (!response.ok) return
             data = await response.json()
           } else data = (await api.get<{ teams: Team[] }>('/api/crew-teams', { skipSessionContext: true })).data
-          for (const team of data.teams || []) if (team.can_edit_shared_folder) results.push({ team, target: { project: team.project_id, connection } })
+          for (const team of data.teams || []) if (team.can_edit_shared_folder) results.push({ team, target: { project: team.project_id, connection, folderId: team.folder.id } })
         } catch { /* An offline network keeps its copies on the computer. */ }
       }))
       if (active) setTeams(results)

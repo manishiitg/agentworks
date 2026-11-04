@@ -54,18 +54,19 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 	if rel == "" {
 		rel = "."
 	}
-	if _, e := crewTeamAuthorize(claims, project, rel, r.Method == http.MethodPost, true); e != nil {
+	if _, e := crewTeamRequestAuthorize(r, claims, project, rel, r.Method == http.MethodPost, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
-	dir, _ := crewTeamDir(project)
-	unlock, e := wf.LockWorkspace(r.Context(), dir)
+	dir, _ := crewTeamContentDir(project)
+	lockDir, _ := crewTeamDir(project)
+	unlock, e := wf.LockWorkspace(r.Context(), lockDir)
 	if e != nil {
 		externalError(w, 409, "team_history_unavailable", e.Error())
 		return
 	}
 	defer unlock()
-	if _, e = crewTeamAuthorize(claims, project, rel, r.Method == http.MethodPost, true); e != nil {
+	if _, e = crewTeamRequestAuthorize(r, claims, project, rel, r.Method == http.MethodPost, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
@@ -164,7 +165,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "invalid_resolution", "Choose the file and which version to keep.")
 			return
 		}
-		if _, e = crewTeamAuthorize(claims, project, in.Path, true, true); e != nil {
+		if _, e = crewTeamRequestAuthorize(r, claims, project, in.Path, true, true); e != nil {
 			externalError(w, 403, "team_folder_forbidden", e.Error())
 			return
 		}

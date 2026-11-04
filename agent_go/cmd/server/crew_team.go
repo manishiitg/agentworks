@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -30,6 +31,7 @@ type crewTeamPerson struct {
 	CanEditSharedFolder bool   `json:"can_edit_shared_folder"`
 }
 type crewTeamFolder struct {
+	ID    string `json:"id"`
 	Path  string `json:"path"`
 	Label string `json:"label"`
 }
@@ -332,9 +334,13 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	if previous.Folder.Path != "" && previous.Folder.Path != input.Folder.Path {
-		externalError(w, 409, "folder_in_use", "This team already has a shared folder. Keep it selected so existing files stay together.")
-		return
+	input.Folder.ID = previous.Folder.ID
+	if previous.Folder.Path != input.Folder.Path {
+		input.Folder.ID = uuid.NewString()
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder_changed generation=%s", project, owner, input.Folder.ID)
+	}
+	if input.Folder.Path != "" && input.Folder.ID == "" {
+		input.Folder.ID = uuid.NewString()
 	}
 	input.ProjectID = project
 	input.OwnerID = owner
@@ -342,6 +348,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" {
 		input.Name = previous.Name
+	}
+	if input.Name == "" {
+		if _, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, project); ok {
+			input.Name = manifest.Name
+		}
 	}
 	if input.Name == "" {
 		input.Name = "Shared work"
@@ -436,6 +447,10 @@ func (api *StreamingAPI) handleDesktopCrewTeam(w http.ResponseWriter, r *http.Re
 	if !desktopConnectionGate(w, r) {
 		return
 	}
+	api.runDesktopCrewTeam(w, r)
+}
+
+func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	id := mux.Vars(r)["project"]
 	roots, e := api.crewSyncRoots(r.Context(), claims, id)
@@ -459,6 +474,9 @@ func (api *StreamingAPI) handleDesktopCrewTeam(w http.ResponseWriter, r *http.Re
 		if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(input) != nil {
 			externalError(w, 400, "invalid_team", "Choose your team and folder.")
 			return
+		}
+		if _, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, id); ok {
+			input.Name = manifest.Name
 		}
 		if input.Folder.Path != "" {
 			folder, err := crewTeamFolderPath(roots.Files, input.Folder.Path)
@@ -507,4 +525,31 @@ func crewTeamAccountActive(user string) bool {
 	}
 	record := directory.byID(user)
 	return record != nil && !record.Disabled && userAllowedProduct(&UserClaims{UserID: user}, crewProfileID)
+}
+
+// Each folder selection has its own content/history and transfer identities.
+// Changing a selection keeps previous bytes privately, without mixing folders.
+func crewTeamContentDir(project string) (string, error) {
+	d, err := crewTeamDir(project)
+	if err != nil {
+		return "", err
+	}
+	t, err := readCrewTeam(project)
+	if err != nil {
+		return "", err
+	}
+	if t.Folder.ID == "" || t.Folder.Path == "" {
+		return "", fmt.Errorf("choose a shared folder first")
+	}
+	return filepath.Join(d, "folders", crewTransferDigest(t.Folder.ID)), nil
+}
+func crewTeamRequestAuthorize(r *http.Request, claims *UserClaims, project, rel string, write, folder bool) (crewTeam, error) {
+	t, err := crewTeamAuthorize(claims, project, rel, write, folder)
+	if err != nil {
+		return t, err
+	}
+	if id := r.URL.Query().Get("folder_id"); id != "" && id != t.Folder.ID || write && id == "" {
+		return crewTeam{}, fmt.Errorf("the shared folder changed; reopen it before continuing")
+	}
+	return t, nil
 }
