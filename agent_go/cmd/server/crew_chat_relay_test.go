@@ -225,6 +225,33 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 			}
 		}
 	})
+
+}
+
+// PLAT-856-523: exercise execution guards against the real paired Crew fixture.
+func checkCrewPublishedExecution(t *testing.T, project, pair string) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	placementPath, err := crewAgentPlacementsPath(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(placementPath) })
+	// These are the same guards used by website and internal/scheduled turns.
+	for _, state := range []struct{ location, pair string }{{"publishing", pair}, {"server", "old-pair"}, {"server", pair}} {
+		entry := crewAgentPlacement{Tab: "writer", Location: state.location, PairID: state.pair, TransferID: "publish-test"}
+		if err := writeCrewAgentPlacement(project, entry); err != nil {
+			t.Fatal(err)
+		}
+		wantBlocked := state.location != "server" || state.pair != pair
+		for _, key := range []string{project + ":chat:writer", sharedThreadKey(project, "writer", "teammate")} {
+			if got := crewLivesOnMac(crewProfileID, key); got != wantBlocked {
+				t.Fatalf("location=%s pair=%s key=%s blocked=%t want=%t", state.location, state.pair, key, got, wantBlocked)
+			}
+		}
+		if !crewLivesOnMac(crewProfileID, project) || !crewLivesOnMac(crewProfileID, project+":chat:other") {
+			t.Fatal("publishing one agent allowed an unmoved agent to execute on the server")
+		}
+	}
 }
 
 // Imported project IDs need not be UUIDs. The route separator must not split

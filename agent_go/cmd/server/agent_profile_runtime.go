@@ -46,6 +46,9 @@ type resolvedAgentProfile struct {
 	Prompt          string
 	// AgentRolePrompt is this tab's server-owned name, purpose and function job; mode rendering retains it.
 	AgentRolePrompt string
+	// PublishedAgentContext carries admitted runtime paths and transferred memory
+	// through the Crew's subsequent Builder/Run prompt rendering (PLAT-856-523).
+	PublishedAgentContext string
 	// IdentityKey carries the Crew's user-owned identity (role and purpose)
 	// resolved from product.json for this query. Empty for products without
 	// one. It feeds the session fingerprint so a retained native session
@@ -843,6 +846,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			rendered += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(publication)
 		}
 	}
+	publishedAgentContext := ""
 	if isProjectProfileID(profile.ID) {
 		if scoped, e := crewAgentRuntimeFolder(workspacePath, userID, sessionID); e != nil {
 			return nil, e
@@ -850,9 +854,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			// Keep the canonical Crew path for admission and private chat persistence.
 			// The native runtime's project link points at this agent's scoped files.
 			resources := strings.TrimSuffix(strings.TrimSuffix(scoped, "/files"), "/resources") + "/resources"
-			rendered += "\n\nThis agent was published from a Mac. Its working files are in " + scoped + ". Its transferred skills and memory are in " + resources + ". Read skills there when applicable and save this agent's memory there. Workspace file tools use these full paths. The rest of the Mac is not present."
+			publishedAgentContext = "\n\nThis agent was published from a Mac. Its working files are in " + scoped + ". Its transferred skills and memory are in " + resources + ". Read skills there when applicable and save this agent's memory there. Workspace file tools use these full paths. The rest of the Mac is not present."
 			if memory, found, e := readFileFromWorkspace(ctx, resources+"/MEMORY.md"); e == nil && found {
-				rendered += "\n\nThis agent's saved memory:\n" + memory
+				publishedAgentContext += "\n\nThis agent's saved memory:\n" + memory
 			}
 			if content, found, e := readFileFromWorkspace(ctx, resources+"/"+projectinstructions.FileName); e != nil {
 				return nil, e
@@ -861,7 +865,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			}
 		}
 	}
-	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered, AgentRolePrompt: agentRole, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 

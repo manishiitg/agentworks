@@ -68,12 +68,17 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	// Run mode must downgrade this profile rather than inherit those tools.
 	base.Runtime.AgentTools.Mode = "full"
 	context := agentprofiles.PromptContext{ProjectTitle: "Support", Product: map[string]string{"WORK_IDENTITY": "Role: Support\nPurpose: Help customers"}}
+	// PLAT-856-523: mode rendering must retain transferred memory/runtime paths.
+	publishedContext := "\n\nWorking files: Crew/support/published-agents/writer/files\nSaved memory: customer prefers weekly reports."
 	newProfile := func(readOnly bool) (*resolvedAgentProfile, QueryRequest) {
 		t.Helper()
-		profile := &resolvedAgentProfile{Definition: base}
+		profile := &resolvedAgentProfile{Definition: base, PublishedAgentContext: publishedContext}
 		req := QueryRequest{AgentProfileContext: context, SelectedSkills: append(append([]string{}, base.Skills...), "support-triage")}
 		if err := applyCrewChatMode(profile, &req, readOnly); err != nil {
 			t.Fatal(err)
+		}
+		if !strings.Contains(profile.Prompt, publishedContext) {
+			t.Fatal("chat-mode rendering dropped published agent memory and working paths")
 		}
 		return profile, req
 	}
