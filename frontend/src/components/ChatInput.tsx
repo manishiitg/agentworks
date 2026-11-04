@@ -3009,18 +3009,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         </div>
       )}
 
-      {/* File Context Display */}
-      {chatFileContext.length > 0 && (
-        <div className={`${inputPadX} border-t border-gray-200 dark:border-gray-700`}>
-          <FileContextDisplay
-            files={chatFileContext}
-            onRemoveFile={removeFileFromContext}
-            onClearAll={clearFileContext}
-            agentMode={agentMode}
-            isRequiredFolderSelected={true}
-          />
-        </div>
-      )}
       {/* Read-only workflow/Crew references — same style as FileContextDisplay */}
       {(tabConfig?.workflowContext?.length ?? 0) > 0 && (
         <div className={inputPadX}>
@@ -3088,6 +3076,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           <div ref={setMicBannerHost} className="empty:hidden" />
           {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue ref={durableQueueRef} key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canEdit={!queryToSubmit.trim() && !isUploadingFiles} onEdit={restoreQueuedDraft} /></Suspense>}
         </>}>
+            <FileContextDisplay
+              attachmentMode
+              files={chatFileContext}
+              onRemoveFile={removeFileFromContext}
+              onClearAll={clearFileContext}
+              agentMode={agentMode}
+              isRequiredFolderSelected={true}
+            />
             {/* Queued messages: a message sent while the agent is still working is
                 held here until the current turn ends, then sent as the next one.
                 The product surface used to collapse this to a bare "N messages
