@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -23,6 +25,7 @@ type crewAgentPublishAccount struct {
 type crewAgentPublishPreview struct {
 	Ready       bool                      `json:"ready"`
 	Message     string                    `json:"message,omitempty"`
+	NeedsLogin  bool                      `json:"needs_login,omitempty"`
 	Selection   crewAgentPublishSelection `json:"selection"`
 	Accounts    []crewAgentPublishAccount `json:"accounts"`
 	Agents      []macAgentRow             `json:"agents,omitempty"`
@@ -35,11 +38,30 @@ type crewAgentPublishPreview struct {
 }
 
 func (api *StreamingAPI) crewAgentPublishAccounts(ctx context.Context, claims *UserClaims, roots crewroot.Roots, provider, account string) (*crewAgentPublishPreview, error) {
+	out := &crewAgentPublishPreview{Accounts: []crewAgentPublishAccount{}}
+	server := "this server"
+	if address, err := url.Parse(strings.TrimSpace(os.Getenv("PUBLIC_URL"))); err == nil && address.Host != "" {
+		server = address.Host
+	}
+	program := providerAccountProductName(provider)
+	if !providerEnabled(provider) {
+		alternatives := []string{}
+		for _, candidate := range getSupportedProviders() {
+			if crewAgentPublishProgramSupported(candidate) {
+				alternatives = append(alternatives, providerAccountProductName(candidate))
+			}
+		}
+		out.Message = program + " isn't available on " + server + ". Ask its admin to turn it on"
+		if len(alternatives) > 0 {
+			out.Message += ", or switch this agent to an available program (" + strings.Join(alternatives, ", ") + ") first"
+		}
+		out.Message += "."
+		return out, nil
+	}
 	views, err := api.listProviderAccountViews(ctx, claims.UserID, false, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"})
 	if err != nil {
 		return nil, err
 	}
-	out := &crewAgentPublishPreview{Accounts: []crewAgentPublishAccount{}}
 	for _, v := range views {
 		if v.Provider != provider || v.Relation != "own" || !v.Usable || v.Configured != nil && !*v.Configured {
 			continue
@@ -50,7 +72,8 @@ func (api *StreamingAPI) crewAgentPublishAccounts(ctx context.Context, claims *U
 		account = out.Accounts[0].ID
 	}
 	if len(out.Accounts) == 0 {
-		out.Message = "Sign in to this AI program on the server once, in Providers → Add my account, then retry."
+		out.NeedsLogin = true
+		out.Message = "Sign in to " + program + " on " + server + " once, in Providers → Add my account, then retry."
 		return out, nil
 	}
 	if account == "" {
@@ -84,6 +107,10 @@ func (api *StreamingAPI) crewAgentPublishAccounts(ctx context.Context, claims *U
 	return out, nil
 }
 
+func crewAgentPublishProgramSupported(provider string) bool {
+	return provider == "claude-code" || provider == "codex-cli" || provider == "cursor-cli" || provider == "muse-cli"
+}
+
 func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *UserClaims, id string, in crewSyncRequest) (crewSyncReply, error) {
 	roots, binding, err := api.crewTransferBinding(ctx, claims, id, in.PairID)
 	if err != nil {
@@ -104,7 +131,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	if len(in.Native) == 1 && in.Native[0] != nil {
 		provider = in.Native[0].Provider
 	}
-	if provider != "claude-code" && provider != "codex-cli" && provider != "cursor-cli" && provider != "muse-cli" {
+	if !crewAgentPublishProgramSupported(provider) {
 		return out, fmt.Errorf("this program has no supported native-session transfer")
 	}
 	out.Publish, err = api.crewAgentPublishAccounts(ctx, claims, roots, provider, selection.AccountID)
