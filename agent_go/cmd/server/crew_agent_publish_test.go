@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
@@ -11,6 +12,42 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
+
+// PLAT-856: disabled programs cannot be added from Providers. Only an enabled
+// program missing an own account should offer that sign-in action.
+func TestPublishAgentPreflightDistinguishesDisabledProgramFromMissingLogin(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	t.Setenv("PUBLIC_URL", "https://agents.example.com")
+	for _, tc := range []struct {
+		name, enabled, provider string
+		login                   bool
+		alternative             string
+	}{
+		{"disabled with portable alternative", "muse-cli", "claude-code", false, "Muse"},
+		{"enabled without own login", "muse-cli", "muse-cli", true, ""},
+		{"no portable alternative", "pi-cli", "claude-code", false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SUPPORTED_LLM_PROVIDERS", tc.enabled)
+			preview, err := env.api.crewAgentPublishAccounts(t.Context(), &UserClaims{UserID: "alice"}, crewroot.Roots{}, tc.provider, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if preview.Ready || preview.NeedsLogin != tc.login || len(preview.Accounts) != 0 {
+				t.Fatalf("wrong setup action: %+v", preview)
+			}
+			if !strings.Contains(preview.Message, providerAccountProductName(tc.provider)) || !strings.Contains(preview.Message, "agents.example.com") {
+				t.Fatalf("setup message does not identify the program and destination: %s", preview.Message)
+			}
+			if tc.alternative != "" && !strings.Contains(preview.Message, tc.alternative) {
+				t.Fatalf("missing available program: %s", preview.Message)
+			}
+			if !tc.login && strings.Contains(preview.Message, "Providers") || strings.Contains(preview.Message, "Pi") {
+				t.Fatalf("offered an unavailable setup path: %s", preview.Message)
+			}
+		})
+	}
+}
 
 // PLAT-856-523: selecting one agent cannot move another tab's callers, and
 // merging its callers must retain destination schedules that already exist.
