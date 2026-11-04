@@ -369,7 +369,8 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
-	crewTurnSnapshots sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
+	crewTurnSnapshots     sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
+	workspaceGitChatUsage sync.Map // authorized chat/workspace -> incremental tool-path index
 
 	localDevices                sync.Map // user/device -> authenticated outbound executor
 	codingAgentClarificationsMu sync.Mutex
