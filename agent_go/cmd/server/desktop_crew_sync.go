@@ -47,9 +47,11 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var input struct {
-		Action     string           `json:"action"`
-		Agents     []macSharedAgent `json:"agents"`
-		WhenMacOff string           `json:"when_mac_off"` // team_copy: empty reads the Team tab's state
+		Action       string                     `json:"action"`
+		PublishAgent *crewAgentPublishSelection `json:"publish_agent,omitempty"`
+		TransferID   string                     `json:"transfer_id,omitempty"`
+		Agents       []macSharedAgent           `json:"agents"`
+		WhenMacOff   string                     `json:"when_mac_off"`
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -58,6 +60,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	id := mux.Vars(r)["project"]
+	if input.Action == "publish_preview" || input.Action == "publish_agent" || input.Action == "publish_agents" {
+		api.runDesktopCrewAgentPublish(w, r, connection, id, input.Action, input.TransferID, input.PublishAgent)
+		return
+	}
 	switch input.Action {
 	case "status", "server", "relay", "offline", "agents", "share_agents", "team_copy":
 	default:
@@ -113,6 +119,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	var main ProductConversationRecord
 	if input.Action == "server" {
+		if placements, e := readCrewAgentPlacements(roots.ID); e != nil || len(placements) > 0 {
+			externalError(w, 409, "published_agents", "This Crew already has agents on the server. Open those agents there; the remaining agents stay on this Mac.")
+			return
+		}
 		main, err = api.crewHandoffMain(r.Context(), claims, roots.ID)
 		if err != nil {
 			externalError(w, 409, "sync_unavailable", err.Error())

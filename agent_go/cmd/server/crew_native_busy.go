@@ -22,3 +22,11 @@ func (api *StreamingAPI) crewNativeTurnRunning(roots crewroot.Roots) bool {
 	}
 	return false
 }
+
+// A per-agent publish must not stop or wait for unrelated Crew conversations.
+func (api *StreamingAPI) crewAgentTurnRunning(session string) bool {
+	api.activeSessionsMux.RLock()
+	defer api.activeSessionsMux.RUnlock()
+	s := api.activeSessions[session]
+	return s != nil && (s.Status == "running" || s.Status == "paused" || s.HasRunningBackgroundAgents)
+}

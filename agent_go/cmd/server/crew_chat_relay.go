@@ -157,6 +157,16 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" {
 		return false
 	}
+	if place, e := crewPublishedAgent(project, crewAgentPublishTab(key)); e != nil {
+		externalError(w, 409, "publish_unavailable", e.Error())
+		return true
+	} else if place != nil {
+		if place.Location == "server" {
+			return false
+		}
+		externalError(w, 409, "publishing", "This agent is being published. Finish the publish from your Mac, then reopen it here.")
+		return true
+	}
 	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none.
 	if base, tab, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
 		if base != project || !crewMacTabID(tab) {
@@ -535,6 +545,11 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 	}
 	owner := GetUserIDFromContext(r.Context())
 	tabs := []AgentProfileSideChat{}
+	placements, err := readCrewAgentPlacements(project)
+	if err != nil {
+		externalError(w, 409, "publish_unavailable", err.Error())
+		return true
+	}
 	if crewMacSocketFor(owner, project, b.PairID) != nil {
 		result := api.callCrewMac(r, project, crewChatCall{Operation: "tabs"})
 		var rows []AgentProfileSideChat
@@ -547,9 +562,31 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 			if !ok || base != b.PeerProjectID || !crewMacTabID(id) || row.ConversationID == "" {
 				continue
 			}
+			if _, published := placements[id]; published {
+				continue
+			}
 			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
 				ConversationKey: project + codeChatSideMarker + id, ConversationID: row.ConversationID, SessionID: crewChatSessionID(project, row.ConversationID),
 				Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
+		}
+	}
+	if len(placements) > 0 {
+		doc, e := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(owner))
+		if e != nil {
+			externalError(w, 409, "publish_unavailable", e.Error())
+			return true
+		}
+		for tab, place := range placements {
+			if place.Location != "server" || tab == macMainTab {
+				continue
+			}
+			key := productConversationRegistryEntryKey(crewProfileID, crewAgentPublishKey(project, tab))
+			record, ok := doc.Entries[key]
+			if !ok {
+				continue
+			}
+			identity := doc.Agents[key]
+			tabs = append(tabs, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: identity.Name, Purpose: identity.Purpose, Icon: identity.Icon, Position: identity.Position, Pinned: !identity.Unpinned, TabOwnerID: owner, CanWrite: true})
 		}
 	}
 	writeAgentProfileJSON(w, http.StatusOK, tabs)

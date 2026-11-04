@@ -57,9 +57,13 @@ func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims
 	return record, nil
 }
 
-func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, conversation ProductConversationRecord) (*crewHandoffConversation, error) {
+func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, conversation ProductConversationRecord, nativeOnly ...bool) (*crewHandoffConversation, error) {
+	strict := len(nativeOnly) > 0 && nativeOnly[0]
 	data, err := ReadChatHistoryConversation(claims.UserID, conversation.SessionID, conversation.WorkspacePath)
 	if errors.Is(err, errChatHistoryConversationNotFound) {
+		if strict {
+			return nil, fmt.Errorf("this agent has no saved native session yet; send it a message before publishing")
+		}
 		return &crewHandoffConversation{ConversationID: conversation.ConversationID}, nil
 	}
 	if err != nil {
@@ -83,12 +87,18 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 	}
 	out := &crewHandoffConversation{ConversationID: conversation.ConversationID, ModelID: conversation.ModelID, History: doc.History}
 	if candidate, captureErr := api.captureCrewNative(ctx, claims, roots, conversation, doc.Runtime); captureErr != nil {
+		if strict {
+			return nil, fmt.Errorf("cannot publish this native session: %w", captureErr)
+		}
 		log.Printf("[CREW_HANDOFF] project=%s phase=capture mode=archive native_unavailable=%q", roots.ID, captureErr)
 	} else {
 		out.Native = candidate
 		if validateCrewHandoffConversation(out) != nil {
 			out.Native = nil
 		}
+	}
+	if strict && out.Native == nil {
+		return nil, fmt.Errorf("this agent has no portable native session; keep using it on this Mac")
 	}
 	if err = validateCrewHandoffConversation(out); err != nil {
 		return nil, err
@@ -115,11 +125,15 @@ func validateCrewHandoffConversation(in *crewHandoffConversation) error {
 // A new destination runtime session avoids reusing a stale in-memory/native
 // session on the return trip. The logical conversation ID stays unchanged.
 // Its ID is derived from the admitted pair and transfer, never a remote path.
-func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, pair, transfer string, in *crewHandoffConversation, current ProductConversationRecord) error {
+func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, pair, transfer string, in *crewHandoffConversation, current ProductConversationRecord, nativeOnly ...bool) error {
+	strict := len(nativeOnly) > 0 && nativeOnly[0]
+	if strict && (in == nil || in.Native == nil || crewArchiveOnly(roots)) {
+		return fmt.Errorf("publishing requires a supported native session on this server")
+	}
 	if err := validateCrewHandoffConversation(in); err != nil {
 		return err
 	}
-	if api.crewNativeTurnRunning(roots) {
+	if (!strict && api.crewNativeTurnRunning(roots)) || (strict && api.crewAgentTurnRunning(current.SessionID)) {
 		return errCrewNativeDestinationBusy
 	}
 	in.Notice = "The next reply will continue from saved conversation history."
@@ -155,6 +169,9 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 			}
 			doc.Agents[key] = *chosen
 		} else {
+			if strict {
+				return fmt.Errorf("cannot publish this native session: %s", reason)
+			}
 			nativeCandidate = nil
 			in.Notice = reason
 		}
@@ -182,10 +199,10 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 			return err
 		}
 	}
-	if runtime, nativeErr := api.importCrewNative(ctx, claims, roots, current, session, nativeCandidate); nativeErr != nil {
+	if runtime, nativeErr := api.importCrewNative(ctx, claims, roots, current, session, nativeCandidate, strict); nativeErr != nil {
 		// Busy means retry this handoff, not replace the running conversation
 		// with an archive that starts a fresh native session.
-		if errors.Is(nativeErr, errCrewNativeDestinationBusy) {
+		if strict || errors.Is(nativeErr, errCrewNativeDestinationBusy) {
 			return nativeErr
 		}
 		log.Printf("[CREW_HANDOFF] project=%s phase=import mode=archive native_unavailable=%q", roots.ID, nativeErr)

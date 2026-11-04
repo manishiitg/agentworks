@@ -208,7 +208,7 @@ func crewNativeRuntimeAvailable(ctx context.Context, b *sessiontransfer.Bundle) 
 
 var errCrewNativeDestinationBusy = errors.New("the destination agent is still working; retry after it finishes")
 
-func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, session string, b *sessiontransfer.Bundle) (*ChatHistoryAgentRuntime, error) {
+func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, session string, b *sessiontransfer.Bundle, agentOnly ...bool) (*ChatHistoryAgentRuntime, error) {
 	if crewArchiveOnly(roots) || b == nil {
 		return nil, nil
 	}
@@ -227,7 +227,7 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 	if err := crewNativeRuntimeAvailable(ctx, b); err != nil {
 		return nil, err
 	}
-	if api.crewNativeTurnRunning(roots) {
+	if (len(agentOnly) == 0 || !agentOnly[0]) && api.crewNativeTurnRunning(roots) || api.crewAgentTurnRunning(current.SessionID) {
 		return nil, errCrewNativeDestinationBusy
 	}
 	closeWorkflowPolicyCLI(current.SessionID, current.Provider, "resuming native session from other computer")
