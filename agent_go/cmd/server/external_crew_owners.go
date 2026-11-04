@@ -34,7 +34,7 @@ func crewOwnersStateFor(crew crewProjectBinding, callerID string) crewOwnersStat
 	if people := peopleForIDs(dir, []string{crew.OwnerID}); len(people) == 1 {
 		state.Owner = people[0]
 	}
-	state.CoOwners = peopleForIDs(dir, crewCoOwnerIDs(crew.Binding.WorkspacePath))
+	state.CoOwners = peopleForIDs(dir, crewRegistryCoOwnerIDs(crew.Binding.WorkspacePath))
 	return state
 }
 

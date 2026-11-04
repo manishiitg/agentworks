@@ -128,3 +128,45 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 		t.Fatal("a removed co-owner still builds")
 	}
 }
+
+// A Team is a shared room (owner, 5 Nov): a joined member builds the Crew like a co-owner while the Team is on; an
+// invite, Team off or removal takes it away at once. The owner's own co-owner list stays only the registered ones.
+func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","products":["work"]}]}`)
+	registry := newTestRegistry(t)
+	prev := defaultProjectOwnersOverride
+	defaultProjectOwnersOverride = registry
+	t.Cleanup(func() { defaultProjectOwnersOverride = prev })
+	const folder = "team-12345678"
+	root := "Crew/" + folder
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "owner", Shared: true, ProjectID: "team-proj"}); err != nil {
+		t.Fatal(err)
+	}
+	save := func(on, invited bool, people ...string) {
+		t.Helper()
+		team := crewTeam{ProjectID: "team-proj", OwnerID: "owner", On: on, People: []crewTeamPerson{}}
+		for _, id := range people {
+			team.People = append(team.People, crewTeamPerson{UserID: id, Invited: invited})
+		}
+		if err := writeCrewTeam(team); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name          string
+		on, invited   bool
+		people        []string
+		wantCoOwnerOf bool
+	}{{"invited", true, true, []string{"ann"}, false}, {"joined", true, false, []string{"ann"}, true}, {"team off", false, false, []string{"ann"}, false}, {"removed", true, false, nil, false}} {
+		save(tc.on, tc.invited, tc.people...)
+		if got := crewProjectOwnedByCaller("ann", root); got != tc.wantCoOwnerOf {
+			t.Fatalf("%s: ann builds the Crew = %v, want %v", tc.name, got, tc.wantCoOwnerOf)
+		}
+		if crewProjectOwnedByCallerStrict("ann", root) || len(crewRegistryCoOwnerIDs(root)) != 0 {
+			t.Fatalf("%s: a team member became the owner or a registered co-owner", tc.name)
+		}
+	}
+}

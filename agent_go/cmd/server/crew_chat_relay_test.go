@@ -220,7 +220,7 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 				t.Fatalf("main owner should see Mac offline, not a server chat: %d", w.Code)
 			}
 			// PLAT-856-509: a caller the relay does not route must not get a turn in the empty online copy either.
-			if !tc.want && tc.profile == "work" && !crewLivesOnMac(tc.profile, tc.key) {
+			if !tc.want && tc.profile == "work" && !crewLivesOnMac(tc.profile, tc.key, "") {
 				t.Fatalf("%s: would run a server turn in a Crew that lives on the Mac", tc.name)
 			}
 		}
@@ -244,11 +244,11 @@ func checkCrewPublishedExecution(t *testing.T, project, pair string) {
 		}
 		wantBlocked := state.location != "server" || state.pair != pair
 		for _, key := range []string{project + ":chat:writer", sharedThreadKey(project, "writer", "teammate")} {
-			if got := crewLivesOnMac(crewProfileID, key); got != wantBlocked {
+			if got := crewLivesOnMac(crewProfileID, key, ""); got != wantBlocked {
 				t.Fatalf("location=%s pair=%s key=%s blocked=%t want=%t", state.location, state.pair, key, got, wantBlocked)
 			}
 		}
-		if !crewLivesOnMac(crewProfileID, project) || !crewLivesOnMac(crewProfileID, project+":chat:other") {
+		if !crewLivesOnMac(crewProfileID, project, "") || !crewLivesOnMac(crewProfileID, project+":chat:other", "") {
 			t.Fatal("publishing one agent allowed an unmoved agent to execute on the server")
 		}
 	}

@@ -24,17 +24,61 @@ const (
 	crewRoleNone    = "none"
 )
 
-// crewCoOwnerIDs are the co-owners registered for the Crew at root, or nil.
+// crewCoOwnerIDs are the Crew's co-owners for PERMISSION: those registered for the Crew at root, plus the joined
+// members of its Team while the Team is on (owner, 5 Nov, "A Team is a shared room": members build it like co-owners).
+// Read on every call, so removing a member or turning the Team off takes it away at once.
 func crewCoOwnerIDs(root string) []string {
-	id, ok := projectIdentityOf(root)
-	if !ok || !isProjectProfileID(id.Product) {
-		return nil
+	ids := crewRegistryCoOwnerIDs(root)
+	for _, id := range crewTeamCoOwnerIDs(root) {
+		if !registryListHas(ids, id) {
+			ids = append(ids, id)
+		}
 	}
-	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
+	return ids
+}
+
+// crewRegistryCoOwnerIDs are only the co-owners registered for the Crew at root (the owner manages this list).
+func crewRegistryCoOwnerIDs(root string) []string {
+	rec, found := crewOwnerRecordAt(root)
 	if !found {
 		return nil
 	}
 	return append([]string(nil), rec.CoOwners...)
+}
+
+func crewOwnerRecordAt(root string) (projectOwnerRecord, bool) {
+	id, ok := projectIdentityOf(root)
+	if !ok || !isProjectProfileID(id.Product) {
+		return projectOwnerRecord{}, false
+	}
+	return defaultProjectOwners().Lookup(id.Product, id.Folder)
+}
+
+// crewTeamCoOwnerIDs are the joined, active members of the Crew's Team while it is on; none on a Mac or without a Team.
+func crewTeamCoOwnerIDs(root string) []string {
+	if IsLocalMode() {
+		return nil
+	}
+	rec, found := crewOwnerRecordAt(root)
+	if !found || rec.ProjectID == "" {
+		return nil
+	}
+	t, err := readCrewTeam(rec.ProjectID)
+	if err != nil || !t.On || t.OwnerID != rec.OwnerID {
+		return nil
+	}
+	ids := []string{}
+	for _, p := range t.People {
+		if !p.Invited && p.UserID != t.OwnerID && crewTeamAccountActive(p.UserID) {
+			ids = append(ids, p.UserID)
+		}
+	}
+	return ids
+}
+
+// crewTeamOnlyMember: the caller builds this Crew as a Team member, not as a registered co-owner.
+func crewTeamOnlyMember(root, userID string) bool {
+	return registryListHas(crewTeamCoOwnerIDs(root), userID) && !registryListHas(crewRegistryCoOwnerIDs(root), userID)
 }
 
 // crewIsCoOwner says whether userID is a registered co-owner (not the main owner) of the Crew at root.
@@ -74,6 +118,10 @@ func coOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) strin
 	}
 	ref, ok := resolveCrewPath(ctx, callerID, workspacePath)
 	if !ok || ref.OwnerID == "" || ref.OwnerID == sanitizeUserIDForPath(callerID) || !crewIsCoOwner(ref.Root, callerID) {
+		return ""
+	}
+	// A Team member's own agents run on their own login, never the owner's (owner, 5 Nov).
+	if crewTeamOnlyMember(ref.Root, callerID) {
 		return ""
 	}
 	return ref.OwnerID

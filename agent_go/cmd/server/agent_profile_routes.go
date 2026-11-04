@@ -453,7 +453,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		return
 	}
 	// The team copy answers in the Crew's online copy while its Mac is off (crew_team_copy.go).
-	if crewLivesOnMac(profile.ID, input.ConversationKey) && !teamCopyTurn(r.Context()) {
+	if crewLivesOnMac(profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context())) && !teamCopyTurn(r.Context()) {
 		writeAgentProfileError(w, http.StatusConflict, crewOnMacRefusal)
 		return
 	}
@@ -465,6 +465,12 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	}
 	if err := crewTabWriteError(r.Context(), productWorkspaceUserID(r.Context()), profile.ID, conversation.ConversationKey, conversation.WorkspacePath); err != nil {
 		externalError(w, http.StatusForbidden, "tab_owner", err.Error())
+		return
+	}
+	// A Team member's agent runs on their own login here, never the owner's or the server's (owner, 5 Nov).
+	if caller := productWorkspaceUserID(r.Context()); conversation.Provider != "" && crewTeamOnlyMember(conversation.WorkspacePath, caller) && ownDefaultProviderAccountID(r.Context(), caller, conversation.Provider) == "" {
+		log.Printf("[CREW_TEAM] member turn refused user=%s provider=%s reason=no_own_login", logUsernameForUserID(caller), conversation.Provider)
+		externalError(w, http.StatusConflict, "own_login_required", fmt.Sprintf("Sign in to %s on this server once (Providers), so your agent here runs on your own login.", providerAccountProductName(conversation.Provider)))
 		return
 	}
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
