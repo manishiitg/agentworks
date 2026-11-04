@@ -190,5 +190,5 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 			return "", fmt.Errorf("%s", laptopActionErrorText(response.Body.String()))
 		}
 		return strings.TrimSpace(response.Body.String()), nil
-	}, 5*time.Minute, "workspace_advanced")
+	}, 15*time.Minute, "workspace_advanced")
 }

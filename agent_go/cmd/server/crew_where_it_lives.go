@@ -241,7 +241,7 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if crewHasPublishedAgents(roots.ID) {
-		externalError(w, 409, "published_agents", "Published agents use this server Crew. Keep its connection to continue using them.")
+		externalError(w, 409, "published_agents", "This Crew has published agents on the server. Keep it connected to continue using them; you can close the Mac app and those agents will keep running.")
 		return
 	}
 	backup, err := backupCrewRelayTwin(roots)
