@@ -55,6 +55,20 @@ var rateLimitPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)overloaded_error`),
 }
 
+// rateLimitTailBytes is how much of the end of the output detectRateLimit reads.
+const rateLimitTailBytes = 8 << 10
+
+// rateLimitHint is a cheap check that one of the patterns could match: each contains one of these words.
+func rateLimitHint(content string) bool {
+	lower := strings.ToLower(content)
+	for _, word := range []string{"limit", "credits", "quota", "429", "exhausted", "exceeded", "overloaded"} {
+		if strings.Contains(lower, word) {
+			return true
+		}
+	}
+	return false
+}
+
 // DetectRateLimit is the exported form of detectRateLimit for callers outside
 // this package, such as the coding-CLI watchdog that force-stops panes parked
 // on a provider limit wall.
@@ -66,7 +80,13 @@ func DetectRateLimit(content string) bool {
 // any rate-limit phrase. The caller has already stripped ANSI escapes
 // before passing content here.
 func detectRateLimit(content string) bool {
-	if strings.TrimSpace(content) == "" {
+	// A limit message is the CLI's latest output, so only the end of the text is read. Status is derived again on
+	// every streamed chunk, and matching every pattern against a whole long transcript each time took ~74% of a
+	// server's CPU (4 Nov: chat loads timed out behind it).
+	if len(content) > rateLimitTailBytes {
+		content = content[len(content)-rateLimitTailBytes:]
+	}
+	if strings.TrimSpace(content) == "" || !rateLimitHint(content) {
 		return false
 	}
 	for _, pattern := range rateLimitPatterns {
