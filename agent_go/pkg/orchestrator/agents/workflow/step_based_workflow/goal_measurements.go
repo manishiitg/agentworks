@@ -93,6 +93,10 @@ func LoadGoalMeasurements(ctx context.Context, workspacePath string, limit int) 
 		limit = 200
 	}
 	ledger := &GoalMeasurementLedger{Metrics: []GoalMetric{}, Observations: []GoalObservation{}}
+	workspacePath, err := GoalMeasurementWorkspace(workspacePath)
+	if err != nil {
+		return nil, err
+	}
 	db, err := openWorkflowEvidenceDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return ledger, err

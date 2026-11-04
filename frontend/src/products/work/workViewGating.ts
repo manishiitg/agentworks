@@ -10,7 +10,7 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 export function isWorkWorkspaceViewEnabled(view: WorkWorkspaceView, enabledPanels?: Set<string>): boolean {
   if (view === 'context') return true
   if (!enabledPanels) return true
-  if (view === 'identity' || view === 'plan' || view === 'suggestions') return true
+  if (view === 'identity' || view === 'goals' || view === 'plan' || view === 'suggestions') return true
   if (view === 'history') return enabledPanels.has('schedules')
   if (view === 'memory') return enabledPanels.has('memory') || enabledPanels.has('skills')
   if (view === 'shell') return true
