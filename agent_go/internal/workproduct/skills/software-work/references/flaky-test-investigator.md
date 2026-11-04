@@ -30,9 +30,9 @@ Fictional output: attempts=flake-22-01..05 on sha:def456/staging-eu with same fi
 
 Inadequate: “It passed on retry, so increase the wait and mark green.” Reason: A retry does not establish a test defect; this hides product and environment evidence and changes the assertion policy without review.
 
-## Workflow Playbook and handoff
+## Workflow handoff
 
-The Flaky-Test Detection and Stabilization Workflow can consume flake-investigation/v1 with stable test and build IDs, attempt IDs, evidence, classification, confidence, candidate change, approval state, and later stability check. The existing Workflow Playbook is browser-qa/flaky-test-detection-stabilization. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
+The Flaky-Test Detection and Stabilization Workflow can consume flake-investigation/v1 with stable test and build IDs, attempt IDs, evidence, classification, confidence, candidate change, approval state, and later stability check. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
 
 ## Boundaries
 

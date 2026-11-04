@@ -17,18 +17,15 @@ vi.mock('../../utils/workspacePaneChat', () => ({
   sendWorkspacePaneMessageToChat: (...args: unknown[]) => sendWorkspacePaneMessageToChat(...args),
 }))
 vi.mock('../../utils/goalSetupChat', () => ({
-  goalSetupChatMessage: (command: string, playbooks: Array<{ title: string }> = []) => `expanded /${command}${playbooks.length ? ` from ${playbooks[0].title}` : ''}`,
+  goalSetupChatMessage: (command: string) => `expanded /${command}`,
 }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
-const openWorkspaceView = vi.fn()
-vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView }) } }))
 
 import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 
 const pending = {
   show: true, complete: false, dismissed: false, has_runs: false,
   checks: [
-    { id: 'playbook', label: 'Playbook', done: false, optional: true },
     { id: 'goal', label: 'Goal', done: true, command: 'setup-goals' },
     { id: 'plan', label: 'Plan', done: false, command: 'design-plan' },
     { id: 'metrics', label: 'Metrics', done: false, command: 'setup-goals' },
@@ -64,7 +61,6 @@ describe('WorkflowGoalSetupBar', () => {
     expect(container.textContent).toContain('Goal set')
     expect(container.textContent).toContain('Next: Plan')
     expect(container.textContent).not.toContain('Give this automation a goal')
-    expect(container.textContent).not.toContain('Start from a playbook')
     const current = container.querySelector('[aria-current="step"]') as HTMLButtonElement
     expect(current?.textContent).toContain('Plan')
     expect(current.disabled).toBe(false)
@@ -102,7 +98,7 @@ describe('WorkflowGoalSetupBar', () => {
     await act(async () => ran.root.unmount())
   })
 
-  it('before a goal: the full card, with a playbook and no-goal choice beside the main action', async () => {
+  it('before a goal: the full card, with a no-goal choice beside the main action', async () => {
     getGoalSetup.mockResolvedValue(fresh)
     dismissGoalSetup.mockResolvedValue({ ...fresh, show: false, dismissed: true })
     const first = await render({ workspacePath: 'Workflow/new', canEdit: true })
@@ -110,26 +106,17 @@ describe('WorkflowGoalSetupBar', () => {
     expect(first.container.textContent).toContain('Not every automation needs one')
     expect(first.container.textContent).toContain('Goal setup · optional')
     expect((first.container.querySelector('[aria-current="step"]') as HTMLElement).textContent).toContain('Goal')
-    const playbookButton = Array.from(first.container.querySelectorAll('button')).find(b => b.textContent === 'Start from a playbook')
-    expect(playbookButton).toBeTruthy()
-    await act(async () => { playbookButton!.click() })
-    expect(openWorkspaceView).toHaveBeenCalledWith('playbooks')
     const noGoal = Array.from(first.container.querySelectorAll('button')).find(b => b.textContent === 'No goal needed')
     expect(noGoal?.getAttribute('aria-label')).toBe('Dismiss goal setup')
     await act(async () => { noGoal!.click() })
     expect(dismissGoalSetup).toHaveBeenCalledWith('Workflow/new')
     await act(async () => first.root.unmount())
 
-    getGoalSetup.mockResolvedValue({
-      ...fresh,
-      checks: fresh.checks.map(check => check.id === 'playbook' ? { ...check, done: true } : check),
-      playbooks: [{ id: 'website-growth-loop', title: 'Website Growth Loop', skill_name: 'agentworks-playbook-website-growth-loop' }],
-    })
+    getGoalSetup.mockResolvedValue(fresh)
     const second = await render({ workspacePath: 'Workflow/new', canEdit: true })
-    expect(second.container.textContent).toContain('Playbook: Website Growth Loop')
     const action = Array.from(second.container.querySelectorAll('button')).find(b => b.textContent === 'Set the goal in chat')
     await act(async () => { action!.click() })
-    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ workspacePath: 'Workflow/new', message: 'expanded /setup-goals from Website Growth Loop' })
+    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ workspacePath: 'Workflow/new', message: 'expanded /setup-goals' })
     await act(async () => second.root.unmount())
   })
 

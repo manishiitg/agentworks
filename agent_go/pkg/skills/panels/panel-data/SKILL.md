@@ -36,7 +36,6 @@ metadata:
     - install_skill
     - uninstall_skill
     - settings
-    - search_playbooks
     relays:
     - execute_shell_command
     - files
@@ -70,6 +69,5 @@ Start with the person's request and the current product. Read only the relevant 
 - Knowledgebase: read `references/knowledgebase/SKILL.md` when needed.
 - Memory: read `references/memory/SKILL.md` when needed.
 - Skills: read `references/skills/SKILL.md` when needed.
-- Playbooks: read `references/playbooks/SKILL.md` when needed.
 
 Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.

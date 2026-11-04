@@ -30,9 +30,9 @@ Fictional output: finding=scan-44; asset=checkout-api; build=sha:a55c1; source=d
 
 Inadequate: “Critical vulnerability found; patch immediately.” Reason: It assumes scanner output is confirmed, omits the actual deployed version and customer severity rule, and gives no owner or retest criterion.
 
-## Workflow Playbook and handoff
+## Workflow handoff
 
-Finding to Verified Remediation consumes security-finding/v1 keyed by asset, environment, build, finding ID, evidence, confidence, severity rule, owner, and retest criterion. Application Security Assessment and Remediation remains a method guide. A remediation Crew must recheck scope and current status. The existing Workflow Playbook is security-engineering/application-security/application-security-assessment-remediation. Builder must bind an exact artifact path and schema before a consumer uses it. Validate structure and recheck source truth.
+Finding to Verified Remediation consumes security-finding/v1 keyed by asset, environment, build, finding ID, evidence, confidence, severity rule, owner, and retest criterion. Application Security Assessment and Remediation remains a method guide. A remediation Crew must recheck scope and current status. Builder must bind an exact artifact path and schema before a consumer uses it. Validate structure and recheck source truth.
 
 ## Boundaries
 

@@ -176,7 +176,7 @@ func TestLoadAttachableInLoadsWorkspaceScopedSupportingFiles(t *testing.T) {
 
 	got := LoadAttachableIn(srv.URL, "Workflow/demo", []string{"basic-browser-setup"})
 	if len(got) != 1 || len(got[0].SupportingFiles) != 1 {
-		t.Fatalf("workspace playbook bundle was not attached: %+v", got)
+		t.Fatalf("workspace skill bundle was not attached: %+v", got)
 	}
 	if got[0].SupportingFiles[0].RelPath != "references/setup.md" {
 		t.Fatalf("supporting path = %q", got[0].SupportingFiles[0].RelPath)

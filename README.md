@@ -22,7 +22,6 @@ AgentWorks is a source-available platform for goal-driven AI agents. You describ
 | **Auto-improve** | After runs, AgentWorks reviews the evidence against the goal. It repairs broken steps, drops approaches that didn't move the metric, does the work nobody was doing, and checks later whether it helped. [Improvement system](docs/pulse-workflow-improvement-system.md) · [Auto-improvement framework](docs/workflow/auto_improvement_framework.md) |
 | **Autonomy** | You choose how far it goes, per workflow: *Ask first*, *Run steps*, *Edit workflow*, or *Full*. Anything outward-facing can always require your approval. |
 | **Crew** | Always-on teammates, each with its own files, tools, memory, browser, and schedule. Talk to them in the app, Slack, or WhatsApp. [Bot connectors](docs/core/bot_connector_system.md) |
-| **Playbooks** | Ready-made agent setups you install into a workflow: 23 today for browser QA, reliability, security, performance, FinOps, and growth analytics. Plain Markdown skill packages, so you can write your own. [Playbooks](playbooks/README.md) |
 
 ## Install (macOS, Apple Silicon)
 

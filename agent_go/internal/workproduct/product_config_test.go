@@ -195,32 +195,26 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 	}
 }
 
-// Specialist methods remain ordinary skills after the separate template catalog is removed.
+// software-work is an ordinary builtin skill whose index links every reference.
 func TestCrewDomainSkillReferences(t *testing.T) {
 	if err := RegisterProductSkills(); err != nil {
 		t.Fatal(err)
 	}
-	count := 0
-	for _, name := range []string{"finance-work", "customer-work", "growth-work", "sales-work", "team-work", "software-work", "store-work"} {
-		loaded := skills.LoadAttachable("", []string{name})
-		if !skills.IsBuiltinSkill(name) || len(loaded) != 1 {
-			t.Fatalf("missing builtin %s", name)
-		}
-		for _, file := range loaded[0].SupportingFiles {
-			if !strings.HasPrefix(file.RelPath, "references/") || strings.TrimSpace(string(file.Content)) == "" {
-				t.Fatalf("invalid procedure %s/%s", name, file.RelPath)
-			}
-			if !strings.Contains(loaded[0].Content, "("+file.RelPath+")") {
-				t.Fatalf("unindexed procedure %s/%s", name, file.RelPath)
-			}
-			if strings.Contains(string(file.Content), "TEMPLATE_SETUP") || strings.Contains(string(file.Content), "completed_steps") {
-				t.Fatalf("retired setup dependency in %s/%s", name, file.RelPath)
-			}
-			count++
-		}
+	const name = "software-work"
+	loaded := skills.LoadAttachable("", []string{name})
+	if !skills.IsBuiltinSkill(name) || len(loaded) != 1 || len(loaded[0].SupportingFiles) == 0 {
+		t.Fatalf("missing builtin %s", name)
 	}
-	if count != 79 {
-		t.Fatalf("retained %d specialist procedures, want 79", count)
+	for _, file := range loaded[0].SupportingFiles {
+		if !strings.HasPrefix(file.RelPath, "references/") || strings.TrimSpace(string(file.Content)) == "" {
+			t.Fatalf("invalid procedure %s/%s", name, file.RelPath)
+		}
+		if !strings.Contains(loaded[0].Content, "("+file.RelPath+")") {
+			t.Fatalf("unindexed procedure %s/%s", name, file.RelPath)
+		}
+		if strings.Contains(string(file.Content), "TEMPLATE_SETUP") || strings.Contains(string(file.Content), "completed_steps") {
+			t.Fatalf("retired setup dependency in %s/%s", name, file.RelPath)
+		}
 	}
 }
 

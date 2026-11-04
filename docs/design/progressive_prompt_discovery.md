@@ -141,7 +141,7 @@ size and unavailable-reference regression checks. Historical fixture sizes are
 not measurements of a current person's outbound provider request.
 
 Full server checks reproduced six unrelated failures on the unchanged baseline:
-sales-Crew catalog, delegation tier defaults, two playbook catalog cases, native
+sales-Crew catalog, delegation tier defaults, two template catalog cases, native
 tmux input timing, and Workshop model defaults. The Crew Run prompt assertion
 was updated to check its retained prohibition rather than the old exact sentence.
 All other server cases passed in the full run, and changed prompt/skill cases

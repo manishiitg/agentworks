@@ -2981,18 +2981,6 @@ export interface WorkflowManifest {
   folder_access_requests?: WorkflowFolderAccessRequest[]
   /** Durable read-only workflow attachments, re-authorized on every run. */
   workflow_context_paths?: string[]
-  installed_playbooks?: InstalledPlaybook[]
-}
-
-export interface InstalledPlaybook {
-  id: string
-  title: string
-  version: string
-  category: string
-  skill_name: string
-  source_hash: string
-  status: 'draft' | 'ready' | 'blocked' | 'outdated' | 'disabled'
-  installed_at: string
 }
 
 export interface WorkflowFolderGrant {

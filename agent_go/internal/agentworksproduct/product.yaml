@@ -234,7 +234,6 @@ chat:
       - review_step_code
       - run_full_workflow
       - search_mcp_catalog
-      - search_playbooks
       - search_skills
       - send_step_message
       - set_workflow_contract_version

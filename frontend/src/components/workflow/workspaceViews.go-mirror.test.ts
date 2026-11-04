@@ -51,9 +51,8 @@ describe('primary workspace toolbar views', () => {
     expect(normalizeWorkspaceViewId('database')).toBe('knowledge')
   })
 
-  it('orders Setup as Identity, Integrations, then Playbooks', () => {
+  it('orders Setup as Identity, then Integrations', () => {
     const ids = WORKSPACE_VIEWS.map(view => view.id)
     expect(ids.indexOf('identity')).toBeLessThan(ids.indexOf('mcp'))
-    expect(ids.indexOf('mcp')).toBeLessThan(ids.indexOf('playbooks'))
   })
 })

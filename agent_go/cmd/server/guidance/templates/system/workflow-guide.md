@@ -72,7 +72,7 @@ Use attached skills and live schemas, including product-specific differences.
 | Connected agents (AgentBridge), Cloud or Laptop access | `panel-access`; messages and computer connection grants remain separate |
 | Slack bot, WhatsApp or connecting an external AI app | `panel-channels`, `panel-channels`, `panel-access` |
 | Settings, instructions, Models, Costs and usage | `panel-settings`, `panel-settings`, `panel-settings` |
-| Workflow playbooks, Publish, Notify, Backup, Upgrades | `panel-data`, `panel-dashboard`, `panel-channels`, `panel-dashboard`, `panel-settings` |
+| Publish, Notify, Backup, Upgrades | `panel-dashboard`, `panel-channels`, `panel-dashboard`, `panel-settings` |
 
 ## Current navigation and assistance
 
@@ -84,7 +84,7 @@ selected app accounts and configured automations. All tools (Cmd/Ctrl+K) opens t
 inventory, including Access & sharing, Models and Usage & cost. Visiting a
 setting does not promote it into Studio’s status panel. Finished files are
 linked in chat and remain accessible through Files; there is no separate file
-registry. Published Artifacts appear automatically under Dashboards. Workflow playbooks, Publish, Notify and Backup
+registry. Published Artifacts appear automatically under Dashboards. Publish, Notify and Backup
 are in Setup. Access summarizes owners, audience and shared agents; changes
 are made through the visible project chat with the existing management tools.
 

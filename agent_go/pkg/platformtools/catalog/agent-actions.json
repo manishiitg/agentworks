@@ -52,12 +52,6 @@
   },
   {
     "family": "skills",
-    "name": "templates",
-    "member": "search_playbooks",
-    "description": "Find available workflow templates."
-  },
-  {
-    "family": "skills",
     "name": "commands_list",
     "member": "manage_custom_commands__list",
     "description": "Manage the current project\u2019s reusable slash commands.",

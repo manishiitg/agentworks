@@ -2,7 +2,7 @@
 
 Each workflow has (or should have) its own remote git repository for
 text/code/config plus a separate object store for large binary artifacts.
-This skill is the playbook for deciding what goes where, how to commit
+This skill is the guide for deciding what goes where, how to commit
 safely, and how to use a large-file backend like HuggingFace Hub when git
 is the wrong tool.
 

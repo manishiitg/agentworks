@@ -5,7 +5,6 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import { LoaderCircle, Plus, Save, Users } from 'lucide-react'
 import { WorkspacePanelBack, useWorkspacePanelChatDraft } from '../workspace/WorkspacePanelNavigation'
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
-import PlaybooksPanel from '../playbooks/PlaybooksPanel'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
@@ -76,11 +75,6 @@ const EMPTY_CAPABILITIES: WorkflowCapabilities = {
 // Save footer. Sections that write straight to shared state (bots routing and
 // credentials) never touch the manifest, so the footer would save nothing.
 const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; description: string; savesViaManifest: boolean }> = {
-  playbooks: {
-    title: 'Workflow playbooks',
-    description: 'Apply proven AgentWorks setups to this workflow with the Builder.',
-    savesViaManifest: false,
-  },
   mcp: {
     title: 'MCPs',
     description: 'Choose the Vault MCP connections this workflow uses. Add and manage accounts through chat.',
@@ -360,9 +354,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
         ) : (
           <>
             {error && <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
-            {section === 'playbooks' && (
-              <PlaybooksPanel workspacePath={workspacePath} />
-            )}
             {section === 'mcp' && (
               <div>
                 <div data-ui-view-section={sharing ? shareChannel : activeConnection} key={`${workspacePath}:${sharing ? shareChannel : activeMcpTab}:${tabNonce}`}>

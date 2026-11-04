@@ -132,9 +132,6 @@ Requirements this template assumes:
   `build-and-activate.sh` for why: `EnvironmentFile=` wins over a systemd
   drop-in's `Environment=` for the same key, so a stale `PATH=` there would
   otherwise silently outrank the managed one).
-- The playbook catalog copy is optional per product via `COPY_PLAYBOOKS` in
-  `product.env` — leave it `false` for a fixed single-workspace product like
-  an example app that has no playbooks.
 
 ## Usage
 

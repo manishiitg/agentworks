@@ -30,9 +30,9 @@ Fictional output: release=rc-28; SHA=987fed; build=artifact:rc-28-987fed; enviro
 
 Inadequate: “CI is green; release approved.” Reason: It does not bind the reviewed artifact or account for the missing required journey suite and lacks an owner decision or delivery receipt.
 
-## Workflow Playbook and handoff
+## Workflow handoff
 
-The Release and PR Quality Gate Workflow can consume release-quality-brief/v1 with release, SHA, build, environment, policy revision, required-suite matrix, verdict, reviewer, and delivery receipt. Engineering may consume a separate blocker ledger for fixes. The existing Workflow Playbook is browser-qa/release-pr-quality-gate. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
+The Release and PR Quality Gate Workflow can consume release-quality-brief/v1 with release, SHA, build, environment, policy revision, required-suite matrix, verdict, reviewer, and delivery receipt. Engineering may consume a separate blocker ledger for fixes. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
 
 ## Boundaries
 

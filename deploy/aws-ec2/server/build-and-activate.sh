@@ -109,7 +109,7 @@ PLATFORM_DOCKER_CHECK="${PLATFORM_DOCKER_CHECK:-true}"
 # All commands below run on this Linux server; there is no artifact upload.
 run_local() { if [[ $# == 1 ]]; then bash -c "$1"; else "$@"; fi; }
 SSH=(run_local)
-mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs" "$BUILD_DIR/systemd" "$BUILD_DIR/browser" "$BUILD_DIR/playbooks"
+mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs" "$BUILD_DIR/systemd" "$BUILD_DIR/browser"
 echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no compile)"
 # Plain cp -R, not -a: copied files get today's mtime, as freshly built ones did (the carried-over asset cleanup works by age).
 cp -R "$PREBUILT/packages" "$BUILD_DIR/packages"
@@ -151,7 +151,6 @@ for unit in workspace.service gateway.service logrotate.conf logrotate.service l
 done
 install -m 0644 "$AGENT_SERVICE_FILE" "$BUILD_DIR/systemd/$UNIT_PREFIX-agent.service"
 install -m 0755 "$SCRIPT_DIR/server/update-coding-clis.sh" "$BUILD_DIR/bin/update-coding-clis"
-cp -R "$REPO_ROOT/playbooks/." "$BUILD_DIR/playbooks/"
 
 # Workflow steps run as slot accounts, which cannot enter the service account's private ~/.cache: activation copies the
 # HyperFrames Chrome to <app>/tools/chrome/<version>/ (world-readable) and points AGENT_BROWSER_EXECUTABLE_PATH there

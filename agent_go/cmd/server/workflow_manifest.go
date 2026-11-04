@@ -168,10 +168,6 @@ type WorkflowManifest struct {
 	// resolved through the same authorization boundary as transient # references
 	// and are always mounted read-only.
 	WorkflowContextPaths []string `json:"workflow_context_paths,omitempty"`
-	// InstalledPlaybooks are Builder-only setup guides materialized as
-	// workflow-local skills. Execution agents continue to use the workflow and
-	// per-step runtime skill selections.
-	InstalledPlaybooks []InstalledPlaybook `json:"installed_playbooks,omitempty"`
 
 	// PaceOnLowQuota spreads a run out rather than racing into a provider
 	// capacity wall. Opt-in per workflow, because it is only ever the right
@@ -200,17 +196,6 @@ type WorkflowManifest struct {
 	// (never serialized): set during ReadWorkflowManifest, used to avoid clobbering
 	// the on-disk config on write-back and to flag the issue.
 	MalformedConfig []string `json:"-"`
-}
-
-type InstalledPlaybook struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Version     string `json:"version"`
-	Category    string `json:"category"`
-	SkillName   string `json:"skill_name"`
-	SourceHash  string `json:"source_hash"`
-	Status      string `json:"status"`
-	InstalledAt string `json:"installed_at"`
 }
 
 type WorkflowBackupConfig struct {

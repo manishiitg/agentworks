@@ -172,7 +172,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
       case 'access':
         return workspacePath ? <div className="p-4"><ShareDashboardButton workspacePath={workspacePath} variant="panel" /></div> : null
       case 'identity':
-      case 'playbooks':
       case 'mcp':
       case 'browser':
         return <WorkflowCapabilitiesPanel key={view === 'mcp' ? workspacePath : undefined} section={view} workspacePath={workspacePath} presetQueryId={presetQueryId} relayMode={relayMode} />

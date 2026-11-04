@@ -123,7 +123,7 @@ Toolbars use open/close groups (`WorkspaceToolbarGroup`), never dropdown
 menus: primary icon buttons stay visible, Ops and Setup collapse into
 labeled groups that follow the active view. Group buttons are icon-only
 with tooltips (`aria-label` + `title`), in a fixed order — Setup runs
-Identity → Integrations → Playbooks.
+Identity → Integrations.
 
 ## Split layout
 

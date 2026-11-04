@@ -11,8 +11,8 @@ background turns must not change the person's pane.
 
 The project name is separate from its Builder/agent tabs. The project menu
 uses Recent, Build, Use, Share, Integrations and Setup; recent destinations are
-not repeated below. Dashboards are collected by project. Goals & metrics shows the outcome and saved measurements. Skills is in Build; Workflow playbooks,
-Publish, Notify and Backup are in Setup. Access summarizes ownership, audience
+not repeated below. Dashboards are collected by project. Goals & metrics shows the outcome and saved measurements. Skills is in Build; Publish,
+Notify and Backup are in Setup. Access summarizes ownership, audience
 and shared agents; requested changes happen in the visible project chat.
 
 Panel Back returns to the project menu or a nested detail's parent list.
@@ -40,7 +40,7 @@ Where things are, for guiding the person through the menu (the agent opens only 
 | `access` | Goal execution Team and its existing access policy; product Share is in Access at `mcp/share`. |
 | `identity` | Settings, Models and Upgrades. Computers and their grants live in Vault. |
 | `costs`, `execution-logs` | Recorded Costs and usage, or Run logs for real work. |
-| `playbooks`, `publish`, `notify`, `backup` | The corresponding Setup page. |
+| `publish`, `notify`, `backup` | The corresponding Setup page. |
 
 Use `panel-plan`/`panel-runs` for Goal execution,
 `panel-access` for decisions, and the matching

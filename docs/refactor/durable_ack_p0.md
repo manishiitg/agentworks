@@ -395,7 +395,7 @@ behind P1 remains follow-up work.
 ## Provider order
 
 1. **Codex** (this doc): best markers, oracle pattern
-   half-exists, representative JSONL playbook. Done.
+   half-exists, representative JSONL sample. Done.
 2. **Pi**: `picli_durable_ack.go` (marker-offset receipts,
    `PI_DURABLE_ACK_SECONDS` budget, `Steering:`-keyed queue
    check — the positional matcher has no Pi equivalent, so

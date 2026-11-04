@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { workflowManifestApi, type WorkflowGoalSetupCheck, type WorkflowGoalSetupStatus } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
-import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { goalSetupChatMessage } from '../../utils/goalSetupChat'
 import { GoalSetupCard } from './GoalSetupCard'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
@@ -44,14 +43,13 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
   }, [refresh, status?.show])
 
   if (!canEdit || !workspacePath || !status?.show) return null
-  const playbooks = status.playbooks ?? []
 
   const startStep = async (step: WorkflowGoalSetupCheck | undefined) => {
     if (!step || busy) return
     setBusy(true)
     try {
 
-      await sendWorkspacePaneMessageToChat({ workspacePath, message: goalSetupChatMessage(step.command || 'setup-goals', playbooks) })
+      await sendWorkspacePaneMessageToChat({ workspacePath, message: goalSetupChatMessage(step.command || 'setup-goals') })
     } catch (cause) {
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not start goal setup in chat.', 'error')
     } finally {
@@ -77,7 +75,6 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
       busy={busy}
       loading={loading}
       onStart={step => { void startStep(step) }}
-      onOpenPlaybooks={() => useWorkflowStore.getState().openWorkspaceView('playbooks')}
       onDismiss={() => { void dismiss() }}
       onRefresh={() => { void refresh() }}
     />

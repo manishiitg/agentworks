@@ -167,18 +167,6 @@ python3 "$REPO_ROOT/deploy/common/build-mcp-catalog.py" "$REPO_ROOT/agent_go/con
 chmod 0644 "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json"
 node "$BUILD_DIR/check-release-assets.mjs" "$BUILD_DIR/frontend"
 
-if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then
-  # With --prebuilt, REPO_ROOT is the shared build's source: read-only for the product account, and the playbook tests create temporary folders
-  # next to the playbooks (server C's first prebuilt deploy failed with PermissionError there, 2026-10-04). The build validated that source once
-  # (build-release.sh); the release's own writable copy is validated below.
-  mkdir -p "$BUILD_DIR/playbooks"
-  cp -R "$REPO_ROOT/playbooks/." "$BUILD_DIR/playbooks/"
-  python3 "$BUILD_DIR/playbooks/scripts/validate_playbooks.py" --skills-root "$REPO_ROOT/agent_go/internal/workproduct/skills"
-  if [[ -n "${PLAYBOOK_SMOKE_PATH:-}" ]]; then
-    test -f "$BUILD_DIR/playbooks/$PLAYBOOK_SMOKE_PATH"
-  fi
-fi
-
 # Carry the previous release's hashed frontend assets into the new one (open tabs still load their old chunks).
 activate_carry_assets "$REMOTE_APP" "$BUILD_DIR"
 

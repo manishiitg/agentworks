@@ -739,9 +739,7 @@ func (w *LLMAgentWrapper) AttachSkill(skill *llmtypes.Skill) error {
 		return nil
 	}
 	// Incremental assembly can discover the same skill through more than one
-	// configuration source. For example, Workflow Builder receives installed
-	// playbooks through both capabilities.selected_skills and
-	// installed_playbooks. The legacy registry was keyed by name; preserve that
+	// configuration source. The legacy registry was keyed by name; preserve that
 	// idempotent, last-write-wins behavior while assembling the immutable slice.
 	// mcpagent deliberately remains strict and rejects duplicates that reach its
 	// final definition boundary.
