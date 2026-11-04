@@ -340,9 +340,9 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%s action=%s mac_status=%d", manifest.ID, logUsernameForUserID(claims.UserID), agent.Tab, action, result.Status)
 	// The Mac is off: its team copy answers, or the message waits for the Mac, as the owner chose (crew_team_copy.go).
 	if result.Status == http.StatusServiceUnavailable && !IsLocalMode() {
-		if teamCopyRoute(manifest.ID) == teamCopyAnswer {
+		if route, reason := teamCopyRoute(manifest.ID, agent.Tab); route == teamCopyAnswer {
 			result = api.teamCopyCall(r.Context(), project.OwnerID, manifest.ID, call)
-		} else if action == "ask" && holdForMac(manifest.ID, call, "", 0) == nil {
+		} else if action == "ask" && holdForMac(manifest.ID, reason, call, "", 0) == nil {
 			externalJSON(w, map[string]any{"status": "waiting", "workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": macSharedAgentChatKey(manifest.ID, agent.Tab), "name": agent.Name,
 				"message": "Its owner's Mac is off. Your message waits, and " + firstNonEmptyTrimmed(agent.Name, "the agent") + " answers it when the Mac is back; read this chat then."})
 			return true
@@ -389,7 +389,7 @@ func macSharedAgentRows(caller string) []map[string]any {
 			presence, available := "Its owner's Mac is off; messages wait for it", online
 			if online {
 				presence = "Answers now, on its owner's Mac"
-			} else if teamCopyRoute(project) == teamCopyAnswer {
+			} else if route, _ := teamCopyRoute(project, agent.Tab); route == teamCopyAnswer {
 				presence, available = "Its owner's Mac is off; its team copy answers", true
 			}
 			target := "workspace:" + crewProfileID + ":" + project
@@ -762,10 +762,10 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.
 	_, status := read(0, 0)
 	if status == http.StatusServiceUnavailable && !IsLocalMode() {
-		if teamCopyRoute(dest.ID) == teamCopyAnswer {
+		if route, reason := teamCopyRoute(dest.ID, tab); route == teamCopyAnswer {
 			teamCopy = true
 			_, status = read(0, 0)
-		} else if holdForMac(dest.ID, ask, c.ID, from) == nil {
+		} else if holdForMac(dest.ID, reason, ask, c.ID, from) == nil {
 			go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off. Your message waits; the answer comes here when the Mac is back.")
 			return nil
 		}
