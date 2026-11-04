@@ -95,7 +95,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		externalError(w, 409, "team_offline", "Your company is offline. Your downloaded folders remain on this computer.")
 		return
 	}
-	if !t.CanEditSharedFolder {
+	if !t.FolderAccess {
 		externalError(w, 403, "team_folder_forbidden", "Ask the owner to allow you to edit the shared folder.")
 		return
 	}

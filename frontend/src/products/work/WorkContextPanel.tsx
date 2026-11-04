@@ -103,7 +103,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     return () => window.removeEventListener('agentworks:open-crew-access', open)
   })
   useEffect(() => { useContextMenuWideStore.getState().setWide(accessOpen); return () => useContextMenuWideStore.getState().setWide(false) }, [accessOpen])
-  if (syncOpen && team.target && team.team?.can_edit_shared_folder) return <WorkspaceContextCard title="Sync" page noFooter onBack={() => setSyncOpen(false)}><TeamSyncPanel target={team.target} name={team.team.name} onAsk={() => setSyncOpen(false)} /></WorkspaceContextCard>
+  if (syncOpen && team.target && team.team?.folder_access) return <WorkspaceContextCard title="Sync" page noFooter onBack={() => setSyncOpen(false)}><TeamSyncPanel target={team.target} name={team.team.name} onAsk={() => setSyncOpen(false)} /></WorkspaceContextCard>
   // Access opens straight on its tabs, without a title row (owner, 4 Nov); the side panel's own toggle closes it.
   if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard noFooter page>
     <YourComputerPanel projectId={projectId} sessionId={reviewSessionId} canEdit onBack={() => setMenu(undefined)} />
@@ -167,7 +167,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <Row icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={() => showMenu('automations')}>Manage automations</Row>
     </WorkspaceCompactGroup>}
     </>}
-    {team.target && team.team?.can_edit_shared_folder && <Row icon={RefreshCw} onClick={() => setSyncOpen(true)}>Sync</Row>}
+    {team.target && team.team?.folder_access && <Row icon={RefreshCw} onClick={() => setSyncOpen(true)}>Sync</Row>}
     {snapshot?.errors.length ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>Some workspace status is unavailable.</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
 }

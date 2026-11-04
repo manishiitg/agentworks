@@ -33,7 +33,7 @@ func crewTeamNativeFolders(ctx context.Context, claims *UserClaims) []workflowty
 			continue
 		}
 		for _, team := range out.Teams {
-			if !team.CanEditSharedFolder {
+			if !team.FolderAccess {
 				continue
 			}
 			dir, e := crewTeamLocalDir(claims.UserID, c, team.ProjectID, team.Folder.ID)
