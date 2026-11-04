@@ -10,8 +10,71 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
+
+func (api *StreamingAPI) handleDesktopTeamFolders(w http.ResponseWriter, r *http.Request) {
+	if !desktopConnectionGate(w, r) {
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	roots, e := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
+	if e != nil {
+		externalError(w, 403, "team_forbidden", e.Error())
+		return
+	}
+	b, e := crewroot.ReadSync(roots.ID)
+	if e != nil || b == nil || b.ConnectionID != mux.Vars(r)["connection"] {
+		externalError(w, 403, "team_forbidden", "Use this project's connected company.")
+		return
+	}
+	rel := r.URL.Query().Get("path")
+	folder := roots.Files
+	if rel != "" {
+		folder, e = crewTeamFolderPath(roots.Files, rel)
+		if e != nil {
+			externalError(w, 400, "invalid_folder", e.Error())
+			return
+		}
+	}
+	entries, e := os.ReadDir(folder)
+	if e != nil {
+		externalError(w, 409, "folder_unavailable", "This folder is unavailable.")
+		return
+	}
+	folders := []string{}
+	for _, entry := range entries {
+		p := filepath.ToSlash(filepath.Join(rel, entry.Name()))
+		if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 && crewTeamAllowed(p+"/file.txt") && !publication.ExcludedDirectory(p) {
+			folders = append(folders, p)
+		}
+	}
+	var count, bytes int64
+	if rel != "" {
+		_ = filepath.WalkDir(folder, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || p == folder {
+				return nil
+			}
+			sub, _ := filepath.Rel(folder, p)
+			sub = filepath.ToSlash(sub)
+			if d.IsDir() {
+				if publication.ExcludedDirectory(sub) || !crewTeamAllowed(sub+"/file.txt") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if d.Type()&os.ModeSymlink == 0 && crewTeamAllowed(sub) {
+				if info, err := d.Info(); err == nil && info.Mode().IsRegular() {
+					count++
+					bytes += info.Size()
+				}
+			}
+			return nil
+		})
+	}
+	externalJSON(w, map[string]any{"folders": folders, "path": rel, "files": count, "bytes": bytes})
+}
 
 // Only the desktop itself may inspect its saved account's local working path.
 // Remote callers continue to use the folder-only server APIs.

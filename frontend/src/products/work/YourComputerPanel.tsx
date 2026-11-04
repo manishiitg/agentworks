@@ -15,6 +15,7 @@ import { useLocalFileDevices } from './codeLocalFiles'
 import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { activateTab } from '../../utils/activateTab'
+import { CrewTeamCard } from './CrewTeamCard'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
@@ -257,6 +258,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
       {online && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">Team</span><span className="text-[13px] text-muted-foreground">Choose who can use it on its page online</span>
         <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
       </div>}
+      {binding && !online && binding.connection_id && <CrewTeamCard projectId={projectId} />}
       {binding && !online && binding.connection_id && <MacSharedAgents projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} />}
     </section>}
   </div>
