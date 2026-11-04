@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -109,9 +108,6 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 		return fail(404, "This Crew is unavailable on your Mac.")
 	}
 	callCtx := context.WithValue(ctx, crewMacCallerKey{}, call.Caller)
-	if unattended, _ := sent["unattended"].(bool); unattended {
-		callCtx = context.WithValue(callCtx, crewMacUnattendedKey{}, true)
-	}
 	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(callCtx)
 	recorder := httptest.NewRecorder()
 	api.externalWorkspaceConversation(recorder, r, call.Action, args, binding, manifest)
@@ -119,93 +115,14 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 	return crewChatResult{ID: call.ID, Status: recorder.Code, Body: recorder.Body.Bytes()}
 }
 
-// crewMacUnattendedKey marks a Mac relay ask that nobody can answer questions for (a Slack direct message).
-type crewMacUnattendedKey struct{}
-
-const crewOnMacSlackRefusal = "This Crew is on its owner's Mac. Ask them to share it so it works here."
-
-// slackCrewOnMac answers a Slack message for a Crew that lives on its owner's Mac: the owner's own proven direct
-// message is asked on the Mac and its answer posted; a channel, a group message or anyone else gets a plain refusal.
-func (api *StreamingAPI) slackCrewOnMac(ctx context.Context, sender, project string, msg services.BotIncomingMessage) error {
-	if !msg.DirectMessage || sender == "" {
-		return services.BotReplyText{Text: crewOnMacSlackRefusal}
+// crewOnMacChannelReply is what a Slack or WhatsApp message to the online copy of a Crew on its owner's Mac gets
+// (owner, 4 Nov: Slack and WhatsApp are the Crew's own integrations, not part of Access).
+func crewOnMacChannelReply(platform string) string {
+	name := "Slack"
+	if platform == "whatsapp" {
+		name = "WhatsApp"
 	}
-	binding, _, ok := api.resolveExternalWorkspace(ctx, &UserClaims{UserID: sender, Username: sender}, project)
-	if !ok || binding.OwnerID != sender || binding.CoOwner {
-		return services.BotReplyText{Text: crewOnMacSlackRefusal}
-	}
-	return services.BotReplyText{Text: api.askCrewMacAndWait(ctx, sender, project, "Slack", msg.Text)}
-}
-
-// askCrewMacAndWait asks the owner's Mac in the caller's named tab and waits for the answer, reading the same
-// conversation service a direct ask does. It returns the answer, or a plain line saying why there is none.
-func (api *StreamingAPI) askCrewMacAndWait(ctx context.Context, owner, project, caller, message string) string {
-	call := func(action string, args map[string]any) crewChatResult {
-		if crewPublishedTarget(project, externalArg(args, "chat_id")) {
-			return api.publishedOwnerWorkspace(ctx, owner, project, caller, action, args)
-		}
-		raw, _ := json.Marshal(args)
-		return callCrewMacFor(ctx, owner, project, crewChatCall{Operation: "workspace", Action: action, Args: raw, Caller: caller}, 70*time.Second)
-	}
-	// Nobody can answer a question card from here (Slack has no answer path), so the turn runs unattended like a
-	// direct Slack turn: its questions are answered automatically instead of holding the run (PLAT-746-316).
-	result := call("ask", map[string]any{"message": message, "wait_seconds": float64(externalCrewMaxWaitSeconds), "unattended": true})
-	answer := ""
-	deadline := time.Now().Add(15 * time.Minute)
-	for {
-		if result.Status >= 300 {
-			return crewMacResultText(result)
-		}
-		var out struct {
-			Status    string         `json:"status"`
-			Working   bool           `json:"working"`
-			QueryID   string         `json:"query_id"`
-			ChatID    string         `json:"chat_id"`
-			NextAfter int            `json:"next_after"`
-			Messages  []codeTurnItem `json:"messages"`
-		}
-		if json.Unmarshal(result.Body, &out) != nil {
-			return "Your Mac sent an answer that could not be read. Open the Crew to see it."
-		}
-		for _, item := range out.Messages {
-			if item.Role == "assistant" && strings.TrimSpace(item.Text) != "" {
-				answer = item.Text
-			}
-		}
-		switch {
-		case out.Status == "failed":
-			return "It couldn't finish on your Mac. Try again."
-		case out.Status == "waiting_for_input":
-			return "It needs your answer: open the Crew on your Mac or the website to reply."
-		case !out.Working && answer != "":
-			return answer
-		case !out.Working && out.QueryID == "":
-			return "Done on your Mac."
-		case time.Now().After(deadline) || ctx.Err() != nil:
-			return "Still working on your Mac. Open the Crew to see the answer."
-		}
-		result = call("read_chat", map[string]any{"chat_id": out.ChatID, "query_id": out.QueryID, "after": float64(out.NextAfter), "wait_seconds": float64(externalCrewMaxWaitSeconds)})
-	}
-}
-
-// crewMacResultText reads a plain reason from the Mac's or the relay's error body.
-func crewMacResultText(result crewChatResult) string {
-	var body struct {
-		Error json.RawMessage `json:"error"`
-	}
-	if json.Unmarshal(result.Body, &body) == nil && len(body.Error) > 0 {
-		var text string
-		if json.Unmarshal(body.Error, &text) == nil && text != "" {
-			return text
-		}
-		var detail struct {
-			Message string `json:"message"`
-		}
-		if json.Unmarshal(body.Error, &detail) == nil && detail.Message != "" {
-			return detail.Message
-		}
-	}
-	return http.StatusText(result.Status)
+	return "This Crew runs on its owner's Mac. Connect " + name + " in the Crew's Integrations on that Mac."
 }
 
 // crewPlace is where a Crew lives, as its Access row shows it: on this Mac (or the Mac is off, seen from online),

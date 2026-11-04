@@ -57,15 +57,6 @@ func crewPublishedTarget(project, target string) bool {
 	return err == nil && entry != nil && entry.Location == "server"
 }
 
-// Called only after the existing source-owner check. This reuses the owner's
-// normal workspace conversation adapter; it does not impersonate a sender.
-func (api *StreamingAPI) publishedOwnerWorkspace(ctx context.Context, owner, project, caller, action string, args map[string]any) crewChatResult {
-	claims := &UserClaims{UserID: owner, Username: owner}
-	ctx = context.WithValue(ctx, UserContextKey, claims)
-	raw, _ := json.Marshal(args)
-	return api.desktopCrewWorkspace(ctx, claims, project, crewChatCall{Operation: "workspace", Action: action, Args: raw, Caller: caller})
-}
-
 // A reach-off request must not delete a Crew containing a published runtime.
 func crewHasPublishedAgents(project string) bool {
 	entries, err := readCrewAgentPlacements(project)

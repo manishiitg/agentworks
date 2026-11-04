@@ -187,12 +187,12 @@ func (api *StreamingAPI) botProfileTurn(ctx context.Context, userID string, msg 
 		return nil, "", false, fmt.Errorf("%s no longer takes WhatsApp messages", profile.Name)
 	}
 	productInteractions.Note(ctx, workspaceUserID, profile.Product)
-	// A Crew that lives on its owner's Mac answers in Slack only the owner's own direct message, on the Mac
-	// (PLAT-856-509). A channel means other people, which needs the Crew shared.
-	if msg.Platform == "slack" && msg.PresetProfile != nil && strings.EqualFold(profile.ID, crewProfileID) && !IsLocalMode() {
+	// A Crew that lives on its owner's Mac has an empty online copy: Slack and WhatsApp reach it through the Crew's own
+	// integrations on that Mac (owner, 4 Nov), so a message to the online copy gets a plain reply saying so.
+	if (msg.Platform == "slack" || msg.Platform == "whatsapp") && msg.PresetProfile != nil && strings.EqualFold(profile.ID, crewProfileID) && !IsLocalMode() {
 		if project := crewResourceProjectID(conversationKey); crewRelayTwin(project) {
-			// The proven DM sender (slack_dm.go directMessage), never the route's owner.
-			return nil, "", false, api.slackCrewOnMac(ctx, strings.TrimSpace(msg.WorkspaceUserID), project, msg)
+			log.Printf("[CREW_CHAT_RELAY] %s project=%s refused reason=crew_on_mac", msg.Platform, project)
+			return nil, "", false, services.BotReplyText{Text: crewOnMacChannelReply(msg.Platform)}
 		}
 	}
 	// A Code talks 1:1 only: a Slack DM or WhatsApp (which admits 1:1 chats
