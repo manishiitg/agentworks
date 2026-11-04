@@ -15,7 +15,7 @@ import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import type { ChatTabPillProps } from './ChatTabPill'
-import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow } from './AgentCard'
+import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { fillAgentIconDraft, fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
@@ -35,7 +35,7 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, mainIcon, allowSideChats, opening, surface,
-  onOrder, onPin, onRename, onOpen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
+  onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
@@ -44,6 +44,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
   onOrder: (keys: string[]) => Promise<void>; onPin: (key: string, pinned: boolean) => Promise<void>
   onRename: (tab: ChatTab, name: string) => Promise<boolean | void>; onOpen: (name: string) => Promise<boolean | void>
+  /** Opens a listed agent that has no tab here again and switches to it; without it, onOpen by name. */
+  onReopen?: (chat: AgentProfileSideChat) => Promise<void>
   onCloseTab: (tabId: string) => void; onSelectTab: (tabId: string) => void
   projectActivity?: 'running' | 'waiting' | null
   renderAfterTab?: (tab: ChatTab) => ReactNode; isTabActive?: (tab: ChatTab) => boolean; onMakeInteractive?: (tabId: string) => void
@@ -160,9 +162,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
   const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index) => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.pinned, agent.actions?.close ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  // Agents the server lists that have no tab here (closed), for the team board, which lists every agent.
+  const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
+  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, icon: chat.icon,
+    open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.icon]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.pinned, agent.actions?.close ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
   useEffect(() => {
-    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere)
+    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crewKey])
   // The open tab's details, for the purpose line at the top of its chat.
