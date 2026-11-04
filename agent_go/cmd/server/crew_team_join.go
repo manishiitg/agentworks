@@ -117,8 +117,8 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 		return
 	}
 	out := map[string]any{"team": team}
-	// Someone who may not edit the shared folder still joins; they work with the shared agents only.
-	if team.CanEditSharedFolder && team.Folder.ID != "" {
+	// Every member gets the shared folder once the owner has chosen one (owner, 5 Nov).
+	if team.Folder.ID != "" {
 		folder := input.Folder
 		if folder == "" {
 			if folder, err = crewTeamDefaultJoinFolder(team.Name); err != nil {

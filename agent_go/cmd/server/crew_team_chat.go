@@ -25,12 +25,12 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		return nil
 	}
 	gate.Declare("team_sync")
-	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. resolve uses keep=current or revision:N; restore uses revision and saves it as a NEW revision. To resolve with AI: read/compare both revisions, save the merged content, then resolve keep=current. directory lists company people. configure (owner only): people replaces the roster with user_id and can_edit_shared_folder, folder chooses one existing child folder; a person added is invited and joins only when they accept. status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
+	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. resolve uses keep=current or revision:N; restore uses revision and saves it as a NEW revision. To resolve with AI: read/compare both revisions, save the merged content, then resolve keep=current. directory lists company people. configure (owner only): people replaces the roster with user_id, folder chooses one existing child folder; a person added is invited and joins only when they accept, and every member reads and writes the shared folder. status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
 		"action":  map[string]any{"type": "string", "enum": []string{"status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file", "directory", "configure", "accept", "decline"}},
 		"network": map[string]any{"type": "string", "description": "Company name, if this Mac is connected to several companies and this project has no connection."},
 		"project": map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":    map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"},
-		"folder": map[string]any{"type": "string"}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"user_id": map[string]any{"type": "string"}, "can_edit_shared_folder": map[string]any{"type": "boolean"}}, "required": []string{"user_id", "can_edit_shared_folder"}}},
+		"folder": map[string]any{"type": "string"}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"user_id": map[string]any{"type": "string"}}, "required": []string{"user_id"}}},
 		"keep": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "base": map[string]any{"type": "string", "description": "Last hash from files; empty for a new file."},
 	}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller := GetUserFromContext(ctx)
@@ -276,7 +276,7 @@ func (api *StreamingAPI) crewTeamConfigureChat(ctx context.Context, caller *User
 			return "", err
 		}
 		if err = json.Unmarshal(raw, &team.People); err != nil {
-			return "", fmt.Errorf("choose people from directory and whether each may edit the folder")
+			return "", fmt.Errorf("choose people from the directory by user_id")
 		}
 	}
 	if folder, ok := args["folder"].(string); ok {
