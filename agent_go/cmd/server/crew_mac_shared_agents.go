@@ -336,6 +336,19 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	if action == "reply_input" {
 		call.Answer, _ = json.Marshal(map[string]any{"provider": args["provider"], "prompt_id": args["request_id"], "answers": args["answers"], "auto": args["auto"]})
 	}
+	// A published agent lives on the server now: only it answers, never the Mac or a team copy (856-523).
+	if crewPublishedTarget(manifest.ID, agent.Tab) {
+		result := api.publishedAgentCall(r.Context(), project.OwnerID, manifest.ID, call)
+		log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%s action=%s published_status=%d", manifest.ID, logUsernameForUserID(claims.UserID), agent.Tab, action, result.Status)
+		var out map[string]any
+		if result.Status == http.StatusOK && json.Unmarshal(result.Body, &out) == nil {
+			out["workspace_id"], out["chat_id"], out["name"], out["purpose"], out["icon"], out["can_write"], out["shared"] = manifest.Product+":"+manifest.ID, macSharedAgentChatKey(manifest.ID, agent.Tab), agent.Name, agent.Purpose, agent.Icon, false, true
+			externalJSON(w, out)
+			return true
+		}
+		writeCrewChatResult(w, result)
+		return true
+	}
 	result := callCrewMacFor(r.Context(), project.OwnerID, manifest.ID, call, externalCrewWait(args)+40*time.Second)
 	log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%s action=%s mac_status=%d", manifest.ID, logUsernameForUserID(claims.UserID), agent.Tab, action, result.Status)
 	// The Mac is off: its team copy answers, or the message waits for the Mac, as the owner chose (crew_team_copy.go).
@@ -387,7 +400,9 @@ func macSharedAgentRows(caller string) []map[string]any {
 				continue
 			}
 			presence, available := "Its owner's Mac is off; messages wait for it", online
-			if online {
+			if crewPublishedTarget(project, agent.Tab) {
+				presence, available = "Answers now, on the server", true
+			} else if online {
 				presence = "Answers now, on its owner's Mac"
 			} else if route, _ := teamCopyRoute(project, agent.Tab); route == teamCopyAnswer {
 				presence, available = "Its owner's Mac is off; its team copy answers", true
@@ -742,8 +757,11 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	}
 	sender := shareOwnerLabel(source.UserID)
 	// Where this message is answered: the Mac, or its team copy while the Mac is off. The answer is read from the same place.
-	teamCopy := false
+	teamCopy, published := false, crewPublishedTarget(dest.ID, tab)
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
+		if published {
+			return api.publishedAgentCall(context.Background(), dest.UserID, dest.ID, call)
+		}
 		if teamCopy {
 			return api.teamCopyCall(context.Background(), dest.UserID, dest.ID, call)
 		}
@@ -773,7 +791,7 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	if status == http.StatusOK {
 		status = run(ask, 60*time.Second).Status
 	}
-	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d team_copy=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, teamCopy)
+	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d team_copy=%t published=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, teamCopy, published)
 	if status == http.StatusServiceUnavailable {
 		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off. Try again later.")
 		return nil
