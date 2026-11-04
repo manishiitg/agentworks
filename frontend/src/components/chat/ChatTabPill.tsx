@@ -10,7 +10,7 @@ import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { compactOwnerChatName, ownerInitials } from './chatTabName'
 import { AgentPurposeButton } from './AgentPurposeButton'
 import { AgentHoverCard, type AgentCardInfo } from './AgentCard'
-import { AgentMark } from './AgentIcon'
+import { AgentIcon, AgentMark } from './AgentIcon'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -136,6 +136,8 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
+      {/* An agent's icon (when it has one) with the shared badge, as in the left menu (owner, 4 Nov, option C). */}
+      {agent && <AgentIcon name={displayName} icon={agent.info?.icon} active={isActive} shared={agent.info?.sharedWith} letter={false} />}
       {agent ? <AgentMark state={isBlank ? null : menuState} asking={agent.asking} /> :
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {/* An idle tab shows its owner a quiet purpose icon in this spot instead (owner, 3 Nov). */}
