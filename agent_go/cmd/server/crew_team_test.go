@@ -426,4 +426,12 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if grants := crewTeamServerFolders(&UserClaims{UserID: "outsider"}); len(grants) != 0 {
 		t.Fatalf("outsider got a team folder: %+v", grants)
 	}
+	// Removed from the team: the copy holds files they have no right to, so it goes.
+	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"path":"other"}}`, ""); w.Code != 200 {
+		t.Fatal("remove member", w.Code, w.Body.String())
+	}
+	removeStaleCrewTeamServerCopies(t.Context())
+	if _, err = os.Stat(copyRoot); !os.IsNotExist(err) {
+		t.Fatalf("a removed member's server copy stayed: %v", err)
+	}
 }
