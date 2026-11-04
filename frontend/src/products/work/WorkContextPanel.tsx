@@ -141,13 +141,14 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     const main = tabs.find(row => row.metadata?.agentProfileProjectId === projectId && row.metadata?.agentProfileIsMainChat && !row.metadata?.isViewOnly)
     if (!main || !ask.session_id) return
     const existing = tabs.find(row => row.sessionId === ask.session_id && row.metadata?.isViewOnly)
-    const tabId = existing?.tabId || await store.createChatTab(`${ask.sender} · ${ask.agent}`, {
+    const tabId = existing?.tabId || await store.createChatTab(`${ask.sender}'s chat with ${ask.agent}`, {
       ...main.metadata,
       agentProfileIsMainChat: false,
       agentProfileBuilder: false,
       agentProfileConversationKey: `${projectId}:history:${ask.session_id}`,
       agentProfileConversationId: undefined,
       isViewOnly: true,
+      viewOnlyWriter: ask.sender,
       readOnlyRestoredAt: Date.now(),
       userInteractiveContinuation: false,
     }, ask.session_id)
