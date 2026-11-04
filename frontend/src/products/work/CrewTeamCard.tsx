@@ -4,6 +4,7 @@ import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
+import { fillTeamSetupDraft } from '../../utils/agentPurposeDraft'
 import { saveTeam, teamError, useProjectTeam, type Team } from './teamApi'
 
 type Person = { id: string; username: string; email?: string }
@@ -44,7 +45,7 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
     try { await saveTeam(target, next); refresh() } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
   return <section aria-label="Team" className="mt-4 space-y-3 rounded-xl border border-border px-4 py-3">
-    <div className="flex items-center gap-2"><Users className="h-4 w-4" /><h3 className="text-sm font-semibold">Team</h3><span className="ml-auto text-xs text-muted-foreground">{team.people.length ? `${team.people.length} people` : 'Only you'}</span></div>
+    <div className="flex items-center gap-2"><Users className="h-4 w-4" /><h3 className="text-sm font-semibold">Team</h3><span className="ml-auto text-xs text-muted-foreground">{team.people.length ? `${team.people.length} people` : 'Only you'}</span><button type="button" title="Set up the Team from Main's chat" onClick={() => fillTeamSetupDraft(projectId)} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Ask</button></div>
     <p className="text-xs text-muted-foreground">Choose who works with you. Your agents keep their own sharing choices below.</p>
     {team.people.map(person => <div key={person.user_id} className="flex flex-wrap items-center gap-2 text-xs">
       <span className="min-w-20 flex-1 truncate">{name(person.user_id)}</span>

@@ -23,6 +23,17 @@ export function fillAgentPurposeDraft(tabId: string) { fillDraft(tabId, AGENT_PU
 /** The same for the agent's icon alone. */
 export function fillAgentIconDraft(tabId: string) { fillDraft(tabId, AGENT_ICON_PROMPT) }
 
+/** The Team card's Ask (owner, 4 Nov): Main sets the Team up from chat with team_sync and manage_crew_sync. */
+export const TEAM_SETUP_PROMPT = 'Help me set up the Team for this Crew: add or remove people, choose the shared folder and who can edit it, and choose which agents are shared and with whom.'
+
+/** Opens this Crew's Main chat with the Team request in its chat box; false when Main's tab is not open. */
+export function fillTeamSetupDraft(projectId: string): boolean {
+  const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly)
+  if (!main) return false
+  fillDraft(main.tabId, TEAM_SETUP_PROMPT)
+  return true
+}
+
 /** A finished set_my_agent_identity call (native or over MCP, whose name carries a prefix), or a saved Crew identity
  * (Main's name, purpose and icon are the Crew's): the agents list is stale. */
 export function agentIdentitySaved(event: PollingEvent): boolean {
