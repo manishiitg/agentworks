@@ -351,7 +351,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	}
 	if input.Name == "" {
 		if _, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, project); ok {
-			input.Name = manifest.Name
+			input.Name = firstNonEmptyTrimmed(manifest.Title, manifest.Label)
 		}
 	}
 	if input.Name == "" {
@@ -476,7 +476,7 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if _, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, id); ok {
-			input.Name = manifest.Name
+			input.Name = firstNonEmptyTrimmed(manifest.Title, manifest.Label)
 		}
 		if input.Folder.Path != "" {
 			folder, err := crewTeamFolderPath(roots.Files, input.Folder.Path)
