@@ -1,11 +1,12 @@
-import { Loader2, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { AgentHoverCard, useAgentsViewStore, useCrewAgentsStore, type CrewAgentRow } from '../chat/AgentCard'
+import { AgentIcon, AgentMark } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 
-/** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its name,
- * a mark at the end only when needed, the agent card on hover, and "+ New agent". */
+/** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its icon,
+ * name and a mark at the end only when needed, the agent card on hover, and "+ New agent". */
 export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const view = useAgentsViewStore(state => state.view)
   const crew = useCrewAgentsStore()
@@ -22,15 +23,35 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
 
 function AgentRow({ agent, active }: { agent: CrewAgentRow; active: boolean }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
-  const mark = state === 'running' ? <Loader2 role="img" aria-label="Working" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
-    : state === 'waiting' ? <span role="img" aria-label="Needs you" title="Needs you" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" />
-      : state === 'failed' ? <span role="img" aria-label="Failed" title="Failed" className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />
-        : agent.asking ? <span role="img" aria-label="Someone is asking it now" title="Someone is asking it now" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
-          : state === 'done' ? <span role="img" aria-label="New reply" title="New reply" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--info))]" /> : null
   return <AgentHoverCard info={agent.info}>
     <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => activateTab(agent.tabId)}
       className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-      <span className="min-w-0 flex-1 truncate">{agent.name}</span>{mark}
+      <AgentIcon name={agent.name} icon={agent.info?.icon} active={active} />
+      <span className="min-w-0 flex-1 truncate">{agent.name}</span><AgentMark state={state} asking={agent.asking} />
     </button>
   </AgentHoverCard>
+}
+
+/** The collapsed sidebar (icon rail) keeps the open Crew's agents (owner, 4 Nov): the Crew's letter (opens its team
+ * board), then one icon per agent with its mark. Shown only while one of that Crew's agents is open. */
+export function RailCrewAgents() {
+  const crew = useCrewAgentsStore()
+  const activeTabId = useChatStore(state => state.activeTabId)
+  if (!crew.projectId || !crew.agents.some(agent => agent.tabId === activeTabId)) return null
+  const projectId = crew.projectId
+  return <div role="list" aria-label="Agents" className="mt-2 flex min-h-0 flex-col items-center gap-1 overflow-y-auto border-t border-border/70 pt-2 [scrollbar-width:none]">
+    <button type="button" title={`${crew.name || 'Crew'}: see all agents`} aria-label={`${crew.name || 'Crew'}: see all agents`}
+      onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } }))}
+      className="grid h-8 w-8 place-items-center rounded-md hover:bg-muted"><AgentIcon name={crew.name || 'Crew'} size="md" /></button>
+    {crew.agents.map(agent => <RailAgent key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} />)}
+  </div>
+}
+
+function RailAgent({ agent, active }: { agent: CrewAgentRow; active: boolean }) {
+  const state = useAgentMenuState(agent.tabId, agent.activity)
+  return <button type="button" role="listitem" aria-current={active ? 'page' : undefined} title={agent.name} aria-label={agent.name} onClick={() => activateTab(agent.tabId)}
+    className={`relative grid h-8 w-8 place-items-center rounded-md ${active ? 'bg-foreground/[0.08]' : 'hover:bg-muted'}`}>
+    <AgentIcon name={agent.name} icon={agent.info?.icon} active={active} />
+    <span className="absolute right-0.5 top-0.5"><AgentMark state={state} asking={agent.asking} /></span>
+  </button>
 }

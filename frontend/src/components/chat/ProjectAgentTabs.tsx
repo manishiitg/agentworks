@@ -15,7 +15,7 @@ import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import type { ChatTabPillProps } from './ChatTabPill'
-import { useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore } from './AgentCard'
+import { AgentPurposeLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
@@ -135,9 +135,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentsView = useAgentsViewStore(state => state.view)
   const menuMode = surface === 'work' && agentsView === 'menu' && !phone
   const crewAgents = surface === 'work' && placeProject ? tabs.filter(isAgentTab).map(tab => ({ tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined })) : []
-  const crewKey = JSON.stringify([placeProject, sideChatsHere, crewAgents.map(agent => [agent.tabId, agent.name, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, crewAgents.map(agent => [agent.tabId, agent.name, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
   useEffect(() => {
-    if (placeProject) useCrewAgentsStore.getState().set(placeProject, crewAgents, sideChatsHere)
+    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crewKey])
   useEffect(() => {
@@ -317,7 +317,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      {!phone && <ProjectWorkspaceTitle name={projectName} surface={surface} projectId={placeProject} />}
+      {/* A Crew's name lives in the left menu and on its team board (owner, 4 Nov); the top bar shows the open agent
+          with Left menu, and only the tabs with Tabs. Other products keep their name here. */}
+      {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
+      {menuMode && <AgentPurposeLine tabId={openTab?.tabId} inline />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)

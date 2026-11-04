@@ -10,6 +10,8 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useSharedCrewRows } from './SharedWithMe'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
+
+const openTeamBoard = (projectId: string) => window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } }))
 import { TeamsSidebar } from '../../products/work/TeamFolderPanel'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
@@ -51,6 +53,8 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   // The open Crew lists its agents under it (owner, 4 Nov, "Left menu").
   const renderProject = ({ location, mac, state, ...project }: SidebarProject) => <Fragment key={`${project.kind}:${project.id}`}><SidebarProjectRow {...project}
     stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onMac={location === 'mac' ? (mac?.online ? 'on' : 'off') : undefined} onOpen={() => {
+    // The open Crew's name opens its team board (owner, 4 Nov); any other row opens that Crew.
+    if (project.kind === 'crew' && project.selected) { openTeamBoard(project.id); return }
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
   }} />{project.kind === 'crew' && project.selected && <SidebarCrewAgents projectId={project.id} />}</Fragment>
@@ -111,6 +115,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     selected={project.connection.id === active && project.selected}
     serverId={project.connection.id} remote={project.connection.id !== 'local'} serverColor={serverColors[project.connection.server]} location={project.connection.id !== 'local' ? project.connection.name : undefined}
     onOpen={() => {
+      if (project.kind === 'crew' && project.connection.id === active && project.selected) { openTeamBoard(project.id); return }
       visit(connectedProjectKey(project.connection.id, project.kind, project.id))
       if (project.connection.id === active) openSidebarProject(project.kind, project.id)
       else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
