@@ -5,7 +5,10 @@ export function getClipboardText(clipboard: Pick<DataTransfer, 'getData'>): stri
   const html = clipboard.getData('text/html')
   if (!html || typeof DOMParser === 'undefined') return plain
   const doc = new DOMParser().parseFromString(html, 'text/html')
-  if (!doc.body.querySelector('b,strong,i,em,s,strike,del,code,pre,blockquote,ul,ol,a[href],h1,h2,h3,h4,h5,h6,[style]')) return plain
+  const hasStyledText = Array.from(doc.body.querySelectorAll<HTMLElement>('[style]')).some(({ style }) =>
+    style.fontWeight === 'bold' || Number(style.fontWeight) >= 600 || style.fontStyle === 'italic' ||
+    style.textDecorationLine.includes('line-through') || style.textDecoration.includes('line-through'))
+  if (!hasStyledText && !doc.body.querySelector('b,strong,i,em,s,strike,del,code,pre,blockquote,ul,ol,a[href],h1,h2,h3,h4,h5,h6')) return plain
   const escape = (text: string) => text.replace(/([\\`*_\[\]~])/g, '\\$1')
   const children = (node: Node): string => Array.from(node.childNodes).map(render).join('')
   const fenced = (text: string, block: boolean) => {
