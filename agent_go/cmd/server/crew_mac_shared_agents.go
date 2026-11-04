@@ -544,7 +544,9 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 			log.Printf("[CREW_SHARED_AGENT] local project=%s purpose refresh failed: %v", project, err)
 		}
 	}
-	externalJSON(w, map[string]any{"tabs": rows, "agents": readMacSharedAgents(project)})
+	// Where each agent answers (856-523): a published agent is on the server; any other is on this Mac.
+	placements, _ := readCrewAgentPlacements(project)
+	externalJSON(w, map[string]any{"tabs": rows, "agents": readMacSharedAgents(project), "placements": placements})
 }
 
 // macSharedPurposesStale: a shared agent's saved name or purpose differs from its tab's now (and the tab still has one).
