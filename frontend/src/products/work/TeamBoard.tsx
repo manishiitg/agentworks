@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useCrewAgentsStore, type CrewAgentRow } from '../../components/chat/AgentCard'
+import { AgentIcon } from '../../components/chat/AgentIcon'
 import { useAgentMenuState, type AgentMenuState } from '../../components/chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import type { PollingEvent } from '../../services/api-types'
@@ -52,18 +53,20 @@ function AgentBoardCard({ agent, onOpen }: { agent: CrewAgentRow; onOpen: () => 
   const live = running ? (tool ? `Using ${tool}` : text || STATE_WORDS.running) : state ? STATE_WORDS[state] : agent.asking ? 'Needs you' : 'Idle'
   const purpose = agent.info?.purpose?.trim()
   return <button type="button" onClick={onOpen} data-team-board-agent={agent.tabId}
-    className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    className="flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
     <span className="flex min-w-0 items-center gap-2">
       <span className={`h-2 w-2 shrink-0 rounded-full ${running ? 'bg-primary animate-pulse' : state === 'waiting' || agent.asking ? 'bg-amber-500' : state === 'failed' ? 'bg-destructive' : state === 'done' ? 'bg-primary' : 'bg-muted-foreground/30'}`} aria-hidden="true" />
+      <AgentIcon name={agent.name} icon={agent.info?.icon} />
       <span className="truncate text-sm font-medium">{agent.name}</span>
     </span>
-    <span className="truncate text-xs text-muted-foreground">{purpose || 'No purpose set yet'}</span>
+    <span title={purpose || undefined} className="line-clamp-2 break-words text-xs text-muted-foreground">{purpose || 'No purpose set yet'}</span>
     <span className="truncate rounded-md bg-muted/60 px-2 py-1 font-mono text-xs text-foreground/80" aria-live="polite">{live}</span>
   </button>
 }
 
 export function TeamBoard({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const agents = useCrewAgentsStore(state => state.projectId === projectId ? state.agents : null)
+  const crewName = useCrewAgentsStore(state => state.projectId === projectId ? state.name : '')
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -75,9 +78,9 @@ export function TeamBoard({ projectId, onClose }: { projectId: string; onClose: 
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />Back to chat
       </button>
-      <span className="text-sm font-semibold">Your team</span>
+      <span className="truncate text-sm font-semibold">{crewName || 'Agents'}</span>
     </div>
-    {agents?.length ? <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+    {agents?.length ? <div className="grid max-w-5xl grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3 p-4">
       {agents.map(agent => <AgentBoardCard key={agent.tabId} agent={agent} onOpen={() => { activateTab(agent.tabId); onClose() }} />)}
     </div> : <div className="grid flex-1 place-items-center p-6 text-sm text-muted-foreground">No agents here yet.</div>}
   </div>

@@ -15,7 +15,7 @@ import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import type { ChatTabPillProps } from './ChatTabPill'
-import { AgentPurposeLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore } from './AgentCard'
+import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
@@ -317,10 +317,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      {/* A Crew's name lives in the left menu and on its team board (owner, 4 Nov); the top bar shows the open agent
-          with Left menu, and only the tabs with Tabs. Other products keep their name here. */}
+      {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {menuMode && <AgentPurposeLine tabId={openTab?.tabId} inline />}
+      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} projectId={placeProject} />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)

@@ -5,7 +5,7 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 export const OPEN_TEAM_BOARD_EVENT = 'agentworks:open-team-board'
 
 /** Project identity stays visible while people switch between its chats. A plain label (owner, 4 Nov): switching
- * is done from the sidebar, not from here. A Crew shows its open agent here instead (AgentPurposeLine). */
+ * is done from the sidebar, not from here. A Crew shows "Crew › agent" here instead (AgentHeaderLine). */
 export function ProjectWorkspaceTitle({ name, surface }: { name: string; surface: ProductSurface }) {
   return <span data-project-title title={name}
     className="mr-0 md:mr-2 inline-flex h-10 min-w-0 max-w-[50vw] md:h-8 md:shrink-0 items-center gap-1 md:gap-2 px-1 text-sm font-semibold md:max-w-56">
