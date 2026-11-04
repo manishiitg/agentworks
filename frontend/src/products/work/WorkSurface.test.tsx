@@ -141,7 +141,7 @@ describe('Crew native tab dragging', () => {
       expect(useChatStore.getState().chatTabs.duplicate).toBeUndefined()
       expect(Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === 'session-b')?.tabId).toBe('b')
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
-      expect(menu.textContent).toBe('1 more') // 'z' is listed by the server but not on the strip
+      expect(menu.textContent).toBe('')
       expect(menu.getAttribute('aria-label')).toBe('Agents: switch, reorder or close (4)')
       await act(async () => menu.click())
       expect(ids('[data-chat-list-id]', 'data-chat-list-id', document)).toEqual(['main', 'b', 'a', 'z', 'bot', 'schedule'])

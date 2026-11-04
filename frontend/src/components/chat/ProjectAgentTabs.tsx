@@ -178,8 +178,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index) => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
   // Agents the server lists that have no tab here (closed), for the team board, which lists every agent.
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
-  // The strip's ⌄ says how many agents it holds beyond the tabs (hidden or closed), not where the Crew lives (owner, 4 Nov).
-  const moreCount = agentTabs.filter(tab => !listedInMenu(tab)).length + closedListed.length
+  // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
+  // (owner, 4 Nov).
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, icon: chat.icon,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
   const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.icon]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
@@ -401,7 +401,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
             type="button"
             onClick={() => setMoreOpen(open => !open)}
             aria-expanded={moreOpen}
-            className="inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1 text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-full max-md:justify-center max-md:gap-2 max-md:px-2 max-md:text-sm max-md:font-semibold max-md:text-foreground"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-full max-md:justify-center max-md:gap-2 max-md:px-2 max-md:text-sm max-md:font-semibold max-md:text-foreground"
             title={placeWord ? `Switch agent · ${placeWord}` : 'Switch agent'}
             aria-label={`Agents: switch, reorder or close (${agentCount})${placeWord ? ` · ${placeWord}` : ''}`}
             aria-haspopup="dialog"
@@ -411,7 +411,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
               <AgentMenuActivity tabId={activeTab.tabId} workspaceActivity={activeTab.tabId === canonicalTabId ? projectActivity : undefined} />
               <PhoneCrewTitle name={projectName} tabName={activeTab.tabId === canonicalTabId ? '' : tabLabel(activeTab)} />
               <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${arrowTone || 'text-muted-foreground'} ${moreOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
-            </> : <>{moreCount > 0 && <span className="text-xs">{moreCount} more</span>}<ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></>}
+            </> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
           {moreOpen && createPortal(
             <div ref={menuRef} style={menuPosition} className="fixed z-[100] flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-2xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
