@@ -19,8 +19,13 @@ export const inputTokens = (usage?: Partial<CostAggregate>) => {
   return (usage?.prompt_tokens ?? 0) + cache
 }
 
-export const tokenSummary = (usage: CostAggregate) =>
-  `${formatTokens(inputTokens(usage))} input · ${formatTokens(usage.completion_tokens ?? 0)} output`
+// Cached input (context the AI re-reads each step) is shown apart from fresh input: it is most of the total
+// and costs about a tenth as much.
+export const tokenSummary = (usage: CostAggregate) => {
+  const cached = usage.cache_read_tokens ?? 0
+  const fresh = Math.max(0, inputTokens(usage) - cached)
+  return `${formatTokens(fresh)} fresh input · ${formatTokens(cached)} cached input · ${formatTokens(usage.completion_tokens ?? 0)} output`
+}
 
 export const pricingCoverageText = (usage: CostAggregate) => {
   const missing = usage.missing_usage_call_count ?? 0

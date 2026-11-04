@@ -131,7 +131,7 @@ it('shows cost by account with the split by work and person', async () => {
   expect(container.textContent).toContain('80.0% cached')
   expect(container.textContent).toContain('Output tokens25')
   expect(container.textContent).toContain('Cached input800')
-  expect(container.textContent).toContain('1k input · 25 output')
+  expect(container.textContent).toContain('200 fresh input · 800 cached input · 25 output')
   expect(container.textContent).not.toContain('LLM calls')
   expect(container.textContent).not.toContain('1.8k')
  })
