@@ -13,6 +13,8 @@ import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { AgentPurposeLine } from '../../components/chat/AgentCard'
+import { OPEN_TEAM_BOARD_EVENT } from '../../components/chat/ProjectWorkspaceTitle'
+import { TeamBoard } from './TeamBoard'
 import { HomeEntry } from '../../components/workspace/HomeEntry'
 import { openAppProduct } from '../../utils/appNavigation'
 import { REPORT_SELECTION_EVENT } from '../../components/workflow/reportDocuments'
@@ -882,6 +884,17 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
+  // The Crew name opens its team board over the chat column; ChatArea stays mounted underneath.
+  const [teamBoardProject, setTeamBoardProject] = useState<string | null>(null)
+  const closeTeamBoard = useCallback(() => setTeamBoardProject(null), [])
+  useEffect(() => {
+    const open = (event: Event) => {
+      const projectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId
+      if (projectId) { setTeamBoardProject(projectId); setChatOpen(true) }
+    }
+    window.addEventListener(OPEN_TEAM_BOARD_EVENT, open)
+    return () => window.removeEventListener(OPEN_TEAM_BOARD_EVENT, open)
+  }, [])
   const isMobile = useMobileViewport()
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   const openChatPane = useCallback(() => { setChatOpen(true); setMobilePane('chat') }, [])
@@ -1377,7 +1390,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
                   {tabId ? (
-                      <div className="flex min-h-0 flex-1 flex-col">
+                      <div className="relative flex min-h-0 flex-1 flex-col">
+                        {teamBoardProject === selected.id && <TeamBoard projectId={selected.id} onClose={closeTeamBoard} />}
                         <AgentPurposeLine tabId={tabId} />
                         <div className="min-h-0 flex-1">
                         <ChatArea
