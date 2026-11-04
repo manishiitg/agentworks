@@ -78,7 +78,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       useProductNavigationToolbarStore.setState({ workspaceTrigger: node })
   }, [])
   // One status source for the pill, the left menu, the rail and the team board (agentMenuState.ts).
-  const menuState = useAgentMenuState(tab.tabId, workspaceActivity, !!(tab.isStreaming || tab.hasRunningBgAgents))
+  const menuState = useAgentMenuState(tab.tabId, workspaceActivity, tab)
   const status: TabStatus = menuState === 'waiting' ? 'waiting' : menuState === 'running' ? 'busy' : menuState === 'failed' ? 'failed' : menuState === 'done' ? 'completed' : 'ready'
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState(tab.name)
