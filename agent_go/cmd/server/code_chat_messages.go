@@ -35,6 +35,8 @@ type codeChat struct {
 	Purpose   string
 	Icon      string
 	SessionID string
+	// Hidden: the person took this tab off their strip (Close keeps it as a hidden agent). Lists leave it out.
+	Hidden    bool
 	UpdatedAt string
 }
 
@@ -77,6 +79,8 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		return denied, err
 	}
 	project := codeChatProject{OwnerID: sanitizeUserIDForPath(userID), ProfileID: manifest.Product, ProjectID: manifest.ID, Workspace: binding.WorkspacePath, Binding: binding}
+	// The caller's own pins for tabs other owners control, as the tab strip reads them (sideChatsFor).
+	mine, _ := defaultProductConversationRegistryStore().agentIdentities(ctx, userID, manifest.Product, manifest.ID)
 	found := false
 	for _, tab := range ownedChats {
 		record := tab.Record
@@ -96,6 +100,10 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 			chat.Purpose = identity.Purpose
 		}
 		chat.Icon = tab.Identity.Icon
+		chat.Hidden = !chat.IsMain && tab.Identity.Unpinned
+		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
+			chat.Hidden = !chat.IsMain && own.Unpinned
+		}
 		if record.SessionID == sessionID && tab.OwnerID == userID {
 			project.Self, found = chat, true
 		}
@@ -260,6 +268,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 			}
+			if chat.Hidden {
+				item["hidden"] = true
+			}
 			if chat.Key == project.Self.Key || chat.SessionID == project.Self.SessionID {
 				item["this_chat"] = true
 			}
@@ -273,12 +284,25 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"list_project_chats", "List the agents of this project: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. Use it before ask_project_chat.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
-			func(ctx context.Context, _ map[string]interface{}) (string, error) {
+		{"list_project_chats", "List the agents of this project: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. Use it before ask_project_chat. All agents means these: tabs the person hid are left out unless include_hidden is true.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+			"include_hidden": map[string]interface{}{"type": "boolean", "description": "Also list tabs the person hid. Only when they ask for hidden agents."},
+		}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
 				if err != nil {
 					return "", err
+				}
+				// "All agents" means the visible ones: a tab the person hid is left out unless asked for (owner, 4 Nov).
+				// A removed tab is gone from the registry and never listed.
+				if include, _ := args["include_hidden"].(bool); !include {
+					visible := project.Chats[:0:0]
+					for _, chat := range project.Chats {
+						if !chat.Hidden {
+							visible = append(visible, chat)
+						}
+					}
+					project.Chats = visible
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
 			}},

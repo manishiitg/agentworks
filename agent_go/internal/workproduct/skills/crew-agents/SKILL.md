@@ -8,6 +8,9 @@ description: "Read before working with this Crew's other tabs (agents) or the pe
 Each chat (tab) is its own named agent with the same skills, memory, Brain,
 tools and access, and its own conversation. `list_project_chats` lists them
 with their purposes, marks which tab is you and which is the main chat.
+"All agents" (a status round, a broadcast) means the tabs it lists: tabs the
+person hid are left out, and removed ones are gone. Include hidden tabs only
+when the person asks for them (`include_hidden`).
 
 ## Who leads
 
