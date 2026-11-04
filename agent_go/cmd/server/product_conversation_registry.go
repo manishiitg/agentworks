@@ -110,11 +110,6 @@ type ProductAgentIdentity struct {
 	Engine          string `json:"engine,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	// IdleCompactionOff stops the idle sweep from compacting this chat; it is on unless the person turned it off.
-	IdleCompactionOff bool `json:"idle_compaction_off,omitempty"`
-	// CompactEarly compacts this chat as soon as a reply ends with its conversation over compactEarlyTokens,
-	// instead of only when idle. Off unless the person turns it on (owner, 4 Nov).
-	CompactEarly bool `json:"compact_early,omitempty"`
 	// ClaudeTerminal runs this chat's Claude Code as the native terminal (tmux, driven by the AgentWorks mod)
 	// instead of the chat view (Agent SDK). The person's choice per chat (owner, 2026-11-01, PLAT-872-96).
 	ClaudeTerminal bool `json:"claude_terminal,omitempty"`
@@ -230,11 +225,9 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 	return identity, nil
 }
 
-// setChatContextOptions saves a chat's "Auto-compact when idle" choice and logs the change with its actor.
+// setChatContextOptions saves a chat's own switches (the Claude terminal) and logs the change with its actor.
 // chatContextChange is the switches a chat's context options change; nil keeps one.
 type chatContextChange struct {
-	IdleCompaction *bool
-	CompactEarly   *bool
 	ClaudeTerminal *bool
 }
 
@@ -255,12 +248,6 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
 	identity := document.Agents[entryKey]
-	if change.IdleCompaction != nil {
-		identity.IdleCompactionOff = !*change.IdleCompaction
-	}
-	if change.CompactEarly != nil {
-		identity.CompactEarly = *change.CompactEarly
-	}
 	if change.ClaudeTerminal != nil {
 		identity.ClaudeTerminal = *change.ClaudeTerminal
 	}
@@ -271,7 +258,7 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[CHAT_CONTEXT] %s set chat %s idle_compaction=%t compact_early=%t claude_terminal=%t", identity.UpdatedBy, entryKey, !identity.IdleCompactionOff, identity.CompactEarly, identity.ClaudeTerminal)
+	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t", identity.UpdatedBy, entryKey, identity.ClaudeTerminal)
 	return identity, nil
 }
 
