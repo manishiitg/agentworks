@@ -139,6 +139,14 @@ func TestPrepareBrowserArtifactStagesAScreenshotWithNoPath(t *testing.T) {
 
 // PLAT-856-525: defaults and plain filenames use Mac Downloads; explicit folders do not move.
 func TestCaptureDefaultDirectoryPreservesExplicitFolders(t *testing.T) {
+	// PR1007: an inline tab ID must not be mistaken for the output filename.
+	for _, args := range [][]string{{"page.png", "--tab", "t1"}, {"--tab", "t1"}} {
+		tab, got, err := extensionCaptureArguments("screenshot", args, "/home/example/Downloads")
+		if err != nil || tab != "t1" || len(got) != 1 || filepath.Dir(got[0]) != "/home/example/Downloads" {
+			t.Fatalf("tab capture default lost: tab=%q args=%v err=%v", tab, got, err)
+		}
+	}
+
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "page.png"), []byte("existing"), 0600); err != nil {
 		t.Fatal(err)
