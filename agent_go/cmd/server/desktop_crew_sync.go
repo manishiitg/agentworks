@@ -51,6 +51,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		PublishAgent *crewAgentPublishSelection `json:"publish_agent,omitempty"`
 		TransferID   string                     `json:"transfer_id,omitempty"`
 		Agents       []macSharedAgent           `json:"agents"`
+		AllInTeam    bool                       `json:"all_in_team"`
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -255,6 +256,16 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	// owner's choice here and on the online copy, which decides who may message them.
 	if input.Action == "agents" || input.Action == "share_agents" {
 		api.desktopShareMacCrewAgents(w, r, claims, roots.ID, binding, connection, input.Action, input.Agents)
+		return
+	}
+	// "All agents in team" on the Team tab (crew_team_all.go).
+	if input.Action == "team_all" {
+		out, err := api.setCrewTeamAll(r.Context(), claims, roots.ID, input.AllInTeam)
+		if err != nil {
+			externalError(w, 409, "team_all_failed", err.Error())
+			return
+		}
+		externalJSON(w, out)
 		return
 	}
 	// The Team tab's team copy status line, from the online copy that decides it.

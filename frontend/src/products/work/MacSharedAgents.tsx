@@ -47,14 +47,16 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
   const [openPurpose, setOpenPurpose] = useState('')
+  // "All agents in team" (owner, 5 Nov): kept on this Mac; while on, every agent with a purpose and icon is in the team.
+  const [allInTeam, setAllInTeam] = useState(false)
   const endpoint = `/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`
   useEffect(() => {
     let live = true
     void viaConnection<{ shared_agents?: boolean }>(connection, '/api/crew-sync-capabilities').then(caps => { if (live) setSupported(Boolean(caps.shared_agents)) }).catch(() => {})
     void viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(data => { if (live) setPeople(data.users || []) }).catch(() => {})
     // A purpose set from a tab's chat shows here on the next read.
-    const load = () => desktopRequest<{ tabs: AgentRow[]; agents: SharedAgent[]; placements?: Record<string, { location: 'publishing' | 'server' }> }>(endpoint, 'POST', { action: 'agents' })
-      .then(data => { if (!live) return; setRows(data.tabs || []); setPlacements(data.placements || {}); setShared(current => busyRef.current ? current : data.agents || []) })
+    const load = () => desktopRequest<{ tabs: AgentRow[]; agents: SharedAgent[]; placements?: Record<string, { location: 'publishing' | 'server' }>; all_in_team?: boolean }>(endpoint, 'POST', { action: 'agents' })
+      .then(data => { if (!live) return; setRows(data.tabs || []); setPlacements(data.placements || {}); setAllInTeam(Boolean(data.all_in_team)); setShared(current => busyRef.current ? current : data.agents || []) })
       .catch(cause => { if (live) { setRows(current => current || []); setError(cause instanceof Error ? cause.message : "This Crew's agents could not be read.") } })
     void load()
     const timer = window.setInterval(() => { void load() }, 15000)
@@ -99,22 +101,35 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
   const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
   const personName = (id: string) => people.find(person => person.id === id)?.username || id
   const choices = (agent: SharedAgent) => people.filter(person => team?.people.some(member => member.user_id === person.id) && !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
-  // One choice per agent, as the approved mockup has it: Only me turns sharing off; Team, Chosen and Everyone share it.
-  const AUDIENCES = [['none', 'Only me'], ['team', 'Team'], ['chosen', 'Chosen'], ['everyone', 'Everyone']] as const
-  return <section ref={cards} aria-label="Who can message your agents">
+  // A Team is a shared room (owner, 5 Nov): each agent is In team (everyone in the team sees it and its chat live) or
+  // Only me. Agents public on AgentBridge are Mac online's choice.
+  const AUDIENCES = [['team', 'In team'], ['none', 'Only me']] as const
+  const chooseAll = async (on: boolean) => {
+    setBusy(true); setError('')
+    try {
+      const data = await desktopRequest<{ all_in_team: boolean; note?: string }>(endpoint, 'POST', { action: 'team_all', all_in_team: on })
+      setAllInTeam(Boolean(data.all_in_team))
+      if (data.note) setError(data.note)
+      const fresh = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'agents' })
+      setShared(fresh.agents || [])
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'It was not saved. Try again.') }
+    finally { setBusy(false) }
+  }
+  return <section ref={cards} aria-label="Your agents in the team">
+    <label className="flex items-center gap-2 border-t border-border px-0.5 py-2.5 text-sm"><span className="font-medium">All agents in team</span><span className="text-xs text-muted-foreground">new agents join too, once they have a purpose and icon</span><Switch aria-label="All agents in team" className="ml-auto" checked={allInTeam} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>
     {rows.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
       const place = placements[row.tab]?.location
-      const choice = agent?.audience || 'none'
+      const choice = agent?.audience === 'team' ? 'team' : 'none'
       return <div key={row.tab} data-shared-agent-card={row.tab} className="border-t border-border px-0.5 py-2.5 text-sm">
         <div className="flex flex-wrap items-center gap-2.5">
           <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">{row.icon?.trim() || row.name.slice(0, 1).toUpperCase()}</span>
           <span title={purpose || undefined} className="min-w-0 truncate">{row.name}</span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${place === 'server' || place === 'publishing' ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>{place === 'server' ? 'Server' : place === 'publishing' ? 'Moving to the server' : 'Mac'}</span>
-          <div role="radiogroup" aria-label={`Who can message ${row.name}`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
-            {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy} onClick={() => { if (choice !== value) update(row.tab, value === 'none' ? null : { audience: value }) }}
-              className={`px-2.5 py-0.5 ${choice === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
+          <div role="radiogroup" aria-label={`${row.name} in the team`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
+            {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy} onClick={() => { if (choice === value) return; if (value === 'none' && allInTeam) void desktopRequest(endpoint, 'POST', { action: 'team_all', all_in_team: false }).then(() => setAllInTeam(false)).catch(() => {}); update(row.tab, value === 'none' ? null : { audience: value }) }}
+              className={`px-2.5 py-0.5 ${choice === value ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
           </div>
           <button type="button" aria-label={`More for ${row.name}`} aria-expanded={openPurpose === row.tab} onClick={() => setOpenPurpose(openPurpose === row.tab ? '' : row.tab)} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></button>
         </div>
