@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -307,6 +308,14 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", err
 				}
 				identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, name, purpose, icon, "agent "+project.Self.Name)
+				var fields []string
+				for label, value := range map[string]*string{"name": name, "purpose": purpose, "icon": icon} {
+					if value != nil {
+						fields = append(fields, label)
+					}
+				}
+				sort.Strings(fields)
+				log.Printf("[AGENT_IDENTITY] tool=set_my_agent_identity session=%s user=%s profile=%s tab=%s set=%s icon=%q err=%v", sessionID, userID, project.ProfileID, project.Self.Key, strings.Join(fields, ","), identity.Icon, err)
 				if err != nil {
 					return "", err
 				}
