@@ -122,7 +122,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   const sharedHere = (tab: ChatTab) => { const id = agentId(tab); return Boolean(id && shares[id]) }
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
-    if (!isAgentTab(tab)) return undefined
+    // Faces are for a Crew's agents (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.
+    if (surface !== 'work' || !isAgentTab(tab)) return undefined
     const id = agentId(tab)
     const share = id ? shares[id] : undefined
     const ask = id ? asking.find(item => item.tab === id) : undefined

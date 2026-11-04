@@ -49,18 +49,21 @@ export function AgentAvatar({ name, status, active, asking, shared, card }: { na
   const marks = [STATUS_WORD[status], asking ? 'Someone is asking it now' : '', shared ? `Shared with ${shared}` : ''].filter(Boolean).join(' · ')
   const letter = (name.trim()[0] || '?').toUpperCase()
   const finish = (action: () => void) => { setAt(null); setPinned(false); action() }
+  const faceClass = `relative grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'bg-neutral-300 text-neutral-900 dark:bg-[#3a3b42] dark:text-white' : 'bg-neutral-200 text-neutral-600 dark:bg-[#2a2b30] dark:text-[#c9c9cf]'}`
+  const faceMarks = <>
+    {letter}
+    {RING[status] && <span aria-hidden="true" className={`pointer-events-none absolute -inset-[2px] rounded-full border-2 ${status === 'busy' ? 'border-transparent' : ''} ${RING[status]}`} />}
+    {asking && <span aria-hidden="true" className="absolute -right-[3px] -top-[3px] h-1.5 w-1.5 rounded-full border border-background bg-emerald-500 motion-safe:animate-pulse" />}
+    {shared && <span aria-hidden="true" className="absolute -bottom-[3px] -right-[4px] grid h-[9px] w-[9px] place-items-center rounded-full border border-background bg-muted text-foreground"><Users className="h-[6px] w-[6px]" /></span>}
+  </>
   return <>
-    <button ref={face} type="button" data-agent-avatar aria-label={[name, marks].filter(Boolean).join(' · ')} aria-expanded={card ? Boolean(at) : undefined}
-      title={card ? undefined : [name, marks].filter(Boolean).join(' · ')}
+    {card ? <button ref={face} type="button" data-agent-avatar aria-label={[name, marks].filter(Boolean).join(' · ')} aria-expanded={Boolean(at)}
       onMouseEnter={show} onMouseLeave={hide} onFocus={show}
-      onClick={event => { event.stopPropagation(); if (!card) return; if (pinned) { setAt(null); setPinned(false) } else { show(); setPinned(true) } }}
+      onClick={event => { event.stopPropagation(); if (pinned) { setAt(null); setPinned(false) } else { show(); setPinned(true) } }}
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
-      className={`relative grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'bg-neutral-300 text-neutral-900 dark:bg-[#3a3b42] dark:text-white' : 'bg-neutral-200 text-neutral-600 dark:bg-[#2a2b30] dark:text-[#c9c9cf]'}`}>
-      {letter}
-      {RING[status] && <span aria-hidden="true" className={`pointer-events-none absolute -inset-[3px] rounded-full border-2 ${status === 'busy' ? 'border-transparent' : ''} ${RING[status]}`} />}
-      {asking && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border border-background bg-emerald-500 motion-safe:animate-pulse" />}
-      {shared && <span aria-hidden="true" className="absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full border border-background bg-muted text-foreground"><Users className="h-2 w-2" /></span>}
-    </button>
+      className={faceClass}>{faceMarks}</button>
+      // Without a card the face is only a picture: a click on it opens the tab like the rest of the tab.
+      : <span data-agent-avatar role="img" aria-label={[name, marks].filter(Boolean).join(' · ')} title={[name, marks].filter(Boolean).join(' · ')} className={faceClass}>{faceMarks}</span>}
     {card && at && createPortal(<div ref={box} role="dialog" aria-label={name} style={at} onClick={event => event.stopPropagation()}
       onMouseEnter={() => window.clearTimeout(leave.current)} onMouseLeave={hide}
       className="fixed z-[100] w-80 rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg">
