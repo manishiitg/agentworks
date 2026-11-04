@@ -20,7 +20,10 @@ type Binding = { connection_id?: string; peer_server?: string; peer_project_id: 
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
 // and, when it finished, where the Mac folder is kept.
 type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string }
-type SyncStatus = MoveReport & { binding: Binding | null }
+// What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
+// always-online copy or a team's shared folder; empty while everything stays on this Mac.
+type ServerCopy = { name: string; detail: string }
+type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number }
 // The move's own steps, as the server reports them (astra, PLAT-856-509).
 type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
 const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
@@ -237,6 +240,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
       </div>}
       {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
+    {status && binding && !online && !moving && <WhereYourDataIs copies={status.on_server || []} sharing={(status.shared_agents || 0) > 0} />}
     {status && <section aria-label="Who can use it" className="space-y-1">
       {binding && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><span className="text-emerald-500">✓</span></div>}
       <div aria-disabled={!binding} className={`overflow-hidden rounded-2xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
@@ -256,6 +260,25 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
       {binding && !online && binding.connection_id && <MacSharedAgents projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} />}
     </section>}
   </div>
+}
+
+/** Where this Mac Crew's data is (owner, 4 Nov mockup data-where): green while everything stays on this Mac, blue once the
+ * server keeps something, listed by name as the server reports it. */
+function WhereYourDataIs({ copies, sharing }: { copies: ServerCopy[]; sharing: boolean }) {
+  const [open, setOpen] = useState(false)
+  const row = (icon: ReactNode, body: ReactNode) => <div className="flex items-start gap-2.5 text-[13px]"><span aria-hidden="true" className="mt-0.5 flex w-4 justify-center text-muted-foreground">{icon}</span><div className="min-w-0">{body}</div></div>
+  const tag = (text: string, tone: string) => <span className={`ml-1.5 rounded-full px-2 py-px text-[11px] ${tone}`}>{text}</span>
+  if (!copies.length) return <section aria-label="Where your data is" className="space-y-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3.5 py-3">
+    {row(<Laptop className="h-4 w-4" />, <><b className="font-semibold">Everything stays on this Mac</b>{tag('Private', 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400')}<p className="text-muted-foreground">{sharing ? 'Your files, chats and memory stay here. Your shared agents answer from here.' : 'Your files, chats, memory and logins never leave it.'}</p></>)}
+    {row(<RefreshCw className="h-3.5 w-3.5" />, <p className="text-muted-foreground">{sharing ? "People's questions and the answers pass through the server. Each person sees only their own chat." : 'The server only passes your messages to this Mac and back. It keeps nothing.'}</p>)}
+  </section>
+  return <section aria-label="Where your data is" className="space-y-2 rounded-2xl border border-sky-400/25 bg-sky-400/[0.06] px-3.5 py-3">
+    {row(<Cloud className="h-4 w-4" />, <><b className="font-semibold">Now on the server too</b>{tag('Shared', 'bg-sky-400/15 text-sky-600 dark:text-sky-300')}
+      <ul className="mt-1 space-y-0.5 text-muted-foreground">{copies.map(copy => <li key={copy.name}><span className="font-medium text-foreground">{copy.name}</span>: {copy.detail}</li>)}</ul></>)}
+    {row(<Laptop className="h-4 w-4" />, <><b className="font-semibold">Still only on this Mac</b>{tag('Private', 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400')}<p className="text-muted-foreground">Everything else: your other files, your chats with your agents, your logins and secrets.</p></>)}
+    {row(null, <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="text-primary hover:underline">{open ? 'Hide the list' : "See exactly what's on the server"}</button>)}
+    {open && <ul className="ml-6 list-disc space-y-0.5 text-[12px] text-muted-foreground">{copies.map(copy => <li key={copy.name}>{copy.name}: {copy.detail}</li>)}</ul>}
+  </section>
 }
 
 type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string; can_change?: boolean }
