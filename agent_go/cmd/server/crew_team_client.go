@@ -24,6 +24,7 @@ import (
 )
 
 type crewTeamLocal struct {
+	FolderID     string            `json:"folder_id"`
 	Connection   string            `json:"connection"`
 	Project      string            `json:"project_id"`
 	LocalProject string            `json:"local_project_id,omitempty"`
@@ -37,12 +38,12 @@ type crewTeamLocal struct {
 	Error        string            `json:"error,omitempty"`
 }
 
-func crewTeamLocalDir(owner string, c desktopConnection, project string) (string, error) {
+func crewTeamLocalDir(owner string, c desktopConnection, project, folderID string) (string, error) {
 	root, e := crewroot.StateRoot()
 	if e != nil {
 		return "", e
 	}
-	return filepath.Join(root, "team-working", crewTransferDigest(owner), crewTransferDigest(c.Server+"\x00"+c.User.ID+"\x00"+project)), nil
+	return filepath.Join(root, "team-working", crewTransferDigest(owner), crewTransferDigest(c.Server+"\x00"+c.User.ID+"\x00"+project+"\x00"+folderID)), nil
 }
 func readCrewTeamLocal(dir string) (crewTeamLocal, error) {
 	var b crewTeamLocal
@@ -59,7 +60,7 @@ func saveCrewTeamLocal(dir string, b crewTeamLocal) error {
 // The server remains the authority. A local binding stores only a working path,
 // transfer progress and two baselines; it never grants Team membership.
 func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, t crewTeam) (string, crewTeamLocal, error) {
-	dir, e := crewTeamLocalDir(owner, c, t.ProjectID)
+	dir, e := crewTeamLocalDir(owner, c, t.ProjectID, t.Folder.ID)
 	if e != nil {
 		return "", crewTeamLocal{}, e
 	}
@@ -71,7 +72,7 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 	if !t.CanEditSharedFolder {
 		return dir, crewTeamLocal{}, fmt.Errorf("ask the owner to allow shared folder editing")
 	}
-	b := crewTeamLocal{Connection: c.ID, Project: t.ProjectID, RemoteUser: c.User.ID, Client: uuid.NewString(), LocalBase: crewsync.Manifest{}, RemoteBase: crewsync.Manifest{}, Status: "pending"}
+	b := crewTeamLocal{FolderID: t.Folder.ID, Connection: c.ID, Project: t.ProjectID, RemoteUser: c.User.ID, Client: uuid.NewString(), LocalBase: crewsync.Manifest{}, RemoteBase: crewsync.Manifest{}, Status: "pending"}
 	// The owner's selected folder stays where it is. A recipient receives a
 	// fresh app-managed folder, never a merge into an unrelated local project.
 	if c.User.ID == t.OwnerID {
@@ -113,6 +114,22 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 
 func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
+	if !IsLocalMode() {
+		records, _ := defaultProjectOwners().All()
+		for _, rec := range records {
+			ids := []string{}
+			for _, a := range readAllMacSharedAgents(rec.ProjectID) {
+				if a.Audience == "chosen" {
+					ids = append(ids, a.People...)
+				}
+			}
+			if len(ids) > 0 {
+				if err := ensureCrewTeamPeople(rec.ProjectID, rec.OwnerID, ids); err != nil {
+					log.Printf("[CREW_TEAM] project=%s event=seed_failed reason=%q", rec.ProjectID, err)
+				}
+			}
+		}
+	}
 	if !IsLocalMode() {
 		return cancel
 	}
@@ -180,6 +197,9 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.Project), nil, &team); e != nil {
 		return e
 	}
+	if team.Folder.ID != b.FolderID {
+		return fmt.Errorf("the shared folder changed; this previous copy is no longer shared")
+	}
 	if !team.CanEditSharedFolder {
 		return fmt.Errorf("shared folder access was removed; downloaded files stay on this computer")
 	}
@@ -199,7 +219,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 			return err
 		}
 		if pending.TransferID == "" {
-			pending = crewTeamTransfer{Client: b.Client, TransferID: uuid.NewString(), Direction: direction}
+			pending = crewTeamTransfer{FolderID: b.FolderID, Client: b.Client, TransferID: uuid.NewString(), Direction: direction}
 			if direction == "upload" {
 				snapshot, err := crewTeamCapture(ctx, b.Root, stage, b.LocalBase)
 				if err != nil {
@@ -227,7 +247,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 			} else {
 				pending.Action = "pull"
 				pending.Base = b.RemoteBase
-				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(b.Project)+"/sync", pending, &pending); e != nil {
+				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(b.Project)+"/sync?folder_id="+url.QueryEscape(b.FolderID), pending, &pending); e != nil {
 					return e
 				}
 			}
@@ -240,7 +260,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 		}
 		snapshot := pending.Snapshot
 		pair := crewTeamPair(b.Project, b.RemoteUser, b.Client, direction)
-		route := "/api/crew-teams/" + url.PathEscape(b.Project) + "/sync"
+		route := "/api/crew-teams/" + url.PathEscape(b.Project) + "/sync?folder_id=" + url.QueryEscape(b.FolderID)
 		if direction == "upload" {
 			pending.Action = "prepare"
 			if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
@@ -385,7 +405,7 @@ func transferCrewTeamBundle(ctx context.Context, c desktopConnection, project st
 		return fmt.Errorf("invalid file bundle")
 	}
 	request := func(method string, offset int64, body io.Reader, n int64) (*http.Response, error) {
-		q := url.Values{"client": {t.Client}, "direction": {t.Direction}, "offset": {strconv.FormatInt(offset, 10)}}
+		q := url.Values{"folder_id": {t.FolderID}, "client": {t.Client}, "direction": {t.Direction}, "offset": {strconv.FormatInt(offset, 10)}}
 		r, e := http.NewRequestWithContext(ctx, method, c.Server+"/api/crew-teams/"+url.PathEscape(project)+"/sync/"+url.PathEscape(t.TransferID)+"?"+q.Encode(), body)
 		if e != nil {
 			return nil, e

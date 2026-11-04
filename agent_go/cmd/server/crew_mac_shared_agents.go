@@ -28,7 +28,7 @@ type macSharedAgent struct {
 	Tab      string   `json:"tab"`
 	Name     string   `json:"name"`
 	Purpose  string   `json:"purpose"`
-	Audience string   `json:"audience"` // everyone | chosen
+	Audience string   `json:"audience"` // team | everyone | chosen
 	People   []string `json:"people,omitempty"`
 	Since    string   `json:"since,omitempty"`
 	// Address is how other people's agents message it: agent:<owner>/<address>. The server gives it once and keeps it
@@ -96,12 +96,12 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 			return nil, fmt.Errorf("an agent needs a name")
 		case agent.Purpose == "" || len([]rune(agent.Purpose)) > productAgentPurposeMaxRunes:
 			return nil, fmt.Errorf("set %s's purpose to share it (one line, at most %d characters)", agent.Name, productAgentPurposeMaxRunes)
-		case agent.Audience != "everyone" && agent.Audience != "chosen":
-			return nil, fmt.Errorf("choose Everyone or Chosen people for %s", agent.Name)
+		case agent.Audience != "team" && agent.Audience != "everyone" && agent.Audience != "chosen":
+			return nil, fmt.Errorf("choose My team, Chosen people or Everyone in the company for %s", agent.Name)
 		case agent.Audience == "chosen" && (len(agent.People) == 0 || len(agent.People) > 100):
 			return nil, fmt.Errorf("choose who can message %s", agent.Name)
 		}
-		if agent.Audience == "everyone" {
+		if agent.Audience != "chosen" {
 			agent.People = nil
 		}
 		if slices.ContainsFunc(out, func(a macSharedAgent) bool { return a.Tab == agent.Tab }) {
@@ -167,6 +167,16 @@ func (api *StreamingAPI) shareMacCrewAgents(w http.ResponseWriter, r *http.Reque
 		externalError(w, 400, "invalid_agents", err.Error())
 		return
 	}
+	// Choosing an agent audience cannot add people to the Team or grant files.
+	members := crewTeamPeople(roots.ID)
+	for _, agent := range agents {
+		for _, person := range agent.People {
+			if !slices.Contains(members, person) {
+				externalError(w, 400, "not_in_team", "Add that person to the Team first, then choose them for this agent.")
+				return
+			}
+		}
+	}
 	agents = assignMacAgentAddresses(r.Context(), claims.UserID, roots.ID, agents, previous)
 	if err = writeMacSharedAgents(roots.ID, agents); err != nil {
 		externalError(w, 500, "save_failed", "The shared agents could not be saved. Try again.")
@@ -191,7 +201,7 @@ func directoryUsers(dir *userDirectory) []string {
 
 // macSharedAgentFor is the server's audience decision: the agent the caller may message on this Mac Crew, if any.
 func macSharedAgentFor(project, tab, caller, owner string) (macSharedAgent, string) {
-	agent, reason := macSharedAudience(readMacSharedAgents(project), tab, caller, owner)
+	agent, reason := macSharedAudience(readMacSharedAgents(project), tab, caller, owner, crewTeamPeople(project))
 	if reason != "" {
 		return agent, reason
 	}
@@ -202,7 +212,7 @@ func macSharedAgentFor(project, tab, caller, owner string) (macSharedAgent, stri
 }
 
 // macSharedAudience: whether the shared list lets this caller message the tab.
-func macSharedAudience(agents []macSharedAgent, tab, caller, owner string) (macSharedAgent, string) {
+func macSharedAudience(agents []macSharedAgent, tab, caller, owner string, members []string) (macSharedAgent, string) {
 	if caller == "" || caller == owner {
 		return macSharedAgent{}, "owner"
 	}
@@ -210,7 +220,7 @@ func macSharedAudience(agents []macSharedAgent, tab, caller, owner string) (macS
 		if agent.Tab != tab {
 			continue
 		}
-		if agent.Audience == "everyone" || slices.Contains(agent.People, caller) {
+		if agent.Audience == "everyone" || (slices.Contains(members, caller) && (agent.Audience == "team" || agent.Audience == "chosen" && slices.Contains(agent.People, caller))) {
 			return agent, ""
 		}
 		return macSharedAgent{}, "not_in_audience"

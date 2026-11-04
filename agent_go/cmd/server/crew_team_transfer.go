@@ -20,6 +20,7 @@ import (
 )
 
 type crewTeamTransfer struct {
+	FolderID   string             `json:"folder_id"`
 	Action     string             `json:"action"`
 	Client     string             `json:"client"`
 	TransferID string             `json:"transfer_id"`
@@ -35,14 +36,14 @@ func crewTeamTransferDir(project, actor, client, direction, transfer string) (st
 	if client == "" || len(client) > 128 || transfer == "" || len(transfer) > 128 || (direction != "upload" && direction != "download") {
 		return "", fmt.Errorf("invalid folder transfer")
 	}
-	d, e := crewTeamDir(project)
+	d, e := crewTeamContentDir(project)
 	if e != nil {
 		return "", e
 	}
 	return filepath.Join(d, "transfers", crewTransferDigest(actor+"\x00"+client), direction, crewTransferDigest(transfer)), nil
 }
 func crewTeamSnapshotStore(project, actor, client, direction string) (filesnapshots.Store, error) {
-	d, e := crewTeamDir(project)
+	d, e := crewTeamContentDir(project)
 	if e != nil {
 		return filesnapshots.Store{}, e
 	}
@@ -73,7 +74,7 @@ func crewTeamSnapshotScope(claims *UserClaims, s *crewsync.Snapshot) error {
 func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	project := mux.Vars(r)["project"]
-	if _, e := crewTeamAuthorize(claims, project, ".", true, true); e != nil {
+	if _, e := crewTeamRequestAuthorize(r, claims, project, ".", true, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
@@ -93,18 +94,19 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		externalError(w, 400, "invalid_transfer", e.Error())
 		return
 	}
-	dir, _ := crewTeamDir(project)
+	dir, _ := crewTeamContentDir(project)
 	if e = os.MkdirAll(stage, 0700); e != nil {
 		externalError(w, 409, "transfer_failed", e.Error())
 		return
 	}
-	unlock, e := wf.LockWorkspace(r.Context(), dir)
+	lockDir, _ := crewTeamDir(project)
+	unlock, e := wf.LockWorkspace(r.Context(), lockDir)
 	if e != nil {
 		externalError(w, 409, "transfer_failed", e.Error())
 		return
 	}
 	defer unlock()
-	if _, e = crewTeamAuthorize(claims, project, ".", true, true); e != nil {
+	if _, e = crewTeamRequestAuthorize(r, claims, project, ".", true, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
@@ -320,7 +322,7 @@ func (api *StreamingAPI) handleCrewTeamPiece(w http.ResponseWriter, r *http.Requ
 	q := r.URL.Query()
 	client, direction := q.Get("client"), q.Get("direction")
 	transfer := mux.Vars(r)["transfer"]
-	if _, e := crewTeamAuthorize(claims, project, ".", r.Method != http.MethodGet, true); e != nil {
+	if _, e := crewTeamRequestAuthorize(r, claims, project, ".", r.Method != http.MethodGet, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
@@ -329,13 +331,14 @@ func (api *StreamingAPI) handleCrewTeamPiece(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "invalid_transfer", e.Error())
 		return
 	}
-	unlock, e := wf.LockWorkspace(r.Context(), stage)
+	lockDir, _ := crewTeamDir(project)
+	unlock, e := wf.LockWorkspace(r.Context(), lockDir)
 	if e != nil {
 		externalError(w, 409, "transfer_failed", e.Error())
 		return
 	}
 	defer unlock()
-	if _, e = crewTeamAuthorize(claims, project, ".", r.Method != http.MethodGet, true); e != nil {
+	if _, e = crewTeamRequestAuthorize(r, claims, project, ".", r.Method != http.MethodGet, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}

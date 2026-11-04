@@ -83,6 +83,9 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 				if err != nil {
 					return "", err
 				}
+				if !crewTeamMember(project, id) {
+					return "", fmt.Errorf("Add that person to the Team first with team_sync configure, then choose them for this agent")
+				}
 				if !slices.Contains(agent.People, id) {
 					agent.People = append(agent.People, id)
 				}

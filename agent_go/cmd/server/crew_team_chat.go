@@ -25,10 +25,12 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		return nil
 	}
 	gate.Declare("team_sync")
-	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. resolve uses keep=current or revision:N; restore uses revision and saves it as a NEW revision. To resolve with AI: read/compare both revisions, save the merged content, then resolve keep=current. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
-		"action":  map[string]any{"type": "string", "enum": []string{"status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file"}},
+	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. resolve uses keep=current or revision:N; restore uses revision and saves it as a NEW revision. To resolve with AI: read/compare both revisions, save the merged content, then resolve keep=current. directory lists company people. configure (owner only): people replaces the roster with user_id and can_edit_shared_folder, folder chooses one existing child folder. This shares folder files with those enabled people; private online-copy folders are managed separately. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
+		"action":  map[string]any{"type": "string", "enum": []string{"status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file", "directory", "configure"}},
+		"network": map[string]any{"type": "string", "description": "Company name, if this Mac is connected to several companies and this project has no connection."},
 		"project": map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":    map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"},
+		"folder": map[string]any{"type": "string"}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"user_id": map[string]any{"type": "string"}, "can_edit_shared_folder": map[string]any{"type": "boolean"}}, "required": []string{"user_id", "can_edit_shared_folder"}}},
 		"keep": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "base": map[string]any{"type": "string", "description": "Last hash from files; empty for a new file."},
 	}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller := GetUserFromContext(ctx)
@@ -39,7 +41,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			return "", fmt.Errorf("Open Sync in your own project chat to use this team's folder")
 		}
 		action := externalArg(args, "action")
-		writes := action == "resolve" || action == "restore" || action == "save_file"
+		writes := action == "resolve" || action == "restore" || action == "save_file" || action == "configure"
 		if writes && readOnly {
 			return "", fmt.Errorf("This agent can explain the clash. Ask the owner to allow it to make changes, or resolve it in your own chat")
 		}
@@ -57,17 +59,54 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		var connection *desktopConnection
 		if IsLocalMode() {
 			b, err := crewroot.ReadSync(manifest.ID)
-			if err != nil || b == nil || b.Side != "local" {
-				return "", fmt.Errorf("Connect this project to your company in Access first")
+			if err != nil {
+				return "", err
 			}
-			c, err := desktopConnectionFor(caller.UserID, b.ConnectionID)
+			id := ""
+			if b != nil && b.Side == "local" {
+				id = b.ConnectionID
+			} else {
+				connections, err := readDesktopConnections(caller.UserID)
+				if err != nil {
+					return "", err
+				}
+				wanted := externalArg(args, "network")
+				names := []string{}
+				for _, c := range connections {
+					label := desktopConnectionLabel(c)
+					names = append(names, label)
+					if len(connections) == 1 || strings.EqualFold(wanted, label) || strings.EqualFold(wanted, c.Name) {
+						id = c.ID
+					}
+				}
+				if id == "" {
+					return "", fmt.Errorf("Choose your company from Connected servers first. Available: %s", strings.Join(names, ", "))
+				}
+			}
+			c, err := desktopConnectionFor(caller.UserID, id)
 			if err != nil {
 				return "", err
 			}
 			connection = &c
-			if project == manifest.ID {
+			if b != nil && project == manifest.ID {
 				project = b.PeerProjectID
 			}
+		}
+		if action == "configure" || action == "directory" {
+			if sharedSender != "" || project != manifest.ID && (connection == nil || externalArg(args, "project") != "") {
+				return "", fmt.Errorf("Team setup belongs to the owner's own Main chat. Ask the owner to update Access")
+			}
+			if action == "configure" {
+				if _, err := api.crewSyncRoots(ctx, caller, manifest.ID); err != nil {
+					return "", err
+				}
+				if IsLocalMode() {
+					if _, err := api.interactiveLaptopOwner(ctx, claims, sessionID, root); err != nil {
+						return "", err
+					}
+				}
+			}
+			return api.crewTeamConfigureChat(ctx, caller, connection, manifest.ID, project, action, args)
 		}
 		op, method := action, http.MethodGet
 		q := url.Values{}
@@ -112,6 +151,21 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		}
 		if action == "status" && sharedSender == "" && externalArg(args, "project") == "" {
 			route = "/api/crew-teams"
+		}
+		if op != "" {
+			var team crewTeam
+			if connection != nil {
+				if err := crewTeamRemoteJSON(ctx, caller.UserID, *connection, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &team); err != nil {
+					return "", err
+				}
+			} else {
+				var err error
+				team, err = readCrewTeam(project)
+				if err != nil {
+					return "", err
+				}
+			}
+			q.Set("folder_id", team.Folder.ID)
 		}
 		if len(q) > 0 {
 			route += "?" + q.Encode()
@@ -169,4 +223,66 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		}
 		return strings.TrimSpace(string(data)), nil
 	}, 2*time.Minute, "workspace_advanced")
+}
+
+func (api *StreamingAPI) crewTeamConfigureChat(ctx context.Context, caller *UserClaims, connection *desktopConnection, localProject, project, action string, args map[string]any) (string, error) {
+	request := func(method, op string, body []byte) *http.Request {
+		r := httptest.NewRequest(method, "/", bytes.NewReader(body)).WithContext(context.WithValue(ctx, UserContextKey, caller))
+		return mux.SetURLVars(r, map[string]string{"project": project, "op": op})
+	}
+	result := func(w *httptest.ResponseRecorder) (string, error) {
+		if w.Code >= 300 {
+			return "", fmt.Errorf("%s", laptopActionErrorText(w.Body.String()))
+		}
+		return w.Body.String(), nil
+	}
+	if action == "directory" {
+		if connection != nil {
+			var out json.RawMessage
+			if err := crewTeamRemoteJSON(ctx, caller.UserID, *connection, http.MethodGet, "/api/users/directory", nil, &out); err != nil {
+				return "", err
+			}
+			return string(out), nil
+		}
+		w := httptest.NewRecorder()
+		api.handleUserDirectory(w, request(http.MethodGet, "", nil))
+		return result(w)
+	}
+	var team crewTeam
+	if connection != nil {
+		if err := crewTeamRemoteJSON(ctx, caller.UserID, *connection, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &team); err != nil {
+			return "", err
+		}
+	} else {
+		w := httptest.NewRecorder()
+		api.handleCrewTeam(w, request(http.MethodGet, "", nil))
+		if w.Code >= 300 {
+			return result(w)
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &team); err != nil {
+			return "", err
+		}
+	}
+	if people, ok := args["people"]; ok {
+		raw, err := json.Marshal(people)
+		if err != nil {
+			return "", err
+		}
+		if err = json.Unmarshal(raw, &team.People); err != nil {
+			return "", fmt.Errorf("choose people from directory and whether each may edit the folder")
+		}
+	}
+	if folder, ok := args["folder"].(string); ok {
+		team.Folder = crewTeamFolder{Path: folder}
+	}
+	raw, _ := json.Marshal(team)
+	w := httptest.NewRecorder()
+	r := request(http.MethodPut, "", raw)
+	if connection != nil {
+		r = mux.SetURLVars(r, map[string]string{"project": localProject, "connection": connection.ID})
+		api.runDesktopCrewTeam(w, r)
+	} else {
+		api.handleCrewTeam(w, r)
+	}
+	return result(w)
 }

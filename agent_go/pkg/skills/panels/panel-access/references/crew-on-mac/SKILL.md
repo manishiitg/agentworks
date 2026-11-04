@@ -12,7 +12,7 @@ Everything on the Access page of a Crew that lives on the owner's Mac also works
   ChatGPT, Claude or Slack stays the person's own click.
 - "Who can message my agents?" → `action=agents`.
 - "Let Anita use the Writer agent" → `action=share agent=Writer audience=chosen people=["anita"]`; "everyone" →
-  `audience=everyone`. Sharing opens the agent to those people and to their own AI agents (Claude Code, Codex, their
+  `audience=everyone`; "my team" → `audience=team`. Chosen people must already be in the Team (add them with `team_sync configure`). Sharing opens the agent to those people and to their own AI agents (Claude Code, Codex, their
   local bots) at its address. It runs as you set it up, in its own thread with each person; by default it only answers their questions; pass `can_make_changes=true` when the owner wants it to change files, run commands and use their apps and logins for them. When a name matches several people, ask which one. The agent needs a purpose first: in
   that agent's tab it sets its own with `set_my_agent_identity`.
 - "Stop sharing Writer" → `action=unshare agent=Writer`.

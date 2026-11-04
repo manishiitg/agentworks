@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -33,6 +35,13 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	call := func(user, method, route, body, transfer string) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(method, route, strings.NewReader(body))
+		if !r.URL.Query().Has("folder_id") {
+			if team, err := readCrewTeam("team-test"); err == nil {
+				q := r.URL.Query()
+				q.Set("folder_id", team.Folder.ID)
+				r.URL.RawQuery = q.Encode()
+			}
+		}
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 		r.Header.Set("X-Team-Transfer", transfer)
 		w := httptest.NewRecorder()
@@ -44,6 +53,12 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	w := call("owner", "PUT", base, config, "")
 	if w.Code != 200 {
 		t.Fatalf("owner config: %d %s", w.Code, w.Body.String())
+	}
+	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member", "outsider"}}, {Tab: "all01", Audience: "everyone"}}
+	for _, tc := range []struct{ tab, who, reason string }{{"team01", "member", ""}, {"chosen01", "member", ""}, {"chosen01", "outsider", "not_in_audience"}, {"all01", "outsider", ""}} {
+		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test")); reason != tc.reason {
+			t.Fatalf("audience %s/%s: %s", tc.tab, tc.who, reason)
+		}
 	}
 	if !crewTeamMember("team-test", "member") {
 		t.Fatal("active member missing")
@@ -144,9 +159,24 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	// Two actual clients, real HTTP bytes and private Git bundles, no mocked
 	// content transport. The interrupted download edits a local file in flight.
 	var onDownload atomic.Bool
+	var interruptUpload atomic.Bool
+	var lastDownload atomic.Value
 	var dirtyPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		who := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/sync") {
+			raw, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+			var tr crewTeamTransfer
+			if json.Unmarshal(raw, &tr) == nil && who == "member" && tr.Action == "pull" {
+				lastDownload.Store(tr.TransferID)
+			}
+		}
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/sync/") && interruptUpload.CompareAndSwap(true, false) {
+			raw, _ := io.ReadAll(io.LimitReader(r.Body, r.ContentLength/2))
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+		}
+
 		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/sync/") && onDownload.CompareAndSwap(true, false) {
 			_ = os.WriteFile(dirtyPath, []byte("member edited while downloading"), 0600)
 		}
@@ -161,7 +191,8 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			t.Fatal(err)
 		}
 		c := desktopConnection{ID: who, Server: server.URL, Token: who, User: UserInfo{ID: who}}
-		b := &crewTeamLocal{Connection: who, Project: "team-test", RemoteUser: who, Client: who + "-mac", Root: root, LocalBase: map[string]crewsync.File{}, RemoteBase: map[string]crewsync.File{}}
+		team, _ := readCrewTeam("team-test")
+		b := &crewTeamLocal{FolderID: team.Folder.ID, Connection: who, Project: "team-test", RemoteUser: who, Client: who + "-mac", Root: root, LocalBase: map[string]crewsync.File{}, RemoteBase: map[string]crewsync.File{}}
 		return c, dir, b
 	}
 	c1, d1, b1 := newClient("owner")
@@ -181,6 +212,13 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("owner sends"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	interruptUpload.Store(true)
+	if err := syncCrewTeamLocal(t.Context(), "owner", c1, d1, b1); err == nil {
+		t.Fatal("interrupted upload unexpectedly completed")
+	}
+	if _, err := os.Stat(filepath.Join(d1, "upload", "pending.json")); err != nil {
+		t.Fatal("interrupted upload lost its pending descriptor", err)
 	}
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
@@ -205,9 +243,9 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if beforeRetry.Revision != afterRetry.Revision {
 		t.Fatal("unchanged client created another revision")
 	}
-	fmt.Println("[CREW_TEAM_PROOF] two HTTP/Git clients: owner to member, member to owner, local edit during download retained, unchanged retry passed")
+	fmt.Println("[CREW_TEAM_PROOF] two HTTP/Git clients: interrupted upload resumes, owner to member, member to owner, local edit during download retained, unchanged retry passed")
 	// Canonical reads reject symlinks and hardlinks even when a host process plants one.
-	dir, _ := crewTeamDir("team-test")
+	dir, _ := crewTeamContentDir("team-test")
 	outside := filepath.Join(t.TempDir(), "outside.txt")
 	if err := os.WriteFile(outside, []byte("not shared"), 0600); err != nil {
 		t.Fatal(err)
@@ -233,6 +271,14 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	if id, _ := lastDownload.Load().(string); id != "" {
+		w = call("member", "GET", base+"/sync/"+id+"?client=member-mac&direction=download", "", "")
+		if w.Code != 403 {
+			t.Fatal("revoked member read old staged bytes", w.Code, w.Body.String())
+		}
+	} else {
+		t.Fatal("no completed member download to test revocation")
+	}
 	if crewTeamMember("team-test", "member") {
 		t.Fatal("revoked member remained in the audience")
 	}
@@ -243,4 +289,32 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		}
 	}
 	fmt.Println("[CREW_TEAM_PROOF] allowed owner/member writes, history-only clash, retry receipt, outside-folder/private-state/link refusals, owner-only configuration and revocation passed")
+	// Changing the selected folder retains the old source copy/history privately,
+	// and an old client's upload is refused even if it still has Team membership.
+	oldTeam, _ := readCrewTeam("team-test")
+	oldDir, _ := crewTeamContentDir("team-test")
+	w = call("owner", "PUT", base, `{"name":"Example","people":[{"user_id":"member","can_edit_shared_folder":true}],"folder":{"path":"other"}}`, "")
+	if w.Code != 200 {
+		t.Fatal("change folder", w.Code, w.Body.String())
+	}
+	newTeam, _ := readCrewTeam("team-test")
+	if newTeam.Folder.ID == oldTeam.Folder.ID {
+		t.Fatal("folder identity reused")
+	}
+	if _, err := os.Stat(filepath.Join(oldDir, "history")); err != nil {
+		t.Fatal("old history not kept", err)
+	}
+	w = call("owner", "PUT", file+"&folder_id="+oldTeam.Folder.ID, "stale old folder bytes", "old-folder-write")
+	if w.Code != 403 {
+		t.Fatal("stale folder write admitted", w.Code)
+	}
+	if err := syncCrewTeamLocal(t.Context(), c1.User.ID, c1, d1, b1); err == nil {
+		t.Fatal("old local binding admitted")
+	}
+	w = call("member", "GET", base+"/files", "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"files":[]`) {
+		t.Fatal("old files leaked into newly selected folder", w.Code, w.Body.String())
+	}
+	t.Log("[CREW_TEAM_PROOF] folder_change=isolated stale_write=403 old_history=retained")
+
 }

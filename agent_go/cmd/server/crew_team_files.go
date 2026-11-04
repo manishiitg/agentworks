@@ -61,7 +61,7 @@ func crewTeamRelative(key string) (string, error) {
 }
 func crewTeamRoots(root string) crewroot.Roots { return crewroot.Roots{Files: root, Resources: root} }
 func crewTeamFilesRoot(project string) (string, error) {
-	d, e := crewTeamDir(project)
+	d, e := crewTeamContentDir(project)
 	if e != nil {
 		return "", e
 	}
@@ -69,7 +69,7 @@ func crewTeamFilesRoot(project string) (string, error) {
 }
 func readCrewTeamFileState(project string) (crewTeamFileState, error) {
 	s := crewTeamFileState{Versions: map[string]crewTeamVersion{}, Receipts: map[string]crewTeamReceipt{}}
-	d, e := crewTeamDir(project)
+	d, e := crewTeamContentDir(project)
 	if e != nil {
 		return s, e
 	}
@@ -212,7 +212,7 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot) error {
 // The caller holds the team lock and has rechecked current membership. Only this
 // writer mutates canonical bytes; native agents use their own working copies.
 func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest string, snapshot crewsync.Snapshot) (crewTeamReceipt, error) {
-	dir, e := crewTeamDir(project)
+	dir, e := crewTeamContentDir(project)
 	if e != nil {
 		return crewTeamReceipt{}, e
 	}
@@ -412,12 +412,12 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 	if rel == "" {
 		rel = "."
 	}
-	t, e := crewTeamAuthorize(claims, project, rel, write, true)
+	t, e := crewTeamRequestAuthorize(r, claims, project, rel, write, true)
 	if e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
-	dir, _ := crewTeamDir(project)
+	dir, _ := crewTeamContentDir(project)
 	if r.Method == http.MethodGet && mux.Vars(r)["op"] == "files" {
 		s, e := readCrewTeamFileState(project)
 		if e != nil {
@@ -509,13 +509,14 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		externalError(w, 405, "invalid_action", "Use open, save, upload or delete for this folder.")
 		return
 	}
-	unlock, e := wf.LockWorkspace(r.Context(), dir)
+	lockDir, _ := crewTeamDir(project)
+	unlock, e := wf.LockWorkspace(r.Context(), lockDir)
 	if e != nil {
 		externalError(w, 409, "team_write_failed", e.Error())
 		return
 	}
 	defer unlock()
-	if _, e = crewTeamAuthorize(claims, project, rel, true, true); e != nil {
+	if _, e = crewTeamRequestAuthorize(r, claims, project, rel, true, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}

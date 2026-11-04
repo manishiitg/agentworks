@@ -16,6 +16,7 @@ import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { activateTab } from '../../utils/activateTab'
 import { CrewTeamCard } from './CrewTeamCard'
+import { useProjectTeam } from './teamApi'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
@@ -148,6 +149,7 @@ export function YourComputerPanel({ projectId, sessionId, onFullScreen }: { proj
 }
 
 function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void }) {
+  const team = useProjectTeam(projectId)
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
   const name = tab?.metadata?.agentProfileProjectTitle || 'this'
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
@@ -241,7 +243,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
       </div>}
       {error && <div className="flex items-center gap-2 pt-1 text-xs"><TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" /><span className="flex-1">It didn't finish. Your work is kept. <span className="text-muted-foreground">{error}</span></span></div>}
     </section>
-    {status && binding && !online && !moving && <WhereYourDataIs copies={status.on_server || []} sharing={(status.shared_agents || 0) > 0} />}
+    {status && binding && !online && !moving && <WhereYourDataIs copies={[...(status.on_server || []), ...(team.team?.server_data ? [{ name: `${team.team.server_data.name}/ (shared folder)`, detail: 'kept on the server so your team can sync it' }] : [])]} sharing={(status.shared_agents || 0) > 0} />}
     {status && <section aria-label="Who can use it" className="space-y-1">
       {binding && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><span className="text-emerald-500">✓</span></div>}
       <div aria-disabled={!binding} className={`overflow-hidden rounded-2xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
@@ -283,7 +285,7 @@ function WhereYourDataIs({ copies, sharing }: { copies: ServerCopy[]; sharing: b
   </section>
 }
 
-type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'everyone' | 'chosen'; people?: string[]; address?: string; can_change?: boolean }
+type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'team' | 'everyone' | 'chosen'; people?: string[]; address?: string; can_change?: boolean }
 type AgentRow = { tab: string; name: string; purpose: string }
 type Person = { id: string; username: string; email?: string }
 
@@ -308,6 +310,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   const [rows, setRows] = useState<AgentRow[] | null>(null)
   const [shared, setShared] = useState<SharedAgent[]>([])
   const [people, setPeople] = useState<Person[]>([])
+  const { team } = useProjectTeam(projectId)
   const [supported, setSupported] = useState(false)
   const [adding, setAdding] = useState('')
   const [search, setSearch] = useState('')
@@ -345,7 +348,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   // Saves the whole list; an agent waits to be saved until its tab has a purpose and, for chosen people, someone.
   const save = async (next: SharedAgent[]) => {
     setShared(next)
-    const ready = next.filter(agent => purposeOf(agent.tab) && (agent.audience === 'everyone' || agent.people?.length))
+    const ready = next.filter(agent => purposeOf(agent.tab) && (agent.audience !== 'chosen' || agent.people?.length))
       .map(({ tab, audience, people, can_change }) => ({ tab, audience, people, can_change: Boolean(can_change) }))
     setBusy(true); setError('')
     try {
@@ -358,19 +361,19 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
   }
   const update = (tab: string, change: Partial<SharedAgent> | null, persist = true) => {
     const current = shared.find(agent => agent.tab === tab)
-    const base: SharedAgent = current || { tab, audience: 'chosen', people: [] }
+    const base: SharedAgent = current || { tab, audience: 'team', people: [] }
     const next = change === null ? shared.filter(agent => agent.tab !== tab) : [...shared.filter(agent => agent.tab !== tab), { ...base, ...change }]
     if (persist) void save(next); else setShared(next)
   }
   const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
   const personName = (id: string) => people.find(person => person.id === id)?.username || id
-  const choices = (agent: SharedAgent) => people.filter(person => !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const choices = (agent: SharedAgent) => people.filter(person => team?.people.some(member => member.user_id === person.id) && !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
   return <section ref={cards} aria-label="Who can message your agents" className="mt-4 space-y-3">
     <p className="text-sm font-semibold">Who can message your agents</p>
     {rows.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
-      const saved = Boolean(agent && purpose && (agent.audience === 'everyone' || agent.people?.length))
+      const saved = Boolean(agent && purpose && (agent.audience !== 'chosen' || agent.people?.length))
       return <div key={row.tab} data-shared-agent-card={row.tab} className={`rounded-xl border border-border px-4 py-3 ${agent ? 'space-y-2.5' : 'opacity-70'}`}>
         <div className="flex items-center gap-2">
           <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
@@ -385,7 +388,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
             <button type="button" aria-label={purpose ? `Change ${row.name}'s purpose` : `Set ${row.name}'s purpose`} title={purpose ? 'Change purpose' : 'Set purpose'} onClick={() => setPurpose(row.tab)} className="grid h-5 w-5 shrink-0 place-items-center self-start rounded text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button>
           </div>
           <div className="flex flex-wrap items-center gap-2"><div role="radiogroup" aria-label={`Who can message ${row.name}`} className="inline-flex overflow-hidden rounded-full border border-border text-xs">
-            {(['chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`rounded-full px-3 py-0.5 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'chosen' ? 'Chosen people' : 'Everyone'}</button>)}
+            {(['team', 'chosen', 'everyone'] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={agent.audience === choice} disabled={busy} onClick={() => update(row.tab, { audience: choice })} className={`rounded-full px-3 py-0.5 ${agent.audience === choice ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice === 'team' ? 'My team' : choice === 'chosen' ? 'Chosen people' : 'Everyone in the company'}</button>)}
           </div>{agent.audience === 'everyone' && network && <span className="text-[11px] text-muted-foreground">everyone on {network}</span>}</div>
           {agent.audience === 'chosen' && <div className="flex flex-wrap items-center gap-1.5">
             {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
@@ -398,7 +401,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
                 <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-[10px]">{person.username.slice(0, 2).toUpperCase()}</span>
                 <span className="truncate">{person.username}</span>{person.email && person.email !== person.username && <span className="ml-auto truncate text-muted-foreground">{person.email}</span>}
               </button>)}
-              {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{people.length ? 'Nobody found' : 'No people yet'}</p>}
+              {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{team?.people.length ? 'Nobody found' : 'Add people to the Team above'}</p>}
             </div>
           </div>}
           <label className="flex items-center gap-2 text-xs"><Switch aria-label={`${row.name} can make changes for them`} checked={Boolean(agent.can_change)} disabled={busy} onCheckedChange={on => update(row.tab, { can_change: on })} />Can make changes for them</label>
@@ -567,6 +570,7 @@ export function useMacTabShareLine(projectId?: string, conversationKey?: string)
       const agent = agents?.find(item => item.tab === tab)
       if (!agent || !live) return
       if (agent.audience === 'everyone') { setLine('Shared with everyone'); return }
+      if (agent.audience === 'team') { setLine('Shared with my team'); return }
       const people = await viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(result => result.users || []).catch(() => [] as Person[])
       const names = (agent.people || []).map(id => people.find(person => person.id === id)?.username || 'someone')
       if (live) setLine(`Shared with ${names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ')}`)
@@ -597,7 +601,7 @@ export function useMacSharedAgents(projectId?: string, enabled = true): Record<s
       const next: Record<string, MacAgentShare> = {}
       for (const agent of agents || []) {
         const names = (agent.people || []).map(id => people.find(person => person.id === id)?.username || 'someone')
-        next[agent.tab] = { canChange: Boolean(agent.can_change), line: agent.audience === 'everyone' ? 'everyone in the company' : names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ') }
+        next[agent.tab] = { canChange: Boolean(agent.can_change), line: agent.audience === 'everyone' ? 'everyone in the company' : agent.audience === 'team' ? 'my team' : names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ') }
       }
       if (live) setShares(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
     }

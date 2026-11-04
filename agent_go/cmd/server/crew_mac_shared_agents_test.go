@@ -30,7 +30,7 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 		{"owner uses their own chat", "writer01", "owner", "owner"},
 		{"Main or an unshared tab", "p", "a", "not_shared"},
 	} {
-		if _, reason := macSharedAudience(readMacSharedAgents("p"), tc.tab, tc.caller, "owner"); reason != tc.reason {
+		if _, reason := macSharedAudience(readMacSharedAgents("p"), tc.tab, tc.caller, "owner", []string{"a", "c"}); reason != tc.reason {
 			t.Fatalf("%s: reason %q, want %q", tc.name, reason, tc.reason)
 		}
 	}
