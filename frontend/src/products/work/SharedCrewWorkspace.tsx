@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ArrowLeft, Bot } from 'lucide-react'
 import api from '../../services/api'
 import type { PollingEvent } from '../../services/api-types'
-import ChatArea from '../../components/ChatArea'
+// This module is also used by the eager sidebar and report page. Load the
+// full chat only when a shared conversation is opened (PLAT-856-509).
+const ChatArea = lazy(() => import('../../components/ChatArea'))
 import { useChatStore } from '../../stores/useChatStore'
 
 export type SharedCrewScope = { workspace_id: string } | { workspace: string }
@@ -117,7 +119,7 @@ export function SharedAgentConversation({ scope: crewScope, agent, onBack, owner
   return <section className="flex min-h-0 flex-1 flex-col" aria-label={`${agent.name} conversation`}>
     {(onBack || agent.purpose) && <header className="flex shrink-0 items-start gap-3 border-b border-border px-4 py-2.5">{onBack && <button type="button" aria-label="Back to shared agents" onClick={onBack} className="rounded p-1 hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>}<div className="min-w-0">{onBack && <h2 className="text-sm font-semibold">{agent.name}</h2>}<Purpose text={agent.purpose} /></div></header>}
     {error && <p role="alert" className="shrink-0 px-4 py-2 text-xs text-destructive">{error} <button type="button" onClick={() => setRefresh(value => value + 1)} className="underline">Try again</button></p>}
-    <div className="min-h-0 flex-1">{tabId && <ChatArea tabId={tabId} inputVariant="product" hideRuntimeStatus onSubmitOverride={send} composerPlaceholder={`Ask ${agent.name}…`} />}</div>
+    <div className="min-h-0 flex-1">{tabId && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">Loading chat…</p>}><ChatArea tabId={tabId} inputVariant="product" hideRuntimeStatus onSubmitOverride={send} composerPlaceholder={`Ask ${agent.name}…`} /></Suspense>}</div>
     <p className="shrink-0 px-4 pb-2 text-[11px] text-muted-foreground">Only you see your messages and its answers.</p>
   </section>
 }
