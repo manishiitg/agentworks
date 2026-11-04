@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, Eye, EyeOff, Info, Pencil, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, EyeOff, Info, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { AGENT_KEY, AgentIcon } from './AgentIcon'
 
@@ -17,6 +17,8 @@ export interface AgentCardInfo {
   lastAsked?: { who: string; when: string; active: boolean; open: () => void }
   onSetPurpose: () => void
   onSetIcon?: () => void
+  /** Removes the agent for good (its chat is deleted); only for its owner, never Main. */
+  onRemove?: () => void
   /** Opens Access at this agent; only where sharing can be set from here. */
   onSharing?: () => void
 }
@@ -40,7 +42,8 @@ export interface CrewAgentActions {
   /** Moves the dragged agent (by its order key) to this one's place. */
   dropHere?: (fromKey: string) => void
   setPinned?: (pinned: boolean) => void
-  close?: () => void
+  /** Removes it for good (its chat is deleted). */
+  remove?: () => void
 }
 /** pinned: shown in the list (and on the tab bar); the rest sit under "Hidden agents". */
 export interface CrewAgentRow { tabId: string; name: string; main: boolean; pinned?: boolean; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
@@ -65,6 +68,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
+  const [removing, setRemoving] = useState(false)
   const timer = useRef<number | undefined>(undefined)
   useEffect(() => {
     if (!at) return
@@ -107,6 +111,13 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         {info.onSetIcon && <button type="button" onClick={() => finish(info.onSetIcon!)} className="text-primary hover:underline">{info.icon ? 'Change icon' : 'Set icon'}</button>}
         {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
       </div>
+      {info.onRemove && <div className="mt-2 flex items-center gap-3 border-t border-border pt-1.5">
+        {removing ? <>
+          <span className="text-muted-foreground">Remove {info.name}? Its chat is deleted.</span>
+          <button type="button" onClick={() => { setRemoving(false); finish(info.onRemove!) }} className="text-destructive hover:underline">Remove</button>
+          <button type="button" onClick={() => setRemoving(false)} className="text-muted-foreground hover:underline">Keep</button>
+        </> : <button type="button" onClick={() => setRemoving(true)} className="text-muted-foreground hover:text-destructive hover:underline">Remove agent…</button>}
+      </div>}
       {actions && <div className="mt-2 border-t border-border pt-1.5"><AgentActionsMenu name={info.name} actions={actions} pinned={pinned} onDone={() => setAt(null)} /></div>}
       <p className="mt-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground">{AGENT_KEY}← {AGENT_KEY}→ switch agents</p>
     </div>, document.body)}
@@ -138,9 +149,10 @@ export function AgentHeaderLine({ tabId, crewName, projectId }: { tabId?: string
 }
 
 /** One agent's actions, the same as the tab strip's (owner, 4 Nov): rename, move up or down, hide from or show in the
- * list, and close. Used by the left menu's "…" and the agent card in the collapsed rail. */
+ * list (owner, 4 Nov: Close = Hide). Used by the left menu's "…" and the agent card in the collapsed rail. */
 export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: string; actions: CrewAgentActions; pinned?: boolean; onDone: () => void }) {
   const [draft, setDraft] = useState<string | null>(null)
+  const [removing, setRemoving] = useState(false)
   const item = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const run = (action: () => void) => { action(); onDone() }
   if (draft !== null) return <input autoFocus aria-label={`New name for ${name}`} value={draft} onChange={event => setDraft(event.target.value)}
@@ -156,6 +168,9 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     {actions.setPinned && (pinned
       ? <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setPinned!(false))}><EyeOff aria-hidden="true" className="h-3.5 w-3.5" />Hide from list</button>
       : <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setPinned!(true))}><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in list</button>)}
-    {actions.close && <button type="button" role="menuitem" className={item} onClick={() => run(actions.close!)}><X aria-hidden="true" className="h-3.5 w-3.5" />Close</button>}
+    {actions.remove && (removing
+      ? <div className="border-t border-border px-2 pt-1.5 text-xs"><p className="text-muted-foreground">Remove {name}? Its chat is deleted.</p>
+          <div className="mt-1 flex gap-3"><button type="button" className="text-destructive hover:underline" onClick={() => run(actions.remove!)}>Remove</button><button type="button" className="text-muted-foreground hover:underline" onClick={() => setRemoving(false)}>Keep</button></div></div>
+      : <button type="button" role="menuitem" className={`${item} border-t border-border text-destructive`} onClick={() => setRemoving(true)}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>)}
   </div>
 }

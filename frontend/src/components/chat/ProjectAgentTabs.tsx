@@ -60,6 +60,15 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const phoneNavigation = useContext(MobileWorkspaceNavigationContext)
   const selectTab = (tabId: string) => { onSelectTab(tabId); phoneNavigation?.onChange('chat') }
   const closeProjectTab = onCloseTab
+  // Closing a Crew agent hides it (owner, 4 Nov: "Close = Hide"): it stays under Hidden agents and on the team board;
+  // removing it for good is "Remove agent…" in its card. Other tabs (activity views, Goal chats) still close.
+  const hideOrCloseTab = (tabId: string) => {
+    const tab = tabs.find(item => item.tabId === tabId)
+    const key = tab && tab.tabId !== canonicalTabId && surface === 'work' && isAgentTab(tab) ? sideChatKey(tab) : undefined
+    if (!key) { closeProjectTab(tabId); return }
+    void pinSideChat(key, false)
+    if (tabId === activeTabId && canonicalTabId) onSelectTab(canonicalTabId)
+  }
   const renameSideChat = onRename
   const submitNewAgent = async (requested: string) => {
     const name = requested.trim()
@@ -129,6 +138,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
         onSetIcon: () => fillAgentIconDraft(tab.tabId),
         onSharing: macHere && placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
+        onRemove: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
       },
     }
   }
@@ -138,7 +148,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Left menu is the default, also before the saved choice has loaded.
   const menuMode = surface === 'work' && agentsView !== 'tabs' && !phone
   // The strip's own handlers for one agent, so the left menu and the rail offer the same rename, order, show/hide and
-  // close (owner, 4 Nov: "did we lose more features?").
+  // hide (owner, 4 Nov: "did we lose more features?"); removing for good is only in the agent card.
   const agentActions = (tab: ChatTab): CrewAgentActions => {
     const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
     const pinKey = tab.tabId === canonicalTabId ? undefined : sideChatKey(tab)
@@ -153,7 +163,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       moveDown: key && after ? () => { void moveSideChat(key, after) } : undefined,
       dropHere: key ? from => { void moveSideChat(from, key) } : undefined,
       setPinned: pinKey ? pinned => { void pinSideChat(pinKey, pinned) } : undefined,
-      close: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
+      remove: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
     }
   }
   // The left menu's order: shown agents (pinned, or open now) first, then the hidden ones. Cmd/Ctrl+1..5 and the arrows
@@ -166,7 +176,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, icon: chat.icon,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.icon]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.pinned, agent.actions?.close ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.icon]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -372,7 +382,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         agent={agentFace(tab)}
         titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
         onTabClick={selectTab}
-        onCloseTab={closeProjectTab}
+        onCloseTab={hideOrCloseTab}
         closeStopsSession={!!key}
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div>
@@ -456,10 +466,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                   {tab.tabId !== canonicalTabId && canControl(tab) && (
                     <button
                       type="button"
-                      onClick={() => { setMoreOpen(false); closeProjectTab(tab.tabId) }}
+                      onClick={() => { setMoreOpen(false); hideOrCloseTab(tab.tabId) }}
                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={`Close ${label}`}
-                      title={isAgentTab(tab) ? "Close agent" : "Close activity view"}
+                      aria-label={surface === 'work' && isAgentTab(tab) ? `Hide ${label}` : `Close ${label}`}
+                      title={surface === 'work' && isAgentTab(tab) ? "Hide agent (it stays under All agents)" : "Close activity view"}
                     >
                       <X className="h-3 w-3" />
                     </button>

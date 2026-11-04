@@ -180,7 +180,7 @@ describe('Crew native tab dragging', () => {
       expect(popover.querySelector('[aria-label="Unpin a"]')).not.toBeNull()
       expect(popover.querySelector('[aria-label="Move a earlier"]')).toBeNull()
       expect([...popover.querySelectorAll('button')].some(button => button.textContent === 'Reorder')).toBe(false)
-      expect(popover.querySelector('[aria-label="Close a"]')).not.toBeNull()
+      expect(popover.querySelector('[aria-label="Hide a"]')).not.toBeNull()
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }
   })
 
