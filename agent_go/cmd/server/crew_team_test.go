@@ -84,7 +84,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member", "outsider"}}, {Tab: "all01", Audience: "everyone"}}
 	for _, tc := range []struct{ tab, who, reason string }{{"team01", "member", ""}, {"chosen01", "member", ""}, {"chosen01", "outsider", "not_in_audience"}, {"all01", "outsider", ""}} {
-		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test")); reason != tc.reason {
+		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test"), false); reason != tc.reason {
 			t.Fatalf("audience %s/%s: %s", tc.tab, tc.who, reason)
 		}
 	}

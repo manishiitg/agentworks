@@ -12,7 +12,7 @@ import { Switch } from '../../components/ui/Switch'
 import { useProjectTeam } from './teamApi'
 import type { CrewAsk } from './YourComputerPanel'
 
-type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'team' | 'everyone' | 'chosen'; people?: string[]; address?: string; can_change?: boolean }
+type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'team' | 'everyone' | 'chosen' | ''; people?: string[]; address?: string; can_change?: boolean; agentbridge_public?: boolean }
 type AgentRow = { tab: string; name: string; purpose: string; icon?: string }
 type Person = { id: string; username: string; email?: string }
 
@@ -78,7 +78,7 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
   const save = async (next: SharedAgent[]) => {
     setShared(next)
     const ready = next.filter(agent => purposeOf(agent.tab) && (agent.audience !== 'chosen' || agent.people?.length))
-      .map(({ tab, audience, people, can_change }) => ({ tab, audience, people, can_change: Boolean(can_change) }))
+      .map(({ tab, audience, people, can_change, agentbridge_public }) => ({ tab, audience, people, can_change: Boolean(can_change), agentbridge_public: Boolean(agentbridge_public) }))
     setBusy(true); setError('')
     try {
       const data = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'share_agents', agents: ready })
@@ -91,7 +91,9 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
   const update = (tab: string, change: Partial<SharedAgent> | null, persist = true) => {
     const current = shared.find(agent => agent.tab === tab)
     const base: SharedAgent = current || { tab, audience: 'team', people: [] }
-    const next = change === null ? shared.filter(agent => agent.tab !== tab) : [...shared.filter(agent => agent.tab !== tab), { ...base, ...change }]
+    // Only me keeps an agent that is public on AgentBridge (Mac online's choice), with no people audience.
+    const off: SharedAgent[] = current?.agentbridge_public ? [{ ...current, audience: '', people: [] }] : []
+    const next = change === null ? [...shared.filter(agent => agent.tab !== tab), ...off] : [...shared.filter(agent => agent.tab !== tab), { ...base, ...change }]
     if (persist) void save(next); else setShared(next)
   }
   const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
@@ -104,7 +106,7 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
       const place = placements[row.tab]?.location
-      const choice = agent ? agent.audience : 'none'
+      const choice = agent?.audience || 'none'
       return <div key={row.tab} data-shared-agent-card={row.tab} className="border-t border-border px-0.5 py-2.5 text-sm">
         <div className="flex flex-wrap items-center gap-2.5">
           <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">{row.icon?.trim() || row.name.slice(0, 1).toUpperCase()}</span>

@@ -11,7 +11,9 @@ import (
 
 // Same sender-thread contract as the Mac. The publication changes execution
 // location, never the audience or which sender may read a thread.
-func (api *StreamingAPI) publishedAgentCall(ctx context.Context, owner, project string, call crewChatCall) crewChatResult {
+// byAgent is set by the server for an agent message (AgentBridge), never read from the call's arguments: a person's
+// own ask cannot claim it to reach a public agent outside their audience.
+func (api *StreamingAPI) publishedAgentCall(ctx context.Context, owner, project string, call crewChatCall, byAgent bool) crewChatResult {
 	fail := func(status int, message string) crewChatResult {
 		body, _ := json.Marshal(map[string]string{"error": message})
 		return crewChatResult{ID: call.ID, Status: status, Body: body}
@@ -29,7 +31,8 @@ func (api *StreamingAPI) publishedAgentCall(ctx context.Context, owner, project 
 	if json.Unmarshal(call.Args, &args) != nil || args.SenderID == "" {
 		return fail(403, "This agent is unavailable.")
 	}
-	if _, reason := macSharedAgentFor(project, call.Tab, args.SenderID, owner); reason != "" {
+	// An agent message may also reach a public agent; a person's own ask needs the audience.
+	if _, reason := macSharedAgentAccess(project, call.Tab, args.SenderID, owner, byAgent); reason != "" {
 		return fail(403, "This agent is no longer shared with you.")
 	}
 	if call.Operation != "agent_ask" && call.Operation != "agent_read" && call.Operation != "agent_answer" {

@@ -42,7 +42,7 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 			item := map[string]any{"agent": row.Name, "purpose": row.Purpose, "shared": false}
 			if at := slices.IndexFunc(shared, func(agent macSharedAgent) bool { return agent.Tab == row.Tab }); at >= 0 {
 				agent := shared[at]
-				item["shared"], item["audience"], item["can_make_changes"] = true, agent.Audience, agent.CanChange
+				item["shared"], item["audience"], item["can_make_changes"], item["public_on_agentbridge"] = agent.Audience != "", agent.Audience, agent.CanChange, agent.AgentBridgePublic
 				if agent.Address != "" {
 					item["address_for_their_agents"] = "agent:" + agent.Address
 				}
@@ -69,8 +69,18 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 	}
 	tab := rows[at].Tab
 	next := slices.DeleteFunc(slices.Clone(shared), func(agent macSharedAgent) bool { return agent.Tab == tab })
-	if action == "share" {
-		agent := macSharedAgent{Tab: tab, Audience: strings.TrimSpace(externalArg(args, "audience"))}
+	existing := macSharedAgent{Tab: tab}
+	if at := slices.IndexFunc(shared, func(agent macSharedAgent) bool { return agent.Tab == tab }); at >= 0 {
+		existing = shared[at]
+	}
+	// Public on AgentBridge (Mac online) and the people audience (share/unshare) are separate (owner, 5 Nov).
+	if action == "public" || action == "only_my_agents" {
+		existing.AgentBridgePublic = action == "public"
+		if existing.AgentBridgePublic || existing.Audience != "" {
+			next = append(next, existing)
+		}
+	} else if action == "share" {
+		agent := macSharedAgent{Tab: tab, Audience: strings.TrimSpace(externalArg(args, "audience")), AgentBridgePublic: existing.AgentBridgePublic}
 		// It only answers them unless the owner says it can make changes for them (the default, like the screen).
 		if changes, _ := args["can_make_changes"].(bool); changes {
 			agent.CanChange = true
@@ -92,6 +102,10 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 			}
 		}
 		next = append(next, agent)
+	} else if existing.AgentBridgePublic {
+		// unshare: back to only you for people; it stays public for agents.
+		existing.Audience, existing.People = "", nil
+		next = append(next, existing)
 	} else if len(next) == len(shared) {
 		return out(map[string]any{"agent": rows[at].Name, "shared": false})
 	}

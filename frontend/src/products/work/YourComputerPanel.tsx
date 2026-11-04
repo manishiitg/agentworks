@@ -299,7 +299,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
         </div>
         {binding?.connection_id && !online && <>
           <p className="mt-4 py-2.5"><span className="font-semibold">AgentBridge</span> <span className="text-[12.5px] text-muted-foreground">· agents that can message your agents</span></p>
-          <MacAgentBridge key={projectId} projectId={projectId} connection={binding.connection_id} crewName={name} onTeam={() => setSection('team')} />
+          <MacAgentBridge key={projectId} projectId={projectId} connection={binding.connection_id} network={network} crewName={name} />
         </>}
         <p className="mt-1 text-[12.5px] text-muted-foreground">{online ? 'Open this published Crew from the Publish tab.' : `Works while this Mac is on. A public agent answers anyone’s agents on ${network} with what it has, like a shared agent.`}</p>
         {!binding && !online && <p className="mt-1 text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
