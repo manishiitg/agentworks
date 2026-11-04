@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -16,7 +17,9 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/manishiitg/mcpagent/agent/codeexec"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/spf13/viper"
 )
 
@@ -44,17 +47,17 @@ func TestBuilderStepExecutionUsesLiveDatabaseAndAssets(t *testing.T) {
 	write("db/README.md", "# Database\nresults stores the current evidence path.\n")
 	write("planning/plan.json", `{"steps":[{"type":"scripted","id":"save-evidence","title":"Save evidence","description":"Write a result and durable evidence.","script_only":true,"test_mode":true,"context_output":"result.json"}]}`)
 	write("planning/step_config.json", `{"steps":[{"id":"save-evidence","agent_configs":{"lock_code":true,"test_mode":true,"learnings_access":"none","knowledgebase_access":"none"}}]}`)
-	write("code/save-evidence/main.py", `import json, os, sqlite3
+	write("code/save-evidence/main.py", `import json, os
 from pathlib import Path
+from agentworks_db import execute
 assert 'AGENTWORKS_TEST_MODE' not in os.environ
-assert os.environ['RUN_FOLDER'] == 'iteration-0/default'
+assert os.environ['RUN_FOLDER'] == 'run-evidence'
 db_path = Path(os.environ['DB_PATH'])
 assert str(db_path).endswith('/Workflow/real-execution/db/db.sqlite')
 asset = db_path.parent / 'assets' / 'evidence.md'
 asset.parent.mkdir(parents=True, exist_ok=True)
 asset.write_text('Current evidence')
-with sqlite3.connect(db_path) as db:
-    db.execute("INSERT INTO results VALUES ('current', 'db/assets/evidence.md')")
+execute("INSERT INTO results VALUES (?, ?)", ["current", "db/assets/evidence.md"])
 (Path(os.environ['STEP_OUTPUT_DIR']) / 'result.json').write_text(json.dumps({'saved': True}))
 print('STATUS: COMPLETED')
 `)
@@ -76,11 +79,44 @@ print('STATUS: COMPLETED')
 	}
 	c.SetWorkspacePath(workflow)
 	c.WorkspaceClient = workspace.NewClient(server.URL)
-	c.SetWorkspaceEnvRef(map[string]string{})
+	// Only the HTTP transport is adapted here. Python uses the shipped DB helper,
+	// the real per-step bridge registry and the workspace's real SQL handler.
+	c.ToolCategories = map[string]string{"mutate_workflow_db": "workflow_db"}
+	c.WorkspaceTools = []llmtypes.Tool{{Type: "function", Function: &llmtypes.FunctionDefinition{Name: "mutate_workflow_db"}}}
+	c.WorkspaceToolExecutors = map[string]interface{}{"mutate_workflow_db": func(ctx context.Context, args map[string]interface{}) (string, error) {
+		params, _ := args["params"].([]interface{})
+		result, err := c.WorkspaceClient.MutateAuthorizedWorkflowDB(ctx, workspace.MutateWorkflowDBParams{DBPath: workflow + "/db/db.sqlite", Statements: []workspace.WorkflowDBMutationStatement{{SQL: args["sql"].(string), Params: params}}})
+		if err != nil {
+			return "", err
+		}
+		raw, err := json.Marshal(result)
+		return string(raw), err
+	}}
+	bridge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) != 5 || parts[0] != "s" {
+			http.NotFound(w, r)
+			return
+		}
+		var args map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&args); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		result, err := codeexec.CallCustomToolWithSession(r.Context(), parts[1], parts[4], args)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": result})
+	}))
+	defer bridge.Close()
+	t.Setenv("MCP_API_URL", bridge.URL)
+	c.SetWorkspaceEnvRef(map[string]string{"MCP_API_TOKEN": "test-bridge"})
 	c.variableValues = map[string]string{}
 	defer common.ClearSessionShellConfig(c.GetMCPSessionID())
 	var options WorkshopExecuteOptions
-	if err := json.Unmarshal([]byte(`{"RunFolder":"iteration-0/default","SavedScriptOnly":true,"test_mode":true,"TestRunID":"test-obsolete","RealRunFolder":"iteration-99/default"}`), &options); err != nil {
+	if err := json.Unmarshal([]byte(`{"RunFolder":"run-evidence","SavedScriptOnly":true,"test_mode":true,"TestRunID":"test-obsolete","RealRunFolder":"iteration-99/default"}`), &options); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
@@ -95,7 +131,7 @@ print('STATUS: COMPLETED')
 	if raw, err := os.ReadFile(filepath.Join(docs, workflow, evidence)); err != nil || string(raw) != "Current evidence" {
 		t.Fatalf("live asset was not saved: %s (%v)", raw, err)
 	}
-	if _, err := os.Stat(filepath.Join(docs, workflow, "runs/iteration-0/default/execution/save-evidence/result.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(docs, workflow, "runs/run-evidence/execution/save-evidence/result.json")); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(filepath.Join(docs, workflow, "runs"))
@@ -129,6 +165,7 @@ func workflowHTTPTestWorkspace(t *testing.T) (string, *httptest.Server) {
 	router.POST("/api/folders", workspacehandlers.CreateFolder)
 	router.DELETE("/api/folders/*folderpath", workspacehandlers.DeleteFolder)
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
+	router.POST("/api/mutate", workspacehandlers.MutateWorkflowDB)
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	t.Setenv("WORKSPACE_API_URL", server.URL)

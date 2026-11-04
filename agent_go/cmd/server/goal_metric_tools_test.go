@@ -101,7 +101,7 @@ func TestCrewGoalsShareEvidenceWithoutSharingWriteAuthority(t *testing.T) {
 	}
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"runner","username":"runner","role":"creator"},{"id":"stranger","username":"stranger","role":"creator"}]}`)
 	for _, id := range []string{"first", "second", "unlinked"} {
-		b := crewExecutableBinding{ID: id, CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/" + id, Kind: "workflow"}
+		b := crewExecutableBinding{ID: id, CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/" + id + "-folder", Kind: "workflow"}
 		if err := registerCrewExecutable(b); err != nil {
 			t.Fatal(err)
 		}
@@ -139,14 +139,14 @@ func TestCrewGoalsShareEvidenceWithoutSharingWriteAuthority(t *testing.T) {
 	call("owner", "POST", invalid, 400)
 	value := 21.0
 	observation := step.GoalObservation{Metric: "leads", CriterionID: "qualified", Unit: "leads", RunID: "collection-1", Value: &value, ObservedAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339), Evidence: []string{"CRM report row 1"}}
-	record := crewGoalRequest{Action: "record", SourceWorkspace: "Workflow/first", Observations: []step.GoalObservation{observation}}
+	record := crewGoalRequest{Action: "record", SourceWorkspace: "Workflow/first-folder", Observations: []step.GoalObservation{observation}}
 	missing := record
 	missing.Observations = []step.GoalObservation{observation}
 	missing.Observations[0].Evidence = nil
 	call("owner", "POST", missing, 400)
 	call("owner", "POST", record, 200)
 	call("owner", "POST", record, 200) // duplicate delivery is idempotent
-	record.SourceWorkspace = "Workflow/second"
+	record.SourceWorkspace = "Workflow/second-folder"
 	response := call("owner", "POST", record, 200)
 	var ledger step.GoalMeasurementLedger
 	json.Unmarshal(response["measurements"], &ledger)
@@ -165,16 +165,16 @@ func TestCrewGoalsShareEvidenceWithoutSharingWriteAuthority(t *testing.T) {
 			t.Fatal("evidence auto-achieved goal")
 		}
 	}
-	record.SourceWorkspace = "Workflow/unlinked"
+	record.SourceWorkspace = "Workflow/unlinked-folder"
 	call("owner", "POST", record, 400)
-	record.SourceWorkspace = "Workflow/first"
+	record.SourceWorkspace = "Workflow/first-folder"
 	different := 22.0
 	record.Observations[0].Value = &different
 	call("owner", "POST", record, 400)
 	save.Goal.Name = "Sales outcome"
 	save.Goal.Status = "achieved"
 	call("owner", "POST", save, 200)
-	loaded, err := step.LoadGoalMeasurements(ctx, "Workflow/second", 100)
+	loaded, err := step.LoadGoalMeasurements(ctx, "Workflow/second-folder", 100)
 	if err != nil || len(loaded.Observations) != 2 || len(loaded.Metrics) != 1 || loaded.Metrics[0].GoalName != "Sales outcome" {
 		t.Fatal("parent history/definitions lost", loaded, err)
 	}
@@ -212,15 +212,15 @@ func TestCrewGoalsShareEvidenceWithoutSharingWriteAuthority(t *testing.T) {
 	call("stranger", "GET", nil, 403)
 	_, executors, _ := createGoalMetricTools()
 	read := executors["get_goal_metrics"].(func(context.Context, map[string]interface{}) (string, error))
-	if _, err := read(internalBotRequestContext(t.Context(), "runner"), map[string]interface{}{"workspace_path": "Workflow/first"}); err != nil {
+	if _, err := read(internalBotRequestContext(t.Context(), "runner"), map[string]interface{}{"workspace_path": "Workflow/first-folder"}); err != nil {
 		t.Fatal("shared measurement tool refused", err)
 	}
-	if _, err := read(internalBotRequestContext(t.Context(), "stranger"), map[string]interface{}{"workspace_path": "Workflow/first"}); err == nil {
+	if _, err := read(internalBotRequestContext(t.Context(), "stranger"), map[string]interface{}{"workspace_path": "Workflow/first-folder"}); err == nil {
 		t.Fatal("tool exposed another Crew")
 	}
 	observe := executors["record_goal_observations"].(func(context.Context, map[string]interface{}) (string, error))
 	// The workflow's native tool hits the same ledger and idempotent source ID.
-	args := map[string]interface{}{"workspace_path": "Workflow/first", "observations": []step.GoalObservation{observation}}
+	args := map[string]interface{}{"workspace_path": "Workflow/first-folder", "observations": []step.GoalObservation{observation}}
 	if _, err := observe(internalBotRequestContext(ctx, "owner"), args); err != nil {
 		t.Fatal("workflow record tool refused", err)
 	}
