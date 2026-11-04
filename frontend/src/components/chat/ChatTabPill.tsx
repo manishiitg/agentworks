@@ -140,7 +140,10 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           (working, needs you, failed, new reply) sits on the icon's corner so it takes no extra space (owner, 4 Nov). */}
       {agent && agent.info?.icon?.trim()
         ? <span className="relative shrink-0"><AgentIcon name={displayName} icon={agent.info.icon} active={isActive} shared={agent.info.sharedWith} letter={false} />
-            <span className="absolute -right-1 -top-1 grid place-items-center rounded-full bg-background"><AgentMark state={isBlank ? null : menuState} asking={agent.asking} /></span></span>
+            {/* Working: a ring turns around the icon instead of a spinner beside it (owner, 4 Nov). */}
+            {!isBlank && menuState === 'running'
+              ? <span role="img" aria-label="Working" className="pointer-events-none absolute -inset-[3px] animate-spin rounded-full border-2 border-foreground/10 border-t-[hsl(var(--info))]" />
+              : <span className="absolute -right-1 -top-1 grid place-items-center rounded-full bg-background"><AgentMark state={isBlank ? null : menuState} asking={agent.asking} /></span>}</span>
         : agent && <AgentIcon name={displayName} active={isActive} shared={agent.info?.sharedWith} letter={false} />}
       {agent ? (!agent.info?.icon?.trim() && <AgentMark state={isBlank ? null : menuState} asking={agent.asking} />) :
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
