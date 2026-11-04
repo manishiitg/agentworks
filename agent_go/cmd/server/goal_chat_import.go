@@ -64,6 +64,15 @@ func importGoalChatArchives(journalPath string, imports []goalChatImport) (int, 
 			}
 			dialogue = append(dialogue, event)
 		}
+		// The installation is stopped during conversion. An unanswered saved
+		// question is history, not a live turn; otherwise the Crew shows an
+		// endless working indicator after import. Do not fabricate an answer.
+		if len(dialogue) > 0 && dialogue[len(dialogue)-1].Type == "user_message" {
+			dialogue = append(dialogue, events.Event{
+				ID: "goal-import-stopped-" + item.Session, Type: "context_cancelled",
+				SessionID: item.Session, Timestamp: dialogue[len(dialogue)-1].Timestamp,
+			})
+		}
 		store.SetSessionOwner(item.Session, item.Owner)
 		if err = store.SetSessionPersistenceClass(item.Session, events.SessionPersistenceInteractiveChat); err != nil {
 			return count, err
