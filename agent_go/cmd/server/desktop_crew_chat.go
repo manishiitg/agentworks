@@ -343,6 +343,8 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		Submission string `json:"submission"`
 		// SenderAgent names the sender's own agent when an agent sent it, for the owner's Access row.
 		SenderAgent string `json:"sender_agent"`
+		// SenderChannel is how it came (AgentBridge, MCP, website), for the chat's "From …" line.
+		SenderChannel string `json:"sender_channel"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -397,7 +399,13 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
 			return reply(400, map[string]string{"error": "Give a message within the chat size limit."})
 		}
-		attribution := map[string]interface{}{"source": "agent_message", "sender_label": call.Caller, "sender_user_id": args.SenderID, "display_content": message, "shared_message_id": call.SubmissionID}
+		// "From tester-b's Claude Code (helper) · AgentBridge", or the person and their app (owner, 5 Nov).
+		senderAgent := strings.TrimSpace(call.Caller)
+		if strings.TrimSpace(args.SenderAgent) != "" {
+			senderAgent = strings.SplitN(senderAgent, "@", 2)[0] + "'s " + strings.TrimSpace(args.SenderAgent)
+		}
+		senderChannel := firstNonEmptyTrimmed(args.SenderChannel, "shared agent")
+		attribution := map[string]interface{}{"source": "agent_message", "sender_label": senderAgent + " · " + senderChannel, "sender_agent": senderAgent, "sender_channel": senderChannel, "sender_user_id": args.SenderID, "display_content": message, "shared_message_id": call.SubmissionID}
 		idempotency := ""
 		if call.SubmissionID != "" {
 			// The queued input carries this id as its client id; the sender is stamped only on the input with it.

@@ -950,8 +950,9 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		return dest.Session, fmt.Errorf("receiving conversation was stopped or replaced")
 	}
 	{
+		label, senderAgent, senderChannel := agentMessageSender(ctx, source, dest.UserID)
 		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{
-			"source": "agent_message", "sender_label": source.Label, "sender_kind": agentMessageSenderKindIn(ctx, source), "sender_user_id": source.UserID,
+			"source": "agent_message", "sender_label": label, "sender_agent": senderAgent, "sender_channel": senderChannel, "sender_kind": agentMessageSenderKindIn(ctx, source), "sender_user_id": source.UserID,
 			"agent_message_inbox": c.ID, "message_id": m.ID,
 			"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
 		})
