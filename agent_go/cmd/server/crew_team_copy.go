@@ -35,8 +35,7 @@ const (
 
 	teamCopyRecordMaxBytes = 8 << 20
 	teamCopyRecordMaxFiles = 2000
-	teamCopyChatMaxBytes   = 200 << 10
-	teamCopyChatDir        = ".team-copy/chats"
+	teamCopyChatMaxBytes   = 60 << 10
 	teamCopyReportMaxBytes = 24 << 10
 	teamMacSeenWithin      = 2 * time.Minute
 )
@@ -59,12 +58,41 @@ func teamCopyRecordPath(rel string) bool {
 	return nested && rest != "" && slices.Contains(teamCopyRecordDirs, first)
 }
 
-// crewTeamCopyRecord is what the Mac sends for its team copy: the record's files and, per shared agent, the owner's
-// chat with it so far as text.
+// crewTeamCopyRecord is what the Mac sends for its team copy: the Crew's record files and, per shared agent, the
+// owner's chat with it so far as text and the program it runs on.
 type crewTeamCopyRecord struct {
-	Digest string            `json:"digest"`
-	Files  map[string][]byte `json:"files"`
-	Chats  map[string]string `json:"chats"`
+	Digest   string                     `json:"digest"`
+	Files    map[string][]byte          `json:"files"`
+	Chats    map[string]string          `json:"chats"`
+	Programs map[string]teamCopyProgram `json:"programs,omitempty"`
+}
+
+type teamCopyProgram struct {
+	Provider string `json:"provider"`
+	ModelID  string `json:"model_id,omitempty"`
+}
+
+// teamCopyAgent is one shared agent's own part of the record. It is kept in the server's private state, never in the
+// Crew's folder: a turn for one agent gets only its own chat (reviewer, 4 Nov: agent A's people must never read the
+// owner's chat with agent B).
+type teamCopyAgent struct {
+	teamCopyProgram
+	Chat string `json:"chat,omitempty"`
+}
+
+func teamCopyAgentDir(project string) (string, error) {
+	p, err := teamCopyStatePath(project)
+	return strings.TrimSuffix(p, ".json"), err
+}
+
+func readTeamCopyAgent(project, tab string) (teamCopyAgent, bool) {
+	var agent teamCopyAgent
+	dir, err := teamCopyAgentDir(project)
+	if err != nil || (tab != macMainTab && !crewMacTabID(tab)) {
+		return agent, false
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, tab+".json"))
+	return agent, err == nil && json.Unmarshal(raw, &agent) == nil
 }
 
 type crewTeamCopyAway struct {
@@ -148,13 +176,25 @@ func updateTeamCopyState(project string, change func(*crewTeamCopyState)) (crewT
 }
 
 // teamCopyRoute is where a shared agent's message goes while its owner's Mac is off: the team copy, once the server has
-// the agent's record and the owner chose it, else it waits for the Mac.
-func teamCopyRoute(project string) string {
-	if s := readTeamCopyState(project); s.mode() == teamCopyAnswer && s.RecordAt != "" {
-		return teamCopyAnswer
+// the agent's record, the owner chose it and has their own login for its program here (owner, 4 Nov: never the
+// server's account); else it waits for the Mac. The reason names why it waits.
+func teamCopyRoute(project, tab string) (string, string) {
+	s := readTeamCopyState(project)
+	if s.mode() == teamCopyWait {
+		return teamCopyWait, "chose_wait"
 	}
-	return teamCopyWait
+	agent, ok := readTeamCopyAgent(project, tab)
+	if s.RecordAt == "" || !ok {
+		return teamCopyWait, "no_record"
+	}
+	if agent.Provider == "" || ownDefaultProviderAccountID(context.Background(), ownerOfCrewProjectID(project), agent.Provider) == "" {
+		return teamCopyWait, "no_own_login"
+	}
+	return teamCopyAnswer, ""
 }
+
+// teamCopyAgentKey carries the agent's own part of the record into its team copy turn (desktopMacSharedAgent).
+type teamCopyAgentKey struct{}
 
 // crewTeamCopyKey marks a shared agent's turn that runs on the server as the team copy (desktopMacSharedAgent).
 type crewTeamCopyKey struct{}
@@ -179,7 +219,8 @@ func (api *StreamingAPI) teamCopyCall(ctx context.Context, owner, project string
 	if err != nil {
 		return fail(http.StatusServiceUnavailable, "Its owner's Mac is off. Try again later.")
 	}
-	ctx = context.WithValue(context.WithValue(context.WithoutCancel(ctx), UserContextKey, claims), crewTeamCopyKey{}, true)
+	agent, _ := readTeamCopyAgent(project, call.Tab)
+	ctx = context.WithValue(context.WithValue(context.WithValue(context.WithoutCancel(ctx), UserContextKey, claims), crewTeamCopyKey{}, true), teamCopyAgentKey{}, agent)
 	result := api.desktopMacSharedAgent(ctx, claims, profile, project, call)
 	log.Printf("[TEAM_COPY] project=%s tab=%s operation=%s status=%d", project, call.Tab, call.Operation, result.Status)
 	if call.Operation == "agent_ask" && result.Status == http.StatusOK {
@@ -211,13 +252,13 @@ func (api *StreamingAPI) teamCopyCall(ctx context.Context, owner, project string
 	return result
 }
 
-// holdForMac keeps a message for the Mac ("Wait for my Mac", or no team copy yet).
-func holdForMac(project string, call crewChatCall, inbox string, from int) error {
+// holdForMac keeps a message for the Mac ("Wait for my Mac", no team copy yet, or no own login for it).
+func holdForMac(project, reason string, call crewChatCall, inbox string, from int) error {
 	_, err := updateTeamCopyState(project, func(s *crewTeamCopyState) {
 		s.Waiting = append(s.Waiting, crewTeamCopyWaiting{ID: uuid.NewString(), Tab: call.Tab, Caller: call.Caller, Message: call.Message, SubmissionID: call.SubmissionID,
 			Args: call.Args, Inbox: inbox, From: from, At: time.Now().UTC().Format(time.RFC3339Nano)})
 	})
-	log.Printf("[TEAM_COPY] project=%s tab=%s action=held_for_mac inbox=%q err=%v", project, call.Tab, inbox, err)
+	log.Printf("[TEAM_COPY] project=%s tab=%s action=held_for_mac reason=%s inbox=%q err=%v", project, call.Tab, reason, inbox, err)
 	return err
 }
 
@@ -360,7 +401,7 @@ func (api *StreamingAPI) handleTeamCopy(w http.ResponseWriter, r *http.Request, 
 			externalError(w, 400, "invalid_request", "Send the team copy's record.")
 			return
 		}
-		if err = saveTeamCopyRecord(roots.Resources, *input.TeamCopy); err != nil {
+		if err = saveTeamCopyRecord(roots.Resources, roots.ID, *input.TeamCopy); err != nil {
 			log.Printf("[TEAM_COPY] project=%s action=record refused reason=%q", roots.ID, err.Error())
 			externalError(w, 400, "invalid_record", err.Error())
 			return
@@ -381,8 +422,9 @@ func (api *StreamingAPI) handleTeamCopy(w http.ResponseWriter, r *http.Request, 
 	externalJSON(w, crewSyncReply{ProjectID: roots.ID, Binding: b, TeamCopy: &status})
 }
 
-// saveTeamCopyRecord replaces the record's files in the Crew's online folder: only record paths are written or removed.
-func saveTeamCopyRecord(base string, record crewTeamCopyRecord) error {
+// saveTeamCopyRecord replaces the record's files in the Crew's online folder (only record paths are written or removed)
+// and each shared agent's own part in private state.
+func saveTeamCopyRecord(base, project string, record crewTeamCopyRecord) error {
 	if base == "" {
 		return fmt.Errorf("this Crew has no online folder")
 	}
@@ -401,6 +443,11 @@ func saveTeamCopyRecord(base string, record crewTeamCopyRecord) error {
 			return fmt.Errorf("unknown agent in the record")
 		}
 		total += len(chat)
+	}
+	for tab := range record.Programs {
+		if tab != macMainTab && !crewMacTabID(tab) {
+			return fmt.Errorf("unknown agent in the record")
+		}
 	}
 	if total > teamCopyRecordMaxBytes {
 		return fmt.Errorf("the agents' record is over %d MB", teamCopyRecordMaxBytes>>20)
@@ -435,10 +482,24 @@ func saveTeamCopyRecord(base string, record crewTeamCopyRecord) error {
 	for _, p := range stale {
 		_ = os.Remove(p)
 	}
-	chats := filepath.Join(base, filepath.FromSlash(teamCopyChatDir))
-	_ = os.RemoveAll(chats)
-	for tab, chat := range record.Chats {
-		if err := writeTeamCopyFile(base, teamCopyChatDir+"/"+tab+".md", []byte(chat)); err != nil {
+	dir, err := teamCopyAgentDir(project)
+	if err != nil {
+		return err
+	}
+	_ = os.RemoveAll(dir)
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	tabs := map[string]bool{}
+	for tab := range record.Chats {
+		tabs[tab] = true
+	}
+	for tab := range record.Programs {
+		tabs[tab] = true
+	}
+	for tab := range tabs {
+		raw, _ := json.Marshal(teamCopyAgent{teamCopyProgram: record.Programs[tab], Chat: record.Chats[tab]})
+		if err = os.WriteFile(filepath.Join(dir, tab+".json"), raw, 0600); err != nil {
 			return err
 		}
 	}
@@ -469,13 +530,15 @@ func writeTeamCopyFile(base, rel string, data []byte) error {
 }
 
 type crewTeamCopyStatus struct {
-	WhenMacOff    string            `json:"when_mac_off"`
-	Ready         bool              `json:"ready"`
-	RecordAt      string            `json:"record_at,omitempty"`
-	AnsweredToday int               `json:"answered_today"`
-	Waiting       int               `json:"waiting"`
-	MacOn         bool              `json:"mac_on"`
-	People        []teamMacPresence `json:"people,omitempty"`
+	WhenMacOff    string `json:"when_mac_off"`
+	Ready         bool   `json:"ready"`
+	RecordAt      string `json:"record_at,omitempty"`
+	AnsweredToday int    `json:"answered_today"`
+	Waiting       int    `json:"waiting"`
+	MacOn         bool   `json:"mac_on"`
+	// NeedsLogin names the programs the owner must sign in to on this server once so their team copy can answer.
+	NeedsLogin []string          `json:"needs_login,omitempty"`
+	People     []teamMacPresence `json:"people,omitempty"`
 }
 
 type teamMacPresence struct {
@@ -488,6 +551,14 @@ func teamCopyStatus(owner, project string, b *crewroot.SyncBinding) crewTeamCopy
 	s := readTeamCopyState(project)
 	out := crewTeamCopyStatus{WhenMacOff: s.mode(), Ready: s.RecordAt != "", RecordAt: s.RecordAt, AnsweredToday: s.Answered[time.Now().UTC().Format("2006-01-02")],
 		Waiting: len(s.Waiting), MacOn: crewPlace(owner, project, b) == "mac"}
+	for _, agent := range readMacSharedAgents(project) {
+		if _, reason := teamCopyRoute(project, agent.Tab); reason == "no_own_login" {
+			part, _ := readTeamCopyAgent(project, agent.Tab)
+			if name := providerAccountProductName(part.Provider); part.Provider != "" && !slices.Contains(out.NeedsLogin, name) {
+				out.NeedsLogin = append(out.NeedsLogin, name)
+			}
+		}
+	}
 	for _, person := range crewTeamPeople(project) {
 		if person != owner {
 			out.People = append(out.People, teamMacPresence{UserID: person, Name: shareOwnerLabel(person), MacOn: time.Since(teamMacSeen(project, person)) <= teamMacSeenWithin})
@@ -566,7 +637,7 @@ func (api *StreamingAPI) pushTeamCopyRecord(ctx context.Context, project string)
 	if err != nil {
 		return
 	}
-	record := crewTeamCopyRecord{Files: map[string][]byte{}, Chats: map[string]string{}}
+	record := crewTeamCopyRecord{Files: map[string][]byte{}, Chats: map[string]string{}, Programs: map[string]teamCopyProgram{}}
 	total := 0
 	for _, root := range []string{roots.Resources, roots.Files} {
 		_ = filepath.WalkDir(root, func(p string, entry fs.DirEntry, err error) error {
@@ -608,6 +679,9 @@ func (api *StreamingAPI) pushTeamCopyRecord(ctx context.Context, project string)
 		if err != nil {
 			continue
 		}
+		if conversation.Provider != "" {
+			record.Programs[agent.Tab] = teamCopyProgram{Provider: conversation.Provider, ModelID: conversation.ModelID}
+		}
 		items, _, err := codeChatTranscript(r.Context(), claims.UserID, conversation.SessionID, conversation.WorkspacePath, 0, 0)
 		if err != nil || len(items) == 0 {
 			continue
@@ -648,7 +722,7 @@ func teamCopyChatText(agent string, items []codeTurnItem) string {
 	if len(text) > teamCopyChatMaxBytes {
 		text = "…(earlier messages left out)\n\n" + text[len(text)-teamCopyChatMaxBytes:]
 	}
-	return "# Your owner's chat with you so far (copied from the Mac)\n\n" + text
+	return text
 }
 
 func teamCopyDigest(record crewTeamCopyRecord) string {
@@ -671,6 +745,12 @@ func teamCopyDigest(record crewTeamCopyRecord) string {
 		sum := sha256.Sum256([]byte(record.Chats[tab]))
 		fmt.Fprintf(h, "c\x00%s\x00%x\n", tab, sum)
 	}
+	programs := make([]string, 0, len(record.Programs))
+	for tab, program := range record.Programs {
+		programs = append(programs, tab+"\x00"+program.Provider+"\x00"+program.ModelID)
+	}
+	sort.Strings(programs)
+	fmt.Fprintf(h, "p\x00%s\n", strings.Join(programs, "\x01"))
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 

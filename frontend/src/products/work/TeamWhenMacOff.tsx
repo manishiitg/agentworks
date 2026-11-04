@@ -7,6 +7,7 @@ type TeamCopyStatus = {
   answered_today: number
   waiting: number
   mac_on: boolean
+  needs_login?: string[]
   people?: { user_id: string; name: string; mac_on: boolean }[]
 }
 
@@ -58,6 +59,7 @@ export function TeamWhenMacOff({ projectId, connection, network }: { projectId: 
     <p className="text-[13px] text-muted-foreground">{status.when_mac_off === 'team_copy'
       ? `Team copy: your shared agents keep answering from ${network} with their instructions, skills, memory, the team folder and the chat so far, but not the rest of your Mac. When your Mac is back, your agents read what was asked and answered.${status.ready ? '' : ' It is getting ready; until then, messages wait for your Mac.'}`
       : 'Messages to your shared agents wait while your Mac is off, and are answered when it is back.'}</p>
+    {status.when_mac_off === 'team_copy' && !!status.needs_login?.length && <p className="text-[13px] text-amber-600">Sign in to {status.needs_login.join(' and ')} on {network} once so your team copy can answer; until then, messages wait for your Mac.</p>}
     <p className="text-[13px] text-muted-foreground">Right now: {now.join(' · ')}</p>
     {error && <p className="text-[13px] text-destructive">{error}</p>}
   </section>
