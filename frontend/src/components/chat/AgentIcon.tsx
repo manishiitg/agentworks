@@ -1,8 +1,10 @@
 import { Loader2, Users } from 'lucide-react'
 import type { AgentMenuState } from './agentMenuState'
 
-/** An agent's icon (owner, 4 Nov, agents design): its emoji when it has one, else its first letter, on a small quiet
- * rounded square. The same grey for every agent; status marks sit next to it, never on it. */
+/** An agent's icon (owner, 4 Nov, agents design): its emoji on a small quiet rounded square. No emoji, no square: a
+ * first-letter tile made every agent look alike (owner, 4 Nov: "remove letter tiles"); a saved letter or word such as
+ * "S" or "target" counts as none. Status marks sit next to it, never on it. */
+export const agentEmoji = (icon?: string) => { const value = icon?.trim() || ''; return /\p{Extended_Pictographic}/u.test(value) ? value : '' }
 /** The switch-agent key on this computer: ⌘ on a Mac, Ctrl elsewhere. */
 export const AGENT_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 
@@ -11,8 +13,10 @@ export function AgentIcon({ name, icon, size = 'sm', active = false, round = fal
   const box = size === 'md' ? 'h-7 w-7 text-xs' : 'h-[18px] w-[18px] text-[10px]'
   // round: a Crew's own letter, set apart from its agents' squares.
   const shape = round ? 'rounded-full border border-border bg-transparent text-foreground' : `rounded-md ${active ? 'bg-neutral-300 text-neutral-900 ring-1 ring-primary/50 dark:bg-[#3a3b42] dark:text-white' : 'bg-neutral-200 text-neutral-600 dark:bg-[#2a2b30] dark:text-[#c9c9cf]'}`
+  const emoji = round ? (icon?.trim() || (name.trim()[0] || '?').toUpperCase()) : agentEmoji(icon)
+  if (!emoji) return shared ? <span role="img" aria-label={`Shared with ${shared}`} title={`Shared with ${shared}`} className="grid shrink-0 place-items-center text-muted-foreground"><Users aria-hidden="true" className="h-3 w-3" /></span> : null
   return <span className={`relative grid shrink-0 place-items-center font-semibold ${box} ${shape}`}>
-    <span aria-hidden="true">{icon?.trim() || (name.trim()[0] || '?').toUpperCase()}</span>
+    <span aria-hidden="true">{emoji}</span>
     {shared && <span role="img" aria-label={`Shared with ${shared}`} title={`Shared with ${shared}`} className="absolute -bottom-1 -right-1 grid h-3 w-3 place-items-center rounded-full bg-background">
       <Users aria-hidden="true" className="h-2 w-2 text-muted-foreground" />
     </span>}
