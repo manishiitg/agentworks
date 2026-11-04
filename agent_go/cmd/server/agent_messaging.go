@@ -17,9 +17,9 @@ import (
 )
 
 // Conversations have addresses and messages, never request/result settlement.
-// The store is durable through the workspace backend; transport acknowledgements
-// do not claim that a recipient read, answered, or completed any work.
-const agentMessagesPath = "_system/agent_messages/conversations.json"
+// The store is durable in the server's mailbox database (agent_mailbox_store.go);
+// transport acknowledgements do not claim that a recipient read, answered, or
+// completed any work.
 const agentMessageKeep = 1000
 const agentConversationKeep = 2000
 
@@ -116,54 +116,6 @@ func expiredConversationForCaller(s agentMessageStore, id, userID string, caller
 	return fmt.Errorf("conversation unavailable or access denied")
 }
 
-func readAgentMessageStore(ctx context.Context) (agentMessageStore, error) {
-	start := time.Now()
-	caller := agentMailboxReadCaller()
-	// Mutation transactions still validate independently of snapshot flights
-	// and decode a private copy. Conditional validation avoids downloading the
-	// same multi-megabyte store for every attachment check or busy worker poll.
-	entry, err := readIndependentAgentMessageSnapshot(ctx)
-	ioTime := time.Since(start)
-	defer func() { agentMailboxTiming("read", start, len(entry.content), ioTime, caller) }()
-	var s agentMessageStore
-	if err != nil {
-		return s, err
-	}
-	if entry.valid {
-		err = json.Unmarshal([]byte(entry.content), &s)
-	}
-	return s, err
-}
-func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
-	start := time.Now()
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	ioStart := time.Now()
-	err = writeFileToWorkspace(ctx, agentMessagesPath, string(raw))
-	agentMailboxTiming("write", start, len(raw), time.Since(ioStart))
-	agentMessageVersion.Add(1)
-	if err == nil {
-		notifyAgentLiveChanged()
-	}
-	return err
-}
-
-// Slow-path metadata only: never message bodies, account names or credentials.
-func agentMailboxTiming(operation string, start time.Time, size int, ioTime time.Duration, caller ...string) {
-	if elapsed := time.Since(start); elapsed >= 100*time.Millisecond {
-		source := "snapshot"
-		if len(caller) > 0 {
-			source = caller[0]
-		}
-		log.Printf("[AGENT-MAILBOX-TIMING] operation=%s bytes=%d io_ms=%d total_ms=%d caller=%s", operation, size, ioTime.Milliseconds(), elapsed.Milliseconds(), source)
-	}
-}
-
-// agentMessageVersion changes on every save, so a waiting reader rereads the
-// store only when something was written instead of parsing it every poll.
-var agentMessageVersion atomic.Int64
 var agentMessageLastResume atomic.Int64
 
 const agentConversationIdleKeep = 7 * 24 * time.Hour
@@ -633,64 +585,49 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 		} else {
 			seen = v
 		}
+		// Only this caller's inbox leaves the database: the endpoint check is
+		// in the query itself.
+		c, side, found, err := callerAgentMailboxConversation(ctx, inboxID, userID, caller)
+		if err != nil {
+			return nil, err
+		}
 		s, err := readAgentMessageSnapshot(ctx)
 		if err != nil {
 			return nil, err
 		}
-		items := []map[string]interface{}{}
-		found := false
-		next := after
-		for _, c := range s.Conversations {
-			if inboxID != "" && c.ID != inboxID {
-				continue
-			}
-			side := -1
-			if messageEndpointMatches(c.Endpoints[0], userID, caller) {
-				side = 0
-			} else if messageEndpointMatches(c.Endpoints[1], userID, caller) {
-				side = 1
-			}
-			if side < 0 {
-				continue
-			}
-			found = true
-			for _, m := range c.Messages {
-				position := m.Sequence
-				if caller.NamedAgentID != "" {
-					position = m.AgentSequence
-				}
-				if position <= after || m.From == side || !m.InboxRemovedAt.IsZero() {
-					continue
-				}
-				item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
-				for k, v := range messageArrivalFields(m) {
-					item[k] = v
-				}
-				if person := crossPersonOwner(c.Endpoints[m.From], userID); person != "" {
-					item["from_person"], item["untrusted"] = person, true
-				}
-				items = append(items, item)
-				next = position
-				if len(items) >= limit {
-					break
-				}
-			}
-		}
-		if !found && inboxID != "" {
+		if !found {
 			return nil, expiredConversationForCaller(s, inboxID, userID, caller)
+		}
+		items := []map[string]interface{}{}
+		next := after
+		for _, m := range c.Messages {
+			position := m.Sequence
+			if caller.NamedAgentID != "" {
+				position = m.AgentSequence
+			}
+			if position <= after || m.From == side || !m.InboxRemovedAt.IsZero() {
+				continue
+			}
+			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
+			for k, v := range messageArrivalFields(m) {
+				item[k] = v
+			}
+			if person := crossPersonOwner(c.Endpoints[m.From], userID); person != "" {
+				item["from_person"], item["untrusted"] = person, true
+			}
+			items = append(items, item)
+			next = position
+			if len(items) >= limit {
+				break
+			}
 		}
 		if len(items) > 0 || wait <= 0 || time.Now().After(deadline) {
 			api.resumeAgentMessagesThrottled()
 			out := map[string]interface{}{"messages": items, "next_cursor": next, "inbox_id": inboxID}
 			log.Printf("[AGENT-READ] filter=inbox agent=%s inbox=%s after=%d returned=%d next=%d", caller.NamedAgentID, inboxID, after, len(items), next)
-			for _, c := range s.Conversations {
-				if c.ID != inboxID {
-					continue
-				}
-				for side := 0; side < 2; side++ {
-					if messageEndpointMatches(c.Endpoints[side], userID, caller) {
-						out["sent"] = s.sentReceipts(c, side, 20)
-					}
+			for side := 0; side < 2; side++ {
+				if messageEndpointMatches(c.Endpoints[side], userID, caller) {
+					out["sent"] = s.sentReceipts(c, side, 20)
 				}
 			}
 			return out, nil

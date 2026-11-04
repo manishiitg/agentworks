@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -44,5 +45,48 @@ func TestAgentConversationsArePrunedSoMessagingNeverFillsUp(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("another user's conversation must not be dropped")
+	}
+
+	// Stored: retention deletes the expired conversation's rows and its
+	// attachment file, and keeps only the text-free expired metadata.
+	env := newTriggerLinkEnv(t)
+	ctx := context.Background()
+	fileID := "file-0123456789abcdef0123456789abcdef"
+	env.mock.mu.Lock()
+	env.mock.files[agentMessageFilesDir+fileID+".json"] = `{"file_id":"` + fileID + `"}`
+	env.mock.mu.Unlock()
+	stored := agentMessageStore{Conversations: []agentConversation{conv("old-idle", "u1", 8*24*time.Hour, "delivered"), conv("fresh", "u1", time.Hour, "delivered")}}
+	stored.Conversations[0].Messages[0].File = &agentMessageFileReference{ID: fileID, Name: "a.txt", Size: 1}
+	if err := saveAgentMessageStore(ctx, stored); err != nil {
+		t.Fatal(err)
+	}
+	agentMessageMu.Lock()
+	s, err := readAgentMessageStore(ctx)
+	if err == nil {
+		pruneAgentConversations(&s, now, "u1")
+		err = saveAgentMessageStore(ctx, s)
+	}
+	agentMessageMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mb, _ := currentAgentMailbox()
+	var conversations, messages, expired int
+	_ = mb.db.QueryRow(`SELECT (SELECT COUNT(*) FROM conversations WHERE inbox_id='old-idle'), (SELECT COUNT(*) FROM messages WHERE inbox_id='old-idle'), (SELECT COUNT(*) FROM expired_conversations WHERE inbox_id='old-idle')`).Scan(&conversations, &messages, &expired)
+	if conversations != 0 || messages != 0 || expired != 1 {
+		t.Fatalf("retention rows: conversations=%d messages=%d expired=%d", conversations, messages, expired)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		env.mock.mu.Lock()
+		_, left := env.mock.files[agentMessageFilesDir+fileID+".json"]
+		env.mock.mu.Unlock()
+		if !left {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("retention kept the removed message's file")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

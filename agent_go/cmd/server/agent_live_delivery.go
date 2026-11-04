@@ -144,19 +144,15 @@ func recordNamedAgentActivity(ctx context.Context, agentID, attachmentID string,
 	if !force && recent {
 		return
 	}
-	if !agentMessageMu.TryLock() {
-		return // A later authenticated heartbeat retries; mail never waits for presence.
-	}
-	defer agentMessageMu.Unlock()
+	// One presence row; it never takes the message lock or waits for mail.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
-	s, err := readAgentMessageStore(ctx)
+	s, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		log.Printf("[AGENT-PRESENCE] check=read status=failed agent=%s class=%s", agentID, agentDeliveryErrorClass(err))
 		return
 	}
-	for i := range s.Agents {
-		a := &s.Agents[i]
+	for _, a := range s.Agents {
 		if a.ID != agentID {
 			continue
 		}
@@ -170,8 +166,7 @@ func recordNamedAgentActivity(ctx context.Context, agentID, attachmentID string,
 		if !force && now.Sub(a.LastOnlineAt) < time.Minute {
 			return
 		}
-		a.LastOnlineAt = now
-		if err := saveAgentMessageStore(ctx, s); err != nil {
+		if err := recordAgentPresence(ctx, agentID, now); err != nil {
 			log.Printf("[AGENT-PRESENCE] check=save status=failed agent=%s class=%s", agentID, agentDeliveryErrorClass(err))
 			return
 		}
@@ -192,6 +187,26 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	name, err := normalizeMessageAgentName(externalArg(args, "agent_name"))
 	if err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
+		return
+	}
+	if externalArg(args, "action") == "inspect" {
+		// Current metadata for this account-owned name; no body or receipt, no lock.
+		s, err := readAgentMessageSnapshot(r.Context())
+		if err != nil {
+			externalCommunicationError(w, 400, "attachment_refused", err)
+			return
+		}
+		for _, a := range s.Agents {
+			if a.UserID == claims.UserID && a.Name == name && namedAgentConnectionAllowed(a, claims) {
+				var attachment any
+				if a.Attachment != nil {
+					attachment = map[string]any{"attachment_id": a.Attachment.ID}
+				}
+				externalJSON(w, map[string]any{"agent_id": a.ID, "attachment": attachment})
+				return
+			}
+		}
+		externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
 		return
 	}
 	agentMessageMu.Lock()
@@ -217,14 +232,6 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	receiptUnchanged := false
 	var startupDiagnostic *agentworksclient.StartupDiagnostic
 	switch externalArg(args, "action") {
-	case "inspect":
-		// Current metadata for this account-owned name; no body or receipt.
-		var attachment any
-		if a.Attachment != nil {
-			attachment = map[string]any{"attachment_id": a.Attachment.ID}
-		}
-		externalJSON(w, map[string]any{"agent_id": a.ID, "attachment": attachment})
-		return
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
 		if !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {

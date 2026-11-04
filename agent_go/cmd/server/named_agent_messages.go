@@ -94,19 +94,14 @@ func namedAgentOperationAllowed(claims *UserClaims, send bool) bool {
 	return t.Allows("messages:send") || !send && t.Allows("messages:read") || t.Allows("crews:run") || t.Allows("runs:execute") || externalCodeRunAllowed(claims) || !send && (t.Allows("crews:read") || t.Allows("workflows:read"))
 }
 
-// Read a fresh store snapshot. Mutation callers already hold agentMessageMu;
+// Read the committed agent row. Mutation callers already hold agentMessageMu;
 // authorization fails closed if storage is unavailable.
 func namedAgentByID(ctx context.Context, userID, id string) (namedMessageAgent, error) {
-	start := time.Now()
-	// Record this lookup's caller, so repeated per-message admission checks are
-	// distinguishable from a single event-stream scan.
-	caller := agentMailboxReadCaller()
-	entry, err := readIndependentAgentMessageSnapshot(ctx)
-	defer func() { agentMailboxTiming("lookup", start, 0, time.Since(start), caller) }()
+	s, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return namedMessageAgent{}, err
 	}
-	for _, a := range entry.store.Agents {
+	for _, a := range s.Agents {
 		if a.ID == id && a.UserID == userID {
 			return cloneNamedAgent(a), nil
 		}
@@ -483,16 +478,17 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 			continue
 		}
 		seen = version
-		s, e := readAgentMessageSnapshot(ctx)
-		if e != nil {
-			return nil, e
-		}
 		current, e := namedAgentByID(ctx, claims.UserID, a.ID)
 		if e != nil || !namedAgentConnectionAllowed(current, claims) {
 			return nil, fmt.Errorf("named agent unavailable or access denied")
 		}
+		// Only this agent's conversations leave the database.
+		conversations, e := namedAgentMailboxConversations(ctx, claims.UserID, a.ID)
+		if e != nil {
+			return nil, e
+		}
 		items := []map[string]interface{}{}
-		for _, c := range s.Conversations {
+		for _, c := range conversations {
 			for side, end := range c.Endpoints {
 				if end.NamedAgentID != a.ID || end.UserID != claims.UserID {
 					continue
@@ -576,9 +572,10 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 			}
 			// What this agent sent recently, and where each message stands.
 			fresh, readErr := readAgentMessageSnapshot(ctx)
-			if readErr == nil {
+			freshConversations, queryErr := namedAgentMailboxConversations(ctx, claims.UserID, a.ID)
+			if readErr == nil && queryErr == nil {
 				sent := []map[string]interface{}{}
-				for _, c := range fresh.Conversations {
+				for _, c := range freshConversations {
 					for side, end := range c.Endpoints {
 						if end.NamedAgentID == a.ID && end.UserID == claims.UserID {
 							sent = append(sent, fresh.sentReceipts(c, side, 10)...)

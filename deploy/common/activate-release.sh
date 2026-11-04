@@ -27,17 +27,11 @@
 # deploy/common/slots.sh and deploy/common/vault.sh must be sourced first. The caller's EXIT trap calls activate_recover.
 
 ACTIVATE_STOPPED=0
-ACTIVATE_MAILBOX_BACKUP=""
 
 # Restart the services if the deploy fails while they are stopped, and Vault if it was stopped for its bootstrap.
 activate_recover() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$ACTIVATE_STOPPED" == 1 ]]; then
-    # An old-format release must never restart against split metadata. Keep
-    # the plain original backup when a caller switches current back on failure.
-    if [[ -n "${ACTIVATE_MAILBOX_BACKUP:-}" && "$(readlink -f "$APP_ROOT/current")" != "$(readlink -f "$RELEASE_DIR")" ]]; then
-      python3 "$REPO_ROOT/scripts/migrations/split-agent-mailbox.py" "$DOCS_ROOT/_system/agent_messages/conversations.json" --restore-backup "$ACTIVATE_MAILBOX_BACKUP" || return 1
-    fi
     systemctl --user restart "$UNIT_PREFIX-workspace" "$UNIT_PREFIX-agent" "$UNIT_PREFIX-gateway" >/dev/null 2>&1 || true
   fi
 }
@@ -129,6 +123,15 @@ PY
     return 1
   fi
   echo "sandbox: proven on this host (mount-namespace fallback test passed)"
+  # PLAT-856-522: the new agent imports the old JSON mailbox on its first start and refuses to start if the import would
+  # fail. Prove it now, read-only, with the new binary against this server's data, while the old release still serves.
+  local mailbox_check
+  if ! mailbox_check="$("$RELEASE_DIR/bin/$UNIT_PREFIX-agent" server mailbox-import --docs-dir "$DOCS_ROOT" --dry-run 2>&1)"; then
+    printf '%s\n' "$mailbox_check" | tail -40 >&2
+    echo "ERROR: the AgentBridge mailbox import dry run failed, so the new agent would not start. The live server keeps the old release." >&2
+    return 1
+  fi
+  echo "mailbox: $(jq -c '{reason, conversations, messages, delivered, bytes}' <<< "$(printf '%s\n' "$mailbox_check" | sed -n '/^{/,/^}/p')" 2>/dev/null || echo 'dry run passed')"
   # The browser CLI must start inside the sandbox, not merely be on the host PATH (PLAT-599).
   if [[ -n "${BROWSER_CLI_CHECK_DIR:-}" ]]; then
     AGENTWORKS_BROWSER_CLI_CHECK=1 AGENT_BROWSER_CLI_DIR="$BROWSER_CLI_CHECK_DIR" \
@@ -262,6 +265,15 @@ except Exception:
   # step fails while the services are stopped, activate_recover (the caller's EXIT trap) restarts them.
   ACTIVATE_STOPPED=1
   systemctl --user stop "$UNIT_PREFIX-agent"
+  # Deploy-time mailbox snapshot (there is no recurring backup job): a consistent copy of the stopped agent's database at
+  # STATE_ROOT/backups/mailbox-RELEASE_ID.sqlite (VACUUM INTO, 0600); the newest 5 are kept.
+  if [[ -f "$DOCS_ROOT/_system/agent_messages/mailbox.sqlite" ]]; then
+    install -d -m 0700 "$STATE_ROOT/backups"
+    rm -f "$STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
+    "$RELEASE_DIR/bin/$UNIT_PREFIX-agent" server mailbox-backup --docs-dir "$DOCS_ROOT" --out "$STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
+    echo "mailbox: snapshot $STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
+    ls -1t "$STATE_ROOT"/backups/mailbox-*.sqlite | tail -n +6 | while IFS= read -r old_snapshot; do rm -f "$old_snapshot"; done
+  fi
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
@@ -271,12 +283,8 @@ except Exception:
       [[ -f "$file" ]] && systemctl --user enable --now "$(basename "$file")"
     done
   fi
-  # PLAT-856-418: last cutover step before starting new units; the old
-  # writer is stopped. Every server converts on its next authorized deploy.
-  local mailbox_conversion
-  mailbox_conversion="$(python3 "$REPO_ROOT/scripts/migrations/split-agent-mailbox.py" "$DOCS_ROOT/_system/agent_messages/conversations.json")"
-  echo "$mailbox_conversion"
-  ACTIVATE_MAILBOX_BACKUP="$(jq -r '.backup // empty' <<< "$mailbox_conversion")"
+  # PLAT-856-522: the agent imports the old JSON mailbox into _system/agent_messages/mailbox.sqlite on its first start
+  # (the JSON files are renamed *.imported-<time>, never deleted); step 3 already proved the import with a dry run.
   systemctl --user restart "$UNIT_PREFIX-workspace"
   sleep 2
   vault_start "$UNIT_PREFIX" "$VAULT_PORT"

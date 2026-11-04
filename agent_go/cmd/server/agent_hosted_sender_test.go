@@ -25,11 +25,12 @@ func TestHostedAgentMessageUsesCanonicalChatKey(t *testing.T) {
 	const session = "product-11111111-2222-4333-8444-555555555555"
 	record := ProductConversationRecord{ProfileID: workproduct.ProfileID, ConversationKey: key, SessionID: session, WorkspacePath: root, ResourceID: "example"}
 	registry, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{"code/" + key: record}})
-	initial, _ := json.Marshal(agentMessageStore{Agents: []namedMessageAgent{{ID: "agent-receiver", UserID: "owner", Name: "receiver", EverAttached: true, Attachment: &namedAgentAttachment{ID: "lease", DeliveryContract: 2}}}})
+	if err := saveAgentMessageStore(context.Background(), agentMessageStore{Agents: []namedMessageAgent{{ID: "agent-receiver", UserID: "owner", Name: "receiver", EverAttached: true, Attachment: &namedAgentAttachment{ID: "lease", DeliveryContract: 2}}}}); err != nil {
+		t.Fatal(err)
+	}
 	env.mock.mu.Lock()
 	env.mock.files[root+"/product.json"] = `{"schema_version":1,"product":"code","id":"example","owner_id":"owner","title":"Example","session_id":"project-main"}`
 	env.mock.files[productConversationRegistryPath("owner")] = string(registry)
-	env.mock.files[agentMessagesPath] = string(initial)
 	env.mock.mu.Unlock()
 	reg := &recordingRegistrar{}
 	if err := env.api.registerAgentMessagingTools(reg, "owner", session, QueryRequest{}, crewTriggerLinkCaller(root), func(string) {}); err != nil {
