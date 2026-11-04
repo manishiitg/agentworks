@@ -79,18 +79,16 @@ type promptContext struct {
 
 	// Prebuilt text for sections whose construction needs a request context or
 	// other state the registry deliberately does not carry.
-	AuthenticatedUser              string
-	CapabilitySection              string
-	WorkflowMode                   string
-	WorkflowUIAvailable            bool
-	WorkflowContext                string
-	WorkFolders                    string
-	ChannelFormatting              string
-	BrowserPointer                 string
-	GrantSections                  []string
-	CLIToolEnvironment             string
-	ClarificationAvailable         bool
-	NativeClaudeQuestionsAvailable bool
+	AuthenticatedUser   string
+	CapabilitySection   string
+	WorkflowMode        string
+	WorkflowUIAvailable bool
+	WorkflowContext     string
+	WorkFolders         string
+	ChannelFormatting   string
+	BrowserPointer      string
+	GrantSections       []string
+	CLIToolEnvironment  string
 	// FeatureExtensions come from the trusted feature catalog resolved from
 	// product.yaml. They extend the product prompt; they never replace it.
 	FeatureExtensions []string
@@ -199,18 +197,6 @@ var promptSections = []promptSection{
 		Name:    "cli-tool-environment",
 		Applies: func(c promptContext) bool { return c.CLIToolEnvironment != "" && !c.NativeCodingTools },
 		Build:   func(c promptContext) string { return c.CLIToolEnvironment },
-	},
-	{
-		Name:    "clarification",
-		Applies: func(c promptContext) bool { return c.ClarificationAvailable },
-		Build: func(c promptContext) string {
-			if c.NativeClaudeQuestionsAvailable {
-				return `## Question tools
-AskUserQuestion and request_clarification are available. Native questions appear as selectable cards with multi-select and custom text answers. An interrupted or expired prompt is not approval.`
-			}
-			return `## Question tools
-Native question tools and request_clarification are available. Native Codex, Cursor and Pi questions appear as answerable cards in this chat. An interrupted or expired prompt is not approval.`
-		},
 	},
 	{
 		// Full mode keeps the CLI's own file tools but not its built-in shell

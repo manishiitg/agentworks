@@ -277,12 +277,6 @@
     "external_members": "remove_slack_bot_route"
   },
   {
-    "family": "needs_you",
-    "name": "clarify",
-    "member": "request_clarification",
-    "description": "Use the current needs_you clarify operation."
-  },
-  {
     "family": "relay",
     "name": "run",
     "member": "run_relay",

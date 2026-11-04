@@ -441,9 +441,8 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
       </CompactWrapper>
     )
   }
-  // A coding agent's multiple-choice question (Muse/Claude AskUserQuestion). The clean chat shows it as an answerable
-  // card (CodingAgentQuestionCard); this detailed view shows what was asked and, once settled, what was chosen, instead
-  // of an "Unknown Event Type" JSON dump.
+  // A coding agent's multiple-choice question from older chats (the answerable card was removed 4 Nov). This
+  // detailed view shows what was asked and what was chosen, instead of an "Unknown Event Type" JSON dump.
   if (event.type === 'coding_agent_question') {
     const envelope = event.data as { data?: Record<string, unknown> } | undefined
     const data = (envelope?.data || event.data || {}) as Record<string, unknown>

@@ -11,8 +11,6 @@ import { buildCleanConversationItems, buildProductionActivityTurns } from '../ut
 import type { ProductionActivityTurn } from '../utils/cleanConversation'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ConversationContinuityNotice } from './ConversationContinuityNotice'
-import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
-import { withClosedQuestions } from '../utils/codingAgentQuestions'
 import { formatTokens } from '../utils/formatTokens'
 
 // The agent's foreground and background status travel in separate event
@@ -28,11 +26,6 @@ export interface CleanConversationSurfaceProps {
   streamingText: string
   landingContent?: ReactNode
   onRetryLastMessage?: () => void | Promise<void>
-  onAnswerCodingAgentQuestion?: (provider: string, promptId: string, answers: Array<{ id: string; selectedLabels: string[]; otherText?: string }>, auto?: boolean) => Promise<void>
-  // Prompts the server no longer holds (after a restart): shown closed instead of answerable.
-  closedCodingAgentQuestions?: ReadonlySet<string>
-  // The pending prompt with this ID is shown above the message box instead of here.
-  dockedCodingAgentQuestion?: string
 }
 
 function messageTime(timestamp?: string): string {
@@ -127,9 +120,6 @@ export function CleanConversationSurface({
   streamingText,
   landingContent,
   onRetryLastMessage,
-  onAnswerCodingAgentQuestion,
-  closedCodingAgentQuestions,
-  dockedCodingAgentQuestion,
 }: CleanConversationSurfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [retryingFailureId, setRetryingFailureId] = useState<string | null>(null)
@@ -212,8 +202,6 @@ export function CleanConversationSurface({
             <Activity className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span className="whitespace-pre-wrap break-words">{item.content}</span>
           </div>
-        ) : item.role === 'question' && item.codingAgentQuestion ? (
-          <CodingAgentQuestionCard prompt={withClosedQuestions(item.codingAgentQuestion, closedCodingAgentQuestions)} onAnswer={onAnswerCodingAgentQuestion} docked={item.codingAgentQuestion.promptId === dockedCodingAgentQuestion} />
         ) : item.role === 'notification' ? (
           // An automatic update the runtime delivered to the agent (a background
           // step finishing), not something the user typed or the agent said. It

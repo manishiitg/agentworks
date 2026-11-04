@@ -78,7 +78,7 @@ func crewLivesOnMac(profileID, conversationKey string) bool {
 
 type crewMacCallerKey struct{}
 
-// desktopCrewWorkspace runs the owner's own AI app call (ask, read_chat, reply_input) on this Mac, through the same
+// desktopCrewWorkspace runs the owner's own AI app call (ask, read_chat) on this Mac, through the same
 // conversation service a direct ask uses, in a tab named after the app. Only the server's checked owner call reaches
 // here, over the owner's own connection; only the conversation arguments are taken from it.
 func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserClaims, project string, call crewChatCall) crewChatResult {
@@ -86,8 +86,8 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 		body, _ := json.Marshal(map[string]any{"error": map[string]string{"code": "crew_on_mac", "message": message}})
 		return crewChatResult{ID: call.ID, Status: code, Body: body}
 	}
-	if call.Action != "ask" && call.Action != "read_chat" && call.Action != "reply_input" {
-		return fail(400, "Ask, read the chat or answer its question.")
+	if call.Action != "ask" && call.Action != "read_chat" {
+		return fail(400, "Ask or read the chat.")
 	}
 	var sent map[string]any
 	if json.Unmarshal(call.Args, &sent) != nil {
