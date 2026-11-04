@@ -2715,7 +2715,6 @@ func (w *WhatsAppService) HandleMessage(ctx context.Context, msg *whatsappbot.Me
 		Timestamp:       info.Timestamp,
 		IsThreadReply:   false,
 		IsMention:       true, // every DM effectively addresses the bot
-		SelfChat:        info.IsFromMe && w.isSelfChat(info.Chat),
 	})
 }
 

@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useState, type ReactNode } from 'react'
 import { ArrowLeft, CheckCircle2, CircleDashed, Cloud, Folder, Laptop, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
-import api, { getAuthToken, getDesktopApiBaseUrl, setSlackSetupConnection } from '../../services/api'
+import api from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
 import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
@@ -9,7 +9,6 @@ import { Button } from '../../components/ui/Button'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { Switch } from '../../components/ui/Switch'
 import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide'
-import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { MacAgentBridge } from './MacAgentBridge'
@@ -187,7 +186,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
   const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'slack' | 'whatsapp'>('')
+  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move'>('')
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
@@ -297,10 +296,6 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
           {open === 'code' && link && <div id={`crew-phone-code-${projectId}`} className="flex justify-center border-t border-border p-3"><LinkCode link={link} /></div>}
           {way('ChatGPT or Claude', `“ask my ${name} Crew to…”`, <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
           {open === 'ai' && binding?.peer_server && <div className="border-t border-border py-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
-          {way('Slack DM', '', <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
-          {open === 'slack' && binding?.connection_id && <div className="border-t border-border py-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
-          {way('WhatsApp', 'message your Crew from WhatsApp', <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'whatsapp' ? '' : 'whatsapp')}>{open === 'whatsapp' ? 'Close' : 'Connect'}</Button>)}
-          {open === 'whatsapp' && binding?.peer_server && <div className="border-t border-border py-3"><MacCrewWhatsApp server={binding.peer_server} network={network} name={name} /></div>}
         </div>
         {binding?.connection_id && !online && <>
           <p className="mt-4 py-2.5"><span className="font-semibold">AgentBridge</span> <span className="text-[12.5px] text-muted-foreground">· agents that can message your agents</span></p>
@@ -350,35 +345,6 @@ function SignInToServer({ onConnected }: { onConnected: () => void }) {
     <p className="text-[13px] text-muted-foreground">Sign in to your company's AgentWorks server to use this Crew from your phone and the web, publish agents and work with a team. Your files stay on this Mac.</p>
     <ConnectServerForm onConnected={onConnected} />
   </section>
-}
-
-/** WhatsApp for a Mac Crew (owner, 4 Nov): the phone is linked once on the server; then the owner's own "Message
- * yourself" chat reaches this Mac. Anyone else who messages that number gets a short note instead. */
-function MacCrewWhatsApp({ server, network, name }: { server: string; network: string; name: string }) {
-  return <div className="space-y-2 text-xs text-muted-foreground">
-    <p>1. On {network}, open any Crew, then Integrations, WhatsApp, and link your phone once.</p>
-    <p>2. In WhatsApp, open your “Message yourself” chat, send <span className="font-mono">@list</span> and pick {name}. Your messages there go to this Mac and the answer comes back to WhatsApp.</p>
-    <p>Only your own messages reach it. Anyone else who messages you gets a short note that it is on your Mac.</p>
-    <Button className="h-7 rounded-full px-3" size="sm" variant="outline" onClick={() => window.open(server, '_blank', 'noopener,noreferrer')}>Open {network}</Button>
-  </div>
-}
-
-/** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */
-function MacCrewSlack({ connection, project }: { connection: string; project: string }) {
-  const [workspace, setWorkspace] = useState('')
-  const [failed, setFailed] = useState(false)
-  useEffect(() => {
-    setSlackSetupConnection(connection)
-    const abort = new AbortController()
-    void fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(connection)}/api/crew-sync/${encodeURIComponent(project)}`, { signal: abort.signal, headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
-      .then(response => response.ok ? response.json() : Promise.reject(new Error(String(response.status))))
-      .then((data: { workspace?: string }) => { if (data.workspace) setWorkspace(data.workspace); else setFailed(true) })
-      .catch(() => { if (!abort.signal.aborted) setFailed(true) })
-    return () => { abort.abort(); setSlackSetupConnection('') }
-  }, [connection, project])
-  if (failed) return <p className="text-xs text-muted-foreground">Slack setup could not be opened. Check that you are signed in, then try again.</p>
-  if (!workspace) return <p role="status" className="text-xs text-muted-foreground">Opening Slack setup…</p>
-  return <ProductSlackPanel workspacePath={workspace} noun="Crew" section="bot" />
 }
 
 /** The Move online step: size and time, what moves, then the owner's click. One-way (owner, 3 Nov). */
