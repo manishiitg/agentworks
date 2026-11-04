@@ -330,7 +330,12 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 		operation = "agent_answer"
 	}
 	events, _ := args["events"].(bool) // the chat's own events for those turns, so the person sees the owner's chat view
-	raw, _ := json.Marshal(map[string]any{"sender_id": claims.UserID, "after": externalInt(args, "after", 0), "wait_seconds": externalInt(args, "wait_seconds", 0), "events": events})
+	// How it came, for the receiving chat's "From …" line: the person's own AI app over MCP, or the website.
+	channel := "website"
+	if claims.AccessToken != nil {
+		channel = "MCP"
+	}
+	raw, _ := json.Marshal(map[string]any{"sender_id": claims.UserID, "after": externalInt(args, "after", 0), "wait_seconds": externalInt(args, "wait_seconds", 0), "events": events, "sender_channel": channel})
 	call := crewChatCall{Operation: operation, Tab: agent.Tab, Message: externalArg(args, "message"), Caller: crewOwnerDisplayName(sanitizeUserIDForPath(claims.UserID)), Args: raw,
 		SubmissionID: externalArg(args, "submission_id")}
 	if action == "reply_input" {
@@ -776,7 +781,8 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		_ = json.Unmarshal(result.Body, &out)
 		return out, result.Status
 	}
-	raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": source.Label})
+	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
+	raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge"})
 	ask := crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.
