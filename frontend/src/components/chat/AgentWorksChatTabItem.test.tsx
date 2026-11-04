@@ -185,7 +185,7 @@ it.each([undefined, 'agentworks', 'relays', 'work', 'mcp-gateway'] as (ProductSu
     await render()
     expectSlot('Needs you')
     // The server's failed phase (a turn with no response) shows Failed until the person opens the chat after it ended.
-    await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, runtime_state: { phase: 'failed', completed_at: new Date(Date.now() + 60_000).toISOString() } }] as never }) })
+    await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, runtime_state: { phase: 'failed', completed_at: new Date(Date.now() + 60_000).toISOString(), foreground_turn: {} } }] as never }) })
     await render()
     expectSlot('Failed')
     await act(async () => { useChatStore.setState({ activeSessionsCache: [] }) })
