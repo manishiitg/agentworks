@@ -153,7 +153,8 @@ export function AgentHeaderLine({ tabId, crewName, projectId, showName = true }:
       {/* With the tabs showing, the open agent is the highlighted tab: its name is not repeated here (owner, 4 Nov). */}
       {showName && <><span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
       <span className="min-w-0 max-w-48 truncate font-semibold">{name}</span></>}
-      {info && <span className="shrink-0"><AgentHoverCard info={info} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
+      {/* With the tabs showing, the card opens from the agent's tab; an ⓘ by the Crew name read as the Crew's (owner, 4 Nov). */}
+      {info && showName && <span className="shrink-0"><AgentHoverCard info={info} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
         <button type="button" aria-label={`About ${name}`} className="grid h-5 w-5 place-items-center max-md:h-8 max-md:w-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info aria-hidden="true" className="h-3.5 w-3.5" /></button>
       </AgentHoverCard></span>}
     </>}
