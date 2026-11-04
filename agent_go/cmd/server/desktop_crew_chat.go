@@ -316,7 +316,8 @@ func crewMacSharedAgentText(agent macSharedAgent, sender, message string) string
 	if agent.Purpose != "" {
 		who += " Your purpose: " + agent.Purpose
 	}
-	mode := ""
+	// Said on every turn, both ways: the setting can change mid-thread and the latest line wins over earlier ones.
+	mode := "\n[Your owner now lets you make changes for this person: you may change files, run commands and use your tools for them. This replaces any earlier answer-only note in this thread.]"
 	if !agent.CanChange {
 		mode = "\n[Your owner shared you to answer questions only: read and answer; do not change files, run commands that change anything, or send anything on the owner's behalf. If they ask for a change, say you can only answer here and that your owner can turn on \"Can make changes for them\" in Access.]"
 	}
