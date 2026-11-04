@@ -143,6 +143,8 @@ deploy_rts() {
   "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${RTS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
   # The release is live and its services re-exec'd: retire an older per-product profile (refuses while any service still lacks the standard one).
   rts_userns userns-retire
+  # Each slot's Docker starts on first use; an idle engine is stopped (provision-slots.sh docker-on-demand).
+  rts_userns docker-on-demand
 }
 
 # Read-only CloudFront usage for RTS against the always-free tier (1 TB out,
@@ -430,6 +432,8 @@ echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOS
 if [[ "${SLOTS_ENABLED:-false}" == true && -n "${HOST_SETUP_USER:-}" ]]; then
   echo "==> [$PRODUCT] Installing the active native session helper"
   ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} bash -s -- native-session" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+  echo "==> [$PRODUCT] Slot Docker starts on first use; idle engines are stopped"
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} bash -s -- docker-on-demand" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh" || echo "WARN docker-on-demand did not run; slot Docker stays as it was" >&2
 elif [[ "${SLOTS_ENABLED:-false}" == true ]] && "${SSH[@]}" "sudo -n -l /usr/local/libexec/agentworks/install-native-session >/dev/null 2>&1"; then
   # The host allows exactly this root step (deploy/common/install-native-session.sh, installed by root with one sudoers line).
   echo "==> [$PRODUCT] Installing the active native session helper (checked against the build manifest)"
