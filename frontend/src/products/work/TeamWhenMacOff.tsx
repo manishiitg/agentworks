@@ -52,14 +52,14 @@ export function useTeamCopyStatus(projectId: string, connection: string) {
 export function TeamDataLine({ status, network }: { status: TeamCopyStatus | null; network: string }) {
   const off = status?.when_mac_off === 'wait' ? 'and their messages wait for it while it is off.' : 'and from the team copy while it is off.'
   return <p className="mt-4 flex gap-2 rounded-[10px] bg-violet-500/10 px-3 py-2 text-[13px] text-violet-800 dark:text-violet-200">
-    <span aria-hidden="true">👥</span><span>People work with you here. The shared folder and the team's chats are kept on {network}. Your agents answer from this Mac while it is on, {off}</span>
+    <span>People work with you here. The shared folder and the team's chats are kept on {network}. Your agents answer from this Mac while it is on, {off}</span>
   </p>
 }
 
 /** "When your Mac is off" and the status line, right after the shared folder. */
 export function TeamWhenMacOff({ status, error, busy, choose, network }: ReturnType<typeof useTeamCopyStatus> & { network: string }) {
   if (!status) return error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null
-  const now = [status.mac_on ? '💻 your Mac is on' : '💻 your Mac is off',
+  const now = [status.mac_on ? 'your Mac is on' : 'your Mac is off',
     ...(status.people || []).map(person => `${person.name}'s Mac is ${person.mac_on ? 'on' : 'off'}`),
     status.answered_today === 1 ? '1 question answered by the team copy today' : `${status.answered_today} questions answered by the team copy today`]
   if (status.waiting > 0) now.push(status.waiting === 1 ? '1 message waiting for your Mac' : `${status.waiting} messages waiting for your Mac`)
