@@ -16,6 +16,7 @@ export interface AgentCardInfo {
   canChange?: boolean
   lastAsked?: { who: string; when: string; active: boolean; open: () => void }
   onSetPurpose: () => void
+  onSetIcon?: () => void
   /** Opens Access at this agent; only where sharing can be set from here. */
   onSharing?: () => void
 }
@@ -100,6 +101,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         <button type="button" onClick={() => finish(info.lastAsked!.open)} className="min-w-0 truncate text-primary hover:underline">{info.lastAsked.who} · {info.lastAsked.when}</button></div>}
       <div className="mt-2 flex gap-4">
         <button type="button" onClick={() => finish(info.onSetPurpose)} className="text-primary hover:underline">{info.purpose ? 'Change purpose' : 'Set purpose'}</button>
+        {info.onSetIcon && <button type="button" onClick={() => finish(info.onSetIcon!)} className="text-primary hover:underline">{info.icon ? 'Change icon' : 'Set icon'}</button>}
         {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
       </div>
       {actions && <div className="mt-2 border-t border-border pt-1.5"><AgentActionsMenu name={info.name} actions={actions} pinned={pinned} onDone={() => setAt(null)} /></div>}
