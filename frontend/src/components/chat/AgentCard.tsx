@@ -2,11 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Pencil } from 'lucide-react'
 import { create } from 'zustand'
+import { AgentIcon } from './AgentIcon'
 
 // A Crew agent's details (owner, 4 Nov, tab option B): the tab strip shows names only; hovering a name (~400 ms, or a
 // long press on touch) opens one card, and the open tab's purpose sits in one line at the top of its chat.
 export interface AgentCardInfo {
   name: string
+  /** Its emoji, once it has one; the first letter stands in until then. */
+  icon?: string
   purpose?: string
   /** "tester-b", "everyone in the company"; undefined while the agent is not shared. */
   sharedWith?: string
@@ -26,11 +29,12 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 
 /** One Crew's agents as its tab strip knows them, for the agent list in the app's left menu. */
 export interface CrewAgentRow { tabId: string; name: string; main: boolean; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null }
-export const useCrewAgentsStore = create<{ projectId: string | null; agents: CrewAgentRow[]; canAdd: boolean; set: (projectId: string, agents: CrewAgentRow[], canAdd: boolean) => void }>(set => ({
+export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; canAdd: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean) => void }>(set => ({
   projectId: null,
+  name: '',
   agents: [],
   canAdd: false,
-  set: (projectId, agents, canAdd) => set({ projectId, agents, canAdd }),
+  set: (projectId, name, agents, canAdd) => set({ projectId, name, agents, canAdd }),
 }))
 
 /** The person's choice of how agents are shown ("menu" or "tabs"), once it has loaded from the server. */
@@ -84,19 +88,23 @@ export function AgentHoverCard({ info, children }: { info?: AgentCardInfo; child
   </>
 }
 
-/** One muted line at the top of the open tab's chat: its purpose (two lines with "more" when long), who it is shared
- * with (opens Access at this agent) and ✎ to change the purpose. */
-export function AgentPurposeLine({ tabId }: { tabId?: string | null }) {
+/** The open agent's header line (owner, 4 Nov): its icon and name · purpose · who it is shared with (opens Access at
+ * this agent) · ✎ to change the purpose. With Left menu it sits in the top bar (inline); with Tabs, under the tabs. */
+export function AgentPurposeLine({ tabId, inline = false }: { tabId?: string | null; inline?: boolean }) {
   const open = useOpenAgentStore()
+  const row = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId) : undefined))
   const [more, setMore] = useState(false)
   const info = open.tabId && open.tabId === tabId ? open.info : null
-  if (!info || (!info.purpose && !info.sharedWith)) return null
-  return <div className="flex shrink-0 items-start gap-2 border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
+  const name = row?.name || info?.name
+  if (!name) return null
+  return <div className={`flex min-w-0 items-center gap-2 text-xs text-muted-foreground ${inline ? 'flex-1' : 'shrink-0 border-b border-border px-4 py-1.5'}`} data-agent-header>
+    <AgentIcon name={name} icon={info?.icon} size={inline ? 'md' : 'sm'} active />
     <p className={`min-w-0 flex-1 ${more ? 'whitespace-pre-wrap' : 'truncate'}`}>
-      {info.purpose || 'No purpose yet'}
-      {info.sharedWith && <> · {info.onSharing ? <button type="button" onClick={info.onSharing} className="hover:text-foreground hover:underline">Shared with {info.sharedWith}</button> : <>Shared with {info.sharedWith}</>}</>}
+      <span className={`font-semibold text-foreground ${inline ? 'text-sm' : ''}`}>{name}</span>
+      {info?.purpose && <> · {info.purpose}</>}
+      {info?.sharedWith && <> · {info.onSharing ? <button type="button" onClick={info.onSharing} className="hover:text-foreground hover:underline">Shared with {info.sharedWith}</button> : <>Shared with {info.sharedWith}</>}</>}
     </p>
-    {(info.purpose?.length || 0) > 90 && <button type="button" onClick={() => setMore(value => !value)} className="shrink-0 text-primary hover:underline">{more ? 'less' : 'more'}</button>}
-    <button type="button" aria-label={info.purpose ? 'Change purpose' : 'Set purpose'} title={info.purpose ? 'Change purpose' : 'Set purpose'} onClick={info.onSetPurpose} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button>
+    {(info?.purpose?.length || 0) > 90 && <button type="button" onClick={() => setMore(value => !value)} className="shrink-0 text-primary hover:underline">{more ? 'less' : 'more'}</button>}
+    {info && <button type="button" aria-label={info.purpose ? 'Change purpose' : 'Set purpose'} title={info.purpose ? 'Change purpose' : 'Set purpose'} onClick={info.onSetPurpose} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button>}
   </div>
 }
