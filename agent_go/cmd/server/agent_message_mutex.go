@@ -8,8 +8,8 @@ import (
 )
 
 // Observe slow holders without logging account IDs, message text or credentials.
-// Keep mutation semantics unchanged: releasing I/O transactions early requires
-// a storage transaction/CAS, never an unlocked read-modify-write of the JSON file.
+// The lock serializes each read-check-modify-save of the mailbox; the save itself
+// is one SQLite transaction. Presence and plain reads never take it.
 type agentMessageMutex struct {
 	mu       sync.Mutex
 	acquired time.Time
@@ -28,15 +28,6 @@ func (m *agentMessageMutex) Lock() {
 		}
 	}
 	m.wait = m.acquired.Sub(start)
-}
-
-// Presence is optional metadata; it must not queue behind message I/O.
-func (m *agentMessageMutex) TryLock() bool {
-	if !m.mu.TryLock() {
-		return false
-	}
-	m.acquired, m.wait, m.caller = time.Now(), 0, "presence"
-	return true
 }
 
 func (m *agentMessageMutex) Unlock() {

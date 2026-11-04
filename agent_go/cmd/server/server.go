@@ -1983,6 +1983,11 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to initialize cost event database: %v", err)
 	}
 	defer costLedger.Close()
+	// The AgentBridge mailbox is this process's own SQLite database; the first
+	// start after the change imports the old JSON files once.
+	if _, err := openAgentMailbox(fsutil.WorkspaceDocsRoot()); err != nil {
+		log.Fatalf("Failed to open the AgentBridge mailbox: %v", err)
+	}
 	costledger.SetDefaultLedger(costLedger)
 	defer costledger.SetDefaultLedger(nil)
 	legacyCostPath := filepath.Join(fsutil.WorkspaceDocsRoot(), "_system", "costs.jsonl")

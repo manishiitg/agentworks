@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -738,10 +739,7 @@ func GetDocument(c *gin.Context) {
 	// Read file. A chat conversation is assembled from its header and history
 	// log; ?tail=N returns only its last N messages (never to be saved back).
 	var content []byte
-	var mailboxTag string
-	if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
-		content, mailboxTag, err = readAgentSnapshotFile(filePath, info)
-	} else if chatlog.IsConversationPath(filePath) {
+	if chatlog.IsConversationPath(filePath) {
 		if tail := c.Query("tail"); tail != "" {
 			n := 0
 			_, _ = fmt.Sscanf(tail, "%d", &n)
@@ -759,19 +757,6 @@ func GetDocument(c *gin.Context) {
 			Error:   err.Error(),
 		})
 		return
-	}
-
-	// Internal messaging snapshots can validate their parsed cache without
-	// re-encoding/downloading the entire store. The byte cache validates file
-	// identity and complete OS metadata, including change time, on every read.
-	if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
-		tag := mailboxTag
-		c.Header("ETag", tag)
-		c.Header("Cache-Control", "private, no-cache")
-		if c.GetHeader("If-None-Match") == tag {
-			c.Status(http.StatusNotModified)
-			return
-		}
 	}
 
 	// Return the original user-relative path in the response (not the internal path)
@@ -917,15 +902,6 @@ func GetRawDocument(c *gin.Context) {
 		return
 	}
 
-	if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
-		content, _, err := readAgentSnapshotFile(filePath, info)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to read mailbox", Error: err.Error()})
-			return
-		}
-		c.Data(http.StatusOK, "application/json", content)
-		return
-	}
 	if chatlog.IsConversationPath(filePath) {
 		content, err := chatlog.Load(filePath)
 		if err != nil {
@@ -1038,8 +1014,6 @@ func UpdateDocument(c *gin.Context) {
 			return
 		}
 		fileExists = false
-	} else if strings.TrimPrefix(filePathParam, "/") == "_system/agent_messages/conversations.json" {
-		writeErr = saveAgentSnapshotFile(filePath, []byte(*req.Content))
 	} else if chatlog.IsConversationPath(filePath) {
 		writeErr = chatlog.Save(filePath, []byte(*req.Content))
 		if errors.Is(writeErr, chatlog.ErrPartialRecord) {
@@ -2253,6 +2227,14 @@ func HandleDocumentRequest(c *gin.Context) {
 
 	// Remove leading slash from filepath
 	filePathParam = strings.TrimPrefix(filePathParam, "/")
+	if agentMailboxDatabasePath(filePathParam) {
+		c.JSON(http.StatusForbidden, models.APIResponse[any]{
+			Success: false,
+			Message: "The AgentBridge mailbox database belongs to the agent server",
+			Error:   "Use the messages tools; this file is never read or written through documents",
+		})
+		return
+	}
 
 	// Route based on HTTP method and path
 	switch method {
@@ -2312,6 +2294,13 @@ func HandleDocumentRequest(c *gin.Context) {
 			Error:   "Unsupported HTTP method: " + method,
 		})
 	}
+}
+
+// The agent server is the only process that opens the mailbox database (and
+// its -wal/-shm files); a document copy or write could corrupt a live WAL.
+func agentMailboxDatabasePath(p string) bool {
+	clean := path.Clean("/" + strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(p, "/raw"), "/move"), "/diff"))
+	return strings.HasPrefix(clean, "/_system/agent_messages/mailbox.sqlite")
 }
 
 // validateFilepath validates the filepath for security and format
