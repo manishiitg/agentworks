@@ -44,9 +44,7 @@ var externalToolMerges = []externalToolMerge{
 	{"mcp", "Manage the current project's connections and call already selected tools with existing account and connection access.", platformMergeActions("mcp")},
 	{"brain", "Read and maintain shared company knowledge using existing folder roles and project grants.", platformMergeActions("brain")},
 	{"vault", "Select and store secrets and manage allowed connections. Values stay write-only; current project, Vault and administrator checks apply.", platformMergeActions("vault")},
-	{"schedules", "Timed project callers: list, create, change, pause, run and inspect them using the same saved clock and project access.", platformMergeActions("schedules")},
-	{"webhooks", "Authenticated incoming HTTP events and their deliveries. Reusable work is managed with functions.", platformMergeActions("webhooks")},
-	{"watchers", "Caller-owned condition checks and their history, using the same selected credentials and authorized targets.", platformMergeActions("watchers")},
+	{"automations", "Make a project's work start by itself: at set times (scope=schedule), when a condition becomes true (scope=watcher), or when another service calls a web address (scope=webhook). List, change and check their runs with the same project access.", platformMergeActions("automations")},
 	{"functions", "Discover, call and maintain offered functions. Published access, caller identity and active-invocation checks still apply.", platformMergeActions("functions")},
 	{"runs", "Start and inspect real workflow runs through their existing execution and access checks.", platformMergeActions("runs")},
 	{"sessions", "Use your project chats and background work. Existing person, project, tab and operation ownership still decides access.", platformMergeActions("sessions")},
@@ -103,6 +101,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		actions := map[string]string{}
 		order := []string{}
 		membersOf := map[string][]externalTool{}
+		allAdmitted := []string{}
 		for _, pair := range merge.actions {
 			admitted := []string{}
 			for _, name := range externalMemberNames(pair[1]) {
@@ -126,6 +125,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 					externalMergeProperty(props, key, value)
 				}
 			}
+			allAdmitted = append(allAdmitted, admitted...)
 			if len(admitted) > 0 {
 				actions[pair[0]] = strings.Join(admitted, "|")
 				order = append(order, pair[0])
@@ -145,6 +145,12 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 				}
 				return catalog[i], true
 			})
+		}
+		if scopes := externalScopes(merge.name, allAdmitted); len(scopes) > 0 {
+			if _, taken := props["scope"]; taken {
+				return nil, fmt.Errorf("merged tool %q: a member already has a scope field", merge.name)
+			}
+			props["scope"] = externalScopeProperty(scopes)
 		}
 		props["action"] = externalActionProperty(order, membersOf)
 		catalog = append(catalog, externalTool{
@@ -173,6 +179,63 @@ func externalCatalogTool(name string) (externalTool, bool) {
 
 // externalMemberNames splits a "workflowTool|crewTool" member spec.
 func externalMemberNames(spec string) []string { return strings.Split(spec, "|") }
+
+func externalToolNames(tools []externalTool) []string {
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Name
+	}
+	return names
+}
+
+// externalMemberScope is the catalog kind of a merged tool's member, such as
+// schedule, watcher or webhook in automations. Models keep their own scope
+// handling (scopedExternalModelMember).
+func externalMemberScope(family, name string) string {
+	if family == "models" {
+		return ""
+	}
+	for _, action := range platformtools.Actions {
+		if action.Family == family && action.Scope != "" && (action.Member == name || slices.Contains(externalMemberNames(action.ExternalMembers), name)) {
+			return action.Scope
+		}
+	}
+	return ""
+}
+
+// externalScopes lists the kinds of the given members in catalog order.
+func externalScopes(family string, names []string) []string {
+	scopes := []string{}
+	for _, name := range names {
+		if scope := externalMemberScope(family, name); scope != "" && !slices.Contains(scopes, scope) {
+			scopes = append(scopes, scope)
+		}
+	}
+	return scopes
+}
+
+func externalScopeProperty(scopes []string) map[string]any {
+	return map[string]any{"type": "string", "enum": stringsToAny(scopes), "description": "Which kind this action is for. Required when the action offers more than one."}
+}
+
+// externalScopedNames keeps an action's members of the requested kind. A call
+// may leave scope out when the action has only one kind on this server.
+func externalScopedNames(tool externalTool, action string, names []string, scope string) ([]string, error) {
+	scopes := externalScopes(tool.Name, names)
+	if len(scopes) == 0 || scope == "" && len(scopes) == 1 {
+		return names, nil
+	}
+	kept := []string{}
+	for _, name := range names {
+		if externalMemberScope(tool.Name, name) == scope {
+			kept = append(kept, name)
+		}
+	}
+	if len(kept) == 0 {
+		return nil, fmt.Errorf("%s action=%s needs scope, one of: %s", tool.Name, action, strings.Join(scopes, ", "))
+	}
+	return kept, nil
+}
 
 // externalMergedRequired: the action is required unless the tool has just one.
 func externalMergedRequired(actions []string) []any {
@@ -203,11 +266,13 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	membersOf := map[string][]externalTool{}
 	props := map[string]any{}
 	passThrough := false
+	allowedNames := []string{}
 	for _, action := range tool.actionOrder {
 		var members []externalTool
 		for _, name := range externalMemberNames(tool.actions[action]) {
 			if member, ok := externalCatalogTool(name); ok && externalTokenAllows(claims, member) {
 				members = append(members, member)
+				allowedNames = append(allowedNames, name)
 			}
 		}
 		if len(members) == 0 {
@@ -215,22 +280,42 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 		}
 		allowed = append(allowed, action)
 		membersOf[action] = members
-		line := "- action=" + action + ": " + firstSentence(members[0].Description)
-		if len(members) == 1 {
-			required := []string{}
-			if raw, ok := members[0].InputSchema["required"].([]any); ok {
-				for _, r := range raw {
-					required = append(required, fmt.Sprint(r))
+		// A scoped tool (automations) describes each kind of an action on its own line.
+		groups := [][]externalTool{members}
+		labels := []string{"- action=" + action}
+		if tool.Name != "models" {
+			if scopes := externalScopes(tool.Name, externalToolNames(members)); len(scopes) > 0 {
+				groups, labels = nil, nil
+				for _, scope := range scopes {
+					var kind []externalTool
+					for _, member := range members {
+						if externalMemberScope(tool.Name, member.Name) == scope {
+							kind = append(kind, member)
+						}
+					}
+					groups = append(groups, kind)
+					labels = append(labels, "- action="+action+" scope="+scope)
 				}
 			}
-			sort.Strings(required)
-			if len(required) > 0 {
-				line += " Requires " + strings.Join(required, ", ") + "."
-			}
-		} else {
-			line += " Pass workflow_id, or crew_id for a Crew."
 		}
-		lines = append(lines, line)
+		for i, group := range groups {
+			line := labels[i] + ": " + firstSentence(group[0].Description)
+			if len(group) == 1 {
+				required := []string{}
+				if raw, ok := group[0].InputSchema["required"].([]any); ok {
+					for _, r := range raw {
+						required = append(required, fmt.Sprint(r))
+					}
+				}
+				sort.Strings(required)
+				if len(required) > 0 {
+					line += " Requires " + strings.Join(required, ", ") + "."
+				}
+			} else {
+				line += " Pass workflow_id, or crew_id for a Crew."
+			}
+			lines = append(lines, line)
+		}
 		for _, member := range members {
 			if member.InputSchema["additionalProperties"] == true {
 				passThrough = true
@@ -252,6 +337,9 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	}
 	if tool.Name == "functions" {
 		props = externalFunctionProperties(props, allowed, externalCatalogTool)
+	}
+	if scopes := externalScopes(tool.Name, allowedNames); len(scopes) > 0 {
+		props["scope"] = externalScopeProperty(scopes)
 	}
 	props["action"] = externalActionProperty(allowed, membersOf)
 	out := tool
@@ -349,10 +437,12 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 	if !ok {
 		return tool, args, fmt.Errorf("%s needs action, one of: %s", tool.Name, strings.Join(tool.actionOrder, ", "))
 	}
-	names := externalMemberNames(spec)
+	names, err := externalScopedNames(tool, action, externalMemberNames(spec), externalArg(args, "scope"))
+	if err != nil {
+		return tool, args, err
+	}
 	name := names[0]
 	if tool.Name == "models" {
-		var err error
 		name, err = scopedExternalModelMember(names, args)
 		if err != nil {
 			return tool, args, err

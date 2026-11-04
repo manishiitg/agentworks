@@ -100,12 +100,12 @@ func TestExternalRunStatusRejectsUnknownSession(t *testing.T) {
 func TestExternalListSchedulesEmptyAndUnknownRuns(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	f.api.scheduler = NewSchedulerService(f.api) // the schedules tool reads through the scheduler
-	body := externalTestBody(t, f.call(t, "owner", "schedules", map[string]any{"action": "list", "project": "invoices"}), 200)
+	body := externalTestBody(t, f.call(t, "owner", "automations", map[string]any{"scope": "schedule", "action": "list", "project": "invoices"}), 200)
 	schedules, _ := body["schedules"].([]any)
 	if schedules == nil || len(schedules) != 0 {
 		t.Fatalf("expected empty schedules, got %v", body)
 	}
-	body = externalTestBody(t, f.call(t, "owner", "schedules", map[string]any{"action": "runs", "project": "invoices", "schedule_id": "nope"}), 404)
+	body = externalTestBody(t, f.call(t, "owner", "automations", map[string]any{"scope": "schedule", "action": "runs", "project": "invoices", "schedule_id": "nope"}), 404)
 	if body["error"].(map[string]any)["code"] != "schedule_not_found" {
 		t.Fatalf("wrong error: %v", body)
 	}
@@ -119,11 +119,11 @@ func TestExternalScheduleRunsRemainReadableAfterScheduleDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.write(t, "Workflow/invoices/schedule-runs.json", string(runs))
-	body := externalTestBody(t, f.call(t, "owner", "schedules", map[string]any{"action": "runs", "project": "invoices", "schedule_id": "deleted-schedule"}), 200)
+	body := externalTestBody(t, f.call(t, "owner", "automations", map[string]any{"scope": "schedule", "action": "runs", "project": "invoices", "schedule_id": "deleted-schedule"}), 200)
 	if body["schedule_deleted"] != true || body["total"] != float64(1) || body["runs"].([]any)[0].(map[string]any)["id"] != "retained-run" {
 		t.Fatalf("deleted schedule history is unavailable: %v", body)
 	}
-	page := externalTestBody(t, f.call(t, "owner", "schedules", map[string]any{"action": "runs", "project": "invoices", "schedule_id": "deleted-schedule", "offset": 1}), 200)
+	page := externalTestBody(t, f.call(t, "owner", "automations", map[string]any{"scope": "schedule", "action": "runs", "project": "invoices", "schedule_id": "deleted-schedule", "offset": 1}), 200)
 	if page["schedule_deleted"] != true || page["total"] != float64(1) || len(page["runs"].([]any)) != 0 {
 		t.Fatalf("deleted schedule history does not paginate: %v", page)
 	}
@@ -142,7 +142,7 @@ func TestExternalScheduleRunsPagesPastTwoHundred(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.write(t, "Workflow/invoices/schedule-runs.json", string(raw))
-	body := externalTestBody(t, f.call(t, "owner", "schedules", map[string]any{"action": "runs", "project": "invoices", "schedule_id": "deploy-hook", "offset": maxScheduleRuns, "limit": 10}), 200)
+	body := externalTestBody(t, f.call(t, "owner", "automations", map[string]any{"scope": "schedule", "action": "runs", "project": "invoices", "schedule_id": "deploy-hook", "offset": maxScheduleRuns, "limit": 10}), 200)
 	if body["total"] != float64(maxScheduleRuns+5) || body["has_more"] != false || len(body["runs"].([]any)) != 5 {
 		t.Fatalf("older run history page unavailable: %v", body)
 	}
@@ -173,12 +173,12 @@ func TestExternalWebhookRunExposesAcceptedDeployMetadata(t *testing.T) {
 		name string
 		args map[string]any
 	}{
-		{"schedules", map[string]any{"action": "runs", "project": "invoices", "schedule_id": "deploy-hook"}},
+		{"automations", map[string]any{"scope": "schedule", "action": "runs", "project": "invoices", "schedule_id": "deploy-hook"}},
 		{"runs", map[string]any{"action": "get", "workflow_id": "invoices", "run_folder": "iteration-6-hook/default"}},
 	} {
 		body := externalTestBody(t, f.call(t, "owner", call.name, call.args), 200)
 		var webhook map[string]any
-		if call.name == "schedules" {
+		if call.name == "automations" {
 			listed := body["runs"].([]any)
 			webhook = listed[0].(map[string]any)["webhook"].(map[string]any)
 		} else {
@@ -211,7 +211,7 @@ func bodyString(t *testing.T, value any) string {
 
 func TestExternalTriggerScheduleWithoutScheduler(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	body := externalTestBody(t, f.call(t, "owner", "schedules", map[string]any{"action": "run_now", "project": "invoices", "schedule_id": "daily"}), 503)
+	body := externalTestBody(t, f.call(t, "owner", "automations", map[string]any{"scope": "schedule", "action": "run_now", "project": "invoices", "schedule_id": "daily"}), 503)
 	if body["error"].(map[string]any)["code"] != "scheduler_unavailable" {
 		t.Fatalf("wrong error: %v", body)
 	}

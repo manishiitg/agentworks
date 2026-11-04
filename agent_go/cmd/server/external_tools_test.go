@@ -276,7 +276,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 			}
 		}
 		// The run surface proxies run-mode tools, including execution.
-		for _, name := range []string{"runs", "schedules"} {
+		for _, name := range []string{"runs", "automations"} {
 			if !names[name] {
 				t.Fatalf("run tool missing: %s", name)
 			}

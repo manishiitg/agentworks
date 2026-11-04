@@ -212,6 +212,11 @@ func mergeProperty(properties map[string]any, name string, value any) {
 	if reflect.DeepEqual(old, value) {
 		return
 	}
+	// Scoped members each offer their own kind: advertise one list of kinds, not a union of one-value lists.
+	if merged, ok := mergeStringEnums(old, value); ok {
+		properties[name] = merged
+		return
+	}
 	// The family advertises the union; the selected member still enforces its
 	// exact schema. One action's provider/role enum cannot exclude another's.
 	if union, ok := old.(map[string]any); ok && len(union) == 1 {
@@ -226,6 +231,37 @@ func mergeProperty(properties map[string]any, name string, value any) {
 		}
 	}
 	properties[name] = map[string]any{"anyOf": []any{old, value}}
+}
+
+// mergeStringEnums joins two string enums that differ only in their values.
+func mergeStringEnums(old, value any) (map[string]any, bool) {
+	a, okA := old.(map[string]any)
+	b, okB := value.(map[string]any)
+	if !okA || !okB || a["type"] != "string" || b["type"] != "string" || len(a) != len(b) {
+		return nil, false
+	}
+	first, okA := a["enum"].([]any)
+	second, okB := b["enum"].([]any)
+	if !okA || !okB {
+		return nil, false
+	}
+	for key, v := range a {
+		if key != "enum" && !reflect.DeepEqual(v, b[key]) {
+			return nil, false
+		}
+	}
+	merged := map[string]any{}
+	for key, v := range a {
+		merged[key] = v
+	}
+	values := slices.Clone(first)
+	for _, v := range second {
+		if !slices.Contains(values, v) {
+			values = append(values, v)
+		}
+	}
+	merged["enum"] = values
+	return merged, true
 }
 
 func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {

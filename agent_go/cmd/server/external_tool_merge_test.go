@@ -86,6 +86,31 @@ func TestExternalMergedToolPicksWorkflowOrCrewMember(t *testing.T) {
 	}
 }
 
+// One automations tool replaces schedules, watchers and webhooks (owner, 4 Nov 2026): action and scope reach that
+// kind's own member, so its checks still apply; an action several kinds share needs the scope.
+func TestExternalAutomationsCallPicksMemberByScope(t *testing.T) {
+	tool, ok := externalCatalogTool("automations")
+	if !ok {
+		t.Fatal("automations tool missing")
+	}
+	for args, want := range map[string]string{
+		`{"action":"list","scope":"schedule","project":"p"}`: "project_schedules_list",
+		`{"action":"list","scope":"webhook","project":"p"}`:  "project_webhooks_list",
+		`{"action":"list","scope":"watcher","project":"p"}`:  "project_watchers_list",
+		`{"action":"run_now","project":"p"}`:                 "project_schedules_run_now",
+	} {
+		var in map[string]any
+		_ = json.Unmarshal([]byte(args), &in)
+		member, rest, err := externalResolveMerged(tool, in)
+		if err != nil || member.Name != want || rest["action"] != nil || rest["scope"] != nil {
+			t.Fatalf("%s resolved to %s %v (%v), want %s", args, member.Name, rest, err, want)
+		}
+	}
+	if _, _, err := externalResolveMerged(tool, map[string]any{"action": "list", "project": "p"}); err == nil || !strings.Contains(err.Error(), "needs scope") {
+		t.Fatalf("list without scope: %v", err)
+	}
+}
+
 // A read-only connection is shown files without its write action.
 func TestExternalMergedFilesAreNarrowedForReaders(t *testing.T) {
 	catalog, err := externalTools()
@@ -244,7 +269,7 @@ func TestListedExternalToolSchemasAreFlat(t *testing.T) {
 		}
 	}
 	// The required fields still reach clients, in the action description.
-	for tool, want := range map[string]string{"workspace": "create: idempotency_key, kind, spec", "schedules": "run_now: "} {
+	for tool, want := range map[string]string{"workspace": "create: idempotency_key, kind, spec", "automations": "run_now: "} {
 		if !strings.Contains(needs[tool], want) {
 			t.Errorf("%s action description = %q, want %q", tool, needs[tool], want)
 		}
