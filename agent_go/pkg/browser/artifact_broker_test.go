@@ -136,3 +136,42 @@ func TestPrepareBrowserArtifactStagesAScreenshotWithNoPath(t *testing.T) {
 		t.Fatalf("a selector-only screenshot must not be rewritten: %v %v", plan, err)
 	}
 }
+
+// PLAT-856-525: defaults and plain filenames use Mac Downloads; explicit folders do not move.
+func TestCaptureDefaultDirectoryPreservesExplicitFolders(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "page.png"), []byte("existing"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := captureArgsWithDefaultDirectory("screenshot", []string{"page.png"}, dir); filepath.Base(got[0]) != "page-2.png" {
+		t.Fatalf("would replace existing capture: %v", got)
+	}
+
+	for _, tc := range []struct {
+		command     string
+		args        []string
+		index       int
+		inDownloads bool
+	}{
+		{"screenshot", nil, 0, true}, {"screenshot", []string{"page.png"}, 0, true},
+		{"screenshot", []string{"evidence/page.png"}, 0, false},
+		{"record", []string{"start"}, 1, true},
+		{"record", []string{"start", "--fps", "15"}, 1, true},
+		{"record", []string{"start", "demo.mp4"}, 1, true},
+		{"record", []string{"start", "evidence/demo.mp4"}, 1, false},
+	} {
+		got := captureArgsWithDefaultDirectory(tc.command, tc.args, "/home/example/Downloads")
+		if len(got) <= tc.index || strings.HasPrefix(got[tc.index], "/home/example/Downloads/") != tc.inDownloads {
+			t.Fatalf("%s %v -> %v", tc.command, tc.args, got)
+		}
+		if tc.command == "record" {
+			if err := validateExtensionRecording(got, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		unchanged := captureArgsWithDefaultDirectory(tc.command, tc.args, "")
+		if len(unchanged) != len(tc.args) {
+			t.Fatal("hosted arguments changed")
+		}
+	}
+}

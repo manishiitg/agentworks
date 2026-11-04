@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
@@ -384,6 +385,65 @@ func retargetDefaultScreenshot(plan *browserArtifactPlan, guard *FolderGuardConf
 			plan.RequestedPath = dest
 			plan.Transfer.DestinationPath = dest
 			return
+		}
+	}
+}
+
+// Personal captures use Downloads when no directory was chosen. Explicit
+// project paths retain their meaning, and hosted runs keep their workspace.
+func captureArgsWithDefaultDirectory(command string, args []string, downloads string) []string {
+	if downloads == "" {
+		return args
+	}
+	out := append([]string(nil), args...)
+	switch command {
+	case "screenshot":
+		i := screenshotOutputIndex(out)
+		if i < 0 {
+			if screenshotHasNoPositional(out) {
+				out = append(out, filepath.Join(downloads, fmt.Sprintf("screenshot-%d.png", time.Now().UnixNano())))
+			}
+		} else if filepath.Base(out[i]) == out[i] {
+			out[i] = unusedCaptureFilename(downloads, out[i])
+		}
+	case "record":
+		if len(out) == 0 || out[0] != "start" {
+			return args
+		}
+		if len(out) == 1 || strings.HasPrefix(out[1], "-") || strings.HasPrefix(out[1], "http://") || strings.HasPrefix(out[1], "https://") {
+			out = append([]string{out[0], filepath.Join(downloads, fmt.Sprintf("recording-%d.webm", time.Now().UnixNano()))}, out[1:]...)
+		} else if filepath.Base(out[1]) == out[1] {
+			out[1] = unusedCaptureFilename(downloads, out[1])
+		}
+	}
+	return out
+}
+
+func captureDownloadsForOptions(opts *ExecuteOptions) string {
+	downloads := common.LocalCaptureDownloadsPath()
+	if opts == nil || opts.FolderGuard == nil || downloads == "" {
+		return ""
+	}
+	for _, p := range opts.FolderGuard.WritePaths {
+		if filepath.Clean(p) == downloads {
+			return downloads
+		}
+	}
+	return ""
+}
+
+func unusedCaptureFilename(directory, name string) string {
+	extension := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, extension)
+	for n := 1; ; n++ {
+		candidate := filepath.Join(directory, name)
+		if n > 1 {
+			candidate = filepath.Join(directory, fmt.Sprintf("%s-%d%s", stem, n, extension))
+		}
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		} else if err != nil {
+			return candidate
 		}
 	}
 }

@@ -19,10 +19,11 @@ retrying. Set the optional tool parameter `active: true` only when intentionally
 bringing a shared tab forward for the person to see, for example
 `command="tab", args=["t1"], active=true`. It applies to that call only. Inline `tab tN` actions reuse the selected tab;
 after switching to a different tab, take a fresh snapshot before using refs.
-Console/errors are scoped to the selected shared tab. Screenshots require an
-explicit project-relative path inside your granted writable workspace, such as
-`<project-workspace>/evidence/screenshot.png`; `/tmp` and global
-`tool_output_folder` destinations are outside that grant.
+Console/errors are scoped to the selected shared tab. On a personal Mac,
+captures default to the Mac's Downloads folder (unless its access was removed).
+Use a filename such as `screenshot.png` or `video.mp4` to keep that default.
+An explicit project-relative path stays in that project's granted workspace.
+Hosted runs keep using workspace paths, never the host's Downloads. `/tmp` is not an output destination.
 Read a fresh snapshot before acting. A disconnected extension must be reconnected
 by the user; do not switch to another browser, restart Chrome, or recover through
 shell commands. `skills list` and `skills get core` (including `--full`) read

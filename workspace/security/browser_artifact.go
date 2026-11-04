@@ -7,11 +7,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
+
+var browserArtifactHostOS = runtime.GOOS
 
 const BrowserArtifactStagingDirName = "agentworks-browser-artifacts"
 const browserStagingNamespaceEnv = "AGENTWORKS_BROWSER_STAGING_NAMESPACE"
@@ -97,6 +100,29 @@ func resolveBrowserArtifactPath(path, base string) (string, bool, error) {
 	return filepath.Clean(path), false, nil
 }
 
+// Only the personal native Mac may publish to its Downloads folder, and only
+// when this request already grants that exact root. A path in a model request
+// cannot create this grant; server and multi-user execution stay confined.
+func browserArtifactHostDownloads(destination string, writePaths []string) bool {
+	if browserArtifactHostOS != "darwin" || os.Getenv("NATIVE_WORKSPACE") != "true" || os.Getenv("MULTI_USER_MODE") == "true" {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	root := filepath.Join(home, "Downloads")
+	if !pathWithin(destination, canonicalPath(root)) {
+		return false
+	}
+	for _, p := range writePaths {
+		if filepath.Clean(p) == root {
+			return true
+		}
+	}
+	return false
+}
+
 // ArtifactDestinationWritable applies the current write guard after resolving
 // the same virtual path that Files will later read.
 func ArtifactDestinationWritable(destination, baseDir string, writePaths []string) bool {
@@ -106,7 +132,7 @@ func ArtifactDestinationWritable(destination, baseDir string, writePaths []strin
 		return false
 	}
 	destination = canonicalPath(resolved)
-	return (bound || pathWithin(destination, base)) && pathAllowedForArtifactWrite(destination, base, writePaths)
+	return (bound || pathWithin(destination, base) || browserArtifactHostDownloads(destination, writePaths)) && pathAllowedForArtifactWrite(destination, base, writePaths)
 }
 
 // PrepareBrowserArtifactStaging creates and validates the one shared staging
@@ -183,7 +209,8 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 		return fmt.Errorf("resolve browser artifact destination: %w", err)
 	}
 	destination = canonicalPath(destination)
-	if !bound && !pathWithin(destination, base) {
+	hostDownloads := browserArtifactHostDownloads(destination, writePaths)
+	if !bound && !hostDownloads && !pathWithin(destination, base) {
 		return fmt.Errorf("browser artifact destination must be inside workspace")
 	}
 	if !pathAllowedForArtifactWrite(destination, base, writePaths) {
@@ -198,7 +225,7 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 		return fmt.Errorf("create browser artifact destination directory: %w", err)
 	}
 	canonicalParent := canonicalPath(parent)
-	if (!bound && !pathWithin(canonicalParent, base)) || !pathAllowedForArtifactWrite(canonicalParent, base, writePaths) {
+	if (!bound && !hostDownloads && !pathWithin(canonicalParent, base)) || !pathAllowedForArtifactWrite(canonicalParent, base, writePaths) {
 		return fmt.Errorf("browser artifact destination resolves outside authorized write paths")
 	}
 
