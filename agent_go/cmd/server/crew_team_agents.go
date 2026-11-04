@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -33,9 +35,9 @@ type crewTeamAgentsPerson struct {
 // crewTeamInTeam: an agent is in the team when its owner chose In team (audience "team").
 func crewTeamInTeam(agent macSharedAgent) bool { return !agent.Off && agent.Audience == "team" }
 
-// teamAgentsByPerson lists the team's in-team agents, the owner first. Members bring their own agents in a later step;
-// until then their groups are empty.
-func teamAgentsByPerson(t crewTeam, caller string) []crewTeamAgentsPerson {
+// teamAgentsByPerson lists the team's in-team agents, the owner first: the owner's from this Crew's Mac, each member's
+// from their own tabs in the server copy (they run on the server; Only me ones are left out for everyone else).
+func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
 	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: shareOwnerLabel(t.OwnerID), Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
 		owner.MacOn = crewMacSocketFor(t.OwnerID, t.ProjectID, b.PairID) != nil
@@ -55,7 +57,31 @@ func teamAgentsByPerson(t crewTeam, caller string) []crewTeamAgentsPerson {
 		if p.Invited || !crewTeamAccountActive(p.UserID) {
 			continue
 		}
-		out = append(out, crewTeamAgentsPerson{UserID: p.UserID, Name: shareOwnerLabel(p.UserID), You: p.UserID == caller, MacOn: time.Since(teamMacSeen(t.ProjectID, p.UserID)) <= teamMacSeenWithin, Agents: []crewTeamAgent{}})
+		out = append(out, crewTeamAgentsPerson{UserID: p.UserID, Name: shareOwnerLabel(p.UserID), You: p.UserID == caller, MacOn: time.Since(teamMacSeen(t.ProjectID, p.UserID)) <= teamMacSeenWithin, Agents: memberTeamAgents(ctx, t.ProjectID, p.UserID, caller)})
+	}
+	return out
+}
+
+// memberTeamAgents are one member's own tabs in this Crew's server copy.
+func memberTeamAgents(ctx context.Context, project, member, caller string) []crewTeamAgent {
+	out := []crewTeamAgent{}
+	store := defaultProductConversationRegistryStore()
+	records, err := store.projectChats(ctx, member, crewProfileID, project)
+	if err != nil {
+		return out
+	}
+	identities, _ := store.agentIdentities(ctx, member, crewProfileID, project)
+	for _, record := range records {
+		identity := identities[record.ConversationKey]
+		if identity.OnlyMe && member != caller {
+			continue
+		}
+		name := firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
+		_, tab, side := strings.Cut(record.ConversationKey, codeChatSideMarker)
+		if !side {
+			continue // the Crew's Main is the owner's
+		}
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Icon: identity.Icon, Purpose: identity.Purpose, Place: "server"})
 	}
 	return out
 }
@@ -74,5 +100,5 @@ func (api *StreamingAPI) handleCrewTeamAgents(w http.ResponseWriter, r *http.Req
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, map[string]any{"project_id": project, "name": t.Name, "people": teamAgentsByPerson(t, claims.UserID)})
+	externalJSON(w, map[string]any{"project_id": project, "name": t.Name, "people": teamAgentsByPerson(r.Context(), t, claims.UserID)})
 }

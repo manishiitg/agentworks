@@ -311,6 +311,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				"name":    map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
 				"purpose": map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
 				"icon":    map[string]interface{}{"type": "string", "description": "One emoji that fits the purpose, e.g. 🧾 for invoices. No text."},
+				"in_team": map[string]interface{}{"type": "boolean", "description": "In a Crew with a Team: true (the default) lets the others who build this Crew see this agent and its chat; false is Only me. Only when the person asks."},
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
@@ -324,12 +325,25 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if value, ok := args["icon"].(string); ok {
 					icon = &value
 				}
-				if name == nil && purpose == nil && icon == nil {
-					return "", fmt.Errorf("pass a name, a purpose or an icon")
+				inTeam, setTeam := args["in_team"].(bool)
+				if name == nil && purpose == nil && icon == nil && !setTeam {
+					return "", fmt.Errorf("pass a name, a purpose, an icon or in_team")
 				}
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
 				if err != nil {
 					return "", err
+				}
+				if setTeam {
+					if project.Self.IsMain {
+						return "", fmt.Errorf("Main's place in the Team is set on the Access page's Team tab")
+					}
+					if err := defaultProductConversationRegistryStore().setAgentOnlyMe(ctx, userID, project.ProfileID, project.Self.Key, !inTeam); err != nil {
+						return "", err
+					}
+					log.Printf("[CREW_TEAM] agent visibility user=%s tab=%s in_team=%t", logUsernameForUserID(userID), project.Self.Key, inTeam)
+					if name == nil && purpose == nil && icon == nil {
+						return jsonOut(map[string]interface{}{"in_team": inTeam})
+					}
 				}
 				if project.Self.IsMain && project.Workspace != "" {
 					// Main's identity is the Crew identity (crew_main_identity.go), the one set_work_identity writes.
