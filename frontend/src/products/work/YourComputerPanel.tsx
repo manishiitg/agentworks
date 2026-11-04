@@ -12,11 +12,11 @@ import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide
 import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
+import { MacAgentBridge } from './MacAgentBridge'
 import { CrewTeamTab } from '../../components/workspace/CrewTeamTab'
 export { useMacTabShareLine, useMacSharedAgents, openCrewAccess, takeCrewAccess, openCrewAskThread } from './MacSharedAgents'
 export type { MacAgentShare } from './MacSharedAgents'
 import { useProjectTeam } from './teamApi'
-import { CrewCodingApps } from './CrewCodingApps'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
 import { hasPendingCrewAccess } from './MacSharedAgents'
 import { schedulerApi } from '../../api/scheduler'
@@ -186,7 +186,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'slack'>('')
+  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move' | 'slack' | 'whatsapp'>('')
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
@@ -261,8 +261,8 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} projectId={projectId} connection={binding.connection_id} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
       <div className="px-0.5">
-        {status && !online && !moving && <label className="flex items-center justify-between gap-3 border-t border-border py-2.5">
-          <span className="font-semibold">Use from phone and web</span>
+        {status && !online && !moving && <label className="flex items-center justify-between gap-3 py-2.5">
+          <span><span className="font-semibold">You</span> <span className="text-[12.5px] text-muted-foreground">· from anywhere while your Mac is on</span></span>
           <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
         </label>}
         {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border py-3">
@@ -279,9 +279,14 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
           {open === 'ai' && binding?.peer_server && <div className="border-t border-border py-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
           {way('Slack DM', '', <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
           {open === 'slack' && binding?.connection_id && <div className="border-t border-border py-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
-          <CrewCodingApps connection={binding?.connection_id} crewName={name} />
+          {way('WhatsApp', 'message your Crew from WhatsApp', <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'whatsapp' ? '' : 'whatsapp')}>{open === 'whatsapp' ? 'Close' : 'Connect'}</Button>)}
+          {open === 'whatsapp' && binding?.peer_server && <div className="border-t border-border py-3"><MacCrewWhatsApp server={binding.peer_server} network={network} name={name} /></div>}
         </div>
-        <p className="mt-1 text-[12.5px] text-muted-foreground">{online ? 'Open this published Crew from the Publish tab.' : 'Only you. Works while this Mac is on.'}</p>
+        {binding?.connection_id && !online && <>
+          <p className="mt-4 py-2.5"><span className="font-semibold">AgentBridge</span> <span className="text-[12.5px] text-muted-foreground">· agents that can message your agents</span></p>
+          <MacAgentBridge key={projectId} projectId={projectId} connection={binding.connection_id} network={network} crewName={name} onTeam={() => setSection('team')} />
+        </>}
+        <p className="mt-1 text-[12.5px] text-muted-foreground">{online ? 'Open this published Crew from the Publish tab.' : 'Works while this Mac is on. A public agent answers anyone’s agents with what it has, like a shared agent.'}</p>
         {!binding && !online && <p className="mt-1 text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
       </div>
     </section>}
@@ -318,6 +323,17 @@ function MacOnlineDataLine({ projectId, connection, network, copies, onTeam }: {
   const kept = copies.length > 0 || Boolean(status?.ready)
   return <MacDataLine>Your Mac does the work while it is on. Messages pass through {network}. Your files stay on this Mac.
     {kept && <> <button type="button" className="underline underline-offset-2" onClick={onTeam}>Some agent data is kept on the server for your team</button>.</>}</MacDataLine>
+}
+
+/** WhatsApp for a Mac Crew (owner, 4 Nov): the phone is linked once on the server; then the owner's own "Message
+ * yourself" chat reaches this Mac. Anyone else who messages that number gets a short note instead. */
+function MacCrewWhatsApp({ server, network, name }: { server: string; network: string; name: string }) {
+  return <div className="space-y-2 text-xs text-muted-foreground">
+    <p>1. On {network}, open any Crew, then Integrations, WhatsApp, and link your phone once.</p>
+    <p>2. In WhatsApp, open your “Message yourself” chat, send <span className="font-mono">@list</span> and pick {name}. Your messages there go to this Mac and the answer comes back to WhatsApp.</p>
+    <p>Only your own messages reach it. Anyone else who messages you gets a short note that it is on your Mac.</p>
+    <Button className="h-7 rounded-full px-3" size="sm" variant="outline" onClick={() => window.open(server, '_blank', 'noopener,noreferrer')}>Open {network}</Button>
+  </div>
 }
 
 /** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */

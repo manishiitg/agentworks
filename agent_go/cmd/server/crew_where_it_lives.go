@@ -137,6 +137,22 @@ func (api *StreamingAPI) slackCrewOnMac(ctx context.Context, sender, project str
 	return services.BotReplyText{Text: api.askCrewMacAndWait(ctx, sender, project, "Slack", msg.Text)}
 }
 
+// whatsappCrewOnMac answers a WhatsApp message for a Crew that lives on its owner's Mac: the pairing owner's own
+// "Message yourself" chat is asked on the Mac and its answer sent back; anyone else who messages that number gets a
+// plain refusal.
+func (api *StreamingAPI) whatsappCrewOnMac(ctx context.Context, owner, project string, msg services.BotIncomingMessage) error {
+	if !msg.SelfChat || owner == "" {
+		log.Printf("[CREW_CHAT_RELAY] whatsapp project=%s refused reason=not_self_chat", project)
+		return services.BotReplyText{Text: crewOnMacSlackRefusal}
+	}
+	binding, _, ok := api.resolveExternalWorkspace(ctx, &UserClaims{UserID: owner, Username: owner}, project)
+	if !ok || binding.OwnerID != owner || binding.CoOwner {
+		log.Printf("[CREW_CHAT_RELAY] whatsapp project=%s refused reason=not_owner", project)
+		return services.BotReplyText{Text: crewOnMacSlackRefusal}
+	}
+	return services.BotReplyText{Text: api.askCrewMacAndWait(ctx, owner, project, "WhatsApp", msg.Text)}
+}
+
 // askCrewMacAndWait asks the owner's Mac in the caller's named tab and waits for the answer, reading the same
 // conversation service a direct ask does. It returns the answer, or a plain line saying why there is none.
 func (api *StreamingAPI) askCrewMacAndWait(ctx context.Context, owner, project, caller, message string) string {

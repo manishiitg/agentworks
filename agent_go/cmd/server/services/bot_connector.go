@@ -227,6 +227,9 @@ type BotIncomingMessage struct {
 	// proved the sender (slack_dm.go) and put their account in
 	// WorkspaceUserID. The turn runs as that account, not as the route.
 	DirectMessage bool
+	// SelfChat: the paired WhatsApp account's own "Message yourself" chat, sent from that account, set only by the
+	// WhatsApp service. It is the only WhatsApp message that is the pairing owner's own words.
+	SelfChat bool
 	// MentionsOtherUser is true when the message tags another platform user
 	// but not the bot (Slack <@U...> of someone else). Thread replies with
 	// this set are addressed to a colleague: the bot stays silent no matter

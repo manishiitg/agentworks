@@ -195,6 +195,12 @@ func (api *StreamingAPI) botProfileTurn(ctx context.Context, userID string, msg 
 			return nil, "", false, api.slackCrewOnMac(ctx, strings.TrimSpace(msg.WorkspaceUserID), project, msg)
 		}
 	}
+	// WhatsApp the same way (owner, 4 Nov): only the pairing owner's own "Message yourself" chat reaches their Mac.
+	if msg.Platform == "whatsapp" && msg.PresetProfile != nil && strings.EqualFold(profile.ID, crewProfileID) && !IsLocalMode() {
+		if project := crewResourceProjectID(conversationKey); crewRelayTwin(project) {
+			return nil, "", false, api.whatsappCrewOnMac(ctx, strings.TrimSpace(msg.WorkspaceUserID), project, msg)
+		}
+	}
 	// A Code talks 1:1 only: a Slack DM or WhatsApp (which admits 1:1 chats
 	// only), each sender in their own chat of it, and only people with
 	// access to it (senderProfileTurn refuses anyone else and viewers).
