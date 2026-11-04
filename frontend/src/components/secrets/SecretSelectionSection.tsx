@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { KeyRound, RefreshCw, Eye, Copy, MessageCircle } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Checkbox } from '../ui/checkbox'
@@ -28,10 +28,14 @@ export function SecretSelectionSection({selectedSecrets,onSecretChange,selectedG
  const [secretName,setSecretName]=useState('')
  const [secretValue,setSecretValue]=useState('')
  const [saving,setSaving]=useState(false)
+ const [copied,setCopied]=useState('')
  const canWrite=useCanWriteWorkflow(workflowPath||undefined)
  const shared=mode!=='project'||projectSource==='vault'
  const canManage=mode==='vault'||mode==='project'&&!shared&&canWrite
  const load=useCallback(async()=>{setLoading(true);try{setRows(shared?await secretsApi.getGlobalSecrets(mode==='vault'):await secretsApi.listWorkflowSecrets(workflowPath));setError('')}catch(cause){setError(cause instanceof Error?cause.message:'Secrets are unavailable.')}finally{setLoading(false)}},[shared,mode,workflowPath])
+ // Values belong to one project or Vault view: forget them, and drop late replies, when the view changes.
+ const scope=useRef('');const scopeKey=`${mode}:${projectSource}:${workflowPath}`;scope.current=scopeKey
+ useEffect(()=>{setRevealed({});setCopied('')},[scopeKey])
  useEffect(()=>{void load();window.addEventListener(PROJECT_SECRETS_REFRESH_EVENT,load);return()=>window.removeEventListener(PROJECT_SECRETS_REFRESH_EVENT,load)},[load])
  const ask=async(message:string)=>{try{
   const store=useChatStore.getState();const active=store.activeTabId?store.chatTabs[store.activeTabId]:undefined
@@ -40,7 +44,10 @@ export function SecretSelectionSection({selectedSecrets,onSecretChange,selectedG
  }catch(cause){setError(cause instanceof Error?cause.message:'Could not open chat.')}}
  const selected=mode==='group'?groupSelectedNames:shared?(selectedGlobalSecrets??[]):selectedSecrets
  const toggle=async(name:string)=>{try{const on=!selected.includes(name);if(mode==='group'){await onGroupAccessChange?.(name,on);return}const next=on?[...selected,name]:selected.filter(item=>item!==name);if(shared)await onGlobalSecretChange?.(next);else await onSecretChange(next)}catch(cause){setError(cause instanceof Error?cause.message:'Could not save selection.')}}
- const reveal=async(row:Row)=>{try{const value=shared?await secretsApi.revealGlobalSecret(row.name):await secretsApi.decrypt(row.encrypted_value!,workflowPath);setRevealed(old=>({...old,[row.name]:value.value}))}catch(cause){setError(cause instanceof Error?cause.message:'Could not reveal this secret.')}}
+ const fetchValue=async(row:Row)=>{const at=scope.current;const value=shared?await secretsApi.revealGlobalSecret(row.name):await secretsApi.decrypt(row.encrypted_value!,workflowPath);return scope.current===at?value.value:null}
+ const reveal=async(row:Row)=>{try{const value=await fetchValue(row);if(value!==null)setRevealed(old=>({...old,[row.name]:value}))}catch(cause){setError(cause instanceof Error?cause.message:'Could not reveal this secret.')}}
+ // Copy asks the server each time, so a value whose access was removed is never copied from memory, and it is never shown.
+ const copy=async(row:Row)=>{setCopied('');try{const value=await fetchValue(row);if(value===null)return;await navigator.clipboard.writeText(value);setCopied(row.name)}catch{setRevealed(old=>{const next={...old};delete next[row.name];return next});setError('Could not copy this secret.')}}
  const edit=(name='')=>{setEditing(name);setSecretName(name);setSecretValue('');setError('')}
  const closeEditor=()=>{setEditing(null);setSecretValue('');setSecretName('')}
  const saveSecret=async()=>{
@@ -68,7 +75,7 @@ export function SecretSelectionSection({selectedSecrets,onSecretChange,selectedG
   catch(cause){setError(cause instanceof Error?cause.message:'Could not remove this secret.')}
   finally{setSaving(false)}
  }
- const actionsFor=(name:string)=>{const row=rows.find(item=>item.name===name);if(!row||!canManage)return null;return <div className="flex flex-wrap items-center gap-1.5">{canManage&&<><Button size="xs" variant="ghost" aria-label={`Reveal ${displayName(row.name)}`} onClick={()=>void reveal(row)}><Eye className="h-3.5 w-3.5"/></Button>{!shared&&!row.managed&&<><Button size="xs" variant="outline" disabled={saving} onClick={()=>edit(row.name)}>Replace</Button><Button size="xs" variant="ghost" disabled={saving} onClick={()=>void removeSecret(row.name)}>Remove secret</Button></>}<Button size="xs" variant="ghost" onClick={()=>void ask(`Manage the Vault secret ${row.name}${workflowPath?' for this project':''}. Help me rotate, remove or share it through the existing Vault tools. Never repeat its value; preserve existing permissions.`)}>Manage in chat</Button></>}{revealed[row.name]!==undefined&&<div className="flex gap-2"><code className="min-w-0 flex-1 break-all text-xs">{revealed[row.name]}</code><Button size="xs" variant="ghost" aria-label={`Copy ${displayName(row.name)}`} onClick={()=>void navigator.clipboard.writeText(revealed[row.name])}><Copy className="h-3.5 w-3.5"/></Button><Button size="xs" variant="ghost" onClick={()=>setRevealed(old=>{const next={...old};delete next[row.name];return next})}>Hide</Button></div>}</div>}
+ const actionsFor=(name:string)=>{const row=rows.find(item=>item.name===name);if(!row||!canManage)return null;return <div className="flex flex-wrap items-center gap-1.5">{canManage&&<><Button size="xs" variant="ghost" aria-label={`Reveal ${displayName(row.name)}`} onClick={()=>void reveal(row)}><Eye className="h-3.5 w-3.5"/></Button><Button size="xs" variant="ghost" aria-label={`${copied===row.name?'Copied':'Copy'} ${displayName(row.name)}`} onClick={()=>void copy(row)}><Copy className="h-3.5 w-3.5"/></Button>{!shared&&!row.managed&&<><Button size="xs" variant="outline" disabled={saving} onClick={()=>edit(row.name)}>Replace</Button><Button size="xs" variant="ghost" disabled={saving} onClick={()=>void removeSecret(row.name)}>Remove secret</Button></>}<Button size="xs" variant="ghost" onClick={()=>void ask(`Manage the Vault secret ${row.name}${workflowPath?' for this project':''}. Help me rotate, remove or share it through the existing Vault tools. Never repeat its value; preserve existing permissions.`)}>Manage in chat</Button></>}{revealed[row.name]!==undefined&&<div className="flex gap-2"><code className="min-w-0 flex-1 break-all text-xs">{revealed[row.name]}</code><Button size="xs" variant="ghost" onClick={()=>setRevealed(old=>{const next={...old};delete next[row.name];return next})}>Hide</Button></div>}</div>}
  return <section className="space-y-3" aria-label={workspaceSecretHeading||'Secrets'}>
   {!inventory&&<><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-medium">{workspaceSecretHeading||'Secrets'}</h3><Button size="sm" variant="ghost" aria-label="Refresh secrets" onClick={()=>void load()}><RefreshCw className="h-3.5 w-3.5"/></Button></div>
   <p className="text-xs text-muted-foreground">Choose the secrets this project uses. Add or replace a project secret here, or manage sharing in chat. Saved values stay hidden.</p></>}

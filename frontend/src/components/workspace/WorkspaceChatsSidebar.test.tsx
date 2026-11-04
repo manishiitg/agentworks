@@ -64,7 +64,7 @@ vi.mock('../../stores/useProductSurfaceStore', () => ({
     }),
   }),
 }))
-vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mocks.history, listWorkspaceNavigation: mocks.navigation } }))
+vi.mock('../../services/api', () => ({ default: { get: async () => ({ data: { agents: [] } }) }, agentApi: { listChatHistorySessions: mocks.history, listWorkspaceNavigation: mocks.navigation } }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../utils/chatIdentity', () => ({
   captureChatIdentity: () => 1,

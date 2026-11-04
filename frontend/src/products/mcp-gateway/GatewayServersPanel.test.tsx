@@ -253,4 +253,15 @@ describe('GatewayServersPanel', () => {
     expect(container!.textContent).toContain('Notion')
   })
 
+  it('keeps connection credentials off the screen: settings go through chat, with no raw credential editor', async () => {
+    const fetchMock = vi.fn((url: string) => url.endsWith('/api/admin/connectors')
+      ? Promise.resolve(jsonResponse(200, { connectors: [{ ID: 'c1', WorkspaceID: 'w1', Provider: 'notion', Label: 'Notion', Status: 'active', UpstreamURL: 'https://x/mcp', OAuthServer: 'Notion' }] }))
+      : healthyFetch()(url))
+    await renderPanel(fetchMock)
+    await act(async () => { (container!.querySelector('[aria-label="Actions for Notion"]') as HTMLButtonElement).click() })
+    const labels = [...document.body.querySelectorAll('button')].map(button => button.textContent)
+    expect(labels).toContain('Manage in chat')
+    expect(document.body.querySelector('input[type="password"]')).toBeNull()
+    expect(document.body.textContent).not.toContain('Update token')
+  })
 })
