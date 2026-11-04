@@ -41,6 +41,7 @@ type crewSyncRequest struct {
 	Agents      []macSharedAgent          `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
 }
 type crewSyncReply struct {
+	Phase              string                `json:"phase,omitempty"`
 	SchedulesPaused    bool                  `json:"schedules_paused"`
 	Message            string                `json:"message,omitempty"`
 	BytesDone          int64                 `json:"bytes_done"`
@@ -271,7 +272,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return crewSyncReply{}, e
 		}
 		out := crewSyncReply{ProjectID: id, Binding: b, Workspace: roots.Virtual, Place: crewPlace(claims.UserID, id, b)}
-		out.BytesDone, out.BytesTotal = crewMoveBytes(roots, b)
+		out.BytesDone, out.BytesTotal, out.Phase = crewMoveStatus(roots, b)
 		if b != nil && b.SchedulesPaused {
 			out.SchedulesPaused = true
 			out.Message = "Your Mac schedules are paused for this move. Retry Move online to finish."
@@ -288,7 +289,10 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			if remote.Binding == nil || remote.Binding.PairID != b.PairID {
 				return out, fmt.Errorf("the paired Crew is unavailable")
 			}
-			out.BytesDone, out.BytesTotal = remote.BytesDone, remote.BytesTotal
+			out.BytesDone, out.BytesTotal, out.Phase = remote.BytesDone, remote.BytesTotal, remote.Phase
+			if out.Phase == "done" {
+				out.Phase = "activating"
+			}
 		}
 		return out, nil
 	}
@@ -311,6 +315,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		return crewSyncReply{}, err
 	}
 	out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Workspace: roots.Virtual}
+	if binding != nil && binding.Editing == "server" && binding.LastTransfer != "" {
+		out.Phase = "done"
+	}
 	if input.Action == "status" {
 		return out, nil
 	}
@@ -346,6 +353,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 				return out, err
 			}
 		}
+		if err = setCrewMovePhase(roots.ID, binding.PairID, input.TransferID, "files"); err != nil {
+			return out, err
+		}
 		if err = applyCrewSyncSnapshot(ctx, roots, binding.PairID, input.Snapshot); err != nil {
 			return out, err
 		}
@@ -354,6 +364,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 			return out, err
 		}
 		if input.Editing == "server" {
+			if err = setCrewMovePhase(roots.ID, binding.PairID, input.TransferID, "database"); err != nil {
+				return out, err
+			}
 			if err = importCrewMoveDatabase(ctx, roots, input.Snapshot.DatabasePath); err != nil {
 				return out, err
 			}
@@ -361,6 +374,11 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 				return out, err
 			}
 			out.ConversationNotice = crewMoveNotice(input.Snapshot.StatePath)
+		}
+		if input.Editing == "server" {
+			if err = setCrewMovePhase(roots.ID, binding.PairID, input.TransferID, "activating"); err != nil {
+				return out, err
+			}
 		}
 		binding.Editing = input.Editing
 		binding.LastTransfer = input.TransferID
@@ -373,6 +391,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	}
 	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
 		return out, err
+	}
+	if binding.Editing == "server" {
+		out.Phase = "done"
 	}
 	if input.Action == "push" {
 		cleanupCrewPayloads(roots.ID, binding.PairID, input.TransferID, "upload")

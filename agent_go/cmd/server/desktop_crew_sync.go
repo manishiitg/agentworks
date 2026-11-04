@@ -488,17 +488,21 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	binding.LastCompletedAt = binding.UpdatedAt
-	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
-		fail(err)
+	// A file-only receipt is not activation, including after a lost response.
+	// Keep the Mac registered and recapture its newest files on the next retry.
+	if binding.Editing != "server" {
+		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
+			fail(err)
+			return
+		}
+		if p, e := crewSyncManifestPath(roots.ID); e == nil {
+			_ = os.Remove(p + ".pending")
+		}
+		fail(fmt.Errorf("files changed during upload; the captured copy is saved on the server. Retry Move online to move your latest work"))
 		return
 	}
-	if p, e := crewSyncManifestPath(roots.ID); e == nil {
-		_ = os.Remove(p + ".pending")
-	}
-	if changedDuringHandoff {
-		fail(fmt.Errorf("files changed during upload; the captured copy is saved on the server. Send again to move your latest work"))
-		return
-	}
+	// The pending move stays on disk until finishCrewMove writes its recovery
+	// receipt. A failed receipt write or restart can still retry that transfer.
 	receipt, err := finishCrewMove(r.Context(), roots, binding, time.Now())
 	if err != nil {
 		fail(err)

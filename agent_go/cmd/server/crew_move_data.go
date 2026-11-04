@@ -252,7 +252,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 	if err = validateCrewMoveData(statePath, binding.PeerProjectID, roots.ID, main.ConversationKey); err != nil {
 		return err
 	}
-	return readCrewMoveData(statePath, func(h crewMoveHeader, chat *crewMoveChat) error {
+	apply := func(h crewMoveHeader, chat *crewMoveChat) error {
 		if h.SourceID != binding.PeerProjectID || h.SourceOwner == "" {
 			return fmt.Errorf("move records do not match the paired Crew")
 		}
@@ -308,7 +308,58 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			current.handoffAgentToolsMode = main.handoffAgentToolsMode
 			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current)
 		}
+		if err = setCrewMovePhase(roots.ID, pair, transfer, "schedules_watchers"); err != nil {
+			return err
+		}
 		if err := api.importCrewMoveCallers(ctx, claims, roots, h, pair, main.ConversationKey); err != nil {
+			return err
+		}
+		ids := map[string]string{}
+		for _, s := range h.Schedules {
+			ids[s.ID] = uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/schedule/"+s.ID)).String()
+		}
+		for i := range h.Schedules {
+			s := &h.Schedules[i]
+			original := *s
+			if s.Project.Kind != "crew" || s.Project.ID != h.SourceID || s.RunAs != h.SourceOwner {
+				return fmt.Errorf("a schedule does not belong to the moving owner")
+			}
+			s.ID, s.Project.ID, s.RunAs = ids[s.ID], roots.ID, claims.UserID
+			if s.Action.Tab != "" {
+				s.Action.Tab, err = crewMoveKey(s.Action.Tab, h, roots.ID, main.ConversationKey)
+				if err != nil {
+					return err
+				}
+			}
+			if s.When.After != nil {
+				for n, id := range s.When.After.Schedules {
+					mapped, ok := ids[id]
+					if !ok {
+						return fmt.Errorf("a schedule depends on another project's schedule")
+					}
+					s.When.After.Schedules[n] = mapped
+				}
+			}
+			if err = rebindCrewMoveWatcher(s, h, roots.ID, main.ConversationKey, pair); err != nil {
+				return err
+			}
+			if err = s.Validate(); err != nil {
+				return err
+			}
+			if state, ok := h.Watchers[original.ID]; ok {
+				if err = importCrewMoveWatcher(state, claims.UserID, original, *s); err != nil {
+					return err
+				}
+			}
+		}
+		p, err := crewMoveRecordPath(roots, "schedules.json")
+		if err != nil {
+			return err
+		}
+		if err = fsutil.WriteJSONAtomic(p, projectactions.Schedules{Schedules: h.Schedules}, 0600); err != nil {
+			return err
+		}
+		if err = setCrewMovePhase(roots.ID, pair, transfer, "dashboards_functions"); err != nil {
 			return err
 		}
 		for name, selected := range h.Settings {
@@ -372,7 +423,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			}
 
 		}
-		p, err := crewMoveRecordPath(roots, "functions.json")
+		p, err = crewMoveRecordPath(roots, "functions.json")
 		if err != nil {
 			return err
 		}
@@ -422,54 +473,23 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 		if err = fsutil.WriteJSONAtomic(hookPath, projectWebhooksDocument{Webhooks: h.Webhooks}, 0600); err != nil {
 			return err
 		}
-		ids := map[string]string{}
-		for _, s := range h.Schedules {
-			ids[s.ID] = uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/schedule/"+s.ID)).String()
-		}
-		for i := range h.Schedules {
-			s := &h.Schedules[i]
-			original := *s
-			if s.Project.Kind != "crew" || s.Project.ID != h.SourceID || s.RunAs != h.SourceOwner {
-				return fmt.Errorf("a schedule does not belong to the moving owner")
-			}
-			s.ID, s.Project.ID, s.RunAs = ids[s.ID], roots.ID, claims.UserID
-			if s.Action.Tab != "" {
-				s.Action.Tab, err = crewMoveKey(s.Action.Tab, h, roots.ID, main.ConversationKey)
-				if err != nil {
-					return err
-				}
-			}
-			if s.When.After != nil {
-				for n, id := range s.When.After.Schedules {
-					mapped, ok := ids[id]
-					if !ok {
-						return fmt.Errorf("a schedule depends on another project's schedule")
-					}
-					s.When.After.Schedules[n] = mapped
-				}
-			}
-			if err = rebindCrewMoveWatcher(s, h, roots.ID, main.ConversationKey, pair); err != nil {
-				return err
-			}
-			if err = s.Validate(); err != nil {
-				return err
-			}
-			if state, ok := h.Watchers[original.ID]; ok {
-				if err = importCrewMoveWatcher(state, claims.UserID, original, *s); err != nil {
-					return err
-				}
-			}
-		}
-		p, err = crewMoveRecordPath(roots, "schedules.json")
-		if err != nil {
-			return err
-		}
-		if err = fsutil.WriteJSONAtomic(p, projectactions.Schedules{Schedules: h.Schedules}, 0600); err != nil {
-			return err
-		}
 		log.Printf("[CREW_SYNC] project=%s phase=records-imported schedules=%d functions=%d webhooks=%d", roots.ID, len(h.Schedules), len(h.Functions), len(h.Webhooks))
 		return nil
-	})
+	}
+	if err = setCrewMovePhase(roots.ID, pair, transfer, "chats"); err != nil {
+		return err
+	}
+	var header crewMoveHeader
+	if err = readCrewMoveData(statePath, func(h crewMoveHeader, chat *crewMoveChat) error {
+		if chat == nil {
+			header = h
+			return nil
+		}
+		return apply(h, chat)
+	}); err != nil {
+		return err
+	}
+	return apply(header, nil)
 }
 
 // Validate every record before changing destination files or settings. An owner
@@ -578,13 +598,7 @@ func rebindCrewMoveWatcher(s *projectactions.Schedule, h crewMoveHeader, destina
 	input.TeamAuthorizedBy = ""
 	input.TeamPolicyRevision = 0
 	if cfg := input.Condition; cfg != nil {
-		if key := cfg.Target.ChatID; key != "" && key != "main" && key != "new" {
-			mapped, err := crewMoveKey(key, h, destination, main)
-			if err != nil {
-				return err
-			}
-			cfg.Target.ChatID = mapped
-		}
+		// Target.ChatID is a short tab ID; dispatch prefixes the destination Crew.
 		if cfg.Target.TriggerID != "" {
 			cfg.Target.TriggerID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/hook/"+cfg.Target.TriggerID)).String()
 		}

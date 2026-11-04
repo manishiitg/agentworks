@@ -17,6 +17,7 @@ import (
 )
 
 type crewMoveProgress struct {
+	Phase      string                      `json:"phase"`
 	Native     []*sessiontransfer.Bundle   `json:"native,omitempty"`
 	PairID     string                      `json:"pair_id"`
 	TransferID string                      `json:"transfer_id"`
@@ -28,12 +29,12 @@ func saveCrewMoveProgress(id, pair, transfer string, payloads map[string]crewsyn
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteJSONAtomic(p+".progress", crewMoveProgress{PairID: pair, TransferID: transfer, Payloads: payloads, Native: native}, 0600)
+	return fsutil.WriteJSONAtomic(p+".progress", crewMoveProgress{Phase: "files", PairID: pair, TransferID: transfer, Payloads: payloads, Native: native}, 0600)
 }
 
 // Progress comes from the destination's admitted descriptors and durable file
 // offsets. Reading it never waits for the working-folder/apply lock.
-func crewMoveBytes(roots crewroot.Roots, binding *crewroot.SyncBinding) (done, total int64) {
+func crewMoveStatus(roots crewroot.Roots, binding *crewroot.SyncBinding) (done, total int64, phase string) {
 	if binding == nil {
 		return
 	}
@@ -46,13 +47,17 @@ func crewMoveBytes(roots crewroot.Roots, binding *crewroot.SyncBinding) (done, t
 	if err != nil || json.Unmarshal(raw, &progress) != nil || progress.PairID != binding.PairID {
 		return
 	}
+	phase = progress.Phase
+	if binding.LastTransfer == progress.TransferID && binding.Editing == "server" {
+		phase = "done"
+	}
 	dir, err := crewTransferDir(roots.ID, binding.PairID, progress.TransferID, "upload")
 	if err != nil {
 		return
 	}
 	for name, payload := range progress.Payloads {
 		if !crewPayloadName(name) || !crewPayloadAllowed(name, payload) {
-			return 0, 0
+			return 0, 0, ""
 		}
 		total += payload.Size
 		if info, err := os.Lstat(filepath.Join(dir, name)); err == nil && info.Mode().IsRegular() {
@@ -61,7 +66,7 @@ func crewMoveBytes(roots crewroot.Roots, binding *crewroot.SyncBinding) (done, t
 	}
 	for _, bundle := range progress.Native {
 		if bundle.Validate() != nil {
-			return 0, 0
+			return 0, 0, ""
 		}
 		for _, file := range bundle.Files {
 			total += file.Size
@@ -82,6 +87,30 @@ func crewMoveBytes(roots crewroot.Roots, binding *crewroot.SyncBinding) (done, t
 		done = total
 	}
 	return
+}
+
+// Called at real work boundaries while the destination apply lock is held.
+// Status reads this record without that lock, alongside admitted byte counts.
+func setCrewMovePhase(id, pair, transfer, phase string) error {
+	p, err := crewSyncManifestPath(id)
+	if err != nil {
+		return err
+	}
+	p += ".progress"
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return err
+	}
+	var progress crewMoveProgress
+	if json.Unmarshal(raw, &progress) != nil || progress.PairID != pair || progress.TransferID != transfer {
+		return fmt.Errorf("move progress does not match this transfer")
+	}
+	progress.Phase = phase
+	if err = fsutil.WriteJSONAtomic(p, progress, 0600); err != nil {
+		return err
+	}
+	log.Printf("[CREW_MOVE_PHASE] project=%s transfer=%s phase=%s", id, transfer, phase)
+	return nil
 }
 
 func crewSyncStatePaths(id string) ([]string, error) {
@@ -283,5 +312,9 @@ func readCrewMoveReceipt(id string) (*crewMoveReceipt, error) {
 	return &out, nil
 }
 func crewMoveReply(receipt *crewMoveReceipt) crewSyncReply {
-	return crewSyncReply{ProjectID: receipt.ProjectID, Binding: receipt.Binding, Place: "online", BackupPath: receipt.BackupPath, LocalFolderKept: receipt.LocalFolderKept}
+	phase := "activating"
+	if receipt.Complete {
+		phase = "done"
+	}
+	return crewSyncReply{Phase: phase, ProjectID: receipt.ProjectID, Binding: receipt.Binding, Place: "online", BackupPath: receipt.BackupPath, LocalFolderKept: receipt.LocalFolderKept}
 }

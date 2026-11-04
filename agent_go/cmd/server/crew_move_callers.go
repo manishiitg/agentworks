@@ -76,13 +76,6 @@ func validateCrewMoveCallers(h crewMoveHeader) error {
 		if err := cfg.Validate(); err != nil {
 			return err
 		}
-		for _, key := range []string{cfg.Target.ChatID} {
-			if key != "" && key != "main" && key != "new" {
-				if _, err := crewMoveKey(key, h, "destination", "main"); err != nil {
-					return err
-				}
-			}
-		}
 		if cfg.GitHubPR == nil && (len(item.Script) > conditiontrigger.MaxOutput || conditiontrigger.Hash(item.Script) != cfg.SHA256) {
 			return fmt.Errorf("invalid moved watcher script")
 		}
