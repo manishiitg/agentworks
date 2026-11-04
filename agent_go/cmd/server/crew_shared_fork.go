@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -28,7 +29,8 @@ type crewMacSharedAsk struct {
 // owner's session is unchanged since this thread's last copy, the thread simply continues its own (nil is returned);
 // otherwise the fresh copy replaces it and recap is set to the sender's last exchanges, which the new copy lacks. The
 // copy is plain (owner, 4 Nov: they get what the agent has). Any failure leaves the thread on its own session.
-func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, sessionID string, ask *crewMacSharedAsk) (runtime *ChatHistoryAgentRuntime, recap string) {
+// threadCwd is the folder this turn's CLI runs in (from the agent itself), where the copy must land to be resumed.
+func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, sessionID, threadProvider, threadCwd string, ask *crewMacSharedAsk) (runtime *ChatHistoryAgentRuntime, recap string) {
 	if ask == nil || ask.Owner.SessionID == "" || ask.Owner.SessionID == sessionID {
 		return nil, ""
 	}
@@ -49,6 +51,9 @@ func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, 
 	if handle.NativeSessionID == "" || handle.Provider == "" {
 		return skip("owner has no saved native session yet")
 	}
+	if threadProvider != "" && threadProvider != handle.Provider {
+		return skip(fmt.Sprintf("this thread runs %s and the owner's chat %s", threadProvider, handle.Provider))
+	}
 	owner.Provider = handle.Provider
 	claims := &UserClaims{UserID: userID}
 	store, runtimeDir, err := api.crewProgramStore(ctx, claims, roots, owner, handle.Transport, false)
@@ -60,7 +65,24 @@ func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, 
 		return skip("no private staging")
 	}
 	defer os.RemoveAll(out)
-	bundle, err := exportCrewNativeProgram(ctx, userID, runtimeDir, store, handle.WorkingDir, handle.NativeSessionID, handle.Provider, handle.Transport, out, false)
+	// The CLI ran in the chat's runtime folder as the server computes it now (as Move online exports it); the saved
+	// handle's folder can be from an older state root, so it is only the fallback.
+	var bundle *sessiontransfer.Bundle
+	cwds := []string{}
+	if cwd, e := crewCLIWorkingDir(roots.Virtual, userID, owner.SessionID, handle.Provider, false); e == nil && cwd != "" {
+		cwds = append(cwds, cwd)
+	}
+	if handle.WorkingDir != "" {
+		cwds = append(cwds, handle.WorkingDir)
+	}
+	if handle.Provider == "claude-code" {
+		cwds = append(cwds, claudeSessionWorkingDirs(store, handle.NativeSessionID, handle.WorkingDir)...)
+	}
+	for _, cwd := range cwds {
+		if bundle, err = exportCrewNativeProgram(ctx, userID, runtimeDir, store, cwd, handle.NativeSessionID, handle.Provider, handle.Transport, out, false); err == nil && bundle != nil {
+			break
+		}
+	}
 	if err != nil || bundle == nil {
 		return skip(fmt.Sprintf("%s can't share its conversation yet: %v", handle.Provider, err))
 	}
@@ -79,7 +101,7 @@ func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, 
 	thread := owner
 	thread.SessionID = sessionID
 	closeWorkflowPolicyCLI(sessionID, handle.Provider, "a shared agent's thread starts from its owner's latest conversation")
-	forked, err := api.importCrewNativeInto(ctx, claims, roots, thread, sessionID, bundle)
+	forked, err := api.importCrewNativeInto(ctx, claims, roots, thread, sessionID, bundle, threadCwd)
 	if err != nil || forked == nil {
 		return skip("copy could not be imported: " + fmt.Sprint(err))
 	}
@@ -92,6 +114,41 @@ func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, 
 	}
 	log.Printf("[SHARED_FORK] thread=%s owner_session=%s fork=yes provider=%s native=%s files=%d bytes=%d", sessionID, owner.SessionID, handle.Provider, bundle.SessionID, len(bundle.Files), size)
 	return forked, senderRecap(ctx, userID, sessionID, owner.WorkspacePath, ask.Sender)
+}
+
+// claudeSessionWorkingDirs finds the folder Claude Code really ran a session in when the saved handle names an older one:
+// Claude keeps <store>/projects/<slug of its folder>/<id>.jsonl, and the folder is one of the CLI runtime folders.
+func claudeSessionWorkingDirs(store, id, saved string) []string {
+	matches, _ := filepath.Glob(filepath.Join(store, "projects", "*", id+".jsonl"))
+	if len(matches) == 0 {
+		return nil
+	}
+	bases := []string{}
+	if state, err := workflowCLIStateRoot(); err == nil {
+		bases = append(bases, filepath.Join(state, "cli-runtimes", "v1"))
+	}
+	if saved != "" {
+		bases = append(bases, filepath.Dir(saved))
+	}
+	// The app's own state folders on this Mac (the name has changed case over time).
+	if config, err := os.UserConfigDir(); err == nil {
+		for _, name := range []string{"agentworks", "AgentWorks"} {
+			bases = append(bases, filepath.Join(config, name, "state", "cli-runtimes", "v1"))
+		}
+	}
+	out := []string{}
+	for _, match := range matches {
+		slug := filepath.Base(filepath.Dir(match))
+		for _, base := range bases {
+			dirs, _ := filepath.Glob(filepath.Join(base, "*"))
+			for _, dir := range dirs {
+				if sessiontransfer.ClaudeSlug(dir) == slug && !slices.Contains(out, dir) {
+					out = append(out, dir)
+				}
+			}
+		}
+	}
+	return out
 }
 
 func bundleFingerprint(b *sessiontransfer.Bundle) string {

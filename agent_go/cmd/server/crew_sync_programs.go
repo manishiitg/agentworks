@@ -281,21 +281,23 @@ func (api *StreamingAPI) importCrewNative(ctx context.Context, claims *UserClaim
 			}
 		}
 	}
-	return api.importCrewNativeInto(ctx, claims, roots, current, session, b)
+	return api.importCrewNativeInto(ctx, claims, roots, current, session, b, "")
 }
 
 // importCrewNativeInto writes a native session bundle into one conversation's own runtime and returns the runtime that
 // resumes it. Callers do their own admission (a handoff's busy and lineage checks, a shared agent's fork).
-func (api *StreamingAPI) importCrewNativeInto(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, session string, b *sessiontransfer.Bundle) (*ChatHistoryAgentRuntime, error) {
+// cwd is the folder the destination's CLI runs in when the caller knows it (a live turn); empty computes it.
+func (api *StreamingAPI) importCrewNativeInto(ctx context.Context, claims *UserClaims, roots crewroot.Roots, current ProductConversationRecord, session string, b *sessiontransfer.Bundle, cwd string) (*ChatHistoryAgentRuntime, error) {
 	next := current
 	next.SessionID = session
 	store, runtimeDir, e := api.crewProgramStore(ctx, claims, roots, next, b.Transport, true)
 	if e != nil {
 		return nil, e
 	}
-	cwd, e := crewCLIWorkingDir(roots.Virtual, claims.UserID, session, b.Provider, false)
-	if e != nil {
-		return nil, e
+	if cwd == "" {
+		if cwd, e = crewCLIWorkingDir(roots.Virtual, claims.UserID, session, b.Provider, false); e != nil {
+			return nil, e
+		}
 	}
 	if slot, ok := crewNativeSlot(claims.UserID, runtimeDir, b.Provider); ok {
 		_, e = crewSlotNativeTransfer(ctx, claims.UserID, slot, runtimeDir, b.SessionID, b.Transport, b, "")
