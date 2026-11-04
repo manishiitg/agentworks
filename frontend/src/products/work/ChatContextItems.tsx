@@ -43,7 +43,7 @@ export const chatSendMessageEvent = 'agentworks:chat-send-message'
 /** Sent by the chip in the chat box to open that chat's model menu. */
 export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 
-type ChatContextChange = { idle_compaction?: boolean; claude_terminal?: boolean; action?: 'compact' | 'fresh' }
+type ChatContextChange = { idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; action?: 'compact' | 'fresh' }
 
 /**
  * Sends one change to the server and shows its answer everywhere: the menu, the chip and the terminal icon
@@ -92,7 +92,7 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
   const used = view.used_tokens ?? 0
   const windowTokens = view.window_tokens ?? 0
   const limits = chatLimitsText(view.limits)
-  const offersSomething = Boolean(view.idle_compaction || view.claude_terminal || view.can_compact || view.can_fresh)
+  const offersSomething = Boolean(view.idle_compaction || view.compact_early || view.claude_terminal || view.can_compact || view.can_fresh)
   if (!(used > 0) && !limits && !offersSomething) return null
 
   const send = async (body: ChatContextChange) => {
@@ -119,6 +119,14 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
       <span className="min-w-0 flex-1">
         <span className="block">Auto-compact when idle</span>
         {view.idle_compaction_hint && <span className="block text-[11px] leading-snug text-muted-foreground">{view.idle_compaction_hint}</span>}
+      </span>
+      <Menu.ItemIndicator className="pt-0.5"><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
+    </Menu.CheckboxItem>}
+    {view.compact_early && <Menu.CheckboxItem className={`${menuRowClass} items-start`} checked={view.compact_early.on} disabled={busy} onSelect={keepOpen}
+      onCheckedChange={checked => void send({ compact_early: checked === true })}>
+      <span className="min-w-0 flex-1">
+        <span className="block">Compact at 300K</span>
+        {view.compact_early_hint && <span className="block text-[11px] leading-snug text-muted-foreground">{view.compact_early_hint}</span>}
       </span>
       <Menu.ItemIndicator className="pt-0.5"><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
     </Menu.CheckboxItem>}

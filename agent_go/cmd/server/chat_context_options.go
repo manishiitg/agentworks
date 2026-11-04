@@ -81,6 +81,9 @@ type chatContextView struct {
 	CanCompact     bool               `json:"can_compact"`
 	CanFresh       bool               `json:"can_fresh"`
 	Hint           string             `json:"idle_compaction_hint,omitempty"`
+	// CompactEarly compacts the chat when a reply ends with its conversation over compactEarlyTokens. Off by default.
+	CompactEarly     *chatContextSwitch `json:"compact_early,omitempty"`
+	CompactEarlyHint string             `json:"compact_early_hint,omitempty"`
 }
 
 // idleCompactHint says when "Auto-compact when idle" acts, from the idle sweep's own setting.
@@ -428,6 +431,8 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(subject.provider)), transport) {
 		view.IdleCompaction = &chatContextSwitch{On: !tab.Identity.IdleCompactionOff}
 		view.Hint = idleCompactHint()
+		view.CompactEarly = &chatContextSwitch{On: tab.Identity.CompactEarly}
+		view.CompactEarlyHint = compactEarlyHint()
 	}
 	if strings.EqualFold(strings.TrimSpace(subject.provider), string(llmproviders.ProviderClaudeCode)) {
 		view.ClaudeTerminal = &chatContextSwitch{On: tab.Identity.ClaudeTerminal}
@@ -517,6 +522,40 @@ func (api *StreamingAPI) startClaudeTerminalNow(owner string, tab chatContextTab
 	return "Starting Claude Code in the terminal.", false
 }
 
+// compactEarlyTokens is the conversation size at which "Compact at 300K" compacts a chat after a reply. A busy chat
+// otherwise grew until the CLI's own limit (about 1M for Claude) and re-read all of it on every step: one turn,
+// 43 steps at 290-390K each, 14.8M input tokens (4 Nov).
+const compactEarlyTokens = 300_000
+
+func compactEarlyHint() string {
+	return fmt.Sprintf("When a reply ends with this chat over %dK tokens, it is summarised right away, so each next step reads less. Off by default.", compactEarlyTokens/1000)
+}
+
+// compactEarlyAfterTurn compacts a chat whose person turned "Compact at 300K" on, once its reply has ended with the
+// conversation over compactEarlyTokens. The same compaction as "Compact now", by every CLI that can compact.
+func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
+	if api == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	owner := api.idleCompactOwner(sessionID, personUser)
+	tab, found := chatContextTabForSession(context.Background(), owner, sessionID)
+	if !found || !tab.Identity.CompactEarly {
+		return
+	}
+	idleCompacts.mu.Lock()
+	var provider string
+	if c := idleCompacts.chats[sessionID]; c != nil {
+		provider = c.provider
+	}
+	idleCompacts.mu.Unlock()
+	tokens, _, _ := api.chatContextUsage(sessionID, provider, "", false)
+	if tokens < compactEarlyTokens {
+		return
+	}
+	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=compact reason=compact_early", sessionID, provider, owner, tokens)
+	api.compactChatAfterTurn(owner, tab)
+}
+
 // compactChatAfterTurn waits (up to 15 minutes) for the chat's turns to end, then compacts it once.
 func (api *StreamingAPI) compactChatAfterTurn(owner string, tab chatContextTab) {
 	sessionID := tab.Record.SessionID
@@ -563,6 +602,7 @@ func (api *StreamingAPI) freshChat(ctx context.Context, owner string, tab chatCo
 type chatContextRequest struct {
 	SessionID      string `json:"session_id"`
 	IdleCompaction *bool  `json:"idle_compaction,omitempty"`
+	CompactEarly   *bool  `json:"compact_early,omitempty"`
 	ClaudeTerminal *bool  `json:"claude_terminal,omitempty"`
 	Action         string `json:"action,omitempty"` // "compact" or "fresh"
 }
@@ -581,8 +621,8 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 			return http.StatusConflict, map[string]any{"error": busy}
 		}
 	}
-	if input.IdleCompaction != nil || input.ClaudeTerminal != nil {
-		identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, chatContextChange{IdleCompaction: input.IdleCompaction, ClaudeTerminal: input.ClaudeTerminal}, owner)
+	if input.changesSwitch() {
+		identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, chatContextChange{IdleCompaction: input.IdleCompaction, CompactEarly: input.CompactEarly, ClaudeTerminal: input.ClaudeTerminal}, owner)
 		if err != nil {
 			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
 		}
@@ -661,7 +701,7 @@ func (api *StreamingAPI) handleChatContext(w http.ResponseWriter, r *http.Reques
 // boolean, or "true"/"false" text from callers that pass every argument as a string.
 func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 	var out chatContextRequest
-	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "claude_terminal": &out.ClaudeTerminal} {
+	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "compact_early": &out.CompactEarly, "claude_terminal": &out.ClaudeTerminal} {
 		value, exists := args[name]
 		if !exists || value == nil {
 			continue
@@ -686,7 +726,7 @@ func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 }
 
 func (r chatContextRequest) changesSwitch() bool {
-	return r.IdleCompaction != nil || r.ClaudeTerminal != nil
+	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil
 }
 
 // externalChatContext answers an MCP call that changes one of the caller's chats, with the same checks as the screen.
