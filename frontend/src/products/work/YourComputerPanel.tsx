@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useState, type ReactNode } from 'react'
-import { CheckCircle2, CircleDashed, Cloud, Folder, Laptop, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, CircleDashed, Cloud, Folder, Laptop, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl, setSlackSetupConnection } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -143,16 +143,16 @@ export function cloudStateIcon(state?: CloudState, theirs = false): LucideIcon {
 }
 const tintedIcons = new Map<string, LucideIcon>()
 
-export function YourComputerPanel({ projectId, sessionId, onFullScreen }: { projectId: string; sessionId?: string; canEdit: boolean; onFullScreen?: (full: boolean) => void }) {
+export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; canEdit: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
   if (!crewCloudMode()) return <div><LaptopCard sessionId={sessionId} /></div>
   // A Crew opened from a connected server lives online.
   if (getRawActiveWorkspaceId() !== 'local') return <section aria-label="Where it lives" className="space-y-3 text-sm">
     <p role="status" className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-500" />Online</p>
   </section>
-  return <div><WhereItLivesCard projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} /></div>
+  return <div><WhereItLivesCard projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} onBack={onBack} /></div>
 }
 
-function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void }) {
+function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
   const team = useProjectTeam(projectId)
   const [section, setSection] = useState<'mac' | 'publish' | 'team'>(() => hasPendingCrewAccess(projectId) ? 'team' : 'mac')
   const [publishConnection, setPublishConnection] = useState('')
@@ -236,17 +236,31 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   const done = online && Boolean(moved) && !doneSeen
   const step: MoveStep | '' = open === 'move' && !online ? 'confirm' : moving ? 'moving' : done ? 'done' : ''
   useEffect(() => { onFullScreen?.(step !== ''); return () => onFullScreen?.(false) }, [step, onFullScreen])
+  // Esc goes back too, unless the person is typing or a dialog is open.
+  useEffect(() => {
+    if (!onBack) return
+    const key = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (event.key !== 'Escape' || event.defaultPrevented || target?.closest('input,textarea,select,[contenteditable="true"],[role="dialog"]')) return
+      onBack()
+    }
+    document.addEventListener('keydown', key)
+    return () => document.removeEventListener('keydown', key)
+  }, [onBack])
   if (step) return <PublishCrewScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
     onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   const network = networkName(target) || 'your server'
   const tabs = [
-    { id: 'mac', label: 'Mac online', detail: 'you, from anywhere', tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
-    { id: 'publish', label: 'Publish', detail: 'agents on the server', tone: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' },
-    { id: 'team', label: 'Team', detail: 'work with people', tone: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' },
+    { id: 'mac', label: 'Mac online', detail: 'you, from anywhere', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
+    { id: 'publish', label: 'Publish', detail: 'agents on the server', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
+    { id: 'team', label: 'Team', detail: 'work with people', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
   ] as const
   const serverCopies = [...(status?.on_server || []), ...(team.team?.server_data ? [{ name: `${team.team.server_data.name}/ (shared folder)`, detail: 'kept on the server so your team can sync it' }] : [])]
   return <div className="space-y-3.5 text-sm">
-    <div role="tablist" aria-label="Crew access" className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1">
+    {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
+    <div className="flex items-stretch gap-2">
+    {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
+    <div role="tablist" aria-label="Crew access" className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1">
       {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={section === item.id} tabIndex={section === item.id ? 0 : -1}
         onClick={() => setSection(item.id)} onKeyDown={event => {
           const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
@@ -255,6 +269,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         }} className={`min-w-0 rounded-lg px-2 py-2 text-center ${section === item.id ? item.tone : 'text-muted-foreground hover:bg-muted'}`}>
         <span className="block font-semibold">{item.label}</span><span className="mt-0.5 block text-[11px]">{item.detail}</span>
       </button>)}
+    </div>
     </div>
     {section === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
       {binding?.connection_id && !online
@@ -291,7 +306,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
       </div>
     </section>}
     {section === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
-      <p className="flex items-start gap-2 rounded-[10px] bg-sky-500/10 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200"><span>Publish runs it on {network} from now on, with your Mac on or off: chat, memory, skills, selected files, schedules and triggers go with it, using your AI login on the server. Publish the whole Crew, or just one agent.</span></p>
+      <p className="px-1 text-[13px] text-muted-foreground"><span>Publish runs it on {network} from now on, with your Mac on or off: chat, memory, skills, selected files, schedules and triggers go with it, using your AI login on the server. Publish the whole Crew, or just one agent.</span></p>
       {!connections.length && <p className="text-xs text-muted-foreground">Sign in to a server in Connections first.</p>}
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
       <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
@@ -314,7 +329,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
 
 const allOnMac = (network: string) => `Everything is on this Mac. Use it from your phone, the web or your other apps while the Mac is on; your messages pass through ${network}, your files don't.`
 function MacDataLine({ children }: { children: ReactNode }) {
-  return <p className="rounded-[10px] bg-emerald-500/10 px-3 py-2 text-[13px] text-emerald-800 dark:text-emerald-200">{children}</p>
+  return <p className="px-1 text-[13px] text-muted-foreground">{children}</p>
 }
 // The Mac online line speaks only about the Mac (owner, 4 Nov: keep the tabs' ideas apart). When the server keeps
 // something for Team or Publish, one link says so and the Team tab lists it.

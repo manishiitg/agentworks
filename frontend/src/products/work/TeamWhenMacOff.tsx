@@ -51,7 +51,7 @@ export function useTeamCopyStatus(projectId: string, connection: string) {
 /** The tab's one line on where things live, as the server's state has it. */
 export function TeamDataLine({ status, network }: { status: TeamCopyStatus | null; network: string }) {
   const off = status?.when_mac_off === 'wait' ? 'and their messages wait for it while it is off.' : 'and from the team copy while it is off.'
-  return <p className="mt-4 flex gap-2 rounded-[10px] bg-violet-500/10 px-3 py-2 text-[13px] text-violet-800 dark:text-violet-200">
+  return <p className="mt-4 px-1 text-[13px] text-muted-foreground">
     <span>People work with you here. The shared folder and the team's chats are kept on {network}. Your agents answer from this Mac while it is on, {off}</span>
   </p>
 }
