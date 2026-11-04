@@ -245,19 +245,20 @@ func TestProjectWorkspaceMapResolvesAuthorizedAbsolutePaths(t *testing.T) {
 	}
 }
 
-// Full CLI chats are told to use their own subagents and to keep
-// run_in_background for read-only reviewers and long supervision loops;
-// bridge-only chats, which have no subagents, are not.
+// Full CLI chats split work into the Crew's agent tabs only after asking the
+// person, never into the CLI's built-in subagents (owner, 4 Nov: a tester's
+// session spent most of its limit on 10 subagents). Bridge-only chats have no
+// built-in subagents, so they get no such section.
 func TestNativeSubagentsGuidanceOnlyWithNativeTools(t *testing.T) {
 	section := sectionByName(t, "native-subagents")
 	if !section.Applies(promptContext{Provider: "claude-code", NativeCodingTools: true}) {
-		t.Fatal("a Full CLI chat must get the subagent guidance")
+		t.Fatal("a Full CLI chat must get the splitting-work guidance")
 	}
 	if section.Applies(promptContext{Provider: "claude-code", NativeCodingTools: false}) {
 		t.Fatal("a bridge-only chat has no subagents of its own")
 	}
 	text := section.Build(promptContext{})
-	for _, want := range []string{"own subagents", "execute_step", "run_full_workflow", "yourself", "not to write"} {
+	for _, want := range []string{"Do not use your CLI's built-in subagents", "ask the person first", "ask_project_chat"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("guidance misses %q: %s", want, text)
 		}

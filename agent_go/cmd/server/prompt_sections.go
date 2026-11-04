@@ -214,8 +214,8 @@ var promptSections = []promptSection{
 		Build:   func(promptContext) string { return nativeShellOnGuidance },
 	},
 	{
-		// Full CLI has its own subagents for parallel work. There is no separate
-		// background-agent tool: reviews are done by the agent itself.
+		// Work splits into the Crew's own agent tabs, after asking the person, not into
+		// the CLI's built-in subagents, which each cost a full extra conversation (owner, 4 Nov).
 		Name:    "native-subagents",
 		Applies: func(c promptContext) bool { return c.NativeCodingTools },
 		Build:   func(promptContext) string { return nativeSubagentsGuidance },
@@ -228,9 +228,11 @@ Your own built-in shell tool is turned off in this chat. Your file read and edit
 const nativeShellOnGuidance = `## Shared server
 You share this server with other people: only stop processes you started, and never touch other accounts' files or the CLI's sign-in files.`
 
-const nativeSubagentsGuidance = `## Subagents
-Use your own subagents for parallel lookups, analysis and edits within this turn. ` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly yourself in this chat, one after another or together, and read their results. There is no separate background-agent tool.
-A review, audit or check that must not change anything: do it yourself, or give it to a subagent with an explicit instruction not to write, edit or run anything with side effects, and confirm afterwards that nothing changed.`
+const nativeSubagentsGuidance = `## Splitting work
+Do the work yourself by default. Do not use your CLI's built-in subagents (its Agent or Task tool): each one runs a separate full conversation on the person's limit.
+Only when it clearly makes sense (a large, independent part of a job that would go faster in another agent tab of this Crew), ask the person first, saying what you would hand over and to which tab. Only after they agree, or when they asked for it (a /deep-work request counts), use ` + "`ask_project_chat`" + ` or ` + "`open_project_chat`" + `; the crew-agents skill has the details. Never split a small task.
+` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly yourself in this chat, one after another or together, and read their results.
+A review, audit or check that must not change anything: do it yourself.`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
 // the registry can be tested without constructing an agent.
