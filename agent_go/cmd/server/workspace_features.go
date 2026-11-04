@@ -40,12 +40,6 @@ func (api *StreamingAPI) workspaceEffectivePanels(ctx context.Context, userID, p
 	if applyWorkspaceMemoryFeature(&profile) != nil {
 		return nil
 	}
-	if profileID == crewProfileID {
-		switch codeProjectMode(ctx, root) {
-		case "cowork":
-			applyCoworkProfile(&profile)
-		}
-	}
 	panels := []string{}
 	for _, feature := range profile.ResolvedFeatures {
 		panels = appendUniqueStrings(panels, feature.UIPanels...)

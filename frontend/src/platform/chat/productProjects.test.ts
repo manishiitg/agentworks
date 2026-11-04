@@ -10,7 +10,7 @@ const reserveProject = vi.hoisted(() => vi.fn().mockResolvedValue({ shared: fals
 vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects, reserveProject, createProductProject: createServerProject } }))
 
 import { agentApi } from '../../services/api'
-import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, productMode,  type ProductProject } from './productProjects'
+import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, type ProductProject } from './productProjects'
 
 describe('parseProductProjectManifest', () => {
   it('loads the project bot identity and icon', () => {
@@ -35,30 +35,14 @@ describe('parseProductProjectManifest', () => {
   })
 })
 
-describe('Code project mode in product.json', () => {
-  const base = { schema_version: 1, product: 'code', id: 'code-1', title: 'App', session_id: 'code:1' }
-  const parse = (extra: object) => parseProductProjectManifest(JSON.stringify({ ...base, ...extra }), 'Chats/Code/app', 'code')!
-  it('reads the saved mode, ignores an unknown one, and keeps the optional laptop connection independent of server mode', () => {
-    expect(productMode(parse({ mode: 'cowork' }))).toBe('cowork')
-    expect(productMode(parse({ mode: 'local' }))).toBe('dev')
-    expect(productMode(parse({ mode: 'sandbox' }))).toBe('dev')
-    expect(productMode(parse({}))).toBe('dev')
-    expect(productMode(parse({ laptop_connection: { device_id: 'laptop', resource_id: 'app' } }))).toBe('dev')
-    expect(productMode(parse({ mode: 'dev', laptop_connection: { device_id: 'laptop', resource_id: 'app' } }))).toBe('dev')
-  })
-})
-
 it('uses the server creation response and never writes project manifests or falls back after refusal', async () => {
   updatePlannerFile.mockClear()
   reserveProject.mockClear()
-  for (const mode of ['cowork'] as const) {
-    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', files_path: 'Crew/assistant-new/_files', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [] } } })
-    const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '', mode })
-    expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Assistant', mode }))
-    expect(created.workspacePath).toBe('Crew/assistant-new')
-    expect(created.filesPath).toBe('Crew/assistant-new/_files')
-    expect(created.mode).toBe(mode)
-  }
+  createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', files_path: 'Crew/assistant-new/_files', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project' }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [] } } })
+  const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '' })
+  expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Assistant' }))
+  expect(created.workspacePath).toBe('Crew/assistant-new')
+  expect(created.filesPath).toBe('Crew/assistant-new/_files')
   createServerProject.mockRejectedValueOnce(new Error('Creation refused'))
   await expect(createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '' })).rejects.toThrow('Creation refused')
   expect(updatePlannerFile).not.toHaveBeenCalled()

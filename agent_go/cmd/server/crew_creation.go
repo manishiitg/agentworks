@@ -414,7 +414,6 @@ func ensureCrewCreationTrigger(ctx context.Context, svc *ProjectActionDispatcher
 type crewCreationOptions struct {
 	Restore   bool
 	LocalRoot string
-	Mode      string
 	LLMConfig *workflowtypes.PresetLLMConfig
 	// Role is set only by the server (agentWorksRole); a spec never supplies it.
 	Role string
@@ -477,9 +476,6 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"created_at":     now,
 		"updated_at":     now,
 		"identity":       map[string]interface{}{"name": title, "icon": icon},
-	}
-	if settings.Mode != "" {
-		manifest["mode"] = settings.Mode
 	}
 	if settings.Role != "" {
 		manifest["role"] = settings.Role

@@ -165,9 +165,6 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	if !project.OwnedByCaller || !userAccessForClaims(claims).CanEdit {
 		return "", "", "", "", "", http.StatusForbidden, "Only a project Builder can use its terminal"
 	}
-	if mode := codeProjectMode(r.Context(), project.Binding.WorkspacePath); profileID == crewProfileID && mode == "cowork" {
-		return "", "", "", "", "", http.StatusForbidden, "The terminal is available in Dev Crews. Choose a Dev Crew to use the server terminal."
-	}
 	// The authorized binding can still name the pre-move location. Send the
 	// trusted canonical root to both the shell and its guard; the workspace
 	// correctly refuses a symlink from a private user tree into Crew/.
@@ -599,9 +596,5 @@ func projectTerminalBuilder(ctx context.Context, userID, root string) bool {
 	claims := currentProjectCallerClaims(ctx, userID)
 	product, _, ok := projectProductForPath(root)
 	ref, valid := resolveCrewPath(ctx, userID, root)
-	if !ok || !valid || !userAllowedProduct(claims, product.ProfileID) || !userAccessForClaims(claims).CanEdit || crewAccessFor(claims, ref) != crewAccessOwner {
-		return false
-	}
-	mode := codeProjectMode(ctx, root)
-	return product.ProfileID != crewProfileID || mode != "cowork"
+	return ok && valid && userAllowedProduct(claims, product.ProfileID) && userAccessForClaims(claims).CanEdit && crewAccessFor(claims, ref) == crewAccessOwner
 }

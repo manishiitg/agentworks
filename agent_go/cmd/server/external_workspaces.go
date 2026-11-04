@@ -38,7 +38,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"before_seq": externalInteger(1, 1<<30),
 		"tool_name":  externalString("For chat_tool: exact native name from chat_tools."),
 		"arguments":  map[string]any{"type": "object"},
-		"changes":    map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, purpose, mode (dev/cowork), llm_config, selected_skills, templates, files, functions and schedules."},
+		"changes":    map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, purpose, llm_config, selected_skills, templates, files, functions and schedules."},
 	}, "action")
 }
 

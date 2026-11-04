@@ -86,21 +86,3 @@ func AgentWorksAgentPrompt() string {
 	}
 	return strings.TrimSpace(string(text))
 }
-
-// CoworkSkills are attached to a Code project in Cowork mode (registered by workproduct.RegisterProductSkills).
-var CoworkSkills = []string{"cowork-assistant", "cowork-browser-tasks", "cowork-automations"}
-
-// CoworkPrompt is the system prompt of a Code project in Cowork mode (a private assistant for non-technical business users): its own
-// introduction, then the same platform mechanics as Code's prompt template (the workspace, platform actions, other chats, vaults),
-// so the two cannot drift apart. codeTemplate is Code's own system prompt template.
-func CoworkPrompt(codeTemplate string) string {
-	intro, err := productConfigFiles.ReadFile("prompts/cowork-intro.md")
-	if err != nil {
-		panic(fmt.Errorf("read Cowork prompt: %w", err))
-	}
-	body := codeTemplate
-	if i := strings.Index(body, "## The workspace"); i >= 0 {
-		body = body[i:]
-	}
-	return strings.TrimRight(string(intro), "\n") + "\n\n" + body
-}

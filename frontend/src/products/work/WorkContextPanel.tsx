@@ -26,9 +26,8 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { useProjectTeam } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 
-export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId, mode = 'cowork' }: {
+export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
-  mode?: 'dev' | 'cowork'
   reviewSessionId?: string
   projectId?: string
   profileId?: 'work'
@@ -61,7 +60,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     return () => controller.abort()
   }, [scope, workspacePath, canReadSharing])
   const { documents } = useReportDocuments(allowed('dashboard') ? workspacePath : '')
-  const menuOptions = { mode, panels, enabledPanels, incomingEmail, projectId, canShare: sharing?.scope === scope && sharing.allowed }
+  const menuOptions = { panels, enabledPanels, incomingEmail, projectId, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
   const accessItems = inventory.filter(item => item.group === 'Share' && item.view === 'mcp')

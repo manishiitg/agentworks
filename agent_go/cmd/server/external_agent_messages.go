@@ -127,7 +127,7 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 	// wrote to it is judged by what the person can reach, not by the connection's tool scopes (which a
 	// bound connection never has), or its messages would be stored and never delivered.
 	if view := messagePeerView(claims, send); view != claims {
-		// Only the person's OWN Builder, Code or Cowork chats may reach their attached agent.
+		// Only the person's OWN Builder or Crew chats may reach their attached agent.
 		if peer.UserID != claims.UserID {
 			log.Printf("[AGENT_MSG] refused a chat of another person: sender_user=%s kind=%s receiving_agent=%s", peer.UserID, peer.Kind, claims.AccessToken.BoundAgentName)
 			return denied

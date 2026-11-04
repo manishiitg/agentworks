@@ -32,7 +32,6 @@ import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { WorkIdentityPanel } from './WorkIdentityPanel'
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { useProjectMode } from './codeLocalFiles'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { WorkPlanPanel } from './WorkPlanPanel'
@@ -63,20 +62,18 @@ function sendWorkProjectPaneMessage(projectId: string, message: string, profileI
 
 // Panel lists live in products/productPanels.ts with every other product's panels.
 
-export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', projectId = '', workspacePath, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; projectId?: string; tabId?: string; onOpenChat?: () => void; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
+export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ projectId = '', workspacePath, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; projectId?: string; tabId?: string; onOpenChat?: () => void; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
   const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
     .filter(tab => tab.metadata?.agentProfileWorkspace === workspacePath)
     .map(tab => tab.sessionId).filter((id): id is string => Boolean(id))))
-  const projectMode = useProjectMode(sessionId)
-  const isCowork = projectMode === 'cowork'
   const incomingEmail = useAgentInboxEnabled()
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const inventory = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, readOnly: Boolean(readOnly), showShell, enabledPanels })
+  const inventory = workWorkspacePanels({ profileId: product.profileId, readOnly: Boolean(readOnly), showShell, enabledPanels })
   const admitted = [...inventory.views, ...inventory.ops, ...inventory.setup]
-  const menuItems = crewProjectMenuItems({ mode: projectMode, panels: admitted, allowedProducts: user?.allowed_products, enabledPanels, incomingEmail, projectId })
+  const menuItems = crewProjectMenuItems({ panels: admitted, allowedProducts: user?.allowed_products, enabledPanels, incomingEmail, projectId })
   useRegisterPanelSwitcher('work', [
     ...(!readOnly ? [{ id: 'context', label: 'Project menu' }] : []),
     ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group })),
@@ -86,7 +83,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     // Sharing, Where it lives and Connected agents are one Access row now.
     const legacy = ['mcp:share', 'mcp:computer', 'mcp:agentbridge'].includes(raw) ? 'mcp:access' : raw
     const current = useAuthStore.getState().user
-    const item = crewProjectMenuItems({ mode: projectMode, panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === legacy)
+    const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === legacy)
     if (!item || current?.id !== user?.id) return
     useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, projectId || workspacePath), item.id)
     if (item.external) { openProductWorkspace(item.external); return }
@@ -229,11 +226,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const [openLocalFilesSettings, setOpenLocalFilesSettings] = useState(false)
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
-  const contextMode = useProjectMode(activeSessionId || '')
   const [filesView, selectFilesView] = useWorkFilesView(accessKey, workspacePath, activeSessionId || '', view === 'files')
   useWorkspaceViewTarget('files', selectFilesView, view === 'files' && !!activeSessionId)
   const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? [] : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
-  const contextPanels = workWorkspacePanels({ profileId: product.profileId, cowork: product.profileId === 'work' && contextMode === 'cowork', readOnly: Boolean(readOnly), showShell, enabledPanels })
+  const contextPanels = workWorkspacePanels({ profileId: product.profileId, readOnly: Boolean(readOnly), showShell, enabledPanels })
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
   const sendDashboardMessage = useCallback(async (message: string) => ({
@@ -305,7 +301,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     <div className="relative flex h-full min-h-0 flex-col bg-background">
       <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly} onBack={() => onViewChange('context')} />
       <div className="min-h-0 flex-1 overflow-hidden">
-        {view==='context' && <WorkContextPanel mode={contextMode} reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
+        {view==='context' && <WorkContextPanel reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
         {view === 'files' && (readOnly ? <SharedCrewFilesPanel
           projectId={projectId}
           crewRoot={workspacePath}

@@ -131,7 +131,7 @@ wait for usage to reset at Sep 14 at 5:30 AM`
   })
 })
 
-// PLAT-746-158 A4: use the same stored metadata as Cowork; diagnostics stay folded.
+// PLAT-746-158 A4: use the same stored metadata; diagnostics stay folded.
 it('shows server failure guidance with no billing retry and folded technical details', async () => {
   const retry = vi.fn(async () => {})
   const host = await mount([event('failed', 'conversation_error', {

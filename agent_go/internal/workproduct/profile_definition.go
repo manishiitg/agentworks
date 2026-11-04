@@ -199,10 +199,6 @@ func RegisterProductSkills() error {
 				{Name: "crew-agents", Path: "skills/crew-agents/SKILL.md"},
 				{Name: "crew-laptop", Path: "skills/crew-laptop/SKILL.md"},
 				{Name: "software-work", Path: "skills/software-work/SKILL.md"},
-				// Cowork (a Code project in Cowork mode): the guide for a private business assistant.
-				{Name: "cowork-assistant", Path: "skills/cowork-assistant/SKILL.md"},
-				{Name: "cowork-browser-tasks", Path: "skills/cowork-browser-tasks/SKILL.md"},
-				{Name: "cowork-automations", Path: "skills/cowork-automations/SKILL.md"},
 				// The person's own AgentWorks Crew (role "agentworks", PLAT-825-99): how it inspects, measures and improves.
 				{Name: "agentworks-add-new-thing", Path: "skills/agentworks-add-new-thing/SKILL.md"},
 				{Name: "agentworks-check-measurement", Path: "skills/agentworks-check-measurement/SKILL.md"},

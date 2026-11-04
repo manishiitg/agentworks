@@ -42,10 +42,10 @@ import { createWorkSession, deleteWorkSession, isWorkSessionRun, loadWorkSession
 
 // The backend owns creation. This response fixture lets consumer tests keep
 // testing selection forwarding without a browser writer.
-createServerProject.mockImplementation(async (product: string, spec: { name: string; purpose: string; icon?: string; mode?: string; selected_skills?: string[]; llm_config?: unknown; files?: Record<string, string> }) => {
+createServerProject.mockImplementation(async (product: string, spec: { name: string; purpose: string; icon?: string; selected_skills?: string[]; llm_config?: unknown; files?: Record<string, string> }) => {
   const id = 'server-project'
   const root = 'Crew/server-project'
-  const manifest = { schema_version: 1, product, id, title: spec.name, description: spec.purpose, identity: { name: spec.name, icon: spec.icon }, mode: spec.mode, session_id: `${product}:project:${id}` }
+  const manifest = { schema_version: 1, product, id, title: spec.name, description: spec.purpose, identity: { name: spec.name, icon: spec.icon }, session_id: `${product}:project:${id}` }
   const runtime = { capabilities: { selected_servers: [], selected_skills: spec.selected_skills || [], selected_secrets: [], selected_global_secret_names: [], llm_config: spec.llm_config }, workflow_context_paths: [] }
   serverFiles.set(`${root}/product.json`, JSON.stringify(manifest))
   serverFiles.set(`${root}/workflow.json`, JSON.stringify(runtime))
@@ -116,14 +116,13 @@ describe('parseSessionManifest', () => {
 })
 
 describe('createWorkSession', () => {
-  it('forwards model, mode and identity to server creation', async () => {
+  it('forwards model and identity to server creation', async () => {
     updatePlannerFile.mockClear()
     createPlannerFolder.mockClear()
-    const session = await createWorkSession('Finance desk', 'Review records.', '📊', CREW_PRODUCT, { provider: 'codex-cli', modelId: 'gpt-6-luna', connectionId: 'company-account' }, 'cowork', '/Users/example/work')
-    expect(createServerProject).toHaveBeenLastCalledWith('work', expect.objectContaining({ name: 'Finance desk', purpose: 'Review records.', root_path: '/Users/example/work', icon: '📊', mode: 'cowork', llm_config: expect.objectContaining({ builder_llm: expect.objectContaining({ provider: 'codex-cli', model_id: 'gpt-6-luna', connection_id: 'company-account' }) }) }))
+    const session = await createWorkSession('Finance desk', 'Review records.', '📊', CREW_PRODUCT, { provider: 'codex-cli', modelId: 'gpt-6-luna', connectionId: 'company-account' }, '/Users/example/work')
+    expect(createServerProject).toHaveBeenLastCalledWith('work', expect.objectContaining({ name: 'Finance desk', purpose: 'Review records.', root_path: '/Users/example/work', icon: '📊', llm_config: expect.objectContaining({ builder_llm: expect.objectContaining({ provider: 'codex-cli', model_id: 'gpt-6-luna', connection_id: 'company-account' }) }) }))
     expect(session.workspacePath).toBe('Crew/server-project')
     expect(session.product).toBe('work')
-    expect(session.mode).toBe('cowork')
     expect(updatePlannerFile).not.toHaveBeenCalled()
     expect(createPlannerFolder).not.toHaveBeenCalled()
   })

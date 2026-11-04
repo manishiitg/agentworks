@@ -13,7 +13,7 @@ export const CREW_STARTER_TYPES = [
     ],
   },
   {
-    id: 'cowork', label: 'Cowork', icon: BriefcaseBusiness,
+    id: 'business', label: 'Business tasks', icon: BriefcaseBusiness,
     summary: 'Research · Write · Organize',
     purpose: 'Help me research, prepare documents and organize everyday business work.',
     example: 'Research a topic, prepare a brief or organize a set of documents.',

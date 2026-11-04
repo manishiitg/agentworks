@@ -48,7 +48,7 @@ import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, 
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { localFileError, setProjectMode } from './codeLocalFiles'
+import { localFileError } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
 import { DashboardLayoutControls, DashboardLayoutProvider } from '../../components/workflow/DashboardLayoutControls'
 import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
@@ -58,7 +58,7 @@ import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState } from './ChatEmptyState'
 import { useCrewLivesOnMac } from './YourComputerPanel'
-import { productMode, updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode } from '../../platform/chat/productProjects'
+import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
 import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../platform/ui-control/useWorkspaceUIControl'
@@ -246,8 +246,8 @@ function useWorkSessions(product: ProjectProductConfig) {
     return () => { cancelled = true }
   }, [product, selectedId, allowedProducts, setSelectedId, updateSessions])
 
-  const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode, rootPath?: string) => {
-    const session = await createWorkSession(title, description, icon, product, runsOn, mode, rootPath)
+  const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, rootPath?: string) => {
+    const session = await createWorkSession(title, description, icon, product, runsOn, rootPath)
     if (runsOn?.provider) rememberRunsOn(product.profileId, runsOn.provider)
     updateSessions((current) => [session, ...current])
     setSelectedId(session.id)
@@ -328,8 +328,6 @@ function useWorkSessions(product: ProjectProductConfig) {
     updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
     return updated
   }, [product, sessions, updateSessions])
-
-
 
   return {
     sessions,
@@ -878,13 +876,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [selected, updateLLMConfig])
   const { tabId, canonicalTabId, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
 
-
-
-  const selectedMode = selected ? productMode(selected) : undefined
-  useEffect(() => {
-    if (selected?.id && selectedMode) setProjectMode(selected.id, selectedMode)
-  }, [selected?.id, selectedMode])
-
   // A browser reload loses transient tab metadata while the durable references
   // remain in workflow.json. Force the first follow-up through the full profile
   // route so an old retained CLI cannot bypass the current read-only grants.
@@ -985,7 +976,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     writeWorkWorkspaceView(selected?.id, product.profileId, allowedView)
   }, [selected?.id, product.profileId])
 
-
   useEffect(() => {
     const open = (event: Event) => {
       const detail = (event as CustomEvent<{ workspacePath?: string; openPanel?: boolean }>).detail
@@ -999,7 +989,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   // The server's can_build response keeps owners/co-owners in the Builder
   // workspace. People the Crew is only shared with use its dashboard.
-  const showShell = product.hasTerminal && !isWorkSessionRun(selected) && selectedMode !== 'cowork'
+  const showShell = product.hasTerminal && !isWorkSessionRun(selected)
   const isShared = isWorkSessionRun(selected)
   // A Crew that lives on its owner's Mac, seen from the website or phone (owner, 3 Nov): only the chat, no right
   // panel, because its work area is on the Mac. The Mac app itself keeps the full panel.
@@ -1009,12 +999,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   useEffect(() => {
     const open = (event: Event) => {
       const session = (event as CustomEvent<{ sessionId: string }>).detail?.sessionId
-      if (session !== activeSessionId || !session || isShared || selectedMode !== 'dev' || !isWorkWorkspaceViewEnabled('files', workspacePanels)) return
+      if (session !== activeSessionId || !session || isShared || !isWorkWorkspaceViewEnabled('files', workspacePanels)) return
       selectWorkspaceView('files')
     }
     window.addEventListener(chatFilesNavigationEvent, open)
     return () => window.removeEventListener(chatFilesNavigationEvent, open)
-  }, [activeSessionId, isShared, selectedMode, workspacePanels, selectWorkspaceView])
+  }, [activeSessionId, isShared, workspacePanels, selectWorkspaceView])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
@@ -1212,7 +1202,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (initialRouteView.current?.target) setWorkspaceViewTarget('mcp', initialRouteView.current.target)
       initialRouteView.current = null
     }
-    setWorkspaceView(isWorkSessionRun(selected) ? 'dashboard' : savedView ?? (selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
+    setWorkspaceView(isWorkSessionRun(selected) ? 'dashboard' : savedView ?? product.defaultView)
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)
@@ -1285,7 +1275,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     }
   }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView, routeSuppliedView])
 
-
   const setSplitRatio = useCallback((next: number, persist = false) => {
     const width = splitLayoutRef.current?.getBoundingClientRect().width || window.innerWidth
     const ratio = clampWorkSplitRatio(next, width)
@@ -1294,7 +1283,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (persist) writeWorkSplitRatio(selected?.id, ratio)
   }, [selected?.id])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode, onboarding?: CrewOnboarding, rootPath?: string) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, onboarding?: CrewOnboarding, rootPath?: string) => {
     if (creating) return
     const startedAtHome = window.location.pathname === '/home'
     const user = useAuthStore.getState().user
@@ -1304,7 +1293,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setCreating(true)
     setCreateError(null)
     try {
-      const created = await create(title, description, icon, runsOn, mode, rootPath)
+      const created = await create(title, description, icon, runsOn, rootPath)
       if (!isCurrent()) return
       if (created.creationWarnings?.length) useChatStore.getState().addToast(created.creationWarnings.join(' '), 'warning')
       if (onboarding) {
@@ -1388,7 +1377,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       {createOpen ? (
         <CreateCrewWizard
           onClose={() => { if (!creating) setCreateOpen(false) }}
-          onCreate={(title, purpose, runsOn, mode, onboarding, rootPath) => createProject(title, purpose, undefined, runsOn, mode, onboarding, rootPath)}
+          onCreate={(title, purpose, runsOn, onboarding, rootPath) => createProject(title, purpose, undefined, runsOn, onboarding, rootPath)}
           allowExistingFolder={isLocalDeployment() && getActiveWorkspaceProfile().type === 'local'}
           submitting={creating}
           error={createError}

@@ -28,15 +28,15 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
 const accessDestinations = [['Access','access']]
 const inventory = (features?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels: features, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
-async function render(mode: 'dev' | 'cowork', check: (host: HTMLDivElement) => Promise<void>) {
+async function render(check: (host: HTMLDivElement) => Promise<void>) {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
- try { await act(async () => root.render(<WorkContextPanel mode={mode} reviewSessionId="chat" workspacePath="Crew/example" projectId="example" panels={inventory()} onOpen={mocks.open}/>)); await check(host) }
+ try { await act(async () => root.render(<WorkContextPanel reviewSessionId="chat" workspacePath="Crew/example" projectId="example" panels={inventory()} onOpen={mocks.open}/>)); await check(host) }
  finally { await act(async () => root.unmount()); host.remove() }
 }
 it('shows actual workspace status without promoting occasional tools, and keeps All tools searchable', async () => {
  mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', connected:true, destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'Google', detail:'person@example.com · Connected', connected:true, destination:'mcp:gmail' }, { id:'slack:s', label:'My Slack account', detail:'Personal Slack · Connected', connected:true, destination:'mcp:slack-account' }, { id:'bot:b', label:'Project helper', detail:'Project helper · Identity verified', connected:true, destination:'mcp:slack-bot' }, { id:'whatsapp', label:'WhatsApp',detail:'Connected',connected:true,destination:'mcp:whatsapp' }, {id:'github',label:'GitHub',detail:'chosen-account · Connected',connected:true,destination:'mcp:github'}]
  mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }, { id:'schedule:next',label:'Next summary',detail:'Jan 1, 8:00 AM',nextRunAt:'2099-01-01T08:00:00Z',destination:'schedules:schedules' }]
- await render('dev', async host => {
+ await render(async host => {
   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('files', 'review')
   expect(host.textContent).not.toContain('person@example.com')
@@ -105,7 +105,7 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
   { id:'motion', title:'Spending history', path:'db/reports/history.html', order:1, motion:true },
   { id:'brief', title:'Project brief', path:'db/reports/brief.html', order:2, artifact:true },
  ]
- await render('cowork', async host => {
+ await render(async host => {
   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('files', 'review')
   expect(host.textContent).not.toContain('Results')
@@ -138,10 +138,9 @@ it('keeps every starter destination in the admitted All tools inventory and Run 
  for (const starter of CREW_STARTER_TYPES) for (const shortcut of crewStarterShortcuts(starter.id)) expect(ids).toContain(shortcut)
  expect(workWorkspacePanels({ readOnly:true }).views.map(item => item.id)).toEqual(['dashboard'])
  expect(inventory(new Set(['skills'])).map(item => item.id)).not.toContain('files')
- const menu = (mode:'dev'|'cowork', features?:Set<string>) => crewProjectMenuItems({ panels:inventory(features), enabledPanels:features, mode }).map(item=>item.id)
- expect(menu('dev',new Set(['secrets']))).toContain('mcp:github')
- expect(menu('cowork',new Set(['secrets']))).not.toContain('mcp:github')
- expect(menu('dev',new Set(['bots']))).not.toContain('mcp:github')
+ const menu = (features?:Set<string>) => crewProjectMenuItems({ panels:inventory(features), enabledPanels:features }).map(item=>item.id)
+ expect(menu(new Set(['secrets']))).toContain('mcp:github')
+ expect(menu(new Set(['bots']))).not.toContain('mcp:github')
 })
 
 it('keeps offline connections out of the icon strip but reachable through expansion', async () => {
@@ -152,7 +151,7 @@ it('keeps offline connections out of the icon strip but reachable through expans
   { id:'github',label:'GitHub',detail:'Not connected',connected:false,destination:'mcp:github' },
   { id:'mcp:offline',label:'Notes',detail:'Needs attention',connected:false,attention:true,destination:'mcp:connected' },
  ]
- await render('dev', async host => {
+ await render(async host => {
   for (const prefix of ['Browser ·','Google ·','WhatsApp ·','GitHub ·','MCPs ·']) expect(host.querySelector(`[aria-label^="${prefix}"]`)).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
   expect(host.textContent).toContain('person@example.com · Needs attention')
@@ -173,7 +172,7 @@ it('keeps offline connections out of the icon strip but reachable through expans
 it('keeps footer sharing server-admitted and scoped to the current account', async () => {
  for (const [mode, detail] of [['private','Only you'], ['everyone','Everyone'], ['people','Shared with 2']]) {
   mocks.share = { can_share:true, mode, people:[{id:'a'},{id:'b'},{id:'a'}], unknown_emails:['missing@example.test'] }
-  await render('cowork', async host => {
+  await render(async host => {
    const footer = host.querySelector('footer')!
    // One Access row: where it lives · who can use it, both from the server.
    await act(async () => {})
@@ -193,7 +192,7 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
   })
  }
  mocks.share = { can_share:false, mode:'private', people:[], unknown_emails:[] }
- await render('cowork', async host => {
+ await render(async host => {
   const footer = host.querySelector('footer')!
   // Someone else's Crew: the row still opens Access, and says it is shared with you.
   await act(async () => {})
@@ -206,7 +205,7 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
 
 
 it('opens automation setup before any jobs exist and keeps native destination guards', async () => {
- await render('cowork', async host => {
+ await render(async host => {
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Automations"]')!.click())
   const section = host.querySelector('[aria-label="Automations"]')!.closest('section')!
   await act(async () => [...section.querySelectorAll('button')].find(node => node.textContent === 'Manage automations')!.click())
@@ -229,7 +228,7 @@ it.each([false, true])('keeps unresolved MCP status distinct from a failed check
  mocks.status.loaded = ['mcp:github']
  mocks.status.errors = failed ? ['Connections could not be loaded.'] : []
  mocks.status.apps = [{id:'github',label:'GitHub',detail:'chosen-account · Connected',connected:true,destination:'mcp:github'}]
- await render('dev', async host => {
+ await render(async host => {
   expect(host.querySelector('[aria-label="GitHub · chosen-account · Connected"]')).not.toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
   expect(host.textContent).toContain(failed ? 'MCPsUnavailable' : 'MCPsChecking…')
@@ -243,7 +242,7 @@ it.each([false, true])('keeps unresolved MCP status distinct from a failed check
 
 it('shows one status notice and one retry for a batch of failed services', async () => {
  mocks.status.errors = ['Some automations could not be loaded.','Some automations could not be loaded.','Some automations could not be loaded.','GitHub status could not be checked.','Connections could not be loaded.']
- await render('dev', async host => {
+ await render(async host => {
   const notice = host.querySelector('[role="status"]')!
   expect(notice.querySelectorAll('p')).toHaveLength(1)
   expect([...notice.querySelectorAll('button')].filter(button=>button.textContent==='Retry')).toHaveLength(1)

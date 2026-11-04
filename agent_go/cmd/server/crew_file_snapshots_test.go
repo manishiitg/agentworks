@@ -62,8 +62,7 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	api.eventStore = storeevents.NewEventStore(100)
 	api.eventStore.AddEvent("session", storeevents.Event{ID: "earlier", Type: "user_message", SessionID: "session"})
 	api.lastQueryRequests = map[string]QueryRequest{"session": {SelectedFolder: linkBetaPath}}
-	// PLAT-746-295: Cowork uses the same capture, review and file-access rules.
-	if err := os.WriteFile(filepath.Join(private, "product.json"), []byte(`{"mode":"cowork"}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(private, "product.json"), []byte(`{}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	roots, found, err := crewStorageRoots(linkBetaPath)

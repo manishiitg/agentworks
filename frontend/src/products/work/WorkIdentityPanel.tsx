@@ -13,7 +13,7 @@ import { Label } from '../../components/ui/label'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { StatusBanner } from '../../components/workflow/bots/StatusBanner'
-import { productMode, type ProductIdentity } from '../../platform/chat/productProjects'
+import type { ProductIdentity } from '../../platform/chat/productProjects'
 import type { ProductIdentityPatch } from '../../platform/chat/productProjects'
 import api, { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
@@ -25,9 +25,8 @@ import { ProjectInstructionsCard } from './ProjectInstructionsCard'
 import type { WorkRuntimeSelection } from './workTabs'
 import { useChatStore } from '../../stores/useChatStore'
 
-import { localFileError, useProjectMode } from './codeLocalFiles'
+import { localFileError } from './codeLocalFiles'
 import { isLocalDeployment } from '../productSurfaceConfig'
-import { CODE_MODE_CHOICES } from './CreateCodeWorkspaceDialog'
 
 const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
@@ -39,17 +38,6 @@ const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   // Code only: where this chat's files and commands live (the server, or your own computer through the CLI).
   { value: 'location', label: 'Laptop access' },
 ]
-
-// Code has a name only: rename and delete, no identity or purpose.
-/** The mode this project was created in. It cannot change, so it is shown as plain text. */
-function ModeRow({ sessionId }: { sessionId: string }) {
-  const mode = useProjectMode(sessionId)
-  const choice = CODE_MODE_CHOICES.find(item => item.mode === mode) ?? CODE_MODE_CHOICES[0]
-  return <SettingsCard icon={<choice.icon aria-hidden="true" className="h-4 w-4 text-primary" />} title={`Mode: ${choice.title}`} description={choice.text}>
-    {null}
-  </SettingsCard>
-}
-
 
 function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
   projectTitle: string
@@ -155,7 +143,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [crewReferences, setCrewReferences] = useState<Array<{ path: string; label: string; icon?: string }>>([])
-  // A Code project can also attach the person's other Code and Cowork projects (their files, read-only). Not Local ones (their
+  // A Code project can also attach the person's other projects (their files, read-only). Not Local ones (their
   // files are on a computer), and not for a Crew, which others can open.
   const product = useProjectProduct()
 
@@ -358,7 +346,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {activeTab === 'general' &&  <ModeRow sessionId={sessionId} />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
         {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}
         {activeTab === 'models' && <div className="space-y-4">

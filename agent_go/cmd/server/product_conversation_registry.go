@@ -90,7 +90,7 @@ type productConversationRegistryDocument struct {
 	// reopen or forget its earlier chats. Identities only; the transcripts
 	// stay in chat_history.
 	Previous map[string][]ProductConversationRecord `json:"previous,omitempty"`
-	// Agents holds, per slot, the name and purpose of an agent (a Code or Cowork chat tab). They belong to the slot,
+	// Agents holds, per slot, the name and purpose of an agent (a Crew chat tab). They belong to the slot,
 	// not the session, so a new conversation in the same tab keeps its role (PLAT-571).
 	Agents map[string]ProductAgentIdentity `json:"agents,omitempty"`
 }

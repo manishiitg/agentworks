@@ -1,6 +1,5 @@
 import { YourComputerPanel } from './YourComputerPanel'
 import { useMacCrew } from './useMacCrew'
-import { useProjectMode } from './codeLocalFiles'
 import { useState, type ReactNode } from 'react'
 import { Server } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -41,7 +40,6 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   const [tab, setTab] = useState<WorkIntegrationTab>('apps')
   const [integrationSection, setIntegrationSection] = useState<IntegrationSection>('connected')
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
-  const projectMode = useProjectMode(sessionId ?? '')
   useWorkspaceViewTarget('mcp', target => {
     // Sharing, where it lives (or laptop access) and connected agents are one Access page (owner, 3 Nov); old names open it.
     const next = target === 'slack-bot' ? 'slack' : ['share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge'].includes(target) ? 'access' : target
@@ -60,7 +58,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
       <>
         {tab === 'access' && <AccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} canEdit={canEdit} onAsk={draft} laptopForRun={<ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section="laptop" canEdit={false} onAsk={draft} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} />} />}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
-        {tab === 'apps' && <ProjectIntegrationPanel github={projectMode === 'dev'} workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
+        {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
         {tab === 'folders' && <WorkFoldersSection part={isLocalDeployment() ? 'linked' : 'all'} onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
         {/* In the Mac app this is the folders attached on this Mac (Downloads, your whole Mac, picked folders); on a server it
