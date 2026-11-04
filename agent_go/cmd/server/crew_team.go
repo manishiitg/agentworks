@@ -56,13 +56,13 @@ type crewTeam struct {
 	Name       string              `json:"name"`
 	OwnerID    string              `json:"owner_id"`
 	// On is the Team tab's switch (owner, 4 Nov): off, the roster stays saved but only the owner is in the team.
-	On                  bool             `json:"on"`
-	People              []crewTeamPerson `json:"people"`
-	Folder              crewTeamFolder   `json:"folder"`
-	Revision            uint64           `json:"revision"`
-	OwnerName           string           `json:"owner_name,omitempty"`
-	CanManage           bool             `json:"can_manage"`
-	CanEditSharedFolder bool             `json:"can_edit_shared_folder"`
+	On           bool             `json:"on"`
+	People       []crewTeamPerson `json:"people"`
+	Folder       crewTeamFolder   `json:"folder"`
+	Revision     uint64           `json:"revision"`
+	OwnerName    string           `json:"owner_name,omitempty"`
+	CanManage    bool             `json:"can_manage"`
+	FolderAccess bool             `json:"folder_access"`
 }
 
 func crewTeamDir(project string) (string, error) {
@@ -101,7 +101,7 @@ func writeCrewTeam(t crewTeam) error {
 	}
 	t.ServerData = nil
 	t.CanManage = false
-	t.CanEditSharedFolder = false
+	t.FolderAccess = false
 	t.OwnerName = ""
 	return fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
 }
@@ -120,7 +120,7 @@ func (t crewTeam) invited(user string) bool {
 
 func (t crewTeam) view(user string) crewTeam {
 	t.CanManage = t.OwnerID == user
-	t.CanEditSharedFolder = t.edits(user)
+	t.FolderAccess = t.edits(user)
 	t.OwnerName = shareOwnerLabel(t.OwnerID)
 	if t.edits(user) {
 		if s, e := readCrewTeamFileState(t.ProjectID); e == nil {
@@ -134,7 +134,7 @@ func (t crewTeam) view(user string) crewTeam {
 		}
 	}
 	// Team-only members can discover shared agents but do not learn folder contents.
-	if !t.CanEditSharedFolder && !t.CanManage {
+	if !t.FolderAccess && !t.CanManage {
 		t.Folder = crewTeamFolder{}
 	}
 	return t

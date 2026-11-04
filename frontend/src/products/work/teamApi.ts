@@ -6,7 +6,7 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; path: string; label: string }; can_manage: boolean; can_edit_shared_folder: boolean; server_data?: { name: string; size_bytes: number } }
+export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; path: string; label: string }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number } }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
 export type TeamClash = { path: string; source: string; winning_revision: number; losing_revision: number; winning_author: string; losing_author: string }
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
@@ -105,7 +105,7 @@ function useTeamLists() {
             if (!response.ok) return
             data = await response.json()
           } else data = (await api.get<{ teams: Team[]; invites?: TeamInvite[] }>('/api/crew-teams', { skipSessionContext: true })).data
-          for (const team of data.teams || []) if (team.can_edit_shared_folder) results.push({ team, target: { project: team.project_id, connection, folderId: team.folder.id } })
+          for (const team of data.teams || []) if (team.folder_access) results.push({ team, target: { project: team.project_id, connection, folderId: team.folder.id } })
           for (const invite of data.invites || []) invites.push({ ...invite, connection })
         } catch { /* An offline network keeps its copies on the computer. */ }
       }))

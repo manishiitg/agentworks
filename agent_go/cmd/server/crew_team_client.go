@@ -71,7 +71,7 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 	} else if !os.IsNotExist(e) {
 		return dir, b, e
 	}
-	if !t.CanEditSharedFolder {
+	if !t.FolderAccess {
 		return dir, crewTeamLocal{}, fmt.Errorf("ask the owner to allow shared folder editing")
 	}
 	b := crewTeamLocal{FolderID: t.Folder.ID, Connection: c.ID, Project: t.ProjectID, RemoteUser: c.User.ID, Client: uuid.NewString(), LocalBase: crewsync.Manifest{}, RemoteBase: crewsync.Manifest{}, Status: "pending"}
@@ -151,7 +151,7 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						continue
 					}
 					for _, t := range out.Teams {
-						if _, joining := crewTeamJoining.Load(crewTeamJoinKey(c.ID, t.ProjectID)); !t.CanEditSharedFolder || joining {
+						if _, joining := crewTeamJoining.Load(crewTeamJoinKey(c.ID, t.ProjectID)); !t.FolderAccess || joining {
 							continue
 						}
 						dir, b, err := api.ensureCrewTeamLocal(ctx, owner, c, t)
@@ -202,7 +202,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	if team.Folder.ID != b.FolderID {
 		return fmt.Errorf("the shared folder changed; this previous copy is no longer shared")
 	}
-	if !team.CanEditSharedFolder {
+	if !team.FolderAccess {
 		return fmt.Errorf("shared folder access was removed; downloaded files stay on this computer")
 	}
 	for _, direction := range []string{"upload", "download"} {

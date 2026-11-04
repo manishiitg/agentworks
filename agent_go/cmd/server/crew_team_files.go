@@ -429,7 +429,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 			files = append(files, map[string]any{"path": name, "size": v.File.Size, "hash": v.File.Hash, "revision": v.Revision, "author": shareOwnerLabel(v.Author), "modified_at": v.ModifiedAt})
 		}
 		sort.Slice(files, func(i, j int) bool { return files[i]["path"].(string) < files[j]["path"].(string) })
-		externalJSON(w, map[string]any{"project_id": project, "folder": t.Folder, "revision": s.Revision, "can_edit_shared_folder": true, "files": files})
+		externalJSON(w, map[string]any{"project_id": project, "folder": t.Folder, "revision": s.Revision, "folder_access": true, "files": files})
 		return
 	}
 	if !crewTeamAllowed(rel) {
