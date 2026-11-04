@@ -42,16 +42,19 @@ export function RailCrewAgents() {
   return <div role="list" aria-label="Agents" className="mt-2 flex min-h-0 flex-col items-center gap-1 overflow-y-auto border-t border-border/70 pt-2 [scrollbar-width:none]">
     <button type="button" title={`${crew.name || 'Crew'}: see all agents`} aria-label={`${crew.name || 'Crew'}: see all agents`}
       onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } }))}
-      className="grid h-8 w-8 place-items-center rounded-md hover:bg-muted"><AgentIcon name={crew.name || 'Crew'} size="md" /></button>
+      className="grid h-8 w-8 place-items-center rounded-full hover:bg-muted"><AgentIcon name={crew.name || 'Crew'} size="md" round /></button>
     {crew.agents.map(agent => <RailAgent key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} />)}
   </div>
 }
 
 function RailAgent({ agent, active }: { agent: CrewAgentRow; active: boolean }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
-  return <button type="button" role="listitem" aria-current={active ? 'page' : undefined} title={agent.name} aria-label={agent.name} onClick={() => activateTab(agent.tabId)}
-    className={`relative grid h-8 w-8 place-items-center rounded-md ${active ? 'bg-foreground/[0.08]' : 'hover:bg-muted'}`}>
-    <AgentIcon name={agent.name} icon={agent.info?.icon} active={active} />
-    <span className="absolute right-0.5 top-0.5"><AgentMark state={state} asking={agent.asking} /></span>
-  </button>
+  // Every agent the same box; the open one highlighted. Hover shows its card to the right of the rail.
+  return <AgentHoverCard info={agent.info} side="right">
+    <button type="button" role="listitem" aria-current={active ? 'page' : undefined} title={agent.info ? undefined : agent.name} aria-label={agent.name} onClick={() => activateTab(agent.tabId)}
+      className="relative grid h-8 w-8 place-items-center rounded-md hover:opacity-90">
+      <AgentIcon name={agent.name} icon={agent.info?.icon} size="md" active={active} />
+      <span className="absolute -right-0.5 -top-0.5"><AgentMark state={state} asking={agent.asking} /></span>
+    </button>
+  </AgentHoverCard>
 }
