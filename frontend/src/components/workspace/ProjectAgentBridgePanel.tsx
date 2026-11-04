@@ -47,16 +47,14 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, view }: {
   return <div className="max-w-2xl space-y-4 text-sm">
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
     {!agents && !error && <p role="status" className="text-xs text-muted-foreground">Loading…</p>}
-    {agents && view === 'coding' && <section aria-label="Coding apps on this Mac" className="space-y-3">
-      <p className="text-xs text-muted-foreground">Coding apps running on this Mac that this Crew can message. Each works in its own files.</p>
-      {local.map(agent => row(agent, true))}
-      {!local.length && <p className="text-xs text-muted-foreground">None yet. In the coding app's own chat, ask it to connect to AgentWorks.</p>}
-    </section>}
     {agents && view === 'others' && <section aria-label="Message other agents" className="space-y-3">
       <p className="text-xs text-muted-foreground">Your own agents, agents people have published, and Crews shared with you.</p>
+      {/* Coding chats on this Mac (Claude Code, Codex, Cursor) come first, with their program label; they had their own
+          page until the owner removed it (4 Nov). */}
+      {local.map(agent => row(agent, true))}
       {network.map(agent => row(agent, false))}
       {crewsAndAgents.map(agent => row(agent, false))}
-      {!network.length && !crewsAndAgents.length && <p className="text-xs text-muted-foreground">No agents to message yet.</p>}
+      {!local.length && !network.length && !crewsAndAgents.length && <p className="text-xs text-muted-foreground">No agents to message yet.</p>}
     </section>}
   </div>
 }
