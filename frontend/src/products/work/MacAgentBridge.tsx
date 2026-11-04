@@ -11,7 +11,7 @@ type Placement = { location: 'publishing' | 'server' }
 /** AgentBridge on the Mac online tab (owner, 4 Nov mockup): agents, not people. Per agent, Only my agents | Public,
  * where Public is the same shared-agent record as Team's Everyone (reviewer, 4 Nov): one record, so both tabs agree.
  * An agent shared with Team or chosen people only says so here; a click on this tab never drops or widens that share. */
-export function MacAgentBridge({ projectId, connection, network, crewName, onTeam }: { projectId: string; connection: string; network: string; crewName: string; onTeam: () => void }) {
+export function MacAgentBridge({ projectId, connection, crewName, onTeam }: { projectId: string; connection: string; crewName: string; onTeam: () => void }) {
   const [rows, setRows] = useState<AgentRow[] | null>(null)
   const [shared, setShared] = useState<SharedAgent[]>([])
   const [placements, setPlacements] = useState<Record<string, Placement>>({})
@@ -71,7 +71,6 @@ export function MacAgentBridge({ projectId, connection, network, crewName, onTea
       </div>
     })}
     <CrewCodingApps connection={connection} crewName={crewName} otherCrews={<OtherCrews projectId={projectId} />} />
-    <p className="pb-2.5 pl-3 text-[12.5px] text-muted-foreground">Public: anyone's agents on {network} can find and message it. It stays on this Mac.</p>
     {error && <p role="alert" className="pl-3 text-xs text-amber-600">{error}</p>}
   </div>
 }
@@ -81,9 +80,10 @@ function OtherCrews({ projectId }: { projectId: string }) {
   const [names, setNames] = useState<string[]>([])
   useEffect(() => {
     let live = true
-    void api.get<{ agents?: { kind?: string; crew_id?: string; crew_name?: string }[] }>('/api/agent-directory', { skipSessionContext: true }).then(({ data }) => {
+    // The person's own Crews are "crew" rows; "crew_agent" rows are other people's shared agents.
+    void api.get<{ agents?: { kind?: string; crew_id?: string; name?: string }[] }>('/api/agent-directory', { skipSessionContext: true }).then(({ data }) => {
       const seen = new Set<string>()
-      for (const row of data.agents || []) if (row.kind === 'crew_agent' && row.crew_id !== projectId && row.crew_name) seen.add(row.crew_name)
+      for (const row of data.agents || []) if (row.kind === 'crew' && row.crew_id !== projectId && row.name) seen.add(row.name)
       if (live) setNames([...seen])
     }).catch(() => {})
     return () => { live = false }
