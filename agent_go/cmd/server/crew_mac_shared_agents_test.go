@@ -16,9 +16,12 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL", "")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"member","products":["work"]},{"id":"outsider","products":["work"]},{"id":"disabled","disabled":true,"products":["work"]}]}`)
-	if err := crewroot.WriteSync("p", crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay"}); err != nil {
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"member","products":["work"]},{"id":"outsider","products":["work"]},{"id":"disabled","disabled":true,"products":["work"]},{"id":"no-crew","products":["brain"]}]}`)
+	if err := crewroot.WriteSync("p", crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay", PairID: "pair-test", PeerProjectID: "local-project"}); err != nil {
 		t.Fatal(err)
+	}
+	if !crewRelayTwin("p") {
+		t.Fatal("fixture must be a valid Mac Crew twin")
 	}
 	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
 		t.Fatal(err)
@@ -42,6 +45,7 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		{"private tab", "member", "private01", []string{"messages:read"}, true, false, false},
 		{"read permission cannot send", "member", "main", []string{"messages:read"}, true, true, false},
 		{"disabled caller", "disabled", "main", []string{"messages:send"}, true, true, false},
+		{"no Crew product", "no-crew", "main", []string{"messages:send"}, true, true, false},
 		{"unbound Crew permission", "outsider", "main", []string{"crews:run"}, false, true, true},
 		{"unbound messaging alone", "outsider", "main", []string{"messages:send"}, false, true, false},
 	} {
