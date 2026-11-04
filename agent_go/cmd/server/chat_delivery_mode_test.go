@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -149,10 +150,17 @@ func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 			}
 		}
 	}
-	check("starting", false) // startup lane, no agent yet
+	check("running", false) // PLAT-746: an occupied lane alone cannot mean startup.
+	api.eventStore = events.NewEventStore(100)
+	defer api.eventStore.Stop()
+	api.eventStore.EnableTurnPhase()
+	api.eventStore.AddEvent("chat", events.Event{Type: "user_message"})
+	check("starting", false) // confirmed startup phase
+	api.eventStore.AddEvent("chat", events.Event{Type: "conversation_end"})
+	check("running", false) // completed output can still be releasing its lane
 	api.runningAgents = map[string]*mcpagent.Agent{"chat": testCodingAgent(llm.ProviderClaudeCode, "claude-sonnet-4-6")}
 	api.agentCancelFuncs = map[string]context.CancelFunc{"chat": func() {}}
-	check("starting", false) // agent registered, transport still launching
+	check("running", false) // a missing transport can also mean finishing
 	ready = true
 	check("running", true)
 	if reason, allowed := api.queuedMessageDeliveryState("chat", QueryRequest{Provider: "codex-cli"}); reason != "refreshing" || allowed {
@@ -170,7 +178,7 @@ func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 	}
 	ready = false // became unavailable after claim; do not dispatch or duplicate
 	api.deliverQueuedMessageAsSteer(steered)
-	check("starting", false)
+	check("running", false)
 	release()
 	delete(api.agentCancelFuncs, "chat")
 	check("waiting", false)
@@ -205,7 +213,7 @@ func TestChatDeliveryQueueRetainedTurnSurvivesForegroundCleanup(t *testing.T) {
 		t.Fatalf("retained turn = %s / %t", reason, allowed)
 	}
 	ready = false
-	if reason, allowed := api.queuedMessageDeliveryState(sid, QueryRequest{}); reason != "starting" || allowed {
+	if reason, allowed := api.queuedMessageDeliveryState(sid, QueryRequest{}); reason != "running" || allowed {
 		t.Fatalf("lost transport = %s / %t", reason, allowed)
 	}
 	delete(api.retainedMainTurns, sid)

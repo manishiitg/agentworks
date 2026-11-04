@@ -41,24 +41,36 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 				contract, coding := codingAgentProviderContract(provider, "")
 				if coding && contract.SupportsLiveInput {
 					if !api.liveSteerProviderTransportReady(sessionID, provider) {
-						return "starting", false
+						return api.blockedQueuedTurnReason(sessionID), false
 					}
 					return "running", !req.DisableLiveInputDelivery
 				}
 			}
 		}
 		if occupied {
-			return "starting", false
+			return api.blockedQueuedTurnReason(sessionID), false
 		}
 		return "waiting", false
 	}
 	if agentSupportsLiveInputDelivery(agent) && occupied && !api.liveSteerTransportReady(sessionID, agent) {
-		return "starting", false
+		return api.blockedQueuedTurnReason(sessionID), false
 	}
 	if !occupied {
 		return "waiting", false
 	}
 	return "running", !req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID)
+}
+
+// PLAT-746: a busy lane or missing live-input transport is not startup evidence.
+// Keep dispatch eligibility unchanged; use the existing turn phase for its label.
+func (api *StreamingAPI) blockedQueuedTurnReason(sessionID string) string {
+	if api.eventStore != nil {
+		phase, _, _ := api.eventStore.TurnPhaseSnapshot(sessionID)
+		if phase == "starting" {
+			return "starting"
+		}
+	}
+	return "running"
 }
 
 func (api *StreamingAPI) hasRetainedQueuedSteerTurn(sessionID string) bool {
