@@ -136,6 +136,9 @@ func (api *StreamingAPI) slackCrewOnMac(ctx context.Context, sender, project str
 // conversation service a direct ask does. It returns the answer, or a plain line saying why there is none.
 func (api *StreamingAPI) askCrewMacAndWait(ctx context.Context, owner, project, caller, message string) string {
 	call := func(action string, args map[string]any) crewChatResult {
+		if crewPublishedTarget(project, externalArg(args, "chat_id")) {
+			return api.publishedOwnerWorkspace(ctx, owner, project, caller, action, args)
+		}
 		raw, _ := json.Marshal(args)
 		return callCrewMacFor(ctx, owner, project, crewChatCall{Operation: "workspace", Action: action, Args: raw, Caller: caller}, 70*time.Second)
 	}
@@ -235,6 +238,10 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 	b, err := crewroot.ReadSync(roots.ID)
 	if err != nil || b == nil || b.Mode != "relay" || b.Side != "server" || b.Editing != "local" || pair == "" || b.PairID != pair {
 		externalError(w, 409, "wrong_pair", "Turn this off from the Mac that holds this Crew.")
+		return
+	}
+	if crewHasPublishedAgents(roots.ID) {
+		externalError(w, 409, "published_agents", "Published agents use this server Crew. Keep its connection to continue using them.")
 		return
 	}
 	backup, err := backupCrewRelayTwin(roots)

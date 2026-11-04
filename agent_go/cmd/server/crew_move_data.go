@@ -64,6 +64,10 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 			return err
 		}
 	}
+	published, err := readCrewAgentPlacements(roots.ID)
+	if err != nil {
+		return err
+	}
 	h := crewMoveHeader{SourceID: roots.ID, SourceOwner: claims.UserID, MainKey: main.ConversationKey, Settings: map[string]map[string]json.RawMessage{}}
 	for _, name := range []string{"product.json", "workflow.json"} {
 		p, err := crewMoveRecordPath(roots, name)
@@ -133,6 +137,9 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 		}
 		hook.Auth.EncryptedSecret = ""
 	}
+	if selection.Tab == "" {
+		excludePublishedCrewCallers(&h, published)
+	}
 	if selection.Tab != "" {
 		h.AgentTab, h.AccountID = selection.Tab, selection.AccountID
 		if err = filterCrewAgentCallers(&h); err != nil {
@@ -158,7 +165,9 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 	keys := make([]string, 0, len(doc.Entries))
 	for key, c := range doc.Entries {
 		if c.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(c.WorkspacePath) == roots.Virtual && (selection.Tab == "" || c.ConversationKey == crewAgentPublishKey(roots.ID, selection.Tab)) {
-			keys = append(keys, key)
+			if _, moved := published[crewAgentPublishTab(c.ConversationKey)]; !moved || selection.Tab != "" {
+				keys = append(keys, key)
+			}
 		}
 	}
 	sort.Strings(keys)
@@ -229,6 +238,9 @@ func readCrewMoveData(p string, visit func(crewMoveHeader, *crewMoveChat) error)
 }
 
 func crewMoveKey(key string, h crewMoveHeader, destination, main string) (string, error) {
+	if h.AgentTab != "" && crewAgentTargetMatches(key, h) {
+		return crewAgentPublishKey(destination, h.AgentTab), nil
+	}
 	if key == h.MainKey || key == h.SourceID || key == "" {
 		return main, nil
 	}
@@ -355,6 +367,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			if h.AgentTab != "" {
 				identity.ConnectionID = h.AccountID
 				identity.Engine = chat.Conversation.Native.Provider
+				identity.ModelID = chat.Conversation.ModelID
 			}
 			if identity.Engine != "" {
 				if chosen, _ := api.crewNativeDestination(ctx, claims, roots, current, identity, identity.ModelID, identity.Engine); chosen != nil {
@@ -447,7 +460,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 		if err != nil {
 			return err
 		}
-		if h.AgentTab != "" {
+		if h.AgentTab != "" || crewHasPublishedAgents(roots.ID) {
 			old, e := readProjectFunctionDefinitions(ctx, roots.Virtual)
 			if e != nil {
 				return e
@@ -497,7 +510,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 				}
 			}
 		}
-		if h.AgentTab != "" {
+		if h.AgentTab != "" || crewHasPublishedAgents(roots.ID) {
 			h.Webhooks = mergeCrewPublishedItems(oldHooks.Webhooks, h.Webhooks, func(v projectWebhookDefinition) string { return v.ID })
 		}
 		if err = fsutil.WriteJSONAtomic(hookPath, projectWebhooksDocument{Webhooks: h.Webhooks}, 0600); err != nil {
@@ -545,7 +558,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 		if err != nil {
 			return err
 		}
-		if h.AgentTab != "" {
+		if h.AgentTab != "" || crewHasPublishedAgents(roots.ID) {
 			old, e := readProjectSchedules(ctx, roots.Virtual)
 			if e != nil {
 				return e

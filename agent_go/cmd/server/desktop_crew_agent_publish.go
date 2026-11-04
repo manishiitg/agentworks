@@ -72,7 +72,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 		fail(err)
 		return
 	}
-	record, _, err := api.crewAgentPublishRecord(r.Context(), claims, roots, selection.Tab)
+	record, identity, err := api.crewAgentPublishRecord(r.Context(), claims, roots, selection.Tab)
 	if err != nil {
 		fail(err)
 		return
@@ -131,7 +131,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			return
 		}
 		transfer = uuid.NewString()
-		request := crewSyncRequest{Action: "publish_agent", PairID: binding.PairID, TransferID: transfer, SplitFiles: roots.SeparateFiles(), Snapshot: &snapshot, PublishAgent: &selection, Provider: record.Provider}
+		request := crewSyncRequest{MacMainConversationID: main.ConversationID, Action: "publish_agent", PairID: binding.PairID, TransferID: transfer, SplitFiles: roots.SeparateFiles(), Snapshot: &snapshot, PublishAgent: &selection, Provider: record.Provider}
 		preview := *out.Publish
 		preview.TransferID, preview.Files = transfer, len(snapshot.Files)
 		for _, file := range snapshot.Files {
@@ -208,12 +208,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 		return
 	}
 	request := plan.Request
-	entry := crewAgentPlacement{Tab: selection.Tab, Location: "publishing", PairID: binding.PairID, TransferID: transfer, SessionID: record.SessionID, ConversationID: record.ConversationID, SplitFiles: roots.SeparateFiles(), Selection: *request.PublishAgent}
-	if err = writeCrewAgentPlacement(id, entry); err != nil {
-		fail(err)
-		return
-	}
-	retireProductCodingCLI(record.SessionID, "publishing this agent to its server")
+	entry := crewAgentPlacement{Name: firstNonEmptyTrimmed(identity.Name, "Main"), Tab: selection.Tab, Location: "publishing", PairID: binding.PairID, TransferID: transfer, SessionID: record.SessionID, ConversationID: record.ConversationID, SplitFiles: roots.SeparateFiles(), Selection: *request.PublishAgent}
 	stage := request
 	stage.Action = "stage_agent"
 	if _, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, binding.PeerProjectID, stage); err != nil {
@@ -238,6 +233,20 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 		fail(err)
 		return
 	}
+	latest, _, err := api.crewAgentPublishRecord(r.Context(), claims, roots, selection.Tab)
+	if err != nil {
+		fail(err)
+		return
+	}
+	if latest.SessionID != plan.SessionID || latest.ConversationID != plan.ConversationID || latest.UpdatedAt != plan.UpdatedAt {
+		fail(fmt.Errorf("this agent changed during upload; review its latest work before publishing"))
+		return
+	}
+	if err = writeCrewAgentPlacement(id, entry); err != nil {
+		fail(err)
+		return
+	}
+	retireProductCodingCLI(record.SessionID, "publishing this agent to its server")
 	if err = api.disableCrewMoveSchedules(r.Context(), roots, request.Snapshot.StatePath); err != nil {
 		fail(err)
 		return

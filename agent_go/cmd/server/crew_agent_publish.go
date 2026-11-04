@@ -27,15 +27,17 @@ type crewAgentPublishSelection struct {
 // This record is written only after owner/pair admission. Paths are derived
 // locally from the stable tab, never supplied by the other computer.
 type crewAgentPlacement struct {
-	Tab            string                    `json:"tab"`
-	Location       string                    `json:"location"` // publishing or server
-	Since          string                    `json:"since,omitempty"`
-	TransferID     string                    `json:"transfer_id"`
-	SessionID      string                    `json:"session_id"`
-	ConversationID string                    `json:"conversation_id"`
-	PairID         string                    `json:"pair_id"`
-	SplitFiles     bool                      `json:"split_files"`
-	Selection      crewAgentPublishSelection `json:"selection"`
+	Name                  string                    `json:"name"`
+	MacMainConversationID string                    `json:"mac_main_conversation_id,omitempty"`
+	Tab                   string                    `json:"tab"`
+	Location              string                    `json:"location"` // publishing or server
+	Since                 string                    `json:"since,omitempty"`
+	TransferID            string                    `json:"transfer_id"`
+	SessionID             string                    `json:"session_id"`
+	ConversationID        string                    `json:"conversation_id"`
+	PairID                string                    `json:"pair_id"`
+	SplitFiles            bool                      `json:"split_files"`
+	Selection             crewAgentPublishSelection `json:"selection"`
 }
 
 var crewAgentPlacementMu sync.Mutex
@@ -49,6 +51,12 @@ func crewAgentPublishKey(project, tab string) string {
 
 func crewAgentPublishTab(key string) string {
 	if _, tab, ok := strings.Cut(key, codeChatSideMarker); ok {
+		if strings.HasPrefix(tab, sharedThreadChatPrefix) {
+			suffix := strings.TrimPrefix(tab, sharedThreadChatPrefix)
+			if at := strings.LastIndex(suffix, "-"); at > 0 && len(suffix[at+1:]) == 12 {
+				tab = suffix[:at]
+			}
+		}
 		if crewMacTabID(tab) {
 			return tab
 		}
@@ -239,7 +247,7 @@ func crewAgentTargetMatches(target string, h crewMoveHeader) bool {
 	if target == "" || target == "main" || target == h.MainKey || target == h.SourceID {
 		return h.AgentTab == macMainTab
 	}
-	return target == h.AgentTab || target == crewAgentPublishKey(h.SourceID, h.AgentTab)
+	return target == h.AgentTab || target == crewAgentPublishKey(h.SourceID, h.AgentTab) || !strings.Contains(target, ":") && crewAgentChatID(target) == h.AgentTab
 }
 
 func crewAgentScheduleMatches(s projectactions.Schedule, h crewMoveHeader) bool {
@@ -278,6 +286,42 @@ func filterCrewAgentCallers(h *crewMoveHeader) error {
 		}
 	}
 	return nil
+}
+
+// Publishing the remaining Crew later does not re-import the retired Mac copy
+// of an agent or replace that agent's live server callers with disabled copies.
+func excludePublishedCrewCallers(h *crewMoveHeader, published map[string]crewAgentPlacement) {
+	moved := func(target string) bool {
+		for tab := range published {
+			match := *h
+			match.AgentTab = tab
+			if crewAgentTargetMatches(target, match) {
+				return true
+			}
+		}
+		return false
+	}
+	h.Schedules = slices.DeleteFunc(h.Schedules, func(s projectactions.Schedule) bool {
+		var input scheduleExecutionInput
+		if json.Unmarshal(s.Input, &input) == nil && input.Condition != nil {
+			return moved(input.Condition.Target.ChatID)
+		}
+		return s.Action.Type == "message" && moved(s.Action.Tab)
+	})
+	h.Functions = slices.DeleteFunc(h.Functions, func(s projectFunctionDefinition) bool { return s.Action.Type == "message" && moved(s.Action.Tab) })
+	h.Webhooks = slices.DeleteFunc(h.Webhooks, func(s projectWebhookDefinition) bool { return moved(s.Action.Tab) })
+	h.Callers = slices.DeleteFunc(h.Callers, func(s crewMoveCaller) bool {
+		return s.Definition.Schedule.Condition != nil && moved(s.Definition.Schedule.Condition.Target.ChatID)
+	})
+	ids := map[string]bool{}
+	for _, s := range h.Schedules {
+		ids[s.ID] = true
+	}
+	for id := range h.Watchers {
+		if !ids[id] {
+			delete(h.Watchers, id)
+		}
+	}
 }
 
 func mergeCrewPublishedItems[T any](old, incoming []T, id func(T) string) []T {

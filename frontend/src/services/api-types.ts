@@ -290,6 +290,7 @@ export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
 
 /** An open side tab of a Code or Crew project as the server knows it. */
 export interface AgentProfileSideChat {
+  chat_location?: 'mac' | 'server'
   tab_owner_id?: string
   tab_owner_name?: string
   can_write?: boolean

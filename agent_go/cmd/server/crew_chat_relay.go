@@ -187,6 +187,20 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 			return false
 		}
 	}
+	if call.Operation == "resolve" && call.Tab == "" && crewMacSocketFor(GetUserIDFromContext(r.Context()), project, b.PairID) == nil {
+		entries, e := readCrewAgentPlacements(project)
+		if e != nil {
+			externalError(w, 409, "publish_unavailable", e.Error())
+			return true
+		}
+		for _, entry := range entries {
+			if entry.MacMainConversationID == "" {
+				continue
+			}
+			writeAgentProfileJSON(w, http.StatusOK, map[string]any{"session_id": crewChatSessionID(project, entry.MacMainConversationID), "conversation_id": entry.MacMainConversationID, "conversation_key": key, "tab_owner_id": GetUserIDFromContext(r.Context()), "can_write": true, "is_main_chat": true, "chat_location": "mac", "mac_off": true})
+			return true
+		}
+	}
 	if call.Operation == "rotate" {
 		externalError(w, 409, "mac_main_chat", "Start a new main chat from your Mac, then reopen this Crew here.")
 		return true
@@ -567,7 +581,7 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 			}
 			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
 				ConversationKey: project + codeChatSideMarker + id, ConversationID: row.ConversationID, SessionID: crewChatSessionID(project, row.ConversationID),
-				Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
+				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
 		}
 	}
 	if len(placements) > 0 {
@@ -586,7 +600,7 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 				continue
 			}
 			identity := doc.Agents[key]
-			tabs = append(tabs, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: identity.Name, Purpose: identity.Purpose, Icon: identity.Icon, Position: identity.Position, Pinned: !identity.Unpinned, TabOwnerID: owner, CanWrite: true})
+			tabs = append(tabs, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, ChatLocation: "server", Name: identity.Name, Purpose: identity.Purpose, Icon: identity.Icon, Position: identity.Position, Pinned: !identity.Unpinned, TabOwnerID: owner, CanWrite: true})
 		}
 	}
 	writeAgentProfileJSON(w, http.StatusOK, tabs)

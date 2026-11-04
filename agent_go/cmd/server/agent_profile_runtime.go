@@ -847,11 +847,14 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if scoped, e := crewAgentRuntimeFolder(workspacePath, userID, sessionID); e != nil {
 			return nil, e
 		} else if scoped != workspacePath {
-			// Capabilities and account admission remain those of the same Crew.
-			// File/skill tools and the native cwd use this agent's transferred work.
-			req.SelectedFolder = scoped
-			rendered += "\n\nThis agent was published from a Mac. Its working files, skills and memory are in " + scoped + ". Use that folder for this agent's work. The rest of the Mac is not present."
-			if content, found, e := readFileFromWorkspace(ctx, scoped+"/"+projectinstructions.FileName); e != nil {
+			// Keep the canonical Crew path for admission and private chat persistence.
+			// The native runtime's project link points at this agent's scoped files.
+			resources := strings.TrimSuffix(strings.TrimSuffix(scoped, "/files"), "/resources") + "/resources"
+			rendered += "\n\nThis agent was published from a Mac. Its working files are in " + scoped + ". Its transferred skills and memory are in " + resources + ". Read skills there when applicable and save this agent's memory there. Workspace file tools use these full paths. The rest of the Mac is not present."
+			if memory, found, e := readFileFromWorkspace(ctx, resources+"/MEMORY.md"); e == nil && found {
+				rendered += "\n\nThis agent's saved memory:\n" + memory
+			}
+			if content, found, e := readFileFromWorkspace(ctx, resources+"/"+projectinstructions.FileName); e != nil {
 				return nil, e
 			} else if found {
 				projectInstructions = projectinstructions.Section(content)
