@@ -1,9 +1,8 @@
 ---
 name: panel-plan
-description: Build or change a Goal plan, Crew instructions or Flow. Choose the product
-  procedure before editing.
+description: Create or edit workflows and reusable scripts inside a Crew, or edit an existing standalone workflow plan.
 metadata:
-  version: 2.0.0
+  version: 3.0.0
   panel-tools:
     agentworks:
     - execute_shell_command
@@ -15,6 +14,9 @@ metadata:
     work:
     - execute_shell_command
     - files
+    - crew_workflow_files
+    - run_workflow_trigger
+    - get_workflow_trigger_run
     relays:
     - settings
     - test_relay
@@ -29,14 +31,15 @@ metadata:
   - relay
 ---
 
-# Plan
+# Workflows and scripts
 
-Build or change a Goal plan, Crew instructions or Flow. Choose the product procedure before editing.
+Use a workflow for repeatable steps and a saved script for reusable Python. A Crew can contain both; a normal conversation needs neither. Keep purpose and instructions in their existing files.
 
-Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
+Read only the procedure for the current editing surface:
+- In Crew chat, read `references/crew-plan/SKILL.md` to create/edit owned workflows or scripts and run them.
+- In a workflow Builder, read `references/goal-plan/SKILL.md` for the existing plan tools, including workflows owned by a Crew.
+- Relay integration is deferred. Only when a deployment offers Relay tools and the person requests that product, read `references/relay-code/SKILL.md`. Do not create a Relay to implement a Crew script.
 
-- Goal plan: read `references/goal-plan/SKILL.md` when needed.
-- Crew plan: read `references/crew-plan/SKILL.md` when needed.
-- Relay code: read `references/relay-code/SKILL.md` when needed.
+In product chat, use `read_skill` with this skill name and the reference path. External MCP clients use `help action=topic` with this topic and path. Follow the current tool catalog: loading guidance does not register tools or change access. Do not invoke standalone workflow-only tools from Crew chat unless they are actually offered.
 
-Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.
+Verify saved definitions and report run results from their returned status and outputs. An accepted run is not a completed run. Goal tracking and conversion of existing Goals into Crews are not implemented by creating a workflow; do not claim or perform that migration from this guide.

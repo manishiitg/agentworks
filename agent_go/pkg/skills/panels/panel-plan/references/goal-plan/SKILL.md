@@ -1,5 +1,9 @@
-# Goal plan
+# Edit a workflow plan
 
-Inspect this product’s current plan and registered tool schemas before editing. The person’s Builder request authorizes the requested change under existing server checks. Verify the saved result.
+This procedure applies in the workflow Builder, including a workflow owned by a Crew. From Crew chat, use `panel-plan/references/crew-plan/SKILL.md` and its scoped authoring tool instead.
 
-Read builder-reference/references/plan-editing-tools.md and the existing plan/configuration. Use create_plan, add_step, update_step, maintain_plan and the admitted migration tools for the requested edit. Check affected data, prompts and downstream consumers once before testing. Do not put a Goal’s step graph into a Crew or Relay.
+Read `builder-reference/references/plan-editing-tools.md`, the saved plan and its input definitions. Use the offered `create_plan`, `add_step`, `update_step` and `maintain_plan` schemas for the requested edit. Keep step IDs and existing instructions. One workflow belongs to its resolved parent; do not create another Crew or move existing Goal data just to edit a plan.
+
+Inputs define names, types, defaults and required values once. Presets are optional saved values, not execution groups or run folders. Use the current input/preset arguments. Saved Crew scripts are referenced by ID and input mappings; Crew-agent steps inherit configuration without copying private chat history. Read the Crew procedure for those fields, and preserve explicit step capability overrides.
+
+Check affected prompts, input consumers and downstream outputs, then verify the saved result. A test executes real work. Choose a single step or a full run according to the requested change and inspect its actual result, logs and evidence. Successful execution is not proof that a business goal improved.
