@@ -71,6 +71,17 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			t.Fatalf("%s accept: %d %s", who, w.Code, w.Body.String())
 		}
 	}
+	// The team's agents (a shared room, 5 Nov): members see the owner's In team agents, grouped by person; Only me
+	// agents and non-members see nothing.
+	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Icon: "🔍", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", Icon: "🔒", Audience: "chosen", People: []string{"member"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if w = call("member", "GET", base+"/agents", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"Reviewer"`) || strings.Contains(w.Body.String(), `"Solo"`) {
+		t.Fatalf("member team agents: %d %s", w.Code, w.Body.String())
+	}
+	if w = call("outsider", "GET", base+"/agents", "", ""); w.Code != 403 {
+		t.Fatalf("outsider saw the team's agents: %d %s", w.Code, w.Body.String())
+	}
 	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member", "outsider"}}, {Tab: "all01", Audience: "everyone"}}
 	for _, tc := range []struct{ tab, who, reason string }{{"team01", "member", ""}, {"chosen01", "member", ""}, {"chosen01", "outsider", "not_in_audience"}, {"all01", "outsider", ""}} {
 		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test")); reason != tc.reason {
