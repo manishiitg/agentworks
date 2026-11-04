@@ -69,6 +69,35 @@ func loadGoalMetrics(ctx context.Context, db workflowEvidenceDB) ([]GoalMetric, 
 // ConfigureGoalMetrics atomically replaces the active selection. Omitted
 // definitions are retired, never erased, so repeated setup preserves history.
 func ConfigureGoalMetrics(ctx context.Context, workspacePath string, metrics []GoalMetric) error {
+	metrics = GoalMetricsWithLegacyLinks(metrics)
+	if err := validateGoalMetrics(metrics); err != nil {
+		return err
+	}
+	var err error
+	workspacePath, err = GoalMeasurementWorkspace(workspacePath)
+	if err != nil {
+		return err
+	}
+	db, err := openWorkflowEvidenceDB(ctx, workspacePath, true)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err = db.ExecContext(ctx, goalMetricsSchema); err != nil {
+		return err
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := saveGoalMetricDefinitions(ctx, tx, metrics); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func validateGoalMetrics(metrics []GoalMetric) error {
 	if len(metrics) == 0 || len(metrics) > 30 {
 		return fmt.Errorf("provide 1 to 30 metrics, including at least one primary metric")
 	}
@@ -114,19 +143,11 @@ func ConfigureGoalMetrics(ctx context.Context, workspacePath string, metrics []G
 	if err := validateGoalMetricRelationships(metrics); err != nil {
 		return err
 	}
-	db, err := openWorkflowEvidenceDB(ctx, workspacePath, true)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	if _, err = db.ExecContext(ctx, goalMetricsSchema); err != nil {
-		return err
-	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return nil
+}
+
+func saveGoalMetricDefinitions(ctx context.Context, tx *sql.Tx, metrics []GoalMetric) error {
+	var err error
 	if _, err = tx.ExecContext(ctx, `UPDATE workflow_goal_metrics SET active=0`); err != nil {
 		return err
 	}
@@ -150,10 +171,16 @@ func ConfigureGoalMetrics(ctx context.Context, workspacePath string, metrics []G
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func RecordGoalObservations(ctx context.Context, workspacePath string, observations []GoalObservation) (*GoalMeasurementLedger, error) {
+	var err error
+	workspacePath, err = GoalMeasurementWorkspace(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+
 	ledger, err := LoadGoalMeasurements(ctx, workspacePath, 1)
 	if err != nil {
 		return nil, err

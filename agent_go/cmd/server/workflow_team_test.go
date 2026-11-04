@@ -210,13 +210,20 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	if w := save("leader", m.Team, 0); w.Code != 409 {
 		t.Fatal("stale team policy accepted")
 	}
-	sched := WorkflowSchedule{ID: "route-schedule", Name: "Route schedule", CronExpression: "0 9 * * *", Timezone: "UTC", GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first-route"}, TeamAuthorizedBy: "first", TeamPolicyRevision: 1}
+	sched := WorkflowSchedule{ID: "route-schedule", Name: "Route schedule", CronExpression: "0 9 * * *", Timezone: "UTC", InputPreset: "default", ChatID: "main", RouteSelections: map[string]string{"parent": "first-route"}, TeamAuthorizedBy: "first", TeamPolicyRevision: 1}
 	if e := teamScheduleAuthority(m.Team, "first", sched); e == nil {
 		t.Fatal("editing implicitly granted schedule management")
 	}
 	m.Team.Contributors[0].ManageSchedules = true
 	m.Schedules = []WorkflowSchedule{sched}
 	f.manifest(t, m)
+	// PLAT-746-265: timers live in schedules.json, not the retired manifest
+	// array. Test the saved projection that the scheduler actually fires.
+	if err := saveWorkflowTimerActions(teamTestContext("leader"), teamTestRoot, m); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ = ReadWorkflowManifest(context.Background(), teamTestRoot)
+	sched = m.Schedules[0]
 	if e := validateTeamScheduleFire(context.Background(), teamTestRoot, sched); e != nil {
 		t.Fatal(e)
 	}

@@ -31,3 +31,12 @@ Read `panel-automations` for schedules, functions and webhooks. Target the saved
 Use only the setup tools this chat exposes. If a child entry cannot be configured here, open that definition's Settings in the Crew rather than writing its private registry or inventing an API. A missing destination chat must be repaired explicitly, never silently redirected. Keep existing enabled/disabled settings and do not enable schedules merely to test them.
 
 Workflow definitions live under `.agentworks/workflows/<id>/` and automation code under `.agentworks/code/<id>/` in the Crew project. Use the workspace identity returned by `crew_workflow_files`; the server resolves these folders. Runs, outputs, logs and chats stay in managed storage outside the project. Ordinary project source, skills and knowledge keep their existing locations.
+
+
+## Goals and tracking
+
+Goals belong to the Crew, independently of executable workflows. Use `crew_goals action=list` before changing them. `save` updates one goal (stable `id`, `name`, desired `outcome`, explicit `status` active/achieved/stopped) and its complete `metrics` list. Leave metrics empty for a qualitative outcome. Optional `workflow_ids` selects this Crew's workflows or scripts that contribute; one goal may link to several workflows, and a Crew may have several goals. Never move an unrelated project just to track an outcome.
+
+Reuse the saved metric definitions and IDs; changing a metric's source, unit or meaning requires a new ID. User-supplied targets are configuration, not observations. `record` takes actual values, source observation times, collection/run IDs and original evidence; include `source_workspace` when attributing a reading to a linked workflow. Workflow agents use `get_goal_metrics` and `record_goal_observations` with their own workspace; the server routes readings to the parent Crew and requires the workflow to be linked. Keep business data and run files in the workflow's own storage. Scripts still run directly: inspect their real result and record its measurement through the Crew tool, or use an agent step that does this. A workflow finishing successfully never counts as progress by itself and never changes the goal's status. Missing or stale measurements are not zero or proof of success.
+
+The Goals view shows current tracking, workflow links and expandable measurement history/evidence. Use Record update for a verified manual reading and Edit goal for targets, links or explicit status changes. Goal tracking does not create a schedule or run work automatically.

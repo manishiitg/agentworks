@@ -17,12 +17,15 @@ type workflowEvidenceDB interface {
 	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
 }
 
-func workflowEvidenceDBPath(workspacePath string) string {
-	return filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/")), "db", "db.sqlite")
+func workflowEvidenceDBPath(workspacePath string) (string, error) {
+	return fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), filepath.Join(strings.Trim(strings.TrimSpace(workspacePath), "/"), "db", "db.sqlite"))
 }
 func openWorkflowEvidenceDB(ctx context.Context, workspacePath string, create bool) (*sql.DB, error) {
 	_ = ctx // busy_timeout is now DSN-embedded (see sqliteopen.DSN), not a runtime PRAGMA on ctx
-	dbPath := workflowEvidenceDBPath(workspacePath)
+	dbPath, err := workflowEvidenceDBPath(workspacePath)
+	if err != nil {
+		return nil, err
+	}
 	if create {
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 			return nil, err

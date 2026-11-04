@@ -30,17 +30,7 @@ func (api *StreamingAPI) handleGetGoalMetrics(w http.ResponseWriter, r *http.Req
 }
 
 func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[string]string) {
-	var metric, observation map[string]interface{}
-	_ = json.Unmarshal([]byte(`{"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string"}, "criterion_id": {"type": "string"}, "name": {"type": "string"}, "role": {"type": "string", "enum": ["primary", "supporting"]}, "unit": {"type": "string"}, "direction": {"type": "string", "enum": ["increase", "decrease", "maintain"]}, "definition": {"type": "string"}, "source": {"type": "string"}, "window": {"type": "string"}, "route": {"type": "string"}, "environment": {"type": "string"}, "collection_frequency": {"type": "string"}, "target_date": {"type": "string"}, "freshness_hours": {"type": "number", "exclusiveMinimum": 0}, "target": {"type": "number"}}, "required": ["id", "criterion_id", "name", "role", "unit", "direction", "definition", "source", "window", "collection_frequency", "freshness_hours"]}`), &metric)
-	metricProps := metric["properties"].(map[string]interface{})
-	for _, key := range []string{"goal_id", "goal_name"} {
-		metricProps[key] = map[string]interface{}{"type": "string"}
-	}
-	metricProps["route"] = map[string]interface{}{"type": "string", "description": "Optional saved measurement scope/attribution label. Must match recorded observations when configured; not an executable-route mapping and never required for checking goal progress."}
-	metricProps["supports"] = map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "uniqueItems": true, "description": "IDs of primary metrics this supporting measurement explains or constrains. Required with multiple primaries."}
-	metricProps["support_kind"] = map[string]interface{}{"type": "string", "enum": []string{"breakdown", "diagnostic", "guardrail"}}
-	metricProps["dimensions"] = map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}, "description": "Fixed dimension slice for this metric ID, e.g. language=English. Each slice has its own immutable metric ID; never combine percentiles by averaging."}
-	_ = json.Unmarshal([]byte(`{"type": "object", "additionalProperties": false, "properties": {"criterion_id": {"type": "string"}, "metric": {"type": "string"}, "run_id": {"type": "string"}, "unit": {"type": "string"}, "route": {"type": "string"}, "environment": {"type": "string"}, "observed_at": {"type": "string"}, "window_start": {"type": "string"}, "window_end": {"type": "string"}, "status": {"type": "string"}, "value": {"type": "number"}, "evidence": {"type": "array", "items": {"type": "string"}, "minItems": 1}}, "required": ["criterion_id", "metric", "run_id", "unit", "observed_at", "evidence"]}`), &observation)
+	metric, observation := goalMetricSchemas()
 	specs := []struct {
 		name, description, field string
 		schema                   map[string]interface{}
@@ -63,7 +53,23 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 		categories[spec.name] = "workflow"
 	}
 	executors["get_goal_metrics"] = func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ledger, err := step.LoadGoalMeasurements(ctx, stringToolArg(args, "workspace_path"), 500)
+		root := stringToolArg(args, "workspace_path")
+		binding, err := findCrewExecutable(root)
+		if err != nil {
+			return "", err
+		}
+		if binding != nil {
+			access, _ := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), root)
+			if access == WorkflowAccessNone {
+				return "", fmt.Errorf("open a Crew shared with you to read its goals")
+			}
+		} else if isCrewProjectPath(root) {
+			user := GetUserIDFromContext(ctx)
+			if user == "" || (!crewProjectOwnedByCaller(user, root) && !crewSharedWith(root, user)) {
+				return "", fmt.Errorf("open a Crew shared with you to read its goals")
+			}
+		}
+		ledger, err := step.LoadGoalMeasurements(ctx, root, 500)
 		if err != nil {
 			return "", err
 		}
@@ -71,6 +77,11 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 		return string(b), err
 	}
 	executors["configure_goal_metrics"] = func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if b, err := findCrewExecutable(stringToolArg(args, "workspace_path")); err != nil {
+			return "", err
+		} else if b != nil || isCrewProjectPath(stringToolArg(args, "workspace_path")) {
+			return "", fmt.Errorf("configure goals in the owning Crew with crew_goals; workflows only record measurements")
+		}
 		if _, m := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), stringToolArg(args, "workspace_path")); m != nil && m.Team != nil && teamActor(ctx) != m.Team.LeaderID {
 			return "", fmt.Errorf("only the Leader configures goal measurements")
 		}
@@ -96,10 +107,46 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 		if err = json.Unmarshal(raw, &observations); err != nil {
 			return "", fmt.Errorf("observations must be an array: %w", err)
 		}
-		if _, err = step.RecordGoalObservations(ctx, stringToolArg(args, "workspace_path"), observations); err != nil {
+		root := stringToolArg(args, "workspace_path")
+		binding, bindErr := findCrewExecutable(root)
+		if bindErr != nil {
+			return "", bindErr
+		}
+		if binding != nil {
+			access, _ := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), root)
+			if access != WorkflowAccessOwner {
+				return "", fmt.Errorf("record measurements from the owning Crew's workflow")
+			}
+			err = recordCrewGoalObservations(ctx, binding.CrewRoot, root, observations)
+		} else if crew := canonicalCrewWorkspaceRoot(root); isCrewProjectPath(crew) {
+			if !crewProjectOwnedByCaller(GetUserIDFromContext(ctx), crew) {
+				return "", fmt.Errorf("ask a Crew owner to record measurements")
+			}
+			err = recordCrewGoalObservations(ctx, crew, "", observations)
+		} else {
+			_, err = step.RecordGoalObservations(ctx, root, observations)
+		}
+		if err != nil {
 			return "", err
 		}
+
 		return `{"status":"recorded"}`, nil
 	}
 	return tools, executors, categories
+}
+
+func goalMetricSchemas() (map[string]interface{}, map[string]interface{}) {
+	var metric, observation map[string]interface{}
+	_ = json.Unmarshal([]byte(`{"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string"}, "criterion_id": {"type": "string"}, "name": {"type": "string"}, "role": {"type": "string", "enum": ["primary", "supporting"]}, "unit": {"type": "string"}, "direction": {"type": "string", "enum": ["increase", "decrease", "maintain"]}, "definition": {"type": "string"}, "source": {"type": "string"}, "window": {"type": "string"}, "route": {"type": "string"}, "environment": {"type": "string"}, "collection_frequency": {"type": "string"}, "target_date": {"type": "string"}, "freshness_hours": {"type": "number", "exclusiveMinimum": 0}, "target": {"type": "number"}}, "required": ["id", "criterion_id", "name", "role", "unit", "direction", "definition", "source", "window", "collection_frequency", "freshness_hours"]}`), &metric)
+	metricProps := metric["properties"].(map[string]interface{})
+	for _, key := range []string{"goal_id", "goal_name"} {
+		metricProps[key] = map[string]interface{}{"type": "string"}
+	}
+	metricProps["route"] = map[string]interface{}{"type": "string", "description": "Optional saved measurement scope/attribution label. Must match recorded observations when configured; not an executable-route mapping and never required for checking goal progress."}
+	metricProps["supports"] = map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "uniqueItems": true, "description": "IDs of primary metrics this supporting measurement explains or constrains. Required with multiple primaries."}
+	metricProps["support_kind"] = map[string]interface{}{"type": "string", "enum": []string{"breakdown", "diagnostic", "guardrail"}}
+	metricProps["dimensions"] = map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}, "description": "Fixed dimension slice for this metric ID, e.g. language=English. Each slice has its own immutable metric ID; never combine percentiles by averaging."}
+	_ = json.Unmarshal([]byte(`{"type": "object", "additionalProperties": false, "properties": {"criterion_id": {"type": "string"}, "metric": {"type": "string"}, "run_id": {"type": "string"}, "unit": {"type": "string"}, "route": {"type": "string"}, "environment": {"type": "string"}, "observed_at": {"type": "string"}, "window_start": {"type": "string"}, "window_end": {"type": "string"}, "status": {"type": "string"}, "value": {"type": "number"}, "evidence": {"type": "array", "items": {"type": "string"}, "minItems": 1}}, "required": ["criterion_id", "metric", "run_id", "unit", "observed_at", "evidence"]}`), &observation)
+
+	return metric, observation
 }

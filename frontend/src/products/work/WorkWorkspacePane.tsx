@@ -36,6 +36,7 @@ import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { CrewExecutablesPanel } from './CrewExecutablesPanel'
+import { CrewGoalsPanel } from './CrewGoalsPanel'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { sharedCrewFileClient } from './sharedCrewFiles'
@@ -54,7 +55,7 @@ const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ d
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
 
-export type WorkWorkspaceView = 'context' | 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
+export type WorkWorkspaceView = 'context' | 'dashboard' | 'goals' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -314,6 +315,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
+        {view === 'goals' && <CrewGoalsPanel key={projectId} projectId={projectId} onAsk={message => { void ask(message) }} />}
         {view === 'plan' && (canEditConnections ? <CrewExecutablesPanel key={projectId} projectId={projectId} chatTabId={tabId} /> : <p className="p-6 text-sm text-muted-foreground">{!shared && projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>)}
         {view === 'mcp' && <WorkIntegrationsPanel
           canEdit={canEditConnections}
