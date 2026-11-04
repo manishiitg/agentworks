@@ -12,13 +12,17 @@ export function AgentIcon({ name, icon, size = 'sm', active = false, round = fal
   </span>
 }
 
-/** The one mark an agent shows when something needs a look: working, needs you, failed, someone else asking it, or a
- * reply not read yet. Nothing when all is quiet. */
+/** The one mark an agent shows, the same as the chat tabs have always shown (owner, 4 Nov): a spinner while it works,
+ * a pulsing amber ring when it needs you, red when it failed (until opened), green when a reply is not read yet, and a
+ * green pulse while someone else is asking it. Nothing when all is quiet. */
 export function AgentMark({ state, asking }: { state: AgentMenuState; asking?: boolean }) {
   if (state === 'running') return <Loader2 role="img" aria-label="Working" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
-  const [label, tone] = state === 'waiting' ? ['Needs you', 'bg-[hsl(var(--warning))] motion-safe:animate-pulse']
-    : state === 'failed' ? ['Failed', 'bg-destructive']
-      : asking ? ['Someone is asking it now', 'bg-emerald-500 motion-safe:animate-pulse']
-        : state === 'done' ? ['New reply', 'bg-[hsl(var(--info))]'] : ['', '']
-  return label ? <span role="img" aria-label={label} title={label} className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone}`} /> : null
+  if (state === 'waiting') return <span role="img" aria-label="Needs you" title="Needs you" className="relative grid h-3 w-3 shrink-0 place-items-center">
+    <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-[hsl(var(--warning))] opacity-60" />
+    <span className="relative h-2.5 w-2.5 rounded-full bg-[hsl(var(--warning))]" />
+  </span>
+  const [label, tone] = state === 'failed' ? ['Failed', 'bg-[hsl(var(--destructive))]']
+    : asking ? ['Someone is asking it now', 'bg-emerald-500 motion-safe:animate-pulse']
+      : state === 'done' ? ['Completed — open to mark as seen', 'bg-[hsl(var(--success))]'] : ['', '']
+  return label ? <span role="img" aria-label={label} title={label} className={`h-2 w-2 shrink-0 rounded-full ${tone}`} /> : null
 }

@@ -20,15 +20,12 @@ import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 import { useAgentMenuState } from './agentMenuState'
+import { AgentMark } from './AgentIcon'
 
 const AGENT_STATE_WORD = { waiting: 'Needs you', running: 'Working', failed: 'Stopped with an error', done: 'Finished' } as const
 
 function AgentMenuActivity({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
-  const state = useAgentMenuState(tabId, workspaceActivity)
-  if (state === 'waiting') return <span role="img" aria-label="Needs you" title="Needs you" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" />
-  if (state === 'running') return <Loader2 role="img" aria-label="Working" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
-  if (state === 'failed') return <span role="img" aria-label="Failed" title="Failed" className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
-  return null
+  return <AgentMark state={useAgentMenuState(tabId, workspaceActivity)} />
 }
 
 function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
@@ -121,6 +118,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       asking: ask?.active,
       info: purpose === undefined ? undefined : {
         name: tabLabel(tab),
+        icon: listedFor(tab)?.icon,
         purpose,
         sharedWith: share?.line,
         canChange: share?.canChange,
@@ -135,7 +133,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentsView = useAgentsViewStore(state => state.view)
   const menuMode = surface === 'work' && agentsView === 'menu' && !phone
   const crewAgents = surface === 'work' && placeProject ? tabs.filter(isAgentTab).map(tab => ({ tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined })) : []
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, crewAgents.map(agent => [agent.tabId, agent.name, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, crewAgents.map(agent => [agent.tabId, agent.name, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +146,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // The open tab's details, for the purpose line at the top of its chat.
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
-  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}` : ''
+  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.icon ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps

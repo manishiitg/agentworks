@@ -2,16 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronDown, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
-import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
-import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
-import { runtimeNeedsUserInput, runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
+import { useAgentMenuState } from './agentMenuState'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { compactOwnerChatName, ownerInitials } from './chatTabName'
 import { AgentPurposeButton } from './AgentPurposeButton'
 import { AgentHoverCard, type AgentCardInfo } from './AgentCard'
+import { AgentMark } from './AgentIcon'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -78,53 +77,14 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     if (node || useProductNavigationToolbarStore.getState().workspaceTrigger === previous)
       useProductNavigationToolbarStore.setState({ workspaceTrigger: node })
   }, [])
-  // The same signal as the activity monitor and the chat's own footer.
-  const needsInput = useChatStore(state => {
-    if (!tab.sessionId) return false
-    return runtimeNeedsUserInput(state.activeSessionsCache.find(session => session.session_id === tab.sessionId))
-  })
-  // Red only until the person opens the chat (the same last-opened time that clears green).
-  const failed = useChatStore(state => !isActive && !!tab.sessionId &&
-    runtimeTurnFailedUnseen(state.activeSessionsCache.find(session => session.session_id === tab.sessionId), state.chatTabs[tab.tabId]?.lastAccessedAt))
-  // The same busy signal as the chat header: a stored completion ends the spinner at once.
-  const running = useChatStore(state => {
-    const stored = state.chatTabs[tab.tabId]
-    if (!stored) return !!(tab.isStreaming || tab.hasRunningBgAgents)
-    const foreground = foregroundTurnState(stored.sessionId ? state.tabEvents[stored.sessionId] : undefined)
-    const session = stored.sessionId ? state.activeSessionsCache.find(item => item.session_id === stored.sessionId) : undefined
-    return chatRuntimeActivity({
-      isStreaming: stored.isStreaming,
-      hasRunningBgAgents: stored.hasRunningBgAgents,
-      isCompleted: stored.isCompleted,
-      foregroundTurnCompleted: foreground === 'completed',
-      foregroundTurnStarted: foreground === 'running',
-    }, session).state === 'running'
-  })
-  const activityNeedsInput = workspaceActivity === undefined ? needsInput : needsInput || workspaceActivity === 'waiting'
-  const activityRunning = workspaceActivity === undefined ? running : workspaceActivity === 'running'
-  const rawStatus: TabStatus = activityNeedsInput
-    ? 'waiting'
-    : activityRunning
-      ? 'busy'
-      : failed ? 'failed' : tab.hasUnreadCompletion && !isActive ? 'completed' : 'ready'
-  const [status, setStatus] = useState(rawStatus)
+  // One status source for the pill, the left menu, the rail and the team board (agentMenuState.ts).
+  const menuState = useAgentMenuState(tab.tabId, workspaceActivity, !!(tab.isStreaming || tab.hasRunningBgAgents))
+  const status: TabStatus = menuState === 'waiting' ? 'waiting' : menuState === 'running' ? 'busy' : menuState === 'failed' ? 'failed' : menuState === 'done' ? 'completed' : 'ready'
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState(tab.name)
   const [isSavingName, setIsSavingName] = useState(false)
   const [closingSessionId, setClosingSessionId] = useState<string | null>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (rawStatus === status) return
-    if (rawStatus === 'busy') {
-      setStatus('busy')
-      return
-    }
-    if (status === 'busy') {
-      const timer = setTimeout(() => setStatus(rawStatus), 1200)
-      return () => clearTimeout(timer)
-    }
-    setStatus(rawStatus)
-  }, [rawStatus, status])
   const dot = TAB_STATUS_DOT[status]
   const previousStatus = useRef(status)
   const [announcement, setAnnouncement] = useState('')
@@ -133,7 +93,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     previousStatus.current = status
     setAnnouncement(`${displayName}: ${TAB_STATUS_DOT[status].label}`)
   }, [status, displayName])
-  const isBusy = running || status === 'busy'
+  const isBusy = status === 'busy'
   useEffect(() => {
     if (!isRenaming) setRenameDraft(tab.name)
   }, [isRenaming, tab.name])
@@ -176,7 +136,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
-      {agent ? <AgentMark status={isBlank ? 'ready' : status} asking={agent.asking} label={dot.label} /> :
+      {agent ? <AgentMark state={isBlank ? null : menuState} asking={agent.asking} /> :
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {/* An idle tab shows its owner a quiet purpose icon in this spot instead (owner, 3 Nov). */}
         {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}
@@ -287,16 +247,6 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
 
 ChatTabPill.displayName = 'ChatTabPill'
 
-// A Crew agent tab's one mark, only when there is something to say: a spinner while it works, amber when it needs you,
-// red when it failed, a green pulse while someone else is asking it, a blue dot for a reply not read yet. Idle: nothing.
-function AgentMark({ status, asking, label }: { status: TabStatus; asking?: boolean; label: string }) {
-  if (status === 'busy') return <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" aria-label={label} role="img"><title>{label}</title></Loader2>
-  if (status === 'waiting') return <span className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" title={label} aria-label={label} role="img" />
-  if (status === 'failed') return <span className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--destructive))]" title={label} aria-label={label} role="img" />
-  if (asking) return <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 motion-safe:animate-pulse" title="Someone is asking it now" aria-label="Someone is asking it now" role="img" />
-  if (status === 'completed') return <span className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--info))]" title={label} aria-label={label} role="img" />
-  return null
-}
 
 // While a tab shows its terminal, one click shows the chat again (the terminal keeps running).
 function ShowChatButton({ tabId }: { tabId: string }) {
