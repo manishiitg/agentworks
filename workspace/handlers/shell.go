@@ -592,7 +592,7 @@ func ExecuteShellCommand(c *gin.Context) {
 		// relative to the project folder; when the workspace-relative reading is not writable but the folder-relative one is, use it.
 		destination := transfer.DestinationPath
 		if !filepath.IsAbs(destination) && !security.ArtifactDestinationWritable(destination, docsDir, req.FolderGuard.WritePaths) {
-			if inFolder := filepath.Join(workingDir, destination); security.ArtifactDestinationWritable(inFolder, docsDir, req.FolderGuard.WritePaths) {
+			if inFolder := filepath.Join(req.WorkingDirectory, destination); security.ArtifactDestinationWritable(inFolder, docsDir, req.FolderGuard.WritePaths) {
 				destination = inFolder
 			}
 		}

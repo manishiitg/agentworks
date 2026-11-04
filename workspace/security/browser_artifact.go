@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 const BrowserArtifactStagingDirName = "agentworks-browser-artifacts"
@@ -62,15 +64,49 @@ func browserArtifactSourceRoot(source string, browserSession []string) (string, 
 	return "", fmt.Errorf("browser artifact source must be in managed staging for this browser session")
 }
 
-// ArtifactDestinationWritable reports whether a destination (absolute, or relative to baseDir) is inside baseDir and covered by the
-// request's write paths, the first test FinalizeBrowserArtifact applies.
+// resolveBrowserArtifactPath shares the Files tool's server-owned Crew binding.
+// Absolute docs spellings are virtual paths too; never publish into a shadow
+// directory under docs when the Crew is bound to a person's project folder.
+func resolveBrowserArtifactPath(path, base string) (string, bool, error) {
+	virtual := filepath.ToSlash(path)
+	if filepath.IsAbs(path) {
+		if pathWithin(filepath.Clean(path), base) {
+			rel, err := filepath.Rel(base, path)
+			if err != nil {
+				return "", false, err
+			}
+			virtual = filepath.ToSlash(rel)
+		} else {
+			// Reverse normalizes spelling only; it grants no access. The current
+			// request's resolved write/block paths still authorize publication.
+			mapped, _, bound, err := crewroot.Reverse(base, path)
+			if err != nil {
+				return "", bound, err
+			}
+			if bound {
+				virtual = mapped
+			}
+		}
+	}
+	if resolved, bound, err := crewroot.Resolve(base, virtual); bound || err != nil {
+		return resolved, bound, err
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(base, path)
+	}
+	return filepath.Clean(path), false, nil
+}
+
+// ArtifactDestinationWritable applies the current write guard after resolving
+// the same virtual path that Files will later read.
 func ArtifactDestinationWritable(destination, baseDir string, writePaths []string) bool {
 	base := canonicalPath(baseDir)
-	if !filepath.IsAbs(destination) {
-		destination = filepath.Join(base, destination)
+	resolved, bound, err := resolveBrowserArtifactPath(destination, base)
+	if err != nil {
+		return false
 	}
-	destination = canonicalPath(filepath.Clean(destination))
-	return pathWithin(destination, base) && pathAllowedForArtifactWrite(destination, base, writePaths)
+	destination = canonicalPath(resolved)
+	return (bound || pathWithin(destination, base)) && pathAllowedForArtifactWrite(destination, base, writePaths)
 }
 
 // PrepareBrowserArtifactStaging creates and validates the one shared staging
@@ -142,12 +178,12 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 	}
 
 	base := canonicalPath(baseDir)
-	destination := destinationPath
-	if !filepath.IsAbs(destination) {
-		destination = filepath.Join(base, destination)
+	destination, bound, err := resolveBrowserArtifactPath(destinationPath, base)
+	if err != nil {
+		return fmt.Errorf("resolve browser artifact destination: %w", err)
 	}
-	destination = canonicalPath(filepath.Clean(destination))
-	if !pathWithin(destination, base) {
+	destination = canonicalPath(destination)
+	if !bound && !pathWithin(destination, base) {
 		return fmt.Errorf("browser artifact destination must be inside workspace")
 	}
 	if !pathAllowedForArtifactWrite(destination, base, writePaths) {
@@ -162,7 +198,7 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 		return fmt.Errorf("create browser artifact destination directory: %w", err)
 	}
 	canonicalParent := canonicalPath(parent)
-	if !pathWithin(canonicalParent, base) || !pathAllowedForArtifactWrite(canonicalParent, base, writePaths) {
+	if (!bound && !pathWithin(canonicalParent, base)) || !pathAllowedForArtifactWrite(canonicalParent, base, writePaths) {
 		return fmt.Errorf("browser artifact destination resolves outside authorized write paths")
 	}
 
@@ -217,6 +253,7 @@ func FinalizeBrowserArtifact(sourcePath, destinationPath, kind, baseDir string, 
 	if err := os.Rename(tmpName, destination); err != nil {
 		return fmt.Errorf("publish browser artifact: %w", err)
 	}
+	log.Printf("[BROWSER_ARTIFACT] published kind=%q requested=%q resolved=%q", kind, destinationPath, destination)
 	removeTmp = false
 	_ = os.Remove(canonicalSource)
 	return nil
@@ -282,12 +319,8 @@ func mkdirLikeAncestor(dir string) error {
 
 func pathAllowedForArtifactWrite(path, base string, writePaths []string) bool {
 	for _, allowed := range writePaths {
-		root := allowed
-		if !filepath.IsAbs(root) {
-			root = filepath.Join(base, root)
-		}
-		root = canonicalPath(root)
-		if pathWithin(path, root) {
+		root, _, err := resolveBrowserArtifactPath(allowed, base)
+		if err == nil && pathWithin(path, canonicalPath(root)) {
 			return true
 		}
 	}
@@ -296,11 +329,9 @@ func pathAllowedForArtifactWrite(path, base string, writePaths []string) bool {
 
 func pathCoveredByGuard(path, base string, guarded []string) bool {
 	for _, value := range guarded {
-		root := value
-		if !filepath.IsAbs(root) {
-			root = filepath.Join(base, root)
-		}
-		if pathWithin(path, canonicalPath(root)) {
+		root, _, err := resolveBrowserArtifactPath(value, base)
+		// An unavailable guard must not become permission to publish.
+		if err != nil || pathWithin(path, canonicalPath(root)) {
 			return true
 		}
 	}
