@@ -252,7 +252,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
         {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
         {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
       </div>
-      {!binding && <p className="text-[12px] text-muted-foreground">Turn on Reach to use it from other places</p>}
+      {!binding && <p className="text-[12px] text-muted-foreground">Turn on Reach above to use it from other places and so people can message your agents</p>}
       {/* A Crew on this Mac shares its agents below; sharing the Crew with a team belongs to its online step (owner, 3 Nov). */}
       {online && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">Team</span><span className="text-[13px] text-muted-foreground">Choose who can use it on its page online</span>
         <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Share…</Button>
@@ -373,7 +373,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
         <div className="flex items-center gap-2">
           <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
           <span className="min-w-0 truncate text-sm font-semibold">{row.name}</span>
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground">{!agent ? 'Only you' : saved ? 'Shared' : 'Not shared yet'}</span>
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground">{!agent ? 'Only you' : saved ? 'Shared' : !purpose ? 'Set its purpose to share it' : 'Add people to share it'}</span>
           <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null, !on)} />
         </div>
         {agent && <div className="ml-6 space-y-2.5">
