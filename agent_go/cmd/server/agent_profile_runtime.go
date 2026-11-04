@@ -424,10 +424,20 @@ func (api *StreamingAPI) lookupAgentProfileDefinition(ctx context.Context, req *
 
 func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *QueryRequest, userID, sessionID string) (*resolvedAgentProfile, error) {
 	// Admission and Crew lookups run in here; a slow one was invisible in the logs (PLAT-746-171), so say so.
+	// Each step's time is logged with a slow lookup: one large Crew took 5-6 s here on every turn while a larger one
+	// elsewhere took under 1 s, and the total alone could not say which step (PLAT-856).
 	started := time.Now()
+	last := started
+	steps := []string{}
+	mark := func(name string) {
+		now := time.Now()
+		steps = append(steps, fmt.Sprintf("%s:%d", name, now.Sub(last).Milliseconds()))
+		last = now
+	}
 	defer func() {
 		if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
-			log.Printf("[PROFILE_RESOLVE] slow session=%s elapsed_ms=%d", sessionID, elapsed.Milliseconds())
+			mark("rest")
+			log.Printf("[PROFILE_RESOLVE] slow session=%s elapsed_ms=%d steps_ms=%s", sessionID, elapsed.Milliseconds(), strings.Join(steps, ","))
 		}
 	}()
 	profileID := strings.TrimSpace(req.AgentProfileID)
@@ -454,6 +464,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) || !canUseCapLayerProfile(ctx, profile.ID) {
 		return nil, fmt.Errorf("you don't have access to the %q product", profile.Product)
 	}
+	mark("profile")
 	isGlobalScope := profile.EffectiveScope() == agentprofiles.ProfileScopeGlobal
 	profile = profile.ForProducts(builderProductSelection(GetUserFromContext(ctx)))
 	if profile.ID == caplayerproduct.ProfileID {
@@ -503,6 +514,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			}
 			folderForClean = crewRoot
 		}
+		mark("crew_binding")
 	}
 	workspacePath, err := cleanAgentProfileWorkspace(folderForClean, userID)
 	if err != nil {
@@ -524,6 +536,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		workspacePath = crewTurnWorkspace(context.Background(), userID, workspacePath, crewRoot)
 		req.SelectedFolder = workspacePath
 	}
+	mark("workspace")
 
 	var publication *publishedProject
 	if isProjectProfileID(profile.ID) {
@@ -543,6 +556,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.Provider, req.ModelID, req.ConnectionID = publication.Provider, publication.ModelID, publication.ConnectionID
 		}
 	}
+	mark("publication")
 
 	promptContext := req.AgentProfileContext
 	promptContext.ProjectTitle = strings.TrimSpace(promptContext.ProjectTitle)
@@ -584,6 +598,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		promptContext.Product = productVars
 		identityKey = productVars["WORK_IDENTITY_KEY"]
 	}
+	mark("prompt_vars")
 	if err := applyWorkspaceMemoryFeature(&profile); err != nil {
 		return nil, err
 	}
@@ -600,11 +615,13 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		rendered += agentRole
 		identityKey += agentRole
 	}
+	mark("render")
 	if err := api.agentProfiles.Initialize(ctx, profile.ID, agentprofiles.RuntimeContext{
 		UserID: userID, SessionID: sessionID, WorkspacePath: workspacePath,
 	}); err != nil {
 		return nil, fmt.Errorf("initialize agent profile %q: %w", profile.ID, err)
 	}
+	mark("initialize")
 	req.AgentProfileID = profile.ID
 	req.AgentProfileVersion = profile.Version
 	if _, sharedPrompt := workflowkb.SharedConfig(stepworkflow.GetPromptDocsRoot(), workspacePath); sharedPrompt != "" {
@@ -666,6 +683,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.DecryptedSecrets = nil
 		}
 	}
+	mark("secrets")
 	browserRequirement := profile.Runtime.Capabilities.Browser
 	if browserRequirement != agentprofiles.CapabilityDisabled && isProjectWorkspacePath(workspacePath) {
 		settings, err := readWorkspaceBrowserSettings(ctx, agentProfileRuntimeWorkspace(userID, workspacePath))
@@ -694,6 +712,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.BrowserMode = browser.DefaultMode()
 		}
 	}
+	mark("browser")
 	projectInstructions := ""
 	if !isGlobalScope && isProjectProfileID(profile.ID) {
 		file := agentProfileRuntimeWorkspace(userID, workspacePath) + "/" + projectinstructions.FileName
@@ -719,6 +738,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 
+	mark("instructions")
 	var resolvedKeys *llm.ProviderAPIKeys
 	requestHasExplicitModel := strings.TrimSpace(req.Provider) != "" && strings.TrimSpace(req.ModelID) != ""
 	if provider, modelID := resolveProfileRuntimeModel(profile.Runtime, req.Provider, req.ModelID); provider != "" && modelID != "" {
@@ -775,6 +795,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			resolvedKeys = keys
 		}
 	}
+	mark("model_keys")
 	if strings.TrimSpace(req.SessionTitle) == "" {
 		req.SessionTitle = promptContext.ProjectTitle
 	}
@@ -793,7 +814,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
+	mark("mcp")
 	connections := chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)
+	mark("connections")
 	knowledgeKey := knowledgeRuntimeConfigKey(workspacePath)
 	if publication != nil {
 		req.Provider, req.ModelID, req.ConnectionID = publication.Provider, publication.ModelID, publication.ConnectionID
