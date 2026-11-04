@@ -28,7 +28,6 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 			"phone":             link + " (open it on the phone, or scan the code in Access, Phone, Show code)",
 			"chatgpt_or_claude": "Add " + binding.PeerServer + "/api/external/v1/mcp as a connector in ChatGPT or Claude, sign in, then say \"ask my Crew to…\". Access, ChatGPT or Claude, Connect shows the steps.",
 			"slack":             "Access, Slack, Connect sets it up; signing in to Slack is the person's own click.",
-			"whatsapp":          "Link the phone once on " + binding.PeerServer + " (any Crew, Integrations, WhatsApp), then in WhatsApp's Message yourself chat send @list and pick this Crew. Only the person's own messages there reach this Mac.",
 		})
 	}
 	rows, err := api.macAgentRows(ctx, claims, project)
