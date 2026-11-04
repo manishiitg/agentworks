@@ -151,7 +151,7 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						continue
 					}
 					for _, t := range out.Teams {
-						if !t.CanEditSharedFolder {
+						if _, joining := crewTeamJoining.Load(crewTeamJoinKey(c.ID, t.ProjectID)); !t.CanEditSharedFolder || joining {
 							continue
 						}
 						dir, b, err := api.ensureCrewTeamLocal(ctx, owner, c, t)
