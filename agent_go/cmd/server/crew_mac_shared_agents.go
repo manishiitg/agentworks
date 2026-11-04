@@ -626,11 +626,10 @@ type macAskActivity struct {
 	Tab     string    `json:"tab"`
 	Agent   string    `json:"agent"`
 	Sender  string    `json:"sender"`
-	Label   string    `json:"sender_label"` // as their message is marked in the tab, to find it there
-	Key     string    `json:"conversation_key"`
+	Key     string    `json:"conversation_key"` // this sender's own thread with the agent, opened for the owner to view
+	Session string    `json:"session_id"`
 	Started time.Time `json:"started_at"`
 	Active  bool      `json:"active"`
-	session string
 }
 
 const macAskRecent = 10 * time.Minute
@@ -659,7 +658,7 @@ func (api *StreamingAPI) recentMacAsks(project string) []macAskActivity {
 	out := []macAskActivity{}
 	for _, ask := range macAsks.byProject[project] {
 		if time.Since(ask.Started) < macAskRecent {
-			ask.Active = api.sessionTurnRunning(ask.session)
+			ask.Active = api.sessionTurnRunning(ask.Session)
 			out = append([]macAskActivity{ask}, out...)
 		}
 	}
