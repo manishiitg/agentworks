@@ -30,7 +30,7 @@ type crewMacSharedAsk struct {
 // otherwise the fresh copy replaces it and recap is set to the sender's last exchanges, which the new copy lacks. The
 // copy is plain (owner, 4 Nov: they get what the agent has). Any failure leaves the thread on its own session.
 // threadCwd is the folder this turn's CLI runs in (from the agent itself), where the copy must land to be resumed.
-func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, sessionID, threadProvider, threadCwd string, ask *crewMacSharedAsk) (runtime *ChatHistoryAgentRuntime, recap string) {
+func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, sessionID, threadProvider, threadTransport, threadCwd string, ask *crewMacSharedAsk) (runtime *ChatHistoryAgentRuntime, recap string) {
 	if ask == nil || ask.Owner.SessionID == "" || ask.Owner.SessionID == sessionID {
 		return nil, ""
 	}
@@ -100,11 +100,21 @@ func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, 
 	}
 	thread := owner
 	thread.SessionID = sessionID
+	// The copy resumes in this thread's own CLI (the chat view's transport, not the owner's terminal).
+	if threadTransport != "" {
+		bundle.Transport = threadTransport
+	}
 	closeWorkflowPolicyCLI(sessionID, handle.Provider, "a shared agent's thread starts from its owner's latest conversation")
 	forked, err := api.importCrewNativeInto(ctx, claims, roots, thread, sessionID, bundle, threadCwd)
 	if err != nil || forked == nil {
 		return skip("copy could not be imported: " + fmt.Sprint(err))
 	}
+	// It is this thread's session now: the same definition and tools as the turn about to run, so it is resumed and
+	// not replaced by a fresh one.
+	api.conversationMux.RLock()
+	forked.AgentProfileKey = api.lastAgentProfileKeyBySession[sessionID]
+	forked.AgentToolsMode = api.lastAgentToolsModeBySession[sessionID]
+	api.conversationMux.RUnlock()
 	if err = os.MkdirAll(filepath.Dir(statePath), 0700); err == nil {
 		state.Owner = fingerprint
 		err = fsutil.WriteJSONAtomic(statePath, state, 0600)

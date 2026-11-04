@@ -8344,11 +8344,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			restoredConversationPathForFallback := restoredConversationPath
 			var restoredRuntime *ChatHistoryAgentRuntime
-			threadCwd := ""
+			threadCwd, threadTransport := "", ""
 			if current := mcpagent.SnapshotAgentSession(underlyingAgent); current != nil {
-				threadCwd = current.Provider.WorkingDir
+				threadCwd, threadTransport = current.Provider.WorkingDir, current.Provider.Transport
 			}
-			forked, recap := api.forkOwnerSessionForSender(context.Background(), currentUserID, sessionID, finalProvider, threadCwd, req.sharedAsk)
+			forked, recap := api.forkOwnerSessionForSender(context.Background(), currentUserID, sessionID, finalProvider, threadTransport, threadCwd, req.sharedAsk)
 			if forked != nil {
 				// Another person's turn starts from a fresh copy of the owner's conversation with this agent, with their own
 				// last exchanges as a short note (the copy does not hold them).
