@@ -96,6 +96,14 @@ func browserExecuteOptions(ctx context.Context, agentSessionID, workflowSessionI
 	if folderGuard != nil && len(folderGuard.ReadPaths) == 0 && len(folderGuard.WritePaths) == 0 {
 		return nil, nil, fmt.Errorf("ACCESS DENIED: agent_browser has no granted workspace paths")
 	}
+	// The personal Mac already makes Downloads available to owner coding chats.
+	// Do not widen a restricted profile, workflow step or shared Run turn.
+	if folderGuard != nil && sessionCfg != nil && !sessionCfg.WorkflowReadOnly && !sessionCfg.CrewAskReadOnly && !sessionCfg.CrewReader && !sessionCfg.ReadOnlyAccess && !sessionCfg.StrictAllowlist && strings.HasPrefix(sessionCfg.WorkingDir, "Crew/") {
+		if downloads := common.LocalCaptureDownloadsPath(); downloads != "" {
+			folderGuard.WritePaths = common.DeduplicateStrings(append(append([]string(nil), folderGuard.WritePaths...), downloads))
+			folderGuard.ReadPaths = common.DeduplicateStrings(append(append([]string(nil), folderGuard.ReadPaths...), downloads))
+		}
+	}
 	if folderGuard != nil {
 		folderGuard.BrowserSession = common.SandboxBrowserSession(agentSessionID)
 		if folderGuard.BrowserSession == "" && workflowSessionID != "" {
@@ -111,7 +119,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	command = strings.ToLower(strings.TrimSpace(command))
 	if command == "status" {
 		status := b.Status()
-		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "project_shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only available shared tabs; each Code chat owns its own tabs and references, while workflow steps and delegates retain their parent browser. project_shared_tabs counts the whole connection and may include another Code chat's tabs. Reads, navigation and tab selection stay in the background; clicks and typing bring their own tab forward (and restore a minimized window) automatically. eval document.visibilityState shows whether the selected tab is visible; if input has no effect while it reads hidden, ask the person to bring Chrome forward. Set active=true only when the person should see a tab. Console/errors are scoped to the selected shared tab. Screenshot requires an explicit project-relative path inside the granted writable workspace; /tmp and global tool_output_folder paths are outside that grant. Video recording captures the selected shared tab as-is: record start <workspace-path.webm|.mp4> [url] [--fps 1-60], then record stop publishes that file. Stop before selecting or creating another tab; no microphone or desktop audio is recorded. Files/download transfer and teaching are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
+		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "project_shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only available shared tabs; each Code chat owns its own tabs and references, while workflow steps and delegates retain their parent browser. project_shared_tabs counts the whole connection and may include another Code chat's tabs. Reads, navigation and tab selection stay in the background; clicks and typing bring their own tab forward (and restore a minimized window) automatically. eval document.visibilityState shows whether the selected tab is visible; if input has no effect while it reads hidden, ask the person to bring Chrome forward. Set active=true only when the person should see a tab. Console/errors are scoped to the selected shared tab. Captures use default_capture_directory when provided; a filename without a folder goes there. Explicit project-relative paths stay in the granted workspace. /tmp is not an output destination. Video recording captures the selected shared tab as-is: record start <workspace-path.webm|.mp4> [url] [--fps 1-60], then record stop publishes that file. Stop before selecting or creating another tab; no microphone or desktop audio is recorded. Files/download transfer and teaching are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
 		agent, _ := ctx.Value(common.ChatSessionIDKey).(string)
 		workflow, _ := ctx.Value(common.WorkflowSessionIDKey).(string)
 		owner := workflow
@@ -123,6 +131,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		if opts, _, err := browserExecuteOptions(ctx, agent, workflow, time.Second); err == nil && opts.FolderGuard != nil {
 			result["screenshot_write_paths"] = opts.FolderGuard.WritePaths
 			result["working_directory"] = opts.WorkingDirectory
+			result["default_capture_directory"] = captureDownloadsForOptions(opts)
 		}
 		data, _ := json.Marshal(result)
 		return string(data), nil
@@ -194,6 +203,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		opts.FolderGuard.BrowserSession = client.Session()
 		opts.FolderGuard.BrowserTransport = "extension"
 	}
+	values = captureArgsWithDefaultDirectory(command, values, captureDownloadsForOptions(opts))
 	values = stripRedundantTabCommandArg(command, values)
 	tab, values, err := extractInlineCDPTab(values)
 	if err != nil {

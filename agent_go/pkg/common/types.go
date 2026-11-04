@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -91,6 +92,21 @@ func expandHomePath(path string) string {
 		}
 	}
 	return path
+}
+
+// LocalCaptureDownloadsPath is the default for captures on a personal native
+// Mac. Hosted runs and a person's removed Downloads grant never receive it.
+var localCaptureHostOS = runtime.GOOS
+
+func LocalCaptureDownloadsPath() string {
+	if localCaptureHostOS != "darwin" || os.Getenv("NATIVE_WORKSPACE") != "true" || os.Getenv("MULTI_USER_MODE") == "true" || HostDownloadsRemoved.Load() {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "Downloads")
 }
 
 // CDPHostDownloadsPath returns the host Downloads path only for CDP mode when

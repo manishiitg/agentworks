@@ -693,6 +693,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 			// socket folder is shared across commands; the host temp root is not.
 			stagingSession = []string{folderGuard.BrowserSession}
 		}
+		commandArgs = captureArgsWithDefaultDirectory(command, commandArgs, captureDownloadsForOptions(opts))
 		artifactPlan, artifactErr = prepareBrowserArtifact(command, commandArgs, artifactOwner, session, stagingSession...)
 		if artifactErr != nil {
 			return "", artifactErr
