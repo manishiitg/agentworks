@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
@@ -31,11 +32,13 @@ type crewTeamVersion struct {
 	Revision   uint64         `json:"revision"`
 	Author     string         `json:"author"`
 	ModifiedAt string         `json:"modified_at"`
-	ConflictOf string         `json:"conflict_of,omitempty"`
 }
 type crewTeamFileState struct {
 	Revision uint64                     `json:"revision"`
 	Versions map[string]crewTeamVersion `json:"versions"`
+	Events   []crewTeamEvent            `json:"events"`
+	Clashes  []crewTeamClash            `json:"clashes"`
+	Receipts map[string]crewTeamReceipt `json:"receipts"`
 }
 type crewTeamReceipt struct {
 	TransferID string   `json:"transfer_id"`
@@ -65,7 +68,7 @@ func crewTeamFilesRoot(project string) (string, error) {
 	return filepath.Join(d, "files"), nil
 }
 func readCrewTeamFileState(project string) (crewTeamFileState, error) {
-	s := crewTeamFileState{Versions: map[string]crewTeamVersion{}}
+	s := crewTeamFileState{Versions: map[string]crewTeamVersion{}, Receipts: map[string]crewTeamReceipt{}}
 	d, e := crewTeamDir(project)
 	if e != nil {
 		return s, e
@@ -80,6 +83,9 @@ func readCrewTeamFileState(project string) (crewTeamFileState, error) {
 	e = json.Unmarshal(raw, &s)
 	if s.Versions == nil {
 		s.Versions = map[string]crewTeamVersion{}
+	}
+	if s.Receipts == nil {
+		s.Receipts = map[string]crewTeamReceipt{}
 	}
 	return s, e
 }
@@ -159,6 +165,11 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot) error {
 			return fmt.Errorf("invalid shared file metadata")
 		}
 		total += f.Size
+		for parent := path.Dir(key); parent != "."; parent = path.Dir(parent) {
+			if _, exists := s.Files[parent]; exists {
+				return fmt.Errorf("a shared path cannot be both a file and a folder: %s", parent)
+			}
+		}
 		for part := rel; part != "."; part = path.Dir(part) {
 			lower := strings.ToLower(part)
 			if old, exists := folded[lower]; exists && old != part {
@@ -197,9 +208,6 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot) error {
 	}
 	return nil
 }
-func crewTeamReceiptFile(dir, actor, transfer string) string {
-	return filepath.Join(dir, "receipts", crewTransferDigest(actor+"\x00"+transfer)+".json")
-}
 
 // The caller holds the team lock and has rechecked current membership. Only this
 // writer mutates canonical bytes; native agents use their own working copies.
@@ -208,24 +216,22 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 	if e != nil {
 		return crewTeamReceipt{}, e
 	}
-	receiptPath := crewTeamReceiptFile(dir, actor, transfer)
-	var receipt crewTeamReceipt
-	if raw, err := os.ReadFile(receiptPath); err == nil {
-		if json.Unmarshal(raw, &receipt) != nil || receipt.Digest != digest {
-			return receipt, fmt.Errorf("this transfer ID was already used for different changes")
-		}
-		return receipt, nil
-	} else if !os.IsNotExist(err) {
-		return receipt, err
+	state, e := readCrewTeamFileState(project)
+	if e != nil {
+		return crewTeamReceipt{}, e
 	}
-	if transfer == "" || len(transfer) > 128 || !validCrewTeamHash(digest) {
+	receiptKey := crewTransferDigest(actor + "\x00" + transfer)
+	var receipt crewTeamReceipt
+	if old, ok := state.Receipts[receiptKey]; ok {
+		if old.Digest != digest {
+			return old, fmt.Errorf("this transfer ID was already used for different changes")
+		}
+		return old, nil
+	}
+	if transfer == "" || len(transfer) > 257 || !validCrewTeamHash(digest) {
 		return receipt, fmt.Errorf("use a stable transfer identity")
 	}
 	if e = validateCrewTeamSnapshot(&snapshot); e != nil {
-		return receipt, e
-	}
-	state, e := readCrewTeamFileState(project)
-	if e != nil {
 		return receipt, e
 	}
 	root := filepath.Join(dir, "files")
@@ -259,42 +265,28 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 		}
 		return changes[i].Path < changes[j].Path
 	})
+	// Save the complete next revision before replacing working bytes. A failed
+	// disk write therefore never discards the previous or incoming version.
+	history := filesnapshots.Store{Root: root, Private: filepath.Join(dir, "history")}
+	if e = history.SaveFolderRevision(ctx, fmt.Sprint(receipt.Revision), fmt.Sprint(state.Revision), crewTeamRoots(root), crewsync.Snapshot{Files: next, Changes: changes}); e != nil {
+		return receipt, e
+	}
 	for _, c := range changes {
 		rel, _ := crewTeamRelative(c.Path)
 		current := state.Versions[rel]
 		if crewTeamSame(current.File, c.After) {
 			continue
 		}
-		if !crewTeamSame(current.File, c.Before) && current.File != nil {
-			ext := path.Ext(rel)
-			stem := strings.TrimSuffix(rel, ext)
-			label := crewTeamAuthorFilename(current.Author)
-			copyName := fmt.Sprintf("%s (%s's copy %s)%s", stem, label, crewTransferDigest(actor + "\x00" + transfer)[:10], ext)
-			for suffix := 1; state.Versions[copyName].File != nil; suffix++ {
-				copyName = fmt.Sprintf("%s (%s's copy %s-%d)%s", stem, label, crewTransferDigest(actor + "\x00" + transfer)[:10], suffix, ext)
-			}
-			if !crewTeamAllowed(copyName) {
-				return receipt, fmt.Errorf("conflict copy name is too long; shorten the original file name")
-			}
-			_, e := crewroot.ResolveContained(root, rel)
-			if e != nil {
-				return receipt, e
-			}
-			old, e := openCrewTeamFile(root, rel)
-			if e != nil {
-				return receipt, e
-			}
-			e = writeCrewTeamFile(ctx, root, copyName, old, *current.File)
-			old.Close()
-			if e != nil {
-				return receipt, e
-			}
-			copyVersion := current
-			copyVersion.Revision = receipt.Revision
-			copyVersion.ConflictOf = rel
-			state.Versions[copyName] = copyVersion
-			receipt.Conflicts = append(receipt.Conflicts, copyName)
+		kind := "sent"
+		if c.After == nil {
+			kind = "removed"
 		}
+		if !crewTeamSame(current.File, c.Before) {
+			kind = "clash"
+			state.Clashes = append(state.Clashes, crewTeamClash{Path: rel, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: actor, LosingAuthor: current.Author})
+			receipt.Conflicts = append(receipt.Conflicts, rel)
+		}
+		state.Events = append(state.Events, crewTeamEvent{Path: rel, Kind: kind, Revision: receipt.Revision, Actor: actor, At: time.Now().UTC().Format(time.RFC3339Nano), File: c.After})
 		if c.After == nil {
 			dir, e := os.OpenRoot(root)
 			if e != nil {
@@ -319,33 +311,17 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 		state.Versions[rel] = crewTeamVersion{File: c.After, Revision: receipt.Revision, Author: actor, ModifiedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	}
 	state.Revision = receipt.Revision
+	state.Receipts[receiptKey] = receipt
 	if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); e != nil {
 		return receipt, e
 	}
-	if e = os.MkdirAll(filepath.Dir(receiptPath), 0700); e != nil {
-		return receipt, e
-	}
-	if e = fsutil.WriteJSONAtomic(receiptPath, receipt, 0600); e != nil {
-		return receipt, e
+	for _, event := range state.Events {
+		if event.Revision == state.Revision {
+			log.Printf("[CREW_TEAM_EVENT] project=%s actor=%s path=%q kind=%s revision=%d", project, event.Actor, event.Path, event.Kind, event.Revision)
+		}
 	}
 	log.Printf("[CREW_TEAM_FILES] project=%s actor=%s transfer=%s revision=%d changes=%d conflicts=%d", project, actor, transfer, state.Revision, len(changes), len(receipt.Conflicts))
 	return receipt, nil
-}
-func crewTeamAuthorFilename(user string) string {
-	label := shareOwnerLabel(user)
-	if label == "" {
-		label = "teammate"
-	}
-	var b strings.Builder
-	for _, r := range label {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
-			b.WriteRune(r)
-		}
-	}
-	if b.Len() == 0 {
-		return "teammate"
-	}
-	return b.String()[:min(b.Len(), 40)]
 }
 func openCrewTeamFile(root, rel string) (*os.File, error) {
 	if !crewTeamAllowed(rel) {
@@ -456,7 +432,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 			if token := claims.AccessToken; token != nil && token.FileGuard != nil && !token.FileGuard.Allows(name, false) {
 				continue
 			}
-			files = append(files, map[string]any{"path": name, "size": v.File.Size, "hash": v.File.Hash, "revision": v.Revision, "author": shareOwnerLabel(v.Author), "modified_at": v.ModifiedAt, "conflict_of": v.ConflictOf})
+			files = append(files, map[string]any{"path": name, "size": v.File.Size, "hash": v.File.Hash, "revision": v.Revision, "author": shareOwnerLabel(v.Author), "modified_at": v.ModifiedAt})
 		}
 		sort.Slice(files, func(i, j int) bool { return files[i]["path"].(string) < files[j]["path"].(string) })
 		externalJSON(w, map[string]any{"project_id": project, "folder": t.Folder, "revision": s.Revision, "can_edit_shared_folder": true, "files": files})
