@@ -43,7 +43,7 @@ it('refreshes a stale Steer now action without an error or losing its queued bub
     await act(async () => steer.click())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     expect(host.textContent).toContain('Keep this instruction queued.')
-    expect(host.textContent).toContain('Agent starting')
+    expect(host.textContent).toContain('Starting agent')
     expect(host.textContent).not.toContain('Could not update')
     expect(host.textContent).not.toContain('Steer now')
   } finally {
@@ -170,7 +170,7 @@ for (const reason of ['starting', 'waiting', undefined] as const) {
       expect(host.querySelector('[aria-label="Remove queued message"]')).not.toBeNull()
       expect(host.querySelector('[title="Sends automatically when the current turn finishes"]')).toBeNull()
       if (reason === 'starting') {
-        expect(host.textContent).toContain('Agent starting · sends when ready')
+        expect(host.textContent).toContain('Starting agent · sends when ready')
         expect(host.querySelector('[title="The agent is starting or resuming. Your message will send automatically."]')).toBeTruthy()
       }
     } finally {
