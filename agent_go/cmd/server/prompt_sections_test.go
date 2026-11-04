@@ -245,20 +245,19 @@ func TestProjectWorkspaceMapResolvesAuthorizedAbsolutePaths(t *testing.T) {
 	}
 }
 
-// Full CLI chats split work into the Crew's agent tabs only after asking the
-// person, never into the CLI's built-in subagents (owner, 4 Nov: a tester's
-// session spent most of its limit on 10 subagents). Bridge-only chats have no
-// built-in subagents, so they get no such section.
-func TestNativeSubagentsGuidanceOnlyWithNativeTools(t *testing.T) {
-	section := sectionByName(t, "native-subagents")
-	if !section.Applies(promptContext{Provider: "claude-code", NativeCodingTools: true}) {
-		t.Fatal("a Full CLI chat must get the splitting-work guidance")
+// Crew chats learn that their agent tabs exist and that splitting work into
+// them needs the person's go (owner, 4 Nov: a tester's session spent most of its
+// limit on parallel helpers). Run mode has no tab tools, so it gets no section.
+func TestCrewAgentTabsGuidanceSaysAskFirst(t *testing.T) {
+	section := sectionByName(t, "crew-agent-tabs")
+	if !section.Applies(promptContext{Provider: "claude-code"}) || !section.Applies(promptContext{Provider: "codex-cli", NativeCodingTools: true}) {
+		t.Fatal("every Builder Crew chat must learn about its agent tabs")
 	}
-	if section.Applies(promptContext{Provider: "claude-code", NativeCodingTools: false}) {
-		t.Fatal("a bridge-only chat has no subagents of its own")
+	if section.Applies(promptContext{CrewReadOnly: true}) {
+		t.Fatal("a Run-mode chat has no tab tools")
 	}
 	text := section.Build(promptContext{})
-	for _, want := range []string{"Do not use your CLI's built-in subagents", "ask the person first", "ask_project_chat"} {
+	for _, want := range []string{"ask_project_chat", "ask the person first"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("guidance misses %q: %s", want, text)
 		}
