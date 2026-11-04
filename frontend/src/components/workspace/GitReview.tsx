@@ -19,13 +19,13 @@ const scopeLabel: Record<Scope, string> = { uncommitted: 'Uncommitted', branch: 
  * only shows what it returns. When the Crew folder itself is not a repository,
  * "This chat" (the default) shows the chat's saved-copy changes (renderChat), the
  * same list the reply card counts, including files outside any repository. */
-export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos, onRefresh, onBrowse, renderChat, initialScope = 'uncommitted' }: {
+export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos, onRefresh, onBrowse, renderChat, initialScope = 'uncommitted', initialRepoRoot }: {
   workspacePath: string; sessionId: string; tabId: string; repos: GitRepo[]; recentRepos: string[]; onRefresh: () => void; onBrowse: () => void
-  initialScope?: 'chat' | 'uncommitted'; renderChat: (bar: ReactNode) => ReactNode
+  initialRepoRoot?: string; initialScope?: 'chat' | 'uncommitted'; renderChat: (bar: ReactNode) => ReactNode
 }) {
   // Reply cards open saved chat changes; the compact sidebar opens current Git changes.
   const [scope, setScope] = useState<Scope>(initialScope)
-  const [repoRoot, setRepoRoot] = useState<string | null>(null)
+  const [repoRoot, setRepoRoot] = useState<string | null>(initialRepoRoot ?? null)
   const [base, setBase] = useState('')
   const [branches, setBranches] = useState<string[]>([])
   const [compare, setCompare] = useState<GitBranchCompare | null>(null)
@@ -51,8 +51,9 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
     return () => { live = false }
   }, [scope, workspacePath, repo.root, base, revision])
 
+  const visibleRepos = repoRoot === null ? repos : repos.filter(item => item.root === repoRoot)
   const rows: Row[] = scope === 'uncommitted'
-    ? repos.flatMap(item => item.files.map(file => ({ repo: item.root, path: file.path, label: file.path.endsWith('/') ? 'New folder' : uncommittedLabel[file.status] ?? '' })))
+    ? visibleRepos.flatMap(item => item.files.map(file => ({ repo: item.root, path: file.path, label: file.path.endsWith('/') ? 'New folder' : uncommittedLabel[file.status] ?? '' })))
     : (compare?.files ?? []).map(file => ({ repo: repo.root, path: file.path, label: file.status === 'added' ? 'Added' : file.status === 'deleted' ? 'Deleted' : '', added: file.added, removed: file.removed, binary: file.binary }))
   const current = rows.find(row => row.repo === selected?.repo && row.path === selected?.path) ?? rows[0]
   const baseSha = compare?.base_sha, headSha = compare?.head_sha
@@ -76,17 +77,17 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
     if (inline) Array.from(viewers.current?.querySelectorAll<HTMLElement>('[data-review-file]') ?? [])
       .find(element => element.dataset.reviewFile === filePath(row))?.scrollIntoView?.({ block: 'start' })
   }
-  const uncommittedCount = repos.reduce((sum, item) => sum + item.files.length, 0)
+  const uncommittedCount = visibleRepos.reduce((sum, item) => sum + item.files.length, 0)
   const note = scope === 'uncommitted'
     ? uncommittedCount === 0 ? 'Nothing to commit: every file matches the latest commit.'
-      : `${repos.length === 1 ? `${repos[0].branch || 'This version'} · ` : ''}${repos.some(item => item.truncated) ? 'At least ' : ''}${plural(uncommittedCount, 'file')} not committed yet (staged, unstaged and new)`
+      : `${visibleRepos.length === 1 ? `${visibleRepos[0].branch || 'This version'} · ` : ''}${visibleRepos.some(item => item.truncated) ? 'At least ' : ''}${plural(uncommittedCount, 'file')} not committed yet (staged, unstaged and new)`
     : !compare ? '' : compare.note || [
       `${compare.branch || 'This version'} → ${compare.base}`,
       compare.pr ? `PR #${compare.pr.number}` : '',
       compare.unpushed ? `${plural(compare.unpushed, 'commit')} not pushed yet` : '',
     ].filter(Boolean).join(' · ')
   const baseOptions = Array.from(new Set([compare?.base ?? '', ...branches].filter(Boolean)))
-  const grouped = scope === 'uncommitted' && repos.length > 1
+  const grouped = scope === 'uncommitted' && visibleRepos.length > 1
   const scopeSwitch = <div role="group" aria-label="What to review" className="flex overflow-hidden rounded border border-border text-xs">
     {(['chat', 'uncommitted', 'branch'] as const).map(value => <button type="button" key={value} aria-pressed={scope === value} onClick={() => { setScope(value); setSelected(null) }}
       className={`px-2 py-0.5 ${scope === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{scopeLabel[value]}</button>)}
@@ -100,6 +101,10 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
     </>} />
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       {scopeSwitch}
+      {scope === 'uncommitted' && repos.length > 1 && <label className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">Worktree
+        <select aria-label="Worktree" className={select} value={repoRoot === null ? '*' : `repo:${repoRoot}`} onChange={event => { setRepoRoot(event.target.value === '*' ? null : event.target.value.slice(5)); setSelected(null) }}>
+          <option value="*">All worktrees</option>{repos.map(item => <option key={item.root} value={`repo:${item.root}`}>{repoName(item.root)} · {item.branch}</option>)}
+        </select></label>}
       {scope === 'branch' && <>
         <label className="flex w-full min-w-0 items-center gap-1 text-xs text-muted-foreground sm:w-auto">Worktree
           <select aria-label="Worktree" title={`${repoName(repo.root)} · ${repo.branch}`} value={repo.root} className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground sm:max-w-md" onChange={event => { setRepoRoot(event.target.value); setBase(''); setSelected(null) }}>
@@ -119,7 +124,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
     {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     <div className="max-h-[35%] shrink-0 overflow-auto border-b border-border p-2 sm:max-h-56">
       {scope === 'branch' && !compare && !error && <p className="p-2 text-sm">Loading…</p>}
-      {(scope === 'uncommitted' ? repos.map(item => item.root) : [repo.root]).map(root => {
+      {(scope === 'uncommitted' ? visibleRepos.map(item => item.root) : [repo.root]).map(root => {
         const items = rows.filter(row => row.repo === root)
         if (!items.length) return null
         return <div key={root} className="grid gap-0.5">

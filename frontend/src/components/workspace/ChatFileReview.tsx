@@ -25,7 +25,7 @@ const startedFrom = (message?: { text: string; at?: string }) => {
 
 const iconButton = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-type ReviewProps = { projectHistory?: boolean; initialCheckoutId?: string; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
+type ReviewProps = { projectHistory?: boolean; initialCheckoutId?: string; initialRepoRoot?: string; toolbar?: ReactNode; reply?: ReplyFileChangesRef; allChat?: boolean; initialScope?: 'chat' | 'uncommitted'; outsideGit?: boolean; workspacePath: string; sessionId: string; tabId: string; onBrowse: () => void }
 
 /** Mounted with an account/server/chat key by its owner. A folder holding Git
  * repositories is reviewed with Git (Uncommitted or Branch / PR); any other
@@ -58,7 +58,7 @@ function CheckoutFileReview(props: ReviewProps) {
   </section>
   // Reply cards default to saved chat changes; sidebar links can open current Git changes.
   return repos.length && !props.outsideGit
-    ? <GitReview initialScope={props.initialScope} workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} recentRepos={recentRepos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
+    ? <GitReview initialRepoRoot={props.initialRepoRoot} initialScope={props.initialScope} workspacePath={props.workspacePath} sessionId={props.sessionId} tabId={props.tabId} repos={repos} recentRepos={recentRepos} onRefresh={() => setRevision(value => value + 1)} onBrowse={props.onBrowse}
       renderChat={bar => <SnapshotReview {...props} bar={bar} />} />
     : <SnapshotReview {...props} />
 }

@@ -17,6 +17,7 @@ export interface GitRepo {
   /** Repo folder relative to the workspace ("" for the workspace itself). */
   root: string
   branch: string
+  used_in_chat?: boolean
   detached?: boolean
   upstream?: string
   ahead: number
@@ -108,8 +109,8 @@ export const workspaceGitApi = {
     const response = await api.post(ENDPOINT, { workspace_path: workspacePath, repo, ...action })
     return (response.data?.repo as GitRepo | undefined) ?? null
   },
-  async status(workspacePath: string): Promise<GitRepo[]> {
-    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'status' } })
+  async status(workspacePath: string, sessionId?: string): Promise<GitRepo[]> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'status', session_id: sessionId } })
     if (response.data?.git_unavailable) throw new Error('Git is unavailable.')
     return (response.data?.repos as GitRepo[] | undefined) ?? []
   },

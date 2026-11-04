@@ -4,7 +4,7 @@ import type { SavedFileSelection } from '../../components/workspace/chatFileNavi
 
 export type WorkFilesView =
   | { kind: 'browse' }
-  | { kind: 'changes'; project?: boolean; checkoutId?: string; outsideGit?: boolean; uncommitted?: boolean }
+  | { kind: 'changes'; project?: boolean; checkoutId?: string; outsideGit?: boolean; uncommitted?: boolean; repoRoot?: string }
   | { kind: 'reply'; reference: ReplyFileChangesRef }
   | { kind: 'saved'; selection: SavedFileSelection }
 
@@ -28,6 +28,7 @@ export function useWorkFilesView(scope: string, workspacePath: string, sessionId
     if (target === 'review') next = { kind: 'changes' }
     else if (target === 'review-project' || target.startsWith('review-project:')) next = { kind: 'changes', project: true, checkoutId: target.slice('review-project:'.length) }
     else if (target === 'review-outside-git') next = { kind: 'changes', outsideGit: true }
+    else if (target.startsWith('review-uncommitted:')) next = { kind: 'changes', uncommitted: true, repoRoot: decodeURIComponent(target.slice('review-uncommitted:'.length)) }
     else if (target === 'review-uncommitted') next = { kind: 'changes', uncommitted: true }
     else if (target.startsWith('reply:') || target.startsWith('saved:')) {
       try {

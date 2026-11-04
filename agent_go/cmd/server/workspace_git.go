@@ -67,14 +67,15 @@ type workspaceGitFile struct {
 type workspaceGitRepo struct {
 	// Root is the repo folder relative to the requested workspace_path ("" for
 	// the workspace itself).
-	Root      string             `json:"root"`
-	Branch    string             `json:"branch"`
-	Detached  bool               `json:"detached,omitempty"`
-	Upstream  string             `json:"upstream,omitempty"`
-	Ahead     int                `json:"ahead"`
-	Behind    int                `json:"behind"`
-	Files     []workspaceGitFile `json:"files"`
-	Truncated bool               `json:"truncated,omitempty"`
+	Root       string             `json:"root"`
+	Branch     string             `json:"branch"`
+	Detached   bool               `json:"detached,omitempty"`
+	Upstream   string             `json:"upstream,omitempty"`
+	Ahead      int                `json:"ahead"`
+	Behind     int                `json:"behind"`
+	Files      []workspaceGitFile `json:"files"`
+	Truncated  bool               `json:"truncated,omitempty"`
+	UsedInChat bool               `json:"used_in_chat,omitempty"`
 }
 
 type workspaceGitBranch struct {
@@ -463,7 +464,21 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	query := r.URL.Query()
 	op := query.Get("op")
 	if op == "" || op == "status" {
+		sessionID := strings.TrimSpace(query.Get("session_id"))
+		if sessionID != "" {
+			if api.eventStore == nil {
+				writeWorkspaceGitJSON(w, http.StatusNotFound, map[string]string{"error": "Chat not found"})
+				return
+			}
+			if status, message := api.authorizeDurableChatRead(r, sessionID, requestWorkflowWorkspacePath(r)); status != 0 {
+				writeWorkspaceGitJSON(w, status, map[string]string{"error": message})
+				return
+			}
+		}
 		repos := workspaceGitStatusRepos(ctx, realBase)
+		if sessionID != "" {
+			api.markWorkspaceGitChatUsage(sessionID, realBase, repos)
+		}
 		if ctx.Err() != nil {
 			writeWorkspaceGitJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Could not load changes. Try again."})
 			return
