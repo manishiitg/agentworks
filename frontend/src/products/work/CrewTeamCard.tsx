@@ -67,7 +67,7 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
     {team.people.map(person => <div key={person.user_id} className="flex flex-wrap items-center gap-2 text-xs">
       <span className="min-w-20 flex-1 truncate">{name(person.user_id)} <span className="text-muted-foreground">· {person.invited ? 'Invited' : 'Joined'}</span></span>
       <label className="flex items-center gap-2"><Switch aria-label={`${name(person.user_id)} edits shared folder`} disabled={busy || !team.folder.path} checked={person.can_edit_shared_folder} onCheckedChange={on => void save({ ...team, people: team.people.map(p => p.user_id === person.user_id ? { ...p, can_edit_shared_folder: on } : p) })} />Edits shared folder</label>
-      <button type="button" disabled={busy} aria-label={`Remove ${name(person.user_id)} from team`} onClick={() => void save({ ...team, people: team.people.filter(p => p.user_id !== person.user_id) })} className="rounded p-1 hover:bg-muted"><X className="h-3 w-3" /></button>
+      <button type="button" disabled={busy} aria-label={person.invited ? `Cancel ${name(person.user_id)}'s invite` : `Remove ${name(person.user_id)} from team`} title={person.invited ? 'Cancel invite' : 'Remove from team'} onClick={() => void save({ ...team, people: team.people.filter(p => p.user_id !== person.user_id) })} className="rounded p-1 hover:bg-muted"><X className="h-3 w-3" /></button>
     </div>)}
     <button type="button" disabled={busy} onClick={() => setAdding(!adding)} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Person</button>
     {adding && <div className="rounded-xl border border-border bg-popover">
