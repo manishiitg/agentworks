@@ -202,12 +202,11 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
   }
   const minutes = readiness ? Math.max(1, Math.round(readiness.estimated_seconds / 60)) : 0
   const facts = readiness && !tooBig ? { size: sizeLabel(readiness.measurement.bytes), time: `about ${minutes} ${minutes > 1 ? 'minutes' : 'minute'}` } : undefined
-  const way = (icon: ReactNode, title: string, line: string, action: ReactNode) => <div className="grid grid-cols-[22px_1fr_auto] items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
+  const way = (icon: ReactNode, title: string, line: string, action: ReactNode) => <div className="grid grid-cols-[22px_minmax(0,1fr)] items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0 sm:grid-cols-[22px_minmax(0,1fr)_auto]">
     <span aria-hidden="true" className="flex justify-center text-muted-foreground">{icon}</span>
     <span className="min-w-0"><span className="block text-sm font-medium">{title}</span><span className="block text-xs text-muted-foreground">{line}</span></span>
-    {action}
+    <div className="col-start-2 flex flex-wrap items-center gap-2 sm:col-start-auto">{action}</div>
   </div>
-  const ready = <span className="text-xs text-emerald-500">✓ Ready</span>
   // Move online takes the whole page (owner, 3 Nov mockup): the step, then its progress, then done.
   const [doneSeen, setDoneSeen] = useState(false)
   const done = online && Boolean(moved) && !doneSeen
@@ -248,12 +247,14 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
     {status && <section aria-label="Who can use it" className="space-y-1">
       {binding && <div className="grid grid-cols-[72px_1fr_auto] items-center gap-2.5 py-1.5"><span className="font-semibold">You</span><span className="text-[13px] text-muted-foreground">{online ? 'From anywhere' : 'From anywhere while your Mac is on'}</span><span className="text-emerald-500">✓</span></div>}
       <div aria-disabled={!binding} className={`overflow-hidden rounded-2xl border border-border ${binding ? '' : 'pointer-events-none opacity-50'}`}>
-        {way(<Smartphone className="h-4 w-4" />, 'Phone', 'Scan to open on your phone', <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide code' : 'Show code'}</Button>)}
-        {open === 'code' && link && <div className="flex justify-center border-b border-border p-3"><LinkCode link={link} /></div>}
-        {way(<Globe className="h-4 w-4" />, 'Website', 'Open it in any browser', <span className="flex items-center gap-2">{ready}<Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button></span>)}
+        {way(<Globe className="h-4 w-4" />, 'Website', 'Any browser or phone', <>
+          <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button>
+          <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!link} aria-expanded={open === 'code'} aria-controls={`crew-phone-code-${projectId}`} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide QR' : 'QR for phone'}</Button>
+        </>)}
+        {open === 'code' && link && <div id={`crew-phone-code-${projectId}`} className="flex justify-center border-b border-border p-3"><LinkCode link={link} /></div>}
         {way(<MessageSquare className="h-4 w-4" />, 'ChatGPT or Claude', `Then just say "ask my ${name} Crew to…"`, <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
         {open === 'ai' && binding?.peer_server && <div className="border-b border-border p-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
-        {way(<Hash className="h-4 w-4" />, 'Slack', 'Direct message it in Slack. Only you; to use it in channels, share it with people.', <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
+        {way(<Hash className="h-4 w-4" />, 'Slack DM', 'Message your Crew directly in Slack.', <Button className="rounded-full px-3.5" size="sm" variant="outline" disabled={!binding?.connection_id} onClick={() => setOpen(open === 'slack' ? '' : 'slack')}>{open === 'slack' ? 'Close' : 'Connect'}</Button>)}
         {open === 'slack' && binding?.connection_id && <div className="border-b border-border p-3"><MacCrewSlack connection={binding.connection_id} project={binding.peer_project_id} /></div>}
       </div>
       {!binding && <p className="text-[12px] text-muted-foreground">Turn on Use from phone and web above so you can use it from other places and people can message your agents</p>}
@@ -274,11 +275,11 @@ function WhereYourDataIs({ copies, sharing }: { copies: ServerCopy[]; sharing: b
   const row = (icon: ReactNode, body: ReactNode) => <div className="flex items-start gap-2.5 text-[13px]"><span aria-hidden="true" className="mt-0.5 flex w-4 justify-center text-muted-foreground">{icon}</span><div className="min-w-0">{body}</div></div>
   const tag = (text: string, tone: string) => <span className={`ml-1.5 rounded-full px-2 py-px text-[11px] ${tone}`}>{text}</span>
   if (!copies.length) return <section aria-label="Where your data is" className="space-y-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3.5 py-3">
-    {row(<Laptop className="h-4 w-4" />, <><b className="font-semibold">Everything stays on this Mac</b>{tag('Private', 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400')}<p className="text-muted-foreground">{sharing ? 'Your files, chats and memory stay here. Your shared agents answer from here.' : 'Your files, chats, memory and logins never leave it.'}</p></>)}
-    {row(<RefreshCw className="h-3.5 w-3.5" />, <p className="text-muted-foreground">{sharing ? "People's questions and the answers pass through the server. Each person sees only their own chat." : 'The server only passes your messages to this Mac and back. It keeps nothing.'}</p>)}
+    {row(<Laptop className="h-4 w-4" />, <><b className="font-semibold">Your work is on this Mac</b><p className="text-muted-foreground">Your files, chats and memory are here. Your agents answer while this Mac is on.</p></>)}
+    {row(<RefreshCw className="h-3.5 w-3.5" />, <p className="text-muted-foreground">{sharing ? "People's questions and the answers pass through the server. Each person sees only their own chat." : 'Phone, web and agent messages pass through the server to this Mac and back.'}</p>)}
   </section>
   return <section aria-label="Where your data is" className="space-y-2 rounded-2xl border border-sky-400/25 bg-sky-400/[0.06] px-3.5 py-3">
-    {row(<Cloud className="h-4 w-4" />, <><b className="font-semibold">Now on the server too</b>{tag('Shared', 'bg-sky-400/15 text-sky-600 dark:text-sky-300')}
+    {row(<Cloud className="h-4 w-4" />, <><b className="font-semibold">Copies kept on the server</b>{tag('Stored', 'bg-sky-400/15 text-sky-600 dark:text-sky-300')}
       <ul className="mt-1 space-y-0.5 text-muted-foreground">{copies.map(copy => <li key={copy.name}><span className="font-medium text-foreground">{copy.name}</span>: {copy.detail}</li>)}</ul></>)}
     {row(<Laptop className="h-4 w-4" />, <><b className="font-semibold">Still only on this Mac</b>{tag('Private', 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400')}<p className="text-muted-foreground">Everything else: your other files, your chats with your agents, your logins and secrets.</p></>)}
     {row(null, <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="text-primary hover:underline">{open ? 'Hide the list' : "See exactly what's on the server"}</button>)}
