@@ -995,6 +995,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-chat-usage', open)
     return () => window.removeEventListener('agentworks:open-chat-usage', open)
   }, [selected?.id, workspacePanels, selectWorkspaceView])
+  // An agent tab's "Sharing…" opens the Crew menu, which opens Access at that agent (YourComputerPanel openCrewAccess).
+  useEffect(() => {
+    const open = (event: Event) => {
+      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId !== selected?.id || workspaceView === 'context') return
+      selectWorkspaceView('context')
+    }
+    window.addEventListener('agentworks:open-crew-access', open)
+    return () => window.removeEventListener('agentworks:open-crew-access', open)
+  }, [selected?.id, workspaceView, selectWorkspaceView])
   // "Works once this Crew is online. [Move online]" opens Where it lives (useMacCrew.tsx).
   useEffect(() => {
     const open = (event: Event) => {

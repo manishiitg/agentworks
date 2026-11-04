@@ -9,10 +9,7 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
-import { cloudStateIcon, cloudStateLabel, type CrewAsk, useCrewAsking, useCrewLivesOnMac, useCrewSharedAgentCount, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
-import { activateTab } from '../../utils/activateTab'
-import { useChatStore } from '../../stores/useChatStore'
-import { hydrateTabEvents } from '../../utils/sessionRestore'
+import { cloudStateIcon, cloudStateLabel, type CrewAsk, openCrewAskThread, takeCrewAccess, useCrewAsking, useCrewLivesOnMac, useCrewSharedAgentCount, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
@@ -94,6 +91,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // gets bigger"), not as the full side panel.
   const accessInMenu = getRawActiveWorkspaceId() === 'local' && computerState !== undefined && computerState !== 'online'
   const accessOpen = menu?.scope === scope && menu.view === 'access'
+  // An agent's tab asked for its sharing: open Access here (the card then scrolls to that agent).
+  useEffect(() => {
+    const open = () => { if (accessInMenu && !accessOpen && takeCrewAccess(projectId)) showMenu('access') }
+    open()
+    window.addEventListener('agentworks:open-crew-access', open)
+    return () => window.removeEventListener('agentworks:open-crew-access', open)
+  })
   useEffect(() => { useContextMenuWideStore.getState().setWide(accessOpen); return () => useContextMenuWideStore.getState().setWide(false) }, [accessOpen])
   if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard title="Access" noFooter page onBack={() => setMenu(undefined)}>
     <YourComputerPanel projectId={projectId} sessionId={reviewSessionId} canEdit />
@@ -135,29 +139,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Someone else asked a shared agent on this Mac in the last 10 minutes: one tree line each under Access (owner, 4 Nov).
   // A click opens that person's own thread with the agent for the owner to read; their messages are never in the owner's tab.
   const ago = (ask: CrewAsk) => ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`
-  const openAsk = async (ask: CrewAsk) => {
-    const store = useChatStore.getState()
-    const tabs = Object.values(store.chatTabs)
-    const main = tabs.find(row => row.metadata?.agentProfileProjectId === projectId && row.metadata?.agentProfileIsMainChat && !row.metadata?.isViewOnly)
-    if (!main || !ask.session_id) return
-    const existing = tabs.find(row => row.sessionId === ask.session_id && row.metadata?.isViewOnly)
-    const tabId = existing?.tabId || await store.createChatTab(`${ask.sender}'s chat with ${ask.agent}`, {
-      ...main.metadata,
-      agentProfileIsMainChat: false,
-      agentProfileBuilder: false,
-      agentProfileConversationKey: `${projectId}:history:${ask.session_id}`,
-      agentProfileConversationId: undefined,
-      isViewOnly: true,
-      viewOnlyWriter: ask.sender,
-      readOnlyRestoredAt: Date.now(),
-      userInteractiveContinuation: false,
-    }, ask.session_id)
-    store.setTabCanSteer(tabId, false)
-    await hydrateTabEvents(ask.session_id, { workspacePath: main.metadata?.agentProfileWorkspace, fallbackToChatHistory: true, preferChatHistory: true })
-    activateTab(tabId)
-  }
+  const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
   const asksTree = asking.length > 0 && <div role="list" aria-label="Who asked your agents" className="ml-3 border-l border-border pl-2 pb-1">
-    {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => void openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ask.active ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-muted-foreground/40'}`} />
       <span className="min-w-0 flex-1 truncate"><span className="font-medium text-foreground">{ask.sender}</span> {ask.active ? 'is asking' : 'asked'} {ask.agent}</span>
       <span className="shrink-0 text-muted-foreground">{ago(ask)}</span>
