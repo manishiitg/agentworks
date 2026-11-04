@@ -29,6 +29,16 @@ import (
 type crewTeamPerson struct {
 	UserID              string `json:"user_id"`
 	CanEditSharedFolder bool   `json:"can_edit_shared_folder"`
+	// Invited: added by the owner but not accepted yet (owner, 5 Nov, the decisions log). An invited person has no
+	// access and no folder sync; accepting on the web or on their Mac makes them a member.
+	Invited bool `json:"invited,omitempty"`
+}
+
+// crewTeamInvite is a Team invite as the invited person sees it.
+type crewTeamInvite struct {
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	OwnerName string `json:"owner_name"`
 }
 type crewTeamFolder struct {
 	ID    string `json:"id"`
@@ -97,11 +107,17 @@ func writeCrewTeam(t crewTeam) error {
 	return fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
 }
 func (t crewTeam) member(user string) bool {
-	return user != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user }))
+	return user != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && !p.Invited }))
 }
 func (t crewTeam) edits(user string) bool {
-	return t.Folder.Path != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && p.CanEditSharedFolder }))
+	return t.Folder.Path != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && !p.Invited && p.CanEditSharedFolder }))
 }
+
+// invited: the person has an open invite to this team (Team on, not accepted yet).
+func (t crewTeam) invited(user string) bool {
+	return user != "" && t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && p.Invited })
+}
+
 func (t crewTeam) view(user string) crewTeam {
 	t.CanManage = t.OwnerID == user
 	t.CanEditSharedFolder = t.edits(user)
@@ -190,7 +206,7 @@ func crewTeamPeople(project string) []string {
 		return out
 	}
 	for _, p := range t.People {
-		if IsLocalMode() || crewTeamAccountActive(p.UserID) {
+		if !p.Invited && (IsLocalMode() || crewTeamAccountActive(p.UserID)) {
 			out = append(out, p.UserID)
 		}
 	}
@@ -270,6 +286,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalJSON(w, t.view(claims.UserID))
 		return
 	}
+	if mux.Vars(r)["op"] == "invite" {
+		api.answerCrewTeamInvite(w, r, claims, project)
+		return
+	}
 	if owner == "" || owner != claims.UserID {
 		externalError(w, 403, "team_owner_required", "Only this Crew's owner can change its team.")
 		return
@@ -339,6 +359,19 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
+	// A person the owner adds is invited, not a member, until they accept; people already on the roster keep their state.
+	for i := range input.People {
+		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
+		input.People[i].Invited = at < 0 || previous.People[at].Invited
+		if at < 0 {
+			log.Printf("[CREW_TEAM] project=%s actor=%s event=invited user=%s", project, owner, logUsernameForUserID(input.People[i].UserID))
+		}
+	}
+	for _, p := range previous.People {
+		if !slices.ContainsFunc(input.People, func(q crewTeamPerson) bool { return q.UserID == p.UserID }) {
+			log.Printf("[CREW_TEAM] project=%s actor=%s event=removed user=%s was_invited=%t", project, owner, logUsernameForUserID(p.UserID), p.Invited)
+		}
+	}
 	input.Folder.ID = previous.Folder.ID
 	if previous.Folder.Path != input.Folder.Path {
 		input.Folder.ID = uuid.NewString()
@@ -373,6 +406,53 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d revision=%d", project, owner, input.On, len(input.People), input.Revision)
 	externalJSON(w, input.view(owner))
 }
+
+// answerCrewTeamInvite is the invited person's own answer: accept makes them a member, decline takes them off the roster.
+func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Request, claims *UserClaims, project string) {
+	var input struct {
+		Accept bool `json:"accept"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&input) != nil {
+		externalError(w, 400, "invalid_request", "Accept or decline the invite.")
+		return
+	}
+	dir, e := crewTeamDir(project)
+	if e != nil {
+		externalError(w, 400, "invalid_team", e.Error())
+		return
+	}
+	unlock, e := wf.LockWorkspace(r.Context(), dir)
+	if e != nil {
+		externalError(w, 409, "team_save_failed", e.Error())
+		return
+	}
+	defer unlock()
+	t, e := readCrewTeam(project)
+	if e != nil || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !t.invited(claims.UserID) {
+		externalError(w, 404, "invite_not_found", "There is no open invite to this team for you.")
+		return
+	}
+	at := slices.IndexFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == claims.UserID })
+	event := "declined"
+	if input.Accept {
+		t.People[at].Invited = false
+		event = "accepted"
+	} else {
+		t.People = slices.Delete(t.People, at, at+1)
+	}
+	t.Revision++
+	if e = writeCrewTeam(t); e != nil {
+		externalError(w, 409, "team_save_failed", e.Error())
+		return
+	}
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=%s revision=%d", project, logUsernameForUserID(claims.UserID), event, t.Revision)
+	if !input.Accept {
+		externalJSON(w, map[string]any{"declined": true})
+		return
+	}
+	externalJSON(w, t.view(claims.UserID))
+}
+
 func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	if !crewTeamClaims(claims, "", false) {
@@ -390,16 +470,22 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := []crewTeam{}
+	invites := []crewTeamInvite{}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		t, e := readCrewTeam(entry.Name())
-		if e == nil && t.member(claims.UserID) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID) && crewTeamClaims(claims, t.ProjectID, false) {
+		if e != nil || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !crewTeamClaims(claims, t.ProjectID, false) {
+			continue
+		}
+		if t.member(claims.UserID) {
 			out = append(out, t.view(claims.UserID))
+		} else if t.invited(claims.UserID) {
+			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID)})
 		}
 	}
-	externalJSON(w, map[string]any{"teams": out})
+	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
 
 func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnection, method, route string, input, out any) error {

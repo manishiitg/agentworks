@@ -59,6 +59,18 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("owner config: %d %s", w.Code, w.Body.String())
 	}
+	// Added people are invited, not members, until they accept (the decisions log, 5 Nov).
+	if crewTeamMember("team-test", "member") || call("member", "GET", base+"/files", "", "").Code != 403 {
+		t.Fatal("an invited person must have no access before accepting")
+	}
+	if w = call("outsider", "POST", base+"/invite", `{"accept":true}`, ""); w.Code != 404 {
+		t.Fatalf("someone not invited accepted: %d %s", w.Code, w.Body.String())
+	}
+	for _, who := range []string{"member", "teammate"} {
+		if w = call(who, "POST", base+"/invite", `{"accept":true}`, ""); w.Code != 200 {
+			t.Fatalf("%s accept: %d %s", who, w.Code, w.Body.String())
+		}
+	}
 	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member", "outsider"}}, {Tab: "all01", Audience: "everyone"}}
 	for _, tc := range []struct{ tab, who, reason string }{{"team01", "member", ""}, {"chosen01", "member", ""}, {"chosen01", "outsider", "not_in_audience"}, {"all01", "outsider", ""}} {
 		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test")); reason != tc.reason {
@@ -343,6 +355,10 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member","can_edit_shared_folder":true}],"folder":{"path":"other"}}`, "")
 	if w.Code != 200 {
 		t.Fatal("change folder", w.Code, w.Body.String())
+	}
+	// Removed earlier, so added back as an invite.
+	if w = call("member", "POST", base+"/invite", `{"accept":true}`, ""); w.Code != 200 {
+		t.Fatal("member accept again", w.Code, w.Body.String())
 	}
 	newTeam, _ := readCrewTeam("team-test")
 	if newTeam.Folder.ID == oldTeam.Folder.ID {
