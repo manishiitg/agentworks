@@ -44,7 +44,7 @@ function CheckoutFileReview(props: ReviewProps) {
     let live = true
     if (props.outsideGit || props.reply || props.allChat) { setRepos([]); setRecentRepos([]); return }
     void Promise.all([
-      workspaceGitApi.status(props.workspacePath),
+      workspaceGitApi.status(props.workspacePath, props.sessionId),
       api.get<ReviewHistory>(endpoint, { params: { workspace_path: props.workspacePath, session_id: props.sessionId, op: 'snapshots' } })
         .then(({ data }) => data.recent_repos ?? []).catch(() => [] as string[]),
     ]).then(([found, recent]) => { if (live) { setRecentRepos(recent); setRepos(found) } })

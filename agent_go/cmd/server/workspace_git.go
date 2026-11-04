@@ -466,13 +466,13 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	if op == "" || op == "status" {
 		sessionID := strings.TrimSpace(query.Get("session_id"))
 		if sessionID != "" {
+			// File access does not grant private-chat history. Optional navigation
+			// hints are absent for both missing and unauthorized chats; the caller
+			// still sees the same current Git state their file access allows.
 			if api.eventStore == nil {
-				writeWorkspaceGitJSON(w, http.StatusNotFound, map[string]string{"error": "Chat not found"})
-				return
-			}
-			if status, message := api.authorizeDurableChatRead(r, sessionID, requestWorkflowWorkspacePath(r)); status != 0 {
-				writeWorkspaceGitJSON(w, status, map[string]string{"error": message})
-				return
+				sessionID = ""
+			} else if status, _ := api.authorizeDurableChatRead(r, sessionID, requestWorkflowWorkspacePath(r)); status != 0 {
+				sessionID = ""
 			}
 		}
 		repos := workspaceGitStatusRepos(ctx, realBase)
