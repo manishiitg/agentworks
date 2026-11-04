@@ -123,6 +123,10 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 			out.Unshared = len(current) - len(public)
 		}
 	}
+	// Team on starts with "All agents in team"; off ends it (crew_team_all.go).
+	if err := writeCrewTeamAll(project, on); err != nil {
+		log.Printf("[CREW_TEAM] local project=%s all_in_team not saved: %v", project, err)
+	}
 	log.Printf("[CREW_TEAM] local project=%s server_project=%s event=switch on=%t people=%d folder=%q folder_created=%t shared=%d needs_purpose=%d unshared=%d",
 		project, binding.PeerProjectID, on, len(saved.People), saved.Folder.Path, out.FolderCreated, len(out.Shared), len(out.NeedsPurpose), out.Unshared)
 	return out, nil

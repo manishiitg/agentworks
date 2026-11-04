@@ -576,7 +576,7 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 	}
 	// Where each agent answers (856-523): a published agent is on the server; any other is on this Mac.
 	placements, _ := readCrewAgentPlacements(project)
-	externalJSON(w, map[string]any{"tabs": rows, "agents": readMacSharedAgents(project), "placements": placements})
+	externalJSON(w, map[string]any{"tabs": rows, "agents": readMacSharedAgents(project), "placements": placements, "all_in_team": readCrewTeamAll(project)})
 }
 
 // macSharedPurposesStale: a shared agent's saved name or purpose differs from its tab's now (and the tab still has one).
@@ -593,7 +593,8 @@ func macSharedPurposesStale(rows []macAgentRow, agents []macSharedAgent) bool {
 
 // refreshMacSharedPurposes follows a purpose change of a shared agent on this Mac to its online copy.
 func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project string) {
-	if !IsLocalMode() || len(readMacSharedAgents(project)) == 0 {
+	all := readCrewTeamAll(project)
+	if !IsLocalMode() || len(readMacSharedAgents(project)) == 0 && !all {
 		return
 	}
 	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
@@ -601,10 +602,18 @@ func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project s
 		return
 	}
 	rows, err := api.macAgentRows(ctx, claims, project)
-	if err != nil || !macSharedPurposesStale(rows, readMacSharedAgents(project)) {
+	if err != nil {
 		return
 	}
-	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, readMacSharedAgents(project)); err != nil {
+	// "All agents in team": an agent that just got its purpose and icon joins the team (crew_team_all.go).
+	next, added := readMacSharedAgents(project), []string(nil)
+	if all {
+		next, added = withAllInTeam(rows, next)
+	}
+	if len(added) == 0 && !macSharedPurposesStale(rows, next) {
+		return
+	}
+	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {
 		log.Printf("[CREW_SHARED_AGENT] local project=%s purpose refresh failed: %v", project, err)
 	}
 }
