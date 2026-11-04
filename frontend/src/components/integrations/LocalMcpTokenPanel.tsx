@@ -6,6 +6,7 @@ import { Button } from '../ui/Button'
 import { HostedAiAppGuide } from './HostedAiAppGuide'
 import { AI_APPS, AiAppPicker, isHostedAiApp, type AiApp } from './AiAppPicker'
 import { CommandRow, CopyButton } from './LocalAgentSetupSteps'
+import { messagingGuides } from '../../products/bullpen/agentMessagingSetup'
 
 /** Local clients keep the existing full-account token API; hosted apps use browser sign-in. */
 export function LocalMcpTokenPanel({ endpoint, origin = new URL(endpoint, window.location.origin).origin }: { endpoint: string; origin?: string }) {
@@ -71,8 +72,25 @@ export function LocalMcpTokenPanel({ endpoint, origin = new URL(endpoint, window
         <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer">Manual connection details</summary><div className="mt-2 space-y-2"><CommandRow label="MCP server URL" command={endpoint} /><p>Authorization header: <code>Bearer &lt;ACCESS_TOKEN&gt;</code></p>{app === 'claude-code' && <pre className="overflow-x-auto rounded-md border border-border p-3" aria-label="Local MCP client config">{config}</pre>}</div></details>
       </div>
       <div className="space-y-2 border-t border-border pt-4"><h4 className="text-sm font-medium">3. Try it in {name}</h4><p className="text-xs text-muted-foreground">Start a chat and ask:</p><CommandRow label="Try your connection" command="What can I do with AgentWorks?" /></div>
+      {(app === 'codex' || app === 'claude-code') && <PluginSteps app={app} />}
     </section>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {activeTokens.length > 0 && <details className="rounded-xl border border-border p-4 text-sm"><summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Manage connection keys ({activeTokens.length})</summary><div className="mt-3"><SettingsCard title="Connection keys" description="Revoking a key disconnects every app using it."><div className="space-y-2">{activeTokens.map(token => <div key={token.id} className="flex items-center justify-between gap-2 text-xs"><div><p>{token.name}</p><p className="text-muted-foreground">{token.non_expiring ? 'Valid until removed' : `Expires ${new Date(token.expires_at).toLocaleDateString()}`}</p></div><Button variant="outline" size="sm" disabled={busy} onClick={() => void revoke(token.id)}>Revoke</Button></div>)}</div></SettingsCard></div></details>}
+  </div>
+}
+
+/** The AgentWorks plugin lets the chat message other agents (tester ask, 4 Nov): the same steps as the messaging setup page. */
+function PluginSteps({ app }: { app: 'codex' | 'claude-code' }) {
+  const guide = messagingGuides.find(item => item.id === (app === 'codex' ? 'codex' : 'claude'))
+  if (!guide) return null
+  const steps = app === 'codex' ? guide.app?.installSteps ?? [] : []
+  const commands = app === 'codex' ? [] : (guide.alternativeInstall ?? []).flatMap(command => command.text.split('\n').map((text, index) => ({ label: `${command.label} ${index + 1}`, text })))
+  return <div className="space-y-2 border-t border-border pt-4">
+    <h4 className="text-sm font-medium">Message other agents: install the AgentWorks plugin</h4>
+    <p className="text-xs text-muted-foreground">Optional. Lets this chat connect to AgentWorks and send and receive messages with your other agents.</p>
+    <CommandRow label="AgentWorks plugin marketplace" command="manishiitg/agentworks-plugins" />
+    {steps.length > 0 && <ol className="list-decimal space-y-1 pl-5 text-xs text-muted-foreground">{steps.map(step => <li key={step}>{step}</li>)}</ol>}
+    {commands.map(command => <CommandRow key={command.label} label={command.label} command={command.text} />)}
+    <p className="text-xs text-muted-foreground">Then, in the chat, say: “{guide.ownRequest}”</p>
   </div>
 }
