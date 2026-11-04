@@ -252,7 +252,7 @@ describe('Studio review comments', () => {
       state.recentRepos = ['removed-worktree', 'app-wt']
       vi.mocked(workspaceGitApi.status).mockResolvedValueOnce([
         { root: 'app', branch: 'main', ahead: 0, behind: 0, files: [] },
-        { root: 'app-wt', branch: 'feature', ahead: 0, behind: 0, files: [] },
+        { root: 'app-wt', branch: 'feature', used_in_chat: true, ahead: 0, behind: 0, files: [] },
       ])
       await act(async () => root.render(<ChatFileReview workspacePath="Crew/example" sessionId="chat-a" tabId="exact" onBrowse={() => undefined} />))
       const button = (text: string) => Array.from(host.querySelectorAll('button')).find(item => item.textContent === text)!

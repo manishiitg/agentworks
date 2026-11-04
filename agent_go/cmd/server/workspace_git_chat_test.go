@@ -31,7 +31,8 @@ func TestWorkspaceGitChatUsageUsesToolPathsNotDirtyFiles(t *testing.T) {
 		api.eventStore.AddEvent("chat", chatevents.Event{ID: id, Type: "tool_call_start", Timestamp: time.Now(), Data: &mcpevents.AgentEvent{Type: mcpevents.ToolCallStart, Data: &mcpevents.ToolCallStartEvent{ToolName: "Bash", ToolParams: mcpevents.ToolParams{Arguments: arguments}}}})
 	}
 	add("a", `{"command":"cd api && npm test"}`)
-	add("b", `{"command":"git -C 'web space' status"}`)
+	patchArgs, _ := json.Marshal(map[string]string{"filepath": filepath.Join(base, "web space", "main.ts"), "patch": "example patch"})
+	add("b", string(patchArgs))
 	add("c", `{"file_path":"unrelated/escape/private.txt"}`)
 	add("d", `{"command":"echo 'cd unrelated'"}`)
 	repos := []workspaceGitRepo{{Root: "api"}, {Root: "web space"}, {Root: "unrelated", Files: []workspaceGitFile{{Path: "dirty.txt"}}}}
