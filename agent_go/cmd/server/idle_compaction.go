@@ -50,6 +50,7 @@ type idleCompactConfig struct {
 	MinPercent    int           // ...or at or above this share of the model's window
 	IdleFrom      time.Duration // since the chat's last turn ended
 	IdleTo        time.Duration // past this the cache has likely expired
+	LongIdle      time.Duration // a longer break (people go offline at night): compact once, cache or not
 	PersonWithin  time.Duration // a person sent a turn this recently
 	Sweep         time.Duration
 	SendWait      time.Duration // a person's send waits this long for a running compaction
@@ -58,7 +59,7 @@ type idleCompactConfig struct {
 
 func idleCompactConfigFromEnv() idleCompactConfig {
 	cfg := idleCompactConfig{MinTokens: 200_000, MinPercent: 60, IdleFrom: 50 * time.Minute, IdleTo: 58 * time.Minute,
-		PersonWithin: 3 * time.Hour, Sweep: 5 * time.Minute, SendWait: 90 * time.Second, MaxConcurrent: 2}
+		LongIdle: 3 * time.Hour, PersonWithin: 6 * time.Hour, Sweep: 5 * time.Minute, SendWait: 90 * time.Second, MaxConcurrent: 2}
 	positive := func(key string) (int, bool) {
 		n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
 		return n, err == nil && n > 0
@@ -106,7 +107,16 @@ func idleCompactDecide(c idleCompactCandidate, cfg idleCompactConfig, now time.T
 		return false, false, "no_turn"
 	}
 	idle := now.Sub(c.LastActivity)
-	if idle < cfg.IdleFrom || idle > cfg.IdleTo {
+	// The warm window catches a short break while the provider cache is still warm. A chat left for the night
+	// (owner, 4 Nov: "next morning it should be compacted") is compacted once after a long break, so the next
+	// morning's first message does not re-read the whole day's conversation on every step. The window is two
+	// sweeps wide, so one sweep always lands in it.
+	compactReason := "idle_cache_warm"
+	switch {
+	case idle >= cfg.IdleFrom && idle <= cfg.IdleTo:
+	case cfg.LongIdle > 0 && idle >= cfg.LongIdle && idle <= cfg.LongIdle+cfg.IdleTo-cfg.IdleFrom:
+		compactReason = "idle_long_break"
+	default:
 		return false, false, "outside_idle_window"
 	}
 	switch {
@@ -135,7 +145,7 @@ func idleCompactDecide(c idleCompactCandidate, cfg idleCompactConfig, now time.T
 	case c.LimitReached:
 		return true, false, "limit"
 	}
-	return true, true, "idle_cache_warm"
+	return true, true, compactReason
 }
 
 // idleCompactRun is one compaction turn. done closes when it ends. A person's
@@ -325,7 +335,7 @@ func (t *idleCompactTracker) snapshot(now time.Time, keep time.Duration) []idleC
 
 func (api *StreamingAPI) runIdleCompactionSweeper() {
 	cfg := idleCompactConfigFromEnv()
-	log.Printf("[IDLE_COMPACT] sweeper started every=%s idle=%s-%s min_tokens=%d min_percent=%d", cfg.Sweep, cfg.IdleFrom, cfg.IdleTo, cfg.MinTokens, cfg.MinPercent)
+	log.Printf("[IDLE_COMPACT] sweeper started every=%s idle=%s-%s long_idle=%s min_tokens=%d min_percent=%d", cfg.Sweep, cfg.IdleFrom, cfg.IdleTo, cfg.LongIdle, cfg.MinTokens, cfg.MinPercent)
 	ticker := time.NewTicker(cfg.Sweep)
 	defer ticker.Stop()
 	for now := range ticker.C {

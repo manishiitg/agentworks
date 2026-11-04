@@ -122,6 +122,15 @@ type Store struct {
 	// small (two short strings) and outlive their session for the process
 	// lifetime; not worth the bookkeeping to evict per-session.
 	delegationBackgroundAgent map[string]string
+	// mainContext is the main chat's latest context fill, reported by its CLI's live status line. A structured
+	// (SDK) chat has no terminal to carry it, so it is kept per session here.
+	mainContext map[string]MainContextUsage
+}
+
+// MainContextUsage is the main chat's latest context fill and the provider that reported it.
+type MainContextUsage struct {
+	Used, Window int
+	Provider     string
 }
 
 const terminalToolTextMaxRunes = 2400
@@ -146,7 +155,19 @@ func NewStore() *Store {
 		forcedInactive:            make(map[string]time.Time),
 		toolLines:                 make(map[string]*terminalToolLines),
 		delegationBackgroundAgent: make(map[string]string),
+		mainContext:               make(map[string]MainContextUsage),
 	}
+}
+
+// MainContext returns the main chat's latest context fill reported by its CLI.
+func (s *Store) MainContext(sessionID string) (MainContextUsage, bool) {
+	if s == nil {
+		return MainContextUsage{}, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	usage, ok := s.mainContext[strings.TrimSpace(sessionID)]
+	return usage, ok && usage.Used > 0
 }
 
 func (s *Store) recordDelegationBackgroundAgent(delegationID, backgroundAgentID string) {
@@ -3218,9 +3239,16 @@ func (s *Store) handleStatusLine(sessionID string, event storeevents.Event) {
 	if tmuxSession == "" {
 		ownerScope = terminalOwnerID(sessionID, event, eventMetadata)
 	}
+	mainChat := tmuxSession == "" && (ownerScope == "" || terminalOwnerIsCanonicalMain(sessionID, ownerScope))
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if used := intValue(statusMeta["context_used_tokens"]); mainChat && used > 0 {
+		if s.mainContext == nil {
+			s.mainContext = make(map[string]MainContextUsage)
+		}
+		s.mainContext[sessionID] = MainContextUsage{Used: used, Window: intValue(statusMeta["context_window_tokens"]), Provider: provider}
+	}
 
 	now := time.Now()
 	if ownerScope != "" {

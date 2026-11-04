@@ -85,7 +85,8 @@ type chatContextView struct {
 
 // idleCompactHint says when "Auto-compact when idle" acts, from the idle sweep's own setting.
 func idleCompactHint() string {
-	return fmt.Sprintf("Long chats are summarised after about %d minutes idle, so the next message costs less.", int(idleCompactConfigFromEnv().IdleFrom.Minutes()))
+	cfg := idleCompactConfigFromEnv()
+	return fmt.Sprintf("Long chats are summarised after about %d minutes idle or after a %d-hour break, so the next message costs less.", int(cfg.IdleFrom.Minutes()), int(cfg.LongIdle.Hours()))
 }
 
 // chatContextRuntime is the provider, model and transport the chat last ran with, and whether a native
@@ -165,6 +166,16 @@ func (api *StreamingAPI) chatContextUsage(sessionID, provider, model string, wit
 					resets = time.Unix(limit.ResetsAt, 0)
 				}
 				limits = appendChatUsageLimit(limits, name, limit.UsedPercent, resets)
+			}
+		}
+	}
+	// Since chats run as a person's slot (2 Nov) the server cannot read Claude's own files, so a structured chat's
+	// size comes from what its CLI reported live; without it idle compaction saw 0 tokens and skipped every Claude chat.
+	if api.terminalStore != nil && used == 0 {
+		if live, ok := api.terminalStore.MainContext(sessionID); ok && sameChatProvider(live.Provider, provider) {
+			used = live.Used
+			if window == 0 {
+				window = live.Window
 			}
 		}
 	}
