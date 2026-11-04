@@ -263,6 +263,6 @@ instruction_sections:
   - browser-pointer
   - grants
   - cli-tool-environment
-  - native-subagents
+  - crew-agent-tabs
   - native-shell-off
   - native-shell-on
