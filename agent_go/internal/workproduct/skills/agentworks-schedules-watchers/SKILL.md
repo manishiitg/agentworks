@@ -8,10 +8,10 @@ description: "Use before creating or changing a schedule or watcher for a Goal o
 Skills to read first: `panel-automations`, then `schedules` or `watchers`.
 
 - **List first.** Before creating, list the existing schedules and watchers of that Goal or Crew so you never duplicate one.
-- **Schedules:** `schedules` actions `list`, `create`, and `update` manage this Crew's schedules. A Crew schedule carries exactly one self-contained message. Leave `chat_id` empty so it runs in your main chat; set it only for a tab the person made and asked you to use. A Goal's own timers are read with `read_linked_goal` action `runs` and changed through its Builder. The platform already made one daily check of every linked Goal here; do not add a check per Goal.
+- **Schedules:** `automations` actions `list`, `create`, and `update` with `scope=schedule` manage this Crew's schedules. A Crew schedule carries exactly one self-contained message. Leave `chat_id` empty so it runs in your main chat; set it only for a tab the person made and asked you to use. A Goal's own timers are read with `read_linked_goal` action `runs` and changed through its Builder. The platform already made one daily check of every linked Goal here; do not add a check per Goal.
 - **Write the message so it needs no human answer:** what to check, what to report, what not to touch. Never ask a question in an unattended message.
 - **Time them after the thing they watch:** just after a Goal's scheduled run, not at the same minute. Never make a daily schedule depend on a weekly one.
-- **Watchers** (`watchers` actions `list`, `create`, `update`): for a condition that should wake you, such as a results page going stale, a reply arriving, or a target missed. A watcher is a small deterministic check, at least five minutes apart, with a stable request_id; list first and update instead of adding a second one.
+- **Watchers** (`automations` actions `list`, `create`, `update` with `scope=watcher`): for a condition that should wake you, such as a results page going stale, a reply arriving, or a target missed. A watcher is a small deterministic check, at least five minutes apart, with a stable request_id; list first and update instead of adding a second one.
 - **After you set one up,** say what it will catch and when it first fires. Do not create a check and delete it in the same turn.
 - Schedules never catch up; a missed slot is simply missed.
 - Re-enabling a schedule the person paused is the person's decision.
@@ -21,7 +21,7 @@ Skills to read first: `panel-automations`, then `schedules` or `watchers`.
 Use the existing Watcher with `github_pr` instead of a Python script. List first to avoid duplicates. Use `autofix` only when the person asks to fix and push; an ordinary watch request uses `checks` or `deployment`. This works in any provider’s Crew chat; waiting does not keep a model turn open.
 
 ```json
-{"action":"create","request_id":"watch-example-pr-7","trigger":{"name":"Watch PR #7","github_pr":{"repository":"example/project","number":7,"mode":"checks","worktree":"code"},"target":{"kind":"agent","chat_id":"main","message":"Report the result here."}}}
+{"action":"create","scope":"watcher","request_id":"watch-example-pr-7","trigger":{"name":"Watch PR #7","github_pr":{"repository":"example/project","number":7,"mode":"checks","worktree":"code"},"target":{"kind":"agent","chat_id":"main","message":"Report the result here."}}}
 ```
 
 After starting a Watcher, confirm it briefly and end this reply. Do not wait in a foreground shell loop, `sleep`, or a blocking task-output call; those keep the person’s next message queued. The Watcher delivers meaningful results to this chat independently.

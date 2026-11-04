@@ -7,6 +7,7 @@ import "regexp"
 // told it nothing, and agents opened 1.7 specs per call they made (test server, Oct-Nov 2026).
 var groupPurpose = map[string]string{
 	"account":      "People and accounts, for administrators: user access, availability, usage and shared-account limits.",
+	"automations":  "Make this project's work start by itself: at set times (scope=schedule), when a condition becomes true (scope=watcher), or when another service calls a web address (scope=webhook); list, change and check their runs.",
 	"brain":        "Company shared files (Brain): browse, read, search and save shared folders and files, and publish company skills.",
 	"browser":      "Use a web browser: open pages and act on them, and set up or choose a browser connection.",
 	"costs":        "Token usage and cost of this project: totals and breakdowns by person, model and activity.",
@@ -24,7 +25,6 @@ var groupPurpose = map[string]string{
 	"needs_you":    "Decisions waiting for a person (the Needs you list): create, list, answer or dismiss them.",
 	"relay":        "Relays: run, test and publish a relay, and read its runs and releases.",
 	"runs":         "Goal workflow runs: start a run or step, check status and logs, answer a run's question, or stop it.",
-	"schedules":    "Run this project's work automatically at set times (every hour, every morning, on a date) and see past runs.",
 	"sessions":     "Chats and background work: list, open and read this project's chats, and start or check background tasks.",
 	"settings":     "Project settings: read and change them, choose which secrets are used, and manage variables.",
 	"share":        "Who can use this project: only me, chosen people or everyone.",
@@ -32,8 +32,6 @@ var groupPurpose = map[string]string{
 	"terminal":     "Run shell commands on the server or on the person's laptop, and read, write or copy files there.",
 	"ui":           "Show or reload the project dashboard in the side pane.",
 	"vault":        "Secrets and sign-ins: store secret values, choose which secrets this project uses, and connect the person's own apps.",
-	"watchers":     "Check a condition regularly and start work when it becomes true.",
-	"webhooks":     "Incoming webhooks: a web address another service calls to start this project's work.",
 	"workspace":    "The project itself: its references to other projects, owners, name, copy or delete, access and the agent's identity.",
 }
 

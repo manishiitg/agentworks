@@ -145,12 +145,12 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 
 Every schedule in `workflow.json` has a `schedule_type` — `"cron"` (default) or `"calendar"`. They are stored side by side under the same `schedules` key; the difference is *when* they fire.
 
-- **`cron`** — a repeating pattern that fires forever on a cadence (`schedules action=create`, `cron_expression`). Use for "every weekday at 9 AM", "every 30 minutes", "first of the month". This is the default; everything in *Three ways to schedule* and *Writing messages* below applies to cron schedules.
-- **`calendar`** — a fixed list of specific dated runs, each firing exactly once (`schedules action=create_calendar`, `calendar_items`). Use when the user gives concrete dates/times instead of a recurring rhythm — e.g. a full-month Instagram content calendar, a launch sequence, a one-off batch on three specific days. There is no `cron_expression`; the scheduler registers **one job per future `calendar_item`** and each item fires once at its date+time, then is done.
+- **`cron`** — a repeating pattern that fires forever on a cadence (`automations action=create scope=schedule`, `cron_expression`). Use for "every weekday at 9 AM", "every 30 minutes", "first of the month". This is the default; everything in *Three ways to schedule* and *Writing messages* below applies to cron schedules.
+- **`calendar`** — a fixed list of specific dated runs, each firing exactly once (`automations action=create_calendar scope=schedule`, `calendar_items`). Use when the user gives concrete dates/times instead of a recurring rhythm — e.g. a full-month Instagram content calendar, a launch sequence, a one-off batch on three specific days. There is no `cron_expression`; the scheduler registers **one job per future `calendar_item`** and each item fires once at its date+time, then is done.
 
 **Choosing:** if the user describes a *rhythm* ("every…", "daily", "weekly") use cron; if they enumerate *dates* ("on the 3rd, 7th, and 12th", "post these on these days") use calendar. When in doubt, ask whether the runs repeat or are a fixed set of dates.
 
-**`schedules action=create_calendar` payload:**
+**`automations action=create_calendar scope=schedule` payload:**
 
 ```
 { "name": "March content calendar", "timezone": "Asia/Kolkata",
@@ -164,7 +164,7 @@ Every schedule in `workflow.json` has a `schedule_type` — `"cron"` (default) o
 - `calendar_items` (required): each needs `date` (`YYYY-MM-DD`) and `time` (`HH:MM`), both interpreted in the schedule's `timezone`. `description` is an optional per-item note; `messages` is an optional per-item message queue.
 - `timezone` (required, IANA — e.g. `Asia/Kolkata`, not `IST`) and `group_names` (required) work exactly as for cron schedules.
 - **Mode is the same as cron**: workflow schedules use `mode="workshop"`. Supply per-item `messages` or a top-level default `messages` array when the default full-workflow run instruction is not specific enough.
-- Past-dated items are skipped — only future items get registered. To change a calendar schedule, update its `calendar_items` (add/remove dates); editing tools (`schedules action=update`, `schedules action=delete`, `schedules action=run_now`, `schedules action=runs`) work on calendar schedules too.
+- Past-dated items are skipped — only future items get registered. To change a calendar schedule, update its `calendar_items` (add/remove dates); editing tools (`automations` action=update, delete, run_now or runs with scope=schedule) work on calendar schedules too.
 
 ### How workflow schedules execute
 

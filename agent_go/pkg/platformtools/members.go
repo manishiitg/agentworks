@@ -215,7 +215,7 @@ func scopedMember(source mcpagent.ToolDefinition, scope string) (mcpagent.ToolDe
 		props = map[string]any{}
 		schema["properties"] = props
 	}
-	props["scope"] = map[string]any{"type": "string", "enum": []any{scope}, "description": "Use the offered tab or project scope. Required when this action offers both."}
+	props["scope"] = map[string]any{"type": "string", "enum": []any{scope}, "description": "Which kind this action is for. Required when the action offers more than one."}
 	member := source
 	member.InputSchema = schema
 	member.Execute = func(ctx context.Context, args map[string]any) (string, error) {

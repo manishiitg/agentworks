@@ -16,7 +16,7 @@ A Goal is a folder (for example `Workflow/<name>`). Paths below are relative to 
 | `planning/changelog/`, `planning/revisions/` | What changed in the plan and when. Use them to answer 'what changed between the last good run and this one'. |
 | `workflow.json` | Goal-wide settings: selected servers/tools/skills, model config, schedules, run retention, notifications (including `wake_tab`), backup and publish pointers. |
 | `variables/variables.json` | **Groups and variables.** A *group* is one named set of values (a segment, region, account or campaign, for example `dubai-real-estate`); the Goal runs once per group per schedule. `variables` are the names every group fills in. Disabled groups do not run. |
-| `schedules/` and `schedule-runs.json` | The Goal's saved schedules and run history. Read them with `read_linked_goal` action `runs` (each timer, its on/off state and its runs); `schedules` action `list` covers this Crew's schedules only. |
+| `schedules/` and `schedule-runs.json` | The Goal's saved schedules and run history. Read them with `read_linked_goal` action `runs` (each timer, its on/off state and its runs); `automations` action `list` with `scope=schedule` covers this Crew's schedules only. |
 
 ## Runs: iterations and groups
 `runs/<iteration>/<group>/`

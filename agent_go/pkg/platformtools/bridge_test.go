@@ -16,7 +16,7 @@ func TestBridgeRuntimeKeepsOnlyCoreAndExplicitTools(t *testing.T) {
 		projected = append(projected, mcpagent.ToolDefinition{Name: name})
 	}
 	runtime := mcpagent.RuntimeConfig{}
-	runtime.Tools.AdditionalBridge = []string{"needs_you", "read_skill", "schedules"}
+	runtime.Tools.AdditionalBridge = []string{"needs_you", "read_skill", "automations"}
 	got := BridgeRuntime(projected, runtime)
 
 	want := []string{"terminal", "browser", "files", "needs_you", "read_skill"}
