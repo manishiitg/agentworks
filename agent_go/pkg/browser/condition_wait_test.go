@@ -88,13 +88,13 @@ func TestConditionWaitEvaluatesFunctionAndAsyncResults(t *testing.T) {
 	if err != nil {
 		t.Skip("Node unavailable")
 	}
-	for _, condition := range []string{"false", "() => false", "async () => false", "Promise.resolve(false)", "new Promise(() => {})", "() => true", "async () => true"} {
+	for _, condition := range []string{"false", "() => false", "async () => false", "Promise.resolve(false)", "new Promise(() => {})", "() => true", "async () => true", "v", "r", "timer"} {
 		t.Run(condition, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			output, err := exec.CommandContext(ctx, node, "-e", conditionWaitExpression(condition)+".then(v => process.stdout.write(String(v)))").CombinedOutput()
+			output, err := exec.CommandContext(ctx, node, "-e", "globalThis.v = globalThis.r = globalThis.timer = true;"+conditionWaitExpression(condition)+".then(v => process.stdout.write(String(v)))").CombinedOutput()
 			want := "false"
-			if strings.Contains(condition, "true") {
+			if strings.Contains(condition, "true") || condition == "v" || condition == "r" || condition == "timer" {
 				want = "true"
 			}
 			if err != nil || string(output) != want {
