@@ -1560,7 +1560,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				stepExecutionPath, executionWorkspacePath, dbAccess)
 			if fastResult.RanScript {
 				// Emit UI event for the saved-script execution attempt
-				savedScriptPath := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), hcpo.scriptedSourceDir(step.GetID()), "main.py")
+				savedScriptPath := filepath.Join(hcpo.scriptedSourceAbsolute(step.GetID()), "main.py")
 				if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
 					savedScriptPath = filepath.Join(GetPromptDocsRoot(), stepExecutionPath, "code", "main.py")
 				}
@@ -1627,7 +1627,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			// On failure, point the relearn agent to script_metadata.json so it can
 			// read run history, failure patterns, per-group stats, and streaks itself.
 			if learnCodePriorError != "" {
-				metaRelPath := hcpo.scriptedSourceDir(step.GetID()) + "/script_metadata.json"
+				metaRelPath := hcpo.scriptedMetadataPath(step.GetID())
 				templateVars["ScriptedMetadataPath"] = metaRelPath
 			}
 

@@ -12,11 +12,25 @@ import (
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
+// A typed create writes the initial definition before the derived manifest can
+// exist. This in-process permit covers only that new script's first JSON file.
+type crewScriptCreationKey struct{}
+
+func initializeCrewScriptSource(ctx context.Context, binding crewExecutableBinding, name string) error {
+	definition := workflow.CrewScriptDefinition{ID: binding.ID, Name: name, Outputs: []string{"result.json"}}
+	encoded, _ := json.MarshalIndent(definition, "", "  ")
+	sourceRoot := path.Join(binding.Root, "code")
+	if err := writeFileToWorkspace(context.WithValue(ctx, crewScriptCreationKey{}, binding.Root), sourceRoot+"/script.json", string(encoded)); err != nil {
+		return err
+	}
+	return writeFileToWorkspace(ctx, sourceRoot+"/main.py", "import json, os\nfrom pathlib import Path\ninputs = json.loads(os.environ.get('STEP_PARAMS_JSON', '{}'))\nPath(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps(inputs))\n")
+}
+
 func readCrewScript(ctx context.Context, root string) (*workflow.CrewScriptDefinition, error) {
 	if binding, err := findCrewExecutable(root); err != nil {
 		return nil, err
 	} else if binding != nil && binding.Kind == "script" {
-		root = path.Join(binding.CrewRoot, "code", binding.ID)
+		root = path.Join(binding.Root, "code")
 	}
 	return workflow.ReadCrewScriptDefinition(ctx, root, func(ctx context.Context, file string) (string, error) {
 		raw, found, err := readFileFromWorkspace(ctx, file)
@@ -109,7 +123,7 @@ func (r *crewStepRunner) ResolveCrewScript(ctx context.Context, workspace, id st
 		if definition.ID != binding.ID {
 			return result, fmt.Errorf("saved script identity is invalid")
 		}
-		sourceRoot := path.Join(binding.CrewRoot, "code", binding.ID)
+		sourceRoot := path.Join(binding.Root, "code")
 		result = workflow.CrewScriptConfiguration{Definition: *definition, Root: sourceRoot, Files: map[string]string{}}
 		files, err := listWorkspaceFilesRecursive(ctx, sourceRoot)
 		if err != nil {
@@ -166,7 +180,7 @@ func saveCrewScriptInputs(ctx context.Context, root string, inputs *VariablesMan
 	if err != nil || binding == nil {
 		return fmt.Errorf("saved script is unavailable")
 	}
-	if err := writeFileToWorkspace(ctx, path.Join(binding.CrewRoot, "code", binding.ID, "script.json"), string(encoded)); err != nil {
+	if err := writeFileToWorkspace(ctx, path.Join(binding.Root, "code", "script.json"), string(encoded)); err != nil {
 		return err
 	}
 	invalidateWorkflowManifestIndex()
@@ -192,7 +206,7 @@ func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, fi
 			return err
 		}
 	}
-	if err := writeFileToWorkspace(ctx, path.Join(binding.CrewRoot, "code", binding.ID, file), content); err != nil {
+	if err := writeFileToWorkspace(ctx, path.Join(binding.Root, "code", file), content); err != nil {
 		return err
 	}
 	invalidateWorkflowManifestIndex()
@@ -223,7 +237,7 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == http.MethodGet {
-		content, found, err := readFileFromWorkspace(r.Context(), path.Join(binding.CrewRoot, "code", binding.ID, file))
+		content, found, err := readFileFromWorkspace(r.Context(), path.Join(binding.Root, "code", file))
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

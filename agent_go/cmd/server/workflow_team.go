@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -314,6 +315,11 @@ func teamLock(ctx context.Context, root string) (func(), error) {
 	if held, _ := ctx.Value(teamLockHeldKey{}).(string); held == root {
 		return func() {}, nil
 	}
+	if l, found, err := crewroot.LookupExecutable(getWorkspaceDocsAbsPath(), root); err != nil {
+		return nil, err
+	} else if found {
+		return wf.LockWorkspace(ctx, l.Crew.Files)
+	}
 	return wf.LockWorkspace(ctx, filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(root)))
 }
 func validateWorkflowTeam(t *WorkflowTeam, plan map[string]interface{}) error {
@@ -545,6 +551,9 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		readCurrent = supplied
 	}
 	root, rel := teamWorkspacePath(path)
+	if creating, _ := ctx.Value(crewScriptCreationKey{}).(string); creating != "" && creating == root && rel == "code/script.json" {
+		return func() {}, nil
+	}
 	if root == "" {
 		return func() {}, nil
 	}

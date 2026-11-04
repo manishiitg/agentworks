@@ -12,7 +12,7 @@ An agent step can reference a `crew_agent` ID from the list. It reuses that agen
 
 ## Saved scripts
 
-A saved script has one `script.json` input/output definition and `main.py`, with source under the Crew's `code/<id>/`. Use the scoped tool to edit it; do not save a second plan or variables file for the script. Python executes directly, without an AI turn; a skill is instructions for an agent, not a Python dependency.
+A saved script has one `script.json` input/output definition and `main.py`, with source under the project's `.agentworks/code/<id>/`. Use the scoped tool to edit it; do not save a second plan or variables file for the script. Python executes directly, without an AI turn; a skill is instructions for an agent, not a Python dependency.
 
 A workflow scripted step references `script: "<id>"` (or `script:<id>`) and `script_inputs`. Each input selects one source: `{ "value": 7 }`, `{ "input": "workflow_input_name" }`, or `{ "output": "prior.json", "field": "nested.field" }`. Prior files must be declared context dependencies from this run. Do not copy the script's input schema onto the step. Reuse source only within this Crew; cross-Crew use goes through a shared function.
 
@@ -29,3 +29,5 @@ The Crew's Workflows panel exposes Steps (Code for scripts), Runs and Settings. 
 Read `panel-automations` for schedules, functions and webhooks. Target the saved workflow/script by its returned identity; a message to a Crew agent is a different action. Child entries retain a saved Crew chat (Main by default) for start/result updates and separate run identities. Supply required inputs; presets and fixed values reuse the same input definitions. Functions/envelope webhooks expose only explicitly selected input names. Direct scripts need no model turn just to record their result.
 
 Use only the setup tools this chat exposes. If a child entry cannot be configured here, open that definition's Settings in the Crew rather than writing its private registry or inventing an API. A missing destination chat must be repaired explicitly, never silently redirected. Keep existing enabled/disabled settings and do not enable schedules merely to test them.
+
+Workflow definitions live under `.agentworks/workflows/<id>/` and automation code under `.agentworks/code/<id>/` in the Crew project. Use the workspace identity returned by `crew_workflow_files`; the server resolves these folders. Runs, outputs, logs and chats stay in managed storage outside the project. Ordinary project source, skills and knowledge keep their existing locations.

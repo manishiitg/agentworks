@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +25,13 @@ import (
 // PLAT-746-265: authenticated Run-person admission crosses HTTP, uses the live
 // parent owner, and executes real Python with no model turn or saved plan.
 func TestSharedCrewScriptRunPersonHTTPExecutesRealPython(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		t.Run(fmt.Sprintf("attached_project_%v", local), func(t *testing.T) { checkSharedCrewScriptHTTP(t, local) })
+	}
+}
+
+func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
+
 	docs := t.TempDir()
 	docs, _ = filepath.EvalSymlinks(docs)
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
@@ -38,6 +46,24 @@ func TestSharedCrewScriptRunPersonHTTPExecutesRealPython(t *testing.T) {
 	t.Cleanup(func() { viper.Set("docs-dir", previous) })
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"runner","username":"runner","role":"creator"}]}`)
 	registerTestCrew(t, "script-http", "owner", true)
+	sourceRoot := filepath.Join(docs, "Crew/script-http/.agentworks/code/saved")
+	if local {
+		project := t.TempDir()
+		project, _ = filepath.EvalSymlinks(project)
+		if err := os.MkdirAll(filepath.Join(project, ".agentworks"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := defaultProjectOwners().modify(func(records map[string]projectOwnerRecord) (bool, error) {
+			rec := records["work/script-http"]
+			rec.LocalRoot = project
+			records["work/script-http"] = rec
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		sourceRoot = filepath.Join(project, ".agentworks/code/saved")
+	}
+
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Any("/api/documents/*filepath", handlers.HandleDocumentRequest)
@@ -52,9 +78,14 @@ func TestSharedCrewScriptRunPersonHTTPExecutesRealPython(t *testing.T) {
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
+	if err := initializeCrewScriptSource(t.Context(), binding, "Saved Python"); err != nil {
+		t.Fatalf("initial script source: %v", err)
+	}
 	write := func(file, content string) {
 		t.Helper()
-		file = filepath.Join(docs, file)
+		if !filepath.IsAbs(file) {
+			file = filepath.Join(docs, file)
+		}
 		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -62,8 +93,8 @@ func TestSharedCrewScriptRunPersonHTTPExecutesRealPython(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("Crew/script-http/code/saved/script.json", `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true}],"outputs":["result.json"]}`)
-	write("Crew/script-http/code/saved/main.py", `import json, os
+	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true}],"outputs":["result.json"]}`)
+	write(filepath.Join(sourceRoot, "main.py"), `import json, os
 from pathlib import Path
 values = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(values['count'], int)

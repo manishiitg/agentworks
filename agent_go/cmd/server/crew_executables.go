@@ -15,22 +15,16 @@ import (
 	"strings"
 	"sync"
 
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// Crew executable identities live outside editable workspace files. Engine roots
-// stay canonical until the separate, one-off data-layout conversion is tested.
+// Crew executable identities live outside editable workspace files. The shared
+// Crew root resolver routes definitions/code separately from runtime state.
 // PLAT-746-265: a display name or manifest owner is never an execution authority.
-type crewExecutableBinding struct {
-	ID       string `json:"id"`
-	CrewID   string `json:"crew_id"`
-	CrewRoot string `json:"crew_root"`
-	Root     string `json:"workspace_path"`
-	Kind     string `json:"kind"`
-}
+type crewExecutableBinding = crewroot.ExecutableBinding
 
 var crewExecutablesMu sync.Mutex
 
@@ -251,22 +245,16 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "workflow"}
 	if input.Kind == "script" {
 		binding.Kind = "script"
-		sourceRoot := path.Join(root, "code", id)
-		definition := stepworkflow.CrewScriptDefinition{ID: id, Name: input.Name, Outputs: []string{"result.json"}}
-		encoded, _ := json.MarshalIndent(definition, "", "  ")
 		if err := registerCrewExecutable(binding); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		registerWorkflowOwner(binding.Root, project.OwnerID)
-		if err := writeFileToWorkspace(r.Context(), sourceRoot+"/script.json", string(encoded)); err != nil {
+		if err := initializeCrewScriptSource(r.Context(), binding, input.Name); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		if err := writeFileToWorkspace(r.Context(), sourceRoot+"/main.py", "import json, os\nfrom pathlib import Path\ninputs = json.loads(os.environ.get('STEP_PARAMS_JSON', '{}'))\nPath(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps(inputs))\n"); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
+
 		if api.scheduler != nil {
 			api.scheduler.InvalidateWorkflowManifestCache()
 		}
