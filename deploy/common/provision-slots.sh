@@ -261,16 +261,67 @@ enable_slot_docker() {
   systemctl start "user@${uid}.service"
   env="HOME=$home XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus"
   runuser -u "$slot" -- env $env systemctl --user daemon-reload
-  if ! runuser -u "$slot" -- env $env systemctl --user is-active --quiet docker.service 2>/dev/null; then
+  if [[ ! -f "$home/.config/systemd/user/docker.service" ]]; then
     runuser -u "$slot" -- env $env dockerd-rootless-setuptool.sh install >/dev/null
-    runuser -u "$slot" -- env $env systemctl --user enable --now docker.service
   fi
-  local i
-  for i in $(seq 1 30); do [[ -S "/run/user/$uid/docker.sock" ]] && break; sleep 1; done
-  [[ -S "/run/user/$uid/docker.sock" ]] || { echo "$slot: its Docker socket did not appear" >&2; return 1; }
-  runuser -u "$slot" -- env $env DOCKER_HOST="unix:///run/user/$uid/docker.sock" docker info --format '{{.SecurityOptions}}' | grep -q rootless \
-    || { echo "$slot: its Docker is not rootless" >&2; return 1; }
-  echo "docker ready: $slot (uid $uid)"
+  slot_docker_on_demand "$slot" || return 1
+  ensure_slot_docker_private
+}
+
+# A slot's Docker starts on first use (owner, 4 Nov 2026: nobody used it, and nine idle engines held about 460 MB of RAM).
+# systemd owns the slot's socket /run/user/<uid>/docker.sock, the address DOCKER_HOST already names; the first connection
+# starts the engine (listening on docker-engine.sock beside it) and a byte proxy between the two. The engine of a slot with
+# no running container is stopped, so it uses nothing until the next docker command. Proven on every run: a docker info as
+# the slot goes through the socket and must start a rootless engine. Safe to run again; runs on every deploy.
+slot_docker_on_demand() {
+  local slot="$1" uid home env units sock running exec_bin
+  uid="$(id -u "$slot")" || return 0
+  home="$(getent passwd "$slot" | cut -d: -f6)"
+  units="$home/.config/systemd/user"
+  [[ -f "$units/docker.service" ]] || return 0
+  env="HOME=$home XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus"
+  sock="/run/user/$uid/docker.sock"
+  slot_docker() { runuser -u "$slot" -- env $env DOCKER_HOST="unix://$sock" timeout 90 docker "$@"; }
+  slot_systemctl() { runuser -u "$slot" -- env $env systemctl --user "$@"; }
+  running=0
+  if slot_systemctl is-active --quiet docker.service 2>/dev/null; then
+    running="$(slot_docker ps -q 2>/dev/null | wc -l)"
+  fi
+  if ! slot_systemctl is-enabled --quiet docker-on-demand.socket 2>/dev/null; then
+    # The engine still listens on the socket itself: moving it means a restart, which would stop running containers.
+    if [[ "$running" -gt 0 ]]; then
+      echo "docker on demand: $slot kept as it is ($running running containers); it moves at a deploy when none run"
+      return 0
+    fi
+    exec_bin="$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "$units/docker.service" | head -1)"
+    [[ -x "$exec_bin" ]] || { echo "$slot: cannot read its Docker start command" >&2; return 1; }
+    slot_systemctl disable --now docker.service >/dev/null 2>&1 || true
+    rm -f "$sock"
+    install -d -o "$slot" -g "$slot" -m 0755 "$units/docker.service.d"
+    printf '[Service]\nExecStart=\nExecStart=%s -H unix://%%t/docker-engine.sock\n' "$exec_bin" > "$units/docker.service.d/on-demand.conf"
+    printf '[Unit]\nDescription=Docker socket: starts this slot'"'"'s Docker on first use\n\n[Socket]\nListenStream=%%t/docker.sock\nSocketMode=0600\n\n[Install]\nWantedBy=sockets.target\n' > "$units/docker-on-demand.socket"
+    printf '[Unit]\nDescription=Docker on demand: passes the socket to the engine\nRequires=docker.service docker-on-demand.socket\nBindsTo=docker.service\nAfter=docker.service docker-on-demand.socket\n\n[Service]\nExecStart=/usr/lib/systemd/systemd-socket-proxyd %%t/docker-engine.sock\n' > "$units/docker-on-demand.service"
+    chown "$slot:$slot" "$units/docker.service.d/on-demand.conf" "$units/docker-on-demand.socket" "$units/docker-on-demand.service"
+    slot_systemctl daemon-reload
+    slot_systemctl enable --now docker-on-demand.socket
+  fi
+  slot_docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless \
+    || { echo "$slot: its Docker did not start on first use, or is not rootless" >&2; return 1; }
+  running="$(slot_docker ps -q 2>/dev/null | wc -l)"
+  if [[ "$running" -eq 0 ]]; then
+    slot_systemctl stop docker-on-demand.service docker.service
+    echo "docker on demand: $slot (no containers running: engine stopped, starts on the next docker command)"
+  else
+    echo "docker on demand: $slot ($running running containers: engine left running)"
+  fi
+}
+
+cmd_docker_on_demand() {
+  local slot
+  [[ -f "$TABLE" ]] || { echo "no slot table: nothing to do"; return 0; }
+  while IFS= read -r slot; do
+    [[ -n "$slot" ]] && slot_docker_on_demand "$slot"
+  done < <(python3 -c 'import json,sys; print("\n".join(sorted(json.load(open(sys.argv[1])).get("slots",{}))))' "$TABLE")
   ensure_slot_docker_private
 }
 
@@ -620,9 +671,10 @@ case "${1:-}" in
   init) cmd_init ;;
   shared) cmd_shared ;;
   docker) shift; cmd_docker "$@" ;;
+  docker-on-demand) cmd_docker_on_demand ;;
   assign) shift; cmd_assign "$@" ;;
   adduser) shift; cmd_adduser "$@" ;;
   release) shift; cmd_release "$@" ;;
   status) cmd_status ;;
-  *) echo "usage: provision-slots.sh init | ensure | native-session | userns [--print] | userns-retire | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
+  *) echo "usage: provision-slots.sh init | ensure | native-session | userns [--print] | userns-retire | shared | docker [slotNN ...] | docker-on-demand | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
 esac
