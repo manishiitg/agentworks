@@ -104,7 +104,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   })
   useEffect(() => { useContextMenuWideStore.getState().setWide(accessOpen); return () => useContextMenuWideStore.getState().setWide(false) }, [accessOpen])
   if (syncOpen && team.target && team.team?.can_edit_shared_folder) return <WorkspaceContextCard title="Sync" page noFooter onBack={() => setSyncOpen(false)}><TeamSyncPanel target={team.target} name={team.team.name} onAsk={() => setSyncOpen(false)} /></WorkspaceContextCard>
-  if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard title="Access" noFooter page onBack={() => setMenu(undefined)}>
+  // Access opens straight on its tabs, without a title row (owner, 4 Nov); the side panel's own toggle closes it.
+  if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard noFooter page>
     <YourComputerPanel projectId={projectId} sessionId={reviewSessionId} canEdit />
   </WorkspaceContextCard>
   if (menu?.scope === scope) {
