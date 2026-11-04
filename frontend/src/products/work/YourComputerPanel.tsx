@@ -379,7 +379,7 @@ function MacSharedAgents({ projectId, connection, network }: { projectId: string
           <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0" />
           <span className="min-w-0 truncate text-sm font-semibold">{row.name}</span>
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">{!agent ? 'Only you' : saved ? 'Shared' : !purpose ? 'Set its purpose to share it' : 'Add people to share it'}</span>
-          <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null, !on)} />
+          <Switch aria-label={`Others can message ${row.name}`} checked={Boolean(agent)} disabled={busy} onCheckedChange={on => update(row.tab, on ? {} : null)} />
         </div>
         {agent && <div className="ml-6 space-y-2.5">
           <div className="flex items-start gap-1.5 text-[13px] text-muted-foreground">

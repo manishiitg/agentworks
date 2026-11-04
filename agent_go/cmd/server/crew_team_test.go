@@ -244,6 +244,48 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatal("unchanged client created another revision")
 	}
 	fmt.Println("[CREW_TEAM_PROOF] two HTTP/Git clients: interrupted upload resumes, owner to member, member to owner, local edit during download retained, unchanged retry passed")
+	// PR932: directory/file replacements must not strand the next sync after deleting children.
+	if err := os.MkdirAll(filepath.Join(b1.Root, "reports"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b1.Root, "reports", "old.md"), []byte("old report"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
+	if err := os.RemoveAll(filepath.Join(b1.Root, "reports")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b1.Root, "reports"), []byte("now a file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
+	read(b2.Root, "reports", "now a file")
+	if err := os.Remove(filepath.Join(b2.Root, "reports")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(b2.Root, "reports"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b2.Root, "reports", "new.md"), []byte("directory again"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sync(c2, d2, b2)
+	sync(c1, d1, b1)
+	read(b1.Root, "reports/new.md", "directory again")
+	// Idle rounds create neither bundles nor manifests; completed metadata is bounded per client/direction.
+	for i := 0; i < 4; i++ {
+		sync(c2, d2, b2)
+	}
+	contentDir, _ := crewTeamContentDir("team-test")
+	transfers := filepath.Join(contentDir, "transfers", crewTransferDigest("member\x00"+b2.Client), "download")
+	metadata, _ := filepath.Glob(filepath.Join(transfers, "*", "snapshot.json"))
+	payloads, _ := filepath.Glob(filepath.Join(transfers, "*", "content"))
+	if len(metadata) > 2 || len(payloads) != 0 {
+		t.Fatalf("completed downloads retained metadata=%d payloads=%d", len(metadata), len(payloads))
+	}
+	t.Log("[CREW_TEAM_PROOF] idle_transfer_retention=bounded directory_file_transitions=both_directions")
 	// Canonical reads reject symlinks and hardlinks even when a host process plants one.
 	dir, _ := crewTeamContentDir("team-test")
 	outside := filepath.Join(t.TempDir(), "outside.txt")
