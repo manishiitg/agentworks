@@ -189,6 +189,7 @@ interface ChatInputProps {
   // controls and render a simple customer-facing composer.
   surfaceVariant?: 'default' | 'product'
   placeholderOverride?: string
+  pendingNativeChoice?: boolean
   showNewChatAction?: boolean
   hideRuntimeStatus?: boolean
   showProductSteerAction?: boolean
@@ -426,6 +427,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   tabId: scopedTabId,
   surfaceVariant = 'default',
   placeholderOverride,
+  pendingNativeChoice = false,
   showNewChatAction = false,
   hideRuntimeStatus = false,
   showProductSteerAction = false,
@@ -2112,6 +2114,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!isChatIdentityCurrent(composerIdentityRef.current)) return
     const trimmed = query?.trim() || ''
     if (!trimmed) return
+    if (pendingNativeChoice) {
+      addToast('Choose an option above before sending another message.', 'info')
+      return
+    }
     if (isUploadingFiles) {
       addToast('Wait for the file upload to finish before sending.', 'info')
       return
@@ -2203,7 +2209,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles])
+  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
@@ -2831,14 +2837,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Check if query is valid (view-only tabs cannot submit)
   const hasValidQuery = Boolean(inputText?.trim())
-  const inputDisabled = isViewOnly || (!tabSessionId && !canBootstrapMultiAgentTab && !canBootstrapWorkflowPhaseTab)
+  const inputDisabled = pendingNativeChoice || isViewOnly || (!tabSessionId && !canBootstrapMultiAgentTab && !canBootstrapWorkflowPhaseTab)
   // Product follow-ups are queued while a structured turn is working, including
   // the short interval before the backend has attached the live session.
-  const submitButtonDisabled = !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
+  const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
   const sendButtonLabel = isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
 
   // Memoized placeholder
   const placeholder = useMemo(() => {
+    if (pendingNativeChoice) return 'Choose an option above to continue…'
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
     if (isProductSurface) return isStreaming ? 'Add a message…' : (placeholderOverride || 'Describe what you want to create…')
@@ -2853,7 +2860,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab])
+  }, [agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.

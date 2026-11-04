@@ -308,6 +308,7 @@ chat:
       - record_goal_observations
       - project_functions_reply
       - report_function_progress
+      - request_clarification
       - scan_workflow_script_db_usage
       - send_message
       - set_workflow_llm_config
@@ -571,6 +572,7 @@ instruction_sections:
   - browser-pointer
   - grants
   - cli-tool-environment
+  - clarification
   - native-subagents
   - native-shell-off
   - native-shell-on
