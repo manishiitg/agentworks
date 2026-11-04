@@ -341,7 +341,7 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 		return agentprofiles.ToolSpec{
 			Name:     "set_work_identity",
 			Category: "work_identity",
-			Description: "Set, update, or clear this Crew project's agent identity when the user asks. " +
+			Description: "Set, update, or clear this Crew project's agent identity when the user asks. It is also Main's name, purpose and icon; a side tab sets its own with set_my_agent_identity. " +
 				"A short name, icon, and purpose keep the agent consistent across project chats, schedules, bots, and background work; they change presentation and behavior, never permissions. " +
 				"The purpose is required: ask the user for it before the first save, and refuse to clear it. " +
 				"Store it in product.json, preserve omitted fields, and never invent an identity.",

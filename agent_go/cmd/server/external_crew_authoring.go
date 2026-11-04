@@ -985,7 +985,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"schema_version":    map[string]any{"type": "integer"},
 		"kind":              map[string]any{"type": "string", "enum": []any{crewSpecKind}},
 		"name":              map[string]any{"type": "string", "minLength": 1, "maxLength": 60, "description": "Display name."},
-		"icon":              map[string]any{"type": "string", "maxLength": 8, "description": "The whole Crew's emoji. Not an agent's own icon: an agent sets its own name, purpose and icon with set_my_agent_identity."},
+		"icon":              map[string]any{"type": "string", "maxLength": 8, "description": "The Crew's emoji, which is also Main's icon. A side agent sets its own with set_my_agent_identity."},
 		"chat_instructions": map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional shared app chat guidance. No secrets; never grants authority."},
 		"purpose":           map[string]any{"type": "string", "minLength": 1, "maxLength": crewPurposeLimit, "description": "What the Crew is for and how it works; its standing instructions."},
 		"selected_skills":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Skill folder names: built-in, installed on the server, or shipped under files as skills/<name>/SKILL.md."},

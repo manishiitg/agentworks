@@ -282,7 +282,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
 			}},
-		{"set_my_agent_identity", "Set this agent's own name, purpose and icon (a few words, one short line and one emoji; any one alone keeps the others) so the other agents and people know what it is for. This is the agent's icon, not the Crew's (workspace update changes the whole Crew). Whenever you set the purpose, also pick one emoji icon that fits it. An agent can be shared only with all three. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
+		{"set_my_agent_identity", "Set this agent's own name, purpose and icon (a few words, one short line and one emoji; any one alone keeps the others) so the other agents and people know what it is for. For Main this is the Crew identity (the same as set_work_identity); for a side tab it is that tab's own. Whenever you set the purpose, also pick one emoji icon that fits it. An agent can be shared only with all three. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name":    map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
 				"purpose": map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
@@ -307,6 +307,15 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
+				if project.Self.IsMain && project.Workspace != "" {
+					// Main's identity is the Crew identity (crew_main_identity.go), the one set_work_identity writes.
+					saved, err := writeCrewMainIdentity(ctx, project.Workspace, name, purpose, icon)
+					if err != nil {
+						return "", err
+					}
+					go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
+					return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(saved.Name, project.Self.Name), "purpose": saved.Purpose, "icon": saved.Icon})
+				}
 				identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, name, purpose, icon, "agent "+project.Self.Name)
 				var fields []string
 				for label, value := range map[string]*string{"name": name, "purpose": purpose, "icon": icon} {
@@ -315,7 +324,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					}
 				}
 				sort.Strings(fields)
-				log.Printf("[AGENT_IDENTITY] tool=set_my_agent_identity session=%s user=%s profile=%s tab=%s set=%s icon=%q err=%v", sessionID, userID, project.ProfileID, project.Self.Key, strings.Join(fields, ","), identity.Icon, err)
+				log.Printf("[AGENT_IDENTITY] store=tab tool=set_my_agent_identity session=%s user=%s profile=%s tab=%s set=%s icon=%q err=%v", sessionID, userID, project.ProfileID, project.Self.Key, strings.Join(fields, ","), identity.Icon, err)
 				if err != nil {
 					return "", err
 				}

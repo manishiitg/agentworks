@@ -178,6 +178,11 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, userID))
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
 			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, Icon: tab.Identity.Icon, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
+			// Main's purpose and icon are the Crew identity (crew_main_identity.go).
+			if crew, ok := readCrewMainIdentity(r.Context(), slot.binding.WorkspacePath); ok {
+				main.Icon = firstNonEmptyTrimmed(crew.Icon, main.Icon)
+				main.Purpose = firstNonEmptyTrimmed(crew.Purpose, main.Purpose)
+			}
 		}
 		if ownMain || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
 			continue

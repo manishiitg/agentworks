@@ -32,7 +32,7 @@ var groupPurpose = map[string]string{
 	"terminal":     "Run shell commands on the server or on the person's laptop, and read, write or copy files there.",
 	"ui":           "Show or reload the project dashboard in the side pane.",
 	"vault":        "Secrets and sign-ins: store secret values, choose which secrets this project uses, and connect the person's own apps.",
-	"workspace":    "The project itself: its references to other projects, owners, name, copy or delete, access and the agent's identity.",
+	"workspace":    "The project itself: its references to other projects, owners, name, copy or delete, access and the Crew's identity (which is Main's name, purpose and icon; a side agent sets its own with set_my_agent_identity).",
 }
 
 // fillerActionDescription matches generated action text that only repeats the action's name.
