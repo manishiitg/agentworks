@@ -5,7 +5,7 @@ import { desktopRequest } from '../../services/desktopConnections'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import { fillTeamSetupDraft } from '../../utils/agentPurposeDraft'
-import { saveTeam, teamError, useProjectTeam, type Team } from './teamApi'
+import { saveTeam, switchTeam, teamError, useProjectTeam, type Team } from './teamApi'
 
 type Person = { id: string; username: string; email?: string }
 
@@ -16,6 +16,7 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [switchNote, setSwitchNote] = useState('')
   const [picking, setPicking] = useState(false)
   const [parent, setParent] = useState('')
   const [listing, setListing] = useState<{ folders: string[]; path: string; files: number; bytes: number }>()
@@ -44,9 +45,25 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
     setBusy(true); setError('')
     try { await saveTeam(target, next); refresh() } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
+  const turn = async (on: boolean) => {
+    setBusy(true); setError(''); setSwitchNote('')
+    try {
+      const result = await switchTeam(target, on)
+      const notes = [result.folder_created ? 'Made an empty team/ folder as the shared folder.' : '',
+        result.shared?.length ? `Shared with your team: ${result.shared.join(', ')}.` : '',
+        result.needs_purpose?.length ? `Set a purpose and icon for ${result.needs_purpose.join(', ')} to share ${result.needs_purpose.length === 1 ? 'it' : 'them'} (Set purpose below).` : '',
+        result.note || '']
+      setSwitchNote(notes.filter(Boolean).join(' '))
+      refresh()
+    } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
+  }
+  const askText = 'Ask chat to set up your team: people, shared folder and which agents are shared'
   return <section aria-label="Team" className="mt-4 space-y-3 rounded-xl border border-border px-4 py-3">
-    <div className="flex items-center gap-2"><Users className="h-4 w-4" /><h3 className="text-sm font-semibold">Team</h3><span className="ml-auto text-xs text-muted-foreground">{team.people.length ? `${team.people.length} people` : 'Only you'}</span><button type="button" title="Set up the Team from Main's chat" onClick={() => fillTeamSetupDraft(projectId)} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Ask</button></div>
-    <p className="text-xs text-muted-foreground">Choose who works with you. Your agents keep their own sharing choices below.</p>
+    <div className="flex items-center gap-2"><Users className="h-4 w-4" /><h3 className="text-sm font-semibold">Team</h3><span className="ml-auto text-xs text-muted-foreground">{team.on && team.people.length ? `${team.people.length} people` : 'Only you'}</span><button type="button" title={askText} aria-label={askText} onClick={() => fillTeamSetupDraft(projectId)} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Ask</button><Switch aria-label="Team" disabled={busy || !target.localProject} checked={team.on} onCheckedChange={on => void turn(on)} /></div>
+    {switchNote && <p className="text-xs text-muted-foreground">{switchNote}</p>}
+    {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work with people: every agent with a purpose is shared with your team, and an empty team/ folder becomes the shared folder if you have not chosen one.</p>}
+    {team.on && <>
+    <p className="text-xs text-muted-foreground">Choose who works with you. Each agent's sharing can be changed below.</p>
     {team.people.map(person => <div key={person.user_id} className="flex flex-wrap items-center gap-2 text-xs">
       <span className="min-w-20 flex-1 truncate">{name(person.user_id)}</span>
       <label className="flex items-center gap-2"><Switch aria-label={`${name(person.user_id)} edits shared folder`} disabled={busy || !team.folder.path} checked={person.can_edit_shared_folder} onCheckedChange={on => void save({ ...team, people: team.people.map(p => p.user_id === person.user_id ? { ...p, can_edit_shared_folder: on } : p) })} />Edits shared folder</label>
@@ -66,6 +83,7 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
         {parent && listing?.path === parent && <><p>{listing.files} files · {(listing.bytes / (1 << 20)).toFixed(1)} MB</p><p>{parent}/ will be kept on the server so your team can sync it. Private state, credentials and generated folders are skipped.</p><Button size="sm" disabled={busy} onClick={() => { void save({ ...team, folder: { path: parent, label: parent.split('/').pop() || parent } }); setPicking(false) }}>Use this folder</Button></>}
       </div>}
     </div>
+    </>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </section>
 }
