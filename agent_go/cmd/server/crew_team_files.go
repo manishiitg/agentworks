@@ -258,13 +258,7 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 		return receipt, e
 	}
 	receipt = crewTeamReceipt{TransferID: transfer, Digest: digest, Revision: state.Revision + 1, Conflicts: []string{}}
-	changes := append([]crewsync.Change(nil), snapshot.Changes...)
-	sort.SliceStable(changes, func(i, j int) bool {
-		if (changes[i].After == nil) != (changes[j].After == nil) {
-			return changes[i].After == nil
-		}
-		return changes[i].Path < changes[j].Path
-	})
+	changes := crewTeamOrderedChanges(snapshot.Changes)
 	// Save the complete next revision before replacing working bytes. A failed
 	// disk write therefore never discards the previous or incoming version.
 	history := filesnapshots.Store{Root: root, Private: filepath.Join(dir, "history")}
@@ -288,13 +282,7 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 		}
 		state.Events = append(state.Events, crewTeamEvent{Path: rel, Kind: kind, Revision: receipt.Revision, Actor: actor, At: time.Now().UTC().Format(time.RFC3339Nano), File: c.After})
 		if c.After == nil {
-			dir, e := os.OpenRoot(root)
-			if e != nil {
-				return receipt, e
-			}
-			e = dir.Remove(rel)
-			dir.Close()
-			if e != nil && !os.IsNotExist(e) {
+			if e = removeCrewTeamFile(root, rel); e != nil {
 				return receipt, e
 			}
 		} else {
@@ -550,3 +538,33 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 
 // A request-scoped identity for a browser upload, also used by chat-tool writes.
 func newCrewTeamTransfer() string { return uuid.NewString() }
+
+func crewTeamOrderedChanges(input []crewsync.Change) []crewsync.Change {
+	changes := append([]crewsync.Change(nil), input...)
+	sort.SliceStable(changes, func(i, j int) bool {
+		if (changes[i].After == nil) != (changes[j].After == nil) {
+			return changes[i].After == nil
+		}
+		return changes[i].Path < changes[j].Path
+	})
+	return changes
+}
+
+// Removing a final child also removes empty parents so a directory can become a
+// file on the next change. A nonempty parent (including local edits) is retained.
+func removeCrewTeamFile(root, rel string) error {
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	if err = dir.Remove(rel); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for parent := path.Dir(rel); parent != "."; parent = path.Dir(parent) {
+		if err = dir.Remove(parent); err != nil {
+			break
+		}
+	}
+	return nil
+}

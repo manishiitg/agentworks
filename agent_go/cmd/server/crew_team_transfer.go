@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 )
 
 type crewTeamTransfer struct {
+	Unchanged  bool               `json:"unchanged,omitempty"`
 	FolderID   string             `json:"folder_id"`
 	Action     string             `json:"action"`
 	Client     string             `json:"client"`
@@ -181,6 +183,15 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
+		if len(snapshot.Changes) == 0 {
+			snapshot.Close()
+			_ = os.RemoveAll(stage)
+			in.Snapshot = nil
+			in.Base = nil
+			in.Unchanged = true
+			externalJSON(w, in)
+			return
+		}
 		if e = store.EncodeSync(r.Context(), pair, crewTeamRoots(root), &snapshot); e != nil {
 			fail(e)
 			return
@@ -229,6 +240,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 				fail(e)
 				return
 			}
+			completeCrewTeamTransfer(stage)
 			externalJSON(w, map[string]bool{"acknowledged": true})
 			return
 		}
@@ -248,6 +260,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 				fail(e)
 				return
 			}
+			completeCrewTeamTransfer(stage)
 			externalJSON(w, receipt)
 			return
 		}
@@ -270,6 +283,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
+		completeCrewTeamTransfer(stage)
 		externalJSON(w, receipt)
 	default:
 		externalError(w, 400, "invalid_action", "Choose prepare, pull, apply or ack for this folder.")
@@ -369,6 +383,11 @@ func (api *StreamingAPI) handleCrewTeamPiece(w http.ResponseWriter, r *http.Requ
 		externalError(w, 409, "transfer_failed", "Transfer bytes are unavailable.")
 		return
 	}
+	if direction == "upload" {
+		if _, err := os.Stat(filepath.Join(stage, "complete")); err == nil {
+			offset = payload.Size
+		}
+	}
 	w.Header().Set("Upload-Offset", strconv.FormatInt(offset, 10))
 	w.Header().Set("X-Sync-Size", strconv.FormatInt(payload.Size, 10))
 	w.Header().Set("X-Sync-Hash", payload.Hash)
@@ -450,4 +469,32 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 // Keep request identifiers usable in private state without accepting a path.
 func crewTeamClientID(value string) bool {
 	return value != "" && len(value) <= 128 && !strings.ContainsAny(value, "/\\\x00")
+}
+
+// Supported clients keep one pending transfer per direction. Keep two completed
+// metadata receipts for retries, remove verified payloads after acknowledgement.
+func completeCrewTeamTransfer(stage string) {
+	if os.WriteFile(filepath.Join(stage, "complete"), []byte("ok"), 0600) != nil {
+		return
+	}
+	_ = os.Remove(filepath.Join(stage, "content"))
+	type done struct {
+		path string
+		at   time.Time
+	}
+	completed := []done{}
+	entries, _ := os.ReadDir(filepath.Dir(stage))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		p := filepath.Join(filepath.Dir(stage), entry.Name())
+		if info, err := os.Stat(filepath.Join(p, "complete")); err == nil {
+			completed = append(completed, done{p, info.ModTime()})
+		}
+	}
+	sort.Slice(completed, func(i, j int) bool { return completed[i].at.After(completed[j].at) })
+	for i := 2; i < len(completed); i++ {
+		_ = os.RemoveAll(completed[i].path)
+	}
 }

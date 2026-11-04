@@ -251,6 +251,9 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 					return e
 				}
 			}
+			if pending.Unchanged {
+				continue
+			}
 			if e = fsutil.WriteJSONAtomic(meta, pending, 0600); e != nil {
 				return e
 			}
@@ -354,7 +357,7 @@ func applyCrewTeamDownload(ctx context.Context, b *crewTeamLocal, s *crewsync.Sn
 	if b.LocalBase == nil {
 		b.LocalBase = crewsync.Manifest{}
 	}
-	for _, change := range s.Changes {
+	for _, change := range crewTeamOrderedChanges(s.Changes) {
 		rel, _ := crewTeamRelative(change.Path)
 		actual, e := crewTeamCurrentFile(b.Root, rel)
 		if e != nil {
@@ -369,13 +372,7 @@ func applyCrewTeamDownload(ctx context.Context, b *crewTeamLocal, s *crewsync.Sn
 				continue
 			} // changed here in flight: upload it next round
 			if change.After == nil {
-				root, e := os.OpenRoot(b.Root)
-				if e != nil {
-					return e
-				}
-				e = root.Remove(rel)
-				root.Close()
-				if e != nil && !os.IsNotExist(e) {
+				if e = removeCrewTeamFile(b.Root, rel); e != nil {
 					return e
 				}
 			} else {
