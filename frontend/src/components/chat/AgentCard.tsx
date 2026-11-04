@@ -24,6 +24,21 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
   set: (tabId, info) => set({ tabId, info }),
 }))
 
+/** One Crew's agents as its tab strip knows them, for the agent list in the app's left menu. */
+export interface CrewAgentRow { tabId: string; name: string; main: boolean; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null }
+export const useCrewAgentsStore = create<{ projectId: string | null; agents: CrewAgentRow[]; canAdd: boolean; set: (projectId: string, agents: CrewAgentRow[], canAdd: boolean) => void }>(set => ({
+  projectId: null,
+  agents: [],
+  canAdd: false,
+  set: (projectId, agents, canAdd) => set({ projectId, agents, canAdd }),
+}))
+
+/** The person's choice of how agents are shown ("menu" or "tabs"), once it has loaded from the server. */
+export const useAgentsViewStore = create<{ view: 'menu' | 'tabs' | null; set: (view: 'menu' | 'tabs') => void }>(set => ({
+  view: null,
+  set: view => set({ view }),
+}))
+
 export function AgentHoverCard({ info, children }: { info?: AgentCardInfo; children: ReactNode }) {
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)

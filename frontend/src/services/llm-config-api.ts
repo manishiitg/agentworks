@@ -298,13 +298,17 @@ llmConfigApi.interceptors.request.use((config) => {
   return config
 })
 
+/** The person's own display choices (server-side, per person). */
+export type ChatPreferences = { show_context_indicator: boolean; agents_view: 'menu' | 'tabs' }
+
 // LLM Configuration API service
 export const llmConfigService = {
-  getChatPreferences: async (): Promise<{ show_context_indicator: boolean }> => {
+  getChatPreferences: async (): Promise<ChatPreferences> => {
     return (await llmConfigApi.get('/api/chat-preferences')).data
   },
-  setChatPreferences: async (show: boolean): Promise<{ show_context_indicator: boolean }> => {
-    return (await llmConfigApi.put('/api/chat-preferences', { show_context_indicator: show })).data
+  // A change names only what it changes; the server keeps the rest.
+  setChatPreferences: async (change: Partial<ChatPreferences>): Promise<ChatPreferences> => {
+    return (await llmConfigApi.put('/api/chat-preferences', change)).data
   },
   // Get LLM configuration defaults from backend
   getLLMDefaults: async (): Promise<LLMDefaultsResponse> => {

@@ -4,11 +4,12 @@ import { useProjectMenuHistoryStore, connectedWorkHistoryScope } from '../../sto
 import { connectedProjectKey, serverIconColors } from '../../utils/connectedWorkPresentation'
 import { isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
-import { useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useSharedCrewRows } from './SharedWithMe'
+import { SidebarCrewAgents } from './SidebarCrewAgents'
 import { TeamsSidebar } from '../../products/work/TeamFolderPanel'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
@@ -47,11 +48,12 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     }
     return rank(a) - rank(b) || a.name.localeCompare(b.name)
   })
-  const renderProject = ({ location, mac, state, ...project }: SidebarProject) => <SidebarProjectRow key={`${project.kind}:${project.id}`} {...project}
+  // The open Crew lists its agents under it (owner, 4 Nov, "Left menu").
+  const renderProject = ({ location, mac, state, ...project }: SidebarProject) => <Fragment key={`${project.kind}:${project.id}`}><SidebarProjectRow {...project}
     stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onMac={location === 'mac' ? (mac?.online ? 'on' : 'off') : undefined} onOpen={() => {
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
-  }} />
+  }} />{project.kind === 'crew' && project.selected && <SidebarCrewAgents projectId={project.id} />}</Fragment>
   const sharedAgentRows = useSharedCrewRows()
   // One server here: no filter (owner, 4 Nov: the filter is only the server choice; Mine and Shared with me are groups).
   const { macs, server } = groupByMac(orderedProjects)
@@ -105,14 +107,14 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   // The filter is only which server (owner, 4 Nov); Mine and Shared with me stay as the groups below.
   const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
   const serverColors = serverIconColors(connections)
-  const renderProject = (project: typeof rows[number]) => <SidebarProjectRow key={`${project.connection.id}:${project.kind}:${project.id}`} {...project}
+  const renderProject = (project: typeof rows[number]) => <Fragment key={`${project.connection.id}:${project.kind}:${project.id}`}><SidebarProjectRow {...project}
     selected={project.connection.id === active && project.selected}
     serverId={project.connection.id} remote={project.connection.id !== 'local'} serverColor={serverColors[project.connection.server]} location={project.connection.id !== 'local' ? project.connection.name : undefined}
     onOpen={() => {
       visit(connectedProjectKey(project.connection.id, project.kind, project.id))
       if (project.connection.id === active) openSidebarProject(project.kind, project.id)
       else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
-    }} />
+    }} />{project.kind === 'crew' && project.connection.id === active && project.selected && <SidebarCrewAgents projectId={project.id} />}</Fragment>
   const locations = connections.filter(connection => filter === 'all' || connection.id === filter)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
