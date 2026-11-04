@@ -358,5 +358,16 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatal("old files leaked into newly selected folder", w.Code, w.Body.String())
 	}
 	t.Log("[CREW_TEAM_PROOF] folder_change=isolated stale_write=403 old_history=retained")
+	// Live Showcase first-upload failure: there is no canonical files directory yet.
+	c3, d3, b3 := newClient("owner")
+	if err := os.WriteFile(filepath.Join(b3.Root, "first-upload.md"), []byte("new folder starts here"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sync(c3, d3, b3)
+	w = call("member", "GET", base+"/file?path=first-upload.md", "", "")
+	if w.Code != 200 || w.Body.String() != "new folder starts here" {
+		t.Fatal("first upload into empty generation", w.Code, w.Body.String())
+	}
+	t.Log("[CREW_TEAM_PROOF] first_upload_into_empty_folder=pass")
 
 }

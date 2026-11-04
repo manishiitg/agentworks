@@ -49,7 +49,11 @@ func crewTeamSnapshotStore(project, actor, client, direction string) (filesnapsh
 	if e != nil {
 		return filesnapshots.Store{}, e
 	}
-	return filesnapshots.Store{Root: filepath.Join(d, "files"), Private: filepath.Join(d, "transfers", crewTransferDigest(actor+"\x00"+client), direction)}, nil
+	root := filepath.Join(d, "files")
+	if e = os.MkdirAll(root, 0700); e != nil {
+		return filesnapshots.Store{}, e
+	}
+	return filesnapshots.Store{Root: root, Private: filepath.Join(d, "transfers", crewTransferDigest(actor+"\x00"+client), direction)}, nil
 }
 func crewTeamSnapshotScope(claims *UserClaims, s *crewsync.Snapshot) error {
 	if e := validateCrewTeamSnapshot(s); e != nil {
