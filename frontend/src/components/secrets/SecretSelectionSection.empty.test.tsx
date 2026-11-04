@@ -33,9 +33,7 @@ it("keeps project secrets available during a Vault outage", async () => {
     ),
   );
   expect(host.textContent).toContain("LOCAL_KEY");
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain(
-    "Vault unavailable",
-  );
+  expect(host.querySelector('[role="alert"]')).toBeNull();
   await act(async () => root.unmount());
   host.remove();
 });
