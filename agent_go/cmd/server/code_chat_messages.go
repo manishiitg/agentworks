@@ -281,7 +281,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
 			}},
-		{"set_my_agent_identity", "Set this agent's own name, purpose and icon (a few words, one short line and one emoji) so the other agents and people know what it is for. Whenever you set the purpose, also pick one emoji icon that fits it. An agent can be shared only with all three. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
+		{"set_my_agent_identity", "Set this agent's own name, purpose and icon (a few words, one short line and one emoji; any one alone keeps the others) so the other agents and people know what it is for. This is the agent's icon, not the Crew's (workspace update changes the whole Crew). Whenever you set the purpose, also pick one emoji icon that fits it. An agent can be shared only with all three. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name":    map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
 				"purpose": map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
