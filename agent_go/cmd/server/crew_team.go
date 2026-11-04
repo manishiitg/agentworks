@@ -33,16 +33,23 @@ type crewTeamFolder struct {
 	Path  string `json:"path"`
 	Label string `json:"label"`
 }
+type crewTeamServerData struct {
+	Kind          string `json:"kind"`
+	Name          string `json:"name"`
+	SizeBytes     int64  `json:"size_bytes"`
+	TeamProjectID string `json:"team_project_id"`
+}
 type crewTeam struct {
-	ProjectID           string           `json:"project_id"`
-	Name                string           `json:"name"`
-	OwnerID             string           `json:"owner_id"`
-	People              []crewTeamPerson `json:"people"`
-	Folder              crewTeamFolder   `json:"folder"`
-	Revision            uint64           `json:"revision"`
-	OwnerName           string           `json:"owner_name,omitempty"`
-	CanManage           bool             `json:"can_manage"`
-	CanEditSharedFolder bool             `json:"can_edit_shared_folder"`
+	ServerData          *crewTeamServerData `json:"server_data,omitempty"`
+	ProjectID           string              `json:"project_id"`
+	Name                string              `json:"name"`
+	OwnerID             string              `json:"owner_id"`
+	People              []crewTeamPerson    `json:"people"`
+	Folder              crewTeamFolder      `json:"folder"`
+	Revision            uint64              `json:"revision"`
+	OwnerName           string              `json:"owner_name,omitempty"`
+	CanManage           bool                `json:"can_manage"`
+	CanEditSharedFolder bool                `json:"can_edit_shared_folder"`
 }
 
 func crewTeamDir(project string) (string, error) {
@@ -79,6 +86,7 @@ func writeCrewTeam(t crewTeam) error {
 	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
 		return err
 	}
+	t.ServerData = nil
 	t.CanManage = false
 	t.CanEditSharedFolder = false
 	t.OwnerName = ""
@@ -94,6 +102,17 @@ func (t crewTeam) view(user string) crewTeam {
 	t.CanManage = t.OwnerID == user
 	t.CanEditSharedFolder = t.edits(user)
 	t.OwnerName = shareOwnerLabel(t.OwnerID)
+	if t.edits(user) {
+		if s, e := readCrewTeamFileState(t.ProjectID); e == nil {
+			d := &crewTeamServerData{Kind: "team_folder", Name: t.Folder.Path, TeamProjectID: t.ProjectID}
+			for _, v := range s.Versions {
+				if v.File != nil {
+					d.SizeBytes += v.File.Size
+				}
+			}
+			t.ServerData = d
+		}
+	}
 	// Team-only members can discover shared agents but do not learn folder contents.
 	if !t.CanEditSharedFolder && !t.CanManage {
 		t.Folder = crewTeamFolder{}
@@ -213,6 +232,7 @@ func ensureCrewTeamPeople(project, owner string, people []string) error {
 			t.People = append(t.People, crewTeamPerson{UserID: id})
 		}
 	}
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=seeded people=%d", project, owner, len(t.People))
 	return writeCrewTeam(t)
 }
 
@@ -234,7 +254,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			t = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}
 			e = nil
 		}
-		if e != nil || !t.member(claims.UserID) {
+		if e != nil || !t.member(claims.UserID) || t.OwnerID != owner || !shareAccountActive(owner) {
 			externalError(w, 403, "team_forbidden", "This team is not shared with you. Ask its owner to add you.")
 			return
 		}
@@ -359,7 +379,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		t, e := readCrewTeam(entry.Name())
-		if e == nil && t.member(claims.UserID) && crewTeamClaims(claims, t.ProjectID, false) {
+		if e == nil && t.member(claims.UserID) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && shareAccountActive(t.OwnerID) && crewTeamClaims(claims, t.ProjectID, false) {
 			out = append(out, t.view(claims.UserID))
 		}
 	}
@@ -441,7 +461,7 @@ func (api *StreamingAPI) handleDesktopCrewTeam(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if input.Folder.Path != "" {
-			folder, err := crewroot.ResolveContained(roots.Files, input.Folder.Path)
+			folder, err := crewTeamFolderPath(roots.Files, input.Folder.Path)
 			if err != nil || folder == roots.Files {
 				externalError(w, 400, "invalid_folder", "Choose a folder inside this Crew.")
 				return
@@ -459,4 +479,22 @@ func (api *StreamingAPI) handleDesktopCrewTeam(w http.ResponseWriter, r *http.Re
 		return
 	}
 	externalJSON(w, out)
+}
+
+func crewTeamFolderPath(root, rel string) (string, error) {
+	if _, err := publication.CleanPath(rel); err != nil {
+		return "", err
+	}
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return "", err
+	}
+	defer dir.Close()
+	for p := rel; p != "."; p = path.Dir(p) {
+		info, e := dir.Lstat(p)
+		if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("choose an ordinary folder inside this project")
+		}
+	}
+	return filepath.Join(root, filepath.FromSlash(rel)), nil
 }

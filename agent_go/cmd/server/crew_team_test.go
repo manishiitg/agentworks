@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -74,12 +73,12 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatal(e)
 	}
 	if len(receipt.Conflicts) != 1 {
-		t.Fatalf("no losing copy: %+v", receipt)
+		t.Fatalf("no recorded clash: %+v", receipt)
 	}
 	copyPath := receipt.Conflicts[0]
-	w = call("member", "GET", base+"/file?path="+url.QueryEscape(copyPath), "", "")
+	w = call("member", "GET", base+"/history?revision=2&path="+url.QueryEscape(copyPath), "", "")
 	if w.Code != 200 || w.Body.String() != "owner changed" {
-		t.Fatalf("losing bytes: %d %s", w.Code, w.Body.String())
+		t.Fatalf("historical losing bytes: %d %s", w.Code, w.Body.String())
 	}
 	// Lost response replay must not change the folder revision or create another copy.
 	w = call("member", "PUT", file+"&base="+first, "member changed", "member-change")
@@ -90,6 +89,31 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &retry)
 	if retry.Revision != receipt.Revision {
 		t.Fatal("retry became another edit")
+	}
+	// A clash keeps the losing bytes in history, not another file in the folder.
+	state, e = readCrewTeamFileState("team-test")
+	if e != nil || len(state.manifest()) != 1 {
+		t.Fatalf("visible copy was created: %+v %v", state, e)
+	}
+	w = call("member", "GET", base+"/clashes", "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"losing_revision":2`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = call("member", "POST", base+"/resolve", `{"path":"brief.md","keep":"revision:2","winning_revision":3,"transfer_id":"restore-old"}`, "")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = call("member", "GET", file, "", "")
+	if w.Code != 200 || w.Body.String() != "owner changed" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = call("member", "GET", base+"/clashes", "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"clashes":[]`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = call("member", "PUT", file, "member changed", "member-again")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
 	}
 	for _, who := range []string{"teammate", "outsider"} {
 		for _, method := range []string{"GET", "PUT"} {
@@ -150,5 +174,5 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			t.Fatal("revoked operation", method, w.Code, w.Body.String())
 		}
 	}
-	fmt.Println("[CREW_TEAM_PROOF] allowed owner/member writes, conflict copy, retry receipt, outside-folder/private-state/link refusals, owner-only configuration and revocation passed")
+	fmt.Println("[CREW_TEAM_PROOF] allowed owner/member writes, history-only clash, retry receipt, outside-folder/private-state/link refusals, owner-only configuration and revocation passed")
 }

@@ -232,11 +232,18 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		}
 		digestData, _ := json.Marshal(snapshot)
 		digest := crewTransferDigest(string(digestData))
-		receiptPath := crewTeamReceiptFile(dir, claims.UserID, in.Client+"/"+in.TransferID)
-		if b, e := os.ReadFile(receiptPath); e == nil {
-			var receipt crewTeamReceipt
-			if json.Unmarshal(b, &receipt) != nil || receipt.Digest != digest {
+		state, err := readCrewTeamFileState(project)
+		if err != nil {
+			fail(err)
+			return
+		}
+		if receipt, ok := state.Receipts[crewTransferDigest(claims.UserID+"\x00"+in.Client+"/"+in.TransferID)]; ok {
+			if receipt.Digest != digest {
 				fail(fmt.Errorf("transfer receipt does not match"))
+				return
+			}
+			if e = store.AckSync(r.Context(), pair, snapshot.Content); e != nil {
+				fail(e)
 				return
 			}
 			externalJSON(w, receipt)
@@ -286,10 +293,11 @@ func copyCrewTeamBundle(src, dst string) error {
 		return e
 	}
 	defer in.Close()
-	out, e := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	out, e := os.CreateTemp(filepath.Dir(dst), "bundle-")
 	if e != nil {
 		return e
 	}
+	defer os.Remove(out.Name())
 	_, e = io.Copy(out, in)
 	if e == nil {
 		e = out.Sync()
@@ -298,7 +306,10 @@ func copyCrewTeamBundle(src, dst string) error {
 	if e == nil {
 		e = ce
 	}
-	return e
+	if e != nil {
+		return e
+	}
+	return os.Rename(out.Name(), dst)
 }
 
 // Chunk offsets and hashes reuse the Crew transfer protocol. Folder authority,
@@ -424,6 +435,8 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-teams/{project}/{op:seed}", api.handleCrewTeam).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/{op:files}", api.handleCrewTeamFiles).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/{op:file}", api.handleCrewTeamFiles).Methods("GET", "PUT", "DELETE")
+	r.HandleFunc("/crew-teams/{project}/{op:events|clashes|history}", api.handleCrewTeamHistory).Methods("GET")
+	r.HandleFunc("/crew-teams/{project}/{op:resolve}", api.handleCrewTeamHistory).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/sync", api.handleCrewTeamSync).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/sync/{transfer}", api.handleCrewTeamPiece).Methods("GET", "PUT", "HEAD")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}", api.handleDesktopCrewTeam).Methods("GET", "PUT")
