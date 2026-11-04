@@ -258,3 +258,52 @@ func TestBrowserArtifactsUseBoundCrewFolderAndRetainWriteGuards(t *testing.T) {
 		t.Fatal("symlink escape accepted")
 	}
 }
+
+// PLAT-856-525: the host Downloads exception is local-only and needs the exact
+// current grant; ordinary absolute paths and symlink escapes remain refused.
+func TestBrowserArtifactMacDownloadsRequiresCurrentGrant(t *testing.T) {
+	oldOS := browserArtifactHostOS
+	browserArtifactHostOS = "darwin"
+	t.Cleanup(func() { browserArtifactHostOS = oldOS })
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("NATIVE_WORKSPACE", "true")
+	t.Setenv("MULTI_USER_MODE", "false")
+	root := filepath.Join(home, "Downloads")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	base := t.TempDir()
+	source := func() string {
+		return stagedArtifactFile(t, ".png", append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte("image")...))
+	}
+	dest := filepath.Join(root, "page.png")
+	if err := FinalizeBrowserArtifact(source(), dest, "screenshot", base, []string{root}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dest); err != nil {
+		t.Fatal(err)
+	}
+	if ArtifactDestinationWritable(dest, base, []string{base}) {
+		t.Fatal("missing Downloads grant accepted")
+	}
+	if err := FinalizeBrowserArtifact(source(), dest, "screenshot", base, []string{root}, nil, []string{root}); err == nil {
+		t.Fatal("blocked Downloads accepted")
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if ArtifactDestinationWritable(filepath.Join(root, "escape", "page.png"), base, []string{root}) {
+		t.Fatal("symlink escape accepted")
+	}
+	t.Setenv("MULTI_USER_MODE", "true")
+	if ArtifactDestinationWritable(dest, base, []string{root}) {
+		t.Fatal("server Downloads accepted")
+	}
+	t.Setenv("MULTI_USER_MODE", "false")
+	browserArtifactHostOS = "linux"
+	if ArtifactDestinationWritable(dest, base, []string{root}) {
+		t.Fatal("Linux Downloads accepted")
+	}
+}

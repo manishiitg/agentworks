@@ -38,3 +38,32 @@ func TestCDPHostDownloadsPathOnlyOnAPersonsOwnMachine(t *testing.T) {
 		t.Fatalf("an explicitly named folder: got %q", got)
 	}
 }
+
+// PLAT-856-525: choosing Mac Downloads for captures must not expose it to servers.
+func TestLocalCaptureDownloadsIsPersonalAndRevocable(t *testing.T) {
+	oldOS := localCaptureHostOS
+	oldRemoved := HostDownloadsRemoved.Load()
+	t.Cleanup(func() { localCaptureHostOS = oldOS; HostDownloadsRemoved.Store(oldRemoved) })
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NATIVE_WORKSPACE", "true")
+	t.Setenv("MULTI_USER_MODE", "false")
+	localCaptureHostOS = "darwin"
+	HostDownloadsRemoved.Store(false)
+	if LocalCaptureDownloadsPath() == "" {
+		t.Fatal("personal Mac has no capture destination")
+	}
+	HostDownloadsRemoved.Store(true)
+	if LocalCaptureDownloadsPath() != "" {
+		t.Fatal("removed grant was reopened")
+	}
+	HostDownloadsRemoved.Store(false)
+	t.Setenv("MULTI_USER_MODE", "true")
+	if LocalCaptureDownloadsPath() != "" {
+		t.Fatal("multi-user server received Downloads")
+	}
+	t.Setenv("MULTI_USER_MODE", "false")
+	localCaptureHostOS = "linux"
+	if LocalCaptureDownloadsPath() != "" {
+		t.Fatal("Linux server received Downloads")
+	}
+}
