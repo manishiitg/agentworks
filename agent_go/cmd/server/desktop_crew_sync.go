@@ -47,8 +47,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var input struct {
-		Action string           `json:"action"`
-		Agents []macSharedAgent `json:"agents"`
+		Action     string           `json:"action"`
+		Agents     []macSharedAgent `json:"agents"`
+		WhenMacOff string           `json:"when_mac_off"` // team_copy: empty reads the Team tab's state
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -58,7 +59,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	id := mux.Vars(r)["project"]
 	switch input.Action {
-	case "status", "server", "relay", "offline", "agents", "share_agents":
+	case "status", "server", "relay", "offline", "agents", "share_agents", "team_copy":
 	default:
 		externalError(w, 400, "invalid_action", "Choose Move online.")
 		return
@@ -249,6 +250,16 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	// owner's choice here and on the online copy, which decides who may message them.
 	if input.Action == "agents" || input.Action == "share_agents" {
 		api.desktopShareMacCrewAgents(w, r, claims, roots.ID, binding, connection, input.Action, input.Agents)
+		return
+	}
+	// The Team tab's "When your Mac is off" and its status line, from the online copy that decides it.
+	if input.Action == "team_copy" {
+		reply, status, code, err := api.desktopTeamCopy(r.Context(), claims, roots.ID, binding, connection, input.WhenMacOff)
+		if err != nil {
+			externalError(w, status, code, err.Error())
+			return
+		}
+		externalJSON(w, reply)
 		return
 	}
 	// Reach off: the server removes this Crew's empty online copy, then the Mac forgets the pair (crew_where_it_lives.go).

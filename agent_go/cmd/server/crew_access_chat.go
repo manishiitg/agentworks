@@ -30,6 +30,13 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 			"slack":             "Access, Slack, Connect sets it up; signing in to Slack is the person's own click.",
 		})
 	}
+	if action == "when_mac_off" {
+		reply, _, _, err := api.desktopTeamCopy(ctx, claims, project, binding, connection, strings.TrimSpace(externalArg(args, "when_mac_off")))
+		if err != nil {
+			return "", err
+		}
+		return out(reply.TeamCopy)
+	}
 	rows, err := api.macAgentRows(ctx, claims, project)
 	if err != nil {
 		return "", err

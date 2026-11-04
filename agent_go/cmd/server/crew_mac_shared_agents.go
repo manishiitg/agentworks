@@ -338,6 +338,16 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	}
 	result := callCrewMacFor(r.Context(), project.OwnerID, manifest.ID, call, externalCrewWait(args)+40*time.Second)
 	log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%s action=%s mac_status=%d", manifest.ID, logUsernameForUserID(claims.UserID), agent.Tab, action, result.Status)
+	// The Mac is off: its team copy answers, or the message waits for the Mac, as the owner chose (crew_team_copy.go).
+	if result.Status == http.StatusServiceUnavailable && !IsLocalMode() {
+		if teamCopyRoute(manifest.ID) == teamCopyAnswer {
+			result = api.teamCopyCall(r.Context(), project.OwnerID, manifest.ID, call)
+		} else if action == "ask" && holdForMac(manifest.ID, call, "", 0) == nil {
+			externalJSON(w, map[string]any{"status": "waiting", "workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": macSharedAgentChatKey(manifest.ID, agent.Tab), "name": agent.Name,
+				"message": "Its owner's Mac is off. Your message waits, and " + firstNonEmptyTrimmed(agent.Name, "the agent") + " answers it when the Mac is back; read this chat then."})
+			return true
+		}
+	}
 	if result.Status == http.StatusServiceUnavailable {
 		externalError(w, 503, "owner_mac_off", "Its owner's Mac is off. Try again later.")
 		return true
@@ -376,15 +386,17 @@ func macSharedAgentRows(caller string) []map[string]any {
 			if _, reason := macSharedAgentFor(project, agent.Tab, caller, owner); reason != "" {
 				continue
 			}
-			presence := "Its owner's Mac is off"
+			presence, available := "Its owner's Mac is off; messages wait for it", online
 			if online {
 				presence = "Answers now, on its owner's Mac"
+			} else if teamCopyRoute(project) == teamCopyAnswer {
+				presence, available = "Its owner's Mac is off; its team copy answers", true
 			}
 			target := "workspace:" + crewProfileID + ":" + project
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
 				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "icon": agent.Icon, "presence": presence, "your_access": "run",
 				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
-				"owner_short": ownerShort, "crew_title": title, "available": online})
+				"owner_short": ownerShort, "crew_title": title, "available": available})
 		}
 	}
 	return rows
@@ -729,22 +741,39 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return fmt.Errorf("This agent isn't shared with you.")
 	}
 	sender := shareOwnerLabel(source.UserID)
+	// Where this message is answered: the Mac, or its team copy while the Mac is off. The answer is read from the same place.
+	teamCopy := false
+	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
+		if teamCopy {
+			return api.teamCopyCall(context.Background(), dest.UserID, dest.ID, call)
+		}
+		return callCrewMacFor(context.Background(), dest.UserID, dest.ID, call, timeout)
+	}
 	read := func(after, wait int) (map[string]any, int) {
 		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID})
-		result := callCrewMacFor(context.Background(), dest.UserID, dest.ID, crewChatCall{Operation: "agent_read", Tab: tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
+		result := run(crewChatCall{Operation: "agent_read", Tab: tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
 		var out map[string]any
 		_ = json.Unmarshal(result.Body, &out)
 		return out, result.Status
 	}
+	raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": source.Label})
+	ask := crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
+	from := 1 - m.From
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.
 	_, status := read(0, 0)
-	if status == http.StatusOK {
-		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": source.Label})
-		result := callCrewMacFor(context.WithoutCancel(ctx), dest.UserID, dest.ID, crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}, 60*time.Second)
-		status = result.Status
+	if status == http.StatusServiceUnavailable && !IsLocalMode() {
+		if teamCopyRoute(dest.ID) == teamCopyAnswer {
+			teamCopy = true
+			_, status = read(0, 0)
+		} else if holdForMac(dest.ID, ask, c.ID, from) == nil {
+			go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off. Your message waits; the answer comes here when the Mac is back.")
+			return nil
+		}
 	}
-	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status)
-	from := 1 - m.From
+	if status == http.StatusOK {
+		status = run(ask, 60*time.Second).Status
+	}
+	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d team_copy=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, teamCopy)
 	if status == http.StatusServiceUnavailable {
 		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off. Try again later.")
 		return nil

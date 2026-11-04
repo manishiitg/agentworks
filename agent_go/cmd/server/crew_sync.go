@@ -39,6 +39,9 @@ type crewSyncRequest struct {
 	Editing     string                    `json:"editing,omitempty"`
 	Snapshot    *crewsync.Snapshot        `json:"snapshot,omitempty"`
 	Agents      []macSharedAgent          `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
+	// team_copy: "When your Mac is off" (team_copy | wait, empty reads it); team_copy_record: the team copy's record.
+	WhenMacOff string              `json:"when_mac_off,omitempty"`
+	TeamCopy   *crewTeamCopyRecord `json:"team_copy,omitempty"`
 }
 type crewSyncReply struct {
 	SchedulesPaused    bool                  `json:"schedules_paused"`
@@ -63,6 +66,8 @@ type crewSyncReply struct {
 	SharedAgents int `json:"shared_agents,omitempty"`
 	// Asking is who asked this Crew's shared agents on this Mac in the last ten minutes (the owner's own Mac only).
 	Asking []macAskActivity `json:"asking,omitempty"`
+	// TeamCopy is the Team tab's "When your Mac is off" and its status line (PLAT-856-509).
+	TeamCopy *crewTeamCopyStatus `json:"team_copy,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -195,6 +200,10 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	if input.Action == "share_agents" {
 		api.shareMacCrewAgents(w, r, mux.Vars(r)["project"], input)
+		return
+	}
+	if input.Action == "team_copy" || input.Action == "team_copy_record" {
+		api.handleTeamCopy(w, r, mux.Vars(r)["project"], input)
 		return
 	}
 	out, err := api.crewSync(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"], input)
