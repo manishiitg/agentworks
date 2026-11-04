@@ -626,6 +626,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const deliveryMode = tabConfig?.sendDeliveryMode ?? 'steer'
   const tabSessionId = activeTab?.sessionId ?? null
   const isViewOnly = activeTab?.metadata?.isViewOnly ?? false
+  const viewOnlyWriter = activeTab?.metadata?.viewOnlyWriter
   const activeSession = useChatStore(state => {
     if (!tabSessionId) return undefined
     return state.activeSessionsCache.find(session => session.session_id === tabSessionId)
@@ -2841,6 +2842,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
+    if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
     if (isProductSurface) return isStreaming ? 'Add a message…' : (placeholderOverride || 'Describe what you want to create…')
     if (placeholderOverride) return placeholderOverride
@@ -2854,7 +2856,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
+  }, [agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.

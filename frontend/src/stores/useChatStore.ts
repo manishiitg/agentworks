@@ -467,6 +467,7 @@ export interface ChatTab {
     botPlatform?: string // Display label for the bot platform, e.g. Slack or WhatsApp
     workspaceReturnAt?: number // Ephemeral explicit server return; supersedes automatic latest-chat selection on entry.
     readOnlyRestoredAt?: number // Timestamp for an explicit user-opened Schedule/Bot restore
+    viewOnlyWriter?: string // Whose chat a view-only tab shows (another person's thread with a shared agent)
     // Generic product-agent binding. These fields are durable so a project can
     // recover its normal AgentWorks session after a refresh without maintaining
     // a second product-specific conversation store.
