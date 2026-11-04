@@ -145,8 +145,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // In Left menu mode (the person's choice, owner 4 Nov) the agents are listed in the app's left menu, not as tabs here:
   // the list there reads them from this store; "+" stays in this top line.
   const agentsView = useAgentsViewStore(state => state.view)
-  // Left menu is the default, also before the saved choice has loaded.
-  const menuMode = surface === 'work' && agentsView !== 'tabs' && !phone
+  // Left menu is the default, also before the saved choice has loaded; phones list the agents in the sidebar drawer.
+  const menuMode = surface === 'work' && agentsView !== 'tabs'
   // The strip's own handlers for one agent, so the left menu and the rail offer the same rename, order, show/hide and
   // hide (owner, 4 Nov: "did we lose more features?"); removing for good is only in the agent card.
   const agentActions = (tab: ChatTab): CrewAgentActions => {
@@ -492,7 +492,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           type="button"
           onClick={() => setNewTabName('')}
           disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT}
-          className={`max-md:hidden ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
+          className={`${menuMode ? 'max-md:h-10 max-md:w-10' : 'max-md:hidden'} ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New agent"
           title={ownedListed.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} agents per project`
