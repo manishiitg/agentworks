@@ -6193,9 +6193,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		defer toolGate.logSurface(sessionID)
-		useCodeExecutionMode, platformBridgeTools := externalWorkflowTransport(claims, workflowRun, toolGate)
+		bridgeProvider := usesMCPBridge(finalProvider, finalModelID)
+		useCodeExecutionMode, platformBridgeTools := externalWorkflowTransport(claims, workflowRun, toolGate, bridgeProvider)
 		if projectTokenChat {
-			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate)
+			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate, bridgeProvider)
 		}
 		log.Printf("[CODE_EXECUTION] session=%s code_execution=%v browser_mode=%s direct_bridge_tools=%v", sessionID, useCodeExecutionMode, req.BrowserMode, platformBridgeTools)
 		crewAskClarification := crewAskInputFromContext(r.Context()) != nil && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && !req.IsAutoNotification && req.ParentSessionID == "" && req.SessionKind == "" && req.BotPlatform == ""
@@ -8026,10 +8027,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if projectTokenChat {
+		if projectTokenChat && !useCodeExecutionMode {
 			// Include names declared by profile factories during registration,
 			// rather than freezing the bridge from the initial policy alone.
-			_, platformBridgeTools = externalProjectTransport(claims, toolGate)
+			_, platformBridgeTools = externalProjectTransport(claims, toolGate, false)
 			if err := llmAgent.SetAdditionalBridgeTools(platformBridgeTools); err != nil {
 				sendError(fmt.Sprintf("Failed to set project bridge tools: %v", err), true)
 				return
