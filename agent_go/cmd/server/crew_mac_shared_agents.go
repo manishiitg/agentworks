@@ -84,8 +84,16 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 		return nil, fmt.Errorf("share at most %d agents", macSharedAgentsMax)
 	}
 	since := map[string]string{}
+	before := map[string]macSharedAgent{}
 	for _, agent := range previous {
 		since[agent.Tab] = agent.Since
+		before[agent.Tab] = agent
+	}
+	// The three-field rule applies when a share is turned on or its audience changes; a refresh of an existing
+	// share (a new purpose or name) keeps it working, so people already using an agent are not cut off.
+	opening := func(agent macSharedAgent) bool {
+		old, ok := before[agent.Tab]
+		return !ok || old.Off || old.Audience != agent.Audience || !slices.Equal(old.People, agent.People)
 	}
 	out := []macSharedAgent{}
 	for _, agent := range in {
@@ -97,7 +105,7 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 			return nil, fmt.Errorf("an agent needs a name")
 		case agent.Purpose == "" || len([]rune(agent.Purpose)) > productAgentPurposeMaxRunes:
 			return nil, fmt.Errorf("set %s's purpose to share it (one line, at most %d characters)", agent.Name, productAgentPurposeMaxRunes)
-		case strings.TrimSpace(agent.Icon) == "":
+		case strings.TrimSpace(agent.Icon) == "" && !agent.Off && opening(agent):
 			// Owner, 4 Nov: sharing an agent needs its name, purpose and icon.
 			return nil, fmt.Errorf("give %s an icon to share it: ask it to set its name, purpose and an emoji icon that fits it", agent.Name)
 		case agent.Audience != "team" && agent.Audience != "everyone" && agent.Audience != "chosen":
