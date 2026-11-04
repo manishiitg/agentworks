@@ -87,7 +87,7 @@ type compactRow struct {
 
 // compactLatestTurnStart returns the first sequence of the latest turn.
 func (j *SQLiteEventJournal) compactLatestTurnStart(sessionID string, cap int) (int64, error) {
-	rows, err := j.db.Query(`SELECT sequence, COALESCE(json_extract(payload, '$.type'), '') FROM structured_chat_events WHERE session_id = ? ORDER BY sequence DESC LIMIT ?`, sessionID, cap)
+	rows, err := j.reader().Query(`SELECT sequence, COALESCE(json_extract(payload, '$.type'), '') FROM structured_chat_events WHERE session_id = ? ORDER BY sequence DESC LIMIT ?`, sessionID, cap)
 	if err != nil {
 		return 0, err
 	}
@@ -138,7 +138,7 @@ func decodeCompactRows(rows *sql.Rows) ([]Event, error) {
 // messages are collected and the oldest collected row is a user_message (or
 // the history ends). It returns the rows oldest first.
 func (j *SQLiteEventJournal) compactOlder(sessionID string, before int64, messages int) ([]Event, error) {
-	rows, err := j.db.Query(`SELECT payload FROM structured_chat_events WHERE session_id = ? AND sequence < ? AND json_extract(payload, '$.type') IN (`+compactTypePlaceholders()+`) ORDER BY sequence DESC`, compactTypeArgs(sessionID, before)...)
+	rows, err := j.reader().Query(`SELECT payload FROM structured_chat_events WHERE session_id = ? AND sequence < ? AND json_extract(payload, '$.type') IN (`+compactTypePlaceholders()+`) ORDER BY sequence DESC`, compactTypeArgs(sessionID, before)...)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (j *SQLiteEventJournal) compactOlder(sessionID string, before int64, messag
 
 func (j *SQLiteEventJournal) compactHasOlder(sessionID string, before int64) (bool, error) {
 	var found int
-	err := j.db.QueryRow(`SELECT 1 FROM structured_chat_events WHERE session_id = ? AND sequence < ? AND json_extract(payload, '$.type') IN (`+compactTypePlaceholders()+`) LIMIT 1`, compactTypeArgs(sessionID, before)...).Scan(&found)
+	err := j.reader().QueryRow(`SELECT 1 FROM structured_chat_events WHERE session_id = ? AND sequence < ? AND json_extract(payload, '$.type') IN (`+compactTypePlaceholders()+`) LIMIT 1`, compactTypeArgs(sessionID, before)...).Scan(&found)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -197,7 +197,7 @@ func (j *SQLiteEventJournal) ReadCompactPage(sessionID string, opts CompactPageO
 	}
 	var total int
 	var maximum sql.NullInt64
-	if err := j.db.QueryRow(`SELECT COUNT(*), MAX(sequence) FROM structured_chat_events WHERE session_id = ?`, sessionID).Scan(&total, &maximum); err != nil {
+	if err := j.reader().QueryRow(`SELECT COUNT(*), MAX(sequence) FROM structured_chat_events WHERE session_id = ?`, sessionID).Scan(&total, &maximum); err != nil {
 		return DurableEventPage{}, err
 	}
 	page := DurableEventPage{Events: []Event{}, Exists: total > 0}
@@ -213,7 +213,7 @@ func (j *SQLiteEventJournal) ReadCompactPage(sessionID string, opts CompactPageO
 		if err != nil {
 			return DurableEventPage{}, err
 		}
-		rows, err := j.db.Query(`SELECT payload FROM structured_chat_events WHERE session_id = ? AND sequence >= ? ORDER BY sequence ASC`, sessionID, start)
+		rows, err := j.reader().Query(`SELECT payload FROM structured_chat_events WHERE session_id = ? AND sequence >= ? ORDER BY sequence ASC`, sessionID, start)
 		if err != nil {
 			return DurableEventPage{}, err
 		}

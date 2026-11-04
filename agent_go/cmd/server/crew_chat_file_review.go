@@ -371,7 +371,11 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 				ids = append(ids, ref.ID)
 			}
 		}
-		return store.CompareSaved(ctx, ids, file, key, compareAllow, r.URL.Query().Get("checkout_id"))
+		checkoutID := r.URL.Query().Get("checkout_id")
+		person := GetUserIDFromContext(r.Context())
+		return compareSavedOnce(ctx, sessionID, []string{person, root, prefix, strconv.FormatBool(outsideGit), checkoutID, file, key, strings.Join(ids, ",")}, func() (filesnapshots.Comparison, error) {
+			return store.CompareSaved(ctx, ids, file, key, compareAllow, checkoutID)
+		})
 	}
 	comparison, err := compare(first, last, side, file, r.URL.Query().Get("change_key"))
 	if err != nil {

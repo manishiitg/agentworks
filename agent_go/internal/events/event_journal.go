@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/sqlitefile"
 	_ "modernc.org/sqlite"
 )
 
@@ -23,8 +24,19 @@ type DurableEventJournal interface {
 }
 
 type SQLiteEventJournal struct {
-	db   *sql.DB
+	db *sql.DB
+	// read serves chat page loads. db has one connection, so a page load queued behind every save; on a busy host one
+	// save took 3.2s and a chat load waited 15s, past the browser's limit (4 Nov 2026). WAL lets these reads run beside
+	// the writer, and query_only keeps this pool from ever writing.
+	read *sql.DB
 	path string
+}
+
+func (j *SQLiteEventJournal) reader() *sql.DB {
+	if j.read != nil {
+		return j.read
+	}
+	return j.db
 }
 
 type EventJournalStats struct {
@@ -134,7 +146,13 @@ func OpenSQLiteEventJournal(path string) (*SQLiteEventJournal, error) {
 		}
 	}
 	_ = os.Chmod(path, 0o600)
-	return &SQLiteEventJournal{db: db, path: path}, nil
+	read, err := sql.Open("sqlite", sqlitefile.URI(path)+"?_pragma=busy_timeout(5000)&_pragma=query_only(1)")
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	read.SetMaxOpenConns(4)
+	return &SQLiteEventJournal{db: db, read: read, path: path}, nil
 }
 
 func (j *SQLiteEventJournal) RegisterOwner(sessionID, ownerID string) error {
@@ -342,7 +360,7 @@ func (j *SQLiteEventJournal) ReadPage(sessionID string, opts DurableEventPageOpt
 
 	var total int
 	var minimum, maximum sql.NullInt64
-	if err := j.db.QueryRow(`SELECT COUNT(*), MIN(sequence), MAX(sequence) FROM structured_chat_events WHERE session_id = ?`, sessionID).Scan(&total, &minimum, &maximum); err != nil {
+	if err := j.reader().QueryRow(`SELECT COUNT(*), MIN(sequence), MAX(sequence) FROM structured_chat_events WHERE session_id = ?`, sessionID).Scan(&total, &minimum, &maximum); err != nil {
 		return DurableEventPage{}, err
 	}
 	page := DurableEventPage{Events: []Event{}, Exists: total > 0}
@@ -363,7 +381,7 @@ func (j *SQLiteEventJournal) ReadPage(sessionID string, opts DurableEventPageOpt
 		descending = false
 	}
 
-	rows, err := j.db.Query(query, args...)
+	rows, err := j.reader().Query(query, args...)
 	if err != nil {
 		return DurableEventPage{}, err
 	}
@@ -456,6 +474,9 @@ func (j *SQLiteEventJournal) DeleteSessions(sessionIDs []string) error {
 func (j *SQLiteEventJournal) Close() error {
 	if j == nil || j.db == nil {
 		return nil
+	}
+	if j.read != nil {
+		_ = j.read.Close()
 	}
 	return j.db.Close()
 }
