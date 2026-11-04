@@ -318,6 +318,13 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 		externalError(w, 403, "insufficient_scope", "This connection cannot use this agent.")
 		return true
 	}
+	// A Team is a shared room (owner, 5 Nov): members watch an in-team agent but never type into it from the website;
+	// they reach it from their own agent (an agent message, or their own AI app over MCP).
+	if (action == "ask" || action == "reply_input") && crewTeamInTeam(agent) && claims.UserID != project.OwnerID && claims.AccessToken == nil {
+		log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%q action=%s refused reason=team_watch_only", manifest.ID, logUsernameForUserID(claims.UserID), tab, action)
+		externalError(w, 403, "team_watch_only", "You can watch this agent. To ask it something, ask from your own agent.")
+		return true
+	}
 	if action == "ask" {
 		message := strings.TrimSpace(externalArg(args, "message"))
 		if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
@@ -416,7 +423,7 @@ func macSharedAgentRows(caller string) []map[string]any {
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
 				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "icon": agent.Icon, "presence": presence, "your_access": "run",
 				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
-				"owner_short": ownerShort, "crew_title": title, "available": available})
+				"owner_short": ownerShort, "crew_title": title, "available": available, "watch_only": crewTeamInTeam(agent)})
 		}
 	}
 	return rows
@@ -596,7 +603,7 @@ func (api *StreamingAPI) handleSharedWithMe(w http.ResponseWriter, r *http.Reque
 	if !IsLocalMode() {
 		for _, row := range macSharedAgentRows(claims.UserID) {
 			agents = append(agents, map[string]any{"workspace_id": crewProfileID + ":" + fmt.Sprint(row["crew_id"]), "chat_id": row["chat_id"], "name": row["name"],
-				"owner_name": row["owner_short"], "crew_name": row["crew_title"], "purpose": row["purpose"], "icon": row["icon"], "available": row["available"]})
+				"owner_name": row["owner_short"], "crew_name": row["crew_title"], "purpose": row["purpose"], "icon": row["icon"], "available": row["available"], "watch_only": row["watch_only"]})
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")

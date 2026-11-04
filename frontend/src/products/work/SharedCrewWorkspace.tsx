@@ -9,7 +9,7 @@ const ChatArea = lazy(() => import('../../components/ChatArea'))
 import { useChatStore } from '../../stores/useChatStore'
 
 export type SharedCrewScope = { workspace_id: string } | { workspace: string }
-export type SharedAgent = { chat_id: string; name: string; purpose?: string; shared?: boolean }
+export type SharedAgent = { chat_id: string; name: string; purpose?: string; shared?: boolean; watchOnly?: boolean }
 type ChatLine = { seq: number; role: string; text: string; sender?: string; at?: string }
 type ChatPage = { messages?: ChatLine[]; events?: PollingEvent[]; next_after?: number; working?: boolean; has_earlier?: boolean; first_seq?: number }
 
@@ -134,8 +134,10 @@ export function SharedAgentConversation({ scope: crewScope, agent, onBack, owner
   return <section className="flex min-h-0 flex-1 flex-col" aria-label={`${agent.name} conversation`}>
     {(onBack || agent.purpose) && <header className="flex shrink-0 items-start gap-3 border-b border-border px-4 py-2.5">{onBack && <button type="button" aria-label="Back to shared agents" onClick={onBack} className="rounded p-1 hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>}<div className="min-w-0">{onBack && <h2 className="text-sm font-semibold">{agent.name}</h2>}<Purpose text={agent.purpose} /></div></header>}
     {error && <p role="alert" className="shrink-0 px-4 py-2 text-xs text-destructive">{error} <button type="button" onClick={() => setRefresh(value => value + 1)} className="underline">Try again</button></p>}
-    <div className="min-h-0 flex-1">{tabId && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">Loading chat…</p>}><ChatArea tabId={tabId} inputVariant="product" hideRuntimeStatus onSubmitOverride={send} onQuestionAnswerOverride={answerQuestion} composerPlaceholder={`Ask ${agent.name}…`} /></Suspense>}</div>
-    <p className="shrink-0 px-4 pb-2 text-[11px] text-muted-foreground">Only you see your messages and its answers.</p>
+    <div className="min-h-0 flex-1">{tabId && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">Loading chat…</p>}><ChatArea tabId={tabId} inputVariant="product" hideRuntimeStatus hideInput={agent.watchOnly} onSubmitOverride={send} onQuestionAnswerOverride={answerQuestion} composerPlaceholder={`Ask ${agent.name}…`} /></Suspense>}</div>
+    {agent.watchOnly
+      ? <p className="mx-4 mb-3 shrink-0 rounded-xl bg-muted px-3 py-2.5 text-[13px] text-muted-foreground">👁 You're watching {ownerName ? `${ownerName}'s` : 'this'} {agent.name}. Only {ownerName || 'its owner'} types here. To ask it something, ask from your own agent.</p>
+      : <p className="shrink-0 px-4 pb-2 text-[11px] text-muted-foreground">Only you see your messages and its answers.</p>}
   </section>
 }
 

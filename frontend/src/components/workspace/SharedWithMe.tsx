@@ -9,7 +9,7 @@ import { useSharedCrewPageStore } from '../../stores/useSharedCrewPageStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 
 /** An agent someone shared with you from a Crew on their Mac (PLAT-856-509); the server decides the list. */
-export type SharedWithMeAgent = { workspace_id: string; chat_id: string; name: string; owner_name: string; crew_name?: string; purpose?: string; available: boolean }
+export type SharedWithMeAgent = { workspace_id: string; chat_id: string; name: string; owner_name: string; crew_name?: string; purpose?: string; available: boolean; watch_only?: boolean }
 
 // One reading for the sidebar and the page.
 let latest: SharedWithMeAgent[] = []
@@ -153,6 +153,6 @@ export function SharedCrewPage() {
     </header>
     {folderOpen && team ? <TeamFolderPanel key={team.team.project_id} {...team} onAsk={() => setFolderOpen(false)} />
       : !agents.length ? <p role="status" className="p-6 text-sm text-muted-foreground">Nothing from this Crew is shared with you right now.</p>
-      : agent && <SharedAgentConversation key={agent.chat_id} scope={{ workspace_id: agent.workspace_id }} agent={{ chat_id: agent.chat_id, name: agent.name, purpose: agent.purpose, shared: true }} ownerName={agent.owner_name} />}
+      : agent && <SharedAgentConversation key={agent.chat_id} scope={{ workspace_id: agent.workspace_id }} agent={{ chat_id: agent.chat_id, name: agent.name, purpose: agent.purpose, shared: true, watchOnly: agent.watch_only }} ownerName={agent.owner_name} />}
   </div>
 }
