@@ -92,6 +92,7 @@ func (api *StreamingAPI) forkOwnerSessionForSender(ctx context.Context, userID, 
 		Owner string `json:"owner_fingerprint"`
 	}
 	if raw, e := os.ReadFile(statePath); e == nil && json.Unmarshal(raw, &state) == nil && state.Owner == fingerprint {
+		log.Printf("[SHARED_FORK] thread=%s owner_session=%s fork=no reason=%q", sessionID, owner.SessionID, "owner unchanged; continuing this thread's copy")
 		return nil, ""
 	}
 	var size int64
