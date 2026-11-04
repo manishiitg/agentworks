@@ -143,7 +143,7 @@ func writeCrewChatResult(w http.ResponseWriter, result crewChatResult) {
 // Only the owner's main website chat routes to the Mac. Side chats and every
 // unattended/token-based caller keep their existing server execution path.
 func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Request, profile, key string, call crewChatCall) bool {
-	if IsLocalMode() || profile != "work" || !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
+	if IsLocalMode() || profile != "work" || teamCopyTurn(r.Context()) || !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
 		return false
 	}
 	project := crewResourceProjectID(key)

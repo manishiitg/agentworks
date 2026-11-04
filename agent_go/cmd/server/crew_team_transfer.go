@@ -84,6 +84,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
+	noteTeamMacSeen(project, claims.UserID) // each member's Mac syncs the team folder every few seconds while it is on
 	var in crewTeamTransfer
 	if json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&in) != nil {
 		externalError(w, 400, "invalid_transfer", "Send a shared-folder transfer.")

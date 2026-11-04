@@ -120,6 +120,9 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if call.Operation == "agent_ask" || call.Operation == "agent_read" || call.Operation == "agent_answer" {
 		return api.desktopMacSharedAgent(ctx, claims, profile, project, call)
 	}
+	if call.Operation == "away_report" {
+		return api.desktopTeamCopyReport(ctx, project, call)
+	}
 	if call.Tab != "" && !crewMacTabID(call.Tab) {
 		return fail(400, "This tab is unavailable.")
 	}
@@ -361,7 +364,8 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	// Each person talks to the agent in their own thread, never in the owner's tab (owner, 3 Nov): the same agent
 	// identity, its own chat. The tab must still be one this Mac shares.
 	key := sharedThreadKey(project, call.Tab, args.SenderID)
-	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macMainTab {
+	// The team copy has no tabs of its own: the shared list the server keeps names the agent.
+	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macMainTab && !teamCopyTurn(ctx) {
 		tabs, err := api.macCrewTabs(ctx, claims, project)
 		if err != nil || !slices.ContainsFunc(tabs, func(tab AgentProfileSideChat) bool { return tab.ConversationKey == tabKey }) {
 			return refuse("no_tab")
@@ -403,12 +407,16 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, attribution)
 		// The sender's turn starts from the owner's own chat with this agent (owner, 4 Nov, decisions log).
 		ask := &crewMacSharedAsk{Sender: args.SenderID}
-		if owner, err := api.resolveAgentProfileConversation(r, profile, macSharedAgentChatKey(project, call.Tab), ""); err == nil {
+		text := crewMacSharedAgentText(*agent, call.Caller, message)
+		if teamCopyTurn(ctx) {
+			// The owner's chat is on the Mac; the team copy reads the copy of it in its record.
+			text += "\n[Your owner's Mac is off, so you answer as your team copy on the server. You have your instructions, skills and memory, your owner's chat with you so far in " + teamCopyChatDir + "/" + call.Tab + ".md (read it when the message refers to earlier work), and the team folder. You cannot reach your owner's Mac or any other file on it; say so if they need something only there.]"
+		} else if owner, err := api.resolveAgentProfileConversation(r, profile, macSharedAgentChatKey(project, call.Tab), ""); err == nil {
 			ask.Owner = owner
 		}
 		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, ask)
 		// Queued as its own turn, never steered into another sender's running turn: each sender reads only their own.
-		body, _ := json.Marshal(AgentProfileChatRequest{Message: crewMacSharedAgentText(*agent, call.Caller, message), ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"})
+		body, _ := json.Marshal(AgentProfileChatRequest{Message: text, ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"})
 		req, _ := http.NewRequestWithContext(askCtx, http.MethodPost, "http://localhost/api/agent-profiles/work/query", bytes.NewReader(body))
 		req = mux.SetURLVars(req, map[string]string{"id": "work"})
 		req.Header.Set("Content-Type", "application/json")
