@@ -9,6 +9,7 @@ import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useSharedCrewRows } from './SharedWithMe'
+import { TeamsSidebar } from '../../products/work/TeamFolderPanel'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
 
@@ -65,6 +66,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     </section>)}
     {macs.length > 0 && server.length > 0 && <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">On the server</h2>}
     <div className="space-y-1"><OwnershipGroups projects={server} render={renderProject} sharedAgents={sharedAgentRows} /></div>
+    <TeamsSidebar />
     {children}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
   </div>
@@ -118,6 +120,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       <div className="space-y-1"><OwnershipGroups projects={visible} render={renderProject} sharedAgents={sharedAgentRows} /></div>
+      <TeamsSidebar />
       {(filter === 'all' || filter === active) && children}
         {locations.map(connection => {
         const status = inventory[connection.id]?.status
