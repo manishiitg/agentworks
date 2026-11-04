@@ -12,17 +12,17 @@ describe('crew product commands', () => {
   it('parses profile commands and drops entries without a prompt', () => {
     expect(parseProductCommands({
       commands: [
-        { name: 'update-memory', description: 'Update memory', icon: 'brain', prompt: 'Do it {{context}}' },
+        { name: 'deep work', description: 'Plan work', icon: 'brain', prompt: 'Do it {{context}}' },
         { name: 'broken', description: 'No prompt' },
       ],
     })).toEqual([
-      { name: 'update-memory', description: 'Update memory', icon: 'brain', prompt: 'Do it {{context}}' },
+      { name: 'deep work', description: 'Plan work', icon: 'brain', prompt: 'Do it {{context}}' },
     ])
   })
 
   it('submits the prompt with slash-prefixed text substituted for {{context}}', () => {
     const [definition] = toProductCommandDefinitions([
-      { name: 'update-memory', description: '', icon: 'brain', prompt: 'Review {{context}} now' },
+      { name: 'deep work', description: '', icon: 'brain', prompt: 'Review {{context}} now' },
     ])
     expect(definition.modes).toEqual(['multi-agent'])
     const onSubmit = vi.fn()

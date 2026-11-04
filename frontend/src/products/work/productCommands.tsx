@@ -1,3 +1,4 @@
+import { renderCommandPrompt } from '../../commands/commandPrompt'
 import { Brain, Terminal } from 'lucide-react'
 import type { CommandDefinition } from '../../commands/types'
 import type { WorkProductCommand } from './workData'
@@ -25,7 +26,7 @@ export function toProductCommandDefinitions(commands: WorkProductCommand[]): Com
       modes: ['multi-agent'],
       source: 'product',
       execute: (ctx) => {
-        const prompt = command.prompt.replace(/\{\{context\}\}/g, ctx.beforeSlash ?? '').trim()
+        const prompt = renderCommandPrompt(command.prompt, ctx.beforeSlash ?? '')
         if (prompt) ctx.onSubmit(prompt)
       },
     }

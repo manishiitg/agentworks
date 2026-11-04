@@ -1,3 +1,4 @@
+import { resolveSlashCommandInput } from '../commands/commandPrompt'
 import { presetDraftChange, type AppliedPreset } from './presetDraft'
 import { TERMINAL_FILE_DROP_EVENT, type TerminalFileDrop } from '../utils/terminalFileDrop'
 import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
@@ -2047,16 +2048,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const withoutSlash = trimmedQuery.slice(1).trim()
     if (!withoutSlash) return false
 
-    const firstSpace = withoutSlash.indexOf(' ')
-    const commandName = (firstSpace >= 0 ? withoutSlash.slice(0, firstSpace) : withoutSlash).trim()
-    const commandArgs = (firstSpace >= 0 ? withoutSlash.slice(firstSpace + 1) : '').trim()
-    if (!commandName) return false
-
-    const cmd = slashCommands
-      ? slashCommands.find(c => c.command === commandName)
+    const resolved = resolveSlashCommandInput(withoutSlash, name => slashCommands
+      ? slashCommands.find(c => c.command === name)
       : useProductCommandCatalog
-        ? findProductOrUserCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-        : findCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+        ? findProductOrUserCommand(name, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+        : findCommand(name, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow))
+    const commandName = resolved?.name ?? withoutSlash.split(/\s+/)[0]
+    const commandArgs = resolved?.args ?? ''
+    const cmd = resolved?.command
     if (!cmd && !useProductCommandCatalog && !slashCommands) {
       const modeScopedCommand = findCommandAnyMode(commandName)
       if (modeScopedCommand && commandModeCategory) {
