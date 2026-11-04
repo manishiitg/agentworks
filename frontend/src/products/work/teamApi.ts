@@ -12,10 +12,10 @@ export type TeamClash = { path: string; source: string; winning_revision: number
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
 export const teamError = (e: unknown) => e instanceof Error ? e.message : 'Could not open the shared folder. Try again.'
 
-export async function teamRequest<T>(target: TeamTarget, suffix = '', method = 'GET', body?: unknown, raw = false): Promise<T> {
+export async function teamRequest<T>(target: TeamTarget, suffix = '', method = 'GET', body?: unknown, raw: boolean | 'blob' = false): Promise<T> {
   const route = `/api/crew-teams/${encodeURIComponent(target.project)}${suffix}${suffix && target.folderId ? `${suffix.includes('?') ? '&' : '?'}folder_id=${encodeURIComponent(target.folderId)}` : ''}`
   if (!target.connection) {
-    const { data } = await api.request<T>({ url: route, method, data: body, skipSessionContext: true, ...(raw ? { responseType: 'text', headers: { 'Content-Type': 'application/octet-stream' } } : {}) })
+    const { data } = await api.request<T>({ url: route, method, data: body, skipSessionContext: true, ...(raw ? { responseType: raw === 'blob' ? 'blob' : 'text', headers: { 'Content-Type': 'application/octet-stream' } } : {}) })
     return data
   }
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}${route}`, {
@@ -23,7 +23,7 @@ export async function teamRequest<T>(target: TeamTarget, suffix = '', method = '
     ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Blob ? body : JSON.stringify(body) }),
   })
   if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || 'The shared folder is unavailable. Check your Team access.') }
-  return (response.status === 204 ? '' : raw ? await response.text() : await response.json()) as T
+  return (response.status === 204 ? '' : raw === 'blob' ? await response.blob() : raw ? await response.text() : await response.json()) as T
 }
 
 export function useProjectTeam(project: string) {

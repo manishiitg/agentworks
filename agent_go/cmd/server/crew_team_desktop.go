@@ -118,7 +118,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		status = "offline"
 		message = "Saved on this Mac. Changes will send when connected."
 	}
-	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "skipped": crewTeamSkipped(b.Root)})
+	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "skipped": crewTeamSkipped(b.Root), "previous_folders": crewTeamPreviousLocalFolders(dir, b)})
 }
 
 // Names only: excluded bytes never enter shared content or diagnostics.
@@ -149,5 +149,25 @@ func crewTeamSkipped(root string) []string {
 		return nil
 	})
 	sort.Strings(out)
+	return out
+}
+
+// Previously downloaded files remain on this person's computer after a folder
+// change. These paths are local status only, never another person's grant.
+func crewTeamPreviousLocalFolders(dir string, current crewTeamLocal) []string {
+	out := []string{}
+	entries, err := os.ReadDir(filepath.Dir(dir))
+	if err != nil {
+		return out
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		previous, err := readCrewTeamLocal(filepath.Join(filepath.Dir(dir), entry.Name()))
+		if err == nil && previous.Project == current.Project && previous.Connection == current.Connection && previous.RemoteUser == current.RemoteUser && previous.FolderID != current.FolderID && previous.Root != current.Root {
+			out = append(out, previous.Root)
+		}
+	}
 	return out
 }
