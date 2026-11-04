@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"os"
 	"path"
+	"path/filepath"
 
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -19,6 +22,23 @@ func heldTeamFile(ctx context.Context, file string) (*os.Root, string, bool, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, "", true, err
+	}
+	if l, found, e := crewroot.LookupExecutable(getWorkspaceDocsAbsPath(), root); found || e != nil {
+		if e != nil {
+			return nil, "", true, e
+		}
+		physical, e := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), file)
+		if e != nil {
+			return nil, "", true, e
+		}
+		if crewroot.Within(l.Crew.Files, physical) {
+			relative, e := filepath.Rel(l.Crew.Files, physical)
+			if e != nil {
+				return nil, "", true, e
+			}
+			anchored, e := os.OpenRoot(l.Crew.Files)
+			return anchored, filepath.ToSlash(relative), true, e
+		}
 	}
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {

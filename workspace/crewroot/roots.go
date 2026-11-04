@@ -302,6 +302,9 @@ func (q *Resolver) Resolve(virtual string) (string, bool, error) {
 			return "", false, fmt.Errorf("path leaves the Crew folder")
 		}
 	}
+	if p, found, err := q.resolveExecutable(virtual); found || err != nil {
+		return p, found, err
+	}
 	r, bound, err := q.Lookup(virtual)
 	if err != nil || !bound {
 		return "", bound, err
@@ -441,6 +444,19 @@ func PrivateStateFor(physical string) (string, bool, error) {
 // ScopeRoot chooses the physical editor root for a validated relative request.
 // Resources and settings share a virtual identity, but never a physical root.
 func ScopeRoot(docs, virtual, rel string) (string, bool, error) {
+	if l, found, err := LookupExecutable(docs, virtual); found || err != nil {
+		if err != nil {
+			return "", found, err
+		}
+		if virtual == l.Binding.Root+"/code" {
+			return l.Code, true, nil
+		}
+		if virtual == l.Binding.Root {
+			if root, _, mapped := l.source(rel); mapped {
+				return root, true, nil
+			}
+		}
+	}
 	r, bound, err := Lookup(docs, virtual)
 	if err != nil || !bound {
 		return "", bound, err
@@ -459,6 +475,8 @@ func ScopeRoot(docs, virtual, rel string) (string, bool, error) {
 // inherit writes to settings or conversation records. An explicitly granted
 // run output directory remains writable.
 func NativeGrants(docs string, read, write []string) ([]string, []string, []string) {
+	read = executableGrants(docs, read)
+	write = executableGrants(docs, write)
 	var blocked []string
 	reads := append([]string(nil), read...)
 	for _, grant := range read {

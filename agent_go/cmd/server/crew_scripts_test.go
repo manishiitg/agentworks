@@ -37,7 +37,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	files := &mockWorkspaceAPI{files: map[string]string{"Crew/lab/code/qualify/script.json": `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}]}`, "Crew/lab/code/qualify/main.py": "print('saved')\n", "Crew/other/code/other-script/script.json": `{"id":"other-script","name":"Other"}`, "Crew/other/code/other-script/main.py": "print('private')\n"}}
+	files := &mockWorkspaceAPI{files: map[string]string{"Workflow/qualify/code/script.json": `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}]}`, "Workflow/qualify/code/main.py": "print('saved')\n", "Workflow/other-script/code/script.json": `{"id":"other-script","name":"Other"}`, "Workflow/other-script/code/main.py": "print('private')\n"}}
 	workspace := httptest.NewServer(files)
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)

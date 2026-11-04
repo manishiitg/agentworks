@@ -1653,6 +1653,10 @@ func buildAgentAccessNote(writeAccess AgentWriteAccess, dbAccess string) string 
 // (which resolves relative to the workflow root); this is the single place that
 // converts them to absolute.
 func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceAbsPath(workflowRel string) string {
+	if hcpo.crewAutomationCodeRoot != "" && strings.HasPrefix(workflowRel, "code/") {
+		return filepath.Join(hcpo.crewAutomationCodeRoot, strings.TrimPrefix(workflowRel, "code/"))
+	}
+
 	full := filepath.Join(hcpo.GetWorkspacePath(), workflowRel)
 	docsRoot := GetPromptDocsRoot()
 	if docsRoot == "" {

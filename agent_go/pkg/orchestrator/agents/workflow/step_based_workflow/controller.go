@@ -64,6 +64,7 @@ type StepBasedWorkflowOrchestrator struct {
 	directCrewScript        *CrewScriptDefinition
 	workshopSubAgentCleanup *workshopSubAgentCleanup
 	codeLayoutVersion       atomic.Int32
+	crewAutomationCodeRoot  string
 	platformStoresDisabled  atomic.Bool
 	workflowSkillsOnly      atomic.Bool
 	codeWritableByRun       atomic.Bool

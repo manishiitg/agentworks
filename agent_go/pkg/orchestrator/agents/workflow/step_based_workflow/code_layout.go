@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // All controller entry points run the same preflight and interpreter command.
@@ -20,6 +22,13 @@ func scriptedCommand(main string, args []string) string {
 // Layout is persisted in workflow.json, never inferred from directory existence.
 // Unknown versions fail instead of executing from an unintended source directory.
 func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) error {
+	hcpo.crewAutomationCodeRoot = ""
+	if l, found, err := crewroot.LookupExecutable(GetPromptDocsRoot(), hcpo.GetWorkspacePath()); err != nil {
+		return err
+	} else if found {
+		hcpo.crewAutomationCodeRoot = l.Code
+	}
+
 	if options := hcpo.GetExecutionOptions(); options != nil {
 		if resolver, ok := options.CrewRunner.(CrewScriptResolver); ok {
 			resolved, err := resolver.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), "")
@@ -132,10 +141,28 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 	}
 	if hcpo.usesCodeTree() {
 		root := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), "code")
+		if hcpo.crewAutomationCodeRoot != "" {
+			root = hcpo.crewAutomationCodeRoot
+		}
 		env["WORKFLOW_CODE_ROOT"] = root
 		deps := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), ".sandbox-cache", "python-packages")
 		env["WORKFLOW_CODE_DEPS"] = deps
 		env["PYTHONPATH"] = root + string(filepath.ListSeparator) + deps
 	}
 	return env
+}
+
+// Stats are runtime evidence, not authored automation code.
+func (hcpo *StepBasedWorkflowOrchestrator) scriptedMetadataPath(stepID string) string {
+	if hcpo.crewAutomationCodeRoot != "" {
+		return "runs/script-metadata/" + stepID + ".json"
+	}
+	return hcpo.scriptedSourceDir(stepID) + "/script_metadata.json"
+}
+
+func (hcpo *StepBasedWorkflowOrchestrator) scriptedSourceAbsolute(stepID string) string {
+	if hcpo.crewAutomationCodeRoot != "" && hcpo.usesCodeTree() {
+		return filepath.Join(hcpo.crewAutomationCodeRoot, stepID)
+	}
+	return filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), hcpo.scriptedSourceDir(stepID))
 }

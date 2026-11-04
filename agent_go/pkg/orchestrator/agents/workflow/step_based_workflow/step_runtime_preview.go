@@ -143,7 +143,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		"ValidationSchema": agentSequenceValidationSchemaJSON(step.GetValidationSchema()),
 	}
 	if scripted && hcpo.usesCodeTree() {
-		vars["ScriptedWorkingDir"] = hcpo.agentSequenceAbsPath(hcpo.scriptedSourceDir(step.GetID()))
+		vars["ScriptedWorkingDir"] = hcpo.scriptedSourceAbsolute(step.GetID())
 		vars["DirectCodeSource"] = "true"
 	}
 	if scripted && stepConfig != nil && stepConfig.LockCode != nil {

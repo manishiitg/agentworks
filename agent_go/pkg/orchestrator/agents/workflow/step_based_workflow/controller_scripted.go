@@ -662,7 +662,7 @@ func getScriptedDirRelPath(stepID string) string {
 // readScriptedMetadataAPI reads script_metadata.json via the workspace API.
 // Returns nil if the file is missing or cannot be parsed.
 func (hcpo *StepBasedWorkflowOrchestrator) readScriptedMetadataAPI(ctx context.Context, stepID string) *ScriptedMetadata {
-	relPath := hcpo.scriptedSourceDir(stepID) + "/script_metadata.json"
+	relPath := hcpo.scriptedMetadataPath(stepID)
 	data, err := hcpo.ReadWorkspaceFile(ctx, relPath)
 	if err != nil {
 		return nil
@@ -733,7 +733,7 @@ func scriptArtifactsChanged(before, after map[string]string) bool {
 
 // writeScriptedMetadataAPI writes script_metadata.json via the workspace API.
 func (hcpo *StepBasedWorkflowOrchestrator) writeScriptedMetadataAPI(ctx context.Context, stepID string, meta ScriptedMetadata) error {
-	relPath := hcpo.scriptedSourceDir(stepID) + "/script_metadata.json"
+	relPath := hcpo.scriptedMetadataPath(stepID)
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
@@ -976,7 +976,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	workDirRel := strings.TrimPrefix(workDirAbsPath, docsRoot+"/")
 	if workDirRel == workDirAbsPath {
 		// Didn't start with docsRoot — fall back to empty (workspace root)
-		workDirRel = ""
+		workDirRel = hcpo.scriptedWorkingDir(step.GetID(), stepExecutionRelPath)
+	}
+
+	if hcpo.crewAutomationCodeRoot != "" && strings.HasPrefix(workDirAbsPath, hcpo.crewAutomationCodeRoot+"/") {
+		workDirRel = hcpo.scriptedWorkingDir(step.GetID(), stepExecutionRelPath)
 	}
 
 	// Build command: STEP_OUTPUT_DIR is passed via ExtraEnv so no inline env prefix needed.
@@ -1207,6 +1211,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	stepExecutionAbsPath := filepath.Join(docsRoot, stepExecutionRelPath)
 	codeDirRelPath := hcpo.scriptedWorkingDir(stepID, stepExecutionRelPath)
 	codeDirAbsPath := filepath.Join(docsRoot, codeDirRelPath)
+	if hcpo.crewAutomationCodeRoot != "" && hcpo.usesCodeTree() {
+		codeDirAbsPath = hcpo.scriptedSourceAbsolute(stepID)
+	}
 	mainPyAbsPath := filepath.Join(codeDirAbsPath, "main.py")
 	if hasShared {
 		parameters, err := hcpo.crewScriptParameters(ctx, shared, stepIndex, stepPath, allSteps, executionWorkspacePath)

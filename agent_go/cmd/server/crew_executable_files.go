@@ -83,7 +83,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		case "read":
 			sourceRoot := binding.Root
 			if binding.Kind == "script" {
-				sourceRoot = path.Join(binding.CrewRoot, "code", binding.ID)
+				sourceRoot = path.Join(binding.Root, "code")
 			}
 			content, found, err := readFileFromWorkspace(ctx, sourceRoot+"/"+clean)
 			if err != nil {

@@ -365,7 +365,11 @@ func ListDocuments(c *gin.Context) {
 	// Use recursive function to get all documents with max depth
 	// Force unlimited files (limit=-1) and no offset (offset=0) to ensure full tree structure is returned for the UI
 	// Skip metadata (last_modified, is_image) for root listings to reduce response size
-	documents, err := scanDocuments(searchPath, docsDir, documentScanOptions{maxDepth: req.MaxDepth, limit: -1, metadata: !isRootListing, blocked: blockedPaths, visibility: req.FileTreeVisibility, userID: userID, ctx: c.Request.Context()})
+	virtualRoot := ""
+	if layout, found, e := crewroot.LookupExecutable(docsDir, normalizedFolder); e == nil && found && (crewroot.Within(layout.Code, searchPath) || crewroot.Within(layout.Definitions, searchPath)) {
+		virtualRoot = normalizedFolder
+	}
+	documents, err := scanDocuments(searchPath, docsDir, documentScanOptions{virtualRoot: virtualRoot, maxDepth: req.MaxDepth, limit: -1, metadata: !isRootListing, blocked: blockedPaths, visibility: req.FileTreeVisibility, userID: userID, ctx: c.Request.Context()})
 	if err != nil {
 		// Check if error is due to directory not existing
 		if os.IsNotExist(err) {

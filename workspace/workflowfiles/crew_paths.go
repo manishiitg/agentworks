@@ -25,6 +25,39 @@ func BoundCrewFileRequest(docs, root, p, destination string, guard *FolderGuard)
 			return "", "", "", nil, "", err
 		}
 	}
+	if l, found, err := crewroot.LookupExecutable(docs, root); found || err != nil {
+		if err != nil {
+			return "", "", "", nil, "", err
+		}
+		if root != l.Binding.Root {
+			return "", "", "", nil, "", fmt.Errorf("use the issued workflow root")
+		}
+		if destination != "" {
+			sourceRoot, _, e := crewroot.ScopeRoot(docs, root, p)
+			if e != nil {
+				return "", "", "", nil, "", e
+			}
+			targetRoot, _, e := crewroot.ScopeRoot(docs, root, destination)
+			if e != nil {
+				return "", "", "", nil, "", e
+			}
+			if sourceRoot != targetRoot {
+				return "", "", "", nil, "", fmt.Errorf("move files within the same definition, code or runtime folder")
+			}
+		}
+		code := func(p string) bool { return p == "code" || strings.HasPrefix(p, "code/") }
+		if destination != "" && code(p) != code(destination) {
+			return "", "", "", nil, "", fmt.Errorf("move files within the same definition or code folder")
+		}
+		if code(p) {
+			p = strings.TrimPrefix(strings.TrimPrefix(p, "code"), "/")
+			if p == "" {
+				p = "."
+			}
+			return root + "/code", p, strings.TrimPrefix(destination, "code/"), guard.Subtree("code"), "code", nil
+		}
+		return root, p, destination, guard, "", nil
+	}
 	roots, bound, err := crewroot.Lookup(docs, root)
 	if err != nil || !bound {
 		return root, p, destination, guard, "", err

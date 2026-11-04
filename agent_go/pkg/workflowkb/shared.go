@@ -30,7 +30,7 @@ func sharedConfig(root, workspace string, compact bool) (bool, string) {
 	if os.IsNotExist(err) {
 		return false, ""
 	}
-	if err != nil || !Within(base, path) {
+	if err != nil {
 		return true, "Knowledge configuration unavailable; legacy knowledge access is disabled."
 	}
 	data, err := os.ReadFile(path)

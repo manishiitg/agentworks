@@ -375,3 +375,42 @@ func TestCrewWorkflowsKeepRelayDataWhileFlowIsDisabled(t *testing.T) {
 		t.Fatalf("disabled Relay gained access: %v %v", found, err)
 	}
 }
+
+// PLAT-746-265: a Team writer holding its native lock must use the same moved
+// source as HTTP editors, rather than recreate a second plan in runtime storage.
+func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
+	docs := t.TempDir()
+	docs, _ = filepath.EvalSymlinks(docs)
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	root := registerTestCrew(t, "native-source", "owner", false)
+	b := crewExecutableBinding{ID: "native-source", Root: "Workflow/native-source", CrewID: "crew-native-source", CrewRoot: root, Kind: "workflow"}
+	if err := registerCrewExecutable(b); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(t.Context(), teamLockHeldKey{}, b.Root)
+	for _, rel := range []string{"planning/plan.json", "code/step/main.py", "planning/changelog/entry.json"} {
+		target := filepath.Join(docs, root, ".agentworks/workflows", b.ID, rel)
+		if strings.HasPrefix(rel, "code/") {
+			target = filepath.Join(docs, root, ".agentworks/code", b.ID, strings.TrimPrefix(rel, "code/"))
+		}
+		if strings.Contains(rel, "changelog") {
+			target = filepath.Join(docs, b.Root, rel)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if handled, err := writeHeldTeamFile(ctx, b.Root+"/"+rel, "saved"); err != nil || !handled {
+			t.Fatal(rel, handled, err)
+		}
+		raw, err := os.ReadFile(target)
+		if err != nil || string(raw) != "saved" {
+			t.Fatal(rel, string(raw), err)
+		}
+		if !strings.Contains(rel, "changelog") {
+			if _, err := os.Stat(filepath.Join(docs, b.Root, rel)); !os.IsNotExist(err) {
+				t.Fatal("recreated old source", rel)
+			}
+		}
+	}
+}

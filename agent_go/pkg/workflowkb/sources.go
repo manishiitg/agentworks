@@ -5,6 +5,8 @@ package workflowkb
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"io"
 	"io/fs"
 	"os"
@@ -53,7 +55,10 @@ func ReadManifest(root, workspace string) (Manifest, error) {
 	if filepath.IsAbs(workspace) {
 		return m, fmt.Errorf("workflow path must be relative")
 	}
-	target := filepath.Join(root, filepath.FromSlash(workspace), "workflow.json")
+	target, err := fsutil.WorkspacePath(root, filepath.ToSlash(filepath.Join(workspace, "workflow.json")))
+	if err != nil {
+		return m, err
+	}
 	canonical, err := filepath.EvalSymlinks(target)
 	if err != nil {
 		return m, err
@@ -62,7 +67,11 @@ func ReadManifest(root, workspace string) (Manifest, error) {
 	if err != nil {
 		return m, err
 	}
-	if !Within(filepath.Join(root, "Workflow"), canonical) {
+	_, bound, bindingErr := crewroot.LookupExecutable(root, workspace)
+	if bindingErr != nil {
+		return m, bindingErr
+	}
+	if !bound && !Within(filepath.Join(root, "Workflow"), canonical) {
 		return m, fmt.Errorf("workflow is outside this host's Workflow directory")
 	}
 	raw, err := os.ReadFile(canonical)
@@ -176,7 +185,23 @@ func Discover(root string) (map[string][]string, error) {
 		}
 		return filepath.SkipDir
 	})
-	return result, err
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	layouts, err := crewroot.ExecutableLayouts(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range layouts {
+		if l.Binding.Kind == "workflow" {
+			m, e := ReadManifest(root, l.Binding.Root)
+			if e != nil {
+				return nil, e
+			}
+			result[m.ID] = append(result[m.ID], l.Binding.Root)
+		}
+	}
+	return result, nil
 }
 
 func Resolve(root, workspace string, sources []workflowtypes.KnowledgebaseSource) ([]ResolvedSource, error) {

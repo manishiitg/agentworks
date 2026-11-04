@@ -12,6 +12,7 @@ import (
 )
 
 type documentScanOptions struct {
+	virtualRoot             string // issued executable subtree, whose files live in its Crew
 	maxDepth, limit, offset int
 	metadata                bool
 	blocked                 []string
@@ -35,6 +36,9 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 	if err != nil {
 		return nil, err
 	}
+	if opts.virtualRoot != "" {
+		searchVirtual, boundRoot = opts.virtualRoot, true
+	}
 	ignored := map[string]bool{".git": true, "node_modules": true, ".next": true, "dist": true, "build": true, "coverage": true, "__pycache__": true, ".venv": true, "venv": true}
 	hidden := map[string]bool{}
 	for _, name := range strings.Split(opts.visibility.HiddenEntries, ",") {
@@ -54,6 +58,16 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 		issued, _, bound, e := resolver.Reverse(path)
 		if e != nil {
 			return "", false
+		}
+		if opts.virtualRoot != "" {
+			rel, e := filepath.Rel(searchPath, path)
+			if e != nil {
+				return "", false
+			}
+			issued, bound = opts.virtualRoot, true
+			if rel != "." {
+				issued += "/" + filepath.ToSlash(rel)
+			}
 		}
 		if boundRoot && (!bound || issued != searchVirtual && !strings.HasPrefix(issued, searchVirtual+"/")) {
 			return "", false
