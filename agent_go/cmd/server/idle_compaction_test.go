@@ -10,7 +10,7 @@ import (
 // while the provider cache is warm; anything else is skipped with its reason.
 func TestIdleCompactDecide(t *testing.T) {
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
-	cfg := idleCompactConfig{MinTokens: 200_000, MinPercent: 60, IdleFrom: 50 * time.Minute, IdleTo: 58 * time.Minute, PersonWithin: 3 * time.Hour}
+	cfg := idleCompactConfig{MinTokens: 200_000, MinPercent: 60, IdleFrom: 50 * time.Minute, IdleTo: 58 * time.Minute, LongIdle: 3 * time.Hour, PersonWithin: 6 * time.Hour}
 	ready := func(change func(*idleCompactCandidate)) idleCompactCandidate {
 		c := idleCompactCandidate{Interactive: true, Supported: true, HasHandle: true,
 			LastActivity: now.Add(-52 * time.Minute), LastPerson: now.Add(-60 * time.Minute), ContextTokens: 310_000}
@@ -31,7 +31,13 @@ func TestIdleCompactDecide(t *testing.T) {
 		{"small chat", ready(func(c *idleCompactCandidate) { c.ContextTokens, c.ContextWindow = 150_000, 1_000_000 }), true, false, "small_context"},
 		{"still within 50 min", ready(func(c *idleCompactCandidate) { c.LastActivity = now.Add(-30 * time.Minute) }), false, false, "outside_idle_window"},
 		{"cache likely expired", ready(func(c *idleCompactCandidate) { c.LastActivity = now.Add(-70 * time.Minute) }), false, false, "outside_idle_window"},
-		{"no person turn in 3 h", ready(func(c *idleCompactCandidate) { c.LastPerson = now.Add(-4 * time.Hour) }), true, false, "no_recent_person_turn"},
+		{"no person turn in 6 h", ready(func(c *idleCompactCandidate) { c.LastPerson = now.Add(-7 * time.Hour) }), true, false, "no_recent_person_turn"},
+		{"left for the night: compacted once after 3 h", ready(func(c *idleCompactCandidate) {
+			c.LastActivity, c.LastPerson = now.Add(-182*time.Minute), now.Add(-190*time.Minute)
+		}), true, true, "idle_long_break"},
+		{"long break already compacted in the warm window", ready(func(c *idleCompactCandidate) {
+			c.LastActivity, c.LastPerson, c.AttemptedAt = now.Add(-182*time.Minute), now.Add(-190*time.Minute), now.Add(-130*time.Minute)
+		}), true, false, "already_compacted"},
 		{"already compacted since the person's turn", ready(func(c *idleCompactCandidate) { c.AttemptedAt = now.Add(-5 * time.Minute) }), true, false, "already_compacted"},
 		{"compacted before the latest person turn", ready(func(c *idleCompactCandidate) { c.AttemptedAt = now.Add(-2 * time.Hour) }), true, true, "idle_cache_warm"},
 		{"background work running", ready(func(c *idleCompactCandidate) { c.BackgroundWork = true }), true, false, "background_work"},
