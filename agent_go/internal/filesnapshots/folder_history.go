@@ -59,3 +59,30 @@ func (s Store) CopyFolderRevision(ctx context.Context, revision, key string, dst
 	cmd.Stdout = dst
 	return cmd.Run()
 }
+
+func (s Store) CompareFolderRevisions(ctx context.Context, left, right, key string) (string, error) {
+	if !crewsync.Allowed(key, false) {
+		return "", fmt.Errorf("invalid folder history path")
+	}
+	ref := func(revision string) (string, error) {
+		if revision == "0" {
+			return s.syncBase(ctx, "folder-initial")
+		}
+		return "refs/folder-history/" + digest(revision), nil
+	}
+	a, err := ref(left)
+	if err != nil {
+		return "", err
+	}
+	b, err := ref(right)
+	if err != nil {
+		return "", err
+	}
+	cmd := s.syncCommand(ctx, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", a, b, "--", key)
+	out := &limitedOutput{}
+	cmd.Stdout = out
+	if err = cmd.Run(); err != nil {
+		return "", err
+	}
+	return out.String(), nil
+}

@@ -18,6 +18,7 @@ import (
 )
 
 type crewTeamEvent struct {
+	Source   string         `json:"source"`
 	Path     string         `json:"path"`
 	Kind     string         `json:"kind"`
 	Revision uint64         `json:"revision"`
@@ -27,6 +28,7 @@ type crewTeamEvent struct {
 	File     *crewsync.File `json:"file,omitempty"`
 }
 type crewTeamClash struct {
+	Source          string `json:"source"`
 	Path            string `json:"path"`
 	WinningRevision uint64 `json:"winning_revision"`
 	LosingRevision  uint64 `json:"losing_revision"`
@@ -84,6 +86,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		for i := len(s.Events) - 1; i >= 0; i-- {
 			event := s.Events[i]
 			if allowed(event.Path) {
+				event.Source = "team_folder"
 				event.Author = shareOwnerLabel(event.Actor)
 				event.File = nil
 				out = append(out, event)
@@ -95,12 +98,27 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		for i := len(s.Clashes) - 1; i >= 0; i-- {
 			c := s.Clashes[i]
 			if !c.Resolved && allowed(c.Path) {
+				c.Source = "team_folder"
 				c.WinningAuthor = shareOwnerLabel(c.WinningAuthor)
 				c.LosingAuthor = shareOwnerLabel(c.LosingAuthor)
 				out = append(out, c)
 			}
 		}
 		externalJSON(w, map[string]any{"clashes": out, "revision": s.Revision})
+	case "compare":
+		left, e1 := strconv.ParseUint(r.URL.Query().Get("left"), 10, 64)
+		right, e2 := strconv.ParseUint(r.URL.Query().Get("right"), 10, 64)
+		if e1 != nil || e2 != nil || left > s.Revision || right > s.Revision || !allowed(rel) {
+			externalError(w, 400, "invalid_revision", "Choose a file and two revisions from Sync.")
+			return
+		}
+		store := filesnapshots.Store{Root: filepath.Join(dir, "files"), Private: filepath.Join(dir, "history")}
+		diff, err := store.CompareFolderRevisions(r.Context(), fmt.Sprint(left), fmt.Sprint(right), crewTeamKey(rel))
+		if err != nil {
+			externalError(w, 409, "team_history_unavailable", "These versions are unavailable.")
+			return
+		}
+		externalJSON(w, map[string]any{"path": rel, "left": left, "right": right, "diff": diff})
 	case "history":
 		revision, e := strconv.ParseUint(r.URL.Query().Get("revision"), 10, 64)
 		if e != nil || revision > s.Revision || !allowed(rel) {

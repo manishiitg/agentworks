@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 // PLAT-856-509: actual HTTP/file paths, with an allowed edit before each refusal.
@@ -138,6 +141,71 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 409 {
 		t.Fatalf("state payload accepted: %d %s", w.Code, w.Body.String())
 	}
+	// Two actual clients, real HTTP bytes and private Git bundles, no mocked
+	// content transport. The interrupted download edits a local file in flight.
+	var onDownload atomic.Bool
+	var dirtyPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		who := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/sync/") && onDownload.CompareAndSwap(true, false) {
+			_ = os.WriteFile(dirtyPath, []byte("member edited while downloading"), 0600)
+		}
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who, Username: who}))
+		router.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+	newClient := func(who string) (desktopConnection, string, *crewTeamLocal) {
+		dir := t.TempDir()
+		root := filepath.Join(dir, "files")
+		if err := os.MkdirAll(root, 0700); err != nil {
+			t.Fatal(err)
+		}
+		c := desktopConnection{ID: who, Server: server.URL, Token: who, User: UserInfo{ID: who}}
+		b := &crewTeamLocal{Connection: who, Project: "team-test", RemoteUser: who, Client: who + "-mac", Root: root, LocalBase: map[string]crewsync.File{}, RemoteBase: map[string]crewsync.File{}}
+		return c, dir, b
+	}
+	c1, d1, b1 := newClient("owner")
+	c2, d2, b2 := newClient("member")
+	sync := func(c desktopConnection, dir string, b *crewTeamLocal) {
+		t.Helper()
+		if err := syncCrewTeamLocal(t.Context(), c.User.ID, c, dir, b); err != nil {
+			t.Fatal("sync", c.User.ID, err)
+		}
+	}
+	read := func(root, path, want string) {
+		t.Helper()
+		got, err := os.ReadFile(filepath.Join(root, path))
+		if err != nil || string(got) != want {
+			t.Fatalf("file %s: %q %v; want %q", path, got, err, want)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("owner sends"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
+	read(b2.Root, "sync.md", "owner sends")
+	_ = os.WriteFile(filepath.Join(b2.Root, "sync.md"), []byte("member returns"), 0600)
+	sync(c2, d2, b2)
+	sync(c1, d1, b1)
+	read(b1.Root, "sync.md", "member returns")
+	_ = os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("server arriving"), 0600)
+	sync(c1, d1, b1)
+	dirtyPath = filepath.Join(b2.Root, "sync.md")
+	onDownload.Store(true)
+	sync(c2, d2, b2)
+	read(b2.Root, "sync.md", "member edited while downloading")
+	sync(c2, d2, b2)
+	sync(c1, d1, b1)
+	read(b1.Root, "sync.md", "member edited while downloading")
+	// Already accepted bytes must not be replayed as a new write.
+	beforeRetry, _ := readCrewTeamFileState("team-test")
+	sync(c2, d2, b2)
+	afterRetry, _ := readCrewTeamFileState("team-test")
+	if beforeRetry.Revision != afterRetry.Revision {
+		t.Fatal("unchanged client created another revision")
+	}
+	fmt.Println("[CREW_TEAM_PROOF] two HTTP/Git clients: owner to member, member to owner, local edit during download retained, unchanged retry passed")
 	// Canonical reads reject symlinks and hardlinks even when a host process plants one.
 	dir, _ := crewTeamDir("team-test")
 	outside := filepath.Join(t.TempDir(), "outside.txt")
