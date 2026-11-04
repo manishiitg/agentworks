@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Eye, EyeOff, Info, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, EyeOff, Info, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
-import { AGENT_KEY, AgentIcon, AgentMark } from './AgentIcon'
-import { useAgentMenuState } from './agentMenuState'
-import { activateTab } from '../../utils/activateTab'
+import { AGENT_KEY } from './AgentIcon'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 
 // A Crew agent's details (owner, 4 Nov, tab option B): the tab strip shows names only; hovering a name (~400 ms, or a
@@ -138,8 +136,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   </>
 }
 
-/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ▾ ⓘ", no icon. The name opens a list of all the Crew's agents, so they can be
- * reached with the left menu closed (owner, 4 Nov: "show it in header"). The Crew name opens its
+/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ", no icon (the left menu shows it). The Crew name opens its
  * team board; ⓘ opens the agent's card (purpose, sharing, ✎). Purpose text is not shown inline. */
 export function AgentHeaderLine({ tabId, crewName, projectId }: { tabId?: string | null; crewName: string; projectId?: string }) {
   const open = useOpenAgentStore()
@@ -154,7 +151,7 @@ export function AgentHeaderLine({ tabId, crewName, projectId }: { tabId?: string
       : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
     {name && <>
       <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
-      <AgentPicker name={name} tabId={tabId} projectId={projectId} />
+      <span className="min-w-0 max-w-48 truncate font-semibold">{name}</span>
       {info && <span className="shrink-0"><AgentHoverCard info={info} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
         <button type="button" aria-label={`About ${name}`} className="grid h-5 w-5 place-items-center max-md:h-8 max-md:w-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info aria-hidden="true" className="h-3.5 w-3.5" /></button>
       </AgentHoverCard></span>}
@@ -187,50 +184,4 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
           <div className="mt-1 flex gap-3"><button type="button" className="text-destructive hover:underline" onClick={() => run(actions.remove!)}>Remove</button><button type="button" className="text-muted-foreground hover:underline" onClick={() => setRemoving(false)}>Keep</button></div></div>
       : <button type="button" role="menuitem" className={`${item} border-t border-border text-destructive`} onClick={() => setRemoving(true)}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>)}
   </div>
-}
-
-/** The agent name in the top line, as a button: a list of every agent of the Crew (icon, name, status dot), the open one
- * highlighted, and "All agents" for the team board (owner, 4 Nov). */
-function AgentPicker({ name, tabId, projectId }: { name: string; tabId?: string | null; projectId?: string }) {
-  const agents = useCrewAgentsStore(state => state.agents)
-  const total = useCrewAgentsStore(state => state.agents.length + state.closed.length)
-  const [open, setOpen] = useState(false)
-  const [at, setAt] = useState<{ left: number; top: number } | null>(null)
-  const box = useRef<HTMLDivElement>(null)
-  const list = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent) => { if (!box.current?.contains(event.target as Node) && !list.current?.contains(event.target as Node)) setOpen(false) }
-    const esc = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', esc)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc) }
-  }, [open])
-  if (agents.length < 2 && !projectId) return <span className="min-w-0 max-w-48 truncate font-semibold">{name}</span>
-  return <div ref={box} className="relative min-w-0">
-    <button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => {
-      const rect = box.current?.getBoundingClientRect()
-      if (rect) setAt({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 264)), top: rect.bottom + 4 })
-      setOpen(value => !value)
-    }}
-      className="flex min-w-0 max-w-56 items-center gap-1 rounded-md px-1 font-semibold hover:bg-muted max-md:min-h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="min-w-0 truncate">{name}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-    </button>
-    {open && at && createPortal(<div ref={list} role="listbox" aria-label="Agents" style={{ left: at.left, top: at.top }} className="fixed z-[100] max-h-[60vh] w-64 overflow-y-auto rounded-xl border border-border bg-popover p-1 font-normal shadow-lg">
-      {agents.map(agent => <AgentPickerRow key={agent.tabId} agent={agent} active={agent.tabId === tabId} onPick={() => { setOpen(false); activateTab(agent.tabId) }} />)}
-      {projectId && <button type="button" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } })) }}
-        className="mt-0.5 flex w-full items-center rounded-md border-t border-border px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">All agents ({total})</button>}
-    </div>, document.body)}
-  </div>
-}
-
-function AgentPickerRow({ agent, active, onPick }: { agent: CrewAgentRow; active: boolean; onPick: () => void }) {
-  const state = useAgentMenuState(agent.tabId, agent.activity)
-  return <button type="button" role="option" aria-selected={active} onClick={onPick}
-    className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] max-md:min-h-10 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-    <AgentIcon name={agent.name} icon={agent.info?.icon} active={active} shared={agent.info?.sharedWith} />
-    <span className="min-w-0 flex-1 truncate">{agent.name}</span>
-    {agent.shortcut && <span className="shrink-0 text-[10px] text-muted-foreground">{AGENT_KEY}{agent.shortcut}</span>}
-    <AgentMark state={state} asking={agent.asking} />
-  </button>
 }
