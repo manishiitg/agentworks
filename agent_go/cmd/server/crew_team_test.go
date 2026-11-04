@@ -49,8 +49,13 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		return w
 	}
 	base := "/api/crew-teams/team-test"
-	config := `{"name":"Example","people":[{"user_id":"member","can_edit_shared_folder":true},{"user_id":"teammate","can_edit_shared_folder":false}],"folder":{"path":"docs"}}`
-	w := call("owner", "PUT", base, config, "")
+	// Team off (the Team tab's switch): the saved roster grants nothing, folder or agents.
+	w := call("owner", "PUT", base, `{"name":"Example","people":[{"user_id":"member","can_edit_shared_folder":true}],"folder":{"path":"docs"}}`, "")
+	if w.Code != 200 || crewTeamMember("team-test", "member") || call("member", "GET", base+"/files", "", "").Code != 403 {
+		t.Fatalf("a roster saved with Team off must not let its people in: %d %s", w.Code, w.Body.String())
+	}
+	config := `{"name":"Example","on":true,"people":[{"user_id":"member","can_edit_shared_folder":true},{"user_id":"teammate","can_edit_shared_folder":false}],"folder":{"path":"docs"}}`
+	w = call("owner", "PUT", base, config, "")
 	if w.Code != 200 {
 		t.Fatalf("owner config: %d %s", w.Code, w.Body.String())
 	}
@@ -335,7 +340,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	// and an old client's upload is refused even if it still has Team membership.
 	oldTeam, _ := readCrewTeam("team-test")
 	oldDir, _ := crewTeamContentDir("team-test")
-	w = call("owner", "PUT", base, `{"name":"Example","people":[{"user_id":"member","can_edit_shared_folder":true}],"folder":{"path":"other"}}`, "")
+	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member","can_edit_shared_folder":true}],"folder":{"path":"other"}}`, "")
 	if w.Code != 200 {
 		t.Fatal("change folder", w.Code, w.Body.String())
 	}

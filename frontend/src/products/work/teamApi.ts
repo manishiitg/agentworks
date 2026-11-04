@@ -6,7 +6,7 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; people: { user_id: string; can_edit_shared_folder: boolean }[]; folder: { id?: string; path: string; label: string }; can_manage: boolean; can_edit_shared_folder: boolean; server_data?: { name: string; size_bytes: number } }
+export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; can_edit_shared_folder: boolean }[]; folder: { id?: string; path: string; label: string }; can_manage: boolean; can_edit_shared_folder: boolean; server_data?: { name: string; size_bytes: number } }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
 export type TeamClash = { path: string; source: string; winning_revision: number; losing_revision: number; winning_author: string; losing_author: string }
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
@@ -62,6 +62,16 @@ export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
     : await teamRequest<Team>(target, '', 'PUT', team)
   window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   return saved
+}
+
+export type TeamSwitchResult = { team: Team; shared?: string[]; needs_purpose?: string[]; unshared?: number; folder_created?: boolean; note?: string }
+
+/** The Team tab's switch: the Mac shares the ready agents, makes team/ when no folder is chosen, or turns it all off. */
+export async function switchTeam(target: TeamTarget, on: boolean): Promise<TeamSwitchResult> {
+  if (!target.connection || !target.localProject) throw new Error('Turn on Use from phone and web for this Crew first.')
+  const result = await desktopRequest<TeamSwitchResult>(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.localProject)}/switch`, 'POST', { on })
+  window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+  return result
 }
 
 export function useTeams() {

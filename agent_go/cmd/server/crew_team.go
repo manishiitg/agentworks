@@ -42,16 +42,18 @@ type crewTeamServerData struct {
 	TeamProjectID string `json:"team_project_id"`
 }
 type crewTeam struct {
-	ServerData          *crewTeamServerData `json:"server_data,omitempty"`
-	ProjectID           string              `json:"project_id"`
-	Name                string              `json:"name"`
-	OwnerID             string              `json:"owner_id"`
-	People              []crewTeamPerson    `json:"people"`
-	Folder              crewTeamFolder      `json:"folder"`
-	Revision            uint64              `json:"revision"`
-	OwnerName           string              `json:"owner_name,omitempty"`
-	CanManage           bool                `json:"can_manage"`
-	CanEditSharedFolder bool                `json:"can_edit_shared_folder"`
+	ServerData *crewTeamServerData `json:"server_data,omitempty"`
+	ProjectID  string              `json:"project_id"`
+	Name       string              `json:"name"`
+	OwnerID    string              `json:"owner_id"`
+	// On is the Team tab's switch (owner, 4 Nov): off, the roster stays saved but only the owner is in the team.
+	On                  bool             `json:"on"`
+	People              []crewTeamPerson `json:"people"`
+	Folder              crewTeamFolder   `json:"folder"`
+	Revision            uint64           `json:"revision"`
+	OwnerName           string           `json:"owner_name,omitempty"`
+	CanManage           bool             `json:"can_manage"`
+	CanEditSharedFolder bool             `json:"can_edit_shared_folder"`
 }
 
 func crewTeamDir(project string) (string, error) {
@@ -95,10 +97,10 @@ func writeCrewTeam(t crewTeam) error {
 	return fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
 }
 func (t crewTeam) member(user string) bool {
-	return user != "" && (user == t.OwnerID || slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user }))
+	return user != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user }))
 }
 func (t crewTeam) edits(user string) bool {
-	return t.Folder.Path != "" && (user == t.OwnerID || slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && p.CanEditSharedFolder }))
+	return t.Folder.Path != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && p.CanEditSharedFolder }))
 }
 func (t crewTeam) view(user string) crewTeam {
 	t.CanManage = t.OwnerID == user
@@ -184,6 +186,9 @@ func crewTeamPeople(project string) []string {
 		return nil
 	}
 	out := []string{t.OwnerID}
+	if !t.On {
+		return out
+	}
 	for _, p := range t.People {
 		if IsLocalMode() || crewTeamAccountActive(p.UserID) {
 			out = append(out, p.UserID)
@@ -365,7 +370,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated people=%d revision=%d", project, owner, len(input.People), input.Revision)
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d revision=%d", project, owner, input.On, len(input.People), input.Revision)
 	externalJSON(w, input.view(owner))
 }
 func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
