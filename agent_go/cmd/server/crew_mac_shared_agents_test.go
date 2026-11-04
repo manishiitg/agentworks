@@ -4,8 +4,70 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
+
+// PLAT-856: a publicly listed Mac agent refused attached chats because they carry messaging permissions,
+// not Crew tool permissions. Both sending and reading a reply must use the current shared-agent audience.
+func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL", "")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"member","products":["work"]},{"id":"outsider","products":["work"]},{"id":"disabled","disabled":true,"products":["work"]}]}`)
+	if err := crewroot.WriteSync("p", crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
+		t.Fatal(err)
+	}
+	agents := []macSharedAgent{{Tab: "main", Audience: "everyone"}, {Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member"}}}
+	if err := writeMacSharedAgents("p", agents); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	for _, tc := range []struct {
+		name, user, tab      string
+		scopes               []string
+		bound, send, allowed bool
+	}{
+		{"public send", "outsider", "main", []string{"messages:send", "messages:read"}, true, true, true},
+		{"public reply read", "outsider", "main", []string{"messages:read"}, true, false, true},
+		{"team send", "member", "team01", []string{"messages:send"}, true, true, true},
+		{"chosen reply read", "member", "chosen01", []string{"messages:read"}, true, false, true},
+		{"outside team", "outsider", "team01", []string{"messages:send"}, true, true, false},
+		{"not chosen", "outsider", "chosen01", []string{"messages:read"}, true, false, false},
+		{"private tab", "member", "private01", []string{"messages:read"}, true, false, false},
+		{"read permission cannot send", "member", "main", []string{"messages:read"}, true, true, false},
+		{"disabled caller", "disabled", "main", []string{"messages:send"}, true, true, false},
+		{"unbound Crew permission", "outsider", "main", []string{"crews:run"}, false, true, true},
+		{"unbound messaging alone", "outsider", "main", []string{"messages:send"}, false, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			token := &accesstokens.Token{Scopes: tc.scopes}
+			if tc.bound {
+				token.BoundAgentID = "attached-agent"
+			}
+			peer := agentMessageEndpoint{Kind: triggerCallerCrew, ID: "p", UserID: "owner", ChatKey: macSharedAgentChatKey("p", tc.tab)}
+			err := api.externalAuthorizeMessagePeer(t.Context(), &UserClaims{UserID: tc.user, AccessToken: token}, peer, tc.send)
+			if (err == nil) != tc.allowed {
+				t.Fatalf("allowed=%t, error=%v", tc.allowed, err)
+			}
+		})
+	}
+	// An already-open inbox does not retain access after its agent is unshared.
+	if err := writeMacSharedAgents("p", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, send := range []bool{true, false} {
+		claims := &UserClaims{UserID: "member", AccessToken: &accesstokens.Token{BoundAgentID: "attached-agent", Scopes: []string{"messages:send", "messages:read"}}}
+		if err := api.externalAuthorizeMessagePeer(t.Context(), claims, agentMessageEndpoint{Kind: triggerCallerCrew, ID: "p", UserID: "owner", ChatKey: "p"}, send); err == nil {
+			t.Fatalf("revoked audience still admitted send=%t", send)
+		}
+	}
+}
 
 // PLAT-856-509: an agent shared from a Mac Crew. The server decides who is in its audience; the Mac refuses a tab it
 // does not share; a sender reads only their own exchange, never another sender's turns or the owner's own.
