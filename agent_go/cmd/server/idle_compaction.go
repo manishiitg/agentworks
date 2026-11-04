@@ -399,7 +399,7 @@ func (api *StreamingAPI) idleCompactCandidateFor(sessionID, owner string, chat i
 	c.Stopped = api.isSessionMarkedStopped(sessionID)
 	c.ContextTokens, c.ContextWindow, _ = api.chatContextUsage(sessionID, chat.provider, chat.personReq.ModelID, false)
 	c.LimitReached = api.sharedAccountTokenLimitHit(context.Background(), owner, chat.provider) != nil
-	c.TabOff = !idleCompactTabEnabled(owner, sessionID)
+	c.TabOff = !idleCompactEnabledFor(owner)
 	return c
 }
 

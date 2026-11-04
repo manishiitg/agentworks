@@ -50,10 +50,9 @@ func chatContextTabForSession(ctx context.Context, owner, sessionID string) (cha
 	return chatContextTab{}, false
 }
 
-// idleCompactTabEnabled is false when the chat's tab owner turned "Auto-compact when idle" off.
-func idleCompactTabEnabled(owner, sessionID string) bool {
-	tab, found := chatContextTabForSession(context.Background(), owner, sessionID)
-	return !found || !tab.Identity.IdleCompactionOff
+// idleCompactEnabledFor is false when the chat's owner turned "Auto-compact when idle" off for their chats.
+func idleCompactEnabledFor(owner string) bool {
+	return !loadCompactionPreferences(context.Background(), owner).IdleOff
 }
 
 type chatUsageLimit struct {
@@ -89,7 +88,7 @@ type chatContextView struct {
 // idleCompactHint says when "Auto-compact when idle" acts, from the idle sweep's own setting.
 func idleCompactHint() string {
 	cfg := idleCompactConfigFromEnv()
-	return fmt.Sprintf("Long chats are summarised after about %d minutes idle or after a %d-hour break, so the next message costs less.", int(cfg.IdleFrom.Minutes()), int(cfg.LongIdle.Hours()))
+	return fmt.Sprintf("Long chats are summarised after about %d minutes idle or after a %d-hour break, so the next message costs less. For all your chats.", int(cfg.IdleFrom.Minutes()), int(cfg.LongIdle.Hours()))
 }
 
 // chatContextRuntime is the provider, model and transport the chat last ran with, and whether a native
@@ -429,9 +428,10 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	view := chatContextView{SessionID: sessionID}
 	view.UsedTokens, view.WindowTokens, view.Limits = api.chatUsage(sessionID, subject, true)
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(subject.provider)), transport) {
-		view.IdleCompaction = &chatContextSwitch{On: !tab.Identity.IdleCompactionOff}
+		pref := loadCompactionPreferences(context.Background(), owner)
+		view.IdleCompaction = &chatContextSwitch{On: !pref.IdleOff}
 		view.Hint = idleCompactHint()
-		view.CompactEarly = &chatContextSwitch{On: tab.Identity.CompactEarly}
+		view.CompactEarly = &chatContextSwitch{On: pref.CompactEarly}
 		view.CompactEarlyHint = compactEarlyHint()
 	}
 	if strings.EqualFold(strings.TrimSpace(subject.provider), string(llmproviders.ProviderClaudeCode)) {
@@ -528,7 +528,7 @@ func (api *StreamingAPI) startClaudeTerminalNow(owner string, tab chatContextTab
 const compactEarlyTokens = 300_000
 
 func compactEarlyHint() string {
-	return fmt.Sprintf("When a reply ends with this chat over %dK tokens, it is summarised right away, so each next step reads less. Off by default.", compactEarlyTokens/1000)
+	return fmt.Sprintf("When a reply ends with a chat over %dK tokens, it is summarised right away, so each next step reads less. For all your chats; off by default.", compactEarlyTokens/1000)
 }
 
 // compactEarlyAfterTurn compacts a chat whose person turned "Compact at 300K" on, once its reply has ended with the
@@ -539,7 +539,7 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 	}
 	owner := api.idleCompactOwner(sessionID, personUser)
 	tab, found := chatContextTabForSession(context.Background(), owner, sessionID)
-	if !found || !tab.Identity.CompactEarly {
+	if !found || !loadCompactionPreferences(context.Background(), owner).CompactEarly {
 		return
 	}
 	idleCompacts.mu.Lock()
@@ -621,8 +621,14 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 			return http.StatusConflict, map[string]any{"error": busy}
 		}
 	}
-	if input.changesSwitch() {
-		identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, chatContextChange{IdleCompaction: input.IdleCompaction, CompactEarly: input.CompactEarly, ClaudeTerminal: input.ClaudeTerminal}, owner)
+	if input.IdleCompaction != nil || input.CompactEarly != nil {
+		// The person's own setting, for all their chats in every Crew.
+		if _, err := saveCompactionPreferences(ctx, owner, input.IdleCompaction, input.CompactEarly); err != nil {
+			return http.StatusServiceUnavailable, map[string]any{"error": "Could not save your compaction setting. Try again."}
+		}
+	}
+	if input.ClaudeTerminal != nil {
+		identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, chatContextChange{ClaudeTerminal: input.ClaudeTerminal}, owner)
 		if err != nil {
 			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
 		}
