@@ -1,13 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { Home, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { CompactProductNavigationContext } from './productNavigationContexts'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { openAppPage } from '../../utils/appNavigation'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 
 import { useAppStore } from '../../stores/useAppStore'
@@ -127,12 +126,8 @@ export function AppSidebar() {
     className="inline-flex h-11 w-11 md:h-7 md:w-auto shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
     {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
   </button>
-  // With the menu closed on a computer, its button and Home sit in the top bar (owner, 5 Nov).
-  const home = <button type="button" aria-label="Home" title="Home" onClick={() => openAppPage('/home')}
-    className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:inline-flex">
-    <Home className="h-4 w-4" aria-hidden="true" />
-  </button>
-  const leading = <div className="flex shrink-0 items-center gap-1">{!isMobile && home}{toggle}</div>
+  // With the menu closed on a computer, its button sits in the top bar so one click also opens it.
+  const leading = <div className="flex shrink-0 items-center gap-1">{toggle}</div>
   return <CompactProductNavigationContext.Provider value={true}>
       <div data-terminal-focus-chrome="header" data-app-sidebar data-product-navigation-mode={navigationMode}
         style={{ '--chat-sidebar-width': `${width}px` } as CSSProperties}
