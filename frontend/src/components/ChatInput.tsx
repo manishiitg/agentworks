@@ -142,6 +142,7 @@ import { isBrowserCDPEnabled } from '../utils/runtimeCapabilities'
 import { skillsApi } from '../api/skills'
 import type { Skill } from '../types/skills'
 import { getClipboardImageFiles } from './clipboardImages'
+import { getClipboardText } from './clipboardText'
 import { shouldUsePastedTextAttachment } from '../utils/chatPasteBehavior'
 import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
@@ -1808,10 +1809,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return
     }
 
-    const pasted = e.clipboardData?.getData('text') ?? ''
+    const plain = e.clipboardData?.getData('text/plain') || e.clipboardData?.getData('text') || ''
+    const pasted = getClipboardText(e.clipboardData)
     if (!pasted) return
 
-    if (!shouldUsePastedTextAttachment(pasted)) return
+    const attach = shouldUsePastedTextAttachment(pasted)
+    if (!attach && pasted === plain) return
 
     const textarea = e.currentTarget
     const start = textarea.selectionStart ?? inputText.length
@@ -1819,11 +1822,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const before = inputText.slice(0, start)
     const after = inputText.slice(end)
     e.preventDefault()
-    const marker = addPastedAttachment(pasted)
+    const marker = attach ? addPastedAttachment(pasted) : pasted
     if (!marker) return
 
-    const markerPrefix = before && !/\s$/.test(before) ? ' ' : ''
-    const markerSuffix = after && !/^\s/.test(after) ? ' ' : ''
+    const markerPrefix = attach && before && !/\s$/.test(before) ? ' ' : ''
+    const markerSuffix = attach && after && !/^\s/.test(after) ? ' ' : ''
     const markerText = `${markerPrefix}${marker}${markerSuffix}`
     const newValue = `${before}${markerText}${after}`
     const cursorPosition = before.length + markerText.length
