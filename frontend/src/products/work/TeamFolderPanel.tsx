@@ -11,7 +11,7 @@ import { TeamSyncPanel } from './TeamSyncPanel'
 import { teamError, teamRequest, useTeams, type Team, type TeamTarget } from './teamApi'
 
 type Selection = { team: Team; target: TeamTarget }
-const useTeamPage = create<{ selected?: Selection; open: (selected?: Selection) => void }>(set => ({ open: selected => set({ selected }) }))
+export const useTeamPage = create<{ selected?: Selection; open: (selected?: Selection) => void }>(set => ({ open: selected => set({ selected }) }))
 type SharedFile = { path: string; size: number; hash: string; author: string; revision: number }
 
 export function TeamsSidebar() {
