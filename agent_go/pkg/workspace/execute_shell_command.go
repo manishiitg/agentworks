@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/gogconfig"
 )
 
@@ -1219,6 +1220,33 @@ func isAllowedAbsoluteHostPath(candidate string, guard *FolderGuardConfig) bool 
 		return false
 	}
 	cleanCandidate := filepath.Clean(candidate)
+	// Registered automation source can live in an attached project outside
+	// workspace-docs. Resolve only this request's logical grants; the execution
+	// sandbox still applies read/write permissions and explicit exclusions.
+	for _, docs := range workspaceDocsRoots() {
+		for _, grant := range append(append([]string(nil), guard.ReadPaths...), guard.WritePaths...) {
+			layout, found, err := crewroot.LookupExecutable(docs, grant)
+			if err != nil || !found {
+				continue
+			}
+			reads, _, _ := crewroot.NativeGrants(docs, []string{grant}, nil)
+			for _, allowed := range reads {
+				physical, bound, err := crewroot.Resolve(docs, allowed)
+				if filepath.IsAbs(allowed) {
+					physical, bound = allowed, true
+				}
+				if err != nil || !bound || !crewroot.Within(physical, cleanCandidate) {
+					continue
+				}
+				rel, err := filepath.Rel(layout.Crew.Files, cleanCandidate)
+				if err == nil {
+					if _, err := crewroot.ResolveContained(layout.Crew.Files, rel); err == nil {
+						return true
+					}
+				}
+			}
+		}
+	}
 	// This host-managed CLI store is a separate runtime grant, not a new
 	// workspace write permission. The execution host grants its own resolved
 	// store independently, so caller-provided environment cannot widen access.
