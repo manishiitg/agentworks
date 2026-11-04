@@ -8,7 +8,7 @@ reports the account it runs as and writes, reads and removes a file in the Crew 
 failed on its next launch, and one turn per provider never saw it). A provider passes when each turn was accepted
 once and answered once with the expected reply, within the time limit. After turn 2 it also checks what was lost
 once before (PLAT-872, 4 Nov): turn 2 continued the AI's own session (no hand-over notice, so no history reload), the
-server knows the chat's size (idle compaction needs it), and Claude runs with its earlier compaction point. The side chat is closed afterwards; the Crew's own model is never changed.
+server knows the chat's size (idle compaction and "Compact at 300K" need it). The side chat is closed afterwards; the Crew's own model is never changed.
 
 It reports and never gates a deploy: the exit code is 0 unless the check itself could not run.
 
@@ -34,14 +34,12 @@ PROMPT = ("Post-deploy smoke check. Call workspace action=owners once for this C
 
 # The second turn: the CLI's own shell, in the Crew's folder, as whatever account the platform launched it as.
 SHELL_PROMPT = ("Post-deploy smoke check, part 2. Use your shell tool to run exactly this one command in the Crew folder: "
-                "f=.smoke-$$; echo ok > $f && cat $f && rm $f; id -un; echo cw=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-none}\n"
-                "Then reply with exactly RUNAS=<the account name it printed> FILE=<ok if it printed ok, else fail> "
-                "CW=<the value after cw=> and nothing else.")
+                "f=.smoke-$$; echo ok > $f && cat $f && rm $f; id -un\n"
+                "Then reply with exactly RUNAS=<the account name it printed> FILE=<ok if it printed ok, else fail> and nothing else.")
 
 
-# Programs whose chats report their size to the server (needed for idle compaction), and Claude's compaction point.
+# Programs whose chats report their size to the server (needed for idle compaction and "Compact at 300K").
 SIZE_REPORTED = {"claude-code", "codex-cli", "muse-cli"}
-CLAUDE_COMPACT_WINDOW = "300000"
 
 
 def word(answer, key):
@@ -175,7 +173,7 @@ def turn(config, workspace, chat_id, prompt, started, limit, accept, expected):
 
 
 def continuity_problems(config, workspace, chat_id, provider, answer, notice):
-    """What turn 2 shows about features lost once before: native resume, a known chat size, Claude's compaction point."""
+    """What turn 2 shows about features lost once before: native resume and a known chat size."""
     problems = []
     if notice:
         problems.append("turn 2 started a new AI session with the conversation handed over, instead of resuming its own")
@@ -186,8 +184,6 @@ def continuity_problems(config, workspace, chat_id, provider, answer, notice):
             context = {"error": first_line(str(error))}
         if not context.get("used_tokens"):
             problems.append(f"the server does not know this chat's size, so it is never compacted when idle ({context.get('error') or 'used_tokens missing'})")
-    if provider == "claude-code" and word(answer, "CW=") != CLAUDE_COMPACT_WINDOW:
-        problems.append(f"Claude runs without its compaction point (CW={word(answer, 'CW=') or 'missing'}, want {CLAUDE_COMPACT_WINDOW})")
     return problems
 
 

@@ -5748,6 +5748,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				idleRun.finish(llmtypes.IdleCompactResult{Reason: llmtypes.IdleCompactReasonFailed}, errors.New(turnError))
 			} else {
 				idleCompacts.noteTurnEnd(sessionID, idleTurnRuntime, time.Now())
+				go api.compactEarlyAfterTurn(sessionID, currentUserID)
 			}
 			if agentCancel != nil {
 				agentCancel()

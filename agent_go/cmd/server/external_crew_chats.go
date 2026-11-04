@@ -53,6 +53,7 @@ func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string
 		"native_id":        externalString("Opaque id from native_list, required for native_resume. Owner-only local existing-folder Crews. Reopens in a separate private chat tab; no model turn starts until you send a message."),
 		"action":           map[string]any{"type": "string", "enum": []any{"list", "read", "project_context", "native_list", "native_resume", "new", "side_open", "side_close", "side_rename", "set_model", "compact", "fresh", "delete", "stop", "message", "tools", "tool"}},
 		"idle_compaction":  map[string]any{"type": "boolean", "description": "For set_model: Auto-compact when idle. " + idleCompactHint() + " On unless turned off. Omit to keep it."},
+		"compact_early":    map[string]any{"type": "boolean", "description": "For set_model: Compact at 300K. " + compactEarlyHint()},
 		"claude_terminal":  map[string]any{"type": "boolean", "description": "For set_model, a Claude chat only: true runs Claude Code as the native terminal, false as the chat view. Applies from the next message; the conversation continues. Omit to keep it."},
 		"engine":           externalString("For set_model: a provider option of this Crew (as on its Models page, e.g. claude-code, codex-cli); empty returns the chat to the Crew's model."),
 		"model_id":         externalString("For set_model: a model of that provider."),
